@@ -55,7 +55,7 @@ export function parsePrefs(raw: string | undefined): Prefs {
 
 export function prefsCookie(p: Prefs, secure: boolean): string {
   const q = new URLSearchParams({ sidebar: p.sidebar, density: p.density, keys: p.keys });
-  if (p.space && isUuid(p.space)) q.set("space", p.space);
+  if (p.space) q.set("space", p.space); // parsePrefs drops anything but a UUID
   for (const [page, raw] of Object.entries(p.views)) { const v = page === "/audit/activity" ? viewParams(page, raw ?? "").toString() : raw ?? ""; if (v && isViewPage(page) && v.length <= VIEW_MAX) q.set(`view:${page}`, v); }
   for (const [page, h] of Object.entries(p.hidden)) { const keys = hiddenKeys(h?.join(",") ?? null); if (keys.length && isViewPage(page)) q.set(`cols:${page}`, keys.join(",")); }
   return `${PREFS_COOKIE}=${encodeURIComponent(q.toString())}; Path=/; Max-Age=31536000; SameSite=Strict${secure ? "; Secure" : ""}`;

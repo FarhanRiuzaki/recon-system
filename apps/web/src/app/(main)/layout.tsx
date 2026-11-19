@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { MotionLayer, PageTransitionRoot } from "@starterkit/ui/motion";
 import { QueryProvider } from "@/components/query-provider";
 import { AppShell } from "@/components/shell/app-shell";
-import { LazySpaceSwitcher } from "@/features/spaces/lazy-space-switcher";
+import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { AuthProvider } from "@/lib/client/auth-context";
 import { PrefsProvider } from "@/lib/client/prefs-context";
 import { requirePagePermission } from "@/lib/server/page-guard";
@@ -33,7 +33,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
         <QueryProvider>
           <Prefetch reads={[reads.spaceOptions()]}>
             <MotionLayer>
-              <AppShell space={<LazySpaceSwitcher />} drawerSpace={<LazySpaceSwitcher drawer />}><PageTransitionRoot>{children}</PageTransitionRoot></AppShell>
+              <AppShell space={<SpaceSwitcher />} drawerSpace={<SpaceSwitcher drawer />}><PageTransitionRoot>{children}</PageTransitionRoot></AppShell>
             </MotionLayer>
           </Prefetch>
         </QueryProvider>

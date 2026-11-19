@@ -1,6 +1,18 @@
+import { execFileSync } from "node:child_process";
 import { expect, type Page, test } from "@playwright/test";
 import { AUTH_STATE } from "./global-setup";
 import { signIn } from "./helpers";
+
+/**
+ * Runs `sql` on the E2E database (playwright.config.ts `E2E_DB`), as helpers.ts `ageReauth` does; refused unless its
+ * name ends in `_e2e`. Used to empty the spaces table for a test and put the demo spaces back after it.
+ */
+function e2eSql(sql: string) {
+  const db = URL.parse(process.env.E2E_DB ?? "");
+  if (!db?.pathname.endsWith("_e2e")) throw new Error("e2eSql runs only against the E2E database (E2E_DB, name ending in _e2e).");
+  execFileSync("bun", ["-e", "const db = new Bun.SQL(process.env.E2E_DB); await db.unsafe(process.env.E2E_SQL); await db.close();"],
+    { env: { ...process.env, E2E_SQL: sql }, stdio: "inherit" });
+}
 
 /** The demo spaces' ids by code, read as the global-setup Superadmin (space.view lists every space). */
 async function spaceIds(browser: import("@playwright/test").Browser, baseURL: string | undefined): Promise<Record<string, string>> {
@@ -82,4 +94,53 @@ test("a user without a space sees who adds them and their username, and no switc
   await expect(page.getByText("google", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create space" })).toHaveCount(0); // no space.manage
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+});
+
+/**
+ * A holder of space.manage sees every space (space.manage implies space.view), so "Create space" shows only while the
+ * app has no space at all: the demo spaces are set aside for this test and restored after it.
+ */
+test("with no space in the app, a space.manage holder creates one: checks, a taken code, then the new space's members", async ({ browser, baseURL }) => {
+  e2eSql(`drop table if exists e2e_spaces_kept; drop table if exists e2e_members_kept;
+    create table e2e_spaces_kept as select * from spaces; create table e2e_members_kept as select * from space_members; delete from spaces;`);
+  const ctx = await browser.newContext({ storageState: AUTH_STATE, baseURL });
+  const page = await ctx.newPage();
+  try {
+    await page.goto("/spaces");
+    await expect(page.getByRole("heading", { level: 1, name: "You're not a member of any space yet" })).toBeVisible();
+    e2eSql("insert into spaces (id, code, name) values (gen_random_uuid(), 'e2e-taken', 'Taken')"); // for the duplicate case
+
+    await page.getByRole("button", { name: "Create space" }).click();
+    const dialog = page.getByRole("dialog", { name: "Create space" });
+    const code = dialog.getByRole("textbox", { name: "Code" });
+    const name = dialog.getByRole("textbox", { name: "Name" });
+    await dialog.getByRole("button", { name: "Create space" }).click();
+    await expect(code).toBeFocused();
+    await expect(dialog.getByText("Enter a code.")).toBeVisible();
+    await expect(dialog.getByText("Enter a name.")).toBeVisible();
+
+    await code.fill("x");
+    await name.fill("   ");
+    await dialog.getByRole("button", { name: "Create space" }).click();
+    await expect(code).toBeFocused();
+    await expect(dialog.getByText("Use 2 to 32 letters, digits or hyphens.")).toBeVisible();
+    await expect(dialog.getByText("Enter a name.")).toBeVisible();
+
+    await code.fill("E2E-Taken"); // any case: the code is unique ignoring it
+    await name.fill("E2E operations");
+    await dialog.getByRole("button", { name: "Create space" }).click();
+    await expect(dialog.getByRole("alert").filter({ hasText: "Another space already has this code. Use a different one." })).toBeVisible();
+    await expect(code).toBeFocused();
+
+    await code.fill(" E2E-Ops ");
+    await dialog.getByRole("button", { name: "Create space" }).click();
+    await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}\/members$/);
+    // The "Created …" toast lives in the shell; the members route is the root 404 until Task 4, so the API is checked.
+    const made = (await (await page.request.get("/api/spaces?pageSize=100&q=e2e-ops")).json()) as { items: { code: string }[] };
+    expect(made.items.map((s) => s.code)).toEqual(["e2e-ops"]);
+  } finally {
+    await ctx.close();
+    e2eSql(`delete from spaces; insert into spaces select * from e2e_spaces_kept; insert into space_members select * from e2e_members_kept;
+      drop table e2e_spaces_kept; drop table e2e_members_kept;`);
+  }
 });

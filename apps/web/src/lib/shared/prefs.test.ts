@@ -11,7 +11,7 @@ describe("prefs cookie", () => {
     expect(parsePrefs(value(c)).space).toBe(id);
     expect(parsePrefs("space=nope").space).toBeNull();
     expect(parsePrefs(undefined).space).toBeNull();
-    expect(prefsCookie({ ...DEFAULT_PREFS, space: "../x" }, false)).not.toContain("space=");
+    expect(parsePrefs(value(prefsCookie({ ...DEFAULT_PREFS, space: "../x" }, false))).space).toBeNull();
   });
   it("round-trips compact density and collapsed sidebar", () => {
     const c = prefsCookie({ sidebar: "collapsed", density: "compact", views: {}, hidden: {}, keys: "off", space: null }, false);

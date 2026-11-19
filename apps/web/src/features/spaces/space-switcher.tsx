@@ -72,7 +72,7 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
   if (q.isPending) return loading ? <Skeleton className={cn(box, "border-0 shadow-none")} /> : <div className={box} aria-hidden="true" />;
   if (q.isError) {
     return (
-      <button type="button" onClick={() => void q.refetch()} aria-label="Couldn't load your spaces. Try again"
+      <button type="button" onClick={() => void q.refetch()} aria-label="Couldn't load spaces. Try again"
         className={cn(box, "cursor-pointer text-body-sm text-fg-2 hover:bg-tray")}>
         <Icon icon={RefreshIcon} className="size-4 shrink-0 text-down-ink" /><span className={cn("min-w-0", wide)}>Couldn&apos;t load spaces. Try again</span>
       </button>

@@ -19,17 +19,19 @@ import { spaceHref, SPACES_KEY } from "./use-spaces";
 
 type Values = { code: string; name: string };
 // CreateSpaceBody's rules, as the API applies them (trimmed; the code in any case, stored lower case).
-const SCHEMA: Schema<Values> = {
+export const CREATE_SPACE_SCHEMA: Schema<Values> = {
   code: [rules.required("Enter a code."), (v) => (SPACE_CODE.test(String(v).trim().toLowerCase()) ? null : "Use 2 to 32 letters, digits or hyphens.")],
   name: [rules.required("Enter a name."), (v) => (String(v).trim().length > SPACE_NAME_MAX ? `Use ${SPACE_NAME_MAX} characters or fewer.` : null)],
 };
+/** The POST body: what CreateSpaceBody would make of the form's values. */
+export const createSpaceBody = (v: Values) => ({ code: v.code.trim().toLowerCase(), name: v.name.trim() });
 
 /** POST /api/spaces (space.manage), then opens the new space's members. Loaded on click (Radix dialog). */
 export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const qc = useQueryClient();
   const { update } = usePrefs();
-  const f = useForm<Values>({ initial: { code: "", name: "" }, schema: SCHEMA, idPrefix: "space" });
+  const f = useForm<Values>({ initial: { code: "", name: "" }, schema: CREATE_SPACE_SCHEMA, idPrefix: "space" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +39,7 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      const s = await api<SpaceDto>("/api/spaces", { method: "POST", body: JSON.stringify({ code: v.code.trim(), name: v.name.trim() }) });
+      const s = await api<SpaceDto>("/api/spaces", { method: "POST", body: JSON.stringify(createSpaceBody(v)) });
       toast(`Created ${s.name}.`);
       await qc.invalidateQueries({ queryKey: SPACES_KEY });
       update({ space: s.id });
