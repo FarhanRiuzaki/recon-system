@@ -56,7 +56,7 @@ export const ACTION_LABEL = {
   "space.create": "Space created", "space.update": "Space updated", "space.member_set": "Space roles set", "space.member_remove": "Space member removed",
   "source.create": "Source created", "source.connection_set": "Source connection set", "source.version_create": "Source version drafted",
   "source.version_update": "Source version edited", "source.version_submit": "Source version submitted", "source.version_approve": "Source version approved",
-  "source.version_reject": "Source version rejected", "source.share": "Source shared", "source.unshare": "Source share removed",
+  "source.version_reject": "Source version rejected", "source.share": "Source shared", "source.unshare": "Source share removed", "source.discard": "Draft source deleted",
   "source.run": "Source pull started",
 } satisfies Record<string, string>;
 /** An action of the vocabulary (what the API records). */

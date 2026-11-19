@@ -109,6 +109,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.version_reject": ["source", "–", "`{ version, comment }`"],
   "source.share": ["source", "–", "`{ space: { id, code, name } }`"],
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
+  "source.discard": ["source", "`{ code, name, kind }`", "–"],
   "source.run": ["source", "–", "`{ businessDate }` (the snapshot date pulled again, or null for a pull or scan)"],
 };
 

@@ -125,13 +125,6 @@ export const SourceSpec = z.strictObject({
 });
 export type SourceSpec = z.infer<typeof SourceSpec>;
 
-/** POST /api/spaces/{spaceId}/sources. */
-export const CreateSourceBody = z.strictObject({
-  code: z.string().trim().toLowerCase().regex(SOURCE_CODE),
-  name: z.string().trim().min(1).max(SOURCE_NAME_MAX),
-  kind: z.enum(SOURCE_KINDS),
-});
-export type CreateSourceBody = z.infer<typeof CreateSourceBody>;
 
 export const ConnectionOptions = z.strictObject({
   tls: z.boolean().default(false),
@@ -152,6 +145,20 @@ export const SetConnectionBody = z.strictObject({
   options: ConnectionOptions.prefault({}),
 });
 export type SetConnectionBody = z.infer<typeof SetConnectionBody>;
+
+/**
+ * POST /api/spaces/{spaceId}/sources: the source, and in the same transaction a database source's `connection` (its
+ * credential stored as by PUT …/connection) and, with `draft`, its first draft version (no spec yet). Nothing is made
+ * when any part is refused (a taken code is 409 before anything exists).
+ */
+export const CreateSourceBody = z.strictObject({
+  code: z.string().trim().toLowerCase().regex(SOURCE_CODE),
+  name: z.string().trim().min(1).max(SOURCE_NAME_MAX),
+  kind: z.enum(SOURCE_KINDS),
+  connection: SetConnectionBody.optional(),
+  draft: z.boolean().optional(),
+});
+export type CreateSourceBody = z.infer<typeof CreateSourceBody>;
 
 /** PATCH /api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}: the draft's whole spec. */
 export const UpdateSourceVersionBody = z.strictObject({ spec: SourceSpec });
@@ -192,12 +199,21 @@ export const SourceColumnsDto = z.object({ table: z.string().nullable(), columns
 export type SourceColumnsDto = z.infer<typeof SourceColumnsDto>;
 
 /**
- * POST …/connection/test. A file inbox source: the folder and pattern being typed (both, or neither: then those of the
- * spec being worked on); still inside INBOX_ROOTS. A database source sends `{}`: the stored connection is tested.
+ * POST …/connection/test: the values being typed, never stored. A file inbox source: the folder and pattern (both, or
+ * neither: then those of the spec being worked on), inside INBOX_ROOTS. A database source: a whole `connection` to try,
+ * or `{}` for the stored one.
  */
-export const TestConnectionBody = z.strictObject({ path: inboxPath.optional(), pattern: inboxPattern.optional() })
-  .refine((b) => (b.path === undefined) === (b.pattern === undefined), { message: "Send the folder and the pattern together" });
+export const TestConnectionBody = z.strictObject({ path: inboxPath.optional(), pattern: inboxPattern.optional(), connection: SetConnectionBody.optional() })
+  .refine((b) => (b.path === undefined) === (b.pattern === undefined), { message: "Send the folder and the pattern together" })
+  .refine((b) => !(b.connection && b.path !== undefined), { message: "Send a folder or a connection, not both" });
 export type TestConnectionBody = z.infer<typeof TestConnectionBody>;
+
+/** POST /api/spaces/{spaceId}/sources/connection-test: a new source's typed folder or connection, tried before it exists. */
+export const NewSourceTestBody = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("file_inbox"), path: inboxPath, pattern: inboxPattern }),
+  z.strictObject({ kind: z.enum(["db_watermark", "db_snapshot"]), connection: SetConnectionBody }),
+]);
+export type NewSourceTestBody = z.infer<typeof NewSourceTestBody>;
 
 /**
  * POST …/connection/test: whether the stored connection (or a file source's folder) works now. `message` is one fixed

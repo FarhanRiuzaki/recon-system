@@ -6,7 +6,7 @@
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type {
-  ConnectionTestDto, CreateSourceBody, IngestListQuery, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
+  ConnectionTestDto, CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceVersionRowDto, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
@@ -206,9 +206,13 @@ async function ownSource(tx: InTx, spaceId: string, id: string): Promise<SourceR
   return s;
 }
 
-/** New source without connection or version; the code is unique in the space. */
+/**
+ * A new source, and in the same transaction a database source's connection and (`draft`) its first draft version,
+ * each with its own activity entry. The code is unique in the space (409 before anything is made).
+ */
 export function createSource(ctx: Ctx, b: CreateSourceBody): Promise<SourceDto> {
   return inSpace(ctx, async (tx, spaceId) => {
+    if (b.connection && b.kind === "file_inbox") throw new ApiError("bad_request", "A file inbox source reads files, so it has no database connection.");
     let s: SourceRow;
     try {
       [s] = await tx.insert(sources).values({ id: Bun.randomUUIDv7(), spaceId, code: b.code, name: b.name, kind: b.kind }).returning() as [SourceRow];
@@ -217,6 +221,8 @@ export function createSource(ctx: Ctx, b: CreateSourceBody): Promise<SourceDto> 
       throw isUniqueViolation(e) ? new ApiError("duplicate", "Another source in this space already has this code. Use a different one.") : e;
     }
     await recordActivity(tx, ctx, { action: "source.create", target: target(s), after: { code: s.code, name: s.name, kind: s.kind } });
+    if (b.connection) await writeConnection(tx, ctx, s, b.connection);
+    if (b.draft) await insertDraft(tx, ctx, s);
     return detailDto(tx, s, spaceId);
   });
 }
@@ -229,16 +235,22 @@ export function setConnection(ctx: Ctx, id: string, b: SetConnectionBody): Promi
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     if (s.kind === "file_inbox") throw new ApiError("bad_request", "A file inbox source reads files, so it has no database connection.");
-    const of = and(eq(sourceConnections.spaceId, spaceId), eq(sourceConnections.sourceId, id));
-    const [before] = await tx.select({ engine: sourceConnections.engine, options: sourceConnections.options }).from(sourceConnections).where(of);
-    const { engine, options, host, port, database, user, password } = b;
-    const secretEnc = encryptSecret(JSON.stringify({ host, port, database, user, password }));
-    const [row] = await tx.insert(sourceConnections).values({ spaceId, sourceId: id, engine, options, secretEnc })
-      .onConflictDoUpdate({ target: [sourceConnections.spaceId, sourceConnections.sourceId], set: { engine, options, secretEnc, updatedAt: NOW } })
-      .returning(connectionColumns);
-    await recordActivity(tx, ctx, { action: "source.connection_set", target: target(s), before: before ?? null, after: { engine, options } });
-    return connectionDto(row!);
+    return writeConnection(tx, ctx, s, b);
   });
+}
+
+/** Stores source `s`'s connection (insert or replace) with its `source.connection_set` entry. */
+async function writeConnection(tx: InTx, ctx: Ctx, s: SourceRow, b: SetConnectionBody): Promise<SourceConnectionDto> {
+  const spaceId = s.spaceId, id = s.id;
+  const of = and(eq(sourceConnections.spaceId, spaceId), eq(sourceConnections.sourceId, id));
+  const [before] = await tx.select({ engine: sourceConnections.engine, options: sourceConnections.options }).from(sourceConnections).where(of);
+  const { engine, options, host, port, database, user, password } = b;
+  const secretEnc = encryptSecret(JSON.stringify({ host, port, database, user, password }));
+  const [row] = await tx.insert(sourceConnections).values({ spaceId, sourceId: id, engine, options, secretEnc })
+    .onConflictDoUpdate({ target: [sourceConnections.spaceId, sourceConnections.sourceId], set: { engine, options, secretEnc, updatedAt: NOW } })
+    .returning(connectionColumns);
+  await recordActivity(tx, ctx, { action: "source.connection_set", target: target(s), before: before ?? null, after: { engine, options } });
+  return connectionDto(row!);
 }
 
 /** Version `versionId` of source `s`; 404 when it is not one. */
@@ -257,19 +269,22 @@ const withCaller = (ctx: Ctx, v: VersionRow): string[] => (v.contributorIds.incl
  * maker and first contributor. 409 `duplicate` while the source has a draft or a version in review.
  */
 export function createDraft(ctx: Ctx, id: string): Promise<SourceVersionDto> {
-  return inSpace(ctx, async (tx, spaceId) => {
-    const s = await ownSource(tx, spaceId, id);
-    const live = await tx.select().from(sourceVersions).where(and(ofSource(s), inArray(sourceVersions.status, ["draft", "in_review", "published"])));
-    if (live.some((v) => v.status !== "published")) throw new ApiError("duplicate", "This source already has a draft or a version in review. Finish that one first.");
-    const from = live.find((v) => v.status === "published");
-    const [last] = await tx.select({ n: max(sourceVersions.version) }).from(sourceVersions).where(ofSource(s));
-    const [v] = await tx.insert(sourceVersions).values({
-      id: Bun.randomUUIDv7(), spaceId, sourceId: id, version: (last?.n ?? 0) + 1, status: "draft",
-      spec: from?.spec ?? null, specHash: from?.specHash ?? null, makerId: ctx.user.id, contributorIds: [ctx.user.id],
-    }).returning() as [VersionRow];
-    await recordActivity(tx, ctx, { action: "source.version_create", target: target(s), after: { version: v.version, from: from?.version ?? null } });
-    return versionDto(v);
-  });
+  return inSpace(ctx, async (tx, spaceId) => insertDraft(tx, ctx, await ownSource(tx, spaceId, id)));
+}
+
+/** The draft of createDraft, in the caller's transaction (source `s` locked or just made). */
+async function insertDraft(tx: InTx, ctx: Ctx, s: SourceRow): Promise<SourceVersionDto> {
+  const spaceId = s.spaceId, id = s.id;
+  const live = await tx.select().from(sourceVersions).where(and(ofSource(s), inArray(sourceVersions.status, ["draft", "in_review", "published"])));
+  if (live.some((v) => v.status !== "published")) throw new ApiError("duplicate", "This source already has a draft or a version in review. Finish that one first.");
+  const from = live.find((v) => v.status === "published");
+  const [last] = await tx.select({ n: max(sourceVersions.version) }).from(sourceVersions).where(ofSource(s));
+  const [v] = await tx.insert(sourceVersions).values({
+    id: Bun.randomUUIDv7(), spaceId, sourceId: id, version: (last?.n ?? 0) + 1, status: "draft",
+    spec: from?.spec ?? null, specHash: from?.specHash ?? null, makerId: ctx.user.id, contributorIds: [ctx.user.id],
+  }).returning() as [VersionRow];
+  await recordActivity(tx, ctx, { action: "source.version_create", target: target(s), after: { version: v.version, from: from?.version ?? null } });
+  return versionDto(v);
 }
 
 /** A body the contract refused: 400 naming the spec's field when its reason was written for a person, else as thrown. */
@@ -354,11 +369,23 @@ const noConnection = () => new ApiError("bad_request", "This source has no conne
 
 /** A connector over the stored connection, with the interactive timeouts; called after the transaction that read it ended. */
 function interactiveConnector(c: StoredConnection): Connector {
-  const o = c.options as { tls: boolean; connectTimeoutSeconds: number };
-  return connectorFor(c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, {
-    tls: o.tls, connectTimeoutSeconds: Math.min(o.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000,
-  });
+  return typedConnector(c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, c.options as { tls: boolean; connectTimeoutSeconds: number });
 }
+/** A connector over a credential as given, with the interactive timeouts (a test of typed values: nothing is stored). */
+function typedConnector(engine: DbEngine, secret: Secret, o: { tls: boolean; connectTimeoutSeconds: number }): Connector {
+  return connectorFor(engine, secret, { tls: o.tls, connectTimeoutSeconds: Math.min(o.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000 });
+}
+/** Connects through `c` and runs SELECT 1: ok, or the failure's fixed sentence and driver code. */
+async function tryConnector(c: Connector): Promise<ConnectionTestDto> {
+  try {
+    await within(c, INTERACTIVE_SECONDS, (x) => x.test());
+    return { ok: true, message: "Connected.", code: null };
+  } catch (e) {
+    if (e instanceof ConnectorError) return { ok: false, message: e.message, code: e.code };
+    throw e;
+  }
+}
+const typedOf = (c: SetConnectionBody) => typedConnector(c.engine, { host: c.host, port: c.port, database: c.database, user: c.user, password: c.password }, c.options);
 /** `fn` over the stored connection; a connector failure is 400 with its fixed sentence. */
 async function overConnection<T>(c: StoredConnection, fn: (x: Connector) => Promise<T>): Promise<T> {
   try {
@@ -383,22 +410,28 @@ async function workingSpec(tx: InTx, s: SourceRow): Promise<SourceSpec | null> {
 export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody): Promise<ConnectionTestDto> {
   const got = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
-    if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests its stored connection: send no folder.");
-    return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: await storedConnection(tx, s) };
+    if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests a connection: send no folder.");
+    if (s.kind === "file_inbox" && b.connection) throw new ApiError("bad_request", "A file inbox source reads files, so it has no database connection.");
+    return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: b.connection ? null : await storedConnection(tx, s) };
   });
   if ("spec" in got) {
     const input = b.path !== undefined ? { path: b.path, pattern: b.pattern! } : got.spec?.input.kind === "file_inbox" ? got.spec.input : null;
     if (!input) throw new ApiError("bad_request", "This source has no folder yet. Enter the folder and the pattern, then test.");
     return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
   }
+  if (b.connection) return tryConnector(typedOf(b.connection));
   if (!got.conn) throw noConnection();
-  try {
-    await within(interactiveConnector(got.conn), INTERACTIVE_SECONDS, (c) => c.test());
-    return { ok: true, message: "Connected.", code: null };
-  } catch (e) {
-    if (e instanceof ConnectorError) return { ok: false, message: e.message, code: e.code };
-    throw e;
-  }
+  return tryConnector(interactiveConnector(got.conn));
+}
+
+/**
+ * POST /v1/spaces/:spaceId/sources/connection-test: a new source's folder or connection as typed, tried before the
+ * source exists (nothing is stored); the same checks and deadline as the test of a stored one.
+ */
+export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<ConnectionTestDto> {
+  void ctx; // the space guard (source_admin) is the whole authorization: nothing of the space is read
+  if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null };
+  return tryConnector(typedOf(b.connection));
 }
 
 /** GET …/connection/columns: the columns of `table` in the source database's catalog (400 when it has no such table). */
@@ -516,6 +549,24 @@ export function rejectVersion(ctx: Ctx, id: string, versionId: string, b: Reject
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_reject", target: target(s), after: { version: v.version, comment: b.comment } });
     return versionDto(row);
+  });
+}
+
+/**
+ * DELETE …/sources/:sourceId: a draft source nobody ever submitted (no version in review, published, retired or sent
+ * back) and that is shared nowhere, with its connection and draft (cascade); `source.discard` in the same transaction.
+ * Anything else is 409 invalid_state: a source with a history stays.
+ */
+export function discardSource(ctx: Ctx, id: string): Promise<void> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    const vs = await tx.select({ status: sourceVersions.status, submittedAt: sourceVersions.submittedAt }).from(sourceVersions).where(ofSource(s));
+    const [share] = await tx.select({ to: sourceShares.toSpaceId }).from(sourceShares).where(and(eq(sourceShares.spaceId, spaceId), eq(sourceShares.sourceId, id))).limit(1);
+    if (vs.some((v) => v.status !== "draft" || v.submittedAt !== null) || share) {
+      throw wrongState("Only a source that was never submitted for approval or shared can be deleted. Its history stays.");
+    }
+    await tx.delete(sources).where(and(eq(sources.spaceId, spaceId), eq(sources.id, id)));
+    await recordActivity(tx, ctx, { action: "source.discard", target: target(s), before: { code: s.code, name: s.name, kind: s.kind } });
   });
 }
 

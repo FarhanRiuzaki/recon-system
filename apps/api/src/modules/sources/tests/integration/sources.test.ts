@@ -169,6 +169,52 @@ describe("POST and GET sources", () => {
   });
 });
 
+describe("create in one call, delete a draft source (fix round 1)", () => {
+  it("a source, its connection and its first draft are made in one transaction, an entry each; a taken code makes nothing", async () => {
+    const body = { code: "core-bifast", name: "BI-FAST", kind: "db_watermark", connection: CONNECTION, draft: true };
+    const r = await create(t.adm, body);
+    expect(r.status).toBe(201);
+    const s = (await r.json()) as SourceDto;
+    expect([s.connection?.engine, s.draft?.version, s.draft?.status, s.draft?.spec]).toEqual(["postgres", 1, "draft", null]);
+    expect((await acts()).map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.version_create"]);
+    const dup = await create(t.adm, { ...body, code: "CORE-BIFAST", name: "Another" });
+    expect([dup.status, await code(dup)]).toEqual([409, "duplicate"]);
+    expect(await db.select().from(sourceConnections)).toHaveLength(1);
+    // a connection for a file source is 400 and makes nothing
+    expect((await create(t.adm, { code: "files", name: "Files", kind: "file_inbox", connection: CONNECTION })).status).toBe(400);
+    expect((await json<Page<SourceRowDto>>(call("GET", base(A), { token: t.op }))).total).toBe(1);
+    expect((await create(t.mk, { code: "x9", name: "X", kind: "file_inbox", draft: true })).status).toBe(403);
+  });
+
+  it("DELETE removes a draft source nobody submitted, with its connection and draft; anything with a history is 409", async () => {
+    const draftOnly = await json<SourceDto>(create(t.adm, { code: "core-bifast", name: "BI-FAST", kind: "db_watermark", connection: CONNECTION, draft: true }));
+    const del = (token: string, id: string, s = A) => call("DELETE", `${base(s)}/${id}`, { token });
+    expect((await del(t.mk, draftOnly.id)).status).toBe(403);
+    expect((await del(t.ck, draftOnly.id)).status).toBe(403);
+    expect((await del(t.adm, draftOnly.id)).status).toBe(200);
+    expect((await detail(t.op, draftOnly.id)).status).toBe(404);
+    expect(await db.select().from(sourceConnections)).toHaveLength(0);
+    expect((await acts()).map((e) => [e.action, e.before])).toContainEqual(["source.discard", { code: "core-bifast", name: "BI-FAST", kind: "db_watermark" }]);
+    // published: kept
+    const { s } = await published();
+    const r = await del(t.adm, s.id);
+    expect([r.status, await code(r)]).toEqual([409, "invalid_state"]);
+    // sent back once: kept (it was submitted)
+    const back = await made({ code: "back", name: "Back", kind: "file_inbox" });
+    const bv = await json<SourceVersionDto>(draft(t.mk, back.id));
+    await adminSetsReading(bv.id, ksei());
+    expect((await step(t.mk, back.id, bv.id, "submit")).status).toBe(200);
+    expect((await step(t.ck, back.id, bv.id, "reject", { comment: "no" })).status).toBe(200);
+    expect((await del(t.adm, back.id)).status).toBe(409);
+    // shared: kept, and through the share it is 404
+    const shared = await made({ code: "shared", name: "Shared", kind: "file_inbox" });
+    expect((await call("PUT", `${base(A)}/${shared.id}/shares/${B}`, { token: t.both })).status).toBe(200);
+    expect((await del(t.adm, shared.id)).status).toBe(409);
+    expect((await del(t.adm, shared.id, B)).status).toBe(404);
+    expect((await del(t.adm, Bun.randomUUIDv7())).status).toBe(404);
+  });
+});
+
 describe("PUT connection", () => {
   afterEach(() => {
     for (const k of ["info", "warn", "error", "debug"] as const) (log[k] as unknown as { mockRestore?: () => void }).mockRestore?.();

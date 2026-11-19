@@ -140,7 +140,7 @@ describe("POST …/connection/test (file inbox, the folder being typed)", () => 
     try {
       for (const p of ["/etc", path.join(root, "..", "x"), link]) {
         const r = await test_(t.adm, s.id, { path: p, pattern: "*" });
-        expect([r.status, (await errOf(r)).message]).toEqual([400, "The folder must be inside one of the inbox folders this install allows (INBOX_ROOTS)."]);
+        expect([r.status, (await errOf(r)).message]).toEqual([400, "Check input.path: Use a folder inside the inbox folders this install allows."]);
       }
     } finally {
       rmSync(link);
@@ -155,6 +155,37 @@ describe("POST …/connection/test (file inbox, the folder being typed)", () => 
     // a test records nothing
     expect((await db.select({ action: activity.action }).from(activity)).map((e) => e.action).sort())
       .toEqual(["source.connection_set", "source.create", "source.create", "source.version_create", "source.version_update"]);
+  });
+});
+
+describe("typed values are tested without being stored (fix round 1)", () => {
+  it("a stored source tests a typed connection; nothing is stored or recorded, the stored one stays", async () => {
+    const s = await made("db_watermark");
+    const typed = { engine: "postgres", ...secret };
+    expect(await json(test_(t.adm, s.id, { connection: typed }))).toEqual({ ok: true, message: "Connected.", code: null });
+    expect((await json<SourceDto>(call("GET", `${base()}/${s.id}`, { token: t.adm }))).connection).toBeNull();
+    const bad = await json<{ ok: boolean; code: string }>(test_(t.adm, s.id, { connection: { ...typed, database: "recon_no_such_db" } }));
+    expect([bad.ok, bad.code]).toEqual([false, "3D000"]);
+    expect((await db.select({ action: activity.action }).from(activity)).map((e) => e.action)).toEqual(["source.create"]);
+    // a connection and a folder don't go together; a file source takes no connection
+    expect((await test_(t.adm, s.id, { connection: typed, path: "/x", pattern: "*" })).status).toBe(400);
+    const f = await made("file_inbox");
+    expect((await test_(t.adm, f.id, { connection: typed })).status).toBe(400);
+  });
+
+  it("a new source's folder or connection is tried before it exists; source_admin only; nothing is made", async () => {
+    const root = config().INBOX_ROOTS[0]!;
+    mkdirSync(path.join(root, "fresh"), { recursive: true });
+    writeFileSync(path.join(root, "fresh", "act20261102.txt"), "x");
+    const tryNew = (token: string, body: unknown) => call("POST", `${base()}/connection-test`, { token, body });
+    expect(await json(tryNew(t.adm, { kind: "file_inbox", path: path.join(root, "fresh"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 1 file matches act*.txt", code: null });
+    const out = await tryNew(t.adm, { kind: "file_inbox", path: "/etc", pattern: "*" });
+    expect([out.status, (await errOf(out)).message]).toEqual([400, "Check input.path: Use a folder inside the inbox folders this install allows."]);
+    expect(await json(tryNew(t.adm, { kind: "db_snapshot", connection: { engine: "postgres", ...secret } }))).toEqual({ ok: true, message: "Connected.", code: null });
+    expect((await tryNew(t.adm, { kind: "db_watermark" })).status).toBe(400);
+    expect((await tryNew(t.mk, { kind: "file_inbox", path: root, pattern: "*" })).status).toBe(403);
+    expect(await db.select({ action: activity.action }).from(activity)).toEqual([]);
+    expect((await json<{ total: number }>(call("GET", base(), { token: t.adm }))).total).toBe(0);
   });
 });
 

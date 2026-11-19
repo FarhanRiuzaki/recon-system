@@ -19,6 +19,74 @@
         "db_snapshot",
         "file_inbox"
       ]
+    },
+    "connection": {
+      "type": "object",
+      "properties": {
+        "engine": {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "mysql",
+            "mssql",
+            "oracle"
+          ]
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "database": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "user": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "options": {
+          "default": {},
+          "type": "object",
+          "properties": {
+            "tls": {
+              "default": false,
+              "type": "boolean"
+            },
+            "connectTimeoutSeconds": {
+              "default": 15,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 120
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "engine",
+        "host",
+        "port",
+        "database",
+        "user",
+        "password"
+      ],
+      "additionalProperties": false
+    },
+    "draft": {
+      "type": "boolean"
     }
   },
   "required": [

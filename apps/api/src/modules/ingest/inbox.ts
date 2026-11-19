@@ -11,7 +11,7 @@ import { readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { ApiError } from "../../kernel/errors";
 
-const outside = () => new ApiError("bad_request", "The folder must be inside one of the inbox folders this install allows (INBOX_ROOTS).");
+const outside = () => new ApiError("bad_request", "Use a folder inside the inbox folders this install allows.");
 const within = (p: string, roots: string[]) => roots.some((r) => p === r || p.startsWith(r.endsWith(path.sep) ? r : r + path.sep));
 const codeOf = (e: unknown) => {
   const code = (e as { code?: unknown }).code;
@@ -28,11 +28,12 @@ async function folder(roots: string[], dir: string): Promise<string> {
   return real;
 }
 
-/** 400 for a folder outside `roots` or a pattern with a path in it; otherwise whether the folder reads, and the count. */
+/** 400 for a folder outside `roots` or a pattern with a path in it ("Check input.path: …"); otherwise whether the folder reads, and the count. */
 export async function inboxProbe(roots: string[], dir: string, pattern: string): Promise<{ ok: boolean; message: string }> {
-  if (/[/\\]/.test(pattern)) throw new ApiError("bad_request", "The file pattern matches file names only: no folders in it.");
+  // named like a spec field (the wizard shows it on the Folder or Pattern field)
+  if (/[/\\]/.test(pattern)) throw new ApiError("bad_request", "Check input.pattern: The file pattern matches file names only: no folders in it.");
   let real: string;
-  try { real = await folder(roots, dir); } catch (e) { if (e instanceof ApiError) throw e; return failed(e); }
+  try { real = await folder(roots, dir); } catch (e) { if (e instanceof ApiError) throw new ApiError("bad_request", `Check input.path: ${e.message}`); return failed(e); }
   let names: string[];
   try {
     const glob = new Bun.Glob(pattern);

@@ -7,15 +7,15 @@
 // 404 → rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import {
-  CreateSourceBody, IngestListQuery, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsQuery, SourceListQuery,
+  CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsQuery, SourceListQuery,
   SourceVersionListQuery, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  approveVersion, createDraft, createSource, previewVersion, queryColumns, refusedSpec, rejectVersion, setConnection, shareSource, sourceActivity, sourceColumns, sourceDetail,
-  sourcePage, submitVersion, testConnection, unshareSource, updateVersion, versionDetail, versionPage,
+  approveVersion, createDraft, createSource, discardSource, previewVersion, queryColumns, refusedSpec, rejectVersion, setConnection, shareSource, sourceActivity, sourceColumns, sourceDetail,
+  sourcePage, submitVersion, testConnection, testNewSource, unshareSource, updateVersion, versionDetail, versionPage,
 } from "./service";
 
 const MAKERS = ["source_admin", "config_maker"] as const;
@@ -31,7 +31,14 @@ export const sourcesController = () =>
       c.set.status = 201;
       return s;
     }, { guard: { space: ["source_admin"] } })
+    /** A new source's typed folder or connection, tried before the source exists; nothing is stored. */
+    .post("/v1/spaces/:spaceId/sources/connection-test", async (c) => testNewSource(c.ctx, await body(c, NewSourceTestBody)), { guard: { space: ["source_admin"] } })
     .get("/v1/spaces/:spaceId/sources/:sourceId", ({ ctx, params }) => sourceDetail(ctx, idParam(params.sourceId, "source")), { guard: { space: SPACE_ROLES } })
+    /** A draft source never submitted nor shared, deleted with its connection and draft. */
+    .delete("/v1/spaces/:spaceId/sources/:sourceId", async ({ ctx, params }) => {
+      await discardSource(ctx, idParam(params.sourceId, "source"));
+      return { ok: true };
+    }, { guard: { space: ["source_admin"] } })
     .put("/v1/spaces/:spaceId/sources/:sourceId/connection", async (c) => {
       const b = await body(c, SetConnectionBody);
       return setConnection(c.ctx, idParam(c.params.sourceId, "source"), b);
