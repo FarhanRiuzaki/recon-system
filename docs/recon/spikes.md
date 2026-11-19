@@ -40,7 +40,8 @@ Tanggal 2026-11-19. Skrip: `apps/api/scripts/spikes/s1-matching.ts` (data dari `
 `cd apps/api && bun scripts/spikes/s1-matching.ts --db "$BENCH_DATABASE_URL"` (menolak database yang tidak berakhiran `_bench`).
 Mesin: Apple M5 Max, 18 core, 36 GiB, macOS (darwin 27.2.0). PostgreSQL 18.6 (Homebrew) cluster lokal dengan setelan bawaan:
 `io_method=worker`, `shared_buffers=128MB`, `work_mem=4MB`, `max_parallel_workers_per_gather=2`, `synchronous_commit=on`.
-Klien Bun 1.4.4. Satu kali jalan penuh, 486 s wall.
+Klien Bun 1.4.4. Angka di bawah dari jalan penuh kedua (481 s wall); jalan pertama memberi angka sejenis (lihat catatan
+skenario 3).
 
 Data: profil BI-FAST dari `synthPair` (5% duplikat ext_ref + amount, 2% tanpa pasangan, 3% amount B bergeser ≤ 100 minor,
 lag B 0–600 s, 1000 rekening). Tabel `txn` (partisi harian), `recon_item`, `match_group`, `match_member` mengikuti spec §8.
@@ -48,23 +49,36 @@ Tick: lock advisory per config → item baru (watermark `uuidv7`) → pool item 
 FIFO (`ROW_NUMBER()` per `(ext_ref, amount_minor)`) → pass 2 toleransi (`CROSS JOIN LATERAL … LIMIT 1`, akun sama,
 ±100 minor, ±10 menit, tiap B dipakai sekali) → klaim `UPDATE … WHERE status='open'` + tulis grup dan anggota, satu transaksi.
 
+Skenario 3: run harian (config sendiri, 3 juta/sisi, satu transaksi) jalan di koneksi kedua; di koneksi pertama urutan
+30 tick skenario 2 diputar ulang terus, tiap putaran dengan config baru dan backlog 50.000/sisi sendiri, sampai run harian
+selesai. Waktu mulai dan selesai tiap tick dibandingkan dengan batas fase run harian; tick dihitung masuk fase bila
+rentangnya beririsan.
+
 | Skenario | Hasil | Verdict |
 |---|---|---|
-| 1. Ingest 1.039.965 A + 1.040.035 B | `COPY FROM STDIN` ke staging UNLOGGED 0,61 s (3,4 juta baris/s); `INSERT … ON CONFLICT DO NOTHING` ke `txn` 15,35 s (135 ribu baris/s); total 130 ribu baris/s | - |
-| 1b. Ingest ulang 1.039.965 A yang sama | 0 baris masuk (dedup `row_hash`), 3,49 s | - |
-| 1c. RSS proses | sebelum synth 9 MB, sesudah synth 518 MB, sesudah COPY 522 MB (COPY dikirim per 1 MB) | - |
-| 2. 30 tick, pool 50.000 backlog + 5.000 baru per sisi | p50 0,69 s, p95 0,75 s, maks 0,76 s; pass 1 144.087, pass 2 4.330 pasangan | lulus (≤ 30 s) |
-| 3. Skenario 2 sementara run harian 3 juta/sisi di koneksi kedua | p50 1,65 s, p95 2,15 s, maks 2,25 s; 30 dari 30 tick selesai saat run harian masih jalan | lulus (≤ 30 s) |
-| 3b. Run harian itu sendiri (satu transaksi) | 387,9 s: item 58,4 s, pool 8,5 s, pass 1 + klaim 304,9 s, pass 2 + klaim 15,9 s | tidak ada target |
-| 4. Catch-up 37.500 baru/sisi + backlog 50.000 | 2,06 s | lulus (≤ 2 menit) |
-| Ingest data harian 3 juta/sisi | 48,5 s (124 ribu baris/s) | - |
+| 1. Ingest 1.039.965 A + 1.040.035 B | `COPY FROM STDIN` ke staging UNLOGGED 0,58 s (3,6 juta baris/s); `INSERT … ON CONFLICT DO NOTHING` ke `txn` 10,94 s (190 ribu baris/s); total 180 ribu baris/s | - |
+| 1b. Ingest ulang 1.039.965 A yang sama | 0 baris masuk (dedup `row_hash`), 3,34 s | - |
+| 1c. RSS proses | sebelum synth 9 MB, sesudah synth 521 MB, sesudah COPY 514 MB (COPY dikirim per 1 MB) | - |
+| 2. 30 tick, pool 50.000 backlog + 5.000 baru per sisi | p50 0,68 s, p95 0,74 s, maks 0,76 s; pass 1 144.087, pass 2 4.330 pasangan | lulus (≤ 30 s) |
+| 3. Tick selama run harian 3 juta/sisi: 14 putaran, 420 tick | 398 tick beririsan run harian: p50 0,92 s, p95 1,22 s, maks 1,96 s | lulus (≤ 30 s) |
+| 3a. … beririsan fase item + pool (33,0 s) | 42 tick; p50 0,77 s, p95 0,98 s, maks 0,99 s | lulus |
+| 3b. … beririsan fase pass 1 + klaim (325,8 s) | **341 tick; p50 0,93 s, p95 1,22 s, maks 1,65 s** | lulus |
+| 3c. … beririsan fase pass 2 + klaim (17,3 s) | 17 tick; p50 0,98 s, p95 1,96 s, maks 1,96 s | lulus |
+| 3d. Run harian itu sendiri (satu transaksi) | 376,3 s: item 24,3 s, pool 8,7 s, pass 1 + klaim 325,8 s, pass 2 + klaim 17,3 s | tidak ada target |
+| 4. Catch-up 37.500 baru/sisi + backlog 50.000 | 1,85 s | lulus (≤ 2 menit) |
+| Ingest data harian 3 juta/sisi | 41,5 s (145 ribu baris/s) | - |
+
+Catatan skenario 3: jalan pertama hanya memutar 30 tick, yang semuanya selesai di fase item run harian (p95 2,15 s,
+maks 2,25 s; fase item saat itu 58,4 s, di jalan kedua 24,3 s). Fase pass 1 + klaim, jendela tulis terberat, baru tercakup
+di jalan kedua. Angka tick di fase item jalan pertama lebih tinggi daripada di fase mana pun pada jalan kedua; penyebab
+selisihnya tidak diselidiki.
 
 Verifikasi matching: ground truth dihitung dari baris yang dikirim (per `ext_ref`: amount sama di kedua sisi → pass 1
 sebanyak `min(jumlah A, jumlah B)`; amount beda → pass 2; satu sisi → open). Jumlah pass 1, pass 2 dan open cocok persis di
-semua skenario (run harian: 2.884.403 / 86.639 / 57.916). Pasangan dengan `ext_ref` berbeda: 0, kecuali 1 di run harian.
-Pemeriksaan offline atas data yang sama menemukan tepat satu kandidat silang (`BF1002-00345947` A tanpa pasangan vs B drift
-`BF1002-00343614`, akun sama, selisih 57 minor, 3 menit), jadi itu tabrakan aturan toleransi, bukan bug SQL. Skrip keluar
-dengan kode 1 karena pasangan salah itu.
+semua skenario, termasuk 14 putaran skenario 3 dan run harian (2.884.403 / 86.639 / 57.916). Pasangan dengan `ext_ref`
+berbeda: 0, kecuali 1 di run harian (di kedua jalan). Pemeriksaan offline atas data yang sama menemukan tepat satu
+kandidat silang (`BF1002-00345947` A tanpa pasangan vs B drift `BF1002-00343614`, akun sama, selisih 57 minor, 3 menit),
+jadi itu tabrakan aturan toleransi, bukan bug SQL. Skrip keluar dengan kode 1 karena pasangan salah itu.
 
 Asumsi: `daily-rows` 3.000.000 per sisi adalah asumsi sampai pemilik memberi target beban total (spec §14). Jumlah
 rekening 1000, amount seragam 100–1.000.000 rupiah, dan backlog berupa item yang memang tidak berpasangan juga asumsi; data
@@ -77,22 +91,24 @@ Temuan:
 - Bottleneck ingest adalah insert ke `txn` (PK `uuidv7`, unique `row_hash`, sha256 di SQL), bukan COPY.
 - Run harian lambat karena volume tulis, bukan join matching. Profil di 1 juta/sisi (`log_min_duration_statement`): klaim
   `UPDATE recon_item` 1,92 juta baris 21,1 s, insert `match_member` (dua FK per baris) 10,9 s, select pass 1 5,1 s, hapus
-  dari pool 3,7 s. Waktu tumbuh lebih cepat dari linear (1 juta/sisi 55 s, 3 juta/sisi 388 s). Log PG mencatat checkpoint
-  tiap ±13 s (`max_wal_size` bawaan); pengaruh setelan WAL tidak diukur.
+  dari pool 3,7 s. Waktu tumbuh lebih cepat dari linear (1 juta/sisi 55 s, 3 juta/sisi 376–388 s). Log PG mencatat
+  checkpoint tiap ±13 s (`max_wal_size` bawaan); pengaruh setelan WAL tidak diukur.
 - Perubahan `status` menyentuh kolom di predikat index parsial `recon_item_open`, jadi setiap klaim adalah update non-HOT.
-- Satu temp table + index + `ANALYZE` per tick: murah (pool 110 ribu baris, 0,4 s di catch-up), tapi 720 tick/hari/config
+- Satu temp table + index + `ANALYZE` per tick: murah (pool 110 ribu baris, 0,3 s di catch-up), tapi 720 tick/hari/config
   menambah churn katalog; belum diukur.
 
-Verdict: lulus. Pendekatan A (matching set-based di PostgreSQL) cukup untuk tick 2 menit: p95 2,15 s saat run harian
-3 juta/sisi berjalan bersamaan, sekitar 7% dari batas 30 s; catch-up 15 menit selesai dalam 2,06 s. DuckDB (pendekatan B)
-tidak diperlukan untuk beban ini.
+Verdict: lulus. Pendekatan A (matching set-based di PostgreSQL) cukup untuk tick 2 menit. Selama fase pass 1 + klaim run
+harian 3 juta/sisi (325,8 s, 341 tick), p95 tick 1,22 s dan maks 1,65 s, sekitar 4% dan 5,5% dari batas 30 s; maks di
+seluruh run harian 1,96 s. Catch-up 15 menit selesai dalam 1,85 s. DuckDB (pendekatan B) tidak diperlukan untuk beban ini.
 
 Konsekuensi ke desain:
-- Run harian besar dipecah per chunk (nilai awal dugaan: 250.000 item per transaksi, belum diukur; disetel dari ukuran nyata) supaya transaksi tidak berjalan
-  6,5 menit dan WAL per transaksi terbatas. Tick tidak perlu dipecah: yang terbesar diukur 37.500 baru/sisi + backlog 50.000 selesai dalam 2,06 s.
+- Run harian besar dipecah per chunk (nilai awal dugaan: 250.000 item per transaksi, belum diukur; disetel dari ukuran
+  nyata) supaya transaksi tidak berjalan sekitar 6 menit dan WAL per transaksi terbatas. Alasannya durasi transaksi dan WAL,
+  bukan dampak ke tick (tick tetap ≤ 2 s). Tick tidak perlu dipecah: yang terbesar diukur 37.500 baru/sisi + backlog
+  50.000 selesai dalam 1,85 s.
 - Pass toleransi wajib memakai aturan *mutual unique best* (spec §10) sebelum auto-accept; kasus tabrakan di atas akan
   jadi `suggested`, bukan `auto`.
-- Ingest memakai COPY ke staging UNLOGGED lalu `INSERT … ON CONFLICT`; ukuran batch dikejar dari sisi insert (~130 ribu
+- Ingest memakai COPY ke staging UNLOGGED lalu `INSERT … ON CONFLICT`; ukuran batch dikejar dari sisi insert (130–190 ribu
   baris/s di mesin ini).
 - Sebelum SLA dikunci: ulangi S1 di perangkat keras dan setelan PG produksi (`max_wal_size`, `shared_buffers`, `work_mem`),
   dan dengan beberapa config interval sekaligus (spec §12 menyebut "beberapa config interval"; spike ini menjalankan satu

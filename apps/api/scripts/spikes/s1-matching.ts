@@ -29,7 +29,7 @@ const TICKS = 30
 const SCHEMA = 'spike_s1'
 const D_INGEST = '2026-11-17', D_DAILY = '2026-11-18', D_TICK = '2026-11-19'
 const SRC = { A: 1, B: 2 } as const
-const CFG = { tick: 1, daily: 2, tickUnderLoad: 3, catchup: 4 } as const
+const CFG = { tick: 1, daily: 2, catchup: 4, tickUnderLoad: 100 } as const // skenario 3: 100, 101, … satu per putaran
 const UUID_MIN = '00000000-0000-0000-0000-000000000000'
 const UUID_MAX = 'ffffffff-ffff-ffff-ffff-ffffffffffff'
 
@@ -140,7 +140,7 @@ async function ingest(rows: Row[], source: number) {
 }
 
 // ---------- engine tick (spec §9): lock → item baru → pass 1 exact FIFO → pass 2 toleransi → klaim
-type TickResult = { ms: number; steps: string; added: number; pass1: number; pass2: number; wrong: number; open: number }
+type TickResult = { ms: number; steps: string; marks: Record<string, number>; added: number; pass1: number; pass2: number; wrong: number; open: number }
 
 async function claim(tx: SQL, cfg: number, pass: number) {
   const [c] = await tx.unsafe(`
@@ -166,8 +166,9 @@ async function claim(tx: SQL, cfg: number, pass: number) {
 async function runTick(db: SQL, cfg: number, date: string, lo: string, hi: string): Promise<TickResult> {
   const t0 = now()
   const steps: string[] = []
+  const marks: Record<string, number> = { start: t0 } // waktu absolut akhir tiap langkah
   let ts = now()
-  const lap = (name: string) => { steps.push(`${name} ${sec(now() - ts)}`); ts = now() }
+  const lap = (name: string) => { steps.push(`${name} ${sec(now() - ts)}`); ts = marks[name] = now() }
   const r = await db.begin(async (tx) => {
     await tx`select pg_advisory_xact_lock(${cfg})`
     const [add] = await tx.unsafe(`
@@ -227,7 +228,7 @@ async function runTick(db: SQL, cfg: number, date: string, lo: string, hi: strin
   })
   const ms = now() - t0
   lap('commit')
-  return { ms, steps: steps.join(", "), ...r }
+  return { ms, steps: steps.join(', '), marks, ...r }
 }
 
 /** Item open tanpa matching (backlog yang sudah ada sebelum tick pertama). */
@@ -342,7 +343,7 @@ try {
   const wmCatch = await watermark()
   const truthTick = add(truth(bA, bB), truth(sA, sB))
   const truthCatch = add(truth(bA, bB), truth(cA, cB))
-  for (const c of [CFG.tick, CFG.tickUnderLoad, CFG.catchup])
+  for (const c of [CFG.tick, CFG.catchup])
     if ((await addItems(c, D_TICK, UUID_MIN, wm0)) !== 2 * BACKLOG) fail('backlog tidak lengkap')
 
   // Data harian di D_DAILY, dibangkitkan per potongan 500 ribu supaya memori terbatas.
@@ -368,18 +369,39 @@ try {
   line(`| Skenario 2: ${TICKS} tick, pool ${fmt(BACKLOG)} + ${fmt(TICK)}/sisi | p50 ${sec(s2.p50)} s, p95 ${sec(s2.p95)} s, maks ${sec(s2.max)} s; ` +
     `pass1 ${fmt(s2.pass1)}, pass2 ${fmt(s2.pass2)}, open akhir ${fmt(s2.open)} | ${s2.p95 <= 30_000 ? 'lulus' : 'GAGAL'} |`)
 
-  // 3. Skenario 2 diulang (config lain atas txn yang sama) sementara koneksi kedua menjalankan run harian.
-  console.log('\n[3] 30 tick + run harian bersamaan')
-  const d0 = now()
-  const dailyP = runTick(sqlDaily, CFG.daily, D_DAILY, UUID_MIN, UUID_MAX).then((r) => ({ ...r, end: now() }))
-  const s3 = await runTicks(CFG.tickUnderLoad, ranges)
+  // 3. Skenario 2 diulang selama run harian berjalan di koneksi kedua: putaran 30 tick, tiap putaran config baru
+  //    (backlog sendiri) atas txn yang sama, sampai run harian selesai. Putaran terakhir dituntaskan supaya bisa diverifikasi.
+  console.log('\n[3] tick berulang + run harian bersamaan')
+  let dailyRunning = true
+  const dailyP = runTick(sqlDaily, CFG.daily, D_DAILY, UUID_MIN, UUID_MAX).finally(() => { dailyRunning = false })
+  const rounds: Awaited<ReturnType<typeof runTicks>>[] = []
+  do {
+    const cfg = CFG.tickUnderLoad + rounds.length
+    if ((await addItems(cfg, D_TICK, UUID_MIN, wm0)) !== 2 * BACKLOG) fail('backlog tidak lengkap')
+    const r = await runTicks(cfg, ranges)
+    allOk = verify(`skenario 3 putaran ${rounds.length + 1}`, truthTick, r) && allOk
+    rounds.push(r)
+  } while (dailyRunning)
   const daily = await dailyP
-  allOk = verify('skenario 3', truthTick, s3) && allOk
   allOk = verify('run harian', truthDaily, daily) && allOk
-  const overlap = s3.at.filter(([, e]) => e <= daily.end).length
-  line(`| Skenario 3: sama + run harian bersamaan | p50 ${sec(s3.p50)} s, p95 ${sec(s3.p95)} s, maks ${sec(s3.max)} s; ` +
-    `${overlap}/${TICKS} tick selesai saat run harian masih jalan | ${s3.p95 <= 30_000 ? 'lulus' : 'GAGAL'} |`)
-  line(`| Run harian ${fmt(DAILY)}/sisi (satu transaksi) | ${sec(daily.end - d0)} s; pass1 ${fmt(daily.pass1)}, pass2 ${fmt(daily.pass2)}, open ${fmt(daily.open)} | - |`)
+  const ticks = rounds.flatMap((r) => r.res.map((x, i) => ({ ms: x.ms, s: r.at[i]![0], e: r.at[i]![1] })))
+  const dm = daily.marks
+  // Tick dihitung masuk fase bila rentang waktunya beririsan dengan fase itu.
+  const phases: [string, number, number][] = [
+    ['seluruh run harian', dm.start!, dm.commit!],
+    ['fase item + pool', dm.start!, dm.pool!],
+    ['fase pass 1 + klaim', dm.pool!, dm.pass1!],
+    ['fase pass 2 + klaim', dm.pass1!, dm.pass2!],
+  ]
+  line(`| Skenario 3: ${rounds.length} putaran × ${TICKS} tick = ${ticks.length} tick, diulang sampai run harian selesai | ` +
+    `semua tick: p50 ${sec(pct(ticks.map((x) => x.ms), 0.5))} s, p95 ${sec(pct(ticks.map((x) => x.ms), 0.95))} s | - |`)
+  for (const [name, from, to] of phases) {
+    const ms = ticks.filter((x) => x.s < to && x.e > from).map((x) => x.ms)
+    line(`|   tick beririsan ${name} (${sec(to - from)} s) | ${ms.length} tick` + (ms.length
+      ? `; p50 ${sec(pct(ms, 0.5))} s, p95 ${sec(pct(ms, 0.95))} s, maks ${sec(Math.max(...ms))} s | ${pct(ms, 0.95) <= 30_000 ? 'lulus' : 'GAGAL'} |`
+      : ' | - |'))
+  }
+  line(`| Run harian ${fmt(DAILY)}/sisi (satu transaksi) | ${sec(daily.ms)} s; pass1 ${fmt(daily.pass1)}, pass2 ${fmt(daily.pass2)}, open ${fmt(daily.open)} | - |`)
   line(`|   langkah run harian (s) | ${daily.steps} | - |`)
 
   // 4. Catch-up
