@@ -121,8 +121,10 @@ function fromText(d: Dialect, c: Column, ph: string): string {
       return f === "tstz" ? `STR_TO_DATE(${ph}, '%Y-%m-%dT%H:%i:%s.%fZ')` : f === "ts" ? `STR_TO_DATE(${ph}, ${MY_TS})` : f === "date" ? `STR_TO_DATE(${ph}, '%Y-%m-%d')`
         : f === "int" ? `CAST(${ph} AS DECIMAL(65,0))` : f === "num" ? `CAST(${ph} AS DECIMAL(65,30))` : ph;
     case "mssql":
-      // back to the column's own type: a datetime (1/300 s) compared with its text as datetime2(7) is never equal to it
-      return f === "tstz" || f === "ts" ? `CAST(${ph} AS ${mssqlTemporal(c.type, f)})` : f === "date" ? `CAST(${ph} AS date)`
+      // back to the column's own type: a datetime (1/300 s) compared with its text as datetime2(7) is never equal to it.
+      // A string parses into datetime/smalldatetime with at most 3 fraction digits (Msg 241 on the 7 asText writes), so
+      // those go through datetime2(7), which rounds to the same 1/300 s tick (or minute)
+      return f === "tstz" || f === "ts" ? mssqlTemporalFrom(ph, mssqlTemporal(c.type, f)) : f === "date" ? `CAST(${ph} AS date)`
         : f === "int" ? `CAST(${ph} AS bigint)` : f === "num" ? `CAST(${ph} AS decimal(38,10))` : ph;
     case "oracle":
       return f === "tstz" ? `FROM_TZ(TO_TIMESTAMP(${ph}, ${ORA_TSZ}), 'UTC')` : f === "ts" ? (isOraDate(c) ? `TO_DATE(${ph}, ${ORA_DATE})` : `TO_TIMESTAMP(${ph}, ${ORA_TS})`)
@@ -135,6 +137,9 @@ const mssqlTemporal = (type: string, f: Family) => {
   const t = type.trim().toLowerCase();
   return /^(datetime|smalldatetime|datetime2(\([0-7]\))?|datetimeoffset(\([0-7]\))?)$/.test(t) ? t : f === "tstz" ? "datetimeoffset(7)" : "datetime2(7)";
 };
+
+const mssqlTemporalFrom = (ph: string, type: string) =>
+  (type === "datetime" || type === "smalldatetime" ? `CAST(CAST(${ph} AS datetime2(7)) AS ${type})` : `CAST(${ph} AS ${type})`);
 
 /** A date parameter for `:business_date`. */
 const dateParam = (d: Dialect, ph: string) => (d === "oracle" ? `TO_DATE(${ph}, 'YYYY-MM-DD')` : `CAST(${ph} AS ${d === "mysql" ? "DATE" : "date"})`);

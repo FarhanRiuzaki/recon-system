@@ -99,11 +99,15 @@ describe("rowsSql", () => {
       "SELECT CONVERT(nvarchar(max), t.[fee], 2) AS [fee], CONVERT(nvarchar(max), t.[rate], 3) AS [rate], CONVERT(nvarchar(max), t.[small], 2) AS [small], CONVERT(nvarchar(max), t.[r], 3) AS [r]");
     const after = { after: { wm: "2026-11-19T00:00:00.0033333", id: "1" } } as const;
     const where = (wmType: string) => rowsSql("mssql", { from: { table: "t" }, columns: [col("w", wmType), col("i", "int")], keyset: { wm: col("w", wmType), id: col("i", "int"), cursor: after }, limit: 5 }).sql;
-    expect(where("datetime")).toContain("t.[w] > CAST(@p0 AS datetime) OR (t.[w] = CAST(@p1 AS datetime)");
-    expect(where("smalldatetime")).toContain("CAST(@p0 AS smalldatetime)");
-    expect(where("datetime2(3)")).toContain("CAST(@p0 AS datetime2(3))");
-    expect(where("datetime2")).toContain("CAST(@p0 AS datetime2)");
-    expect(where("datetimeoffset(7)")).toContain("CAST(@p0 AS datetimeoffset(7))");
+    // a string parses into datetime/smalldatetime with at most 3 fraction digits: the 7-digit text goes through datetime2(7)
+    expect(where("datetime")).toContain("t.[w] > CAST(CAST(@p0 AS datetime2(7)) AS datetime) OR (t.[w] = CAST(CAST(@p1 AS datetime2(7)) AS datetime)");
+    expect(where("smalldatetime")).toContain("t.[w] > CAST(CAST(@p0 AS datetime2(7)) AS smalldatetime) OR (t.[w] = CAST(CAST(@p1 AS datetime2(7)) AS smalldatetime)");
+    expect(where("datetime2(3)")).toContain("t.[w] > CAST(@p0 AS datetime2(3)) OR (t.[w] = CAST(@p1 AS datetime2(3))");
+    expect(where("datetime2")).toContain("t.[w] > CAST(@p0 AS datetime2) OR (t.[w] = CAST(@p1 AS datetime2)");
+    expect(where("datetimeoffset(7)")).toContain("t.[w] > CAST(@p0 AS datetimeoffset(7)) OR (t.[w] = CAST(@p1 AS datetimeoffset(7))");
+    // a lookback start from a stored cursor takes the same path
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: [col("w", "datetime"), col("i", "int")], keyset: { wm: col("w", "datetime"), id: col("i", "int"), cursor: { from: "2026-11-18T23:59:00.0033333" } }, limit: 5 }).sql)
+      .toContain("WHERE t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS datetime) ORDER BY");
   });
 
   it("Oracle: TO_CHAR text forms (DATE keeps its time), FETCH FIRST", () => {
