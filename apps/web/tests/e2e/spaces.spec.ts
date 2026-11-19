@@ -177,14 +177,17 @@ test("a member sees who is in the space and what each role may do; a viewer only
     ["—Not allowed", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Approves", "—Not allowed"]);
   await expect(page.locator("#content").getByText("Source admin is granted and removed only by an app admin, not by a space admin.")).toBeVisible();
 
-  // FICO: not a member. The page is "Page not found" inside the shell, and neither it nor the tab names the space.
-  await page.goto(`/spaces/${ids.fico}/members`);
+  // FICO: not a member. A real 404 on the document load (the layout checks membership before streaming), "Page not
+  // found" inside the shell, and neither the answer nor the tab names the space.
+  const res = await page.goto(`/spaces/${ids.fico}/members`);
+  expect(res!.status()).toBe(404);
+  expect(await res!.text()).not.toContain("FICO");
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   await expect(page).toHaveTitle(/^Page not found\b/);
   expect(await page.content()).not.toContain("FICO");
-  // An id that is no space, and one that is not a UUID: the same.
+  // An id that is no space, and one that is not a UUID: the same 404.
   for (const id of ["0199f0a0-0000-7000-8000-0000000000ff", "nope"]) {
-    await page.goto(`/spaces/${id}/members`);
+    expect((await page.goto(`/spaces/${id}/members`))!.status(), id).toBe(404);
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   }
 });

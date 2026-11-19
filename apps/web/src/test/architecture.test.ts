@@ -192,12 +192,13 @@ function columnsMenuViolations(fs: F[]): string[] {
 
 /**
  * A page that renders a list screen (a features/ file calling useTableQuery, directly or through a file of the same
- * feature folder it imports) is in VIEW_PAGES, so the navigation reopens its last view and its saved views work.
+ * feature folder it imports) is in VIEW_PAGES, so the navigation reopens its last view and its saved views work. A
+ * dynamic route is listed by its pattern (`/spaces/[spaceId]/members`, prefs.ts `viewPageOf`).
  */
 function viewPageViolations(fs: F[], viewPages: readonly string[]): string[] {
   const byPath = new Map(fs.map((x) => [x.r, x]));
   const isList = (x: F | undefined) => !!x && LIST_CALL.test(strip(x.src));
-  return fs.filter(({ r }) => r.startsWith(`${WEB}app/(main)/`) && r.endsWith("/page.tsx") && !r.includes("[")).flatMap(({ r, imp }) => {
+  return fs.filter(({ r }) => r.startsWith(`${WEB}app/(main)/`) && r.endsWith("/page.tsx")).flatMap(({ r, imp }) => {
     const route = r.slice(`${WEB}app/(main)`.length, -"/page.tsx".length) || "/";
     const screens = imp.filter((i) => i.startsWith("@/features/")).map((i) => `${WEB}${i.slice(2)}.tsx`);
     const reached = screens.flatMap((s) => {
@@ -598,7 +599,7 @@ describe("architecture checkers (fixtures)", () => {
     ]);
   });
 
-  it("fixture: a page rendering a list screen, directly or through its feature folder, must be in VIEW_PAGES", () => {
+  it("fixture: a page rendering a list screen, directly or through its feature folder, must be in VIEW_PAGES (a dynamic route by its pattern)", () => {
     const list = `const t = useTableQuery({}); <SavedViewsMenu />`;
     const fs = [
       f(`${WEB}app/(main)/things/page.tsx`, `import { ThingsPage } from "@/features/things/things-page";`),
@@ -606,13 +607,19 @@ describe("architecture checkers (fixtures)", () => {
       f(`${WEB}app/(main)/logs/page.tsx`, `import { LogsPage } from "@/features/logs/logs-page";`),
       f(`${WEB}features/logs/logs-page.tsx`, `import { LogTable } from "./log-table";`),
       f(`${WEB}features/logs/log-table.tsx`, `const t = useTableQuery<T, F>(table); <SavedViewsMenu />`),
-      f(`${WEB}app/(main)/things/[id]/page.tsx`, `import { ThingDetail } from "@/features/things/things-page";`),
+      f(`${WEB}app/(main)/things/[id]/page.tsx`, `import { ThingDetail } from "@/features/things/thing-detail";`),
+      f(`${WEB}features/things/thing-detail.tsx`, `<p>One thing</p>`),
+      f(`${WEB}app/(main)/groups/[groupId]/items/page.tsx`, `import { ItemsPage } from "@/features/groups/items-page";`),
+      f(`${WEB}features/groups/items-page.tsx`, list),
       f(`${WEB}app/(main)/about/page.tsx`, `import { About } from "@/features/about/about";`),
       f(`${WEB}features/about/about.tsx`, `<p>Text</p>`),
     ];
-    expect(viewPageViolations(fs, ["/logs"])).toEqual([`${WEB}app/(main)/things/page.tsx: renders a list screen; add "/things" to VIEW_PAGES (lib/shared/prefs.ts)`]);
-    expect(viewPageViolations(fs, ["/things"])).toEqual([`${WEB}app/(main)/logs/page.tsx: renders a list screen; add "/logs" to VIEW_PAGES (lib/shared/prefs.ts)`]);
-    expect(viewPageViolations(fs, ["/things", "/logs"])).toEqual([]);
+    const groups = `${WEB}app/(main)/groups/[groupId]/items/page.tsx: renders a list screen; add "/groups/[groupId]/items" to VIEW_PAGES (lib/shared/prefs.ts)`;
+    expect(viewPageViolations(fs, ["/logs", "/groups/[groupId]/items"])).toEqual([`${WEB}app/(main)/things/page.tsx: renders a list screen; add "/things" to VIEW_PAGES (lib/shared/prefs.ts)`]);
+    expect(viewPageViolations(fs, ["/things", "/groups/[groupId]/items"])).toEqual([`${WEB}app/(main)/logs/page.tsx: renders a list screen; add "/logs" to VIEW_PAGES (lib/shared/prefs.ts)`]);
+    // A dynamic route is checked too, by its pattern: one list view for every id.
+    expect(viewPageViolations(fs, ["/things", "/logs"])).toEqual([groups]);
+    expect(viewPageViolations(fs, ["/things", "/logs", "/groups/[groupId]/items"])).toEqual([]);
   });
 
   it("StatusLegend outside Panel (page header, toolbar, gallery) is reported; Panel and StatusLegendList pass", () => {
