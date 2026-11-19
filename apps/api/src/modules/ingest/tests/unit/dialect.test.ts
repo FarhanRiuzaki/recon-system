@@ -75,11 +75,11 @@ describe("rowsSql", () => {
     expect(b.params).toEqual(["2026-11-19T00:00:00.000001Z", "42"]);
   });
 
-  it("MySQL: the keyset spelled out (no row comparison), values parsed back from their text form, LIMIT", () => {
+  it("MySQL: the keyset spelled out as a range on the watermark (an index on (watermark, id) seeks), values parsed back from their text form, LIMIT", () => {
     const c = [col("updated_at", "datetime(6)"), col("id", "bigint")];
     const b = rowsSql("mysql", { from: { table: "txn" }, columns: c, keyset: keyset(c[0]!, c[1]!), limit: 500 });
     expect(b.sql).toBe("SELECT DATE_FORMAT(t.`updated_at`, '%Y-%m-%dT%H:%i:%s.%f') AS `updated_at`, CAST(t.`id` AS CHAR) AS `id` FROM `txn` t "
-      + "WHERE (t.`updated_at` > STR_TO_DATE(?, '%Y-%m-%dT%H:%i:%s.%f') OR (t.`updated_at` = STR_TO_DATE(?, '%Y-%m-%dT%H:%i:%s.%f') AND t.`id` > CAST(? AS DECIMAL(65,0)))) "
+      + "WHERE t.`updated_at` >= STR_TO_DATE(?, '%Y-%m-%dT%H:%i:%s.%f') AND (t.`updated_at` > STR_TO_DATE(?, '%Y-%m-%dT%H:%i:%s.%f') OR t.`id` > CAST(? AS DECIMAL(65,0))) "
       + "ORDER BY t.`updated_at`, t.`id` LIMIT 500");
     expect(b.params).toEqual(["2026-11-19T00:00:00.000001Z", "2026-11-19T00:00:00.000001Z", "42"]);
   });
@@ -88,7 +88,7 @@ describe("rowsSql", () => {
     const c = [col("updated_at", "datetimeoffset"), col("id", "int")];
     const b = rowsSql("mssql", { from: { table: "dbo.txn" }, columns: c, keyset: keyset(c[0]!, c[1]!), limit: 200 });
     expect(b.sql).toBe("SELECT CONVERT(varchar(34), SWITCHOFFSET(t.[updated_at], '+00:00'), 127) AS [updated_at], CAST(t.[id] AS nvarchar(max)) AS [id] FROM [dbo].[txn] t "
-      + "WHERE (t.[updated_at] > CAST(@p0 AS datetimeoffset) OR (t.[updated_at] = CAST(@p1 AS datetimeoffset) AND t.[id] > CAST(@p2 AS bigint))) "
+      + "WHERE t.[updated_at] >= CAST(@p0 AS datetimeoffset) AND (t.[updated_at] > CAST(@p1 AS datetimeoffset) OR t.[id] > CAST(@p2 AS bigint)) "
       + "ORDER BY t.[updated_at], t.[id] OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY");
     expect(b.params).toHaveLength(3);
   });
@@ -100,11 +100,11 @@ describe("rowsSql", () => {
     const after = { after: { wm: "2026-11-19T00:00:00.0033333", id: "1" } } as const;
     const where = (wmType: string) => rowsSql("mssql", { from: { table: "t" }, columns: [col("w", wmType), col("i", "int")], keyset: { wm: col("w", wmType), id: col("i", "int"), cursor: after }, limit: 5 }).sql;
     // a string parses into datetime/smalldatetime with at most 3 fraction digits: the 7-digit text goes through datetime2(7)
-    expect(where("datetime")).toContain("t.[w] > CAST(CAST(@p0 AS datetime2(7)) AS datetime) OR (t.[w] = CAST(CAST(@p1 AS datetime2(7)) AS datetime)");
-    expect(where("smalldatetime")).toContain("t.[w] > CAST(CAST(@p0 AS datetime2(7)) AS smalldatetime) OR (t.[w] = CAST(CAST(@p1 AS datetime2(7)) AS smalldatetime)");
-    expect(where("datetime2(3)")).toContain("t.[w] > CAST(@p0 AS datetime2(3)) OR (t.[w] = CAST(@p1 AS datetime2(3))");
-    expect(where("datetime2")).toContain("t.[w] > CAST(@p0 AS datetime2) OR (t.[w] = CAST(@p1 AS datetime2)");
-    expect(where("datetimeoffset(7)")).toContain("t.[w] > CAST(@p0 AS datetimeoffset(7)) OR (t.[w] = CAST(@p1 AS datetimeoffset(7))");
+    expect(where("datetime")).toContain("t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS datetime) AND (t.[w] > CAST(CAST(@p1 AS datetime2(7)) AS datetime) OR t.[i] > ");
+    expect(where("smalldatetime")).toContain("t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS smalldatetime) AND (t.[w] > CAST(CAST(@p1 AS datetime2(7)) AS smalldatetime) OR t.[i] > ");
+    expect(where("datetime2(3)")).toContain("t.[w] >= CAST(@p0 AS datetime2(3)) AND (t.[w] > CAST(@p1 AS datetime2(3)) OR t.[i] > ");
+    expect(where("datetime2")).toContain("t.[w] >= CAST(@p0 AS datetime2) AND (t.[w] > CAST(@p1 AS datetime2) OR t.[i] > ");
+    expect(where("datetimeoffset(7)")).toContain("t.[w] >= CAST(@p0 AS datetimeoffset(7)) AND (t.[w] > CAST(@p1 AS datetimeoffset(7)) OR t.[i] > ");
     // a lookback start from a stored cursor takes the same path
     expect(rowsSql("mssql", { from: { table: "t" }, columns: [col("w", "datetime"), col("i", "int")], keyset: { wm: col("w", "datetime"), id: col("i", "int"), cursor: { from: "2026-11-18T23:59:00.0033333" } }, limit: 5 }).sql)
       .toContain("WHERE t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS datetime) ORDER BY");
@@ -115,7 +115,7 @@ describe("rowsSql", () => {
     const b = rowsSql("oracle", { from: { table: "CORE.TXN" }, columns: c, keyset: keyset(c[0]!, c[1]!), limit: 1000 });
     expect(b.sql).toBe(`SELECT TO_CHAR(SYS_EXTRACT_UTC(t."UPDATED_AT"), 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"') AS "UPDATED_AT", `
       + `TO_CHAR(t."ID", 'TM9', 'NLS_NUMERIC_CHARACTERS=''.,''') AS "ID", TO_CHAR(t."BOOKED", 'YYYY-MM-DD"T"HH24:MI:SS') AS "BOOKED" FROM "CORE"."TXN" t `
-      + `WHERE (t."UPDATED_AT" > FROM_TZ(TO_TIMESTAMP(:p0, 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"'), 'UTC') OR (t."UPDATED_AT" = FROM_TZ(TO_TIMESTAMP(:p1, 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"'), 'UTC') AND t."ID" > TO_NUMBER(:p2))) `
+      + `WHERE t."UPDATED_AT" >= FROM_TZ(TO_TIMESTAMP(:p0, 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"'), 'UTC') AND (t."UPDATED_AT" > FROM_TZ(TO_TIMESTAMP(:p1, 'YYYY-MM-DD"T"HH24:MI:SS.FF6"Z"'), 'UTC') OR t."ID" > TO_NUMBER(:p2)) `
       + `ORDER BY t."UPDATED_AT", t."ID" FETCH FIRST 1000 ROWS ONLY`);
   });
 

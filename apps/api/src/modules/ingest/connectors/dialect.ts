@@ -209,8 +209,10 @@ export function rowsSql(d: Dialect, o: { from: From; columns: Column[]; keyset?:
     else if ("from" in cursor) sql += ` WHERE ${w} >= ${fromText(d, wm, p(cursor.from))}`;
     else if (d === "postgres") sql += ` WHERE (${w}, ${i}) > (${p(cursor.after.wm)}, ${p(cursor.after.id)})`;
     else {
+      // no row comparison here: spelled out as a range on the watermark (>=) that an index on (watermark, id) seeks, and
+      // the tie on it broken by id; the bare OR form (w > a OR (w = a AND id > b)) may scan in MySQL, SQL Server, Oracle
       const { wm: v, id: k } = cursor.after;
-      sql += ` WHERE (${w} > ${fromText(d, wm, p(v))} OR (${w} = ${fromText(d, wm, p(v))} AND ${i} > ${fromText(d, id, p(k))}))`;
+      sql += ` WHERE ${w} >= ${fromText(d, wm, p(v))} AND (${w} > ${fromText(d, wm, p(v))} OR ${i} > ${fromText(d, id, p(k))})`;
     }
     sql += ` ORDER BY ${w}, ${i}`;
     ordered = true;

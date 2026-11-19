@@ -134,6 +134,30 @@ Sekitar 10× lebih lambat dari COPY + INSERT di S1 (180 ribu baris/s); belum dip
 dengan sha256 per baris, atau insert) yang dominan. `expireInSeconds` `ingest.file` 1800 s = 3× file 10 juta baris
 pada laju ini. Upgrade path: COPY ke temp table saat Bun yang di-pin punya `writable()`, diukur ulang terhadap angka ini.
 
+### rowsToday daftar dan detail source (Plan 2, review akhir)
+
+Tanggal 2026-11-20. `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
+adalah satu `count(*)` per source atas record tanggal bisnis hari itu yang masih berlaku (`currentRecord`: belum
+di-supersede, dan bila dari snapshot, snapshot-nya aktif: satu `EXISTS` per baris), di bawah RLS. Diukur sebagai role app
+(`appRoleDb`, `withSpace`), median 7 panggilan, lewat tes yang mati kecuali diminta:
+`PERF_ROWS_TODAY=1 [PERF_ALL=1] bun test src/modules/ingest/tests/integration/rows-today-perf.test.ts`. Mesin: Apple M5
+Max, 36 GB; PostgreSQL 18.6 lokal (:5434, `shared_buffers` 128 MB, `work_mem` 4 MB), database test.
+
+| Kasus | Record hari itu | Median | Min–maks |
+|---|---|---|---|
+| Detail, source file | 1 juta | 348 ms | 338–379 ms |
+| Detail, source snapshot (`EXISTS` per baris) | 1 juta | 385 ms | 373–408 ms |
+| Daftar 15 source, dua di antaranya 1 juta | 2 juta | 716 ms | 673–743 ms |
+| Daftar 13 source kosong | 0 | 3 ms | 3–4 ms |
+| Daftar 15 source, masing-masing 1 juta (`PERF_ALL`) | 15 juta | 4.741 ms | 4.734–6.921 ms |
+| Daftar 13 source, masing-masing 1 juta (`PERF_ALL`) | 13 juta | 4.098 ms | 3.993–4.217 ms |
+
+Per source sekitar 320–390 ms, di bawah ambang 500 ms per source yang diputuskan, jadi belum ada tabel penghitung; count
+tetap dipakai. Batasnya: biaya naik linear dengan jumlah record hari itu di halaman, dan satu halaman 15 source × 1 juta
+mendekati dan kadang melewati `statement_timeout` 5 s pool API (maks 6,9 s), yang berarti daftar itu menjawab 500.
+Upgrade path: tabel penghitung per (space_id, source_id, business_date) yang diisi di transaksi ingest, count ini sebagai
+oracle tesnya. Angka di atas dari laptop pengembang, bukan perangkat keras produksi.
+
 ## S7: driver DB sumber di Bun
 
 Skrip: `apps/api/scripts/spikes/s7-drivers.ts` (`bun scripts/spikes/s7-drivers.ts [--only pg|mysql|mssql|oracle]`; exit non-zero
