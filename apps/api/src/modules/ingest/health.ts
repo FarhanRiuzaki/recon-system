@@ -4,7 +4,8 @@
 // two screens can't judge different dates.
 //
 // - A pulled source (db_watermark) is judged by its lag, now − complete_through, against the grace of the recons that
-//   read it: past half the grace Degraded, past the grace Down. Its date in progress is today.
+//   read it: past half the grace Degraded, past the grace Down. Its date in progress is today. With no grace set, its
+//   lag is not judged, but a latest pull that failed (last_error) is Degraded with that error, so failing pulls show.
 // - A source delivered per business date (db_snapshot, file_inbox) delivers date D on the next business morning
 //   (KSEI: D's file and Medallion snapshot arrive on D+1), so its date in progress is the business day before today in
 //   its calendar. It is judged by whether that date has an active snapshot (an ingested file): not yet → Degraded
@@ -43,7 +44,7 @@ export function sourceHealth(s: HealthSource, now: Date): SourceHealth {
   if (s.status === "paused") return out("down", s.lastError ?? "Paused");
   if (s.kind === "db_watermark") {
     if (lagSeconds === null) return out("degraded", "Nothing pulled yet");
-    if (s.graceSeconds === null) return out("healthy", null);
+    if (s.graceSeconds === null) return s.lastError ? out("degraded", s.lastError) : out("healthy", null);
     if (lagSeconds > s.graceSeconds) return out("down", `Behind by more than the grace (${s.graceSeconds} s)`);
     if (lagSeconds > s.graceSeconds / 2) return out("degraded", `Behind by more than half the grace (${s.graceSeconds} s)`);
     return out("healthy", null);

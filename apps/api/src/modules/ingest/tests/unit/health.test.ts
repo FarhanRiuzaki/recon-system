@@ -26,6 +26,12 @@ describe("sourceHealth: a pulled source (watermark) by lag against the grace", (
     expect(sourceHealth(watermark({ completeThrough: null }), NOW)).toMatchObject({ state: "degraded", lagSeconds: null, completeThrough: null });
     expect(sourceHealth(watermark({ completeThrough: min(600), graceSeconds: null }), NOW)).toMatchObject({ state: "healthy", lagSeconds: 36_000 });
   });
+  it("no grace set and the latest pull failed: degraded with that error; with a grace, the lag alone judges", () => {
+    const failed = "The source database refused the connection (ECONNREFUSED).";
+    expect(sourceHealth(watermark({ graceSeconds: null, lastError: failed }), NOW)).toMatchObject({ state: "degraded", reason: failed });
+    expect(sourceHealth(watermark({ lastError: failed }), NOW)).toMatchObject({ state: "healthy", reason: null }); // within half the grace
+    expect(sourceHealth(watermark({ completeThrough: min(11), lastError: failed }), NOW)).toMatchObject({ state: "down" });
+  });
 });
 
 describe("sourceHealth: a source per business date (snapshot, file) by the business day before today", () => {

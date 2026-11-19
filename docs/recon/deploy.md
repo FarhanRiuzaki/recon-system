@@ -61,9 +61,22 @@ bisa mematikannya untuk statement berikutnya), MySQL `SET SESSION TRANSACTION RE
 Itu bukan batas keamanan. **Penahan yang sebenarnya di setiap engine adalah akun DB sumber yang read-only** (hanya SELECT
 pada tabel/view yang dibaca): SQL Server tidak punya sesi read-only sama sekali, dan di Oracle fungsi dengan
 `PRAGMA AUTONOMOUS_TRANSACTION` yang dipanggil dari SELECT tetap bisa menulis. Minta IT bank membuat akun itu per source.
+Untuk membatasi kolom yang bisa dibaca config maker, definisikan source dengan SELECT atau view, bukan tabel (akun sumber
+diberi SELECT pada view itu saja).
 
 ## 6. Cek setelah deploy
 
 1. Sebagai `recon_app`: `select count(*) from <tabel domain>;` tanpa `withSpace` → 0 baris.
 2. `select current_setting('app.space_ids', true);` pada koneksi baru → kosong/NULL.
 3. Log `db:migrate` menyebut migration terakhir; API `GET /readyz` 200, worker `GET /healthz` 200 (port `WORKER_HEALTH_PORT`).
+
+## 7. Worker and API environment
+
+API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`docker-compose.yml` service `api` dan
+`worker`):
+
+- `INBOX_ROOTS` dan mount folder inbox yang sama, di path yang sama. API memakainya untuk tes folder dan wizard source
+  (folder di luar `INBOX_ROOTS` dijawab "outside"), worker untuk scan dan ingest file.
+- `DATA_ENCRYPTION_KEY` yang sama: API mengenkripsi koneksi source yang disimpan, worker mendekripsinya untuk pull.
+- `APP_DB_ROLE` terisi saat `db:migrate` (§2, §3): tanpa itu role aplikasi tidak mendapat hak pada pg-boss dan
+  `recon_ensure_month_partitions`.

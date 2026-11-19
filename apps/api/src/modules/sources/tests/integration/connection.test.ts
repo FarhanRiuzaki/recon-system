@@ -1,6 +1,8 @@
 // POST …/connection/test, GET …/connection/columns and the preview of a database source (Task 4) against
 // `<test database>_src` (test/helpers/source-db.ts); the file inbox check under INBOX_ROOTS (set by the test preload).
-// The stored credential is decrypted server-side only: it never reaches an answer, a log line or an activity entry.
+// The stored credential is decrypted server-side only: it never reaches an answer, a log line or an activity entry. Each
+// database test logs who tried which engine, host and port and the result kind (never the login or password); a user
+// runs at most 20 tests a minute across both test routes.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,7 +82,8 @@ describe("POST …/connection/test (database)", () => {
     const text = await bad.text();
     expect([bad.status, JSON.parse(text)]).toEqual([200, { ok: false, message: "The server refused the login (28000). Check the user and password.", code: "28000" }]);
     const logged = JSON.stringify(spies.flatMap((x) => x.mock.calls));
-    for (const out of [text, logged]) for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses", secret.host]) expect(out).not.toContain(secretBit);
+    for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses", secret.host]) expect(text).not.toContain(secretBit);
+    for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses"]) expect(logged).not.toContain(secretBit); // the host is logged (the probe's target)
     const entries = await db.select({ action: activity.action }).from(activity);
     expect(entries.map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.connection_set"]);
   });
@@ -186,6 +189,38 @@ describe("typed values are tested without being stored (fix round 1)", () => {
     expect((await tryNew(t.mk, { kind: "file_inbox", path: root, pattern: "*" })).status).toBe(403);
     expect(await db.select({ action: activity.action }).from(activity)).toEqual([]);
     expect((await json<{ total: number }>(call("GET", base(), { token: t.adm }))).total).toBe(0);
+  });
+});
+
+describe("connection tests are logged and limited per user", () => {
+  it("one log line per database test: who, which space, engine, host, port and the result kind; never the login or password", async () => {
+    const info = spyOn(log, "info");
+    const typed = { engine: "postgres", ...secret, user: "recon_nobody_y", password: "Pa55-word-nobody-guesses-y" };
+    expect(await json(call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "db_watermark", connection: typed } }))).toMatchObject({ ok: false, code: "28000" });
+    const s = await made("db_watermark");
+    await connect(s.id);
+    expect(await json(test_(t.adm, s.id))).toMatchObject({ ok: true });
+    const [adm] = await db.select({ id: users.id }).from(users).where(eq(users.username, "admin"));
+    const lines = info.mock.calls.filter((c) => c[1] === "source connection test").map((c) => c[0]);
+    expect(lines).toEqual([
+      { userId: adm!.id, spaceId: A, engine: "postgres", host: secret.host, port: secret.port, result: "login" },
+      { userId: adm!.id, spaceId: A, engine: "postgres", host: secret.host, port: secret.port, result: "ok" },
+    ]);
+    const logged = JSON.stringify(info.mock.calls);
+    for (const bit of ["recon_nobody_y", "Pa55-word-nobody-guesses-y", secret.user, secret.password, "secretEnc"]) expect(logged).not.toContain(bit);
+  });
+
+  it("the 21st test of a user in a minute, on either route, is 429 with Retry-After", async () => {
+    const root = config().INBOX_ROOTS[0]!;
+    mkdirSync(path.join(root, "limit"), { recursive: true });
+    const s = await made("file_inbox");
+    const typedFolder = { path: path.join(root, "limit"), pattern: "*.txt" };
+    for (let i = 0; i < 10; i++) expect((await test_(t.adm, s.id, typedFolder)).status).toBe(200);
+    for (let i = 0; i < 10; i++) expect((await call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "file_inbox", ...typedFolder } })).status).toBe(200);
+    for (const r of [await test_(t.adm, s.id, typedFolder), await call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "file_inbox", ...typedFolder } })]) {
+      expect([r.status, (await errOf(r)).code]).toEqual([429, "rate_limited"]);
+      expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
+    }
   });
 });
 

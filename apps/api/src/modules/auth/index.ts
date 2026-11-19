@@ -4,7 +4,7 @@ export { authController } from "./controller";
 export { authChallenges, loginBackoff, rateLimits, sessions, userTokens } from "./schema";
 export { type Ctx, authenticate, bearer, guard, type SpaceGuard } from "./guard";
 export { LDAP_PASSWORD } from "./ldap";
-export { hitIp, oauthStartLimits, retryText } from "./limits";
+export { hitIp, oauthStartLimits, RateLimiter, retryText } from "./limits";
 export { hashPassword, verifyPassword } from "./password";
 export { oauthOnly } from "./rules";
 export { completeSignIn, createInvite, deleteUserTokens, lockAuthUser, logAuth, purgeAuth, reauth, userById } from "./service";

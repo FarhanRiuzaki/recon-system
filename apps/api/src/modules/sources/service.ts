@@ -16,11 +16,12 @@ import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "dr
 import { config } from "../../kernel/config";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx } from "../../kernel/db";
-import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
+import { ApiError, isUniqueViolation, notFound, tooManyAttempts } from "../../kernel/errors";
 import { isCron } from "../../kernel/jobs";
+import { log } from "../../kernel/log";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
-import type { Ctx } from "../auth";
+import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
   type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState, sourceStates, specCelError, within,
 } from "../ingest";
@@ -375,17 +376,35 @@ function interactiveConnector(c: StoredConnection): Connector {
 function typedConnector(engine: DbEngine, secret: Secret, o: { tls: boolean; connectTimeoutSeconds: number }): Connector {
   return connectorFor(engine, secret, { tls: o.tls, connectTimeoutSeconds: Math.min(o.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000 });
 }
-/** Connects through `c` and runs SELECT 1: ok, or the failure's fixed sentence and driver code. */
-async function tryConnector(c: Connector): Promise<ConnectionTestDto> {
+/**
+ * Connects with `secret` and runs SELECT 1: ok, or the failure's fixed sentence and driver code. A test reaches any
+ * host and port from inside the bank network, so each one logs who tried which engine, host and port and the result
+ * kind; never the login, the password or the error's text.
+ */
+async function probe(ctx: Ctx, engine: DbEngine, secret: Secret, o: { tls: boolean; connectTimeoutSeconds: number }): Promise<ConnectionTestDto> {
+  let result = "error";
   try {
-    await within(c, INTERACTIVE_SECONDS, (x) => x.test());
+    await within(typedConnector(engine, secret, o), INTERACTIVE_SECONDS, (x) => x.test());
+    result = "ok";
     return { ok: true, message: "Connected.", code: null };
   } catch (e) {
-    if (e instanceof ConnectorError) return { ok: false, message: e.message, code: e.code };
-    throw e;
+    if (!(e instanceof ConnectorError)) throw e;
+    result = e.kind;
+    return { ok: false, message: e.message, code: e.code };
+  } finally {
+    log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine, host: secret.host, port: secret.port, result }, "source connection test");
   }
 }
-const typedOf = (c: SetConnectionBody) => typedConnector(c.engine, { host: c.host, port: c.port, database: c.database, user: c.user, password: c.password }, c.options);
+const typedProbe = (ctx: Ctx, c: SetConnectionBody) => probe(ctx, c.engine, { host: c.host, port: c.port, database: c.database, user: c.user, password: c.password }, c.options);
+const storedProbe = (ctx: Ctx, c: StoredConnection) =>
+  probe(ctx, c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, c.options as { tls: boolean; connectTimeoutSeconds: number });
+
+/** Connection and folder tests: 20 a minute per user across both test routes (shared in PostgreSQL by every API process). */
+const connectionTests = new RateLimiter("source-connection-test", 20, 60_000);
+async function limitTests(ctx: Ctx): Promise<void> {
+  const wait = await connectionTests.hit(ctx.user.id);
+  if (wait !== null) throw tooManyAttempts(wait, retryText(wait));
+}
 /** `fn` over the stored connection; a connector failure is 400 with its fixed sentence. */
 async function overConnection<T>(c: StoredConnection, fn: (x: Connector) => Promise<T>): Promise<T> {
   try {
@@ -405,9 +424,11 @@ async function workingSpec(tx: InTx, s: SourceRow): Promise<SourceSpec | null> {
 /**
  * POST …/connection/test: a database source connects with its stored credential and runs SELECT 1; a file inbox source
  * reads the folder in the body (else the spec being worked on's) inside INBOX_ROOTS and counts the files its pattern matches. A
- * failure answers ok false with one fixed sentence and the driver's code, never its text. Changes nothing.
+ * failure answers ok false with one fixed sentence and the driver's code, never its text. Changes nothing. 429 past
+ * 20 tests a minute per user (both test routes).
  */
 export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody): Promise<ConnectionTestDto> {
+  await limitTests(ctx);
   const got = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests a connection: send no folder.");
@@ -419,9 +440,9 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
     if (!input) throw new ApiError("bad_request", "This source has no folder yet. Enter the folder and the pattern, then test.");
     return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
   }
-  if (b.connection) return tryConnector(typedOf(b.connection));
+  if (b.connection) return typedProbe(ctx, b.connection);
   if (!got.conn) throw noConnection();
-  return tryConnector(interactiveConnector(got.conn));
+  return storedProbe(ctx, got.conn);
 }
 
 /**
@@ -429,9 +450,10 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
  * source exists (nothing is stored); the same checks and deadline as the test of a stored one.
  */
 export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<ConnectionTestDto> {
-  void ctx; // the space guard (source_admin) is the whole authorization: nothing of the space is read
+  // the space guard (source_admin) is the whole authorization: nothing of the space is read
+  await limitTests(ctx);
   if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null };
-  return tryConnector(typedOf(b.connection));
+  return typedProbe(ctx, b.connection);
 }
 
 /** GET …/connection/columns: the columns of `table` in the source database's catalog (400 when it has no such table). */
