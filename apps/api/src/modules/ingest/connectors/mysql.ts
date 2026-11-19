@@ -41,9 +41,7 @@ export function mysqlDriver(c: DriverConfig): Driver {
         s.destroy();
       }
     },
-    async close() {
-      const x = await conn?.catch(() => undefined);
-      await x?.end().catch(() => {});
-    },
+    // destroy, not end(): end() waits for the statement in flight; a connect still under way is destroyed once it lands
+    close: async () => { void conn?.then((x) => x.destroy(), () => {}); },
   };
 }

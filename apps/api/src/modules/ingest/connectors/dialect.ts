@@ -57,7 +57,7 @@ export function familyOf(d: Dialect, type: string): Family {
 export function checkSelect(d: Dialect, query: string): string {
   const q = query.trim();
   if (q.includes(";")) throw specError("The query must be one SELECT, without ';'.");
-  if (/--|\/\*/.test(q)) throw specError("The query must have no comments (-- or /* */).");
+  if (/--|\/\*/.test(q) || (d === "mysql" && q.includes("#"))) throw specError("The query must have no comments (-- or /* */ or #).");
   if (!/^(select|with)\b/i.test(q)) throw specError("The query must start with SELECT or WITH.");
   if (d === "mssql" && /^with\b/i.test(q)) throw specError("SQL Server can't run a WITH query as a subquery: write it as one SELECT.");
   return q;
@@ -102,8 +102,10 @@ function asText(d: Dialect, c: Column, ref: string): string {
       return f === "tstz" ? `DATE_FORMAT(${ref}, '%Y-%m-%dT%H:%i:%s.%fZ')` : f === "ts" ? `DATE_FORMAT(${ref}, ${MY_TS})`
         : f === "date" ? `DATE_FORMAT(${ref}, '%Y-%m-%d')` : `CAST(${ref} AS CHAR)`;
     case "mssql":
+      // money keeps its 4 decimals (style 2), float/real all 17 digits (style 3): a plain CAST rounds both
       return f === "tstz" ? `CONVERT(varchar(34), SWITCHOFFSET(${ref}, '+00:00'), 127)` : f === "ts" ? `CONVERT(varchar(27), CAST(${ref} AS datetime2(7)), 126)`
-        : f === "date" ? `CONVERT(varchar(10), ${ref}, 23)` : `CAST(${ref} AS nvarchar(max))`;
+        : f === "date" ? `CONVERT(varchar(10), ${ref}, 23)` : /^(small)?money$/i.test(c.type.trim()) ? `CONVERT(nvarchar(max), ${ref}, 2)`
+          : /^(float|real)\b/i.test(c.type.trim()) ? `CONVERT(nvarchar(max), ${ref}, 3)` : `CAST(${ref} AS nvarchar(max))`;
     case "oracle":
       return f === "tstz" ? `TO_CHAR(SYS_EXTRACT_UTC(${ref}), ${ORA_TSZ})` : f === "ts" ? `TO_CHAR(${ref}, ${isOraDate(c) ? ORA_DATE : ORA_TS})`
         : f === "int" || f === "num" ? `TO_CHAR(${ref}, 'TM9', 'NLS_NUMERIC_CHARACTERS=''.,''')` : ref;
@@ -119,13 +121,20 @@ function fromText(d: Dialect, c: Column, ph: string): string {
       return f === "tstz" ? `STR_TO_DATE(${ph}, '%Y-%m-%dT%H:%i:%s.%fZ')` : f === "ts" ? `STR_TO_DATE(${ph}, ${MY_TS})` : f === "date" ? `STR_TO_DATE(${ph}, '%Y-%m-%d')`
         : f === "int" ? `CAST(${ph} AS DECIMAL(65,0))` : f === "num" ? `CAST(${ph} AS DECIMAL(65,30))` : ph;
     case "mssql":
-      return f === "tstz" ? `CAST(${ph} AS datetimeoffset(7))` : f === "ts" ? `CAST(${ph} AS datetime2(7))` : f === "date" ? `CAST(${ph} AS date)`
+      // back to the column's own type: a datetime (1/300 s) compared with its text as datetime2(7) is never equal to it
+      return f === "tstz" || f === "ts" ? `CAST(${ph} AS ${mssqlTemporal(c.type, f)})` : f === "date" ? `CAST(${ph} AS date)`
         : f === "int" ? `CAST(${ph} AS bigint)` : f === "num" ? `CAST(${ph} AS decimal(38,10))` : ph;
     case "oracle":
       return f === "tstz" ? `FROM_TZ(TO_TIMESTAMP(${ph}, ${ORA_TSZ}), 'UTC')` : f === "ts" ? (isOraDate(c) ? `TO_DATE(${ph}, ${ORA_DATE})` : `TO_TIMESTAMP(${ph}, ${ORA_TS})`)
         : f === "int" || f === "num" ? `TO_NUMBER(${ph})` : ph;
   }
 }
+
+/** A SQL Server date-time type as declared (only these spellings pass), else the family's widest. */
+const mssqlTemporal = (type: string, f: Family) => {
+  const t = type.trim().toLowerCase();
+  return /^(datetime|smalldatetime|datetime2(\([0-7]\))?|datetimeoffset(\([0-7]\))?)$/.test(t) ? t : f === "tstz" ? "datetimeoffset(7)" : "datetime2(7)";
+};
 
 /** A date parameter for `:business_date`. */
 const dateParam = (d: Dialect, ph: string) => (d === "oracle" ? `TO_DATE(${ph}, 'YYYY-MM-DD')` : `CAST(${ph} AS ${d === "mysql" ? "DATE" : "date"})`);
@@ -153,7 +162,8 @@ export function catalogSql(d: Dialect, table: string): Built {
       + `WHERE ns.nspname = coalesce(${s}, current_schema()) AND c.relname = ${n} AND c.relkind IN ('r', 'v', 'm', 'p', 'f') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
     mysql: `SELECT COLUMN_NAME AS ${as("name")}, COLUMN_TYPE AS ${as("type")}, IS_NULLABLE AS ${as("nullable")} FROM information_schema.COLUMNS `
       + `WHERE TABLE_SCHEMA = COALESCE(${s}, DATABASE()) AND TABLE_NAME = ${n} ORDER BY ORDINAL_POSITION`,
-    mssql: `SELECT COLUMN_NAME AS [name], CASE WHEN DATA_TYPE IN ('decimal', 'numeric') THEN DATA_TYPE + '(' + CAST(NUMERIC_PRECISION AS varchar(3)) + ',' + CAST(NUMERIC_SCALE AS varchar(3)) + ')' `
+    mssql: `SELECT COLUMN_NAME AS [name], CASE WHEN DATA_TYPE IN ('datetime2', 'datetimeoffset') THEN DATA_TYPE + '(' + CAST(DATETIME_PRECISION AS varchar(1)) + ')' `
+      + `WHEN DATA_TYPE IN ('decimal', 'numeric') THEN DATA_TYPE + '(' + CAST(NUMERIC_PRECISION AS varchar(3)) + ',' + CAST(NUMERIC_SCALE AS varchar(3)) + ')' `
       + `WHEN CHARACTER_MAXIMUM_LENGTH = -1 THEN DATA_TYPE + '(max)' WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN DATA_TYPE + '(' + CAST(CHARACTER_MAXIMUM_LENGTH AS varchar(10)) + ')' `
       + `ELSE DATA_TYPE END AS [type], IS_NULLABLE AS [nullable] FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = COALESCE(${s}, SCHEMA_NAME()) AND TABLE_NAME = ${n} ORDER BY ORDINAL_POSITION`,
     oracle: `SELECT COLUMN_NAME AS "name", DATA_TYPE || CASE WHEN DATA_TYPE = 'NUMBER' AND DATA_PRECISION IS NOT NULL THEN '(' || DATA_PRECISION || ',' || DATA_SCALE || ')' END AS "type", `

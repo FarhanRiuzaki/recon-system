@@ -22,7 +22,11 @@ export function mssqlDriver(c: DriverConfig): Driver {
     rows: async (q, params) => (await (await request(params)).query(q)).recordset,
     async describe(q, params) {
       const { recordset } = await (await request(params)).query(q);
-      return Object.values(recordset.columns).map((x): Column => ({ name: x.name, type: x.type.declaration ?? "nvarchar", nullable: x.nullable ?? null }));
+      // datetime2/datetimeoffset with their scale, so a cursor is read back at the column's precision (dialect.ts)
+      return Object.values(recordset.columns).map((x): Column => {
+        const type = x.type.declaration ?? "nvarchar";
+        return { name: x.name, type: /^datetime(2|offset)$/.test(type) && x.scale !== undefined ? `${type}(${x.scale})` : type, nullable: x.nullable ?? null };
+      });
     },
     async *stream(q, params, chunk) {
       const r = await request(params);

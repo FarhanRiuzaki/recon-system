@@ -53,7 +53,16 @@ dengan `APP_DB_ROLE=recon_app`. Worker menjalankan pg-boss dengan `migrate: fals
 - Batas koneksi: `DB_POOL_MAX` (API), `WORKER_DB_POOL_MAX` dan `JOBS_POOL_MAX` (worker); `max_connections` ≥ jumlah
   semuanya × jumlah proses + cadangan admin.
 
-## 5. Cek setelah deploy
+## 5. Akun DB sumber (konektor)
+
+Konektor (`apps/api/src/modules/ingest/connectors/`) hanya mengirim satu SELECT yang dicek, dan sejauh engine mengizinkan
+menjalankannya read-only: PostgreSQL tiap statement dalam `BEGIN READ ONLY` + `SET LOCAL statement_timeout` (SELECT IT tidak
+bisa mematikannya untuk statement berikutnya), MySQL `SET SESSION TRANSACTION READ ONLY`, Oracle `SET TRANSACTION READ ONLY`.
+Itu bukan batas keamanan. **Penahan yang sebenarnya di setiap engine adalah akun DB sumber yang read-only** (hanya SELECT
+pada tabel/view yang dibaca): SQL Server tidak punya sesi read-only sama sekali, dan di Oracle fungsi dengan
+`PRAGMA AUTONOMOUS_TRANSACTION` yang dipanggil dari SELECT tetap bisa menulis. Minta IT bank membuat akun itu per source.
+
+## 6. Cek setelah deploy
 
 1. Sebagai `recon_app`: `select count(*) from <tabel domain>;` tanpa `withSpace` → 0 baris.
 2. `select current_setting('app.space_ids', true);` pada koneksi baru → kosong/NULL.

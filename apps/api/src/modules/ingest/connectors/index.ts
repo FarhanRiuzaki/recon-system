@@ -74,9 +74,11 @@ export async function* batches(s: Readable, chunk: number): AsyncGenerator<Recor
 
 /** The connector of `engine`; nothing connects until the first call. Call close() when done. */
 export function connectorFor(engine: DbEngine, secret: Secret, options: ConnectorOptions): Connector {
-  const d = engine;
-  const drv = DRIVERS[engine]({ ...secret, ...options });
-  const t = { connectS: options.connectTimeoutSeconds, statementS: Math.ceil(options.statementTimeoutMs / 1000) };
+  return connectorOver(engine, DRIVERS[engine]({ ...secret, ...options }), { connectS: options.connectTimeoutSeconds, statementS: Math.ceil(options.statementTimeoutMs / 1000) });
+}
+
+/** The connector logic over any driver of dialect `d` (connectorFor's engine driver, or a test's fake). */
+export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; statementS: number }): Connector {
   const wrap = <T>(p: Promise<T>): Promise<T> => p.catch((e) => { throw classify(e, t); });
   const where = (from: From) => ("table" in from ? `table ${from.table}` : "the query");
   const text = (r: Record<string, unknown>, cols: Column[]): Row => Object.fromEntries(cols.map((c) => [c.name, r[c.name] == null ? null : String(r[c.name])]));
@@ -115,7 +117,13 @@ export function connectorFor(engine: DbEngine, secret: Secret, options: Connecto
       if (page.length) yield page;
       if (page.length < o.chunk) return;
       const last = page[page.length - 1]!;
-      cursor = { after: { wm: last[wm.name]!, id: last[id.name]! } };
+      const next = { wm: last[wm.name]!, id: last[id.name]! };
+      // a full page that ends where it started: the source compares the columns differently from their text (a SQL
+      // Server datetime read back at another precision, a collation); asking again would return the same page forever
+      if (cursor && "after" in cursor && cursor.after.wm === next.wm && cursor.after.id === next.id) {
+        throw specError(`The pull did not move past watermark ${next.wm} and id ${next.id}: the source compares "${wm.name}" or "${id.name}" differently from its own text. Use another watermark or id column.`);
+      }
+      cursor = { after: next };
     }
   }
 
@@ -145,7 +153,8 @@ export function connectorFor(engine: DbEngine, secret: Secret, options: Connecto
 }
 
 /**
- * `fn(connector)` within `seconds` in all (connect and statements together), then the connector closed. For a request
+ * `fn(connector)` within `seconds` in all (connect and statements together); the connector is then closed in the
+ * background. For a request
  * someone waits on: the web's backend client gives up after 10 s (apps/web/src/lib/server/backend.ts).
  */
 export async function within<T>(c: Connector, seconds: number, fn: (c: Connector) => Promise<T>): Promise<T> {
@@ -154,6 +163,7 @@ export async function within<T>(c: Connector, seconds: number, fn: (c: Connector
     return await Promise.race([fn(c), new Promise<never>((_, reject) => { timer = setTimeout(() => reject(deadlineError(seconds)), seconds * 1000); })]);
   } finally {
     clearTimeout(timer);
-    await c.close();
+    // not awaited: a driver may close only after its in-flight statement ends, past the deadline the caller waits on
+    void c.close().catch(() => {});
   }
 }

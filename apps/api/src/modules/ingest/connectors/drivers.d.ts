@@ -3,7 +3,7 @@
 
 declare module "mssql" {
   import type { Readable } from "node:stream";
-  export type ColumnMetadata = { name: string; nullable?: boolean; type: { declaration?: string } };
+  export type ColumnMetadata = { name: string; nullable?: boolean; scale?: number; type: { declaration?: string } };
   export type RecordSet = Record<string, unknown>[] & { columns: Record<string, ColumnMetadata> };
   export class Request {
     input(name: string, value: unknown): this;

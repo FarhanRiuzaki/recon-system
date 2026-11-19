@@ -47,6 +47,8 @@ describe("checkSelect", () => {
       expect([q, err(() => checkSelect("postgres", q)).kind]).toEqual([q, "spec"]);
     }
     expect(err(() => checkSelect("mssql", "with x as (select 1 a) select a from x")).message).toContain("SQL Server");
+    expect(err(() => checkSelect("mysql", "select a from t # where x")).message).toBe("The query must have no comments (-- or /* */ or #).");
+    expect(checkSelect("postgres", "select '#' as h")).toBe("select '#' as h");
   });
 });
 
@@ -86,9 +88,22 @@ describe("rowsSql", () => {
     const c = [col("updated_at", "datetimeoffset"), col("id", "int")];
     const b = rowsSql("mssql", { from: { table: "dbo.txn" }, columns: c, keyset: keyset(c[0]!, c[1]!), limit: 200 });
     expect(b.sql).toBe("SELECT CONVERT(varchar(34), SWITCHOFFSET(t.[updated_at], '+00:00'), 127) AS [updated_at], CAST(t.[id] AS nvarchar(max)) AS [id] FROM [dbo].[txn] t "
-      + "WHERE (t.[updated_at] > CAST(@p0 AS datetimeoffset(7)) OR (t.[updated_at] = CAST(@p1 AS datetimeoffset(7)) AND t.[id] > CAST(@p2 AS bigint))) "
+      + "WHERE (t.[updated_at] > CAST(@p0 AS datetimeoffset) OR (t.[updated_at] = CAST(@p1 AS datetimeoffset) AND t.[id] > CAST(@p2 AS bigint))) "
       + "ORDER BY t.[updated_at], t.[id] OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY");
     expect(b.params).toHaveLength(3);
+  });
+
+  it("SQL Server: money and float keep every digit (style 2 / 3); a cursor is cast back to the column's own type", () => {
+    const c = [col("fee", "money"), col("rate", "float"), col("small", "smallmoney"), col("r", "real")];
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: c, limit: 1 }).sql).toStartWith(
+      "SELECT CONVERT(nvarchar(max), t.[fee], 2) AS [fee], CONVERT(nvarchar(max), t.[rate], 3) AS [rate], CONVERT(nvarchar(max), t.[small], 2) AS [small], CONVERT(nvarchar(max), t.[r], 3) AS [r]");
+    const after = { after: { wm: "2026-11-19T00:00:00.0033333", id: "1" } } as const;
+    const where = (wmType: string) => rowsSql("mssql", { from: { table: "t" }, columns: [col("w", wmType), col("i", "int")], keyset: { wm: col("w", wmType), id: col("i", "int"), cursor: after }, limit: 5 }).sql;
+    expect(where("datetime")).toContain("t.[w] > CAST(@p0 AS datetime) OR (t.[w] = CAST(@p1 AS datetime)");
+    expect(where("smalldatetime")).toContain("CAST(@p0 AS smalldatetime)");
+    expect(where("datetime2(3)")).toContain("CAST(@p0 AS datetime2(3))");
+    expect(where("datetime2")).toContain("CAST(@p0 AS datetime2)");
+    expect(where("datetimeoffset(7)")).toContain("CAST(@p0 AS datetimeoffset(7))");
   });
 
   it("Oracle: TO_CHAR text forms (DATE keeps its time), FETCH FIRST", () => {

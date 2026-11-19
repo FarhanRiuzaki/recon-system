@@ -77,6 +77,22 @@ describe("test()", () => {
   });
 });
 
+describe("a SELECT can't lift the read-only session or the statement timeout", () => {
+  it("after set_config(…, false) on both, the next statements on the same connector are still refused (25006) and still time out (57014)", async () => {
+    const c = pg({}, { statementTimeoutMs: 300 });
+    const lift = "select set_config('default_transaction_read_only', 'off', false) as a, set_config('statement_timeout', '0', false) as b";
+    expect(await c.sample({ query: lift }, ["a", "b"], 1)).toEqual([{ a: "off", b: "0" }]);
+    await src.unsafe("create or replace function recon_write() returns int language sql as $$ insert into pos values ('2000-01-01', 'W', 1) returning 1 $$");
+    expect([(await fails(c.sample({ query: "select recon_write() as w" }, ["w"], 1))).code]).toEqual(["25006"]);
+    const lifted = await fails(c.sample({ query: "select set_config('transaction_read_only', 'off', false) as x" }, ["x"], 1));
+    expect(lifted.kind).toBe("query"); // can't turn a read-only transaction read-write
+    expect([(await fails(c.sample({ query: "select pg_sleep(2) as slept" }, ["slept"], 1))).code]).toEqual(["57014"]);
+    // a writing CTE wrapped as a subquery is refused before it runs (0A000: not at the top level)
+    expect((await fails(c.sample({ query: "with d as (delete from pos returning *) select sid from d" }, ["sid"], 1))).code).toBe("0A000");
+    expect((await src.unsafe("select count(*)::int as n from pos"))[0].n).toBe(4);
+  });
+});
+
 describe("introspect()", () => {
   it("a table: its columns in order with their native type and nullability", async () => {
     expect(await pg().introspect({ table: "kinds" })).toEqual([
