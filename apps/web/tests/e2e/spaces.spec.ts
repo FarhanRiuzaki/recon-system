@@ -5,12 +5,13 @@ import { signIn } from "./helpers";
 
 /**
  * Runs `sql` on the E2E database (playwright.config.ts `E2E_DB`), as helpers.ts `ageReauth` does; refused unless its
- * name ends in `_e2e`. Used to empty the spaces table for a test and put the demo spaces back after it.
+ * name ends in `_e2e`. One transaction per call. Used to empty the spaces table for a test and put the demo spaces
+ * back after it.
  */
 function e2eSql(sql: string) {
   const db = URL.parse(process.env.E2E_DB ?? "");
   if (!db?.pathname.endsWith("_e2e")) throw new Error("e2eSql runs only against the E2E database (E2E_DB, name ending in _e2e).");
-  execFileSync("bun", ["-e", "const db = new Bun.SQL(process.env.E2E_DB); await db.unsafe(process.env.E2E_SQL); await db.close();"],
+  execFileSync("bun", ["-e", "const db = new Bun.SQL(process.env.E2E_DB); await db.begin((tx) => tx.unsafe(process.env.E2E_SQL)); await db.close();"],
     { env: { ...process.env, E2E_SQL: sql }, stdio: "inherit" });
 }
 
@@ -101,11 +102,13 @@ test("a user without a space sees who adds them and their username, and no switc
  * app has no space at all: the demo spaces are set aside for this test and restored after it.
  */
 test("with no space in the app, a space.manage holder creates one: checks, a taken code, then the new space's members", async ({ browser, baseURL }) => {
-  e2eSql(`drop table if exists e2e_spaces_kept; drop table if exists e2e_members_kept;
-    create table e2e_spaces_kept as select * from spaces; create table e2e_members_kept as select * from space_members; delete from spaces;`);
   const ctx = await browser.newContext({ storageState: AUTH_STATE, baseURL });
   const page = await ctx.newPage();
   try {
+    // One transaction (e2eSql): the copies exist exactly when the table was emptied. A copy left by an earlier failed
+    // run is kept (it holds the demo spaces), not overwritten with an empty table.
+    e2eSql(`create table if not exists e2e_spaces_kept as select * from spaces;
+      create table if not exists e2e_members_kept as select * from space_members; delete from spaces;`);
     await page.goto("/spaces");
     await expect(page.getByRole("heading", { level: 1, name: "You're not a member of any space yet" })).toBeVisible();
     e2eSql("insert into spaces (id, code, name) values (gen_random_uuid(), 'e2e-taken', 'Taken')"); // for the duplicate case
@@ -140,7 +143,9 @@ test("with no space in the app, a space.manage holder creates one: checks, a tak
     expect(made.items.map((s) => s.code)).toEqual(["e2e-ops"]);
   } finally {
     await ctx.close();
-    e2eSql(`delete from spaces; insert into spaces select * from e2e_spaces_kept; insert into space_members select * from e2e_members_kept;
-      drop table e2e_spaces_kept; drop table e2e_members_kept;`);
+    // Restores only when the setup got as far as the copies; runs however far the test got.
+    e2eSql(`do $$ begin if to_regclass('e2e_spaces_kept') is not null and to_regclass('e2e_members_kept') is not null then
+      delete from spaces; insert into spaces select * from e2e_spaces_kept; insert into space_members select * from e2e_members_kept;
+      drop table e2e_spaces_kept; drop table e2e_members_kept; end if; end $$;`);
   }
 });
