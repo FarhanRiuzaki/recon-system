@@ -21,3 +21,15 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
   `apps/api/src/modules/spaces/tests/integration/rls.test.ts`; S5 adalah tugas compliance, bukan spike kode; S6 batal
   (DEC-037).
 - [`ksei-sample-data.md`](ksei-sample-data.md) — spesifikasi fixture sintetis KSEI ACT (prefiks TST, tanpa data nyata).
+
+## Bawaan dari Plan 1 untuk plan berikutnya
+
+Temuan review Plan 1 yang sengaja tidak dikerjakan di Plan 1 (sumber: review per task dan review akhir branch).
+
+| Ke | Item |
+|---|---|
+| Plan 1b | Menghapus user (`DELETE /v1/users/:id`) cascade ke `space_members` tanpa lock `spaceAdmins` → bisa menghapus space_admin terakhir tanpa activity `space.member_remove`. `keepAnAdmin` menghitung user nonaktif. Efek samping hapus anggota (§11b: break jadi Unassigned, request pending dibatalkan). |
+| Plan 2 (task pertama) | Tabel berpartisi lewat migration custom + `schema-drift.test.ts`. Guard memakai `FOR SHARE` di setiap request (ganti select biasa). Guard belum memblok space yang diarsipkan. Aturan conformance: handler yang memanggil `withSpace` tidak boleh punya `or` di guard (platform admin tanpa akses data). Tes arsitektur: `spaces` tidak mengimpor `kernel/worker-db`. |
+| Plan 2 | Pindahkan `validate`/`LIMITS`/`ALLOWED_FUNCTIONS` CEL dari skrip spike ke modul; pin alasan penolakan; uji `has`. Driver DB per engine (Oracle wajib diuji ke server nyata — gate REC-F2). Runbook deploy: role aplikasi non-superuser tanpa `BYPASSRLS`. COPY Bun.SQL diuji di versi pin. |
+| Plan 3/4 | `expireInSeconds` per antrean untuk `recon.daily`/`recon.heavy` (default 900 s). Maintenance pg-boss di bawah `statement_timeout` 5 s saat volume besar. Engine: *mutual unique best* wajib (S1 menemukan 1 pasangan salah tanpa itu) dan run harian diproses per chunk. Handler tidak boleh memblok event loop > heartbeat 30 s. |
+| Pemilik / IT risk | REC-Q11: Admin bawaan (instalasi baru) punya `space.manage` → bisa memasukkan dirinya ke space mana pun (tercatat). Revoke rbac tidak mengambil lock `spaceAdmins` (race kecil yang sudah ada sebelumnya). |
