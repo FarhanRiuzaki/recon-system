@@ -174,7 +174,11 @@ export async function smallTouchTargets(page: Page): Promise<string[]> {
 export const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
 /** Ids of demo records; the API's seed makes them (UUIDv7), so tests look them up instead of writing them out. */
-export type DemoIds = { admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string; treasury: string };
+export type DemoIds = {
+  admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string; treasury: string; ctop: string;
+  /** Treasury's demo sources (apps/api/src/db/seed/demo-sources.ts): file inbox shared to CTOP, snapshot (failed re-pull), snapshot (no active), paused, watermark. */
+  biSettlement: string; coreRtgs: string; coreSknbi: string; glNostro: string; bifastIn: string;
+};
 let ids: Promise<DemoIds> | null = null;
 
 /** The demo ids, read once per worker through /api as the global-setup Superadmin (any role may call it). */
@@ -193,9 +197,13 @@ export function demoIds(baseURL: string | undefined): Promise<DemoIds> {
     const out = { admin: await user("admin@example.com"), superadmin: await user("superadmin@example.com"),
       superadminRole: role("Superadmin"), adminRole: role("Admin"), viewerRole: role("Viewer"),
       project: (await get<{ items: { id: string; name: string }[] }>("/api/projects?q=Apollo")).items.find((p) => p.name === "Apollo")!.id,
-      treasury: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=treasury")).items.find((s) => s.code === "treasury")!.id };
+      treasury: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=treasury")).items.find((s) => s.code === "treasury")!.id,
+      ctop: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=ctop")).items.find((s) => s.code === "ctop")!.id };
+    // the global-setup Superadmin is a source admin of Treasury (demo seed)
+    const sources = (await get<{ items: { id: string; code: string }[] }>(`/api/spaces/${out.treasury}/sources?pageSize=25`)).items;
+    const source = (code: string) => sources.find((s) => s.code === code)!.id;
     await api.dispose();
-    return out;
+    return { ...out, biSettlement: source("bi-settlement"), coreRtgs: source("core-rtgs"), coreSknbi: source("core-sknbi"), glNostro: source("gl-nostro-usd"), bifastIn: source("bifast-in") };
   })());
 }
 

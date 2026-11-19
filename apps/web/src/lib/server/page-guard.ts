@@ -39,6 +39,11 @@ export async function guardedTitle(title: string): Promise<Metadata> {
 
 /** The space id of a `/spaces/<id>/…` path (query and hash ignored), else null. */
 export const spaceIdOf = (pathname: string): string | null => /^\/spaces\/([^/?#]+)/.exec(pathname)?.[1] ?? null;
+/**
+ * A space page that shows the space's data (sources and below): it needs a role in the space, since the API answers
+ * its data to members only; a space.view holder who is no member opens members, not these.
+ */
+export const spaceDataPage = (pathname: string): boolean => /^\/spaces\/[^/?#]+\/sources(\/|$|\?)/.test(pathname);
 
 /**
  * The space as the caller may see it, read once per request (`cache`: the (main) layout, the page and its title share

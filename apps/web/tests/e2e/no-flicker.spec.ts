@@ -33,6 +33,8 @@ const PAGES = [
   { path: "/audit/activity", filled: "View entry" },
   { path: "/me", filled: 'id="me-username"' },
   { path: "/spaces/{treasury}/members", filled: "Viewer User" },
+  { path: "/spaces/{treasury}/sources", filled: 'href="/spaces/{treasury}/sources/{biSettlement}"' },
+  { path: "/spaces/{treasury}/sources/{biSettlement}", filled: "bisettle" },
 ] as const;
 
 type Interval = { at: number; ms: number; path: string; what: string };

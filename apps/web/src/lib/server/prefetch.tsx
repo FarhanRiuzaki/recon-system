@@ -8,11 +8,13 @@ import { Hydrate } from "@/lib/client/hydrate";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
+import { IngestListQuery, SourceListQuery } from "@starterkit/shared/contracts/sources";
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
+  sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
 import { readTable, tableRequest } from "@/lib/shared/table-state";
@@ -65,6 +67,11 @@ export const reads = {
   spaceOptions: (): Read => ({ key: spaceOptions().key, path: spaceOptions().url }),
   space: (id: string): Read => ({ key: spaceDetail(id).key, path: spaceDetail(id).url }),
   spaceMembers: (id: string, sp: URLSearchParams) => table(SPACE_MEMBERS(id), sp, SpaceMemberListQuery),
+  sources: (spaceId: string, sp: URLSearchParams) => table(SOURCES(spaceId), sp, SourceListQuery),
+  source: (spaceId: string, id: string): Read => ({ key: sourceDetail(spaceId, id).key, path: sourceDetail(spaceId, id).url }),
+  sourceFiles: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceFiles(spaceId, id), sp, IngestListQuery),
+  sourceSnapshots: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceSnapshots(spaceId, id), sp, IngestListQuery),
+  sourceQuarantine: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceQuarantine(spaceId, id), sp, IngestListQuery),
 };
 
 /**

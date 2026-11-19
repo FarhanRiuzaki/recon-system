@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 
 import type { PermissionName } from "@starterkit/shared/permissions";
 import { fakeApi, pathOf, sealCookie, TEST_CSRF, TEST_TOKEN } from "@/test/session";
-import { guardedTitle, requirePagePermission } from "./page-guard";
+import { guardedTitle, requirePagePermission, spaceDataPage } from "./page-guard";
 
 const user = { id: "0199f0a0-0000-7000-8000-000000000001", name: "Viewer User", username: "viewer", email: "viewer@example.com" };
 /** The API's /v1/auth/context: `perms` for TEST_TOKEN, 401 for any other bearer. */
@@ -71,6 +71,13 @@ describe("requirePagePermission", () => {
     await sealCookie(jar);
     expect(await requirePagePermission("user.view")).toEqual({ user, perms: ["user.view", "audit.view"], csrf: TEST_CSRF });
     expect(seen.map(pathOf)).toEqual(["/v1/auth/context"]);
+  });
+});
+
+describe("spaceDataPage", () => {
+  it("a space's sources and below need a role in it; members, other pages and look-alikes don't", () => {
+    for (const p of ["/spaces/s-1/sources", "/spaces/s-1/sources/x", "/spaces/s-1/sources?tab=quarantine"]) expect(spaceDataPage(p), p).toBe(true);
+    for (const p of ["/spaces/s-1/members", "/spaces", "/sources", "/spaces/s-1/sourcesx", "/users/sources"]) expect(spaceDataPage(p), p).toBe(false);
   });
 });
 

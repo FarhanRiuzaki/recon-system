@@ -9,7 +9,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { activeChild, isActive, navFor } from "@/lib/shared/nav";
+import { activeChild, navFor, onItem } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
@@ -53,7 +53,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
               <SoonCaption items={s.items} id={`drawer-soon-${s.id}`} className="-mt-1 px-2.5 pb-1 text-caption text-fg-3" />
               {s.items.map((n) => {
                 if (n.soon) return <SoonItem key={n.href} item={n} captionId={`drawer-soon-${s.id}`} drawer />;
-                const active = isActive(path, n.href);
+                const active = onItem(path, n);
                 const child = active ? activeChild(n, path, sp) : null;
                 return (
                   <div key={n.href} className="grid gap-0.5">

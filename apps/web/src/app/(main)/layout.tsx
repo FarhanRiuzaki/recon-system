@@ -6,14 +6,15 @@ import { AppShell } from "@/components/shell/app-shell";
 import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { AuthProvider } from "@/lib/client/auth-context";
 import { PrefsProvider } from "@/lib/client/prefs-context";
-import { openSpace, requirePagePermission, spaceIdOf } from "@/lib/server/page-guard";
+import { openSpace, requirePagePermission, spaceDataPage, spaceIdOf } from "@/lib/server/page-guard";
 import { Prefetch, reads } from "@/lib/server/prefetch";
 import { pagePerm } from "@/lib/shared/nav";
 import { PREFS_COOKIE, parsePrefs } from "@/lib/shared/prefs";
 
 /**
  * Signed-in frame: no session → sign-in; a page the role can't open → a real 404 on a document load (pagePerm, and for
- * `/spaces/<id>/…` the caller's access to that space, checked here before anything streams; the page's own guard
+ * `/spaces/<id>/…` the caller's access to that space, and a role in it for its data pages (spaceDataPage), checked here
+ * before anything streams; the page's own guard
  * covers client navigations); then auth context (user,
  * permissions, CSRF token), prefs, query client, the space switcher's list (server-prefetched, so every page's shell
  * renders it filled), shell.
@@ -32,7 +33,10 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // only in spaces/[spaceId]/layout.tsx: that layout renders inside this segment's loading boundary, after the response
   // has started, so its notFound() alone answers 200 (spaces.spec.ts "a non-member gets a 404").
   const spaceId = spaceIdOf(path);
-  if (spaceId && h.get("rsc") !== "1" && !(await openSpace(spaceId))) notFound();
+  if (spaceId && h.get("rsc") !== "1") {
+    const space = await openSpace(spaceId);
+    if (!space || (spaceDataPage(path) && !space.roles.length)) notFound();
+  }
   const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);
   return (
     <AuthProvider user={user} perms={perms} csrf={csrf}>

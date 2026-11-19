@@ -13,11 +13,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/toolt
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
+import { SPACE_PAGES, type SpacePage } from "@/lib/shared/nav";
 import { ROLE_LABEL, spaceHref, useSpaces } from "./use-spaces";
 
-/** The pages every space has (phase 1: members); switching keeps one of these, anything else opens members. */
-const SPACE_PAGES = ["members"] as const;
-type SpacePage = (typeof SPACE_PAGES)[number];
 // The menu's body loads on the first open (space-menu.tsx), like the account menu's.
 const SpaceMenuItems = dynamic(() => import("./space-menu").then((m) => m.SpaceMenuItems, () => SpaceMenuFailure), {
   ssr: false,
@@ -30,7 +28,10 @@ function SpaceMenuFailure() {
 
 const spaceOf = (path: string) => /^\/spaces\/([^/]+)/.exec(path)?.[1];
 
-/** Where switching to space `id` goes from `path`: the same page under the new space when every space has it, else members. */
+/**
+ * Where switching to space `id` goes from `path`: the same page under the new space when every space has it (SPACE_PAGES:
+ * members, sources; a source's detail opens the new space's sources), else members.
+ */
 export function switchHref(path: string, id: string): string {
   const page = /^\/spaces\/[^/]+\/([^/]+)/.exec(path)?.[1];
   return spaceHref(id, SPACE_PAGES.includes(page as SpacePage) ? (page as SpacePage) : "members");

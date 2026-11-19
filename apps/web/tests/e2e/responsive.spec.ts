@@ -13,7 +13,9 @@ import { expectNoHorizontalScroll, pending2faState, settleAnimations, smallTouch
  */
 
 /** Every page: the nav pages with the pages of their submenu (/ds/…), the sub-pages, the sign-in pages (`{name}` = a demo id, helpers.ts demoIds). */
-const SIGNED_IN = [...new Set(NAV.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)])), "/users/new", "/users/{admin}", "/users/{admin}/edit", "/roles/{superadminRole}", "/projects/new", "/projects/{project}", "/projects/{project}/edit", "/me/security", "/me/sessions", "/spaces/{treasury}/members"];
+const SIGNED_IN = [...new Set(NAV.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)])), "/users/new", "/users/{admin}", "/users/{admin}/edit", "/roles/{superadminRole}", "/projects/new", "/projects/{project}", "/projects/{project}/edit", "/me/security", "/me/sessions", "/spaces/{treasury}/members",
+  "/spaces/{treasury}/sources", "/spaces/{treasury}/sources/{biSettlement}", "/spaces/{treasury}/sources/{biSettlement}?tab=quarantine", "/spaces/{treasury}/sources/{coreRtgs}",
+  "/spaces/{treasury}/sources/{glNostro}", "/spaces/{treasury}/sources/{bifastIn}"];
 const SIGNED_OUT = ["/login", "/forgot-password", "/reset-password"];
 /** The blocked "Deactivate user" button of /ds/components (features/ds/pages/components-body.tsx). */
 const BLOCKED_REASON = "This is the last active Superadmin. Make another user Superadmin first.";
@@ -85,7 +87,7 @@ test.describe("shell from 768 px", () => {
 
 test.describe("navigation: hidden template pages and coming-soon items", () => {
   test.use({ storageState: AUTH_STATE });
-  const GROUPS = [{ id: "work", caption: "Today, Breaks and Approvals arrive in a later release.", items: ["Today", "Breaks", "Approvals"] }, { id: "setup", caption: "Recons and Sources arrive in a later release.", items: ["Recons", "Sources"] }];
+  const GROUPS = [{ id: "work", caption: "Today, Breaks and Approvals arrive in a later release.", items: ["Today", "Breaks", "Approvals"] }, { id: "setup", caption: "Recons arrives in a later release.", items: ["Recons"] }];
   const REASON = "Arrives in a later release.";
 
   test("Projects and Design system are not in the navigation or the page search, but /projects and /ds open by URL", async ({ page, isMobile }) => {
@@ -251,8 +253,8 @@ test.describe("phone", () => {
       await menuButton(page).click();
       await expect(drawer(page)).toBeVisible();
       await drawer(page).getByRole("link", { name: n.label, exact: true }).click();
-      // Members (/spaces) opens the remembered or first space: /spaces/<id>/members.
-      await expect(page).toHaveURL((u) => u.pathname === n.href || u.pathname.startsWith(`${n.href}/`));
+      // Members (/spaces) and Sources (/sources) open the remembered or first space: /spaces/<id>/members, /spaces/<id>/sources.
+      await expect(page).toHaveURL((u) => u.pathname === n.href || u.pathname.startsWith(`${n.href}/`) || (!!n.space && new RegExp(`^/spaces/[^/]+/${n.space}$`).test(u.pathname)));
       await expect(drawer(page)).toBeHidden();
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     }

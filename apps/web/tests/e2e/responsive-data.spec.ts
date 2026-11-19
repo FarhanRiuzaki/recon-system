@@ -20,7 +20,8 @@ async function open(page: Page, path: string) {
 const TABLES = [
   ["/users", "Users"], ["/roles", "Roles"], ["/permissions", "Permissions"], ["/audit/activity", "Activity log"],
   ["/audit/auth", "Sign-in log"], ["/projects", "Projects"], ["/me/sessions", "My sessions"], ["/users/{superadmin}", "Active sessions"],
-  ["/spaces/{treasury}/members", "Members"],
+  ["/spaces/{treasury}/members", "Members"], ["/spaces/{treasury}/sources", "Sources"], ["/spaces/{treasury}/sources/{biSettlement}", "Files"],
+  ["/spaces/{treasury}/sources/{coreRtgs}", "Snapshots"], ["/spaces/{treasury}/sources/{biSettlement}?tab=quarantine", "Quarantine"],
 ] as const;
 
 const firstRowKey = (page: Page, table: string) => page.getByRole("table", { name: table }).getByRole("row").first().locator('[data-mobile="title"]').innerText();

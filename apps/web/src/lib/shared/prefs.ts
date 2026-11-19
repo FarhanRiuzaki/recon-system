@@ -19,7 +19,10 @@ export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable
  * The list pages whose view is remembered (each a `useTableQuery` screen). A `[segment]` matches any one path segment,
  * so a space's members page keeps one view for every space (`viewPageOf`).
  */
-export const VIEW_PAGES = ["/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects", "/spaces/[spaceId]/members"] as const;
+export const VIEW_PAGES = [
+  "/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects", "/spaces/[spaceId]/members", "/spaces/[spaceId]/sources",
+  "/spaces/[spaceId]/sources/[sourceId]",
+] as const;
 export type ViewPage = (typeof VIEW_PAGES)[number];
 const VIEW_MAX = REMEMBERED_VIEW_QUERY_MAX; // characters per view: the whole cookie stays far under the 4 KB limit
 /** Hidden column keys of one page: a column key's shape, at most 20 (anything else in the cookie is dropped). */

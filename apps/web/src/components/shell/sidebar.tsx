@@ -15,7 +15,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { activeChild, isActive, navFor } from "@/lib/shared/nav";
+import { activeChild, navFor, onItem } from "@/lib/shared/nav";
 import { spaceOptions } from "@/lib/shared/queries";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
@@ -90,7 +90,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
             <SoonCaption items={s.items} id={`nav-soon-${s.id}`} className={cn("-mt-1 hidden px-2.5 pb-2 text-caption text-fg-3", label("xl:block"))} />
             {s.items.map((n) => {
               if (n.soon) return <SoonItem key={n.href} item={n} captionId={`nav-soon-${s.id}`} text={cn("hidden", label("xl:inline"))} dot={collapsed ? undefined : "xl:hidden"} hideTip={collapsed ? undefined : "xl:hidden"} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
-              const active = isActive(path, n.href);
+              const active = onItem(path, n);
               const child = active ? activeChild(n, path, sp) : null;
               return (
                 <div key={n.href} className="grid gap-0.5">

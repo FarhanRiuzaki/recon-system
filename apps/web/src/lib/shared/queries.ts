@@ -1,12 +1,13 @@
 // What a screen reads first, as query keys and API URLs: the browser hooks (features/*) and the server prefetch
 // (lib/server/prefetch.tsx) both build their keys here, so a server-prefetched query is exactly the one the hook asks
 // for and the browser never fetches it again. Pure (no React, no zod).
-// Key scheme: the first element is the module that owns the data (users, rbac, me, audit, dashboard, projects, spaces), then what
+// Key scheme: the first element is the module that owns the data (users, rbac, me, audit, dashboard, projects, spaces, sources,
+// ingest), then what
 // identifies the read (a table's URL, "detail" + id, …), so invalidating a module's key refreshes all of it.
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
@@ -86,6 +87,26 @@ export const spaceCandidates = (id: string, q = "") => ({
   key: [...SPACES_KEY, "candidates", id, q] as const,
   url: `/api/spaces/${encodeURIComponent(id)}/candidates?${new URLSearchParams({ pageSize: "100", ...(q ? { q } : {}) })}`,
 });
+
+export const SOURCES_KEY = ["sources"] as const;
+const SOURCES_SPEC: TableSpec<{ q: string }> = { sorts: SOURCE_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
+const sourcesPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/sources` as const;
+/** A space's sources and those shared to it; `q` matches the code or the name. */
+export const SOURCES = (spaceId: string): TableDef<{ q: string }> => ({ key: SOURCES_KEY[0], path: sourcesPath(spaceId), spec: SOURCES_SPEC });
+export const sourceDetail = (spaceId: string, id: string) => ({
+  key: [...SOURCES_KEY, "detail", spaceId, id] as const, url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}`,
+});
+/**
+ * What a source's ingest did (the ingest module's routes), newest first: the API takes no sort, so the spec has none.
+ * `tab` stays when the table pages (the source detail's tabs live in the URL).
+ */
+export const INGEST_KEY = ["ingest"] as const;
+const INGEST_SPEC: TableSpec<NoFilters> = { sorts: [], defaultSort: "", filters: {} };
+const ingestTable = (what: "files" | "snapshots" | "quarantine") => (spaceId: string, id: string): TableDef<NoFilters> =>
+  ({ key: INGEST_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/${what}`, spec: INGEST_SPEC, transient: ["tab"] });
+export const sourceFiles = ingestTable("files");
+export const sourceSnapshots = ingestTable("snapshots");
+export const sourceQuarantine = ingestTable("quarantine");
 
 export const AUDIT_KEY = ["audit"] as const;
 /** Entry identity is independent of list state; only validated, normalized UUIDs become BFF paths. */

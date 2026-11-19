@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, pagePerm, pagesFor, SOON_REASON, soonCaption, type NavItem } from "./nav";
+import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
+/** Work and Setup: the coming-soon items and Sources, in sidebar order. */
 const SOON = ["Today", "Breaks", "Approvals", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
@@ -37,7 +38,7 @@ describe("navFor", () => {
 
   it("coming-soon items: no shortcut, no permission, not in the palette or shortcut list, no page behind them", () => {
     const soon = NAV.filter((n) => n.soon);
-    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Today"], ["work", "Breaks"], ["work", "Approvals"], ["setup", "Recons"], ["setup", "Sources"]]);
+    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Today"], ["work", "Breaks"], ["work", "Approvals"], ["setup", "Recons"]]);
     expect(soon.every((n) => n.shortcut === "" && n.perm === null)).toBe(true);
     const pages = pagesFor(new Set(PERMISSIONS));
     expect(pages.some((n) => n.soon || n.hidden)).toBe(false);
@@ -46,7 +47,7 @@ describe("navFor", () => {
     expect(crumbs("/today", new Set(PERMISSIONS))).toEqual([]);
     expect(SOON_REASON).toBe("Arrives in a later release.");
     const sections = navFor(new Set());
-    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Today, Breaks and Approvals arrive in a later release.", "Recons and Sources arrive in a later release.", null, null]);
+    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Today, Breaks and Approvals arrive in a later release.", "Recons arrives in a later release.", null, null]);
     expect(soonCaption([{ ...soon[0]! }])).toBe("Today arrives in a later release.");
   });
 
@@ -59,7 +60,7 @@ describe("navFor", () => {
 describe("space group", () => {
   it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
     const admin = new Set(["user.view", "role.view", "space.view"] as const);
-    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...SOON, "Users", "Roles", "Profile"]);
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...SOON.filter((l) => l !== "Sources"), "Users", "Roles", "Profile"]);
     expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "setup", "personal"]);
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
@@ -70,6 +71,21 @@ describe("space group", () => {
     expect(labels(new Set(), true)).not.toContain("Members");
     expect(labels(new Set(), false)).toContain("Members");
     expect(labels(new Set(["space.manage"]), true)).toContain("Members");
+    expect(labels(new Set(), true)).not.toContain("Sources");
+    expect(labels(new Set(), false)).toContain("Sources");
+  });
+
+  it("Sources is a link in Setup (G O) to the current space's sources, active there and below; Members isn't", () => {
+    const src = NAV.find((n) => n.label === "Sources")!;
+    expect([src.group, src.href, src.shortcut, src.soon, src.perm]).toEqual(["setup", "/sources", "G O", undefined, null]);
+    const members = NAV.find((n) => n.label === "Members")!;
+    const S = "/spaces/5b0c1f2e-0000-4000-8000-000000000000";
+    for (const p of ["/sources", `${S}/sources`, `${S}/sources/x?tab=quarantine`]) expect([onItem(p, src), onItem(p, members)], p).toEqual([true, false]);
+    for (const p of ["/spaces", `${S}/members`]) expect([onItem(p, src), onItem(p, members)], p).toEqual([false, true]);
+    expect(onItem(`${S}/sourcesx`, src)).toBe(false);
+    expect(crumbs(`${S}/sources`, new Set()).map((c) => [c.label, c.href])).toEqual([["Sources", "/sources"]]);
+    expect([isSubPage(`${S}/sources`), isSubPage(`${S}/sources/x`)]).toEqual([false, true]);
+    expect(pagePerm(`${S}/sources/x`)).toBeNull(); // membership: page.tsx asks the API
   });
 
   it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {

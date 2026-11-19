@@ -18,8 +18,16 @@ export function soonCaption(items: readonly NavItem[]): string | null {
  * (a sub-route: another path), which share the item's permission (`pagePerm`) and breadcrumb.
  * `soon`: a page of a later release, shown disabled (not a link, no shortcut, not in the palette). `hidden`: a
  * template page whose route still works (guard, breadcrumb) but that the navigation does not list.
+ * `space`: a page every space has, at /spaces/<id>/<space>; `href` is its entry, which opens the current space's
+ * (app/(main)/spaces/page.tsx, app/(main)/sources/page.tsx), and the item is active on that page and below it.
  */
-export type NavItem = { href: string; label: string; icon: NavIcon; shortcut: string; group: NavGroup; perm: PermissionName | null; children?: readonly NavChild[]; soon?: true; hidden?: true };
+export type NavItem = {
+  href: string; label: string; icon: NavIcon; shortcut: string; group: NavGroup; perm: PermissionName | null; children?: readonly NavChild[]; soon?: true; hidden?: true;
+  space?: SpacePage;
+};
+/** The pages every space has (/spaces/<id>/<page>). */
+export const SPACE_PAGES = ["members", "sources"] as const;
+export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
 
@@ -29,9 +37,9 @@ export const NAV: readonly NavItem[] = [
   { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true },
   { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "", group: "work", perm: null, soon: true },
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "", group: "setup", perm: null, soon: true },
-  { href: "/sources", label: "Sources", icon: "sources", shortcut: "", group: "setup", perm: null, soon: true },
+  { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
-  { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null },
+  { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null, space: "members" },
   { href: "/users", label: "Users", icon: "users", shortcut: "G U", group: "access", perm: "user.view" },
   { href: "/roles", label: "Roles", icon: "roles", shortcut: "G R", group: "access", perm: "role.view" },
   { href: "/permissions", label: "Permissions", icon: "permissions", shortcut: "G P", group: "access", perm: "permission.view" },
@@ -51,14 +59,14 @@ const GROUPS: { id: NavGroup; label: string }[] = [
 
 /**
  * Sidebar sections for these permissions: items the user cannot open are left out, then empty groups. `noSpace` (the
- * caller is in no space) drops the Space group, whose pages all need a space, unless they hold space.manage: /spaces
- * is where they create one.
+ * caller is in no space) drops the Space group and every other page of a space (Sources), which all need a space,
+ * unless they hold space.manage: /spaces is where they create one.
  */
 export function navFor(perms: ReadonlySet<PermissionName>, noSpace = false): NavSection[] {
   const dropSpace = noSpace && !perms.has("space.manage");
   return GROUPS
     .filter((g) => !(dropSpace && g.id === "space"))
-    .map((g) => ({ ...g, items: NAV.filter((n) => !n.hidden && n.group === g.id && (n.perm === null || perms.has(n.perm))) }))
+    .map((g) => ({ ...g, items: NAV.filter((n) => !n.hidden && n.group === g.id && !(dropSpace && n.space) && (n.perm === null || perms.has(n.perm))) }))
     .filter((s) => s.items.length > 0);
 }
 
@@ -69,6 +77,13 @@ export const pagesFor = (perms: ReadonlySet<PermissionName>, noSpace = false): N
 export function isActive(pathname: string, href: string, exact = false): boolean {
   const p = pathname.split(/[?#]/)[0] ?? "/";
   return href === "/" || exact ? p === href : p === href || p.startsWith(`${href}/`);
+}
+
+/** Whether the path is on nav item `n`'s page: its href or below; a space page only its own entry and /spaces/<id>/<space>[/…]. */
+export function onItem(pathname: string, n: Pick<NavItem, "href" | "space">): boolean {
+  if (!n.space) return isActive(pathname, n.href);
+  const p = clean(pathname);
+  return p === n.href || new RegExp(`^/spaces/[^/]+/${n.space}(/|$)`).test(p);
 }
 
 export type Crumb = { label: string; href?: string; icon?: NavIcon };
@@ -91,7 +106,7 @@ export function activeChild(item: NavItem, pathname: string, sp: URLSearchParams
 
 const clean = (pathname: string) => (pathname.split(/[?#]/)[0] ?? "/").replace(/\/+$/, "") || "/";
 /** The nav page a path belongs to (hidden pages count, `soon` ones have no page yet; longest href wins, so /audit/auth is not /audit). */
-const navItemOf = (p: string) => [...NAV].filter((n) => !n.soon).sort((a, b) => b.href.length - a.href.length).find((n) => isActive(p, n.href));
+const navItemOf = (p: string) => [...NAV].filter((n) => !n.soon).sort((a, b) => b.href.length - a.href.length).find((n) => onItem(p, n));
 
 /**
  * Top bar breadcrumb: the nav page the path belongs to, only when the viewer may open it, so a page the role can't
@@ -104,8 +119,9 @@ export function crumbs(pathname: string, perms: ReadonlySet<PermissionName>): Cr
 }
 
 /**
- * True on a page below its nav page (/users/<id>, /me/security): the nav crumb links back, the page's own trail follows.
- * A space's page (/spaces/<id>/members) is its nav page itself: the space is named in the switcher, not the breadcrumb.
+ * True on a page below its nav page (/users/<id>, /me/security, /spaces/<id>/sources/<id>): the nav crumb links back,
+ * the page's own trail follows. A space's page (/spaces/<id>/members) is its nav page itself: the space is named in
+ * the switcher, not the breadcrumb.
  */
 export const isSubPage = (pathname: string) => {
   const p = clean(pathname);

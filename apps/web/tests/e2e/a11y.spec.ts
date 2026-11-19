@@ -9,6 +9,8 @@ import { axeSerious, pending2faState, withIds } from "./helpers";
  */
 /** `{name}` = a demo id (helpers.ts demoIds). */
 const SIGNED_IN = ["/", "/users", "/users/{admin}", "/roles", "/roles/{superadminRole}", "/roles/{adminRole}", "/permissions", "/projects", "/projects/{project}", "/audit/activity", "/audit/auth", "/me", "/me/security", "/me/sessions", "/spaces/{treasury}/members",
+  "/spaces/{treasury}/sources", "/spaces/{treasury}/sources/{biSettlement}", "/spaces/{treasury}/sources/{biSettlement}?tab=quarantine", "/spaces/{treasury}/sources/{coreRtgs}",
+  "/spaces/{treasury}/sources/{coreSknbi}", "/spaces/{treasury}/sources/{glNostro}", "/spaces/{treasury}/sources/{bifastIn}",
   // The design system pages (each body mounts after hydration). /ds/visuals is left out: all of its content is vendored affectUI, which axeSerious skips.
   "/ds", "/ds/foundations", "/ds/components", "/ds/forms", "/ds/feedback", "/ds/data", "/ds/motion"];
 
