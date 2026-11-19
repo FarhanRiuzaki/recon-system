@@ -454,3 +454,7 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 ## DEC-040 — Budget first-load JS 300 kB; UX dan library interaktif didahulukan
 
 19 November 2026 — arahan pemilik: budget di atas 250 kB tidak masalah selama UI/UX bagus dan library interaktif yang tepat dipakai. Budget menjadi pagar terhadap pembengkakan yang tidak disengaja, bukan target: 300 kB gzip per route. Pemeriksaan `next/dynamic` harus `ssr: false` tetap berlaku supaya angka budget jujur. REC-PERF-1 (duplikasi modul DS antar chunk) turun dari penghalang ke perbaikan biasa. Menggantikan angka DEC-038.
+
+## DEC-041 — UI interaktif dengan React Flow (hybrid lajur terkunci)
+
+19 November 2026 — keputusan pemilik atas usulan core-recon (sebagai PO). Membalik keputusan builder varian A di DEC-037: alasan budget sudah gugur (DEC-040) dan kekhawatiran "urutan eksekusi tidak terlihat" dijawab dengan lajur terkunci. `@xyflow/react` 13 + `elkjs` + `@dnd-kit/sortable` dipakai untuk builder config (Sources → Sides → Passes berurutan → Outcomes, angka simulasi di edge), Space map di Today, pipeline Live day dan graf Explain. Setiap kanvas punya "View as list"; phone memakai list. Spike REC-S6 (200+ node, keyboard, tema, ukuran) sebelum Plan 3. Detail di spec §11a.

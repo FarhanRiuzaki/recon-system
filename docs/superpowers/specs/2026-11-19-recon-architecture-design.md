@@ -362,22 +362,21 @@ versi config, run id). Retensi artefak pembukuan 10 tahun.
 
 ## 11a. UI interaktif
 
-Pemilik ingin UI interaktif, bukan halaman form isian **(pemilik)**. Keputusan **(core-recon, didelegasikan pemilik)**:
-builder config memakai **varian A** dari prototipe designer — pipeline kolom tetap: sisi → pass berurutan → hasil; urutan
-pass = posisi di daftar = urutan eksekusi engine; drag atau Alt+↑/↓ untuk mengubah urutan; jumlah item per pass dan delta
-simulasi tampil di samping tiap pass; klik pass = inspector. Daftarnya sendiri adalah padanan keyboard. Kanvas bebas
-(React Flow) ditolak untuk fase 1: alur recon lurus, posisi bebas menyembunyikan urutan eksekusi, dan menambah dependency;
-dipertimbangkan lagi bila ada alur bercabang (recon multi-way, DAG antar config).
+Pemilik ingin UI interaktif, modern dan mudah, bukan halaman form isian; budget JS bukan penghalang (DEC-040). Keputusan
+**DEC-041 (pemilik, 19 Nov)**: React Flow (`@xyflow/react` 13) dipakai di tempat yang datanya memang berbentuk graf,
+dengan layout `elkjs`; setiap kanvas punya "View as list" yang setara untuk keyboard dan pembaca layar; node dibangun dari
+komponen DS (token, StatusChip), bukan gaya bawaan React Flow; status tidak hanya warna; reduced motion = tanpa animasi.
 
-| Layar | Interaksi | Lib |
-|---|---|---|
-| Builder config | Pipeline varian A + inspector + bar simulasi (hash draft, delta vs live) | komponen DS yang ada |
-| Live day | Pipeline yang sama read-only dengan angka live, lag/complete-through per source, chart durasi tick | DS + `recharts` + SSE |
-| Explain match | Grup per sisi, chip per predikat lulus/gagal + delta; item tanpa pasangan: 3 kandidat terdekat | SVG/DS |
-| Workbench break | Grid padat dua sisi, tray "Σ kiri / Σ kanan / selisih", keyboard j/k/x/m | `DataTable` DS |
+| Layar | Interaksi |
+|---|---|
+| Builder config (hybrid) | Kanvas lajur terkunci SOURCES → SIDES (filter) → PASSES (urut) → OUTCOMES. Urutan pass = posisi vertikal; drag (snap ke slot, `@dnd-kit/sortable` di list view) atau Alt+↑/↓; node tidak bisa pindah lajur atau disambung manual. Setelah simulasi, label edge = jumlah item per pass + delta vs live; "Left: …" di antara pass. Klik node = inspector kanan. Recon 3+ sisi = node sisi tambahan. Mengubah urutan pass = perubahan spec config (diff versi, simulasi, approval). Phone: list view. |
+| Space map (Today) | Graf source → recon per space: health/lag di node source, match rate/waiting/breaks di node recon, tebal edge = volume hari ini. Source Degraded/Down menyorot recon terdampak. Tabel recon tetap ada. |
+| Live day | Pipeline yang sama dengan builder (read-only), angka beranimasi sekali per tick, edge macet diberi label status. |
+| Explain match | Graf grup multi-way: anggota per sisi → grup, chip per predikat (lulus/gagal + delta) + evidence (versi config, run, row hash); item tanpa pasangan: 3 kandidat dengan edge putus-putus. |
+| Workbench break | Grid padat dua sisi, tray "Σ kiri / Σ kanan / selisih", keyboard j/k/x/m (`DataTable` DS). |
 
-Desain: file Figma recon (team SunnyGo) `fbGv05DvfJnw6XU0fwZebO`, satu page per flow; prototipe HTML designer hanya
-referensi. Detail visual milik designer-recon.
+Desain: Figma `fbGv05DvfJnw6XU0fwZebO` (page 03 hybrid, page 04 Space map/Live day, page 05 Explain). Kanvas boleh
+di-load lazy (komponen client) selama ada loading shape dan data dari prefetch.
 
 ## 12. Spike sebelum desain dikunci
 
@@ -388,6 +387,7 @@ referensi. Detail visual milik designer-recon.
 | S3 | `@marcbachmann/cel-js`: batas cost runtime, regex | aman untuk input konfigurator |
 | S4 | RLS + Drizzle + `SET LOCAL` di pool koneksi Bun.SQL; partisi lewat migration SQL manual | tes isolasi antar space lulus |
 | S5 | Teks POJK 11/2022, PADK 1/2026, pedoman AI OJK | syarat audit trail/retensi/SoD terkutip |
+| S6 | `@xyflow/react` 13 + `elkjs` + `@dnd-kit/sortable` di Next 16 + React 19.3: 200+ node dengan ELK, keyboard, token tema (gelap + 4 palet), first-load terhadap pagar 300 kB (REC-S6) | sebelum Plan 3; hasil di `docs/recon/spikes.md` |
 | S7 | Tiap driver DB sumber di Bun 1.4 (PostgreSQL, MySQL, SQL Server, Oracle Thin): connect + TLS, stream 1 juta baris dengan memori datar, timeout, query berwatermark | lulus per engine, atau engine itu dipindah ke varian worker Node 24 |
 
 ## 13. Keputusan yang perlu dicatat di `docs/decisions.md`
@@ -405,7 +405,7 @@ referensi. Detail visual milik designer-recon.
     EOD/heavy lebih panjang); pool role api tetap 5 s.
   - Body 64 KB di BFF dan API: upload file manual tidak lewat body JSON. Usulan: file masuk lewat SFTP/NFS saja di fase 1;
     upload dari browser (bila PO butuh) menjadi keputusan terpisah.
-- Dependency baru: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB `mssql`, `oracledb` (+ `mysql2`/`ibm_db` bila perlu) di API. (`@xyflow/react` batal — §11a.)
+- Dependency baru: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB `mssql`, `oracledb` (+ `mysql2`/`ibm_db` bila perlu) di API; `@xyflow/react`, `elkjs`, `@dnd-kit/sortable` di web (DEC-041).
 - Penamaan: "workspace" adalah kata terlarang di `apps/web/src/test/no-domain.test.ts`; objek produk ini bernama **space**.
 
 ## 14. Terbuka
