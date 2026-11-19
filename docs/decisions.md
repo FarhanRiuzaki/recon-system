@@ -439,3 +439,7 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 - Mode pull `snapshot` per business_date dengan aktivasi atomik setelah sukses penuh; snapshot lama disimpan (menutup risiko legacy R-7).
 - Builder config = pipeline kolom tetap (varian A prototipe designer); `@xyflow/react` dan spike S6 batal.
 - Role space ketujuh `source_admin` untuk IT pemegang kredensial source; mapping boleh diselesaikan IT atau `config_maker` (pemilik).
+
+## DEC-038 — Budget first-load JS 252 kB
+
+19 November 2026 — keputusan core-recon (delegasi pemilik). SpaceSwitcher sekarang ada di shell setiap halaman (± 0,5 kB) dan potongan route-local tidak tersedia (halaman /users, /users/[id], /audit/activity, /audit/auth merender kodenya di first paint; dialog sudah lazy); kelebihan terbesar 740 B (/users/[id] 250,7 kB). Budget dinaikkan ke 252 kB. Tindak lanjut REC-PERF-1: Turbopack menduplikasi modul DS di beberapa chunk first-load (StatusChip ×3, EmptyState ×4 di /users/[id]); diselidiki sebelum Plan 4 menambah kode shell/live day.

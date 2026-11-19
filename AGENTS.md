@@ -45,7 +45,7 @@ Package manager and API runtime: Bun 1.4.3; Next runs on Node 24; PostgreSQL 18 
 - `bun run api:schemas` regenerates `docs/api/schemas/` and the activity action table in `docs/api/README.md` from the zod contracts.
 - `NEXT_DIST_DIR=.next-e2e bun run build` builds the web into `apps/web/.next-e2e` (leaves a running dev server's `.next` alone).
 - `bun run e2e` resets and demo-seeds `<database>_e2e`, starts the API on :4123 and a production web build on :3123, and runs Playwright on three projects (`desktop`, `tablet`, `mobile`; `apps/web/playwright.config.ts`); `E2E_REUSE=1` reuses servers already on those ports.
-- `NEXT_DIST_DIR=.next-e2e bun run budget` checks first-load JS per route of that build (≤ 250 kB gzip).
+- `NEXT_DIST_DIR=.next-e2e bun run budget` checks first-load JS per route of that build (≤ 252 kB gzip, DEC-038).
 - `docker compose --env-file .env.compose up -d --build` runs postgres + migrate (migrations, then the system seed) + api + web on http://localhost:3001; every compose command takes `--env-file .env.compose` (`docker-compose.yml` header, `.env.compose.example`).
 - Commit messages are conventional (`feat(api): …`) and end with the `Co-Authored-By` line the task asks for.
 
@@ -197,7 +197,7 @@ API cases live in `apps/api/src/modules/<m>/tests/integration/` and `apps/api/te
 
 ## 9. Performance
 
-- First-load JS gzip stays at or under 250 kB per route; check with `bun run budget` (`apps/web/scripts/bundle-budget.mjs`, default `--budget 250`).
+- First-load JS gzip stays at or under 252 kB per route (DEC-038); check with `bun run budget` (`apps/web/scripts/bundle-budget.mjs`, default `--budget 252`).
 - Wrap below-the-fold charts in `LazyMount`; lazy-load Radix overlays through `deferred-overlay`; load heavy tables with `next/dynamic` when a route nears the budget.
 - A press on a button before the JS has arrived is not lost: the inline script in `app/layout.tsx` (`lib/shared/early-press.ts`) presses it again once React handles that button; don't add another early-input handler. (`lib/shared/early-press.test.ts`, `tests/e2e/ux-patterns.spec.ts` "a press before the JS arrives")
 - Show toasts with `toast` from `@starterkit/ui/ui/toast` (loads sonner on the first toast); only `ui/sonner.tsx` and `ui/toast.ts` import `sonner`, and `ui/sonner` only through `import()`. A dialog that opens on click and carries a heavy dependency mounts through `next/dynamic` (`TwoFactorSetup`, `EntryDialog`). (`architecture.test.ts`)

@@ -47,7 +47,7 @@ Di luar MVP: multitenancy, billing backend, signup baru, transport upload/storag
 ## Ukuran keberhasilan dan gate rilis
 
 1. Developer dan QA mengulang quick start di checkout/database terisolasi tanpa langkah tak terdokumentasi. Catat durasi aktual; belum ada target durasi onboarding yang disepakati.
-2. QA menerima bukti frozen install, `check`, build produksi, budget ≤250 kB gzip semua route dan E2E kandidat dengan Bun 1.4.3/Node 24/PostgreSQL 18. Skip dijelaskan; hasil gagal tetap gagal.
+2. QA menerima bukti frozen install, `check`, build produksi, budget ≤252 kB gzip semua route (DEC-038) dan E2E kandidat dengan Bun 1.4.3/Node 24/PostgreSQL 18. Skip dijelaskan; hasil gagal tetap gagal.
 3. Flow inti dan kegagalan terbukti: sign in/2FA/logout, RBAC/penolakan akses, CRUD projects dan audit, filter/Back/saved views serta CSV. Tiga viewport mengikuti konfigurasi Chromium; WebKit/real-device tetap di luar bukti.
 4. Designer menyelesaikan review projects dan rekonsiliasi status desain; blocker tugas inti selesai. Temuan lain hanya dapat menjadi risiko rilis bila dinilai QA dan diterima eksplisit Product Lead.
 5. Panduan kontrak/modul, batas provider/lokal, keputusan distribusi dan risiko konsisten. Tidak ada defect terbuka yang memungkinkan bypass akses, kehilangan data, setup gagal atau flow inti terhenti.

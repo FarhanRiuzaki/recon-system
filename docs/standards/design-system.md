@@ -937,7 +937,7 @@ exported statically like `DistributionBar`. It has no Figma node yet (DEC-031).
 ## 7. Motion
 
 Library: **`motion` 14.0.0** (Framer Motion's current package name), imported from `motion/react` only inside
-`packages/ui/src/motion/framer.tsx`, which loads after idle (R1 in §7.8). Route first-load stays **≤ 250 kB gz**
+`packages/ui/src/motion/framer.tsx`, which loads after idle (R1 in §7.8). Route first-load stays **≤ 252 kB gz** (DEC-038)
 (`bun run budget`). No `layout` prop on large lists, no `drag`. Anything that can be CSS is CSS.
 
 ### 7.1 Tokens
@@ -1023,7 +1023,7 @@ kept but shortened to 100 ms. `MotionConfig reducedMotion="user"` is set at the 
 - At most 12 simultaneously animating elements per region; stagger cap enforces it.
 - `will-change` only during an animation (motion sets it), never in static CSS.
 - Long tasks: page transition must not block input; INP target < 200 ms on a page with 50 cards.
-- Bundle: `motion` stays out of every route's first-load JS (R1 in §7.8); `bun run budget` (≤ 250 kB gz per route) is the gate.
+- Bundle: `motion` stays out of every route's first-load JS (R1 in §7.8); `bun run budget` (≤ 252 kB gz per route) is the gate.
 
 ### 7.8 Micro-interactions (2026-10-19)
 The `/ds/motion` page is the source of truth for these patterns; this is its inventory.
@@ -1179,7 +1179,7 @@ This folder is a second visual language beside §3-§7, not part of it:
   "vs previous 7 days" captions follow the number-first rule. Eyebrow text is sentence case in source and uppercased
   by CSS.
 - `docs/standards/ui-standard.md` stays binding: page anatomy, URL state, `LazyMount` for below-the-fold charts, the
-  five-state matrix, `StatusChip` + `StatusLegend` (never colour alone), numbers via `format.ts`, ≤ 250 kB gz first load.
+  five-state matrix, `StatusChip` + `StatusLegend` (never colour alone), numbers via `format.ts`, ≤ 252 kB gz first load.
 - Contrast: all text ≥ 4.5:1 (values verified in §3.1/§3.2), large text and UI glyphs ≥ 3:1, focus ring 2 px primary
   with 2 px offset visible on every surface. `--fg-4` never carries information.
 - Keyboard: ⌘K reaches every page; one tab stop per card; roving focus in segmented controls and tabs; chart

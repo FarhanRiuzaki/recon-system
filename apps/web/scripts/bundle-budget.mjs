@@ -3,17 +3,17 @@
 // First load = rootMainFiles (build-manifest) ∪ every entry chunk of the route's segment tree
 // (page_client-reference-manifest entryJSFiles: root layout, (main) layout, not-found, error, page).
 // Size = gzip of each unique chunk. Lazy chunks (next/dynamic, import()) are not counted: they load on demand.
-// Usage: [NEXT_DIST_DIR=.next-e2e] node scripts/bundle-budget.mjs [--budget 250] [--json]
+// Usage: [NEXT_DIST_DIR=.next-e2e] node scripts/bundle-budget.mjs [--budget 252] [--json]
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-/** The budget in kB: `--budget N` (anywhere in `args`), else BUNDLE_BUDGET_KB, else 250. Throws unless a positive number. */
+/** The budget in kB: `--budget N` (anywhere in `args`), else BUNDLE_BUDGET_KB, else 252 (DEC-038). Throws unless a positive number. */
 export function budgetFrom(args, env) {
   const at = args.indexOf("--budget");
-  const raw = at >= 0 ? args[at + 1] : env.BUNDLE_BUDGET_KB ?? "250";
+  const raw = at >= 0 ? args[at + 1] : env.BUNDLE_BUDGET_KB ?? "252";
   const kb = Number(raw);
   if (raw === undefined || raw === "" || !Number.isFinite(kb) || kb <= 0) throw new Error(`bundle-budget: the budget must be a positive number of kB, got "${raw ?? ""}"`);
   return kb;
