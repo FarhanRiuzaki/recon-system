@@ -20,8 +20,9 @@ Contoh kasus nyata yang harus bisa diekspresikan lewat config **(pemilik)** — 
 - **Harian tanpa carry-over**: KSEI — hanya data yang baru ditarik hari itu; yang tidak match kemarin tidak direcon lagi.
 
 Sukses fase 1 = arsitektur, model data, kontrak config dan desain UI disepakati tim; fondasi (space, source, ingest,
-engine minimal, jadwal, catch-up) terbukti jalan di atas data uji untuk minimal satu config interval dan satu config
-harian, dengan angka throughput terukur. Scope persis fase 1 diputuskan PO (lihat §14).
+engine minimal, jadwal, catch-up) terbukti jalan di atas data uji, dengan angka throughput terukur.
+Scope fase 1 **(PO, 2026-11-19)**: walking skeleton dua config — BI-FAST (`interval` 2 menit, data uji sintetis karena
+format file BI belum diketahui) dan KSEI (`daily`, `carry_over_days = 0`).
 
 ## 2. Pengguna dan kewenangan
 
@@ -38,6 +39,8 @@ Goals
 - Worker auto catch-up setelah mati; jalan di RKE on-prem dengan Postgres HA **(pemilik)**.
 - Rule yang benar-benar bisa toleransi, 1:1 sampai N:1, multi-sumber; setiap match bisa dijelaskan per kondisi.
 - Config berversi, bisa disimulasikan sebelum publish, dan dipublish lewat maker-checker.
+- Export CSV break dan hasil recon **(PO)**: pola CSV Starterkit (`CSV_MAX_ROWS` 10.000, sel dinetralkan dari formula
+  injection). Export PDF ditunda.
 
 Non-goals fase 1 **(Claude, PO bisa mengubah)**
 - AI/NL rule builder, saran match ML, subset-sum N:M, DuckDB, report template builder, archive/purge otomatis,
@@ -365,8 +368,11 @@ designer-recon.
 ## 14. Terbuka
 
 Milik pemilik / PO / infra:
-1. Scope persis fase 1 dan kasus recon pertama (PO). Usulan Claude: walking skeleton satu config interval (mis. BI-FAST) + satu config harian end-to-end
-   (space → source DB + file → tick / run harian → daftar break → sign-off) sebelum melebar.
+1. ~~Scope fase 1~~ — diputuskan PO (§1): BI-FAST interval + KSEI harian.
+1a. **Upload file dari browser + parser Excel** — ditunda ke fase 2 (PO); fase 1 file hanya lewat SFTP/NFS. Legacy
+   menerima upload CSV/Excel sampai 50 MB (`recon-enegine/app/Http/Requests/Recon/StartDataLoadingRequest.php:37`);
+   bila tim ops masih mengirim Excel manual, keputusan ini muncul lagi di fase 2 (butuh jalur upload di luar batas body
+   64 KB dan parser Excel yang dirawat — `exceljs`/`xlsx` di npm tidak aktif, laporan riset).
 2. Cara file BI sampai ke worker di RKE: SFTP pull atau volume NFS (infra).
 3. Replikasi Postgres HA sync atau async — async bisa kehilangan aksi manual terakhir saat failover (infra).
 4. Ada PgBouncer mode transaction di depan Postgres? Menentukan cara LISTEN dan lock (infra).
