@@ -27,6 +27,7 @@ const RAW_SQL_OK: Record<string, string> = {
   "src/modules/ingest/tests/integration/postgres.test.ts": "builds the tables the PostgreSQL connector reads in <test database>_src, a source database, not the app's",
   "src/modules/ingest/tests/integration/engines.test.ts": "builds the tables the MySQL, SQL Server and Oracle connectors read on a test server",
   "src/modules/sources/tests/integration/connection.test.ts": "builds the tables the connection routes read in <test database>_src, a source database, not the app's",
+  "src/db/seed/demo-sources.ts": "the snapshot query of a demo source: text a source database would run, stored in its spec, never sent to ours",
   "src/modules/ingest/copy.ts": "the bulk writes of ingest (DEC-036): one multi-row INSERT … ON CONFLICT DO NOTHING per chunk and the supersede UPDATE of mutable sources; values bound, identifiers fixed",
   "src/modules/ingest/tests/integration/pipeline.test.ts": "builds the tables the pipeline pulls from in <test database>_src, a source database, not the app's",
 };

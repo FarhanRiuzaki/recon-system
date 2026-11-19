@@ -11,5 +11,6 @@ export { type Calendar, type CalendarData, type CoreRecord, fileDateOf, makeCale
 export { type ParsedLine, parseDelimited, parseText } from "./parse";
 export { type ColumnProfile, profile } from "./profile";
 export { previewRows, previewSample } from "./preview";
-export { records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
+export { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
+export { previousBusinessDay, todayIn } from "./rules";
 export { currentRecord, ingestHandlers, ingestHooks, scheduleSource, type SourceState, sourceStates } from "./service";

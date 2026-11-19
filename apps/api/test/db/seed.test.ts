@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
+import type { Page } from "@starterkit/shared/contracts/common";
+import type { SourceDto, SourceFileDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import { seedDemo } from "../../src/db/seed/demo";
 import { seedSystem } from "../../src/db/seed/system";
@@ -13,6 +15,7 @@ import { userIdentities } from "../../src/modules/oauth";
 import { permissions, rolePermissions, roles, userRoles } from "../../src/modules/rbac";
 import { spaceMembers, spaces } from "../../src/modules/spaces";
 import { recoveryCodes, users } from "../../src/modules/users";
+import { call, signIn } from "../helpers/app";
 import { truncateAll } from "../helpers/db";
 
 // Explicit env: never the SEED_SUPERADMIN_* values bun test loads from apps/api/.env.
@@ -184,6 +187,32 @@ describe("seedDemo", () => {
     }
     expect([...new Set(rows.filter((r) => r.username === "viewer").map((r) => r.code))].sort()).toEqual(["ctop", "treasury"]);
     expect(rows.filter((r) => r.username === "google")).toEqual([]);
+  });
+
+  it("demo sources: Treasury's nine (page 04 names) in every state the sources screens show; CTOP reads one through a share", async () => {
+    await seedSystem(db, {});
+    await seedDemo(db);
+    const T = (await db.select({ id: spaces.id }).from(spaces).where(eq(spaces.code, "treasury")))[0]!.id;
+    const C = (await db.select({ id: spaces.id }).from(spaces).where(eq(spaces.code, "ctop")))[0]!.id;
+    const token = await signIn("superadmin");
+    const page = (await (await call("GET", `/v1/spaces/${T}/sources?pageSize=25`, { token })).json()) as Page<SourceRowDto>;
+    const by = new Map(page.items.map((r) => [r.name, r]));
+    expect([...by.keys()].sort()).toEqual(["BI settlement file", "BI-RTGS statement", "Core bank · BI-FAST incoming", "Core bank · BI-FAST outgoing", "Core bank · RTGS",
+      "Core bank · SKNBI", "GL nostro USD", "MT950 · Citi New York", "SKNBI clearing file"]);
+    expect(Object.fromEntries([...by].map(([n, r]) => [n, r.status === "paused" ? "paused" : r.health?.state]))).toEqual({
+      "BI settlement file": "healthy", "BI-RTGS statement": "degraded", "Core bank · BI-FAST incoming": "healthy", "Core bank · BI-FAST outgoing": "degraded",
+      "Core bank · RTGS": "healthy", "Core bank · SKNBI": "degraded", "GL nostro USD": "paused", "MT950 · Citi New York": "healthy", "SKNBI clearing file": "healthy",
+    });
+    expect(by.get("BI settlement file")).toMatchObject({ rowsToday: 9, quarantinedToday: 1 });
+    const bi = by.get("BI settlement file")!.id;
+    const files = (await (await call("GET", `/v1/spaces/${T}/sources/${bi}/files`, { token })).json()) as Page<SourceFileDto>;
+    expect(files.items.map((f) => [f.status, f.version])).toEqual([["ingested", 1], ["ingested", 2], ["rejected", null], ["ingested", 1], ["ingested", 1]]);
+    expect(((await (await call("GET", `/v1/spaces/${T}/sources/${bi}/quarantine`, { token })).json()) as Page<unknown>).total).toBe(21);
+    const gl = (await (await call("GET", `/v1/spaces/${T}/sources/${by.get("GL nostro USD")!.id}`, { token })).json()) as SourceDto;
+    expect(gl.drift?.columns).toHaveLength(3);
+    const viewer = await signIn("viewer");
+    const shared = (await (await call("GET", `/v1/spaces/${C}/sources`, { token: viewer })).json()) as Page<SourceRowDto>;
+    expect(shared.items).toMatchObject([{ name: "BI settlement file", owner: { spaceId: T, name: "Treasury" }, quarantinedToday: null }]);
   });
 
   it("the generator is deterministic", async () => {

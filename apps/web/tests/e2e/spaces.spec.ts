@@ -97,8 +97,8 @@ test("a user without a space sees who adds them and their username, and no switc
 });
 
 /**
- * space.view lists every space, so /spaces opens the first one by name (CTOP, no remembered space) for a holder in no
- * space: the global-setup Superadmin (space.manage: the actions show) and `google` with a role of only space.view and
+ * space.view lists every space, so /spaces opens the first one by name (CTOP, no remembered space) for a holder who
+ * is no member there: the global-setup Superadmin (a source admin of Treasury only; space.manage: the actions show) and `google` with a role of only space.view and
  * user.view (read-only: no Add member, Change roles or Remove). No breadcrumb or "No space yet" screen while a space exists.
  */
 test("a holder of space.view in no space opens the first visible space; only space.manage adds the actions", async ({ page, browser, baseURL }) => {
@@ -214,7 +214,7 @@ test("a member sees who is in the space and what each role may do; a viewer only
   await expect(me.getByRole("cell").nth(1).locator('[data-slot="category-chip"]')).toHaveText(["Config maker", "Operator"]); // one chip per role, SPACE_ROLES order
   await expect(me.getByRole("cell").nth(2)).toContainText("Active");
   await expect(me.getByRole("cell").nth(3)).toContainText("viewer");
-  await expect(table.locator("tbody").getByRole("row")).toHaveCount(4); // the seed's Treasury members
+  await expect(table.locator("tbody").getByRole("row")).toHaveCount(5); // the seed's Treasury members (superadmin among them, a source admin)
 
   // A viewer (no space admin role, no space.manage): no Add member; the row menu holds only View activity (audit.view).
   await expect(page.getByRole("button", { name: "Add member" })).toHaveCount(0);
