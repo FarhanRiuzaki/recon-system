@@ -6,8 +6,6 @@ import { BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, Stat
 import type { Health } from "@starterkit/ui/lib/status";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { ActivityIcon, AlertsIcon, BranchIcon, DiskIcon, LogIcon } from "@starterkit/ui/ui/icons";
-import { ACTION_LABEL } from "@starterkit/shared/audit";
-import { activityChangeText } from "@starterkit/shared/audit-changes";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type { QuarantineRowDto, SourceFileDto, SourceSnapshotDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -15,8 +13,9 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { NoFilters } from "@/lib/shared/queries";
 import { sourceActivity, sourceFiles, sourceQuarantine, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
-import { VERSION_LEGEND, VERSION_STATUS } from "@/lib/shared/source-status";
+import { VERSION_LEGEND, versionChip } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
+import { activitySentence } from "./spec-draft";
 import { versionHref } from "./use-sources";
 
 // The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, versions and
@@ -160,10 +159,14 @@ export function VersionsTable({ spaceId, id }: { spaceId: string; id: string }) 
       empty={{ title: "No versions yet", description: "A version appears here once a source admin or config maker starts one." }}
       columns={() => [
         { key: "version", header: "Version", sortable: true, mobile: "title", cell: (v) => <Link href={versionHref(spaceId, id, v.id)} className={LINK}>Version {v.version}</Link> },
-        { key: "status", header: "State", mobile: "meta", cell: (v) => <StatusChip health={VERSION_STATUS[v.status].health} label={VERSION_STATUS[v.status].label} /> },
+        { key: "status", header: "State", mobile: "meta", cell: (v) => {
+          const c = versionChip(v);
+          const back = c.label === "Sent back" && v.checker ? `Sent back by ${who(v.checker)}` : null;
+          return <span className="grid justify-items-start gap-1"><StatusChip health={c.health} label={c.label} />{back && <span className="text-caption text-fg-3">{back}</span>}</span>;
+        } },
         { key: "maker", header: "Last edited by", mobile: "meta", cell: (v) => who(v.maker) ?? none },
         { key: "submitter", header: "Submitted by", mobile: "meta", cell: (v) => (v.submitter ? `${who(v.submitter)}${v.submittedAt ? ` · ${at(v.submittedAt)}` : ""}` : none) },
-        { key: "checker", header: "Approved by", mobile: "meta", cell: (v) => (v.checker && v.status !== "draft" ? `${who(v.checker)}${v.publishedAt ? ` · ${at(v.publishedAt)}` : ""}` : none) },
+        { key: "checker", header: "Approved by", mobile: "meta", cell: (v) => (v.checker && v.publishedAt ? `${who(v.checker)} · ${at(v.publishedAt)}` : none) },
         { key: "updatedAt", header: "Changed", sortable: true, mobile: "meta", cell: (v) => at(v.updatedAt) },
       ]} />
   );
@@ -176,10 +179,8 @@ export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) 
     <Table<ActivityDto> def={def} title="Activity" description="Newest first; the credential is never recorded" icon={ActivityIcon} rowKey={(e) => e.id}
       empty={{ title: "No activity yet", description: "Entries appear here when someone changes this source, its connection or a version." }}
       columns={() => [
+        { key: "event", header: "What happened", mobile: "title", className: `${WRAP} wrap-anywhere md:min-w-80 w-full`, cell: (e) => <span className="text-fg">{activitySentence(e)}</span> },
         { key: "at", header: "When", mobile: "meta", cell: (e) => at(e.at) },
-        { key: "actor", header: "Who", mobile: "meta", cell: (e) => e.actor.name },
-        { key: "action", header: "What", mobile: "title", cell: (e) => <span className="font-medium text-fg">{(ACTION_LABEL as Record<string, string>)[e.action] ?? e.action}</span> },
-        { key: "changes", header: "Details", mobile: "meta", className: `${WRAP} min-w-64`, cell: (e) => activityChangeText(e.action, e.before, e.after) || none },
       ]} />
   );
 }

@@ -34,4 +34,10 @@ export const VERSION_STATUS: Record<VersionStatus, Status & { description: strin
   published: { health: "healthy", label: "Published", description: "In use: pulls and files are read with it." },
   retired: { health: "stopped", label: "Retired", description: "Replaced by a newer published version; kept for the record." },
 };
-export const VERSION_LEGEND = Object.values(VERSION_STATUS);
+/** A draft a config checker sent back with a comment (its `reviewComment`), shown apart from a plain draft. */
+export const SENT_BACK: Status & { description: string } = {
+  health: "unknown", label: "Sent back", description: "A config checker sent it back with a comment; its maker edits and submits it again.",
+};
+export const VERSION_LEGEND = [VERSION_STATUS.draft, SENT_BACK, VERSION_STATUS.in_review, VERSION_STATUS.published, VERSION_STATUS.retired];
+/** A version's chip: Sent back for a draft with a checker's comment, else its status. */
+export const versionChip = (v: { status: VersionStatus; reviewComment: string | null }) => (v.status === "draft" && v.reviewComment ? SENT_BACK : VERSION_STATUS[v.status]);

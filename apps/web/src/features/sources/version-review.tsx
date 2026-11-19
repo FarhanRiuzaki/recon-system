@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { type ChangeEvent, useState } from "react";
 import { BlockedButton, Failure, Field, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
@@ -21,22 +22,26 @@ import { PageHeader } from "@/components/shell/page-header";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound } from "@/lib/client/api";
 import { SOURCES_KEY } from "@/lib/shared/queries";
-import { VERSION_STATUS } from "@/lib/shared/source-status";
+import { versionChip } from "@/lib/shared/source-status";
 import { VERSION_SHAPE } from "./shapes";
 import { at } from "./source-text";
-import { reviewReason, sampleHead, specDiff } from "./spec-draft";
+import { changes, reviewReason, sampleHead, specDiff } from "./spec-draft";
 import { PreviewResult } from "./steps/fields";
 import type { Preview } from "./steps/model";
-import { sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useVersion } from "./use-sources";
+import { EDIT_REASON, newVersionHref, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useVersion } from "./use-sources";
 
 const nameOf = (v: SourceVersionDetailDto, id: string | null) => (id ? (v.people.find((p) => p.id === id)?.name ?? "a removed user") : null);
 
 /** One sentence under the title: who did what, and what applies meanwhile (Figma 98:9211). */
 function lineOf(v: SourceVersionDetailDto, published: number | null): string {
   if (v.status === "in_review") {
-    return [`Submitted by ${nameOf(v, v.submitterId)}${v.submittedAt ? `, ${at(v.submittedAt)}` : ""}`, "waiting for a config checker",
+    const by = nameOf(v, v.submitterId);
+    const when = v.submittedAt ? at(v.submittedAt) : null;
+    return [by ? `Submitted by ${by}${when ? `, ${when}` : ""}` : `Submitted${when ? ` ${when}` : ""}`, "waiting for a config checker",
       published ? `version ${published} stays published until this is approved` : "nothing is ingested until this is approved"].join(" · ");
   }
+  // sent back (designer's copy, Figma 127:10092)
+  if (v.status === "draft" && v.reviewComment) return ["Draft", "sent back by a config checker", ...(published ? [`version ${published} stays published`] : [])].join(" · ");
   if (v.status === "published") return `Published${v.publishedAt ? ` ${at(v.publishedAt)}` : ""}${v.checkerId ? ` · approved by ${nameOf(v, v.checkerId)}` : ""} · in use`;
   if (v.status === "retired") return `Retired · replaced by a newer published version${v.checkerId ? ` · approved by ${nameOf(v, v.checkerId)}` : ""}`;
   return `Draft · last saved by ${nameOf(v, v.makerId) ?? "nobody yet"}, ${at(v.updatedAt)}`;
@@ -76,7 +81,13 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const published = s.published;
   const isPublished = published?.id === v.id;
   const rows = v.spec ? specDiff(isPublished ? null : (published?.spec ?? null), v.spec) : [];
-  const st = VERSION_STATUS[v.status];
+  const sentBack = v.status === "draft" && !!v.reviewComment;
+  const st = versionChip(v);
+  const maker = roles.includes("source_admin") || roles.includes("config_maker");
+  // the open draft opens in the wizard (a sent-back one included); a role that can't change sources gets the reason
+  const edit = v.status === "draft" && s.draft?.id === v.id && (maker
+    ? <Button asChild><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}>Edit version {v.version}</Link></Button>
+    : <BlockedButton reason={EDIT_REASON}>Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject") {
     setError(null);
@@ -103,11 +114,11 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   return (
     <div className="grid gap-section">
       <PageHeader title={`${s.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
-        description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} />
-      {v.status === "draft" && v.reviewComment && <Notice tone="warn">Sent back by a config checker: {v.reviewComment}</Notice>}
+        description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} actions={edit || undefined} />
+      {sentBack && <Notice tone="warn">Sent back by a config checker: {v.reviewComment}</Notice>}
 
       <Panel flush title={isPublished || !published ? `Settings of version ${v.version}` : `Changes from version ${published.version}`}
-        description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${rows.length} changes; everything else is as in version ${published.version}` : "Nothing differs"}>
+        description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${changes(rows.length)}; everything else is as in version ${published.version}` : "Nothing differs"}>
         {!v.spec ? <p className="px-4 py-6 text-body-sm text-fg-3">This draft has no fields and mapping yet.</p> : rows.length === 0
           ? <p className="px-4 py-6 text-body-sm text-fg-3">The spec is the same as version {published?.version}.</p> : (
             <div className="scroll-quiet overflow-x-auto">
@@ -122,8 +133,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
                     <TableRow key={r.key}>
                       {/* a field, mapping or derived name is a machine value (mono); a setting's name is words */}
                       <TableCell className={/^(field|mapping|attrs|derive):/.test(r.key) ? "font-mono text-mono text-fg" : "text-fg"}>{r.label}</TableCell>
-                      {!isPublished && published && <TableCell className="min-w-56 whitespace-normal text-fg-2">{r.before ?? <span className="text-fg-3">Not there</span>}</TableCell>}
-                      <TableCell className="min-w-56 whitespace-normal text-fg">{r.after ?? <span className="text-fg-3">Removed</span>}</TableCell>
+                      {!isPublished && published && <TableCell className="whitespace-normal wrap-anywhere text-fg-2 md:min-w-56">{r.before ?? <span className="text-fg-3">Not there</span>}</TableCell>}
+                      <TableCell className="whitespace-normal wrap-anywhere text-fg md:min-w-56">{r.after ?? <span className="text-fg-3">Removed</span>}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -134,6 +145,14 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
 
       {v.spec && <VersionPreview spaceId={spaceId} id={id} v={v} canPreview={roles.some((r) => r === "source_admin" || r === "config_maker" || r === "config_checker")} />}
 
+      {/* a decision is for a version in review only (Figma 98:9211); anyone who may not decide sees why (98:9467) */}
+      {v.status === "in_review" && approveWhy && (
+        <Panel title="Your decision" bodyClassName="grid gap-3">
+          <p className="text-body-sm text-fg-2">{[v.submitterId, v.makerId, ...v.contributorIds].includes(user.id) ? "A config checker other than you approves or rejects this version." : "A config checker of this space approves or rejects this version."}</p>
+          <span><BlockedButton reason={approveWhy}>Approve version {v.version}</BlockedButton></span>
+        </Panel>
+      )}
+      {v.status === "in_review" && !approveWhy && (
       <Panel title="Your decision" bodyClassName="grid gap-4">
         <div className="max-w-xl">
           <Field id="src-review-comment" label="Comment" note="Required to reject. The maker sees it with the version." error={commentError}>
@@ -154,6 +173,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
         </div>
         {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
       </Panel>
+      )}
     </div>
   );
 }

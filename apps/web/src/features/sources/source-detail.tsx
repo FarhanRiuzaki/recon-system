@@ -1,6 +1,10 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { toast } from "@starterkit/ui/ui/toast";
 import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -11,14 +15,16 @@ import { BRAND } from "@starterkit/shared/brand";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
-import { isNotFound } from "@/lib/client/api";
+import { api, isNotFound } from "@/lib/client/api";
+import { SOURCES_KEY } from "@/lib/shared/queries";
+import { DiscardDialog } from "./discard-dialog";
 import type { HeaderAction } from "@/components/shell/page-header";
 import { ActivityTable, FilesTable, QuarantineTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
 import { SOURCE_TABS, type SourceTab } from "./source-text";
 import { at, completeText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
-import { EDIT_REASON, newVersionHref, RUN_REASON, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
+import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
 const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", quarantine: "Quarantine", versions: "Versions", activity: "Activity" };
@@ -27,6 +33,10 @@ const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", quarantine:
  * "Edit source" (Build notes 02): the open draft in the wizard, a version in review on its page, or a new draft made
  * from the published version; a role that may not change sources gets the reason.
  */
+/** A source nobody submitted or shared (DELETE …/sources/{id} takes it), for a source admin (designer review 03). */
+export const discardable = (s: SourceDto, roles: readonly string[]) =>
+  roles.includes("source_admin") && !s.owner && s.publishedVersion === null && !s.draft?.submitterId && !s.draft?.reviewComment && !s.shares.length;
+
 export function editAction(s: SourceDto, spaceId: string, roles: readonly string[], start: { busy: boolean; run: () => void }): HeaderAction {
   const may = roles.includes("source_admin") || roles.includes("config_maker");
   if (!may) return { label: "Edit source", reason: EDIT_REASON };
@@ -104,6 +114,9 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const roles = useSpaceRoles(spaceId);
   const run = useRunSource(spaceId, id, q.data?.kind);
   const start = useStartVersion(spaceId, id);
+  const [discarding, setDiscarding] = useState(false);
+  const router = useRouter();
+  const qc = useQueryClient();
   const skeleton = useDelayedFlag(!q.data && !q.error);
 
   if (isNotFound(q.error)) return <DetailNotFound title="Source" noun="source" list={{ href: sourcesHref(spaceId), label: "Sources" }} />;
@@ -128,7 +141,14 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined} more={own ? [edit] : undefined} />
+      <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined}
+        more={own ? [edit, ...(discardable(s, roles) ? [{ label: "Delete draft source", destructive: true, onSelect: () => setDiscarding(true) }] : [])] : undefined} />
+      {discarding && <DiscardDialog name={s.name} onClose={() => setDiscarding(false)} onConfirm={async () => {
+        await api(sourceApi(spaceId, id), { method: "DELETE" });
+        toast(`Deleted the draft source ${s.name}.`);
+        await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+        router.push(sourcesHref(spaceId));
+      }} />}
       {s.owner && (
         <>
           <span><CategoryChip label={`Shared from ${s.owner.name}`} slot="neutral" /></span>
@@ -174,7 +194,8 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
               <Rows items={[
                 { label: "Engine", value: ENGINE[s.connection.engine] },
                 { label: "TLS", value: s.connection.options.tls ? "On" : "Off" },
-                { label: "Connect timeout", value: `${s.connection.options.connectTimeoutSeconds} s` },
+                // a test waits 8 s at most (the API's interactive deadline); this is the scheduled pull's connect option
+                { label: "Connect timeout for scheduled pulls", value: `${s.connection.options.connectTimeoutSeconds} s` },
                 { label: "Changed", value: at(s.connection.updatedAt) },
               ]} />
             </Panel>

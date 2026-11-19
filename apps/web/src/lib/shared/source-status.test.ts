@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceStatus, VERSION_STATUS } from "./source-status";
+import { sourceStatus, versionChip, VERSION_STATUS } from "./source-status";
 
 const health = (state: "healthy" | "degraded" | "down") => ({ state, businessDate: "2026-11-19", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null });
 
@@ -18,5 +18,13 @@ describe("VERSION_STATUS", () => {
     expect(Object.entries(VERSION_STATUS).map(([k, v]) => [k, v.health, v.label])).toEqual([
       ["draft", "unknown", "Draft"], ["in_review", "unknown", "In review"], ["published", "healthy", "Published"], ["retired", "stopped", "Retired"],
     ]);
+  });
+});
+
+describe("versionChip", () => {
+  it("a draft with a checker's comment is Sent back; any other version its status", () => {
+    expect(versionChip({ status: "draft", reviewComment: "fix the key" }).label).toBe("Sent back");
+    expect(versionChip({ status: "draft", reviewComment: null }).label).toBe("Draft");
+    expect(versionChip({ status: "in_review", reviewComment: "old" }).label).toBe("In review");
   });
 });
