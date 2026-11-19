@@ -26,6 +26,7 @@ export { TimeRangePicker, type RangeKey } from "./time-range";
 export { DateRangeControl, type DateRangeControlProps, type TimeRangeRefresh } from "./date-range-control";
 export { RefreshControl, REFRESH_INTERVALS, type RefreshInterval } from "./refresh-control";
 export { ConfirmActionDialog } from "./confirm-action-dialog";
+export { activeElement, focusBack } from "./focus-return";
 export { ActionMenu } from "./action-menu";
 export { BlockedButton } from "./blocked-button";
 export { Checkbox } from "./checkbox";

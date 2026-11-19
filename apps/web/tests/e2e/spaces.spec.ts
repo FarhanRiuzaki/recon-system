@@ -191,3 +191,93 @@ test("a member sees who is in the space and what each role may do; a viewer only
     await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   }
 });
+
+/**
+ * Demo seed: FICO's only space admin is a generated user (no space.manage), its other member a generated Operator +
+ * Viewer. The space admin adds `viewer` with two roles, changes them, can't leave them empty, removes them; their own
+ * row can't be removed and their Space admin role is locked. The test leaves FICO as the seed made it.
+ */
+test("a space admin adds a member, changes their roles and removes them; the last space admin is kept", async ({ page, browser, baseURL }) => {
+  const ids = await spaceIds(browser, baseURL);
+  const su = await browser.newContext({ storageState: AUTH_STATE, baseURL });
+  const r = await su.request.get(`/api/spaces/${ids.fico}/members?pageSize=100`);
+  const members = ((await r.json()) as { items: { name: string; username: string; roles: string[] }[] }).items;
+  await su.close();
+  const admin = members.find((m) => m.roles.includes("space_admin"))!;
+  const other = members.find((m) => m !== admin)!;
+
+  await signIn(page, admin.username);
+  await expect(page).toHaveURL("/");
+  await page.goto(`/spaces/${ids.fico}/members`);
+  const table = page.getByRole("table", { name: "Members" });
+  const row = (name: string) => table.getByRole("row").filter({ hasText: name });
+  const chips = (name: string) => row(name).getByRole("cell").nth(1).locator('[data-slot="category-chip"]');
+
+  // Add member: the person and at least one role; members are marked and can't be picked; Source admin is an app admin's.
+  await page.getByRole("button", { name: "Add member" }).click();
+  let dialog = page.getByRole("dialog", { name: "Add a member to FICO" });
+  await expect(dialog.getByText("People sign in with their bank directory account. Only people who have signed in once can be found.")).toBeVisible();
+  const add = dialog.getByRole("button", { name: "Add member" });
+  await expect(add).toBeDisabled();
+  const sourceAdmin = dialog.getByRole("checkbox", { name: "Source admin" });
+  await expect(sourceAdmin).toHaveAttribute("aria-readonly", "true");
+  await expect(sourceAdmin).toHaveAccessibleDescription("Only an app admin can grant or remove Source admin.");
+  await expect(dialog.locator("label").getByText("Only an app admin can grant or remove Source admin.")).toBeVisible();
+  const person = dialog.getByRole("combobox", { name: "Person" });
+  await person.fill(other.name);
+  await expect(dialog.getByRole("option").filter({ hasText: `${other.username} (already a member)` }).first()).toHaveAttribute("aria-disabled", "true");
+  await person.fill("Viewer User");
+  await dialog.getByRole("option").filter({ hasText: "Viewer User" }).click();
+  await expect(add).toBeDisabled(); // no role yet
+  await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
+  await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).click();
+  await add.click();
+  await expect(page.getByText("Added Viewer User to FICO.")).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add member" })).toBeFocused();
+  await expect(chips("Viewer User")).toHaveText(["Operator", "Reviewer"]);
+
+  // Change roles: Save roles waits for a change; an empty set says how to remove instead.
+  await row("Viewer User").getByRole("button", { name: "Actions for Viewer User" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["View activity", "Change roles", "Remove from space"]);
+  await page.getByRole("menuitem", { name: "Change roles" }).click();
+  dialog = page.getByRole("dialog", { name: "Change roles for Viewer User" });
+  await expect(dialog.getByText("Roles apply to the FICO space only.")).toBeVisible();
+  const save = dialog.getByRole("button", { name: "Save roles" });
+  await expect(save).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
+  await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("Pick at least one role. To take Viewer User out of this space, use Remove from space.");
+  await expect(save).toBeDisabled();
+  await dialog.getByRole("checkbox", { name: "Viewer", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await save.click();
+  await expect(page.getByText("Changed the roles of Viewer User.")).toBeVisible();
+  await expect(chips("Viewer User")).toHaveText(["Viewer"]);
+
+  // Remove from space: destructive confirm, no break or approval lines in this phase.
+  await row("Viewer User").getByRole("button", { name: "Actions for Viewer User" }).click();
+  await page.getByRole("menuitem", { name: "Remove from space" }).click();
+  dialog = page.getByRole("dialog", { name: "Remove Viewer User from FICO?" });
+  await expect(dialog.getByText("Viewer User loses access to FICO right away. Viewer User's past actions stay in the activity log.")).toBeVisible();
+  await expect(dialog.getByText("Impact")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Remove from space" }).click();
+  await expect(page.getByText("Removed Viewer User from FICO.")).toBeVisible();
+  await expect(row("Viewer User")).toHaveCount(0);
+  await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeFocused(); // its row is gone
+
+  // The only space admin: Remove from space is off with the reason; Space admin is locked in Change roles.
+  const mine = row(admin.name).getByRole("button", { name: `Actions for ${admin.name}` });
+  await mine.click();
+  const blocked = page.getByRole("menuitem", { name: /Remove from space/ });
+  await expect(blocked).toHaveAttribute("aria-disabled", "true");
+  await expect(blocked).toContainText("A space needs at least one space admin.");
+  await page.getByRole("menuitem", { name: "Change roles" }).click();
+  dialog = page.getByRole("dialog", { name: `Change roles for ${admin.name}` });
+  await expect(dialog.getByRole("checkbox", { name: "Space admin" })).toHaveAttribute("aria-readonly", "true");
+  await expect(dialog.getByRole("checkbox", { name: "Space admin" })).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.getByText(`Space admin can't be removed: ${admin.name} is the only space admin, and a space needs at least one. Make someone else a space admin first.`)).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(mine).toBeFocused(); // focus back on the row's menu button
+});
