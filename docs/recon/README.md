@@ -33,3 +33,12 @@ Temuan review Plan 1 yang sengaja tidak dikerjakan di Plan 1 (sumber: review per
 | Plan 2 | Pindahkan `validate`/`LIMITS`/`ALLOWED_FUNCTIONS` CEL dari skrip spike ke modul; pin alasan penolakan; uji `has`. Driver DB per engine (Oracle wajib diuji ke server nyata — gate REC-F2). Runbook deploy: role aplikasi non-superuser tanpa `BYPASSRLS`. COPY Bun.SQL diuji di versi pin. |
 | Plan 3/4 | `expireInSeconds` per antrean untuk `recon.daily`/`recon.heavy` (default 900 s). Maintenance pg-boss di bawah `statement_timeout` 5 s saat volume besar. Engine: *mutual unique best* wajib (S1 menemukan 1 pasangan salah tanpa itu) dan run harian diproses per chunk. Handler tidak boleh memblok event loop > heartbeat 30 s. |
 | Pemilik / IT risk | REC-Q11: Admin bawaan (instalasi baru) punya `space.manage` → bisa memasukkan dirinya ke space mana pun (tercatat). Revoke rbac tidak mengambil lock `spaceAdmins` (race kecil yang sudah ada sebelumnya). |
+
+## Bawaan dari Plan 1b untuk plan berikutnya
+
+| Ke | Item |
+|---|---|
+| Plan 2 (task pertama) | Halaman per space kedua → pindahkan cek keanggotaan ke `spaces/[spaceId]/layout.tsx` bersama. Guard memakai `FOR SHARE` tiap request. Guard belum memblok space yang diarsipkan. Palette/shortcut masih menampilkan Members untuk user tanpa space. Cek `ssr: false` belum mengenali `dynamic<Props>(`, `dynamic (`, dan alias impor bernama. |
+| Plan 5 | Hapus user yang bukan admin terakhir tidak menulis activity `space.member_remove`. Dialog hapus anggota: baris dampak break/approval. |
+| Kapan saja | Pesan 409 `last_space_admin` dari users menyebut nama space ke pemegang `user.*` tanpa `space.view`. Data demo tanpa anggota nonaktif / belum pernah sign in. Hasil bulk bergantung urutan id bila dua admin satu space ada di satu request. Space yang diarsipkan masih dihitung aturan admin terakhir. |
+| Performa | REC-PERF-1 (P2): duplikasi modul DS antar chunk first-load. |
