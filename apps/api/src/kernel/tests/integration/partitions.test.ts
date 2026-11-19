@@ -78,6 +78,13 @@ describe("ensureMonthPartitions", () => {
     expect(await refused(sql`create temp table bad_probe (space_id uuid, created_on date) partition by range (created_on) on commit drop`)).toContain(notDomain); // another key column
     expect(await refused(sql`create temp table bad_probe (space_id uuid, business_date timestamptz) partition by range (business_date) on commit drop`)).toContain(notDomain); // not a date
     expect(await refused(sql`create temp table bad_probe (ref text, business_date date) partition by range (business_date) on commit drop`)).toContain(notDomain); // no space_id
+    // a domain table in every other way, but owned by another role: the definer must not act for that owner
+    await client`do $$ begin create role recon_noexec_probe nologin nosuperuser nobypassrls; exception when duplicate_object or unique_violation then null; end $$`;
+    expect(await db.transaction(async (tx) => {
+      await tx.execute(sql`create temp table bad_probe (space_id uuid, business_date date) partition by range (business_date) on commit drop`);
+      await tx.execute(sql`alter table bad_probe owner to recon_noexec_probe`);
+      await tx.execute(sql`select recon_ensure_month_partitions('bad_probe'::regclass, '2026-11-01'::date, 1)`);
+    }).then(() => "created", (e: unknown) => String((e as { cause?: unknown }).cause ?? e))).toContain(notDomain); // rolled back: the table goes with it
   });
 
   it("runs only for a role granted EXECUTE (db:migrate grants APP_DB_ROLE), with search_path pinned to pg_catalog, pg_temp", async () => {
