@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { RunSourceDto, SourceDto } from "@starterkit/shared/contracts/sources";
+import type { SourceKind } from "@starterkit/shared/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { INGEST_KEY, sourceDetail, SOURCES_KEY, spaceDetail } from "@/lib/shared/queries";
@@ -29,13 +30,16 @@ export function useSpaceRoles(spaceId: string) {
  * POST …/run: queues a pull (a snapshot source: of `businessDate`). Pending on the trigger, a result toast, the
  * API's reason on failure (409 day_closed, invalid_state); the source and its ingest tables refresh after.
  */
-export function useRunSource(spaceId: string, id: string) {
+export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (businessDate?: string) => api<RunSourceDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(id)}/run`, {
       method: "POST", body: JSON.stringify(businessDate ? { businessDate } : {}),
     }),
-    onSuccess: (r) => toast(r.queued ? "Pull queued. The source updates when it finishes." : "A pull was already waiting; it takes this one in."),
+    onSuccess: (r) => {
+      const what = kind === "file_inbox" ? "folder check" : "pull";
+      toast(r.queued ? `${what[0]!.toUpperCase()}${what.slice(1)} queued. The source updates when it finishes.` : `A ${what} was already waiting; it takes this one in.`);
+    },
     onError: (e) => toast.error(errorText(e)),
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
   });

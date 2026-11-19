@@ -18,7 +18,7 @@ const snapshot = (o: Partial<HealthSource> = {}): HealthSource => ({
 
 describe("sourceHealth: a pulled source (watermark) by lag against the grace", () => {
   it("healthy within half the grace, degraded past half, down past the grace; date, lag and complete_through in the answer", () => {
-    expect(sourceHealth(watermark(), NOW)).toEqual({ state: "healthy", businessDate: "2026-11-03", lagSeconds: 60, completeThrough: min(1).toISOString(), reason: null });
+    expect(sourceHealth(watermark(), NOW)).toEqual({ state: "healthy", businessDate: "2026-11-03", lagSeconds: 60, completeThrough: min(1).toISOString(), reason: null, missingDate: null });
     expect(sourceHealth(watermark({ completeThrough: min(6) }), NOW)).toMatchObject({ state: "degraded", lagSeconds: 360 });
     expect(sourceHealth(watermark({ completeThrough: min(11) }), NOW)).toMatchObject({ state: "down", lagSeconds: 660 });
   });
@@ -34,9 +34,9 @@ describe("sourceHealth: a source per business date (snapshot, file) by the busin
     expect(sourceHealth(snapshot({ lastError: "The server did not answer within 120 s." }), NOW).state).toBe("healthy");
   });
   it("not active yet: degraded before the daily deadline, down from it, with the date in the reason", () => {
-    expect(sourceHealth(snapshot({ latestActiveDate: "2026-10-30" }), NOW)).toMatchObject({ state: "degraded", reason: "No active snapshot for 2026-11-02" });
+    expect(sourceHealth(snapshot({ latestActiveDate: "2026-10-30" }), NOW)).toMatchObject({ state: "degraded", reason: "No active snapshot for 2026-11-02", missingDate: "2026-11-02" });
     expect(sourceHealth(snapshot({ latestActiveDate: null, deadline: NOW }), NOW)).toMatchObject({ state: "down", reason: "No active snapshot for 2026-11-02" });
-    expect(sourceHealth(snapshot({ kind: "file_inbox", latestActiveDate: null, deadline: null }), NOW)).toMatchObject({ state: "degraded", reason: "No ingested file for 2026-11-02" });
+    expect(sourceHealth(snapshot({ kind: "file_inbox", latestActiveDate: null, deadline: null }), NOW)).toMatchObject({ state: "degraded", reason: "No ingested file for 2026-11-02", missingDate: "2026-11-02" });
   });
   it("over a weekend: on Saturday and on Monday morning the date in progress is Friday", () => {
     const fri = "2026-11-06";
@@ -53,6 +53,6 @@ describe("sourceHealth: a paused source", () => {
   it("is down with its last error, whatever its data", () => {
     expect(sourceHealth(snapshot({ status: "paused", lastError: "Column \"sid\" is no longer in the query." }), NOW))
       .toMatchObject({ state: "down", reason: "Column \"sid\" is no longer in the query." });
-    expect(sourceHealth(watermark({ status: "paused", lastError: null }), NOW)).toMatchObject({ state: "down", reason: "Paused" });
+    expect(sourceHealth(watermark({ status: "paused", lastError: null }), NOW)).toMatchObject({ state: "down", reason: "Paused", missingDate: null });
   });
 });

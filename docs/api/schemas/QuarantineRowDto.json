@@ -17,6 +17,38 @@
     "originId": {
       "type": "string"
     },
+    "file": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "version"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "line": {
       "type": "integer",
       "minimum": -9007199254740991,
@@ -48,6 +80,7 @@
     "id",
     "origin",
     "originId",
+    "file",
     "line",
     "raw",
     "reasons",

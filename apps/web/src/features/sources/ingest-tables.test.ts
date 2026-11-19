@@ -27,7 +27,7 @@ describe("Pull <date> again (Figma 27:7215, 31:7924, state d)", () => {
 
 describe("quarantine reasons", () => {
   it("per column, and a whole-line fault alone", () => {
-    expect(reasonsText({ sid: "Empty; sid can't be empty", opened_on: "'20211301' isn't a date" })).toBe("sid: Empty; sid can't be empty · opened_on: '20211301' isn't a date");
+    expect(reasonsText({ sid: "Empty; sid can't be empty", opened_on: "'20211301' isn't a date" })).toBe("sid: empty; sid can't be empty · opened_on: '20211301' isn't a date");
     expect(reasonsText({ _row: "Expected 14 columns, found 13" })).toBe("Expected 14 columns, found 13");
   });
 });

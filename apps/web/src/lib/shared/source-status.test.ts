@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sourceStatus } from "./source-status";
 
-const health = (state: "healthy" | "degraded" | "down") => ({ state, businessDate: "2026-11-19", lagSeconds: null, completeThrough: null, reason: null, lastError: null });
+const health = (state: "healthy" | "degraded" | "down") => ({ state, businessDate: "2026-11-19", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null });
 
 describe("sourceStatus", () => {
   it("shows the API's health; paused is stopped whatever the health says; no published version is Draft", () => {

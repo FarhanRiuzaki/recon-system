@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BlockedButton, CategoryChip, Failure, Notice, Panel, RouteTabs } from "@starterkit/ui/ds";
-import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
+import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { KeyIcon, NetworkIcon } from "@starterkit/ui/ui/icons";
@@ -16,7 +15,7 @@ import { isNotFound } from "@/lib/client/api";
 import { FilesTable, QuarantineTable, SnapshotsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
-import { at, completeText, day, KIND_LABEL, lagText, missingText, withDays } from "./source-text";
+import { at, completeText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
 import { newVersionHref, RUN_REASON, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
@@ -37,7 +36,7 @@ function Rows({ items }: { items: { label: string; value: string }[] }) {
   );
 }
 
-/** "Version 1 · Database · snapshot per date · Oracle · daily cron 0 6 * * *": what the source is, never where it connects. */
+/** "Version 1 · Database · snapshot per date · Oracle · Daily at 06:00 WIB": what the source is, never where it connects. */
 function summary(s: SourceDto): string {
   const input = s.published?.spec?.input;
   return [
@@ -45,43 +44,36 @@ function summary(s: SourceDto): string {
     s.publishedVersion ? `Version ${s.publishedVersion}` : "No approved version yet",
     KIND_LABEL[s.kind],
     s.connection ? ENGINE[s.connection.engine] : null,
-    input?.kind === "file_inbox" ? `files ${input.pattern}` : input?.kind === "db_snapshot" ? `scheduled ${input.schedule} (${APP_TIME_ZONE_LABEL})` : null,
+    input?.kind === "file_inbox" ? `files ${input.pattern}, checked every minute` : input?.kind === "db_snapshot" ? scheduleText(input.schedule) : input ? "pulled every minute" : null,
   ].filter(Boolean).join(" · ");
 }
 
+type DriftColumn = NonNullable<SourceDto["drift"]>["columns"][number];
+const DRIFT_COLUMNS = (version: number | null): Column<DriftColumn>[] => [
+  { key: "column", header: "Column", mobile: "title", cell: (c) => <span className="font-mono text-mono text-fg">{c.column}</span> },
+  { key: "expected", header: `Version ${version ?? ""} expects`, mobile: "meta", cell: (c) => c.expected },
+  { key: "found", header: "Found now", mobile: "meta", cell: (c) => c.found ?? "Missing" },
+  { key: "effect", header: "Effect", mobile: "meta", className: "whitespace-normal min-w-64 w-full", cell: (c) => c.effect },
+];
+
 /**
- * Figma 96:8690 (state c): the source stopped because its table changed; per column what its version expects, what is
- * there now and the effect, and the way out: a new source version (the wizard, Task 7).
+ * Figma 96:8690 / 99:9757 (state c): the source stopped because its table changed; per column what its version
+ * expects, what is there now and the effect (a card per column on a phone), and the way out: a new source version
+ * (the wizard, Task 7).
  */
 function Drift({ s, spaceId }: { s: SourceDto; spaceId: string }) {
   const d = s.drift!;
   return (
-    <Panel title="What changed in the source table" description={`Checked against version ${s.publishedVersion ?? "–"} at ${at(d.checkedAt)}`}>
-      <div className="grid gap-4">
-        <div className="scroll-quiet overflow-x-auto" tabIndex={0} role="region" aria-label="What changed, per column">
-          <table className="w-full text-body-sm">
-            <caption className="sr-only">Columns that no longer fit version {s.publishedVersion}</caption>
-            <thead><tr className="text-left text-fg-3">{["Column", `Version ${s.publishedVersion ?? ""} expects`, "Found now", "Effect"].map((h) => <th key={h} scope="col" className="py-2 pr-4 font-normal">{h}</th>)}</tr></thead>
-            <tbody>
-              {d.columns.map((c) => (
-                <tr key={c.column} className="border-t border-line align-top">
-                  <td className="py-2 pr-4 font-mono text-mono text-fg">{c.column}</td>
-                  <td className="py-2 pr-4 text-fg-2">{c.expected}</td>
-                  <td className="py-2 pr-4 text-fg-2">{c.found ?? "Missing"}</td>
-                  <td className="py-2 text-fg-2">{c.effect}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {!s.owner && (
-          <div className="flex flex-wrap items-center gap-3">
-            {/* no prefetch: the wizard's route arrives with Task 7 */}
-            <Button asChild><Link href={newVersionHref(spaceId, s.id)} prefetch={false}>Create a source version</Link></Button>
-            <p className="max-w-[72ch] text-caption text-fg-3">Opens step 2 with the columns the table has now. Recons keep reading the stored data until the new version is approved.</p>
-          </div>
-        )}
-      </div>
+    <Panel flush title="What changed in the source table" description={`Checked against version ${s.publishedVersion ?? "–"} at ${at(d.checkedAt)}`}
+      footnote={!s.owner && (
+        <span className="flex flex-wrap items-center gap-3">
+          {/* no prefetch: the wizard's route arrives with Task 7 */}
+          <Button asChild><Link href={newVersionHref(spaceId, s.id)} prefetch={false}>Create a source version</Link></Button>
+          <span className="max-w-[72ch] text-caption text-fg-3">Opens step 2 with the columns the table has now. Recons keep reading the stored data until the new version is approved.</span>
+        </span>
+      )}>
+      <DataTable label={`Columns that no longer fit version ${s.publishedVersion ?? ""}`} columns={DRIFT_COLUMNS(s.publishedVersion)} rows={d.columns} rowKey={(c) => c.column}
+        empty={{ icon: NetworkIcon, title: "No column changed", description: "The source paused for another reason; see the notice above." }} />
     </Panel>
   );
 }
@@ -95,7 +87,7 @@ function Drift({ s, spaceId }: { s: SourceDto; spaceId: string }) {
 export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string; tab: SourceTab }) {
   const q = useSource(spaceId, id);
   const roles = useSpaceRoles(spaceId);
-  const run = useRunSource(spaceId, id);
+  const run = useRunSource(spaceId, id, q.data?.kind);
   const skeleton = useDelayedFlag(!q.data && !q.error);
 
   if (isNotFound(q.error)) return <DetailNotFound title="Source" noun="source" list={{ href: sourcesHref(spaceId), label: "Sources" }} />;
@@ -110,18 +102,18 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const date = s.kind === "db_snapshot" ? h?.businessDate : undefined;
   const pull = own && (
     <BlockedButton variant="secondary" reason={blocked} disabled={run.isPending} aria-busy={run.isPending || undefined} onClick={() => run.mutate(date)}>
-      {date ? `Pull ${day(date)} now` : "Pull now"}
+      {date ? `Pull ${day(date)} now` : s.kind === "file_inbox" ? "Check the folder now" : "Pull now"}
     </BlockedButton>
   );
   const quarantineTab = own ? (tab === "quarantine" ? "quarantine" : "overview") : "overview";
-  const missing = !!h && s.status === "active" && s.kind !== "db_watermark" && !!h.reason?.startsWith("No ");
+  const missing = !!h?.missingDate;
 
   return (
     <div className="grid gap-section">
       <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined} />
       {s.owner && (
         <>
-          <span><CategoryChip label={`Shared from ${s.owner.name}`} slot={1} /></span>
+          <span><CategoryChip label={`Shared from ${s.owner.name}`} slot="neutral" /></span>
           <Notice>{s.owner.name} owns this source. Only {s.owner.name}&apos;s source admins change it; here you can read its files and snapshots and use it in recons.</Notice>
         </>
       )}
@@ -137,7 +129,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
         <>
           {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this source; showing the last loaded details.</Notice>}
           {s.status === "paused" && (
-            <Notice tone="warn">Paused: {withDays(h?.lastError ?? "the source changed.")} Pulls stay paused until a source version matches it; data already stored is kept.</Notice>
+            <Notice tone="warn">Paused. {h?.lastError ? errorSentence(h.lastError) : "The source changed."} Pulls stay paused until a source version matches it; data already stored is kept.</Notice>
           )}
           {s.status === "paused" && s.drift && <Drift s={s} spaceId={spaceId} />}
           {missing && <Notice tone="warn">{missingText(s)}</Notice>}
@@ -151,7 +143,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 { label: "Complete through", value: completeText(s) },
                 { label: "Behind by", value: lagText(s) ?? "–" },
                 { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min` : "Not set" },
-                { label: "Last error", value: h.lastError ? withDays(h.lastError) : "None" },
+                { label: "Last error", value: h.lastError ? errorSentence(h.lastError) : "None" },
                 { label: "Next pull", value: s.nextRunAt ? at(s.nextRunAt) : "None while paused" },
               ]} />
             </Panel>

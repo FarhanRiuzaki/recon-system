@@ -45,13 +45,20 @@ test("file inbox (a, e): a resend is Rejected by its sha256, a file's version 2 
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("listitem")).toHaveText(["Sources", /BI settlement file$/]);
   const files = page.getByRole("table", { name: "Files" });
   await expect(files.getByRole("row").filter({ hasText: "Rejected" })).toContainText(/Same file already ingested\. Its sha256 \(9f2c…a71e\) matches the file from .+; nothing changed\./);
-  await expect(files.getByRole("row").filter({ hasText: "version 2 of" })).toContainText("2 new records, 10 already stored");
+  const v2 = files.getByRole("row").filter({ hasText: "version 2 of" });
+  await expect(v2).toContainText("2 new records, 10 already stored");
+  await expect(v2.getByRole("cell").nth(3)).toHaveText(/\D2$/); // Records = what this file added (Figma 95:8429)
+  // the Result line wraps in its column: nothing runs past the card
+  expect(await files.locator("xpath=ancestor::div[@data-slot='table-container']").evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(page.getByRole("button", { name: "Check the folder now", exact: true })).toBeVisible();
 
   await page.getByRole("link", { name: /^Quarantine/ }).click();
   await expect(page).toHaveURL(/tab=quarantine/);
   const q = page.getByRole("table", { name: "Quarantine" });
   await expect(q.locator("tbody").getByRole("row")).toHaveCount(15);
   await expect(q).toContainText("Expected 3 columns, found 2");
+  await expect(q.getByRole("columnheader")).toHaveText(["Row", "File", "Reason, per column", "Raw line", "Business date"]);
+  await expect(q.locator("tbody").getByRole("row").first()).toContainText(/bisettle\d{8}\.txt · version 1/);
   await expect(page.getByText("Quarantined rows never become breaks and can't be released by hand.", { exact: false })).toBeVisible();
   await page.getByRole("navigation", { name: "Quarantine pages" }).getByRole("button", { name: "Page 2", exact: true }).click();
   await expect(page).toHaveURL(/tab=quarantine.*page=2|page=2.*tab=quarantine/);
@@ -61,7 +68,13 @@ test("file inbox (a, e): a resend is Rejected by its sha256, a file's version 2 
 test("snapshots: a failed re-pull keeps the active one (b); no active snapshot says when the next pull runs (31:7924); paused shows what changed (c)", async ({ page, baseURL }) => {
   const ids = await demoIds(baseURL);
   await page.goto(`/spaces/${ids.treasury}/sources/${ids.coreRtgs}`);
-  await expect(page.getByText(/^Showing the active snapshot for .+; the re-pull at .+ failed: .+ Nothing was replaced\.$/)).toBeVisible();
+  const kept = page.getByText(/^Showing the active snapshot for .+; the re-pull at .+ failed\. .+ Nothing was replaced\.$/);
+  await expect(kept).toBeVisible();
+  expect((await kept.innerText()).match(/Nothing was replaced/g)).toHaveLength(1);
+  await expect(page.getByText(/· Daily at 06:00 WIB$/)).toBeVisible(); // the schedule in words, not a cron
+  // the Actions column is on screen at 1440 without scrolling the table
+  const action = page.getByRole("button", { name: /^Pull \d{1,2} \w{3} again$/ }).first();
+  await expect(action).toBeInViewport();
   const snaps = page.getByRole("table", { name: "Snapshots" });
   for (const s of ["Active", "Failed", "Superseded"]) await expect(snaps.getByText(s, { exact: true }).first()).toBeVisible();
 
@@ -71,7 +84,7 @@ test("snapshots: a failed re-pull keeps the active one (b); no active snapshot s
   await expect(notice).not.toContainText(/retry (every|in) /); // phase 1 has no automatic retry interval
 
   await page.goto(`/spaces/${ids.treasury}/sources/${ids.glNostro}`);
-  await expect(page.locator("p").filter({ hasText: /^Paused: / })).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: /^Paused\. / })).toBeVisible();
   const drift = page.getByRole("table", { name: /Columns that no longer fit/ });
   await expect(drift.getByRole("row").filter({ hasText: "ref" }).first()).toContainText("Missing");
   await expect(page.getByRole("link", { name: "Create a source version" })).toHaveAttribute("href", `/spaces/${ids.treasury}/sources/${ids.glNostro}/versions/new?step=2`);
@@ -111,6 +124,14 @@ test("a source shared from another space is read-only there (h); a space.view ho
     await expect(row).toHaveCount(1);
     await expect(row).toContainText("Shared from Treasury");
     await expect(row).toContainText("Read-only here · owned by Treasury");
+    // ?tab=quarantine on a shared source shows the Overview, all of it rendered by the server: no /api read after load
+    const reads: string[] = [];
+    v.on("request", (r) => { if (new URL(r.url()).pathname.startsWith("/api/")) reads.push(new URL(r.url()).pathname); });
+    await v.goto(`/spaces/${ids.ctop}/sources/${ids.biSettlement}?tab=quarantine`);
+    await expect(v.getByRole("table", { name: "Files" }).getByRole("row").nth(1)).toBeVisible();
+    await v.waitForLoadState("networkidle");
+    expect(reads).toEqual([]);
+    await v.goto(`/spaces/${ids.ctop}/sources`);
     await row.getByRole("link", { name: "BI settlement file" }).click();
     await expect(v.getByRole("heading", { level: 1, name: "BI settlement file" })).toBeVisible();
     await expect(v.getByLabel(/^Sources, page/)).toHaveCount(0); // the list's held copy has gone

@@ -14,6 +14,25 @@ export const day = (date: string) => formatDate(appDayStart(date));
 export const at = (iso: string) => `${formatDateTime(Date.parse(iso))} ${APP_TIME_ZONE_LABEL}`;
 /** The API's sentences carry business dates as yyyy-mm-dd; shown as the app writes dates. */
 export const withDays = (text: string) => text.replace(/\b\d{4}-\d{2}-\d{2}\b/g, day);
+/** A last error as a sentence of its own: without the API's "Snapshot yyyy-mm-dd: " lead (the screen names the date). */
+export const errorSentence = (text: string) => withDays(text.replace(/^Snapshot \d{4}-\d{2}-\d{2}: /, ""));
+/** A reason after "column: ": lower case unless it starts with an acronym or a code ("Empty; …" → "empty; …"). */
+export const afterColon = (text: string) => (/^[A-Z][a-z]/.test(text) ? text[0]!.toLowerCase() + text.slice(1) : text);
+
+/** "The date's snapshot or file hasn't arrived": what the API's missingDate names, in the kind's words. */
+export const missingLabel = (kind: SourceKind, date: string) => `${kind === "db_snapshot" ? "No active snapshot" : "No ingested file"} for ${day(date)}`;
+
+const pad = (n: string) => n.padStart(2, "0");
+/**
+ * A schedule as words, for the crons sources use (minute and hour fixed, every day or Monday to Friday, or every
+ * minute); any other cron is shown as it is.
+ */
+export function scheduleText(cron: string): string {
+  if (cron.trim() === "* * * * *") return "Every minute";
+  const m = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5)$/.exec(cron.trim());
+  if (!m || Number(m[1]) > 59 || Number(m[2]) > 23) return `Cron ${cron} (${APP_TIME_ZONE_LABEL})`;
+  return `${m[3] === "*" ? "Daily" : "Weekdays"} at ${pad(m[2]!)}:${pad(m[1]!)} ${APP_TIME_ZONE_LABEL}`;
+}
 
 /**
  * The "Complete through" cell: a date delivered per business date that hasn't arrived says so (the API's reason);
@@ -23,7 +42,7 @@ export const withDays = (text: string) => text.replace(/\b\d{4}-\d{2}-\d{2}\b/g,
 export function completeText(s: Pick<SourceRowDto, "kind" | "health">): string {
   const h = s.health;
   if (!h) return "Not ingesting yet";
-  if (s.kind !== "db_watermark" && h.reason?.startsWith("No ")) return withDays(h.reason);
+  if (h.missingDate) return missingLabel(s.kind, h.missingDate);
   if (!h.completeThrough) return "Nothing complete yet";
   return s.kind === "db_watermark" ? `Through ${at(h.completeThrough)}` : `Through ${formatDate(Date.parse(h.completeThrough) - 1)}`;
 }
@@ -55,20 +74,22 @@ export function keptSnapshot(rows: readonly SourceSnapshotDto[]): string | null 
   for (const f of rows) {
     if (f.status !== "failed") continue;
     const a = rows.find((r) => r.status === "active" && r.businessDate === f.businessDate && r.startedAt < f.startedAt);
-    if (a) return `Showing the active snapshot for ${day(a.businessDate)} from ${at(a.finishedAt ?? a.startedAt)}; the re-pull at ${at(f.startedAt)} failed${f.error ? `: ${f.error}` : "."} Nothing was replaced.`;
+    if (a) return `Showing the active snapshot for ${day(a.businessDate)} from ${at(a.finishedAt ?? a.startedAt)}; the re-pull at ${at(f.startedAt)} failed.${f.error ? ` ${errorSentence(f.error)}` : ""} Nothing was replaced.`;
   }
   return null;
 }
 
 /**
- * Figma 31:7924: why a date delivered per business date isn't there yet, the last failure, the next scheduled run (no
- * automatic retry in phase 1: the next run or Pull now) and, while Degraded with a deadline, when it turns Down.
+ * Figma 31:7924: which date hasn't arrived, the last failure, when it is tried again (no automatic retry in phase 1:
+ * the next scheduled pull or Pull now; a file inbox is checked every minute) and, while Degraded with a deadline,
+ * when it turns Down.
  */
-export function missingText(s: Pick<SourceDto, "health" | "nextRunAt">): string {
+export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt">): string {
   const h = s.health!;
-  const out = [`${withDays(h.reason ?? "")}.`];
-  if (h.lastError) out.push(`The last run failed: ${withDays(h.lastError)}`);
-  if (s.nextRunAt) out.push(`The next scheduled pull is at ${at(s.nextRunAt)}. Pull now to retry sooner.`);
+  const out = [`${missingLabel(s.kind, h.missingDate ?? h.businessDate)}.`];
+  if (h.lastError) out.push(`The last run failed. ${errorSentence(h.lastError)}`);
+  if (s.kind === "file_inbox") out.push("The folder is checked every minute.");
+  else if (s.nextRunAt) out.push(`The next scheduled pull is at ${at(s.nextRunAt)}. Pull now to retry sooner.`);
   if (h.state === "degraded" && h.deadline) out.push(`Degraded until ${h.deadline} ${APP_TIME_ZONE_LABEL}, the daily deadline, then Down.`);
   return out.join(" ");
 }

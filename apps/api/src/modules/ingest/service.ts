@@ -572,11 +572,14 @@ export function quarantinePage(ctx: Ctx, id: string, q: IngestListQuery): Promis
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await readable(tx, spaceId, id, true);
     const where = and(eq(quarantineRows.spaceId, s.spaceId), eq(quarantineRows.sourceId, s.id));
+    // a file's line names its file (origin_id = the source_files row, same space)
+    const file = and(eq(quarantineRows.origin, "file"), eq(sourceFiles.spaceId, quarantineRows.spaceId), eq(sourceFiles.id, quarantineRows.originId));
     return pageQuery({
-      rows: tx.select().from(quarantineRows).where(where).$dynamic(), count: tx.select(one).from(quarantineRows).where(where).$dynamic(),
+      rows: tx.select({ r: quarantineRows, name: sourceFiles.name, version: sourceFiles.version }).from(quarantineRows).leftJoin(sourceFiles, file).where(where).$dynamic(),
+      count: tx.select(one).from(quarantineRows).where(where).$dynamic(),
       orderBy: [desc(quarantineRows.createdAt), desc(quarantineRows.id)], query: q, on: tx,
-      map: (r) => ({
-        id: r.id, origin: r.origin as QuarantineRowDto["origin"], originId: r.originId, line: r.lineNo, raw: r.raw,
+      map: ({ r, name, version }) => ({
+        id: r.id, origin: r.origin as QuarantineRowDto["origin"], originId: r.originId, file: name === null ? null : { name, version }, line: r.lineNo, raw: r.raw,
         reasons: r.reasons as Record<string, string>, businessDate: day(r.businessDate), createdAt: r.createdAt.toISOString(),
       }),
     });

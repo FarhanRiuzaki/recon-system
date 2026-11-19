@@ -221,7 +221,8 @@ export type SourceVersionDto = z.infer<typeof SourceVersionDto>;
 
 /**
  * A source's health for the business date in progress (sourceHealth, apps/api/src/modules/ingest/health.ts): `reason`
- * = why it isn't healthy; `lastError` = the last pull, file or snapshot failure, kept until one succeeds.
+ * = why it isn't healthy; `missingDate` = the business date whose snapshot or file hasn't arrived (a source delivered
+ * per date, still active), else null; `lastError` = the last pull, file or snapshot failure, kept until one succeeds.
  */
 export const SourceHealthDto = z.object({
   state: z.enum(SOURCE_HEALTH),
@@ -229,6 +230,7 @@ export const SourceHealthDto = z.object({
   lagSeconds: z.number().int().nullable(),
   completeThrough: z.string().nullable(),
   reason: z.string().nullable(),
+  missingDate: z.string().nullable(),
   lastError: z.string().nullable(),
 });
 export type SourceHealthDto = z.infer<typeof SourceHealthDto>;
@@ -348,11 +350,15 @@ export const SourceSnapshotDto = z.object({
 });
 export type SourceSnapshotDto = z.infer<typeof SourceSnapshotDto>;
 
-/** A quarantined line: where it came from, its raw text and a reason per column (`_row` when the whole line is at fault). */
+/**
+ * A quarantined line: where it came from (`file` = the file's name and version when it came in a file), its raw text
+ * and a reason per column (`_row` when the whole line is at fault).
+ */
 export const QuarantineRowDto = z.object({
   id: z.string(),
   origin: z.enum(["file", "pull", "snapshot"]),
   originId: z.string(),
+  file: z.object({ name: z.string(), version: z.number().int().nullable() }).nullable(),
   line: z.number().int(),
   raw: z.string(),
   reasons: z.record(z.string(), z.string()),

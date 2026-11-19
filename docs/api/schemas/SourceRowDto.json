@@ -108,6 +108,12 @@
                 "null"
               ]
             },
+            "missingDate": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "lastError": {
               "type": [
                 "string",
@@ -121,6 +127,7 @@
             "lagSeconds",
             "completeThrough",
             "reason",
+            "missingDate",
             "lastError"
           ],
           "additionalProperties": false

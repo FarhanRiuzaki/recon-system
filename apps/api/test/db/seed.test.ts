@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import path from "node:path";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SourceDto, SourceFileDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
+import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import { seedDemo } from "../../src/db/seed/demo";
 import { seedSystem } from "../../src/db/seed/system";
@@ -210,6 +210,21 @@ describe("seedDemo", () => {
     expect(((await (await call("GET", `/v1/spaces/${T}/sources/${bi}/quarantine`, { token })).json()) as Page<unknown>).total).toBe(21);
     const gl = (await (await call("GET", `/v1/spaces/${T}/sources/${by.get("GL nostro USD")!.id}`, { token })).json()) as SourceDto;
     expect(gl.drift?.columns).toHaveLength(3);
+    // the watermark lags sit mid-band of a day's grace, so the states hold for hours, not minutes
+    expect(by.get("Core bank · BI-FAST incoming")!.health!.lagSeconds! / 60).toBeLessThan(5);
+    expect(by.get("Core bank · BI-FAST outgoing")!.health!.lagSeconds! / 60).toBeGreaterThan(720);
+    expect(by.get("Core bank · SKNBI")!.health!.missingDate).toBe(by.get("Core bank · SKNBI")!.health!.businessDate);
+    // no event after the seed's now, and the next scheduled pull comes after the last attempt
+    const now = Date.now();
+    for (const name of ["Core bank · RTGS", "Core bank · SKNBI"]) {
+      const id = by.get(name)!.id;
+      const snaps = ((await (await call("GET", `/v1/spaces/${T}/sources/${id}/snapshots`, { token })).json()) as Page<SourceSnapshotDto>).items;
+      const last = Math.max(...snaps.map((x) => Date.parse(x.startedAt)));
+      expect(last).toBeLessThanOrEqual(now);
+      const d = (await (await call("GET", `/v1/spaces/${T}/sources/${id}`, { token })).json()) as SourceDto;
+      expect(Date.parse(d.nextRunAt!)).toBeGreaterThan(Math.max(last, now - 1000));
+    }
+    for (const f of files.items) expect(Date.parse(f.receivedAt)).toBeLessThanOrEqual(now);
     const viewer = await signIn("viewer");
     const shared = (await (await call("GET", `/v1/spaces/${C}/sources`, { token: viewer })).json()) as Page<SourceRowDto>;
     expect(shared.items).toMatchObject([{ name: "BI settlement file", owner: { spaceId: T, name: "Treasury" }, quarantinedToday: null }]);

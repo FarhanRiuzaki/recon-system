@@ -29,16 +29,17 @@ export type HealthSource = {
   graceSeconds: number | null;
   deadline: Date | null;
 };
+/** `missingDate`: the business date whose snapshot or file hasn't arrived (a source delivered per date), else null. */
 export type SourceHealth = {
-  state: SourceHealthState; businessDate: string; lagSeconds: number | null; completeThrough: string | null; reason: string | null;
+  state: SourceHealthState; businessDate: string; lagSeconds: number | null; completeThrough: string | null; reason: string | null; missingDate: string | null;
 };
 
 export function sourceHealth(s: HealthSource, now: Date): SourceHealth {
   const today = todayIn(now);
   const businessDate = s.kind === "db_watermark" ? today : previousBusinessDay(s.calendar, today);
   const lagSeconds = s.completeThrough ? Math.max(0, Math.floor((now.getTime() - s.completeThrough.getTime()) / 1000)) : null;
-  const out = (state: SourceHealthState, reason: string | null): SourceHealth =>
-    ({ state, businessDate, lagSeconds, completeThrough: s.completeThrough?.toISOString() ?? null, reason });
+  const out = (state: SourceHealthState, reason: string | null, missingDate: string | null = null): SourceHealth =>
+    ({ state, businessDate, lagSeconds, completeThrough: s.completeThrough?.toISOString() ?? null, reason, missingDate });
   if (s.status === "paused") return out("down", s.lastError ?? "Paused");
   if (s.kind === "db_watermark") {
     if (lagSeconds === null) return out("degraded", "Nothing pulled yet");
@@ -49,5 +50,5 @@ export function sourceHealth(s: HealthSource, now: Date): SourceHealth {
   }
   if (s.latestActiveDate !== null && s.latestActiveDate >= businessDate) return out("healthy", null);
   const reason = `${s.kind === "db_snapshot" ? "No active snapshot" : "No ingested file"} for ${businessDate}`;
-  return out(s.deadline && now >= s.deadline ? "down" : "degraded", reason);
+  return out(s.deadline && now >= s.deadline ? "down" : "degraded", reason, businessDate);
 }

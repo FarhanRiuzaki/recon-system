@@ -149,22 +149,28 @@ describe("the sources list and detail read model", () => {
 
   beforeEach(async () => {
     await db.transaction((tx) => ensureMonthPartitions(tx, records, new Date(`${D()}T00:00:00Z`), 1));
+    const fileId = Bun.randomUUIDv7();
     await db.insert(sourceFiles).values({
-      id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, name: "act-today.txt", sha256: "shaD", size: 10, modifiedAt: new Date(), status: "ingested", version: 1, businessDate: D(),
+      id: fileId, spaceId: A, sourceId: FILE_SRC, name: "act-today.txt", sha256: "shaD", size: 10, modifiedAt: new Date(), status: "ingested", version: 1, businessDate: D(),
     });
     await db.insert(records).values([record(FILE_SRC, D(), 1), record(FILE_SRC, D(), 2), record(FILE_SRC, "2026-11-02", 3)]);
-    await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: Bun.randomUUIDv7(), lineNo: 3, raw: "x", reasons: {}, businessDate: D() });
+    await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: fileId, lineNo: 3, raw: "x", reasons: {}, businessDate: D() });
+  });
+
+  it("a quarantined line names the file it came in, with the file's version; a line of an unknown origin names none", async () => {
+    const q = await json<Page<QuarantineRowDto>>(call("GET", path(A, FILE_SRC, "quarantine"), { token: t.op }));
+    expect(q.items.map((r) => [r.line, r.file])).toEqual([[3, { name: "act-today.txt", version: 1 }], [12, null]]);
   });
 
   it("the owner space: health, the business date's records and quarantine, no owner", async () => {
     const rows = await list(A, t.op);
     expect(rows.find((r) => r.id === FILE_SRC)).toMatchObject({
       shared: false, owner: null, rowsToday: 2, quarantinedToday: 1,
-      health: { state: "healthy", businessDate: D(), reason: null, lastError: null },
+      health: { state: "healthy", businessDate: D(), reason: null, missingDate: null, lastError: null },
     });
     // no active snapshot for D yet and no deadline set: degraded, never down
     expect(rows.find((r) => r.id === SNAP_SRC)).toMatchObject({
-      rowsToday: 0, quarantinedToday: 0, health: { state: "degraded", businessDate: D(), reason: `No active snapshot for ${D()}` },
+      rowsToday: 0, quarantinedToday: 0, health: { state: "degraded", businessDate: D(), reason: `No active snapshot for ${D()}`, missingDate: D() },
     });
     expect(rows[0]!.health).not.toHaveProperty("deadline");
   });

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CategoryChip, type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { sourceStatus } from "@/lib/shared/source-status";
@@ -33,14 +33,15 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="truncate text-caption text-fg-3">{sourceCaption(s)}</span>
       </span>
     ) },
-    { key: "kind", header: "Kind", cell: (s) => <CategoryChip label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} slot={1} /> },
-    { key: "state", header: "State", cell: (s) => <SourceStatusChip s={s} /> },
-    { key: "complete", header: "Complete through", className: "md:max-xl:hidden", cell: (s) => {
+    // plain text: a tint per kind would carry no information and follows the palette (REC-D5)
+    { key: "kind", header: "Kind", mobile: "meta", cell: (s) => <span className="text-fg-2">{s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]}</span> },
+    { key: "state", header: "State", mobile: "meta", cell: (s) => <SourceStatusChip s={s} /> },
+    { key: "complete", header: "Complete through", mobile: "meta", className: "md:max-xl:hidden", cell: (s) => {
       const lag = lagText(s);
       return <span className="grid"><span>{completeText(s)}</span>{lag && <span className="text-caption text-fg-3">{lag}</span>}</span>;
     } },
-    { key: "rowsToday", header: "Records today", align: "right", className: "md:max-xl:hidden", cell: (s) => (s.rowsToday === null ? none : formatNumber(s.rowsToday)) },
-    { key: "quarantinedToday", header: "Quarantined today", align: "right", className: "md:max-xl:hidden",
+    { key: "rowsToday", header: "Records today", mobile: "meta", align: "right", className: "md:max-xl:hidden", cell: (s) => (s.rowsToday === null ? none : formatNumber(s.rowsToday)) },
+    { key: "quarantinedToday", header: "Quarantined today", mobile: "meta", align: "right", className: "md:max-xl:hidden",
       cell: (s) => (s.quarantinedToday === null ? none : formatNumber(s.quarantinedToday)) },
   ];
 }

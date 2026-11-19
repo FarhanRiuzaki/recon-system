@@ -12,8 +12,10 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 /**
- * A source of the space, or one shared to it. The kind decides the first table, which the server can't know before the
- * source answers, so the files and the snapshots are both read with it (one is empty); the Quarantine tab reads its own.
+ * A source of the space, or one shared to it. What renders depends on the source (its kind decides the Overview's
+ * table; a shared one has no Quarantine tab and shows the Overview even at ?tab=quarantine), which the server can't
+ * know before the source answers: so the files and the snapshots are always read with it, and the quarantine too at
+ * ?tab=quarantine (a shared source answers it 404, left out). Nothing the screen renders is fetched after hydration.
  */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
   await requirePagePermission(null);
@@ -22,9 +24,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   if (!space?.roles.length) notFound();
   const sp = toSearch(await searchParams);
   const tab = sp.get("tab") === "quarantine" ? "quarantine" : "overview";
-  const tables = tab === "quarantine"
-    ? [reads.sourceQuarantine(spaceId, sourceId, sp)]
-    : [reads.sourceFiles(spaceId, sourceId, sp), reads.sourceSnapshots(spaceId, sourceId, sp)];
+  const tables = [reads.sourceFiles(spaceId, sourceId, sp), reads.sourceSnapshots(spaceId, sourceId, sp), ...(tab === "quarantine" ? [reads.sourceQuarantine(spaceId, sourceId, sp)] : [])];
   return (
     <Prefetch reads={[reads.space(spaceId), reads.source(spaceId, sourceId), ...tables]}>
       <SourceDetail spaceId={spaceId} id={sourceId} tab={tab} />

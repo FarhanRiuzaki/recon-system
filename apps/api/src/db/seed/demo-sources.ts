@@ -35,7 +35,7 @@ const fileSpec = (folder: string, pattern: string) => SourceSpec.parse({
 });
 const pullSpec = (table: string) => SourceSpec.parse({
   ...base, fields: [...FIELDS, { name: "updated_at", type: "datetime", nullable: false, trim: true }, { name: "id", type: "string", nullable: false, trim: true }],
-  mapping, health: { graceMinutes: 30 },
+  mapping, health: { graceMinutes: 1440 },
   input: { kind: "db_watermark", table, watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 },
 });
 const snapshotSpec = (table: string, deadline: string) => SourceSpec.parse({
@@ -68,6 +68,8 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
   };
   const all = Object.values(list);
   const T = o.treasury;
+  /** A time of the business day after D, but never later than `min` minutes before the seed runs (no event in the future). */
+  const past = (d: Date, min: number) => (d.getTime() <= o.now - min * MIN ? d : new Date(o.now - min * MIN));
   const s = (x: Source) => ({ spaceId: T, sourceId: x.id });
   const created = new Date(o.now - 40 * DAY);
 
@@ -109,7 +111,7 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     const f1v1 = file(`bisettle${compact(shift(D, -1))}.txt`, shift(D, -1), wib(D, "06:11"), { sha256: "9f2c4d1e8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3aa71e", version: 1, rowsTotal: 12, rowsOk: 10, rowsNew: 10, rowsQuarantined: 2 });
     const f1rej = file(f1v1.name, shift(D, -1), wib(D, "08:02"), { sha256: f1v1.sha256, status: "rejected", reason: "Same file already ingested", versionOf: f1v1.id });
     const f1v2 = file(f1v1.name, shift(D, -1), wib(D, "08:40"), { sha256: "c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f901122", version: 2, versionOf: f1v1.id, rowsTotal: 12, rowsOk: 12, rowsNew: 2, rowsQuarantined: 0 });
-    const f0 = file(`bisettle${compact(D)}.txt`, D, wib(today, "06:12"), { sha256: "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b", version: 1, rowsTotal: 10, rowsOk: 9, rowsNew: 9, rowsQuarantined: 1 });
+    const f0 = file(`bisettle${compact(D)}.txt`, D, past(wib(today, "06:12"), 180), { sha256: "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b", version: 1, rowsTotal: 10, rowsOk: 9, rowsNew: 9, rowsQuarantined: 1 });
     addRecords(bi, shift(D, -2), 22, f2.id);
     addRecords(bi, shift(D, -1), 10, f1v1.id);
     addRecords(bi, shift(D, -1), 2, f1v2.id, null, 10);
@@ -122,8 +124,9 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     quarantined(bi, "file", f1v1.id, shift(D, -1), [[11, line(11, shift(D, -1), 2), { _row: "Expected 3 columns, found 2" }], [12, `|1250000.00|${compact(shift(D, -1))}`, { ref: "Empty; ref can't be empty" }]]);
     quarantined(bi, "file", f0.id, D, [[7, `BIS-0007|1250000.00|${compact(D).slice(0, 6)}31`, { value_date: `'${compact(D).slice(0, 6)}31' isn't a date in yyyyMMdd` }]]);
 
-    // Watermark pulls: BI-FAST incoming 2 minutes behind (Healthy), outgoing 20 minutes behind a 30-minute grace (Degraded).
-    for (const [x, lagMin, n] of [[list.bifastIn, 2, 25], [list.bifastOut, 20, 15]] as const) {
+    // Watermark pulls against a grace of a day: BI-FAST incoming 2 minutes behind (Healthy for about 12 hours), outgoing
+    // 721 minutes behind, past half the grace (Degraded until it passes the grace, about 12 hours on).
+    for (const [x, lagMin, n] of [[list.bifastIn, 2, 25], [list.bifastOut, 721, 15]] as const) {
       const ct = new Date(o.now - lagMin * MIN);
       await tx.insert(sourceCursors).values({
         ...s(x), watermark: new Date(ct.getTime() + 300_000).toISOString(), watermarkId: `${x.code}-${n}`, completeThrough: ct, lastSuccessAt: new Date(o.now - MIN),
@@ -136,14 +139,14 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     // BI-RTGS statement: D−1's file only, so D has no ingested file yet (Degraded). SKNBI and MT950: D's file (Healthy).
     const plain = (x: Source, date: string, n: number) => {
       const f = { id: id(), ...s(x), name: x.spec.input.kind === "file_inbox" ? x.spec.input.pattern.replace("{yyyyMMdd}", compact(date)) : "", sha256: id().replaceAll("-", "").padEnd(64, "0"), size: 1_024,
-        modifiedAt: wib(shift(date, 1), "06:05"), receivedAt: wib(shift(date, 1), "06:05"), status: "ingested", version: 1, businessDate: date, rowsTotal: n, rowsOk: n, rowsNew: n };
+        modifiedAt: past(wib(shift(date, 1), "06:05"), 190), receivedAt: past(wib(shift(date, 1), "06:05"), 190), status: "ingested", version: 1, businessDate: date, rowsTotal: n, rowsOk: n, rowsNew: n };
       addRecords(x, date, n, f.id);
       return f;
     };
     const files = [f2, f1v1, f1rej, f1v2, f0, plain(list.rtgsStatement, shift(D, -1), 14), plain(list.sknbiFile, D, 11), plain(list.mt950, D, 6)];
     await tx.insert(sourceFiles).values(files);
     for (const [x, date] of [[bi, D], [list.rtgsStatement, shift(D, -1)], [list.sknbiFile, D], [list.mt950, D]] as const) {
-      await tx.insert(sourceCursors).values({ ...s(x), completeThrough: wib(shift(date, 1), "00:00"), lastSuccessAt: wib(today, "06:12") });
+      await tx.insert(sourceCursors).values({ ...s(x), completeThrough: wib(shift(date, 1), "00:00"), lastSuccessAt: past(wib(today, "06:12"), 180) });
     }
 
     // Snapshots. (b) Core bank · RTGS: D active from 06:00, its re-pull at 14:05 failed after 6 of 11 rows; D−1 replaced by a
@@ -160,20 +163,21 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     snap(rtgs, shift(D, -2), "active", wib(shift(D, -1), "06:00"), 11);
     snap(rtgs, shift(D, -1), "superseded", wib(D, "06:00"), 11);
     snap(rtgs, shift(D, -1), "active", wib(D, "09:30"), 11);
-    snap(rtgs, D, "active", wib(today, "06:00"), 9);
-    snap(rtgs, D, "failed", wib(today, "14:05"), 6, "The connection to the source database was lost (ORA-03113) after 6 of 11 rows. Nothing was replaced.");
+    const rtgsActive = past(wib(today, "06:00"), 240);
+    snap(rtgs, D, "active", rtgsActive, 9);
+    snap(rtgs, D, "failed", past(wib(today, "14:05"), 60), 6, "The connection to the source database was lost (ORA-03113) after 6 of 11 rows.");
     const sknbi = list.coreSknbi;
     snap(sknbi, shift(D, -1), "active", wib(D, "06:00"), 8);
-    snap(sknbi, D, "failed", wib(today, "06:00"), 0, "The source database refused the connection (ECONNREFUSED).");
+    snap(sknbi, D, "failed", past(wib(today, "06:00"), 120), 0, "The source database refused the connection (ECONNREFUSED).");
     const gl = list.glNostro;
     snap(gl, shift(D, -2), "active", wib(shift(D, -1), "06:00"), 7);
     snap(gl, shift(D, -1), "active", wib(D, "06:00"), 7);
     await tx.insert(sourceSnapshots).values(snaps);
     await tx.insert(sourceCursors).values([
-      { ...s(rtgs), completeThrough: wib(today, "00:00"), lastSuccessAt: wib(today, "06:00"), lastError: `Snapshot ${D}: The connection to the source database was lost (ORA-03113).` },
+      { ...s(rtgs), completeThrough: wib(shift(D, 1), "00:00"), lastSuccessAt: rtgsActive, lastError: `Snapshot ${D}: The connection to the source database was lost (ORA-03113).` },
       { ...s(sknbi), completeThrough: wib(D, "00:00"), lastSuccessAt: wib(D, "06:00"), lastError: `Snapshot ${D}: The source database refused the connection (ECONNREFUSED).` },
       {
-        ...s(gl), completeThrough: wib(D, "00:00"), lastSuccessAt: wib(D, "06:00"), updatedAt: wib(today, "06:00"),
+        ...s(gl), completeThrough: wib(D, "00:00"), lastSuccessAt: wib(D, "06:00"), updatedAt: past(wib(today, "06:00"), 150),
         lastError: 'Column "ref" is no longer in the query. Make a new source version for the columns it has now.',
         drift: [
           { column: "ref", expected: "string", found: null, effect: "The column is gone, so it can't be read. Renamed? Pick the new column in a new version." },

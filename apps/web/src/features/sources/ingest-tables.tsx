@@ -11,7 +11,7 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { NoFilters } from "@/lib/shared/queries";
 import { sourceFiles, sourceQuarantine, sourceSnapshots } from "@/lib/shared/queries";
-import { at, day, fileResult, keptSnapshot } from "./source-text";
+import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
 
 // The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, newest first,
 // page and size in the URL. Each is a list in its own right: saved views and the column chooser like every list.
@@ -32,8 +32,10 @@ const SNAPSHOT_STATUS: Record<SourceSnapshotDto["status"], Chip> = {
 };
 const legend = (m: Record<string, Chip>) => Object.values(m);
 const chip = (c: Chip) => <StatusChip health={c.health} label={c.label} />;
-/** The result cell: the chip and one line under it. */
-const result = (c: Chip, line: string | null) => <span className="grid gap-1 justify-items-start">{chip(c)}{line && <span className="text-caption text-fg-3">{line}</span>}</span>;
+/** The result cell: the chip and the line under it, wrapping in the column's width. */
+const result = (c: Chip, line: string | null) => <span className="grid gap-1 justify-items-start whitespace-normal">{chip(c)}{line && <span className="text-caption text-fg-3">{line}</span>}</span>;
+/** A cell whose text wraps in the column instead of running past the card. */
+const WRAP = "whitespace-normal";
 
 function Table<T>({ def, title, description, icon, legendItems, columns, rowKey, empty, rowActions, notice }: {
   def: ReturnType<typeof sourceFiles>; title: string; description: string; icon: typeof DiskIcon; legendItems?: readonly Chip[];
@@ -65,12 +67,13 @@ export function FilesTable({ spaceId, id }: { spaceId: string; id: string }) {
     <Table<SourceFileDto> def={def} title="Files" description="Newest first" icon={DiskIcon} legendItems={legend(FILE_STATUS)} rowKey={(f) => f.id}
       empty={{ title: "No files yet", description: "Files appear here once one matching the source's pattern lands in its folder and stops changing." }}
       columns={(rows) => [
-        { key: "name", header: "File", mobile: "title", className: "min-w-48", cell: (f) => mono(f.name) },
-        { key: "businessDate", header: "Business date", cell: (f) => (f.businessDate ? day(f.businessDate) : none) },
-        { key: "rowsTotal", header: "Rows", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsTotal) : none) },
-        { key: "rowsOk", header: "Records", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsOk) : none) },
-        { key: "rowsQuarantined", header: "Quarantined", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsQuarantined) : none) },
-        { key: "result", header: "Result", className: "min-w-72", cell: (f) => result(FILE_STATUS[f.status], fileResult(f, rows.find((r) => r.id === f.versionOf))) },
+        { key: "name", header: "File", mobile: "title", cell: (f) => mono(f.name) },
+        { key: "businessDate", header: "Business date", mobile: "meta", cell: (f) => (f.businessDate ? day(f.businessDate) : none) },
+        { key: "rowsTotal", header: "Rows", mobile: "meta", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsTotal) : none) },
+        // the records this file added (Figma 95:8429: a version 2 adds 2; the rest were stored already)
+        { key: "rowsNew", header: "Records", mobile: "meta", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsNew) : none) },
+        { key: "rowsQuarantined", header: "Quarantined", mobile: "meta", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsQuarantined) : none) },
+        { key: "result", header: "Result", mobile: "meta", className: `${WRAP} min-w-64 w-full`, cell: (f) => result(FILE_STATUS[f.status], fileResult(f, rows.find((r) => r.id === f.versionOf))) },
       ]} />
   );
 }
@@ -105,17 +108,19 @@ export function SnapshotsTable({ spaceId, id, run }: {
       rowActions={run ? (x, rows) => (rows.find((r) => r.businessDate === x.businessDate) === x ? <PullAgain row={x} {...run} /> : null) : undefined}
       columns={() => [
         { key: "businessDate", header: "Business date", mobile: "title", cell: (x) => <span className="font-medium text-fg">{day(x.businessDate)}</span> },
-        { key: "startedAt", header: "Pulled", cell: (x) => (x.finishedAt
+        { key: "startedAt", header: "Pulled", mobile: "meta", cell: (x) => (x.finishedAt
           ? `${at(x.startedAt)} · ${((Date.parse(x.finishedAt) - Date.parse(x.startedAt)) / 1000).toFixed(1)} s`
           : at(x.startedAt)) },
-        { key: "rows", header: "Rows", align: "right", cell: (x) => formatNumber(x.rows) },
-        { key: "status", header: "Snapshot", className: "min-w-72", cell: (x) => result(SNAPSHOT_STATUS[x.status], x.error) },
+        { key: "rows", header: "Rows", mobile: "meta", align: "right", cell: (x) => formatNumber(x.rows) },
+        { key: "status", header: "Snapshot", mobile: "meta", className: `${WRAP} min-w-56 max-w-sm`, cell: (x) => result(SNAPSHOT_STATUS[x.status], x.error) },
       ]} />
   );
 }
 
 /** "col: reason · col: reason"; a fault of the whole line (`_row`) is its reason alone. */
-export const reasonsText = (r: Record<string, string>) => Object.entries(r).map(([k, v]) => (k === "_row" ? v : `${k}: ${v}`)).join(" · ");
+export const reasonsText = (r: Record<string, string>) => Object.entries(r).map(([k, v]) => (k === "_row" ? v : `${k}: ${afterColon(v)}`)).join(" · ");
+/** The file a quarantined line came in, with its version ("bisettle20261118.txt · version 2"); a pull's line has none. */
+const fileOf = (r: QuarantineRowDto) => (r.file ? `${r.file.name}${r.file.version ? ` · version ${r.file.version}` : ""}` : null);
 
 /** Quarantined lines (Figma 96:8925), server-paged: the line, a reason per column, the raw line as it came. */
 export function QuarantineTable({ spaceId, id }: { spaceId: string; id: string }) {
@@ -126,9 +131,10 @@ export function QuarantineTable({ spaceId, id }: { spaceId: string; id: string }
         empty={{ title: "No quarantined rows", description: "A row lands here when it can't become a record: a value of the wrong type, a required field empty or a column missing." }}
         columns={() => [
           { key: "line", header: "Row", mobile: "title", cell: (r) => <span className="font-medium text-fg">Row {formatNumber(r.line)}</span> },
-          { key: "reasons", header: "Reason, per column", className: "min-w-64", cell: (r) => <span className="text-down-ink">{reasonsText(r.reasons)}</span> },
-          { key: "raw", header: "Raw line", className: "min-w-80", cell: (r) => <span className="break-all font-mono text-mono">{r.raw}</span> },
-          { key: "businessDate", header: "Business date", cell: (r) => (r.businessDate ? day(r.businessDate) : none) },
+          { key: "file", header: "File", mobile: "meta", cell: (r) => { const f = fileOf(r); return f ? mono(f) : <span className="text-fg-3">{r.origin === "pull" ? "Pull" : "Snapshot"}</span>; } },
+          { key: "reasons", header: "Reason, per column", mobile: "meta", className: `${WRAP} min-w-56`, cell: (r) => <span className="text-fg">{reasonsText(r.reasons)}</span> },
+          { key: "raw", header: "Raw line", mobile: "meta", className: `${WRAP} min-w-64`, cell: (r) => <span className="break-all font-mono text-mono">{r.raw}</span> },
+          { key: "businessDate", header: "Business date", mobile: "meta", cell: (r) => (r.businessDate ? day(r.businessDate) : none) },
         ]} />
       <p className="text-caption text-fg-3">Quarantined rows never become breaks and can&apos;t be released by hand. To fix them, the sender sends a corrected file (a new file version, kept beside the old one), or a source admin changes the source in a new version.</p>
     </>
