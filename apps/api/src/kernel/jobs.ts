@@ -2,7 +2,7 @@
 // pg-boss's schema is installed by db:migrate (migrateJobs, as the owner); here pg-boss runs with migrate: false, as the
 // app role, over a Bun SQL pool of its own.
 import { SQL } from "bun";
-import { fromBunSql, PgBoss, type ConstructorOptions } from "pg-boss";
+import { fromBunSql, PgBoss, type ConstructorOptions, type QueueOptions } from "pg-boss";
 import { loadDbConfig } from "./config";
 import { errorDetail } from "./errors";
 import { log } from "./log";
@@ -23,12 +23,23 @@ export const CONCURRENCY: Record<QueueName, number> = {
   "ingest.pull": 4, "ingest.file": 2, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
 };
 
+/**
+ * Queue options that boss() writes to every queue on start (create, then update, so an existing queue takes a change).
+ * heartbeatSeconds: a running handler refreshes its job every heartbeatSeconds / 2 (pg-boss's default refresh); a job
+ * whose worker died is failed and retried once its heartbeat is that old, plus up to one supervise pass (60 s), instead
+ * of waiting out expireInSeconds (pg-boss's default 900 s, still the bound on a handler that is alive but stuck).
+ */
+export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
+  "ingest.pull": { heartbeatSeconds: 30 }, "ingest.file": { heartbeatSeconds: 30 }, "recon.tick": { heartbeatSeconds: 30 },
+  "recon.daily": { heartbeatSeconds: 30 }, "recon.heavy": { heartbeatSeconds: 30 }, "breaks.sla": { heartbeatSeconds: 30 },
+};
+
 /** The cron time zone of every schedule. */
 export const JOB_TZ = "Asia/Jakarta";
 
 /**
  * How long stop() waits for running jobs: 5 s under the pod's default terminationGracePeriodSeconds (30 s), so the jobs
- * still running are failed (and retried by another worker) before the kill instead of waiting out their expiry.
+ * still running are failed (and retried by another worker) before the kill instead of waiting out their heartbeat.
  */
 const STOP_GRACE_MS = 25_000;
 
@@ -53,23 +64,37 @@ function newBoss(options: ConstructorOptions): PgBoss {
 
 let producer: Promise<PgBoss> | undefined;
 /**
- * The process's pg-boss for sending and reading jobs (no maintenance, no cron), started on first use. It creates the
- * queues that don't exist yet, all `stately` (per key at most one job queued and one active), with pg-boss's default
- * expiry (15 min), retries (2) and retention; a queue's policy is fixed once created.
+ * The process's pg-boss for sending and reading jobs (no maintenance, no cron), started on first use. It brings every
+ * queue in line with QUEUE_OPTIONS (`ensureQueues`).
  */
 export function boss(): Promise<PgBoss> {
   producer ??= (async () => {
     const b = newBoss({ supervise: false, schedule: false });
     await b.start();
-    for (const name of Object.values(QUEUES)) {
-      await b.createQueue(name, { policy: "stately" });
-    }
+    await syncQueues(b, QUEUE_OPTIONS);
     return b;
   })().catch((err: unknown) => {
     producer = undefined;
     throw err;
   });
   return producer;
+}
+
+/**
+ * Creates the queues that don't exist yet, all `stately` (per key at most one job queued and one active; a queue's
+ * policy is fixed once created), then writes `options` to each, existing ones included (pg-boss's createQueue leaves an
+ * existing queue as it is). A job keeps the options its queue had when it was sent. Retries (2) and retention stay
+ * pg-boss's defaults.
+ */
+export async function ensureQueues(options: Record<QueueName, QueueOptions> = QUEUE_OPTIONS): Promise<void> {
+  await syncQueues(await boss(), options);
+}
+
+async function syncQueues(b: PgBoss, options: Record<QueueName, QueueOptions>): Promise<void> {
+  for (const name of Object.values(QUEUES)) {
+    await b.createQueue(name, { policy: "stately", ...options[name] });
+    await b.updateQueue(name, options[name]);
+  }
 }
 
 /**

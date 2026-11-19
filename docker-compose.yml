@@ -81,6 +81,8 @@ services:
     build: { context: ., dockerfile: apps/api/Dockerfile }
     image: starterkit-api:local
     command: ["bun", "src/worker.ts"]
+    # SIGTERM, then up to 25 s for running jobs (STOP_GRACE_MS in kernel/jobs.ts) before Docker's SIGKILL (default 10 s).
+    stop_grace_period: 30s
     environment:
       DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
       # Optional (apps/api/.env.example); empty = the default.

@@ -160,7 +160,7 @@ baris, dan timeout query (`callTimeout`).
 ## S2: antrean pg-boss di kode produksi
 
 Tanggal 2026-11-19. Kode: `apps/api/src/kernel/jobs.ts`, `kernel/worker-db.ts`, `src/worker.ts`, `migrateJobs` di
-`src/db/migrate.ts`. Tes: `apps/api/src/kernel/tests/integration/jobs.test.ts` (8 tes, 12 s) dan `locks.test.ts`
+`src/db/migrate.ts`. Tes: `apps/api/src/kernel/tests/integration/jobs.test.ts` (10 tes, 34 s) dan `locks.test.ts`
 (`configLock`). `pg-boss` 12.38.2 (exact), dijalankan di Bun 1.4.4 (runtime mesin ini; versi pin repo 1.4.3 tidak dites)
 melawan PostgreSQL 18 lokal. Nama opsi dibaca dari `node_modules/pg-boss/README.md` dan `dist/{index,types}.d.ts`.
 
@@ -172,8 +172,8 @@ API pg-boss yang dipakai:
 | Gabung job per kunci | `createQueue(name, { policy: "stately" })` + `send(name, data, { singletonKey })`; `send` mengembalikan `null` bila ditolak |
 | Tunda | `send(…, { startAfter })` |
 | Cap per queue per proses | `work(name, { localConcurrency, pollingIntervalSeconds }, handler)` |
-| Job yang worker-nya mati | `expireInSeconds` (queue, bawaan 900; per job lewat `send`), dikembalikan ke `retry` oleh pass supervise (`superviseIntervalSeconds`, klaim per queue `monitorIntervalSeconds`, keduanya bawaan 60) |
-| Heartbeat | `heartbeatSeconds` (≥ 10, per queue) ada; **belum dipakai** |
+| Job yang worker-nya mati | `heartbeatSeconds` (queue, bilangan bulat ≥ 10; dipakai 30 untuk keenam queue, `QUEUE_OPTIONS`): handler yang berjalan memperbarui `heartbeat_on` tiap `heartbeatSeconds / 2` (`heartbeatRefreshSeconds`, `manager.js`); job yang heartbeat-nya lebih tua dari itu digagalkan dan masuk `retry` oleh pass supervise (`superviseIntervalSeconds`, klaim per queue `monitorIntervalSeconds`, keduanya bawaan 60). `expireInSeconds` (bawaan 900) tetap batas untuk handler yang hidup tapi macet |
+| Opsi queue yang berubah | `createQueue` adalah `INSERT … ON CONFLICT DO NOTHING` (`plans.js`), jadi queue yang sudah ada tidak ikut berubah; `boss()` memanggil `createQueue` lalu `updateQueue(name, options)` untuk tiap queue (`ensureQueues`). Job menyimpan heartbeat/expiry queue saat dikirim |
 | Jadwal per kunci | `schedule(name, cron, data, { tz, key, singletonKey, missed })`, `unschedule(name, key)`, `getSchedule(name, key)` |
 | Zona waktu | `tz` (`Asia/Jakarta`); `previewSchedule(cron, { tz, from, count })` memberi kemunculan berikutnya |
 | Catch-up jadwal | `missed: "once"`: satu job untuk kemunculan terakhir yang terlewat saat tak ada worker (bawaan `skip`) |
@@ -189,10 +189,12 @@ Perilaku yang terbukti (tes di atas):
 | Enqueue kedua dengan kunci sama saat yang pertama antre → `null` | bawaan (`stately` + `singletonKey`) | tes 1 |
 | Tick yang masuk saat tick kunci sama aktif jalan sekali sesudahnya, tidak bersamaan, yang ketiga digabung | bawaan (`stately`: satu antre + satu aktif per kunci; job antre tidak diambil selama kuncinya aktif, walau 4 slot kosong selama 1,5 s) | tes 2 |
 | Cap `recon.heavy` 1 per worker: 10 job, maks 1 bersamaan | bawaan (`localConcurrency`) | tes 3 (5,1 s pada polling 0,5 s) |
-| Worker di-SIGKILL setelah efek commit → job diambil worker lain, efek tetap 1 baris | bawaan (expiry + retry, `retryCount` ≥ 1) + penanda selesai di transaksi yang sama dengan efek (spec §9) | tes 4 (expiry 2 s, supervise 1 s: 2,7 s) |
-| Cron `0 23 * * *` = 16:00 UTC | bawaan (`tz`) | tes 5: baris jadwal tersimpan `timezone = Asia/Jakarta`; `previewSchedule` atas baris itu dari 2026-11-19T00:00Z memberi 2026-11-19T16:00Z dan 2026-11-20T16:00Z. Tidak menunggu jam nyata dan tidak memicu job; pass cron memakai pustaka dan zona yang sama (`cron-parser` di `timekeeper.js`). `TestClock` pg-boss butuh `setSessionStatements`, yang tidak ada di adapter `fromBunSql` |
-| `stop()` menunggu job berjalan dan tidak mengambil job baru | bawaan (`graceful`) | tes 6 |
-| Role app (DML saja) bisa send/fetch/complete setelah migrate memberi grant; DDL di `pgboss` ditolak | grant di `migrateJobs` | tes 7 (`recon_app_probe`) |
+| Worker di-SIGKILL setelah efek commit → job diambil worker lain, efek tetap 1 baris | bawaan (heartbeat + retry, `retryCount` ≥ 1) + penanda selesai di transaksi yang sama dengan efek (spec §9) | tes 4: job dengan heartbeat 10 s dan expiry 900 s pulih 10,7 s setelah worker dibunuh (supervise 1 s), jadi yang memicu heartbeat, bukan expiry |
+| Handler hidup yang berjalan lebih lama dari heartbeat tidak digagalkan | bawaan (refresh heartbeat selama handler berjalan) | tes 5: handler 13 s pada heartbeat 10 s, supervise tiap 1 s → `completed`, `retryCount` 0 |
+| Perubahan `QUEUE_OPTIONS` sampai ke queue yang sudah ada | `updateQueue` di `ensureQueues` | tes 6 |
+| Cron `0 23 * * *` = 16:00 UTC | bawaan (`tz`) | tes 7: baris jadwal tersimpan `timezone = Asia/Jakarta`; `previewSchedule` atas baris itu dari 2026-11-19T00:00Z memberi 2026-11-19T16:00Z dan 2026-11-20T16:00Z. Tidak menunggu jam nyata dan tidak memicu job; pass cron memakai pustaka dan zona yang sama (`cron-parser` di `timekeeper.js`). `TestClock` pg-boss butuh `setSessionStatements`, yang tidak ada di adapter `fromBunSql` |
+| `stop()` menunggu job berjalan dan tidak mengambil job baru | bawaan (`graceful`) | tes 8 |
+| Role app (DML saja) bisa send/fetch/complete setelah migrate memberi grant; DDL di `pgboss` ditolak | grant di `migrateJobs` | tes 9 (`recon_app_probe`) |
 
 Fallback spec §9 (advisory lock + re-queue `startAfter`) **tidak dipakai**: semua perilaku di atas bawaan pg-boss.
 `configLock(tx, configId)` (`kernel/locks.ts`, `pg_advisory_xact_lock(int, int)` dengan `hashtext`) tetap diperlukan untuk
@@ -200,9 +202,12 @@ langkah 1 run tick: `stately` hanya berlaku per queue, jadi `recon.tick` dan `re
 aktif bersamaan.
 
 Batas dan angka yang belum diukur:
-- Pemulihan job dari worker mati di produksi = `expireInSeconds` (sekarang bawaan 900 s) + sampai 60 s supervise. Selama itu
-  job tetap `active`, jadi tick berikutnya config itu antre dan tidak jalan: config bisa tertahan sampai sekitar 16 menit.
-  Nilai `expireInSeconds`/`heartbeatSeconds` per queue diputuskan saat handler-nya dibuat (Plan 2–4).
+- Pemulihan job dari worker mati di produksi = heartbeat 30 s + sampai 60 s supervise, jadi sekitar 90 s paling lama
+  (dihitung dari setelan, belum diukur di produksi; tes mengukur 10,7 s pada heartbeat 10 s dan supervise 1 s). Selama itu
+  job tetap `active` dan tick berikutnya config itu antre di belakangnya; 90 s di bawah interval 2 menit dan di bawah alert
+  freshness 2× interval.
+- `expireInSeconds` masih bawaan 900 s untuk semua queue: run `recon.daily`/`recon.heavy` yang hidup lebih dari 15 menit
+  akan digagalkan dan diulang. Nilainya diputuskan saat handler-nya dibuat (Plan 3–4).
 - Polling bawaan 2 s per slot: 14 slot per worker bila keenam queue punya handler (4+2+4+2+1+1), tiap slot satu query fetch tiap 2 s saat kosong; beban di
   PostgreSQL produksi tidak diukur. LISTEN/NOTIFY (`useListenNotify`) tidak dipakai.
 - Upgrade pg-boss ke versi dengan migrasi async (BAM, mis. `CREATE INDEX CONCURRENTLY`) dijalankan oleh `migrateJobs` saat
@@ -228,8 +233,8 @@ Dari S2:
   dengan kunci per source/file/config/(config, tanggal).
 - Tiap langkah handler satu transaksi yang menulis efek + penanda selesai (job at-least-once).
 - Run tick mengambil `configLock` dulu (tick, daily dan heavy untuk config yang sama bisa aktif bersamaan antar queue).
-- Tetapkan `expireInSeconds`/`heartbeatSeconds` per queue saat handler dibuat; bawaan 15 menit menahan config selama itu bila
-  worker mati.
+- Heartbeat 30 s untuk semua queue sudah dipasang (`QUEUE_OPTIONS`); `expireInSeconds` (bawaan 900 s) ditetapkan per queue saat
+  handler dibuat, lebih panjang dari run terlama yang sah (run harian dan rerun).
 
 Dari S3:
 - Evaluator `derive` (Plan 2) memakai `LIMITS` dan panjang maksimum 1000 karakter, urutan validasi panjang → parse → allowlist

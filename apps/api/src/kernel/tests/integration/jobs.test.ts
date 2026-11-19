@@ -9,7 +9,7 @@ import { migrateJobs } from "../../../db/migrate";
 import { asAppRole } from "../../../../test/helpers/app-role";
 import { applyOnce, dropProbe, effects, resetProbe } from "../../../../test/helpers/jobs";
 import { db } from "../../db";
-import { boss, enqueue, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "../../jobs";
+import { boss, enqueue, ensureQueues, QUEUE_OPTIONS, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "../../jobs";
 import { workerDb } from "../../worker-db";
 
 const ROOT = path.join(import.meta.dir, "../../../..");
@@ -102,34 +102,75 @@ describe("job kernel", () => {
     }
   }, 20_000);
 
-  it("a job whose worker dies without completing is picked up again after expiry and its effect is written once", async () => {
-    const key = `die-${Bun.randomUUIDv7()}`;
-    // Short expiry for the test; the queue's own (QUEUES' defaults) is what production jobs get.
-    const id = await (await boss()).send(QUEUES.reconHeavy, { key }, { singletonKey: key, expireInSeconds: 2 });
-    expect(id).toBeString();
-    const child = Bun.spawn(["bun", path.join(ROOT, "test/helpers/dying-worker.ts")], { cwd: ROOT, env: process.env, stdout: "pipe", stderr: "inherit" });
-    let out = "";
-    const reader = child.stdout.getReader();
-    await until(async () => {
-      const { value } = await reader.read();
-      out += new TextDecoder().decode(value ?? new Uint8Array());
-      return out.includes("committed");
-    }, 15_000);
-    child.kill("SIGKILL");
-    await child.exited;
-    expect((await stateOf(QUEUES.reconHeavy, id!))?.state).toBe("active"); // the dead worker never completed it
-
-    const stop = await startWorker({ [QUEUES.reconHeavy]: async (job) => applyOnce(workerDb, (job.data as { key: string }).key) }, FAST);
+  it("a job whose worker dies is failed by its heartbeat, not the 900 s expiry, picked up again and its effect written once", async () => {
+    // Heartbeat 10 s (pg-boss's minimum) for the test; production queues carry QUEUE_OPTIONS (30 s). A job keeps the
+    // heartbeat its queue had when it was sent, so the dying worker resetting the queue to QUEUE_OPTIONS doesn't matter.
+    await ensureQueues({ ...QUEUE_OPTIONS, [QUEUES.reconHeavy]: { heartbeatSeconds: 10 } });
     try {
-      await until(async () => (await stateOf(QUEUES.reconHeavy, id!))?.state === "completed", 15_000);
-      const job = await stateOf(QUEUES.reconHeavy, id!);
-      expect(job!.retryCount).toBeGreaterThanOrEqual(1);
-      const [row] = await db.select({ n: count() }).from(effects).where(eq(effects.key, key));
-      expect(row!.n).toBe(1);
+      const key = `die-${Bun.randomUUIDv7()}`;
+      const id = await enqueue(QUEUES.reconHeavy, { key }, { key });
+      expect(id).toBeString();
+      expect(await stateOf(QUEUES.reconHeavy, id!)).toMatchObject({ heartbeatSeconds: 10, expireInSeconds: 900 });
+      const child = Bun.spawn(["bun", path.join(ROOT, "test/helpers/dying-worker.ts")], { cwd: ROOT, env: process.env, stdout: "pipe", stderr: "inherit" });
+      let out = "";
+      const reader = child.stdout.getReader();
+      await until(async () => {
+        const { value } = await reader.read();
+        out += new TextDecoder().decode(value ?? new Uint8Array());
+        return out.includes("committed");
+      }, 15_000);
+      child.kill("SIGKILL");
+      await child.exited;
+      const killedAt = Date.now();
+      expect((await stateOf(QUEUES.reconHeavy, id!))?.state).toBe("active"); // the dead worker never completed it
+
+      const stop = await startWorker({ [QUEUES.reconHeavy]: async (job) => applyOnce(workerDb, (job.data as { key: string }).key) }, FAST);
+      try {
+        await until(async () => (await stateOf(QUEUES.reconHeavy, id!))?.state === "completed", 30_000);
+        expect(Date.now() - killedAt).toBeLessThan(30_000); // heartbeat 10 s + supervise 1 s, far under the expiry
+        const job = await stateOf(QUEUES.reconHeavy, id!);
+        expect(job!.retryCount).toBeGreaterThanOrEqual(1);
+        const [row] = await db.select({ n: count() }).from(effects).where(eq(effects.key, key));
+        expect(row!.n).toBe(1);
+      } finally {
+        await stop();
+      }
+    } finally {
+      await ensureQueues();
+    }
+  }, 60_000);
+
+  it("a live handler that runs past its heartbeat keeps the job (pg-boss refreshes it while the handler runs)", async () => {
+    await ensureQueues({ ...QUEUE_OPTIONS, [QUEUES.reconHeavy]: { heartbeatSeconds: 10 } });
+    let calls = 0;
+    const stop = await startWorker({
+      [QUEUES.reconHeavy]: async () => {
+        calls++;
+        await Bun.sleep(13_000); // longer than the heartbeat; the supervisor checks every second
+      },
+    }, FAST);
+    try {
+      const id = await enqueue(QUEUES.reconHeavy, {}, { key: "long" });
+      await until(async () => (await stateOf(QUEUES.reconHeavy, id!))?.state === "completed", 25_000);
+      expect((await stateOf(QUEUES.reconHeavy, id!))?.retryCount).toBe(0);
+      expect(calls).toBe(1);
     } finally {
       await stop();
+      await ensureQueues();
     }
   }, 40_000);
+
+  it("a change of the queue options reaches a queue that already exists", async () => {
+    const read = async () => (await (await boss()).getQueue(QUEUES.ingestPull))?.heartbeatSeconds;
+    expect(await read()).toBe(QUEUE_OPTIONS[QUEUES.ingestPull].heartbeatSeconds!);
+    await ensureQueues({ ...QUEUE_OPTIONS, [QUEUES.ingestPull]: { heartbeatSeconds: 45 } });
+    try {
+      expect(await read()).toBe(45);
+    } finally {
+      await ensureQueues();
+    }
+    expect(await read()).toBe(30);
+  });
 
   it("scheduleEvery with '0 23 * * *' fires at 23:00 Asia/Jakarta, i.e. 16:00 UTC", async () => {
     await scheduleEvery(QUEUES.breaksSla, "sla-test", "0 23 * * *", { scope: "all" });
