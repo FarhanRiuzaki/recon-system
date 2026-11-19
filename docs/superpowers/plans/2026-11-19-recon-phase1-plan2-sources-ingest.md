@@ -177,7 +177,7 @@ route preview di `sources` (memakai `ingest` index).
 - Skema sumber berubah (kolom hilang/tipe beda vs `fields`) → source `paused` + `last_error`, tidak menulis.
 - Job: `ingest.pull` (kunci per source, jadwal per source), `ingest.file` (per file sha256), `ingest.snapshot`
   (per source+tanggal), `maintenance.partitions` (harian); `expireInSeconds` per queue diset (S2).
-- `health.ts`: `sourceHealth(source, now)` → `healthy|degraded|down` + `lag` + `complete_through` sesuai spec §8 (snapshot/file
+- `health.ts` (satu-satunya fungsi health, diekspor lewat `ingest/index.ts` dan dipakai juga oleh Space map nanti; aturan Build notes 02: Degraded lewat setengah grace atau tanpa snapshot/file aktif sebelum deadline, Down lewat grace atau deadline): `sourceHealth(source, now)` → `healthy|degraded|down` + `lag` + `complete_through` sesuai spec §8 (snapshot/file
   tanggal berjalan belum aktif → degraded; lewat batas harian → down; re-pull gagal saat sudah aktif → healthy).
 - Route baca: `GET …/sources/:sourceId/files`, `/snapshots`, `/quarantine` (paged), `POST …/sources/:sourceId/run` (pull
   sekarang / retry snapshot tanggal; `source_admin`).
