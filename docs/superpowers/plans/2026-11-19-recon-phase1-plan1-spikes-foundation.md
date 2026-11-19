@@ -42,7 +42,7 @@ S5 (teks POJK 11/2022, PADK 1/2026) bukan pekerjaan kode; dicatat sebagai tugas 
 - Uang integer minor unit; ID `uuidv7()`; timestamp `timestamptz`.
 - Kata "workspace" terlarang (`apps/web/src/test/no-domain.test.ts`); objeknya bernama **space**.
 - UI copy bahasa Inggris (AGENTS.md §10) — berlaku untuk pesan error API yang tampil di UI.
-- Role per space, enum tetap: `space_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer` (spec §11).
+- Role per space, enum tetap: `space_admin`, `source_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer` (spec §11, §11b).
 - Commit konvensional, diakhiri `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
 ## Review Focus
@@ -194,7 +194,7 @@ git commit -m "chore(spike): S3 CEL limits for configurator expressions"
   - tabel `spaces (id uuid pk, code text, name text, status 'active'|'archived', created_at, updated_at)`, unique
     `lower(code)`; `space_members (space_id fk, user_id fk → users, role text, created_at)`, pk `(space_id, user_id, role)`,
     check role ∈ enum. Satu user boleh beberapa role di satu space (spec §11); SoD dicek per aksi lewat user id.
-  - `type SpaceRole = "space_admin" | "config_maker" | "config_checker" | "operator" | "reviewer" | "viewer"`;
+  - `type SpaceRole = "space_admin" | "source_admin" | "config_maker" | "config_checker" | "operator" | "reviewer" | "viewer"`;
     `SPACE_ROLES: readonly SpaceRole[]` di `packages/shared/src/spaces.ts` (bebas zod).
   - `withSpace<T>(scope: { spaceIds: string[]; userId: string }, fn: (tx: InTx) => Promise<T>): Promise<T>` — membuka
     `db.transaction`, lalu `select set_config('app.space_ids', $ids, true), set_config('app.user_id', $uid, true)`
@@ -268,7 +268,7 @@ git commit -m "feat(api): spaces module with row level security helper"
   | `POST /v1/spaces` | `space.manage` | `{ code: 2–32 [a-z0-9-], name: 1–100 }` → 201; duplikat code (case-insensitive) 409 |
   | `PATCH /v1/spaces/:spaceId` | `{ space: ["space_admin"], or: "space.manage" }` | `name`, `status` |
   | `GET /v1/spaces/:spaceId/members` | `{ space: SPACE_ROLES, or: "space.manage" }` | paged |
-  | `PUT /v1/spaces/:spaceId/members/:userId` | `{ space: ["space_admin"], or: "space.manage" }` | `{ roles: SpaceRole[] }` (1–6, unik); ganti set role |
+  | `PUT /v1/spaces/:spaceId/members/:userId` | `{ space: ["space_admin"], or: "space.manage" }` | `{ roles: SpaceRole[] }` (1–7, unik); ganti set role |
   | `DELETE /v1/spaces/:spaceId/members/:userId` | sama | menolak menghapus `space_admin` terakhir: 409 `last_space_admin` |
 
 - [ ] **Step 1: Tulis tes yang gagal** `spaces.test.ts`:

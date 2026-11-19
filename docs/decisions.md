@@ -429,3 +429,11 @@ Satu aplikasi dipakai banyak tim (Treasury, CTOP, FICO, …), tiap tim punya spa
 ## DEC-036 — Pengecualian sempit aturan AGENTS.md untuk engine dan ingest
 
 Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: SQL hasil kompilasi rule hanya di `modules/engine/sql/*` dan `COPY` hanya di `modules/ingest/copy.ts` (allowlist `boundaries.test.ts`, nilai tetap parameter terikat); pool koneksi worker dengan `statement_timeout` per queue (pool api tetap 5 s); tabel berpartisi lewat migration SQL custom. Dependency baru dipin exact: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB sumber (`mssql`, `oracledb`, `mysql2`/`ibm_db` bila perlu), `@xyflow/react` (web, di-load lazy).
+
+## DEC-037 — Record generik, mode snapshot, builder pipeline, role source_admin
+
+19 November 2026 — keputusan core-recon atas delegasi pemilik (tim recon berjalan otomatis), dicatat di spec §8, §11a, §11b.
+- Inti data recon bernama `record` (bukan `txn`): KSEI adalah recon posisi (FSD-UREQ-9797). Amount/currency/direction/event_time opsional; config mendeklarasikan `measure` opsional.
+- Mode pull `snapshot` per business_date dengan aktivasi atomik setelah sukses penuh; snapshot lama disimpan (menutup risiko legacy R-7).
+- Builder config = pipeline kolom tetap (varian A prototipe designer); `@xyflow/react` dan spike S6 batal.
+- Role space ketujuh `source_admin` untuk IT pemegang kredensial source; mapping boleh diselesaikan IT atau `config_maker` (pemilik).

@@ -27,7 +27,7 @@ format file BI belum diketahui) dan KSEI (`daily`, `carry_over_days = 0`).
 ## 2. Pengguna dan kewenangan
 
 - **Operator ops** di tiap tim: memantau recon, menangani break, manual match, sign-off harian **(pemilik)**.
-- **Konfigurator**: ops atau tim IT **(pemilik)**. Pembagian **(Claude)**: hanya IT yang membuat source dan koneksi
+- **Konfigurator**: ops atau tim IT **(pemilik)**. Pembagian **(pemilik)**: hanya IT (role `source_admin`) yang membuat source dan koneksi
   (kredensial DB, path file); skema field dan mapping source boleh diselesaikan IT atau `config_maker` (prototipe
   designer: "started by IT, finished by IT or a config maker"); `config_maker` mengubah rule, toleransi, grace, jadwal;
   semua publish (versi source dan config) lewat maker-checker.
@@ -41,8 +41,10 @@ Goals
 - Worker auto catch-up setelah mati; jalan di RKE on-prem dengan Postgres HA **(pemilik)**.
 - Rule yang benar-benar bisa toleransi, 1:1 sampai N:1, multi-sumber; setiap match bisa dijelaskan per kondisi.
 - Config berversi, bisa disimulasikan sebelum publish, dan dipublish lewat maker-checker.
-- Export CSV break dan hasil recon **(PO)**: pola CSV Starterkit (`CSV_MAX_ROWS` 10.000, sel dinetralkan dari formula
-  injection). Export PDF ditunda.
+- Export CSV **(PO/pemilik)**: pola CSV Starterkit (`CSV_MAX_ROWS` 10.000, sel dinetralkan dari formula injection).
+  Fase 1 = ringkasan per pass, daftar breaks, dan item hasil dengan filter pass + jendela waktu; > 10.000 baris ditolak
+  dengan alasan jelas dan saran jendela lebih sempit (di puncak BI-FAST ±5.000 trx/2 menit/sisi → ±2–4 menit). Bulk
+  extract → fase 2 (§14 1a). Export PDF dan format laporan khusus (mis. `RECON_BAL_KSEI_{tanggal}`) → fase 2.
 
 Non-goals fase 1 **(Claude, PO bisa mengubah)**
 - AI/NL rule builder, saran match ML, subset-sum N:M, DuckDB, report template builder, archive/purge otomatis,
@@ -111,7 +113,7 @@ Mengikuti pola `apps/api/src/modules/<nama>/{schema,service,controller,rules,ind
 |---|---|---|
 | `spaces` | Space, membership `(user, space, role)`, konteks space per request, `SET LOCAL` untuk RLS | `space`, `space_member` |
 | `sources` | Definisi source (jenis, koneksi terenkripsi, skema field + tipe, parser, mapping ke core, CEL derive), share ke space lain, versi | `source`, `source_version`, `source_share` |
-| `ingest` | Pull DB berwatermark, ambil file, parse stream, COPY ke staging, normalisasi, karantina, completeness | `source_cursor`, `source_file`, `raw_row`, `txn`, `quarantine_row` |
+| `ingest` | Pull DB berwatermark, ambil file, parse stream, COPY ke staging, normalisasi, karantina, completeness | `source_cursor`, `source_file`, `raw_row`, `record`, `quarantine_row` |
 | `recon` | Definisi config, versi `draft → in_review → published → retired`, simulasi, diff antar versi | `recon_config`, `recon_config_version` |
 | `engine` | Run (tick/daily/rerun/simulation), state item per config, pass matching → SQL, match group + evidence, hari bisnis | `recon_run`, `recon_item`, `match_group`, `match_member`, `recon_day` |
 | `breaks` | Lifecycle break, assignment, ageing/SLA, reason code, manual/force match, write-off | `break`, `break_event` |
@@ -138,7 +140,7 @@ Bila satu driver tidak jalan di Bun (S7), konektor itu dijalankan oleh varian wo
 dipakai `apps/web` — dengan kode modul yang sama; tidak menambah bahasa atau service baru.
 
 **Skema source — tiap source berbeda kolom, tipe dan formatnya (pemilik)**. Tidak ada asumsi kolom tetap; yang tetap
-hanya core `txn`. Alur per source **(Claude)**:
+hanya core `record`. Alur per source **(Claude)**:
 1. **Deteksi**: DB → `introspect()` membaca nama kolom + tipe native (NUMBER, DECIMAL(18,2), DATETIME2, VARCHAR, ...);
    file → profiling sampel (header, delimiter, encoding, tipe tebakan per kolom, contoh nilai, persentase kosong).
    Fixed-width, MT940/942, camt.053 memakai parser khusus dengan field yang sudah dikenal.
@@ -163,8 +165,9 @@ FK (mencegah kebocoran lewat error constraint, laporan riset §Space); ID `uuidv
 **Ingest — sekali simpan, banyak config**
 - `raw_row`: payload JSONB immutable + provenance (`source_file_id` atau pull batch, nomor baris), `row_hash`,
   `business_date`. Partisi RANGE bulanan per `business_date`.
-- `txn`: core bertipe hasil normalisasi — `amount_minor bigint`, `currency`, `direction`, `event_time`,
-  `business_date`, `bday_index`, `ext_ref`, `account_ref`, `attrs jsonb` (RRN, STAN, end-to-end ID, NMID, ...). Field
+- `record` (dulu `txn`; tidak semua recon berisi transaksi — KSEI adalah recon posisi, **core-recon**): core bertipe
+  hasil normalisasi — `business_date`, `bday_index`, `ext_ref`, `account_ref`, `attrs jsonb` (RRN, STAN, end-to-end
+  ID, NMID, SID, kode efek, ...), dan kolom **opsional** `amount_minor bigint`, `currency`, `direction`, `event_time`. Field
   `attrs` yang dipakai matching dipromosikan jadi kolom terindeks lewat versi source. Partisi sama dengan `raw_row`.
 - **Tanggal bisnis diatur per source (Claude)**: mapping source mendefinisikan `business_date` (field atau ekspresi CEL)
   plus timezone; default `date(event_time)` di `Asia/Jakarta`. Kalender hari kerja (untuk `bday_index`) dipilih per
@@ -175,8 +178,8 @@ FK (mencegah kebocoran lewat error constraint, laporan riset §Space); ID `uuidv
   - Immutable (default): dedup `UNIQUE (space_id, source_id, row_hash, business_date)`; baris sama yang ditarik ulang
     lewat lookback diabaikan.
   - Mutable (status pending → success/reversal, koreksi amount, file koreksi): upsert per `(source_id, natural_key)`;
-    `raw_row` baru disimpan sebagai versi berikutnya, `txn` lama ditandai `superseded_by`. Bila field yang dipakai
-    matching berubah pada `txn` yang sudah match, `match_group`-nya di-reverse dengan alasan `source_changed` dan item
+    `raw_row` baru disimpan sebagai versi berikutnya, `record` lama ditandai `superseded_by`. Bila field yang dipakai
+    matching berubah pada `record` yang sudah match, `match_group`-nya di-reverse dengan alasan `source_changed` dan item
     kembali `open` (mengikuti "living data upsert + change flag" legacy v2.4). Status reversal bisa dipetakan jadi
     pembatal item lewat filter sisi.
   - Baris yang dikirim ulang dengan `business_date` berubah tidak tertangkap unique berpartisi (batas PG) — dicek di
@@ -184,8 +187,19 @@ FK (mencegah kebocoran lewat error constraint, laporan riset §Space); ID `uuidv
 - `quarantine_row`: baris gagal parse/validasi + alasan; tidak menggagalkan job (dipertahankan dari legacy).
 - Control total header/trailer file divalidasi sebelum data dipakai engine; file yang gagal diblok, bukan dijadikan break.
 
+**Measure opsional (core-recon)**: config mendeklarasikan `measure` = `{ field, unit, scale, tolerance }` atau tidak
+sama sekali. Recon transaksi: `amount_minor` (IDR, skala 2). Saldo efek (KSEI BAL, fase 2): `qty` desimal dipromosikan
+dari `attrs` ke kolom `numeric` terindeks (tidak lewat float). Rekening (KSEI ACT): tanpa measure, match hanya lewat kunci
+(SID). Invarian grup dan predikat amount/qty hanya aktif bila measure dideklarasikan.
+
+**Mode pull `snapshot` per business_date (core-recon, dari FSD-UREQ-9797 §4.1)**: untuk source yang menyerahkan posisi
+utuh per tanggal (Medallion KSEI). Tarik ke staging → bila sukses penuh, snapshot baru diaktifkan atomik untuk
+`(source, business_date)`; snapshot lama tetap tersimpan sebagai `superseded`, tidak dihapus (menutup risiko legacy R-7:
+data kosong bila query gagal setelah hapus). Completeness source snapshot = snapshot tanggal itu aktif. Snapshot ulang
+untuk tanggal yang sudah tutup hari = rerun + approval.
+
 **Engine — state per config, bukan per transaksi**
-- `recon_item (config_id, txn_id, side, status, business_date, …)`: status `open → matched | break`, plus `closed`.
+- `recon_item (config_id, record_id, side, status, business_date, …)`: status `open → matched | break`, plus `closed`.
   Ini perubahan utama dari legacy (status match menempel di `recon_transactions`): config BI-FAST dan QRIS yang
   membaca source yang sama tidak pernah berebut baris.
 - `match_group` + `match_member`: satu grup menampung anggota dari N sisi (1:1, 1:N, N:1, multi-way) dengan invarian
@@ -209,7 +223,7 @@ Keduanya memakai engine yang sama: run harian adalah tick yang jalan sekali deng
 
 **Run tick** (interval, atau satu kali untuk harian)
 1. Ambil lock transaksi per config (`pg_advisory_xact_lock`) — satu config tidak pernah jalan dobel.
-2. Masukkan `txn` baru dari source tiap sisi (filter sisi) sebagai `recon_item open`.
+2. Masukkan `record` baru dari source tiap sisi (filter sisi) sebagai `recon_item open`.
 3. Jalankan pass berurutan atas item `open` saja (inkremental, bukan scan sehari).
 4. Item `open` yang source lawannya `complete_through ≥ event_time + grace` → `break`. Grace per config.
 5. Break yang kemudian ketemu pasangan ditutup otomatis sebagai `AUTO_MATCHED_LATE_DATA` (tanpa approval).
@@ -272,7 +286,8 @@ config
   `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity` (pg_trgm, hanya di dalam window sempit),
   `eq_sum` (pass 1:N/N:1: jumlah anggota grup sama dengan amount sisi tunggal, dalam toleransi).
 - **N:1 / 1:N** = group-by kunci lalu bandingkan agregat (O(n)). Subset-sum ditunda (NP-complete; laporan riset).
-- **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*; sisanya `suggested`. Duplikat exact dipasangkan
+- **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*; sisanya `suggested`. **Terbukti perlu oleh S1**:
+  pass toleransi greedy tanpa cek ini menghasilkan 1 pasangan salah pada run harian 3 juta/sisi (`docs/recon/spikes.md`). Duplikat exact dipasangkan
   FIFO deterministik (`ROW_NUMBER`), urutan tie-break terdokumentasi dan disimpan di evidence.
 - **CEL** (`@marcbachmann/cel-js`) hanya untuk field turunan di mapping source (normalisasi), tidak di predikat match.
   Batas cost runtime dan engine regex-nya diverifikasi di spike S3.
@@ -305,39 +320,43 @@ versi config, run id). Retensi artefak pembukuan 10 tahun.
 
 - **Versi config berganti di tengah hari**: versi baru berlaku mulai tick berikutnya untuk item `open`; match yang sudah
   ada tetap menyimpan versi lamanya (satu `business_date` boleh berisi beberapa versi, tiap match tahu versinya).
-  Perubahan mapping source berlaku untuk baris yang di-ingest setelahnya; menurunkan ulang `txn` dari `raw_row` hanya
+  Perubahan mapping source berlaku untuk baris yang di-ingest setelahnya; menurunkan ulang `record` dari `raw_row` hanya
   lewat `rerun` eksplisit yang dicatat dan butuh approval. Manual match tidak pernah dibatalkan oleh rerun.
 - **Hari yang sudah sign-off beku**: data terlambat yang cocok dengan break dari hari beku tidak mengubah hari itu; engine
   mencatat match di hari berjalan sebagai `AUTO_MATCHED_LATE_DATA` yang mereferensikan hari beku (penyesuaian), dan break
   aslinya ditutup dengan tautan ke match tersebut tanpa membuka ulang sign-off.
 - **Break intra-hari langsung masuk antrean**: break yang lewat grace masuk antrean operator saat itu juga; SLA/ageing
   dihitung sejak break dibuat. Satu break = satu `recon_item`; kandidat dekat ditampilkan sebagai saran, bukan digabung.
-- **Role**: enam role space adalah enum tetap di fase 1 (guard baru: permission × membership space). Role global yang
+- **Role**: tujuh role space (enam + `source_admin`, core-recon) adalah enum tetap di fase 1 (guard baru: permission × membership space). Role global yang
   ada (Superadmin/Admin/Viewer) tetap untuk administrasi aplikasi; `auditor` dan `mgmt_reporting` ditambahkan lewat
   catalog permission yang ada. Role kustom per space ditunda.
 - **Read-only ke sistem sumber**: tidak ada write-back ke core/GL di fase 1; `ADJUSTED` dan write-off adalah catatan +
   approval di produk ini, posting dilakukan di sistem bank.
 - **PII**: tidak ada masking di fase 1; dicatat sebagai pertanyaan IT risk (§14).
+- **Anggota space (core-recon, dari review page Figma 01)**: `source_admin` = role IT di space untuk membuat/mengubah
+  source dan koneksi (kredensial), tanpa hak atas config recon atau break — memisahkan kredensial dari admin ops. Pemberian
+  role tidak butuh approval kedua di fase 1 (tercatat di activity; SoD tetap per aksi). Add member hanya dari user yang sudah
+  ada di aplikasi (pencarian LDAP langsung ditunda). Hapus anggota: break yang di-assign ke dia jadi tanpa owner (muncul di
+  view "Unassigned"), request approval yang dia buat dan masih pending dibatalkan; dialog hapus menampilkan jumlah keduanya.
 
 ## 11a. UI interaktif
 
-Pemilik ingin UI interaktif, bukan halaman form isian **(pemilik)**. Usulan **(Claude)**: kanvas untuk hal yang memang
-berbentuk alur atau graf, panel inspector untuk detailnya; form tetap ada tapi di dalam panel, bukan halaman sendiri.
+Pemilik ingin UI interaktif, bukan halaman form isian **(pemilik)**. Keputusan **(core-recon, didelegasikan pemilik)**:
+builder config memakai **varian A** dari prototipe designer — pipeline kolom tetap: sisi → pass berurutan → hasil; urutan
+pass = posisi di daftar = urutan eksekusi engine; drag atau Alt+↑/↓ untuk mengubah urutan; jumlah item per pass dan delta
+simulasi tampil di samping tiap pass; klik pass = inspector. Daftarnya sendiri adalah padanan keyboard. Kanvas bebas
+(React Flow) ditolak untuk fase 1: alur recon lurus, posisi bebas menyembunyikan urutan eksekusi, dan menambah dependency;
+dipertimbangkan lagi bila ada alur bercabang (recon multi-way, DAG antar config).
 
 | Layar | Interaksi | Lib |
 |---|---|---|
-| Config recon (builder) | Kanvas: node source → node sisi (filter) → node pass berurutan (bisa di-drag ulang) → hasil (matched / suggested / open / break). Klik node = inspector kanan. Setelah simulasi, edge menampilkan jumlah item yang lewat tiap pass | `@xyflow/react` 13.0.2 (MIT, peer React ≥18; dicek `npm view` 2026-11-19) |
-| Live day (near-real-time) | Diagram alur yang sama tapi read-only dengan angka live per tahap (ingest → open → matched/break), lag per source, freshness | `@xyflow/react` + SSE |
-| Explain match | Graf kecil grup multi-way: anggota per sisi, chip per predikat lulus/gagal + delta; untuk item tanpa pasangan, 3 kandidat terdekat dengan kondisi yang gagal | `@xyflow/react` |
-| Aliran item per pass | Sankey: total item → pass 1/2/3 → sisa → break | `recharts` (sudah dipakai, punya Sankey) |
-| Workbench break | Grid padat dua sisi, tray "Σ kiri / Σ kanan / selisih", keyboard | `DataTable` design system yang ada |
+| Builder config | Pipeline varian A + inspector + bar simulasi (hash draft, delta vs live) | komponen DS yang ada |
+| Live day | Pipeline yang sama read-only dengan angka live, lag/complete-through per source, chart durasi tick | DS + `recharts` + SSE |
+| Explain match | Grup per sisi, chip per predikat lulus/gagal + delta; item tanpa pasangan: 3 kandidat terdekat | SVG/DS |
+| Workbench break | Grid padat dua sisi, tray "Σ kiri / Σ kanan / selisih", keyboard j/k/x/m | `DataTable` DS |
 
-Alasan memilih React Flow, bukan vis-network (10.1.5) **(Claude)**: komponen React native (node = komponen design
-system, ikut token dan tema), sedangkan vis-network menggambar ke canvas imperatif di luar token/a11y Starterkit.
-Batasan dari AGENTS.md: first-load JS ≤ 250 kB per route → kanvas di-load lewat `next/dynamic` di dalam `ChunkBoundary`;
-dependency baru dipin exact dan dicatat di `decisions.md`; aksesibilitas: setiap kanvas punya padanan list/outline yang
-bisa dipakai penuh dengan keyboard (navigasi node keyboard React Flow diverifikasi di spike S6). Detail visual milik
-designer-recon.
+Desain: file Figma recon (team SunnyGo) `fbGv05DvfJnw6XU0fwZebO`, satu page per flow; prototipe HTML designer hanya
+referensi. Detail visual milik designer-recon.
 
 ## 12. Spike sebelum desain dikunci
 
@@ -349,7 +368,6 @@ designer-recon.
 | S4 | RLS + Drizzle + `SET LOCAL` di pool koneksi Bun.SQL; partisi lewat migration SQL manual | tes isolasi antar space lulus |
 | S5 | Teks POJK 11/2022, PADK 1/2026, pedoman AI OJK | syarat audit trail/retensi/SoD terkutip |
 | S7 | Tiap driver DB sumber di Bun 1.4 (PostgreSQL, MySQL, SQL Server, Oracle Thin): connect + TLS, stream 1 juta baris dengan memori datar, timeout, query berwatermark | lulus per engine, atau engine itu dipindah ke varian worker Node 24 |
-| S6 | `@xyflow/react` di Next 16 + React 19.3: ukuran chunk, tema token, navigasi keyboard, 200+ node | route tetap ≤ 250 kB first-load; keyboard penuh |
 
 ## 13. Keputusan yang perlu dicatat di `docs/decisions.md`
 
@@ -366,7 +384,7 @@ designer-recon.
     EOD/heavy lebih panjang); pool role api tetap 5 s.
   - Body 64 KB di BFF dan API: upload file manual tidak lewat body JSON. Usulan: file masuk lewat SFTP/NFS saja di fase 1;
     upload dari browser (bila PO butuh) menjadi keputusan terpisah.
-- Dependency baru: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB `mssql`, `oracledb` (+ `mysql2`/`ibm_db` bila perlu) di API; `@xyflow/react` di web.
+- Dependency baru: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB `mssql`, `oracledb` (+ `mysql2`/`ibm_db` bila perlu) di API. (`@xyflow/react` batal — §11a.)
 - Penamaan: "workspace" adalah kata terlarang di `apps/web/src/test/no-domain.test.ts`; objek produk ini bernama **space**.
 
 ## 14. Terbuka
@@ -376,7 +394,10 @@ Milik pemilik / PO / infra:
 1a. **Upload file dari browser + parser Excel** — ditunda ke fase 2 (PO); fase 1 file hanya lewat SFTP/NFS. Legacy
    menerima upload CSV/Excel sampai 50 MB (`recon-enegine/app/Http/Requests/Recon/StartDataLoadingRequest.php:37`);
    bila tim ops masih mengirim Excel manual, keputusan ini muncul lagi di fase 2 (butuh jalur upload di luar batas body
-   64 KB dan parser Excel yang dirawat — `exceljs`/`xlsx` di npm tidak aktif, laporan riset).
+   64 KB dan parser Excel yang dirawat — `exceljs`/`xlsx` di npm tidak aktif, laporan riset). Bulk extract hasil recon
+   (jutaan baris → file unduhan lewat job worker) ikut fase 2 di jalur penyimpanan file + retensi yang sama (PO).
+   Kebutuhan audit atas daftar matched satu hari penuh belum diketahui sampai teks POJK/PADK terbaca (S5); bila wajib,
+   bulk extract naik prioritas.
 2. Cara file BI sampai ke worker di RKE: SFTP pull atau volume NFS (infra).
 3. Replikasi Postgres HA sync atau async — async bisa kehilangan aksi manual terakhir saat failover (infra).
 4. Ada PgBouncer mode transaction di depan Postgres? Menentukan cara LISTEN dan lock (infra).
