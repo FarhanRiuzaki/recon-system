@@ -16,7 +16,7 @@ vi.mock("next/headers", () => ({
 import type { QueryKey } from "@tanstack/react-query";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { readTable, tableRequest, text } from "@/lib/shared/table-state";
-import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SUPERADMINS, type TableDef, userDetail, USERS, userSessions } from "@/lib/shared/queries";
+import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions } from "@/lib/shared/queries";
 import { fakeApi, pathOf, sealCookie, TEST_TOKEN } from "@/test/session";
 import { Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
 
@@ -98,6 +98,18 @@ describe("server prefetch = the API's answer to the browser hook's own URL, unde
     const rs = [reads.activity(sp("range=30d&action=user.update")), reads.authLog(sp("event=login_failed"))];
     expect(await dataAt(rs, act.key)).toEqual(v1(act.url));
     expect(await dataAt(rs, auth.key)).toEqual(v1(auth.url));
+  });
+
+  it("spaces: the switcher's list, one space and its members, under the keys useSpaces, useSpace and the members table use", async () => {
+    echoApi();
+    const id = "0199f0a0-0000-7000-8000-00000000000c";
+    const members = tableKey(SPACE_MEMBERS(id), "sort=-name");
+    expect(reads.spaceOptions()).toEqual({ key: ["spaces", "options"], path: "/api/spaces?pageSize=100" });
+    expect(reads.space(id)).toEqual({ key: ["spaces", "detail", id], path: `/api/spaces/${id}` });
+    const rs = [reads.spaceOptions(), reads.space(id), reads.spaceMembers(id, sp("sort=-name"))];
+    expect(await dataAt(rs, spaceOptions().key)).toEqual(v1("/api/spaces?pageSize=100"));
+    expect(await dataAt(rs, spaceDetail(id).key)).toEqual(v1(`/api/spaces/${id}`));
+    expect(await dataAt(rs, members.key)).toEqual(v1(members.url));
   });
 
   it("all reads are sent at once, not one after another", async () => {

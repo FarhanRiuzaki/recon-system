@@ -269,9 +269,12 @@ test.describe("phone", () => {
       await menuButton(page).click();
       await expect(drawer(page)).toBeVisible();
       await drawer(page).getByRole("link", { name: n.label, exact: true }).click();
-      await expect(page).toHaveURL((u) => u.pathname === n.href);
+      // Members (/spaces) opens the remembered or first space: /spaces/<id>/members.
+      await expect(page).toHaveURL((u) => u.pathname === n.href || u.pathname.startsWith(`${n.href}/`));
       await expect(drawer(page)).toBeHidden();
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      // Until the members page exists (Plan 1b Task 4), /spaces/<id>/members is the app's 404, outside the shell.
+      if (n.href === "/spaces") await open(page, "/");
     }
   });
 

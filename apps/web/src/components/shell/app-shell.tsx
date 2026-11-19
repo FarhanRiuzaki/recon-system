@@ -10,16 +10,17 @@ import { TopBar } from "./top-bar";
  * (no cap: with the sidebar collapsed or on a wide screen the content uses the room instead of leaving it empty).
  * Below 768 px (design-system §0): no sidebar (the top bar's menu opens it as a drawer), the sheet fills the window
  * edge to edge and the content padding is 16 px. Safe-area insets left and right (a phone on its side). The sidebar
- * and the nav read the viewer from `useAuth`.
+ * and the nav read the viewer from `useAuth`. `space` / `drawerSpace`: the space switcher (a feature, so the layout
+ * passes it in) under the logo in the sidebar and in the phone drawer.
  */
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, space, drawerSpace }: { children: ReactNode; space?: ReactNode; drawerSpace?: ReactNode }) {
   return (
     <div className="app-shell flex min-h-svh bg-bg px-safe">
       <a href="#content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:shadow-overlay">Skip to content</a>
       {/* Mark 28 px in the 64 px rail; wordmark 104 px in the 248 px sidebar header. */}
-      <Sidebar mark={<SunnyGoMark className="size-7" />} wordmark={<SunnyGoWordmark className="w-26" />} />
+      <Sidebar space={space} mark={<SunnyGoMark className="size-7" />} wordmark={<SunnyGoWordmark className="w-26" />} />
       <div className="animate-shell-sheet my-2 mr-2 ml-2 flex min-h-sheet min-w-0 flex-1 flex-col rounded-xl bg-sheet ring-1 ring-line max-md:m-0 max-md:min-h-svh max-md:rounded-none max-md:ring-0 print:m-0 print:ring-0">
-        <TopBar mark={<SunnyGoMark className="size-7" />} wordmark={<SunnyGoWordmark className="w-26" />} />
+        <TopBar space={drawerSpace} mark={<SunnyGoMark className="size-7" />} wordmark={<SunnyGoWordmark className="w-26" />} />
         <main id="content" className="flex min-w-0 flex-1 flex-col px-6 pt-6 pb-10 max-md:px-4 max-md:pt-4 print:p-0">
           <div className="grid w-full min-w-0 gap-section">{children}</div>
         </main>

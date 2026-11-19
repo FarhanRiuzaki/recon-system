@@ -32,6 +32,7 @@ const member = (spaceId: string, userId: string, ...roles: SpaceRole[]) => db.in
 beforeEach(async () => {
   await resetData();
   await db.delete(activity);
+  await db.delete(spaces); // the demo spaces: these tests make their own (members go with them)
   A = await space("treasury", "Treasury");
   B = await space("ctop", "CTOP");
   sa = await signIn("superadmin");

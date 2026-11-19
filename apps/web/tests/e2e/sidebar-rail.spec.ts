@@ -25,6 +25,8 @@ test("Users is one direct destination in expanded/collapsed navigation, palette 
   await expect(page).toHaveURL(isRemembered);
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
   const roles = nav.getByRole("link", { name: "Roles", exact: true });
+  // Hover once the rail has finished narrowing: a hover on a link still sliding under the pointer opens no tooltip.
+  await expect(page.getByRole("complementary", { name: "Main navigation" })).toHaveJSProperty("offsetWidth", 64);
   await roles.hover();
   await expect(page.getByRole("tooltip", { name: "Roles", exact: true })).toHaveAttribute("data-side", "right");
   await page.keyboard.press("Escape");

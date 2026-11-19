@@ -11,6 +11,7 @@ import { activity, authLog } from "../../src/modules/audit";
 import { rolesOf, verifyPassword } from "../../src/modules/auth";
 import { userIdentities } from "../../src/modules/oauth";
 import { permissions, rolePermissions, roles, userRoles } from "../../src/modules/rbac";
+import { spaceMembers, spaces } from "../../src/modules/spaces";
 import { recoveryCodes, users } from "../../src/modules/users";
 import { truncateAll } from "../helpers/db";
 
@@ -166,6 +167,23 @@ describe("seedDemo", () => {
       sql`jsonb_typeof(${activity.before}) = 'null'`,
     ));
     expect(nulls!.n).toBe(0); // only user.update entries have a before; the others are SQL NULL
+  });
+
+  it("demo spaces: Treasury, CTOP and FICO, each with a space admin; viewer in two of them, google in none", async () => {
+    await seedSystem(db, {});
+    await seedDemo(db);
+    const rows = await db.select({ code: spaces.code, name: spaces.name, username: users.username, role: spaceMembers.role, active: users.isActive })
+      .from(spaceMembers).innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).innerJoin(users, eq(users.id, spaceMembers.userId));
+    expect((await db.select({ code: spaces.code, name: spaces.name }).from(spaces).orderBy(spaces.code)))
+      .toEqual([{ code: "ctop", name: "CTOP" }, { code: "fico", name: "FICO" }, { code: "treasury", name: "Treasury" }]);
+    for (const c of ["treasury", "ctop", "fico"]) {
+      expect(rows.some((r) => r.code === c && r.role === "space_admin" && r.active)).toBe(true);
+      const roles = new Map<string, number>();
+      for (const r of rows.filter((x) => x.code === c)) roles.set(r.username, (roles.get(r.username) ?? 0) + 1);
+      expect([...roles.values()].some((n) => n > 1)).toBe(true); // someone holds several roles
+    }
+    expect([...new Set(rows.filter((r) => r.username === "viewer").map((r) => r.code))].sort()).toEqual(["ctop", "treasury"]);
+    expect(rows.filter((r) => r.username === "google")).toEqual([]);
   });
 
   it("the generator is deterministic", async () => {

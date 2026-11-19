@@ -26,9 +26,10 @@ import { SidebarRailMenu } from "./sidebar-rail-menu";
  * `navFor(perms)`: a link the viewer cannot open is not shown. An item's `children` (views of its page, or pages
  * below it such as /ds/forms) open under it, on a guide line, while its page or one below it is open in the expanded
  * sidebar (≥ 1280 px); in the rail the item is a menu button listing them (SidebarRailMenu). Account controls live in the sidebar footer. The logo nodes come
- * from the server (AppShell), so the wordmark's path data stays out of the client bundle.
+ * from the server (AppShell), so the wordmark's path data stays out of the client bundle; `space` (the space switcher)
+ * sits under them.
  */
-export function Sidebar({ mark, wordmark }: { mark: ReactNode; wordmark: ReactNode }) {
+export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: ReactNode; space?: ReactNode }) {
   const path = usePathname();
   const sp = useSearchParams();
   const { perms } = useAuth();
@@ -60,6 +61,7 @@ export function Sidebar({ mark, wordmark }: { mark: ReactNode; wordmark: ReactNo
           </button>
         )}
       </div>
+      {space && <div className="mt-3">{space}</div>}
       <div aria-hidden="true" className="mx-1.5 mt-3 border-t border-line" />
       <nav data-slot="sidebar-nav" aria-label="Menu" className="mt-1 flex min-h-0 flex-1 flex-col">
         <ScrollArea className="-mx-1 px-1" thumbClassName="-right-2">

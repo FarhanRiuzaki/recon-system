@@ -9,6 +9,7 @@ import { hashPassword, LDAP_PASSWORD } from "../../modules/auth";
 import { userIdentities } from "../../modules/oauth";
 import { projects as projectsTable } from "../../modules/projects";
 import { roles, userRoles } from "../../modules/rbac";
+import { type SpaceRole, spaceMembers, spaces as spacesTable } from "../../modules/spaces";
 import { recoveryCodes, users as usersTable } from "../../modules/users";
 
 export const SEED_PASSWORD = "Password123!";
@@ -57,7 +58,9 @@ let hashes: Promise<{ password: string; codes: string[] }> | undefined;
 /**
  * Demo data on top of seedSystem: the 8 sign-in accounts of the mock (password Password123!, `ldap` signs in through
  * the directory, `twofa` has TOTP and recovery codes, `google`/`apple` are linked), 42 generated users, 200 activity
- * and 300 sign-in log entries. Refused in production; skipped when the demo accounts exist.
+ * and 300 sign-in log entries, and three spaces (Treasury, CTOP, FICO): `viewer` is a member of Treasury and CTOP,
+ * `google` of none; each space admin is a generated active Viewer-role user, so the user tests that deactivate fixed
+ * accounts or every Admin never meet the last-space-admin rule. Refused in production; skipped when the demo accounts exist.
  */
 export async function seedDemo(db: Tx, env: Record<string, string | undefined> = process.env): Promise<void> {
   if (env.NODE_ENV === "production") throw new Error("Demo data is refused when NODE_ENV=production.");
@@ -137,6 +140,18 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
       const createdAt = at(now - (60 - i * 2) * DAY);
       return { id: Bun.randomUUIDv7(), name, description: i % 3 ? `Demo project ${name}.` : null, status: i % 4 === 3 ? "archived" : "active", createdAt, updatedAt: createdAt };
     }));
+    // Members: [space index, user, roles]; g(n) = the n-th generated active user with the Viewer role.
+    const pool = users.slice(FIXED.length).filter((u) => u.isActive && u.role === "Viewer");
+    const g = (n: number) => pool[n]!.id;
+    const fixed = (key: string) => users.find((u) => u.username === key)!.id;
+    const spaceIds = [Bun.randomUUIDv7(), Bun.randomUUIDv7(), Bun.randomUUIDv7()] as const;
+    await tx.insert(spacesTable).values([["treasury", "Treasury"], ["ctop", "CTOP"], ["fico", "FICO"]].map(([code, name], i) => ({ id: spaceIds[i]!, code: code!, name: name! })));
+    const members: [number, string, SpaceRole[]][] = [
+      [0, g(0), ["space_admin", "reviewer"]], [0, fixed("viewer"), ["operator", "config_maker"]], [0, g(3), ["config_checker"]], [0, g(4), ["source_admin"]],
+      [1, g(1), ["space_admin"]], [1, fixed("viewer"), ["viewer"]], [1, g(3), ["operator", "reviewer"]],
+      [2, g(2), ["space_admin", "config_checker"]], [2, g(5), ["operator", "viewer"]],
+    ];
+    await tx.insert(spaceMembers).values(members.flatMap(([s, userId, rs]) => rs.map((role) => ({ spaceId: spaceIds[s]!, userId, role }))));
     await tx.insert(activityTable).values(activity);
     await tx.insert(authLogTable).values(authLog);
   });

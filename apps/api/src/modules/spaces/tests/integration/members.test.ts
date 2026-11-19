@@ -13,6 +13,7 @@ let u1: string, u2: string;
 
 beforeEach(async () => {
   await resetData();
+  await db.delete(spaces); // the demo spaces: these tests make their own (members go with them)
   [u1, u2] = (await db.select({ id: users.id }).from(users).limit(2)).map((u) => u.id) as [string, string];
   await db.insert(spaces).values({ id: S, code: "treasury", name: "Treasury" });
 });
