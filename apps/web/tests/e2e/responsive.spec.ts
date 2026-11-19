@@ -85,8 +85,8 @@ test.describe("shell from 768 px", () => {
 
 test.describe("navigation: hidden template pages and coming-soon items", () => {
   test.use({ storageState: AUTH_STATE });
-  const SOON = ["Today", "Breaks", "Approvals", "Recons", "Sources"];
-  const REASON = "Coming soon \u2014 this page is part of a later release.";
+  const GROUPS = [{ id: "work", caption: "Today, Breaks and Approvals arrive in a later release.", items: ["Today", "Breaks", "Approvals"] }, { id: "setup", caption: "Recons and Sources arrive in a later release.", items: ["Recons", "Sources"] }];
+  const REASON = "Arrives in a later release.";
 
   test("Projects and Design system are not in the navigation or the page search, but /projects and /ds open by URL", async ({ page, isMobile }) => {
     await open(page, "/ds");
@@ -114,18 +114,29 @@ test.describe("navigation: hidden template pages and coming-soon items", () => {
       await expect(page.getByRole("dialog", { name: "Navigation" })).toBeVisible();
     }
     const menu = page.getByRole("navigation", { name: "Menu" });
-    for (const name of SOON) {
-      const item = menu.getByRole("button", { name, exact: true });
-      await expect(item).toHaveAttribute("aria-disabled", "true");
-      await expect(item).toHaveAccessibleDescription(REASON);
-      await expect(menu.getByRole("link", { name, exact: true })).toHaveCount(0);
+    const captioned = isMobile || info.project.name === "desktop"; // the rail (tablet) has no group caption
+    for (const g of GROUPS) {
+      const caption = menu.getByText(g.caption, { exact: true });
+      if (captioned) await expect(caption).toHaveCount(1); // exactly one per group
+      for (const name of g.items) {
+        const item = menu.getByRole("button", { name, exact: true });
+        await expect(item).toHaveAttribute("aria-disabled", "true");
+        await expect(item).toHaveAccessibleDescription(g.caption);
+        if (captioned) await expect(item).toHaveAttribute("aria-describedby", (await caption.getAttribute("id"))!);
+        await expect(menu.getByRole("link", { name, exact: true })).toHaveCount(0);
+      }
     }
-    if (isMobile) await expect(menu.getByText(REASON)).toHaveCount(SOON.length); // visible caption on touch
-    else {
+    if (isMobile) await expect(menu.getByText(/arrives? in a later release/)).toHaveCount(GROUPS.length);
+    else if (info.project.name === "desktop") {
+      await expect(menu.getByRole("button", { name: "Today", exact: true })).toContainText("Soon");
+      await menu.getByRole("button", { name: "Today", exact: true }).focus();
+      await expect(page.getByRole("tooltip")).toHaveCount(0); // the caption covers it
+    } else {
+      // The rail: a dot marks the icon, the reason opens on press (and on keyboard focus).
       const first = menu.getByRole("button", { name: "Today", exact: true });
-      await first.focus(); // keyboard: the tooltip opens on focus
+      await expect(first.locator('[data-slot="soon-dot"]')).toBeVisible();
+      await first.click({ force: true }); // aria-disabled: Playwright treats it as not enabled
       await expect(page.getByRole("tooltip")).toHaveText(REASON);
-      if (info.project.name === "desktop") await expect(first).toContainText("Soon");
     }
     const url = page.url();
     await menu.getByRole("button", { name: "Breaks", exact: true }).click({ force: true }); // does nothing

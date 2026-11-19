@@ -22,7 +22,7 @@ import { goKeys } from "@/lib/shared/shortcuts";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
 import { SidebarRailMenu } from "./sidebar-rail-menu";
-import { SoonItem } from "./soon-item";
+import { SoonCaption, SoonItem } from "./soon-item";
 
 /**
  * True once the caller's spaces are known to be none (the switcher's list, prefetched by the layout; useSpaces reads
@@ -86,8 +86,10 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
             {si > 0 && <div aria-hidden="true" className={cn("mx-2 mb-2 border-t border-line", !collapsed && "xl:hidden")} />}
             {/* Hidden in the rail, still names the group (aria-labelledby reads hidden text). */}
             <span key={`${s.id}-${collapsed}`} id={`nav-section-${s.id}`} className={cn("eyebrow hidden px-2.5 pt-2 pb-2 text-fg-3", label("xl:block"))}>{s.label}</span>
+            {/* One caption per group, only in the expanded sidebar; in the rail the soon items' tooltip says it. */}
+            <SoonCaption items={s.items} id={`nav-soon-${s.id}`} className={cn("-mt-1 hidden px-2.5 pb-2 text-caption text-fg-3", label("xl:block"))} />
             {s.items.map((n) => {
-              if (n.soon) return <SoonItem key={n.href} item={n} text={cn("hidden", label("xl:inline"))} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
+              if (n.soon) return <SoonItem key={n.href} item={n} captionId={`nav-soon-${s.id}`} text={cn("hidden", label("xl:inline"))} dot={collapsed ? undefined : "xl:hidden"} hideTip={collapsed ? undefined : "xl:hidden"} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
               const active = isActive(path, n.href);
               const child = active ? activeChild(n, path, sp) : null;
               return (

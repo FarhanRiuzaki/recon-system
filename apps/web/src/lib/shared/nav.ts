@@ -4,8 +4,14 @@ import { canonicalSelection } from "@starterkit/shared/filter-selection";
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
   | "today" | "breaks" | "approvals" | "recons" | "sources";
 export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
-/** Why a `soon` item is off: its tooltip, and the caption on a touch screen (AGENTS.md §10). */
-export const SOON_REASON = "Coming soon \u2014 this page is part of a later release.";
+/** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
+export const SOON_REASON = "Arrives in a later release.";
+/** One caption for a group's `soon` items: "Today, Breaks and Approvals arrive in a later release."; null when it has none. */
+export function soonCaption(items: readonly NavItem[]): string | null {
+  const l = items.filter((n) => n.soon).map((n) => n.label);
+  if (!l.length) return null;
+  return `${l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l.at(-1)}` : l[0]} ${l.length > 1 ? "arrive" : "arrives"} in a later release.`;
+}
 /**
  * `shortcut` is "" for an item without one; `perm` null = every signed-in user. `children`, listed under the item in
  * the sidebar while its section is open: views of its own page (same path, a filter in the query) or pages below it
@@ -56,8 +62,8 @@ export function navFor(perms: ReadonlySet<PermissionName>, noSpace = false): Nav
     .filter((s) => s.items.length > 0);
 }
 
-/** The openable pages (palette, "G" shortcuts, shortcut list): the sidebar's items without the `soon` ones. */
-export const pagesFor = (perms: ReadonlySet<PermissionName>): NavItem[] => navFor(perms).flatMap((s) => s.items).filter((n) => !n.soon);
+/** The openable pages (palette, "G" shortcuts, shortcut list): the sidebar's items (`noSpace` as in navFor) without the `soon` ones. */
+export const pagesFor = (perms: ReadonlySet<PermissionName>, noSpace = false): NavItem[] => navFor(perms, noSpace).flatMap((s) => s.items).filter((n) => !n.soon);
 
 /** `exact`: active only on its own path. "/" is always exact. */
 export function isActive(pathname: string, href: string, exact = false): boolean {

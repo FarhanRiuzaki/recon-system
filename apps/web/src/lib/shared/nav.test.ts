@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, pagePerm, pagesFor, SOON_REASON, type NavItem } from "./nav";
+import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, pagePerm, pagesFor, SOON_REASON, soonCaption, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
@@ -44,7 +44,10 @@ describe("navFor", () => {
     expect(pages.map((n) => n.label)).not.toContain("Today");
     expect(pagePerm("/today")).toBeNull();
     expect(crumbs("/today", new Set(PERMISSIONS))).toEqual([]);
-    expect(SOON_REASON).toMatch(/^Coming soon/);
+    expect(SOON_REASON).toBe("Arrives in a later release.");
+    const sections = navFor(new Set());
+    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Today, Breaks and Approvals arrive in a later release.", "Recons and Sources arrive in a later release.", null, null]);
+    expect(soonCaption([{ ...soon[0]! }])).toBe("Today arrives in a later release.");
   });
 
   it("shortcuts are unique", () => {
@@ -60,6 +63,13 @@ describe("space group", () => {
     expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "setup", "personal"]);
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
+  });
+
+  it("in no space the palette, the G shortcuts and the shortcut list (pagesFor) leave out Members too, unless space.manage", () => {
+    const labels = (perms: Set<"space.manage">, noSpace: boolean) => pagesFor(perms, noSpace).map((n) => n.label);
+    expect(labels(new Set(), true)).not.toContain("Members");
+    expect(labels(new Set(), false)).toContain("Members");
+    expect(labels(new Set(["space.manage"]), true)).toContain("Members");
   });
 
   it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {

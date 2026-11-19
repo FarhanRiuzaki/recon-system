@@ -13,7 +13,7 @@ import { activeChild, isActive, navFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
-import { SoonItem } from "./soon-item";
+import { SoonCaption, SoonItem } from "./soon-item";
 import { useNoSpace } from "./sidebar";
 
 const ICON_BUTTON = "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-2 hover:bg-tray hover:text-fg";
@@ -50,8 +50,9 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
           {navFor(perms, noSpace).map((s, si) => (
             <div key={s.id} role="group" aria-labelledby={`drawer-section-${s.id}`} className={cn("grid gap-0.5", si > 0 && "mt-4")}>
               <span id={`drawer-section-${s.id}`} className="eyebrow px-2.5 pt-2 pb-2 text-fg-3">{s.label}</span>
+              <SoonCaption items={s.items} id={`drawer-soon-${s.id}`} className="-mt-1 px-2.5 pb-1 text-caption text-fg-3" />
               {s.items.map((n) => {
-                if (n.soon) return <SoonItem key={n.href} item={n} drawer />;
+                if (n.soon) return <SoonItem key={n.href} item={n} captionId={`drawer-soon-${s.id}`} drawer />;
                 const active = isActive(path, n.href);
                 const child = active ? activeChild(n, path, sp) : null;
                 return (
