@@ -230,24 +230,29 @@ const userChange = (tx: Tx, ctx: Ctx, u: UserRowDto, change: UserChange) => chec
 /** The space-admin lock, taken before any user row by a request that may delete or deactivate (see the top of this file). */
 const lockSpaceAdmins = (tx: Tx) => xactLock(tx, "spaceAdmins");
 
-/** `last_space_admin` when `u` is active and the only active space_admin of a space (under the space-admin lock). */
-const spaceAdminRule = async (tx: Tx, u: UserRowDto): Promise<ErrorCode | null> => {
+/** Why a change is refused: a code (its fixed copy), or the error itself when its message names more (the space). */
+type Stop = ErrorCode | ApiError;
+const refusal = (s: Stop) => (s instanceof ApiError ? s : new ApiError(s));
+const stopCode = (s: Stop | null) => (s instanceof ApiError ? s.code : s);
+
+/** The `last_space_admin` error, naming the space, when `u` is active and its only active space_admin (under the space-admin lock). */
+const spaceAdminRule = async (tx: Tx, u: UserRowDto): Promise<Stop | null> => {
   if (!u.isActive) return null;
   const e = await assertNotLastSpaceAdmin(tx, [u.id]).catch((e: unknown) => e);
-  if (e instanceof ApiError) return e.code;
+  if (e instanceof ApiError) return e;
   if (e) throw e;
   return null;
 };
 
 /** The rule for deleting a user: checkUserChange, then not the last active space_admin of a space. */
-const deleteRule = async (tx: Tx, ctx: Ctx, u: UserRowDto): Promise<ErrorCode | null> =>
+const deleteRule = async (tx: Tx, ctx: Ctx, u: UserRowDto): Promise<Stop | null> =>
   (await userChange(tx, ctx, u, { kind: "delete" })) ?? spaceAdminRule(tx, u);
 
 /**
  * The rule for setting a user active or inactive (deactivating: not yourself, not the last active Superadmin, not the
  * last active space_admin of a space); PATCH isActive, /status and bulk share it.
  */
-const statusRule = async (tx: Tx, ctx: Ctx, u: UserRowDto, active: boolean): Promise<ErrorCode | null> =>
+const statusRule = async (tx: Tx, ctx: Ctx, u: UserRowDto, active: boolean): Promise<Stop | null> =>
   active ? null : (await userChange(tx, ctx, u, { kind: "deactivate" })) ?? spaceAdminRule(tx, u);
 
 /**
@@ -333,8 +338,8 @@ export async function bulkUsers(ctx: Ctx, b: BulkUserBody): Promise<BulkResult> 
     const actor = await actorPermissions(tx, ctx.user.id);
     const grant = role ? checkRoleGrant(actor, role) : null;
     const rule = async (u: UserRowDto): Promise<ErrorCode | null> => {
-      if (action === "activate" || action === "deactivate") return statusRule(tx, ctx, u, action === "activate");
-      if (action === "delete") return deleteRule(tx, ctx, u);
+      if (action === "activate" || action === "deactivate") return stopCode(await statusRule(tx, ctx, u, action === "activate"));
+      if (action === "delete") return stopCode(await deleteRule(tx, ctx, u));
       if (u.roles.includes(role!.name)) return (await userChange(tx, ctx, u, { kind: "setRoles", roles: u.roles })) ?? grant;
       if (u.roles.length >= MAX_USER_ROLES) return "bad_request";
       return (await userChange(tx, ctx, u, { kind: "setRoles", roles: [...u.roles, role!.name] })) ?? grant;
@@ -387,7 +392,7 @@ export async function editUser(ctx: Ctx, id: string, b: UpdateUserBody): Promise
     const statusChange = b.isActive !== undefined && b.isActive !== u.isActive;
     if (statusChange) {
       const stop = await statusRule(tx, ctx, u, b.isActive!);
-      if (stop) throw new ApiError(stop);
+      if (stop) throw refusal(stop);
     }
     const name = b.name ?? u.name, username = b.username ?? u.username, email = b.email ?? u.email;
     const fieldsChange = name !== u.name || username !== u.username || email !== u.email;
@@ -419,7 +424,7 @@ export async function removeUser(ctx: Ctx, id: string): Promise<void> {
     await lockSpaceAdmins(tx);
     const { u } = await lockTarget(tx, ctx, id);
     const stop = await deleteRule(tx, ctx, u);
-    if (stop) throw new ApiError(stop);
+    if (stop) throw refusal(stop);
     await deleteUser(tx, ctx, u);
   });
 }
@@ -448,7 +453,7 @@ export async function setUserStatus(ctx: Ctx, id: string, active: boolean): Prom
     if (!active) await lockSpaceAdmins(tx);
     const { u } = await lockTarget(tx, ctx, id);
     const stop = await statusRule(tx, ctx, u, active);
-    if (stop) throw new ApiError(stop);
+    if (stop) throw refusal(stop);
     await applyStatus(tx, ctx, u, active);
     return UserDto.parse({ ...u, isActive: active });
   });

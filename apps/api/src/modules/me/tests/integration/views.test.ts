@@ -36,6 +36,18 @@ describe("/v1/me/views", () => {
     expect(await db.$count(activity)).toBe(before);
   });
 
+  it("a space page's path (a UUID in it, up to 80 characters) keeps its own views; longer or upper-case paths are 400", async () => {
+    const t = await signIn("admin");
+    const path = `/spaces/${Bun.randomUUIDv7()}/members`;
+    const r = await save(t, { path, name: "Operators", query: "q=op" });
+    expect(r.status).toBe(200);
+    expect((await list(t, path)).items.map((v) => v.name)).toEqual(["Operators"]);
+    expect((await list(t, `/spaces/${Bun.randomUUIDv7()}/members`)).items).toEqual([]);
+    expect((await save(t, { path: `/${"a".repeat(80)}`, name: "x", query: "" })).status).toBe(200);
+    expect((await save(t, { path: `/${"a".repeat(81)}`, name: "x", query: "" })).status).toBe(400);
+    expect((await save(t, { path: "/Spaces/x", name: "x", query: "" })).status).toBe(400);
+  });
+
   it("another user's views are neither listed nor deletable (404)", async () => {
     const admin = await signIn("admin");
     const v = (await (await save(admin, { path: "/users", name: "Mine", query: "" })).json()) as SavedViewDto;

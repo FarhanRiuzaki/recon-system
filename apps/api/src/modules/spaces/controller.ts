@@ -20,10 +20,11 @@ export const spacesController = () =>
       c.set.status = 201;
       return s;
     }, { guard: "space.manage" })
-    /** The space with the caller's roles in it ([] when let in through `space.manage`). */
-    .get("/v1/spaces/:spaceId", ({ ctx }) => spaceDetail(ctx.space!.id, ctx.space!.roles), { guard: { space: SPACE_ROLES, or: "space.manage" } })
+    /** The space with the caller's roles in it ([] when let in through `space.view`, which `space.manage` implies). */
+    .get("/v1/spaces/:spaceId", ({ ctx }) => spaceDetail(ctx.space!.id, ctx.space!.roles), { guard: { space: SPACE_ROLES, or: "space.view" } })
     .patch("/v1/spaces/:spaceId", async (c) => updateSpace(c.ctx, c.ctx.space!.id, await body(c, UpdateSpaceBody)), { guard: { space: ["space_admin"], or: "space.manage" } })
-    .get("/v1/spaces/:spaceId/members", ({ ctx, query }) => memberPage(ctx.space!.id, query), { query: SpaceMemberListQuery, guard: { space: SPACE_ROLES, or: "space.manage" } })
+    /** Who is in the space: management data, readable by `space.view` (which lists the space anyway); no RLS data. */
+    .get("/v1/spaces/:spaceId/members", ({ ctx, query }) => memberPage(ctx.space!.id, query), { query: SpaceMemberListQuery, guard: { space: SPACE_ROLES, or: "space.view" } })
     /** The app's users, each marked when already a member: who the Members screen can add. */
     .get("/v1/spaces/:spaceId/candidates", ({ ctx, query }) => candidatePage(ctx.space!.id, query), { query: SpaceCandidateListQuery, guard: { space: ["space_admin"], or: "space.manage" } })
     .put("/v1/spaces/:spaceId/members/:userId", async (c) => {

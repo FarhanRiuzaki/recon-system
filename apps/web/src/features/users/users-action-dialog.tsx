@@ -33,8 +33,8 @@ export async function confirmUserAction(p: Pending, role: string) {
 const VERB: Record<BulkAction, string> = { activate: "Activate", deactivate: "Deactivate", delete: "Delete", assignRole: "Assign role to" };
 const BULK_NOTE: Record<BulkAction, string> = {
   activate: "Users who are already active stay as they are. Users with permissions your role doesn't hold are skipped.",
-  deactivate: "Your own account, the last active Superadmin and users with permissions your role doesn't hold are skipped.",
-  delete: "Your own account, the last active Superadmin and users with permissions your role doesn't hold are skipped.",
+  deactivate: "Your own account, the last active Superadmin, the only active space admin of a space and users with permissions your role doesn't hold are skipped.",
+  delete: "Your own account, the last active Superadmin, the only active space admin of a space and users with permissions your role doesn't hold are skipped.",
   assignRole: "Your own account and users with permissions your role doesn't hold are skipped, and so is everyone when your role doesn't hold every permission of the chosen role.",
 };
 const LABEL: Record<BulkAction, string> = { activate: "Activate users", deactivate: "Deactivate users", delete: "Delete users", assignRole: "Assign role" };

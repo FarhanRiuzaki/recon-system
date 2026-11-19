@@ -13,6 +13,7 @@ import { activeChild, isActive, navFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
+import { useNoSpace } from "./sidebar";
 
 const ICON_BUTTON = "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-2 hover:bg-tray hover:text-fg";
 
@@ -28,6 +29,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
   const sp = useSearchParams();
   const { perms } = useAuth();
   const { prefs } = usePrefs();
+  const noSpace = useNoSpace();
   return (
     <Drawer closeOn={path}>
       <DrawerTrigger asChild>
@@ -44,7 +46,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
         </div>
         {space && <div className="px-3 pb-3">{space}</div>}
         <nav data-slot="sidebar-nav" aria-label="Menu" className="scroll-quiet flex-1 overflow-y-auto px-3 pb-4">
-          {navFor(perms).map((s, si) => (
+          {navFor(perms, noSpace).map((s, si) => (
             <div key={s.id} role="group" aria-labelledby={`drawer-section-${s.id}`} className={cn("grid gap-0.5", si > 0 && "mt-4")}>
               <span id={`drawer-section-${s.id}`} className="eyebrow px-2.5 pt-2 pb-2 text-fg-3">{s.label}</span>
               {s.items.map((n) => {

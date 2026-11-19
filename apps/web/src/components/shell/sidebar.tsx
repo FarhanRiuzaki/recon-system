@@ -7,12 +7,16 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { SidebarCollapseIcon, SidebarExpandIcon } from "@starterkit/ui/ui/icons";
 import { ScrollArea } from "@starterkit/ui/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/tooltip";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
+import type { Page } from "@starterkit/shared/contracts/common";
+import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
 import { activeChild, isActive, navFor } from "@/lib/shared/nav";
+import { spaceOptions } from "@/lib/shared/queries";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
 import { NavGlyph } from "./nav-icon";
@@ -20,10 +24,19 @@ import { AccountMenu } from "./account-menu";
 import { SidebarRailMenu } from "./sidebar-rail-menu";
 
 /**
+ * True once the caller's spaces are known to be none (the switcher's list, prefetched by the layout; useSpaces reads
+ * the same key). Unknown (loading, failed) counts as having one, so the nav never drops a group on a hiccup.
+ */
+export function useNoSpace(): boolean {
+  const { key, url } = spaceOptions();
+  return useQuery({ queryKey: key, queryFn: () => api<Page<unknown>>(url) }).data?.total === 0;
+}
+
+/**
  * Sidebar. 248 px from 1280 px (`xl`), collapsible to the 64 px icon rail (preference per viewer, kept in a cookie);
  * 768–1279 px it is always the rail, so the page never scrolls sideways; below 768 px it is not shown and the same
  * sections open from the top bar's menu button (MobileNav, a drawer). Sections come from
- * `navFor(perms)`: a link the viewer cannot open is not shown. An item's `children` (views of its page, or pages
+ * `navFor(perms, useNoSpace())`: a link the viewer cannot open is not shown, nor the Space group while they are in no space. An item's `children` (views of its page, or pages
  * below it such as /ds/forms) open under it, on a guide line, while its page or one below it is open in the expanded
  * sidebar (≥ 1280 px); in the rail the item is a menu button listing them (SidebarRailMenu). Account controls live in the sidebar footer. The logo nodes come
  * from the server (AppShell), so the wordmark's path data stays out of the client bundle; `space` (the space switcher)
@@ -34,6 +47,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
   const sp = useSearchParams();
   const { perms } = useAuth();
   const { prefs, update } = usePrefs();
+  const sections = navFor(perms, useNoSpace());
   const collapsed = prefs.sidebar === "collapsed";
   // The toggle swaps between two buttons, so the pressed one unmounts; hand keyboard focus to its counterpart.
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -65,7 +79,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
       <div aria-hidden="true" className="mx-1.5 mt-3 border-t border-line" />
       <nav data-slot="sidebar-nav" aria-label="Menu" className="mt-1 flex min-h-0 flex-1 flex-col">
         <ScrollArea className="-mx-1 px-1" thumbClassName="-right-2">
-        {navFor(perms).map((s, si) => (
+        {sections.map((s, si) => (
           <div key={s.id} role="group" aria-labelledby={`nav-section-${s.id}`} className={cn("grid gap-0.5", si > 0 && "mt-3")}>
             {/* The rail has no group labels: a hairline separates the groups instead. */}
             {si > 0 && <div aria-hidden="true" className={cn("mx-2 mb-2 border-t border-line", !collapsed && "xl:hidden")} />}

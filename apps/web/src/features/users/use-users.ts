@@ -55,6 +55,7 @@ const SKIP_REASON: Record<string, string> = {
   not_found: "no longer exists",
   forbidden: "outside what your role may change",
   bad_request: "already has the most roles (20)",
+  last_space_admin: "the only active space admin of a space",
 };
 export const skipReason = (code: string): string => SKIP_REASON[code] ?? "couldn't be changed";
 

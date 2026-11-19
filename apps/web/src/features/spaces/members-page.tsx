@@ -37,7 +37,7 @@ const LEGEND = (["healthy", "stopped"] as const).map((h) => ({ health: h, label:
  * actions Change roles and Remove from space; only a space.manage holder may grant or remove Source admin.
  */
 export function MembersPage({ id }: { id: string }) {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const router = useRouter();
   const space = useSpace(id).data;
   const t = useTableQuery<SpaceMemberDto, { q: string }>(SPACE_MEMBERS(id));
@@ -66,7 +66,7 @@ export function MembersPage({ id }: { id: string }) {
 
   return (
     <div className="grid gap-section" onPointerDown={manage ? preloadDialogs : undefined} onFocus={manage ? preloadDialogs : undefined}>
-      <PageHeader title="Members" trail={name ? [{ label: name }] : []}
+      <PageHeader title="Members"
         description={`People who can work in the ${name} space and what each of them may do. A person can hold several roles.`}
         actions={manage ? <Button onClick={() => open({ kind: "add" })}>Add member</Button> : undefined} />
       <FilterSurface>
@@ -104,10 +104,7 @@ export function MembersPage({ id }: { id: string }) {
       {space && dialog?.kind === "roles" && (
         <ChangeRolesDialog space={space} member={dialog.member} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={lastAdmin(dialog.member)} onClose={close} returnFocus={returnFocus} />
       )}
-      {space && dialog?.kind === "remove" && (
-        // Removing yourself ends your access to this space: go where /spaces sends you next.
-        <RemoveMemberDialog space={space} member={dialog.member} onClose={close} onRemoved={() => { if (dialog.member.userId === user.id) router.push("/spaces"); }} returnFocus={returnFocus} />
-      )}
+      {space && dialog?.kind === "remove" && <RemoveMemberDialog space={space} member={dialog.member} onClose={close} returnFocus={returnFocus} />}
     </div>
   );
 }

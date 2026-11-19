@@ -601,7 +601,8 @@ describe("the last active space_admin of a space", () => {
     const [v, g] = [await idOf("viewer"), await idOf("google")];
     const S = await spaceWith("viewer");
     const r = await del(v, admin);
-    expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+    const named = `This user is the only active space admin of Treasury (s${S.slice(-8)}). Make another member a space admin first.`;
+    expect([r.status, await r.json()]).toEqual([409, { error: { code: "last_space_admin", message: named } }]);
     expect(await userRow(v)).toBeDefined();
     expect(await adminsOf(S)).toBe(1);
     const b = await bulk({ action: "delete", ids: [v] }, admin);
@@ -618,9 +619,9 @@ describe("the last active space_admin of a space", () => {
   it("deactivating the only active space_admin is 409; bulk deactivate skips them with code last_space_admin", async () => {
     const admin = await signIn("admin");
     const [v, g] = [await idOf("viewer"), await idOf("google")];
-    await spaceWith("viewer");
+    const S = await spaceWith("viewer");
     for (const r of [await setStatus(v, { active: false }, admin), await patch(v, { isActive: false }, admin)]) {
-      expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+      expect([r.status, await r.json()]).toEqual([409, { error: { code: "last_space_admin", message: expect.stringContaining(`of Treasury (s${S.slice(-8)})`) } }]);
     }
     expect((await userRow(v)).is_active).toBe(true);
     expect((await patch(v, { name: "Viewer Renamed" }, admin)).status).toBe(200); // other edits are not blocked

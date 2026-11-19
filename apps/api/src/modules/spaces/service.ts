@@ -198,8 +198,8 @@ async function keepAnAdmin(tx: Tx, spaceId: string, userId: string): Promise<voi
 }
 
 /**
- * 409 `last_space_admin` when deleting or deactivating every user of `userIds` would leave a space with no active
- * space_admin (users/service.ts: delete, deactivate, bulk). Takes the space-admin lock first; a caller that also locks
+ * 409 `last_space_admin`, naming the space (name and code), when deleting or deactivating every user of `userIds` would
+ * leave a space with no active space_admin (users/service.ts: delete, deactivate, bulk). Takes the space-admin lock first; a caller that also locks
  * user rows takes this lock before them (a member change holds it while its foreign key check share-locks a user row).
  */
 export async function assertNotLastSpaceAdmin(tx: Tx, userIds: string[]): Promise<void> {
@@ -211,7 +211,9 @@ export async function assertNotLastSpaceAdmin(tx: Tx, userIds: string[]): Promis
     .where(and(activeAdmin, inArray(spaceMembers.spaceId, tx.select({ id: spaceMembers.spaceId }).from(spaceMembers)
       .where(and(eq(spaceMembers.role, "space_admin"), inArray(spaceMembers.userId, userIds))))))
     .groupBy(spaceMembers.spaceId).having(sql`bool_and(${inArray(spaceMembers.userId, userIds)})`).limit(1);
-  if (hit) throw new ApiError("last_space_admin", "This user is the only active space admin of a space. Make another member a space admin first.");
+  if (!hit) return;
+  const [s] = await tx.select({ code: spaces.code, name: spaces.name }).from(spaces).where(eq(spaces.id, hit.spaceId));
+  throw new ApiError("last_space_admin", `This user is the only active space admin of ${s!.name} (${s!.code}). Make another member a space admin first.`);
 }
 
 /**

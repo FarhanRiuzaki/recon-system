@@ -24,7 +24,8 @@ describe("users: client mirror of the server's protection rules", () => {
   });
 
   it("skipReason: every code the bulk route skips with has words; an unknown code never shows raw", () => {
-    for (const c of ["self_action", "last_superadmin", "not_found", "forbidden", "bad_request"]) expect(skipReason(c)).not.toMatch(/_|^couldn't/);
+    for (const c of ["self_action", "last_superadmin", "not_found", "forbidden", "bad_request", "last_space_admin"]) expect(skipReason(c)).not.toMatch(/_|^couldn't/);
+    expect(skipReason("last_space_admin")).toBe("the only active space admin of a space");
     expect(skipReason("weird_code")).toBe("couldn't be changed");
   });
 

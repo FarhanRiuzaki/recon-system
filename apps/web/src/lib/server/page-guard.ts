@@ -43,7 +43,7 @@ export const spaceIdOf = (pathname: string): string | null => /^\/spaces\/([^/?#
 /**
  * The space as the caller may see it, read once per request (`cache`: the (main) layout, the page and its title share
  * it). Any signed-in user reaches `/spaces/<id>/…` (pagePerm null); the API decides membership: 403 (not a member, no
- * space.manage) and 404 (no such space, an id that is not a UUID) both give null, so nothing names a space the caller
+ * space.view) and 404 (no such space, an id that is not a UUID) both give null, so nothing names a space the caller
  * can't open. Another answer throws (error.tsx).
  */
 export const openSpace = cache(async (id: string): Promise<SpaceRowDto | null> => {

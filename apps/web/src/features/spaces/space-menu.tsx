@@ -12,9 +12,12 @@ export const SWITCHER_FOOTNOTE = "The space you pick opens next time you sign in
 
 /**
  * The switcher menu's body, loaded on the first open (out of every route's first-load JS): a search from 5 spaces, one
- * menuitemradio per space (mark, name, code, the caller's roles there), the footnote.
+ * menuitemradio per space (mark, name, code, the caller's roles there), "Create space" when `onCreate` (space.manage),
+ * the footnote.
  */
-export function SpaceMenuItems({ items, currentId, onPick }: { items: readonly SpaceRowDto[]; currentId: string; onPick: (id: string) => void }) {
+export function SpaceMenuItems({ items, currentId, onPick, onCreate }: {
+  items: readonly SpaceRowDto[]; currentId: string; onPick: (id: string) => void; onCreate?: () => void;
+}) {
   const [find, setFind] = useState("");
   const first = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -52,6 +55,10 @@ export function SpaceMenuItems({ items, currentId, onPick }: { items: readonly S
         ))}
         {shown.length === 0 && <p role="status" className="px-2 py-2 text-body-sm text-fg-3">No space matches &ldquo;{find.trim()}&rdquo;.</p>}
       </DropdownMenuGroup>
+      {onCreate && <>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onCreate}>Create space</DropdownMenuItem>
+      </>}
       <DropdownMenuSeparator />
       <p className="px-2 py-1.5 text-caption text-fg-3">{SWITCHER_FOOTNOTE}</p>
     </div>

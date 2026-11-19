@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
@@ -11,6 +11,7 @@ import { ChevronsUpDownIcon, RefreshIcon } from "@starterkit/ui/ui/icons";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/tooltip";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
+import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
 import { ROLE_LABEL, spaceHref, useSpaces } from "./use-spaces";
 
@@ -22,6 +23,7 @@ const SpaceMenuItems = dynamic(() => import("./space-menu").then((m) => m.SpaceM
   ssr: false,
   loading: () => <DropdownMenuItem disabled>Loading spaces…</DropdownMenuItem>,
 });
+const CreateSpaceDialog = dynamic(() => import("./create-space-dialog").then((m) => m.CreateSpaceDialog), { ssr: false });
 function SpaceMenuFailure() {
   return <DropdownMenuItem onSelect={() => window.location.reload()}>Couldn&apos;t load your spaces. Reload page</DropdownMenuItem>;
 }
@@ -47,8 +49,10 @@ export function Mark({ name }: { name: string }) {
 }
 
 /**
- * Space switcher under the logo (sidebar), or in the phone drawer (`drawer`). One space: a label, not a button. Two or
- * more: a menu of the caller's spaces (menuitemradio rows: mark, name, code, roles here), with a search from 5 spaces.
+ * Space switcher under the logo (sidebar), or in the phone drawer (`drawer`). One space: a label, not a button (focusable,
+ * for its tooltip in the rail). Two or more, or any number for a space.manage holder: a menu of the caller's spaces
+ * (menuitemradio rows: mark, name, code, roles here), with a search from 5 spaces; a space.manage holder's ends with
+ * "Create space" (the create-space dialog).
  * In the rail (768–1279 px, or the sidebar collapsed) only the mark shows, the name in a tooltip. The list is
  * server-prefetched in `(main)/layout.tsx`; no spaces → nothing here (`/spaces` explains). Picking a space remembers
  * it (`space` pref) and opens the same page in it (`switchHref`).
@@ -57,7 +61,12 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
   const path = usePathname();
   const router = useRouter();
   const { prefs, update } = usePrefs();
+  const canCreate = useAuth().can("space.manage");
   const q = useSpaces();
+  const [creating, setCreating] = useState(false);
+  // "Create space" opens its dialog once the menu has handed focus back to the trigger, so the dialog's own focus (the
+  // Code field) isn't taken back by the closing menu, and closing the dialog returns to the trigger.
+  const createNext = useRef(false);
   const [open, setOpen] = useState(false);
   const [tip, setTip] = useState(false);
   const [used, setUsed] = useState(false);
@@ -93,10 +102,14 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
   );
   const tooltip = <TooltipContent side="right" className={cn(drawer && "hidden", !compact && "xl:hidden")}>{current.name}</TooltipContent>;
 
-  if (items.length === 1) {
+  if (items.length === 1 && !canCreate) {
     return (
       <Tooltip>
-        <TooltipTrigger asChild><div data-slot="space-switcher" className={box} aria-label={`Space: ${current.name}`} role="group">{label}</div></TooltipTrigger>
+        <TooltipTrigger asChild>
+          {/* Not a control, but focusable: the rail shows only the mark, and the tooltip naming the space opens on focus. */}
+          <div data-slot="space-switcher" tabIndex={0} className={cn(box, "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary")}
+            aria-label={`Space: ${current.name}`} role="group">{label}</div>
+        </TooltipTrigger>
         {tooltip}
       </Tooltip>
     );
@@ -117,9 +130,12 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
         </TooltipTrigger>
         {tooltip}
       </Tooltip>
-      <DropdownMenuContent side={compact ? "right" : "bottom"} align="start" sideOffset={compact ? 8 : 4} className="w-72">
-        {used && <SpaceMenuItems items={items} currentId={current.id} onPick={pick} />}
+      <DropdownMenuContent side={compact ? "right" : "bottom"} align="start" sideOffset={compact ? 8 : 4} className="w-72"
+        // Radix focuses the trigger right after this event; the dialog mounts on the next task, once it has.
+        onCloseAutoFocus={() => { if (createNext.current) { createNext.current = false; setTimeout(() => setCreating(true)); } }}>
+        {used && <SpaceMenuItems items={items} currentId={current.id} onPick={pick} onCreate={canCreate ? () => { createNext.current = true; } : undefined} />}
       </DropdownMenuContent>
+      {creating && <CreateSpaceDialog onClose={() => setCreating(false)} />}
     </DropdownMenu>
   );
 }

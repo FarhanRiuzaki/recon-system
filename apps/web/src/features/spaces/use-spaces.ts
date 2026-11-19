@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, retryUnlessNotFound } from "@/lib/client/api";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SpaceCandidateDto, SpaceRowDto } from "@starterkit/shared/contracts/spaces";
-import { spaceCandidates, spaceDetail, spaceOptions, SPACES_KEY } from "@/lib/shared/queries";
+import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
+import { spaceDetail, spaceOptions, SPACES_KEY } from "@/lib/shared/queries";
 
 export { SPACES_KEY };
 export { ROLE_DESCRIPTION, ROLE_LABEL } from "@starterkit/shared/spaces";
@@ -15,13 +15,8 @@ export function useSpaces() {
   return useQuery({ queryKey: key, queryFn: () => api<Page<SpaceRowDto>>(url) });
 }
 
-/** The space with the caller's roles in it ([] when let in through space.manage). A 404 is final (no retry). */
+/** The space with the caller's roles in it ([] when let in through space.view). A 404 is final (no retry). */
 export function useSpace(id: string) {
   const { key, url } = spaceDetail(id);
   return useQuery({ queryKey: key, queryFn: () => api<SpaceRowDto>(url), retry: retryUnlessNotFound });
-}
-
-export function useCandidates(id: string, q = "") {
-  const { key, url } = spaceCandidates(id, q);
-  return useQuery({ queryKey: key, queryFn: () => api<Page<SpaceCandidateDto>>(url) });
 }

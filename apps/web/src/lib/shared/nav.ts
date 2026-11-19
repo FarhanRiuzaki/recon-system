@@ -33,9 +33,15 @@ const GROUPS: { id: NavGroup; label: string }[] = [
   { id: "main", label: "Main" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
 ];
 
-/** Sidebar sections for these permissions: items the user cannot open are left out, then empty groups. */
-export function navFor(perms: ReadonlySet<PermissionName>): NavSection[] {
+/**
+ * Sidebar sections for these permissions: items the user cannot open are left out, then empty groups. `noSpace` (the
+ * caller is in no space) drops the Space group, whose pages all need a space, unless they hold space.manage: /spaces
+ * is where they create one.
+ */
+export function navFor(perms: ReadonlySet<PermissionName>, noSpace = false): NavSection[] {
+  const dropSpace = noSpace && !perms.has("space.manage");
   return GROUPS
+    .filter((g) => !(dropSpace && g.id === "space"))
     .map((g) => ({ ...g, items: NAV.filter((n) => n.group === g.id && (n.perm === null || perms.has(n.perm))) }))
     .filter((s) => s.items.length > 0);
 }
@@ -77,8 +83,15 @@ export function crumbs(pathname: string, perms: ReadonlySet<PermissionName>): Cr
   return top && (top.perm === null || perms.has(top.perm)) ? [{ label: top.label, href: top.href, icon: top.icon }] : [];
 }
 
-/** True on a page below its nav page (/users/<id>, /me/security): the nav crumb links back, the page's own trail follows. */
-export const isSubPage = (pathname: string) => { const p = clean(pathname); const top = navItemOf(p); return !!top && top.href !== p; };
+/**
+ * True on a page below its nav page (/users/<id>, /me/security): the nav crumb links back, the page's own trail follows.
+ * A space's page (/spaces/<id>/members) is its nav page itself: the space is named in the switcher, not the breadcrumb.
+ */
+export const isSubPage = (pathname: string) => {
+  const p = clean(pathname);
+  const top = navItemOf(p);
+  return !!top && top.href !== p && !/^\/spaces\/[^/]+\/[^/]+$/.test(p);
+};
 
 /**
  * The permission a signed-in page needs, by path: its nav page's, with the finer rules of sub-pages (/users/new needs

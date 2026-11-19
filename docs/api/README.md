@@ -163,13 +163,13 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   (`null`). `PATCH /api/projects/{id}` writes one `project.update` entry with only the changed fields of `name`,
   `description`, `status`; nothing to change → 200 with the project, no entry.
 - Spaces: a route under `/api/spaces/{spaceId}` checks the caller's roles in that space on every request (a removed
-  member is 403 on the next one) and lets a non-member in only where its row names a global permission (`space.manage`):
-  that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
+  member is 403 on the next one) and lets a non-member in only where its row names a global permission (`space.view` to read the space and its
+  members, `space.manage` to change them): that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
   401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
   to leave a space without an active `space_admin` (409 `last_space_admin`, also for a PUT that drops the role; an
   inactive account's `space_admin` role does not count); two such changes run one after the other. Deleting or
-  deactivating the only active `space_admin` of a space through `/api/users*` is 409 `last_space_admin` too (bulk skips
-  that user with the code), under the same lock. Granting or removing `source_admin` (a PUT that adds or drops it, a DELETE of its
+  deactivating the only active `space_admin` of a space through `/api/users*` is 409 `last_space_admin` too, its message naming the space
+  ("… of Treasury (treasury) …"; bulk skips that user with the code), under the same lock. Granting or removing `source_admin` (a PUT that adds or drops it, a DELETE of its
   holder) needs `space.manage`; a `space_admin` without it gets 403 `forbidden` (spec §11b). A code may be sent in any
   letter case (the schema shows the stored form); it is stored in lower case and unique. On fresh installs the default
   seed gives Admin `space.view` and `space.manage` (an existing deployment's Admin does not get `space.*`
@@ -294,7 +294,7 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/me/reauth` | signed in | [ReauthBody](schemas/ReauthBody.json) (`password`; `recoveryCode` for an account without a password, spent) | [OkDto](schemas/OkDto.json); this session counts as proved for 10 minutes (no activity entry) | `bad_request` (wrong kind of proof; no password and no 2FA: sign in again), `invalid_credentials` (400), `invalid_code`, `rate_limited` |
 | GET | `/api/me/sessions` | signed in | [SessionListQuery](schemas/SessionListQuery.json) | [SessionPage](schemas/SessionPage.json) | none |
 | DELETE | `/api/me/sessions/{id}` | signed in | none | [OkDto](schemas/OkDto.json) | `not_found` (also for another user's session), `self_action` (the current session) |
-| GET | `/api/me/views` | signed in | [SavedViewListQuery](schemas/SavedViewListQuery.json) (`path` = the list page) | [SavedViewPage](schemas/SavedViewPage.json) | none |
+| GET | `/api/me/views` | signed in | [SavedViewListQuery](schemas/SavedViewListQuery.json) (`path` = the list page; a space's page, `/spaces/{id}/members`, keeps its own views) | [SavedViewPage](schemas/SavedViewPage.json) | none |
 | POST | `/api/me/views` | signed in | [CreateSavedViewBody](schemas/CreateSavedViewBody.json) | [SavedViewDto](schemas/SavedViewDto.json) | `duplicate` (a view of that name on that page, any case), `bad_request` (20 views on that page already) |
 | DELETE | `/api/me/views/{id}` | signed in | none | [OkDto](schemas/OkDto.json) | `not_found` (also for another user's view) |
 | GET | `/api/permissions` | `permission.view` | [PermissionListQuery](schemas/PermissionListQuery.json) | [PermissionPage](schemas/PermissionPage.json) | none |
@@ -306,9 +306,9 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | DELETE | `/api/projects/{id}` | `project.delete` | none | [OkDto](schemas/OkDto.json) | `not_found` |
 | GET | `/api/spaces` | Signed in (every space with `space.view`, else the caller's own) | [SpaceListQuery](schemas/SpaceListQuery.json) | [SpacePage](schemas/SpacePage.json) (rows are [SpaceRowDto](schemas/SpaceRowDto.json): the space plus the caller's `roles` in it) | none |
 | POST | `/api/spaces` | `space.manage` | [CreateSpaceBody](schemas/CreateSpaceBody.json) (no members yet) | 201 [SpaceDto](schemas/SpaceDto.json) | `duplicate` (a space of that code, any case) |
-| GET | `/api/spaces/{spaceId}` | any role in the space, or `space.manage` | none | [SpaceRowDto](schemas/SpaceRowDto.json) (the caller's `roles` in it; `[]` through `space.manage`) | `not_found` |
+| GET | `/api/spaces/{spaceId}` | any role in the space, or `space.view` | none | [SpaceRowDto](schemas/SpaceRowDto.json) (the caller's `roles` in it; `[]` through `space.view`) | `not_found` |
 | PATCH | `/api/spaces/{spaceId}` | `space_admin` in the space, or `space.manage` | [UpdateSpaceBody](schemas/UpdateSpaceBody.json) (nothing to change = no entry) | [SpaceDto](schemas/SpaceDto.json) | `not_found` |
-| GET | `/api/spaces/{spaceId}/members` | any role in the space, or `space.manage` | [SpaceMemberListQuery](schemas/SpaceMemberListQuery.json) | [SpaceMemberPage](schemas/SpaceMemberPage.json) | `not_found` |
+| GET | `/api/spaces/{spaceId}/members` | any role in the space, or `space.view` | [SpaceMemberListQuery](schemas/SpaceMemberListQuery.json) | [SpaceMemberPage](schemas/SpaceMemberPage.json) | `not_found` |
 | GET | `/api/spaces/{spaceId}/candidates` | `space_admin` in the space, or `space.manage` | [SpaceCandidateListQuery](schemas/SpaceCandidateListQuery.json) (`q` matches name or username) | [SpaceCandidatePage](schemas/SpaceCandidatePage.json) (every user of the app; `member` = already in the space) | `not_found` |
 | PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin`, `forbidden` (adds or drops `source_admin` without `space.manage`) |
 | DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin`, `forbidden` (removes a `source_admin` without `space.manage`) |

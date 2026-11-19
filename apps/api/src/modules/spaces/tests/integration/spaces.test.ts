@@ -10,6 +10,7 @@ import { db } from "../../../../kernel/db";
 import { xactLock } from "../../../../kernel/locks";
 import { activity } from "../../../audit";
 import { guard } from "../../../auth";
+import { rolePermissions, roles, userRoles } from "../../../rbac";
 import { users } from "../../../users";
 import { spaceMembers, spaces } from "../../schema";
 
@@ -272,6 +273,23 @@ describe("space detail, member status, candidates", () => {
     expect(((await (await get(`/v1/spaces/${B}`, sa)).json()) as SpaceRowDto)).toMatchObject({ id: B, roles: [] }); // space.manage
     for (const r of [await get("/v1/spaces/abc", t), await get(`/v1/spaces/${Bun.randomUUIDv7()}`, sa)]) expect([r.status, await code(r)]).toEqual([404, "not_found"]);
     expect((await get(`/v1/spaces/${A}`)).status).toBe(401);
+  });
+
+  it("space.view without a role in the space reads the space and its members; candidates, PUT and DELETE stay 403", async () => {
+    const [google, viewer] = [await idOf("google"), await idOf("viewer")];
+    const roleId = Bun.randomUUIDv7();
+    await db.insert(roles).values({ id: roleId, name: "Space reader" });
+    await db.insert(rolePermissions).values({ roleId, permission: "space.view" });
+    await db.insert(userRoles).values({ userId: google, roleId });
+    await member(A, viewer, "space_admin");
+    const t = await signIn("google");
+    expect(((await (await get(`/v1/spaces/${A}`, t)).json()) as SpaceRowDto)).toMatchObject({ id: A, roles: [] });
+    expect(((await (await get(`/v1/spaces/${A}/members`, t)).json()) as Page<SpaceMemberDto>).items.map((m) => [m.name, m.roles])).toEqual([["Viewer User", ["space_admin"]]]);
+    for (const r of [await get(`/v1/spaces/${A}/candidates`, t), await put(A, viewer, { roles: ["viewer"] }, t), await del(A, viewer, t),
+      await call("PATCH", `/v1/spaces/${A}`, { token: t, body: { name: "X" } })]) expect([r.status, await code(r)]).toEqual([403, "forbidden"]);
+    expect(await rolesIn(A, viewer)).toEqual(["space_admin"]);
+    // without space.view and without a role in the space: still 403
+    expect(await code(await get(`/v1/spaces/${A}/members`, await signIn("apple")))).toBe("forbidden");
   });
 
   it("members carry active and lastSignInAt (null before any sign-in, the user's last_login_at after)", async () => {

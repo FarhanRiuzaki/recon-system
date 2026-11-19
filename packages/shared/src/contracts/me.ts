@@ -69,8 +69,8 @@ export type ConnectionProvider = z.infer<typeof ConnectionProvider>;
 
 /** Most saved views one user keeps on one list page. */
 export const MAX_SAVED_VIEWS = 20;
-/** A list page's path ("/users", "/audit/activity"). */
-const ViewPage = z.string().regex(/^\/[a-z][a-z/-]{0,39}$/);
+/** A list page's path ("/users", "/audit/activity", "/spaces/<uuid>/members": a space's views are its own). */
+const ViewPage = z.string().regex(/^\/[a-z][a-z0-9/-]{0,79}$/);
 /** A list's URL query without the page number ("status=active&sort=-createdAt"), at most 4096 characters. */
 const ViewQuery = z.string().max(SAVED_VIEW_QUERY_MAX).regex(/^[^#\s]*$/);
 

@@ -6,7 +6,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SPACE_MEMBER_SORTS, SPACE_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
@@ -71,7 +71,6 @@ export const PROJECTS: TableDef<ProjectFilters> = {
 export const projectDetail = (id: string) => ({ key: [...PROJECTS_KEY, "detail", id] as const, url: `/api/projects/${encodeURIComponent(id)}` });
 
 export const SPACES_KEY = ["spaces"] as const;
-export const SPACES: TableDef<NoFilters> = { key: SPACES_KEY[0], path: "/api/spaces", spec: { sorts: SPACE_SORTS, defaultSort: "name", filters: {} } };
 /** The switcher's list: all the caller's spaces, not the URL state of any table. */
 export const spaceOptions = () => ({ key: [...SPACES_KEY, "options"] as const, url: "/api/spaces?pageSize=100" });
 export const spaceDetail = (id: string) => ({ key: [...SPACES_KEY, "detail", id] as const, url: `/api/spaces/${encodeURIComponent(id)}` });

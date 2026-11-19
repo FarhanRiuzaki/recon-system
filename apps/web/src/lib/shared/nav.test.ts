@@ -31,6 +31,14 @@ describe("navFor", () => {
 });
 
 describe("space group", () => {
+  it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
+    const admin = new Set(["user.view", "role.view", "space.view"] as const);
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", "Users", "Roles", "Design system", "Profile"]);
+    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "personal"]);
+    expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
+    expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
+  });
+
   it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {
     const s = navFor(new Set()).find((x) => x.label === "Space");
     expect(s?.items.map((i) => [i.label, i.href])).toEqual([["Members", "/spaces"]]);
@@ -51,6 +59,9 @@ describe("isActive / crumbs", () => {
     expect(crumbs("/users/u-1", all).map((c) => c.label)).toEqual(["Users"]);
     expect(crumbs("/nope", all)).toEqual([]);
     expect([isSubPage("/users"), isSubPage("/users/u-1"), isSubPage("/me/security"), isSubPage("/"), isSubPage("/nope")]).toEqual([false, true, true, false, false]);
+    // A space's page is its nav page itself (the space is in the switcher): the breadcrumb is just "Members".
+    expect(crumbs("/spaces/s-1/members", all).map((c) => c.label)).toEqual(["Members"]);
+    expect(isSubPage("/spaces/s-1/members")).toBe(false);
   });
   it("breadcrumb: a page the viewer can't open doesn't name itself", () => {
     expect(crumbs("/roles", new Set(["user.view"]))).toEqual([]);

@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Field, useForm } from "@starterkit/ui/ds";
+import { activeElement, Field, focusBack, useForm } from "@starterkit/ui/ds";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
@@ -34,6 +34,8 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
   const f = useForm<Values>({ initial: { code: "", name: "" }, schema: CREATE_SPACE_SCHEMA, idPrefix: "space" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // No DialogTrigger, so Radix has nothing to return focus to: go back to what opened the dialog (the button, the switcher).
+  const [opener] = useState(activeElement);
 
   const save = f.submit(async (v) => {
     setBusy(true);
@@ -44,6 +46,7 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
       await qc.invalidateQueries({ queryKey: SPACES_KEY });
       update({ space: s.id });
       router.push(spaceHref(s.id, "members"));
+      onClose(); // opened from the switcher, the dialog outlives the page it was opened on
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
@@ -53,7 +56,7 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent phone="top">
+      <DialogContent phone="top" onCloseAutoFocus={(e) => { e.preventDefault(); focusBack(opener); }}>
         <form onSubmit={save} noValidate>
           <DialogHeader>
             <DialogTitle>Create space</DialogTitle>

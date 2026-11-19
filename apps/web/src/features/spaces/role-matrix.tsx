@@ -7,7 +7,7 @@ const CODE: Record<string, Cell> = { D: "does", A: "approves", V: "views", "-": 
 const row = (action: string, cells: string) => ({ action, cells: [...cells].map((c) => CODE[c]!) });
 
 /**
- * What each space role may do: Figma "01 Space & shell" › RoleMatrix (7 roles × 15 actions), recon spec §11, §11b.
+ * What each space role may do: Figma "01 Space & shell" › RoleMatrix (7 roles × 16 actions), recon spec §11, §11b.
  * Read-only reference; the rules themselves live in the API.
  */
 export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cells: Cell[] }[] }[] = [
@@ -20,7 +20,8 @@ export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cell
     row("Unmatch a group", "----DA-"),
     row("Write off, within the reviewer limit", "----DA-"),
     row("Write off, above the reviewer limit", "A---D--"),
-    row("Sign off a business day", "-----D-"),
+    row("Prepare a day for sign-off", "-----D-"),
+    row("Approve a day's sign-off", "A----A-"),
     row("Reopen a signed-off day", "A----D-"),
   ] },
   { group: "Configuration", rows: [
@@ -50,6 +51,7 @@ export function RoleMatrix() {
     <Panel flush className="min-w-0" title={TITLE} footnote={<>
       &ldquo;Does&rdquo; on an action with an approver means sending a request: nothing changes until someone else approves it.
       Source admin is granted and removed only by an app admin, not by a space admin.
+      The approver can&apos;t be the preparer or anyone who resolved an item that day. Approving freezes the day.
     </>}>
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
