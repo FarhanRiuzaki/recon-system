@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "../lib/cn";
 import { Icon } from "../ui/icon";
 import { MoreIcon } from "../ui/icons";
 import { Button } from "../ui/button";
@@ -9,7 +10,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 type Action = { id: string; label: string; destructive?: boolean; disabled?: boolean; hint?: string; onSelect?: () => void; className?: string };
 
 /** Admin action menu. `unavailableReason` (obs-agent down, or still checking) disables every item and says why at the
- *  top; an item's `hint` explains why that item alone is disabled. */
+ *  top; an item's `hint` explains why that item alone is disabled.
+ *  A disabled item dims only its label: the hint keeps full contrast (fg-3, 5.35:1). */
 export function ActionMenu({ label, actions, unavailableReason }: { label: string; actions: Action[]; unavailableReason?: string }) {
   return (
     <DropdownMenu>
@@ -20,8 +22,8 @@ export function ActionMenu({ label, actions, unavailableReason }: { label: strin
         {unavailableReason && <><DropdownMenuLabel className="text-label font-normal text-fg-3">{unavailableReason}</DropdownMenuLabel><DropdownMenuSeparator /></>}
         {actions.map((a) => (
           <DropdownMenuItem key={a.id} disabled={!!unavailableReason || a.disabled || !a.onSelect} onSelect={a.onSelect}
-            variant={a.destructive ? "destructive" : "default"} className={a.className}>
-            <span className="grid min-w-0"><span>{a.label}</span>{a.hint && !unavailableReason && <span className="text-caption text-fg-3">{a.hint}</span>}</span>
+            variant={a.destructive ? "destructive" : "default"} className={cn("data-[disabled]:opacity-100", a.className)}>
+            <span className="grid min-w-0"><span className="in-data-[disabled]:opacity-50">{a.label}</span>{a.hint && !unavailableReason && <span className="text-caption text-fg-3">{a.hint}</span>}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

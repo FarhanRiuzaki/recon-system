@@ -97,6 +97,51 @@ test("a user without a space sees who adds them and their username, and no switc
 });
 
 /**
+ * space.view lists every space, so /spaces opens the first one by name (CTOP, no remembered space) for a holder in no
+ * space: the global-setup Superadmin (space.manage: the actions show) and `google` with a role of only space.view and
+ * user.view (read-only: no Add member, Change roles or Remove). No breadcrumb or "No space yet" screen while a space exists.
+ */
+test("a holder of space.view in no space opens the first visible space; only space.manage adds the actions", async ({ page, browser, baseURL }) => {
+  const ids = await spaceIds(browser, baseURL);
+  const su = await browser.newContext({ storageState: AUTH_STATE, baseURL });
+  const sp = await su.newPage();
+  const token = await csrfOf(sp);
+  const csrf = { "x-csrf-token": token };
+  try {
+    await sp.goto("/spaces");
+    await expect(sp).toHaveURL(membersOf(ids.ctop!));
+    await expect(sp).toHaveTitle(/^Members · CTOP\b/);
+    await expect(sp.getByRole("button", { name: "Add member" })).toBeVisible();
+
+    const name = `Space view ${Date.now() % 100_000}`;
+    const created = await sp.request.post("/api/roles", { headers: csrf, data: { name, permissions: ["space.view", "user.view"] } });
+    expect(created.status()).toBe(201);
+    const role = (await created.json()) as { id: string };
+    const users = (await (await sp.request.get("/api/users?q=google")).json()) as { items: { id: string; username: string; roles: string[] }[] };
+    const google = users.items.find((u) => u.username === "google")!;
+    try {
+      expect((await sp.request.patch(`/api/users/${google.id}`, { headers: csrf, data: { roles: [...google.roles, name] } })).status()).toBe(200);
+      await page.goto("/api/auth/oauth/google");
+      await expect(page).toHaveURL("/");
+      await page.goto("/spaces");
+      await expect(page).toHaveURL(membersOf(ids.ctop!));
+      await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeVisible();
+      await expect(page.getByRole("table", { name: "Members" }).getByRole("row").nth(1)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Add member" })).toHaveCount(0);
+      await page.getByRole("button", { name: /^Actions for / }).first().click(); // the Viewer role's audit.view: View activity only
+      await expect(page.getByRole("menuitem", { name: "Change roles" })).toHaveCount(0);
+      await expect(page.getByRole("menuitem", { name: "Remove from space" })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    } finally {
+      await sp.request.patch(`/api/users/${google.id}`, { headers: csrf, data: { roles: google.roles } });
+      await sp.request.delete(`/api/roles/${role.id}`, { headers: csrf });
+    }
+  } finally {
+    await su.close();
+  }
+});
+
+/**
  * A holder of space.manage sees every space (space.manage implies space.view), so "Create space" shows only while the
  * app has no space at all: the demo spaces are set aside for this test and restored after it.
  */
@@ -158,7 +203,7 @@ test("a member sees who is in the space and what each role may do; a viewer only
   await expect(page).toHaveURL("/");
   await page.goto(`/spaces/${ids.treasury}/members`);
   await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeVisible();
-  await expect(page).toHaveTitle(/^Treasury\b/);
+  await expect(page).toHaveTitle(/^Members · Treasury\b/);
   // The breadcrumb is the page alone: the space is named in the switcher.
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("listitem")).toHaveText(["Members"]);
   await expect(page.getByText("People who can work in the Treasury space and what each of them may do. A person can hold several roles.")).toBeVisible();

@@ -53,7 +53,7 @@ function RolesDialog({ title, description, phone, busy, error, submitLabel, canS
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
-          <fieldset disabled={busy} className="scroll-quiet grid min-h-0 gap-4 overflow-y-auto px-6 pt-0.75 pb-5">
+          <fieldset disabled={busy} className="scroll-quiet grid min-h-0 gap-4 overflow-y-auto px-6 pt-4 pb-5">
             {children}
             {error && <p role="alert" className={ERROR}>{error}</p>}
           </fieldset>

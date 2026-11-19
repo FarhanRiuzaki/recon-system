@@ -79,6 +79,7 @@ const navItemOf = (p: string) => [...NAV].sort((a, b) => b.href.length - a.href.
  * open ("Page not found") doesn't name itself in the breadcrumb. A sub-page adds its own crumbs (PageHeader's trail).
  */
 export function crumbs(pathname: string, perms: ReadonlySet<PermissionName>): Crumb[] {
+  if (clean(pathname) === "/spaces") return []; // the no-space screen: "Members" would name a page the caller can't open
   const top = navItemOf(clean(pathname));
   return top && (top.perm === null || perms.has(top.perm)) ? [{ label: top.label, href: top.href, icon: top.icon }] : [];
 }

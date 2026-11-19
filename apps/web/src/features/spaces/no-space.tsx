@@ -32,7 +32,7 @@ export function NoSpace() {
           <span className="mb-1 grid size-10 place-items-center rounded-full bg-tray text-fg-3"><Icon icon={UsersIcon} className="size-5" /></span>
           <h1 id="no-space-title" className="text-title-3 text-fg">You&apos;re not a member of any space yet</h1>
           <p className="max-w-[44ch] text-body-sm text-fg-2">
-            A space admin of your team adds you to their space. If your team has no space yet, a platform admin creates one. Send them your username:
+            A space admin of your team adds you to their space. If your team has no space yet, an app admin creates one. Send them your username:
           </p>
           <CopyValue value={user.username} label="username" />
           <div className="mt-3 flex flex-wrap justify-center gap-2">

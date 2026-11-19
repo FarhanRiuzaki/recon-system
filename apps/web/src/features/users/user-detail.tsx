@@ -144,8 +144,9 @@ export function UserDetail({ id }: { id: string }) {
             // The app's actions in order, then any added to the catalog that this user holds (user.export).
             const added = u.permissions.filter((p) => p.startsWith(`${m.key}.`)).map((p) => p.slice(m.key.length + 1)).filter((a) => !(m.actions as string[]).includes(a));
             const have = [...m.actions.filter((a) => granted.has(`${m.key}.${a}`)), ...added];
-            return { label: permissionLabel(m.key), value: have.length ? have.map(permissionLabel).join(", ") : "No access" };
+            return { label: m.key === "space" ? "Space (app-wide)" : permissionLabel(m.key), value: have.length ? have.map(permissionLabel).join(", ") : "No access" };
           })} />
+          {MODULES.some((m) => m.key === "space") && <p className="mt-3 text-caption text-fg-3">Roles inside a space are under Spaces below.</p>}
         </Panel></StaggerItem>
       </Stagger>
       {/* Part of the first load (DEC-040): server-rendered from the list page.tsx prefetched, filled on first paint. */}

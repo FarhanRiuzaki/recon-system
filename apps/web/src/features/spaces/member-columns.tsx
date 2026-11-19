@@ -11,7 +11,7 @@ import { RoleChips } from "@/components/role-chips";
  */
 export const MEMBER_COLUMNS: Column<SpaceMemberDto>[] = [
   { key: "name", header: "Member", sortable: true, mobile: "title", className: "min-w-48", cell: (m) => <Truncate title={m.name}><span className="font-medium text-fg">{m.name}</span></Truncate> },
-  { key: "roles", header: "Roles in this space", cell: (m) => <RoleChips roles={m.roles.map((r) => ROLE_LABEL[r])} /> },
+  { key: "roles", header: "Roles in this space", cell: (m) => <RoleChips roles={m.roles.map((r) => ROLE_LABEL[r])} fallback="neutral" /> },
   { key: "status", header: "Status", cell: (m) => (m.active ? <StatusChip health="healthy" label="Active" /> : <StatusChip health="stopped" label="Inactive" />) },
   { key: "username", header: "Username", mobile: "hidden", className: "max-xl:hidden", cell: (m) => <span className="font-mono text-body-sm">{m.username}</span> },
   { key: "lastSignInAt", header: "Last sign-in", className: "md:max-xl:hidden", cell: (m): ReactNode =>

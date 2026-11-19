@@ -30,7 +30,7 @@ export function joinedSpaces(page: Page<UserSpaceDto> | undefined): string[] | n
 
 const COLUMNS: Column<UserSpaceDto>[] = [
   { key: "name", header: "Space", mobile: "title", cell: (s) => <Link href={`/spaces/${encodeURIComponent(s.spaceId)}/members`} className="text-fg underline-offset-2 hover:underline">{s.name}</Link> },
-  { key: "roles", header: "Roles in this space", mobile: "meta", cell: (s) => <RoleChips roles={s.roles.map((r) => ROLE_LABEL[r])} /> },
+  { key: "roles", header: "Roles in this space", mobile: "meta", cell: (s) => <RoleChips roles={s.roles.map((r) => ROLE_LABEL[r])} fallback="neutral" /> },
   { key: "status", header: "Status", mobile: "meta", cell: (s) => (s.status === "active" ? <StatusChip health="healthy" label="Active" /> : <StatusChip health="stopped" label="Archived" />) },
 ];
 

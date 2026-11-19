@@ -98,8 +98,8 @@ export function MembersPage({ id }: { id: string }) {
           } : undefined} />
       </Panel>}
       </FilterLayout>
+      <RoleMatrix />{/* in the surface: the same column as the list, ending at the Filters rail */}
       </FilterSurface>
-      <RoleMatrix />
       {space && dialog?.kind === "add" && <AddMemberDialog space={space} canSourceAdmin={canSourceAdmin} onClose={close} returnFocus={returnFocus} />}
       {space && dialog?.kind === "roles" && (
         <ChangeRolesDialog space={space} member={dialog.member} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={lastAdmin(dialog.member)} onClose={close} returnFocus={returnFocus} />

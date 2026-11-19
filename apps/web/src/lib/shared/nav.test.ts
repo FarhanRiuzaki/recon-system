@@ -61,6 +61,7 @@ describe("isActive / crumbs", () => {
     expect([isSubPage("/users"), isSubPage("/users/u-1"), isSubPage("/me/security"), isSubPage("/"), isSubPage("/nope")]).toEqual([false, true, true, false, false]);
     // A space's page is its nav page itself (the space is in the switcher): the breadcrumb is just "Members".
     expect(crumbs("/spaces/s-1/members", all).map((c) => c.label)).toEqual(["Members"]);
+    expect(crumbs("/spaces", all)).toEqual([]); // the no-space screen: no "Members" for a page the caller cannot open
     expect(isSubPage("/spaces/s-1/members")).toBe(false);
   });
   it("breadcrumb: a page the viewer can't open doesn't name itself", () => {

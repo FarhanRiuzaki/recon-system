@@ -9,7 +9,7 @@ type Params = Promise<{ spaceId: string }>;
 /** Named after the space only for a caller who may open it (openSpace: membership through the API). */
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const space = await openSpace((await params).spaceId).catch(() => null);
-  return guardedTitle(space?.name ?? "Page not found");
+  return guardedTitle(space ? `Members · ${space.name}` : "Page not found");
 }
 
 /** The (main) layout answers a document load's 404 for a space the caller can't open; this covers client navigations. */
