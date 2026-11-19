@@ -45,9 +45,9 @@ function MatrixCell({ cell }: { cell: Cell }) {
 const TITLE = "What each role can do";
 const TH = "h-10 border-b border-line bg-tray px-3 text-label font-normal whitespace-nowrap text-fg-2";
 
-// Below 1280 the Action column is 160 px, wraps and sticks to the card's left edge while the role columns scroll (DataTable's sticky first column); opaque, with a hairline.
-// From 1280 it is 340 px on one line and does not stick (Figma 4:83).
-const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:static xl:w-85 xl:min-w-85";
+// The Action column sticks to the card's left edge at every width while the role columns scroll (DataTable's sticky first column); opaque, with a hairline.
+// Below 1280 it is 160 px and wraps; from 1280 it is 340 px on one line (Figma 4:83). Sticky is harmless where the table doesn't overflow.
+const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:w-85 xl:min-w-85";
 
 /** Scrolls sideways inside its card when the card is narrower than the table (160 + 7 × 108 px wide); the Action column stays. */
 export function RoleMatrix() {

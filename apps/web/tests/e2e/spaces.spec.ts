@@ -230,11 +230,11 @@ test("a member sees who is in the space and what each role may do; a viewer only
     ["—Not allowed", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Approves", "—Not allowed"]);
   await expect(page.locator("#content").getByText("Source admin is granted and removed only by an app admin, not by a space admin.")).toBeVisible();
 
-  // Action column: 340 px, one line, not sticky from 1280; 160 px, wrapping, sticky below (CSS breakpoints only).
+  // Action column: 340 px, one line from 1280; 160 px, wrapping, below (CSS breakpoints only); sticky at every width.
   const actionCell = matrix.getByRole("rowheader", { name: "Assign, comment and set a reason on breaks" });
   const cellInfo = () => actionCell.evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, pos: getComputedStyle(el).position }));
   await page.setViewportSize({ width: 1440, height: 900 });
-  expect(await cellInfo()).toEqual({ w: 340, h: 40, pos: "static" });
+  expect(await cellInfo()).toEqual({ w: 340, h: 40, pos: "sticky" });
   await page.setViewportSize({ width: 1279, height: 900 });
   const narrow = await cellInfo();
   expect(narrow.w).toBe(160);
