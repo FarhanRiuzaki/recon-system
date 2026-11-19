@@ -1,0 +1,1 @@
+ALTER TABLE "source_versions" ADD COLUMN "contributor_ids" uuid[] DEFAULT '{}' NOT NULL;

@@ -231,6 +231,47 @@ describe("versions: draft, submit, approve, reject", () => {
     expect((await acts()).map((e) => e.action)).toEqual(["source.create", "source.version_create", "source.version_update", "source.version_submit", "source.version_approve"]);
   });
 
+  it("everyone who created, edited or submitted a version is barred from approving or rejecting it, also after a later edit by someone else", async () => {
+    // viewer (mk) is also a config_checker here, like twofa (both): each can make and check
+    await db.insert(spaceMembers).values({ spaceId: A, userId: ids.mk, role: "config_checker" });
+    const s = await made();
+
+    // both writes the draft, mk changes one field last (maker_id → mk), both submits and tries to approve
+    const v = await json<SourceVersionDto>(draft(t.both, s.id));
+    expect((await patch(t.both, s.id, v.id, ksei())).status).toBe(200);
+    const last = await json<SourceVersionDto>(patch(t.mk, s.id, v.id, { ...ksei(), key_fields: ["sid", "sre"] }));
+    expect(last.makerId).toBe(ids.mk);
+    expect(last.contributorIds).toEqual([ids.both, ids.mk]);
+    expect((await step(t.both, s.id, v.id, "submit")).status).toBe(200);
+    for (const who of [t.both, t.mk]) {
+      const r = await step(who, s.id, v.id, "approve");
+      expect([r.status, await code(r)]).toEqual([409, "self_approval"]);
+      const rj = await step(who, s.id, v.id, "reject", { comment: "no" });
+      expect([rj.status, await code(rj)]).toEqual([409, "self_approval"]);
+    }
+    expect((await json<SourceDto>(detail(t.op, s.id))).draft).toMatchObject({ id: v.id, status: "in_review" });
+
+    // a reject → re-edit cycle keeps every contributor
+    expect((await step(t.ck, s.id, v.id, "reject", { comment: "keys" })).status).toBe(200);
+    expect((await json<SourceVersionDto>(patch(t.both, s.id, v.id, ksei()))).contributorIds).toEqual([ids.both, ids.mk]);
+    expect((await step(t.both, s.id, v.id, "submit")).status).toBe(200);
+    expect((await step(t.mk, s.id, v.id, "approve")).status).toBe(409);
+    // the checker who touched nothing approves
+    expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
+  });
+
+  it("whoever submits a version can't approve it, even without editing it", async () => {
+    await db.insert(spaceMembers).values({ spaceId: A, userId: ids.mk, role: "config_checker" });
+    const s = await made();
+    const v = await json<SourceVersionDto>(draft(t.both, s.id));
+    expect((await patch(t.both, s.id, v.id, ksei())).status).toBe(200);
+    expect((await json<SourceVersionDto>(step(t.mk, s.id, v.id, "submit"))).contributorIds).toEqual([ids.both, ids.mk]);
+    const r = await step(t.mk, s.id, v.id, "approve");
+    expect([r.status, await code(r)]).toEqual([409, "self_approval"]);
+    expect((await json<SourceDto>(detail(t.op, s.id))).draft?.status).toBe("in_review");
+    expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
+  });
+
   it("the same spec again changes nothing and records nothing; the hash is the same for the same spec", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));

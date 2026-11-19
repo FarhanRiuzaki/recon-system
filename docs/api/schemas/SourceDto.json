@@ -750,6 +750,12 @@
                 "null"
               ]
             },
+            "contributorIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "checkerId": {
               "type": [
                 "string",
@@ -782,6 +788,7 @@
             "spec",
             "specHash",
             "makerId",
+            "contributorIds",
             "checkerId",
             "reviewComment",
             "publishedAt",
@@ -1421,6 +1428,12 @@
                 "null"
               ]
             },
+            "contributorIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
             "checkerId": {
               "type": [
                 "string",
@@ -1453,6 +1466,7 @@
             "spec",
             "specHash",
             "makerId",
+            "contributorIds",
             "checkerId",
             "reviewComment",
             "publishedAt",

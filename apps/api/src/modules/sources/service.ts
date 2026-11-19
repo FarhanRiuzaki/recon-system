@@ -36,7 +36,7 @@ const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string):
 });
 const versionDto = (v: VersionRow): SourceVersionDto => ({
   id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as SourceSpec | null, specHash: v.specHash,
-  makerId: v.makerId, checkerId: v.checkerId, reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
+  makerId: v.makerId, contributorIds: v.contributorIds, checkerId: v.checkerId, reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
   createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
 });
 /** The connection's answerable columns: the credential (secret_enc) is never selected for an answer. */
@@ -153,10 +153,12 @@ async function versionOf(tx: InTx, s: SourceRow, versionId: string): Promise<Ver
 }
 
 const wrongState = (text: string) => new ApiError("invalid_state", text);
+/** The version's contributors plus the caller, once each, in order (the source row lock serializes writers). */
+const withCaller = (ctx: Ctx, v: VersionRow): string[] => (v.contributorIds.includes(ctx.user.id) ? v.contributorIds : [...v.contributorIds, ctx.user.id]);
 
 /**
  * A new draft (version = last + 1) holding the published spec, or none before the first publish; the caller is its
- * maker. 409 `duplicate` while the source has a draft or a version in review.
+ * maker and first contributor. 409 `duplicate` while the source has a draft or a version in review.
  */
 export function createDraft(ctx: Ctx, id: string): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
@@ -167,7 +169,7 @@ export function createDraft(ctx: Ctx, id: string): Promise<SourceVersionDto> {
     const [last] = await tx.select({ n: max(sourceVersions.version) }).from(sourceVersions).where(ofSource(s));
     const [v] = await tx.insert(sourceVersions).values({
       id: Bun.randomUUIDv7(), spaceId, sourceId: id, version: (last?.n ?? 0) + 1, status: "draft",
-      spec: from?.spec ?? null, specHash: from?.specHash ?? null, makerId: ctx.user.id,
+      spec: from?.spec ?? null, specHash: from?.specHash ?? null, makerId: ctx.user.id, contributorIds: [ctx.user.id],
     }).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_create", target: target(s), after: { version: v.version, from: from?.version ?? null } });
     return versionDto(v);
@@ -175,7 +177,7 @@ export function createDraft(ctx: Ctx, id: string): Promise<SourceVersionDto> {
 }
 
 /**
- * Saves a draft's whole spec; the caller becomes its maker (who wrote the spec the checker reviews). The spec's input
+ * Saves a draft's whole spec; the caller becomes its maker (who last wrote the spec) and a contributor. The spec's input
  * must be of the source's kind and its calendar must exist (400). The same spec again: the version as it is, no entry.
  */
 export function updateVersion(ctx: Ctx, id: string, versionId: string, b: UpdateSourceVersionBody): Promise<SourceVersionDto> {
@@ -188,29 +190,32 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     if (!calendar) throw new ApiError("bad_request", `There is no calendar ${b.spec.calendar}. Pick one of the calendars set up for this install.`);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v);
-    const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, updatedAt: NOW })
+    const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_update", target: target(s), before: { version: v.version, specHash: v.specHash }, after: { version: v.version, specHash: hash } });
     return versionDto(row);
   });
 }
 
-/** Sends a draft with a spec to review. */
+/** Sends a draft with a spec to review; the caller becomes a contributor. */
 export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     if (!canStep("submit", v.status as VersionStatus)) throw wrongState("Only a draft can be submitted.");
     if (v.spec === null) throw new ApiError("bad_request", "This draft has no fields and mapping yet. Save them, then submit.");
-    const [row] = await tx.update(sourceVersions).set({ status: "in_review", updatedAt: NOW }).where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
+    const [row] = await tx.update(sourceVersions).set({ status: "in_review", contributorIds: withCaller(ctx, v), updatedAt: NOW }).where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_submit", target: target(s), after: { version: v.version, specHash: v.specHash } });
     return versionDto(row);
   });
 }
 
-/** 409 `self_approval` when the caller made the version: the checker is always someone else (spec §11). */
-function notTheMaker(ctx: Ctx, v: VersionRow): void {
-  if (v.makerId === ctx.user.id) throw new ApiError("self_approval");
+/**
+ * 409 `self_approval` when the caller created, edited or submitted the version (or is its maker): the checker is
+ * always someone who had no hand in it (spec §11), so a trivial last edit by someone else can't clear the author.
+ */
+function notAContributor(ctx: Ctx, v: VersionRow): void {
+  if (v.makerId === ctx.user.id || v.contributorIds.includes(ctx.user.id)) throw new ApiError("self_approval");
 }
 
 /** Publishes a version in review; the published one before it retires. */
@@ -218,7 +223,7 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
-    notTheMaker(ctx, v);
+    notAContributor(ctx, v);
     if (!canStep("approve", v.status as VersionStatus)) throw wrongState("Only a version in review can be approved.");
     const [retired] = await tx.update(sourceVersions).set({ status: "retired", updatedAt: NOW })
       .where(and(ofSource(s), eq(sourceVersions.status, "published"))).returning({ version: sourceVersions.version });
@@ -234,7 +239,7 @@ export function rejectVersion(ctx: Ctx, id: string, versionId: string, b: Reject
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
-    notTheMaker(ctx, v);
+    notAContributor(ctx, v);
     if (!canStep("reject", v.status as VersionStatus)) throw wrongState("Only a version in review can be rejected.");
     const [row] = await tx.update(sourceVersions).set({ status: "draft", reviewComment: b.comment, updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];

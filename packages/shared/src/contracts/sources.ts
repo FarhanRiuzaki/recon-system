@@ -147,7 +147,10 @@ export type SourceConnectionDto = z.infer<typeof SourceConnectionDto>;
 export const SourceShareDto = z.object({ spaceId: z.string(), code: z.string(), name: z.string() });
 export type SourceShareDto = z.infer<typeof SourceShareDto>;
 
-/** `makerId` = who last wrote the spec (or drafted it); the checker must be someone else. */
+/**
+ * `makerId` = who last wrote the spec (or drafted it), for display; `contributorIds` = everyone who created, edited or
+ * submitted it, none of whom may approve or reject it.
+ */
 export const SourceVersionDto = z.object({
   id: z.string(),
   version: z.number().int(),
@@ -155,6 +158,7 @@ export const SourceVersionDto = z.object({
   spec: SourceSpec.nullable(),
   specHash: z.string().nullable(),
   makerId: z.string().nullable(),
+  contributorIds: z.array(z.string()),
   checkerId: z.string().nullable(),
   reviewComment: z.string().nullable(),
   publishedAt: z.string().nullable(),

@@ -186,8 +186,9 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   encrypted and never answered, logged or recorded; the answer and the entry carry `engine` and `options` only. A
   version moves draft → in review (`submit`) → published (`approve`; the published one before it retires) or back to
   draft (`reject`, with a comment); a source has at most one draft or version in review (409 `duplicate` for a second).
-  The maker is who last saved the spec (`makerId`; the draft's creator until then); approving or rejecting one's own
-  version is 409 `self_approval`; a step from the wrong status is 409 `invalid_state`. `spec` ([SourceSpec](schemas/SourceSpec.json))
+  `makerId` is who last saved the spec (the draft's creator until then); `contributorIds` is everyone who created it,
+  changed its spec or submitted it, kept through a reject and re-edit; any of them approving or rejecting it is 409
+  `self_approval`; a step from the wrong status is 409 `invalid_state`. `spec` ([SourceSpec](schemas/SourceSpec.json))
   is checked across fields too (a name a mapping or key uses must be a field or derived value, field names unique, a
   mutable source has key fields, a watermark input names a table or a query, a snapshot query takes `:business_date`),
   its `input.kind` must be the source's kind and its `calendar` an existing calendar code (`id-default` on every
@@ -346,8 +347,8 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions` | `source_admin` or `config_maker` in the space | none (a draft with the published spec, or none) | 201 [SourceVersionDto](schemas/SourceVersionDto.json) | `not_found`, `duplicate` (a draft or a version in review exists), `space_archived` |
 | PATCH | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}` | `source_admin` or `config_maker` in the space | [UpdateSourceVersionBody](schemas/UpdateSourceVersionBody.json) (the whole spec; the caller becomes the maker; the same spec = no entry) | [SourceVersionDto](schemas/SourceVersionDto.json) | `not_found`, `invalid_state` (not a draft), `bad_request` (input of another kind, unknown calendar), `space_archived` |
 | POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/submit` | `source_admin` or `config_maker` in the space | none | [SourceVersionDto](schemas/SourceVersionDto.json) (in review) | `not_found`, `invalid_state`, `bad_request` (no spec yet), `space_archived` |
-| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/approve` | `config_checker` in the space, not the maker | none | [SourceVersionDto](schemas/SourceVersionDto.json) (published) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
-| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/reject` | `config_checker` in the space, not the maker | [RejectSourceVersionBody](schemas/RejectSourceVersionBody.json) (comment required) | [SourceVersionDto](schemas/SourceVersionDto.json) (back to draft) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/approve` | `config_checker` in the space, not a contributor | none | [SourceVersionDto](schemas/SourceVersionDto.json) (published) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/reject` | `config_checker` in the space, not a contributor | [RejectSourceVersionBody](schemas/RejectSourceVersionBody.json) (comment required) | [SourceVersionDto](schemas/SourceVersionDto.json) (back to draft) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
 | PUT | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none (already shared = no entry) | [SourceShareDto](schemas/SourceShareDto.json) | `not_found` (source or space), `bad_request` (its own space), `space_archived` |
 | DELETE | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none | [OkDto](schemas/OkDto.json) | `not_found` (source, space or not shared), `bad_request` (its own space), `space_archived` |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
