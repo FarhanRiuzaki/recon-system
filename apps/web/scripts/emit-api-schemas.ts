@@ -52,6 +52,7 @@ const COMPOSED = {
   SourceFilePage: pageOf(sources.SourceFileDto),
   SourceSnapshotPage: pageOf(sources.SourceSnapshotDto),
   QuarantinePage: pageOf(sources.QuarantineRowDto),
+  SourceVersionPage: pageOf(sources.SourceVersionRowDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };

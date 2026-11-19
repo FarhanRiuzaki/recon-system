@@ -659,6 +659,18 @@
         "type": "string"
       }
     },
+    "submitterId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "submittedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "checkerId": {
       "type": [
         "string",
@@ -692,6 +704,8 @@
     "specHash",
     "makerId",
     "contributorIds",
+    "submitterId",
+    "submittedAt",
     "checkerId",
     "reviewComment",
     "publishedAt",

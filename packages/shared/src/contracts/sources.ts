@@ -1,16 +1,18 @@
 import { z } from "zod";
-import { SOURCE_SORTS } from "../paging";
+import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
   DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
-export { SOURCE_SORTS };
+export { SOURCE_SORTS, SOURCE_VERSION_SORTS };
 
 const name = z.string().trim().min(1).max(128);
 const cel = z.string().trim().min(1).max(2000);
 const query = z.string().trim().min(1).max(20_000);
+const realDate = (d: string) => { const t = Date.parse(`${d}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().startsWith(d); };
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "Not a real date");
 
 /** Where a value comes from: a declared field (or derived value) by name, or a CEL expression (checked in Task 3's preview). */
 export const ValueRef = z.union([z.strictObject({ field: name }), z.strictObject({ cel })]);
@@ -62,10 +64,12 @@ const DbWatermarkInput = z.strictObject({
 /** A whole position per business date: `query` takes the `:business_date` parameter; `schedule` is a cron (Asia/Jakarta). */
 const DbSnapshotInput = z.strictObject({ kind: z.literal("db_snapshot"), query, schedule: z.string().trim().min(1).max(100) });
 /** Files matching `pattern` in folder `path`, complete after `seconds` without change or once a marker file lands. */
+const inboxPath = z.string().trim().min(1).max(1024);
+const inboxPattern = z.string().trim().min(1).max(255);
 const FileInboxInput = z.strictObject({
   kind: z.literal("file_inbox"),
-  path: z.string().trim().min(1).max(1024),
-  pattern: z.string().trim().min(1).max(255),
+  path: inboxPath,
+  pattern: inboxPattern,
   completion: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("stable_seconds"), seconds: z.number().int().min(1).max(86_400) }),
     z.strictObject({ kind: z.literal("marker_file") }),
@@ -153,17 +157,16 @@ export type SetConnectionBody = z.infer<typeof SetConnectionBody>;
 export const UpdateSourceVersionBody = z.strictObject({ spec: SourceSpec });
 export type UpdateSourceVersionBody = z.infer<typeof UpdateSourceVersionBody>;
 
-const realDate = (d: string) => { const t = Date.parse(`${d}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().startsWith(d); };
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "Not a real date");
 
 /**
  * POST …/versions/{versionId}/preview. A file source: a text sample of its file (up to 64 KB, the body limit) and its
  * name, for a business date taken from the name. A database source: nothing, or the business date a snapshot query
- * takes (default: today in Asia/Jakarta); up to 200 rows are pulled through the stored connection.
+ * takes (default: today in Asia/Jakarta); up to 200 rows are pulled through the stored connection. `spec` = unsaved
+ * edits to preview instead of the version's saved spec, checked exactly like a save (nothing is stored).
  */
 export const PreviewSourceBody = z.union([
-  z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional() }),
-  z.strictObject({ businessDate: isoDate.optional() }),
+  z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional(), spec: SourceSpec.optional() }),
+  z.strictObject({ businessDate: isoDate.optional(), spec: SourceSpec.optional() }),
 ]);
 export type PreviewSourceBody = z.infer<typeof PreviewSourceBody>;
 
@@ -175,10 +178,26 @@ export type RejectSourceVersionBody = z.infer<typeof RejectSourceVersionBody>;
 export const SourceColumnsQuery = z.object({ table: z.string().regex(DB_TABLE_NAME) });
 export type SourceColumnsQuery = z.infer<typeof SourceColumnsQuery>;
 
-/** A column of a source table: its native type as the engine names it; `nullable` null when the engine doesn't say. */
+/**
+ * POST …/connection/columns: the result columns of a SELECT (a snapshot query takes `:business_date`, bound to
+ * `businessDate`, default today in Asia/Jakarta). Nothing runs past describing it.
+ */
+export const QueryColumnsBody = z.strictObject({ query, businessDate: isoDate.optional() });
+export type QueryColumnsBody = z.infer<typeof QueryColumnsBody>;
+
+/** A column of a source table: its native type as the engine names it; `nullable` null when the engine doesn't say (a SELECT's columns). */
 export const SourceColumnDto = z.object({ name: z.string(), type: z.string(), nullable: z.boolean().nullable() });
-export const SourceColumnsDto = z.object({ table: z.string(), columns: z.array(SourceColumnDto) });
+/** `table` null = the columns of a SELECT. */
+export const SourceColumnsDto = z.object({ table: z.string().nullable(), columns: z.array(SourceColumnDto) });
 export type SourceColumnsDto = z.infer<typeof SourceColumnsDto>;
+
+/**
+ * POST …/connection/test. A file inbox source: the folder and pattern being typed (both, or neither: then those of the
+ * spec being worked on); still inside INBOX_ROOTS. A database source sends `{}`: the stored connection is tested.
+ */
+export const TestConnectionBody = z.strictObject({ path: inboxPath.optional(), pattern: inboxPattern.optional() })
+  .refine((b) => (b.path === undefined) === (b.pattern === undefined), { message: "Send the folder and the pattern together" });
+export type TestConnectionBody = z.infer<typeof TestConnectionBody>;
 
 /**
  * POST …/connection/test: whether the stored connection (or a file source's folder) works now. `message` is one fixed
@@ -211,6 +230,9 @@ export const SourceVersionDto = z.object({
   specHash: z.string().nullable(),
   makerId: z.string().nullable(),
   contributorIds: z.array(z.string()),
+  /** Who sent it to review last, and when (kept through a reject until the next submit). */
+  submitterId: z.string().nullable(),
+  submittedAt: z.string().nullable(),
   checkerId: z.string().nullable(),
   reviewComment: z.string().nullable(),
   publishedAt: z.string().nullable(),
@@ -218,6 +240,33 @@ export const SourceVersionDto = z.object({
   updatedAt: z.string(),
 });
 export type SourceVersionDto = z.infer<typeof SourceVersionDto>;
+
+/** A user as a version names them; `name` null = the user was deleted (the version keeps the id). */
+const VersionPerson = z.object({ id: z.string(), name: z.string().nullable() });
+
+/** GET …/versions/{versionId}: the version and the names of the people it names (maker, contributors, submitter, checker). */
+export const SourceVersionDetailDto = SourceVersionDto.extend({ people: z.array(VersionPerson) });
+export type SourceVersionDetailDto = z.infer<typeof SourceVersionDetailDto>;
+
+/** GET …/sources/{sourceId}/versions: newest version first unless `sort` says otherwise. */
+export const SourceVersionListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(SOURCE_VERSION_SORTS) });
+export type SourceVersionListQuery = z.infer<typeof SourceVersionListQuery>;
+
+/** A row of the versions list: who made, sent and checked it; no spec (the version page reads it). */
+export const SourceVersionRowDto = z.object({
+  id: z.string(),
+  version: z.number().int(),
+  status: z.enum(VERSION_STATUSES),
+  maker: VersionPerson.nullable(),
+  submitter: VersionPerson.nullable(),
+  checker: VersionPerson.nullable(),
+  reviewComment: z.string().nullable(),
+  submittedAt: z.string().nullable(),
+  publishedAt: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type SourceVersionRowDto = z.infer<typeof SourceVersionRowDto>;
 
 /**
  * A source's health for the business date in progress (sourceHealth, apps/api/src/modules/ingest/health.ts): `reason`

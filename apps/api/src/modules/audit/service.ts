@@ -79,6 +79,18 @@ export function activityPage(q: ActivityQuery): Promise<Page<ActivityDto>> {
   });
 }
 
+/**
+ * One page of the entries recorded on one target, newest first: the trail a module shows beside its record (a source's
+ * own activity, read by its space's members through `sources`). The snapshots are the masked ones recordActivity kept.
+ */
+export function targetActivityPage(target: { type: string; id: string }, q: { page: number; pageSize: number }): Promise<Page<ActivityDto>> {
+  const where = and(eq(activity.targetType, target.type), eq(activity.targetId, target.id));
+  return pageQuery({
+    rows: db.select().from(activity).where(where).$dynamic(), count: db.select(one).from(activity).where(where).$dynamic(),
+    orderBy: sortSql(undefined, ACTIVITY_SORTS, "-at", activity.id), query: q, map: toActivity,
+  });
+}
+
 /** One page of the sign-in log (GET /v1/audit/auth), newest first by default. */
 export function authLogPage(q: AuthLogQuery): Promise<Page<AuthLogDto>> {
   const where = authLogWhere(q);

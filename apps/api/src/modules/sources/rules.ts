@@ -23,7 +23,11 @@ export const canStep = (step: VersionStep, status: VersionStatus): boolean => FR
  */
 export function specIssue(e: unknown, root = "spec"): string | null {
   if (!(e instanceof $ZodError)) return null;
-  const i = e.issues.find((x) => x.path[0] === root && (x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid"))));
+  // a union (the preview body) holds each option's issues, with paths relative to the union's
+  type Issue = (typeof e.issues)[number];
+  const flat = (xs: Issue[], at: PropertyKey[] = []): Issue[] => xs.flatMap((x) => x.code === "invalid_union"
+    ? flat(x.errors.flat(), [...at, ...x.path]) : [{ ...x, path: [...at, ...x.path] }]);
+  const i = flat(e.issues).find((x) => x.path[0] === root && (x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid"))));
   if (!i) return null;
   const why = i.message.charAt(0).toUpperCase() + i.message.slice(1);
   return `Check ${i.path.slice(1).join(".")}: ${why}${/[.?]$/.test(why) ? "" : "."}`;

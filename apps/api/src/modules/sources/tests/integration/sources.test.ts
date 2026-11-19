@@ -2,7 +2,8 @@
 // shares, activity entries and the seeded calendar. Row level security itself: rls.test.ts (as the app role).
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SourceDto, SourcePreviewDto, SourceRowDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { ActivityDto } from "@starterkit/shared/contracts/audit";
+import type { SourceDto, SourcePreviewDto, SourceRowDto, SourceVersionDetailDto, SourceVersionDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { asc, eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -472,5 +473,104 @@ describe("CEL on save and the preview (Task 3)", () => {
     expect((await patch(t.mk, db_.id, dv.id, spec)).status).toBe(200);
     expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("A database source previews rows pulled through its connection");
     expect(await msg(await preview(t.mk, s.id, v.id, {}))).toContain("Paste a sample of the file");
+  });
+});
+
+describe("an unsaved spec in the preview (Task 7)", () => {
+  const SAMPLE = "A|B|S1|D|E|F|G|H|I|J|K|L|SID1|N\n";
+  const preview = (src: string, v: string, body: unknown) => call("POST", `${base(A)}/${src}/versions/${v}/preview`, { token: t.mk, body });
+  const msg = async (r: Response) => ((await r.json()) as { error: { message: string } }).error.message;
+
+  it("previews edits not yet saved, checked exactly like a save (named fields, kind, calendar, CEL), and writes nothing", async () => {
+    const s = await made();
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id)); // no spec saved yet
+    const k = ksei();
+    const before = (await acts()).length;
+    const p = await json<SourcePreviewDto>(preview(s.id, v.id, { sample: SAMPLE, fileName: "act20261102.txt", spec: k }));
+    expect(p).toMatchObject({ lines: 1, ok: 1, quarantined: 0 });
+    expect(p.columns).toHaveLength(14);
+    const zone = { ...k, fields: [{ ...k.fields[0], type: "datetime", format: { timezone: "Mars/Olympus" } }, ...k.fields.slice(1)] };
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: zone }))).toBe("Check fields.0.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta.");
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, key_fields: ["nope"] } }))).toBe('Check key_fields.0: "nope" is not a field or derived value.');
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, derive: { x: "row.sid +" } } }))).toContain("Check the expression at derive.x: ");
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, calendar: "nowhere" } }))).toContain("There is no calendar nowhere");
+    const db_ = { ...k, input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 10 } };
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: db_ }))).toContain("its spec's input must be of that kind");
+    expect(await acts()).toHaveLength(before);
+    // the saved spec is untouched
+    expect((await json<SourceDto>(detail(t.mk, s.id))).draft?.spec).toBeNull();
+  });
+});
+
+describe("versions and activity reads (Task 7)", () => {
+  const list = (token: string, src: string, q = "", s = A) => call("GET", `${base(s)}/${src}/versions${q}`, { token });
+  const one = (token: string, src: string, v: string, s = A) => call("GET", `${base(s)}/${src}/versions/${v}`, { token });
+  const trail = (token: string, src: string, q = "", s = A) => call("GET", `${base(s)}/${src}/activity${q}`, { token });
+
+  it("lists every version newest first with maker, submitter and checker names; one version names everyone it names", async () => {
+    const { s, v } = await published(); // made by mk, approved by ck
+    const v2 = await json<SourceVersionDto>(draft(t.both, s.id));
+    expect((await patch(t.both, s.id, v2.id, { ...ksei(), key_fields: ["sid", "sre"] })).status).toBe(200);
+    const sent = await json<SourceVersionDto>(step(t.mk, s.id, v2.id, "submit"));
+    expect(sent.submitterId).toBe(ids.mk);
+    expect(sent.submittedAt).not.toBeNull();
+    const page = await json<Page<SourceVersionRowDto>>(list(t.op, s.id));
+    expect(page.total).toBe(2);
+    expect(page.items.map((r) => [r.version, r.status, r.maker?.name, r.submitter?.name, r.checker?.name])).toEqual([
+      [2, "in_review", "Two Factor", "Viewer User", undefined],
+      [1, "published", "Viewer User", "Viewer User", "Google User"],
+    ].map(([n, st, m, sub, ck]) => [n, st, m, sub, ck]));
+    expect((await json<Page<SourceVersionRowDto>>(list(t.op, s.id, "?sort=version"))).items.map((r) => r.version)).toEqual([1, 2]);
+    expect((await list(t.op, s.id, "?sort=nope")).status).toBe(400);
+    const d = await json<SourceVersionDetailDto>(one(t.op, s.id, v2.id));
+    expect(d).toMatchObject({ id: v2.id, version: 2, status: "in_review", submitterId: ids.mk, contributorIds: [ids.both, ids.mk] });
+    expect(d.people.map((p) => p.id).sort()).toEqual([ids.both, ids.mk].sort());
+    expect(d.spec?.key_fields).toEqual(["sid", "sre"]);
+    expect((await one(t.op, s.id, Bun.randomUUIDv7())).status).toBe(404);
+    expect((await one(t.op, s.id, "nope")).status).toBe(404);
+    // a version of another source is not this source's
+    const other = await made({ code: "other", name: "Other", kind: "file_inbox" });
+    expect((await one(t.op, other.id, v.id)).status).toBe(404);
+    // the platform admin has no data access
+    expect((await list(t.sa, s.id)).status).toBe(403);
+    expect((await one(t.sa, s.id, v.id)).status).toBe(403);
+  });
+
+  it("a space the source is shared to reads its published and retired versions only, never a draft or one in review", async () => {
+    const { s, v } = await published();
+    const v2 = await json<SourceVersionDto>(draft(t.mk, s.id));
+    expect((await patch(t.mk, s.id, v2.id, { ...ksei(), key_fields: ["sid", "sre"] })).status).toBe(200);
+    expect((await step(t.mk, s.id, v2.id, "submit")).status).toBe(200);
+    expect((await step(t.ck, s.id, v2.id, "approve")).status).toBe(200); // v1 retires
+    const v3 = await json<SourceVersionDto>(draft(t.mk, s.id));
+    expect((await call("PUT", `${base(A)}/${s.id}/shares/${B}`, { token: t.both })).status).toBe(200);
+    const shared = await json<Page<SourceVersionRowDto>>(list(t.op, s.id, "", B));
+    expect(shared.items.map((r) => [r.version, r.status])).toEqual([[2, "published"], [1, "retired"]]);
+    expect((await one(t.op, s.id, v.id, B)).status).toBe(200);
+    expect((await one(t.op, s.id, v3.id, B)).status).toBe(404);
+    // the owner space sees the draft too
+    expect((await json<Page<SourceVersionRowDto>>(list(t.op, s.id))).items.map((r) => r.status)).toEqual(["draft", "published", "retired"]);
+    // not shared to C: nothing
+    expect((await list(t.adm, s.id, "", C)).status).toBe(403);
+  });
+
+  it("the source's activity: any role of the owning space, newest first, every version step, no secret; a share and the platform admin get none", async () => {
+    const { s, v } = await published();
+    expect((await call("PUT", `${base(A)}/${s.id}/connection`, { token: t.adm, body: CONNECTION })).status).toBe(400); // a file source has none
+    const dbs = await made({ code: "bifast", name: "BI-FAST", kind: "db_watermark" });
+    expect((await call("PUT", `${base(A)}/${dbs.id}/connection`, { token: t.adm, body: CONNECTION })).status).toBe(200);
+    const text = await (await trail(t.op, dbs.id)).text();
+    for (const secret of [PASSWORD, CONNECTION.host, CONNECTION.user, CONNECTION.database]) expect(text).not.toContain(secret);
+    expect((JSON.parse(text) as Page<ActivityDto>).items.map((e) => e.action)).toEqual(["source.connection_set", "source.create"]);
+    const page = await json<Page<ActivityDto>>(trail(t.op, s.id));
+    expect(page.items.map((e) => e.action)).toEqual(["source.version_approve", "source.version_submit", "source.version_update", "source.version_create", "source.create"]);
+    expect(page.items.every((e) => e.target.id === s.id)).toBe(true);
+    expect((await json<Page<ActivityDto>>(trail(t.op, s.id, "?pageSize=15&page=2"))).items).toEqual([]);
+    expect((await trail(t.op, s.id, "?pageSize=7")).status).toBe(400);
+    expect((await call("PUT", `${base(A)}/${s.id}/shares/${B}`, { token: t.both })).status).toBe(200);
+    expect((await trail(t.op, s.id, "", B)).status).toBe(404);
+    expect((await trail(t.sa, s.id)).status).toBe(403);
+    expect((await trail(t.op, Bun.randomUUIDv7())).status).toBe(404);
+    void v;
   });
 });

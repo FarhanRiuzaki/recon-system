@@ -4,9 +4,11 @@
 // the sources shared to it; the queries also filter by space themselves, so an answer never depends on the role the
 // pool connects as. A change locks the source row first, so changes to one source run one after the other.
 import type { Page } from "@starterkit/shared/contracts/common";
+import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type {
-  ConnectionTestDto, CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto, SourceDto, SourceListQuery,
-  SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDto, UpdateSourceVersionBody,
+  ConnectionTestDto, CreateSourceBody, IngestListQuery, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
+  SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
+  SourceVersionRowDto, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
@@ -16,12 +18,13 @@ import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { isCron } from "../../kernel/jobs";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
-import { recordActivity } from "../audit";
+import { recordActivity, targetActivityPage } from "../audit";
 import type { Ctx } from "../auth";
 import {
   type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState, sourceStates, specCelError, within,
 } from "../ingest";
 import { spaceNames, spaces, withSpace } from "../spaces";
+import { users } from "../users";
 import { canStep, specHash, specIssue } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
@@ -55,7 +58,8 @@ async function readModel(tx: InTx, list: { s: SourceRow; spec: unknown }[], spac
 }
 const versionDto = (v: VersionRow): SourceVersionDto => ({
   id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as SourceSpec | null, specHash: v.specHash,
-  makerId: v.makerId, contributorIds: v.contributorIds, checkerId: v.checkerId, reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
+  makerId: v.makerId, contributorIds: v.contributorIds, submitterId: v.submittedBy, submittedAt: iso(v.submittedAt), checkerId: v.checkerId,
+  reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
   createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
 });
 /** The connection's answerable columns: the credential (secret_enc) is never selected for an answer. */
@@ -123,10 +127,75 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string): Promise<Sourc
 /** GET /v1/spaces/:spaceId/sources/:sourceId; 404 for a source the space may not read. */
 export function sourceDetail(ctx: Ctx, id: string): Promise<SourceDto> {
   return inSpace(ctx, async (tx, spaceId) => {
-    const [s] = await tx.select().from(sources).where(and(eq(sources.id, id), visibleIn(tx, spaceId)));
-    if (!s) throw notFound("source");
-    return detailDto(tx, s, spaceId);
+    return detailDto(tx, await visibleSource(tx, spaceId, id), spaceId);
   });
+}
+
+/** Source `id` as `spaceId` may read it (its own, or shared to it); 404 otherwise. */
+async function visibleSource(tx: InTx, spaceId: string, id: string): Promise<SourceRow> {
+  const [s] = await tx.select().from(sources).where(and(eq(sources.id, id), visibleIn(tx, spaceId)));
+  if (!s) throw notFound("source");
+  return s;
+}
+/** The versions a space reads of `s`: all of its own; through a share, the published and retired ones (as RLS 0011). */
+const readable = (s: SourceRow, spaceId: string) => and(ofSource(s), s.spaceId === spaceId ? undefined : inArray(sourceVersions.status, ["published", "retired"]));
+/** The names of `ids` (one query); a deleted user has none. */
+async function namesOf(tx: InTx, ids: (string | null)[]): Promise<Map<string, string>> {
+  const wanted = [...new Set(ids.filter((x): x is string => !!x))];
+  if (!wanted.length) return new Map();
+  return new Map((await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, wanted))).map((u) => [u.id, u.name]));
+}
+const person = (names: Map<string, string>, id: string | null) => (id ? { id, name: names.get(id) ?? null } : null);
+
+/** GET …/sources/:sourceId/versions: one page of its versions, newest first unless `sort` says otherwise. */
+export function versionPage(ctx: Ctx, id: string, q: SourceVersionListQuery): Promise<Page<SourceVersionRowDto>> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await visibleSource(tx, spaceId, id);
+    const where = readable(s, spaceId);
+    const page = await pageQuery({
+      rows: tx.select().from(sourceVersions).where(where).$dynamic(),
+      count: tx.select(one).from(sourceVersions).where(where).$dynamic(),
+      orderBy: sortSql(q.sort, { version: sourceVersions.version, updatedAt: sourceVersions.updatedAt }, "-version", sourceVersions.id),
+      query: q,
+      map: (r) => r,
+      on: tx,
+    });
+    const names = await namesOf(tx, page.items.flatMap((v) => [v.makerId, v.submittedBy, v.checkerId]));
+    return {
+      ...page,
+      items: page.items.map((v): SourceVersionRowDto => ({
+        id: v.id, version: v.version, status: v.status as VersionStatus, maker: person(names, v.makerId), submitter: person(names, v.submittedBy),
+        checker: person(names, v.checkerId), reviewComment: v.reviewComment, submittedAt: iso(v.submittedAt), publishedAt: iso(v.publishedAt),
+        createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
+      })),
+    };
+  });
+}
+
+/** GET …/versions/:versionId: the version with the names of everyone it names; through a share, published or retired only. */
+export function versionDetail(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDetailDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await visibleSource(tx, spaceId, id);
+    const [v] = await tx.select().from(sourceVersions).where(and(readable(s, spaceId), eq(sourceVersions.id, versionId)));
+    if (!v) throw notFound("version");
+    const ids = [...new Set([v.makerId, ...v.contributorIds, v.submittedBy, v.checkerId].filter((x): x is string => !!x))];
+    const names = await namesOf(tx, ids);
+    return { ...versionDto(v), people: ids.map((x) => person(names, x)!) };
+  });
+}
+
+/**
+ * GET …/sources/:sourceId/activity: the source's own trail (created, connection set, every version step, shares), newest
+ * first, for any member of the owning space; 404 through a share. Read through the audit module (no global audit.view:
+ * the trail belongs to the space's members). Snapshots are the masked ones recordActivity kept.
+ */
+export async function sourceActivity(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<ActivityDto>> {
+  const s = await inSpace(ctx, async (tx, spaceId) => {
+    const [row] = await tx.select().from(sources).where(and(eq(sources.id, id), eq(sources.spaceId, spaceId)));
+    if (!row) throw notFound("source");
+    return row;
+  });
+  return targetActivityPage({ type: "source", id: s.id }, q);
 }
 
 /** The space's own source `id`, row-locked; 404 when missing or only shared to this space (a share is read-only). */
@@ -209,6 +278,21 @@ export function refusedSpec(e: unknown): never {
 }
 
 /**
+ * The checks a spec passes beyond its contract, for a save and an unsaved preview alike (400): its input is of the
+ * source's kind, its calendar exists, every CEL expression compiles, a snapshot schedule is a cron.
+ */
+async function checkSpec(tx: InTx, s: SourceRow, spec: SourceSpec): Promise<void> {
+  if (spec.input.kind !== s.kind) throw new ApiError("bad_request", `This source's kind is ${s.kind}; its spec's input must be of that kind.`);
+  const [calendar] = await tx.select({ id: calendars.id }).from(calendars).where(eq(calendars.code, spec.calendar));
+  if (!calendar) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
+  const celError = specCelError(spec);
+  if (celError) throw new ApiError("bad_request", `Check the expression at ${celError}`);
+  if (spec.input.kind === "db_snapshot" && !(await isCron(spec.input.schedule))) {
+    throw new ApiError("bad_request", "The snapshot schedule is not a cron expression (minute hour day month weekday, Asia/Jakarta).");
+  }
+}
+
+/**
  * Saves a draft's whole spec; the caller becomes its maker (who last wrote the spec) and a contributor. The spec's input
  * must be of the source's kind and its calendar must exist (400). The same spec again: the version as it is, no entry.
  */
@@ -217,14 +301,7 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     if (!canStep("edit", v.status as VersionStatus)) throw wrongState("Only a draft can be edited. Make a new draft from the published version.");
-    if (b.spec.input.kind !== s.kind) throw new ApiError("bad_request", `This source's kind is ${s.kind}; its spec's input must be of that kind.`);
-    const [calendar] = await tx.select({ id: calendars.id }).from(calendars).where(eq(calendars.code, b.spec.calendar));
-    if (!calendar) throw new ApiError("bad_request", `There is no calendar ${b.spec.calendar}. Pick one of the calendars set up for this install.`);
-    const celError = specCelError(b.spec);
-    if (celError) throw new ApiError("bad_request", `Check the expression at ${celError}`);
-    if (b.spec.input.kind === "db_snapshot" && !(await isCron(b.spec.input.schedule))) {
-      throw new ApiError("bad_request", "The snapshot schedule is not a cron expression (minute hour day month weekday, Asia/Jakarta).");
-    }
+    await checkSpec(tx, s, b.spec);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v);
     const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
@@ -278,17 +355,18 @@ async function workingSpec(tx: InTx, s: SourceRow): Promise<SourceSpec | null> {
 
 /**
  * POST …/connection/test: a database source connects with its stored credential and runs SELECT 1; a file inbox source
- * reads its folder (from the spec being worked on) inside INBOX_ROOTS and counts the files its pattern matches. A
+ * reads the folder in the body (else the spec being worked on's) inside INBOX_ROOTS and counts the files its pattern matches. A
  * failure answers ok false with one fixed sentence and the driver's code, never its text. Changes nothing.
  */
-export async function testConnection(ctx: Ctx, id: string): Promise<ConnectionTestDto> {
+export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody): Promise<ConnectionTestDto> {
   const got = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
-    return s.kind === "file_inbox" ? { spec: await workingSpec(tx, s) } : { conn: await storedConnection(tx, s) };
+    if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests its stored connection: send no folder.");
+    return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: await storedConnection(tx, s) };
   });
   if ("spec" in got) {
-    const input = got.spec?.input;
-    if (input?.kind !== "file_inbox") throw new ApiError("bad_request", "This source has no folder yet. Save it in a draft first.");
+    const input = b.path !== undefined ? { path: b.path, pattern: b.pattern! } : got.spec?.input.kind === "file_inbox" ? got.spec.input : null;
+    if (!input) throw new ApiError("bad_request", "This source has no folder yet. Enter the folder and the pattern, then test.");
     return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
   }
   if (!got.conn) throw noConnection();
@@ -315,17 +393,30 @@ export async function sourceColumns(ctx: Ctx, id: string, table: string): Promis
 /** Today in Asia/Jakarta as yyyy-mm-dd: a snapshot preview's business date when the body names none. */
 const todayJakarta = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
 
+/** POST …/connection/columns: the result columns of a SELECT, described by the source database (nullable unknown). */
+export async function queryColumns(ctx: Ctx, id: string, b: QueryColumnsBody): Promise<SourceColumnsDto> {
+  const conn = await inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    if (s.kind === "file_inbox") throw new ApiError("bad_request", "A file inbox source has no tables.");
+    return storedConnection(tx, s);
+  });
+  if (!conn) throw noConnection();
+  return { table: null, columns: await overConnection(conn, (c) => c.introspect({ query: b.query, businessDate: b.businessDate ?? todayJakarta() })) };
+}
+
 /**
  * What a sample gives under this version's spec: the rows that would enter the core record and the lines that would be
  * quarantined, with their reasons. A file source: the text sample in the body. A database source: up to
  * PREVIEW_PULL_ROWS rows pulled through the stored connection (watermark predicate left out; a snapshot query for the
- * body's business date). Reads only; a version in any state with a spec.
+ * body's business date). `b.spec` = unsaved edits, checked like a save, previewed in place of the saved spec. Reads only;
+ * a version in any state with a spec.
  */
 export async function previewVersion(ctx: Ctx, id: string, versionId: string, b: PreviewSourceBody): Promise<SourcePreviewDto> {
   const { spec, cal, conn } = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
-    const spec = v.spec as SourceSpec | null;
+    if (b.spec) await checkSpec(tx, s, b.spec);
+    const spec = b.spec ?? (v.spec as SourceSpec | null);
     if (spec === null) throw new ApiError("bad_request", "This version has no fields and mapping yet. Save them, then preview.");
     const [cal] = await tx.select({ weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars).where(eq(calendars.code, spec.calendar));
     if (!cal) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
@@ -345,14 +436,14 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   return previewRows(spec, rows, cal);
 }
 
-/** Sends a draft with a spec to review; the caller becomes a contributor. */
+/** Sends a draft with a spec to review; the caller becomes a contributor and its submitter. */
 export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     if (!canStep("submit", v.status as VersionStatus)) throw wrongState("Only a draft can be submitted.");
     if (v.spec === null) throw new ApiError("bad_request", "This draft has no fields and mapping yet. Save them, then submit.");
-    const [row] = await tx.update(sourceVersions).set({ status: "in_review", contributorIds: withCaller(ctx, v), updatedAt: NOW }).where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
+    const [row] = await tx.update(sourceVersions).set({ status: "in_review", contributorIds: withCaller(ctx, v), submittedBy: ctx.user.id, submittedAt: NOW, updatedAt: NOW }).where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_submit", target: target(s), after: { version: v.version, specHash: v.specHash } });
     return versionDto(row);
   });

@@ -1,18 +1,20 @@
 // /v1/spaces/:spaceId/sources*: every route takes the space guard without `or` (a platform admin has no data access),
 // so in an archived space each change is 409 space_archived. Roles (spec §11, Plan 2): any role reads; source_admin
 // creates a source, sets, tests and reads its connection; source_admin or config_maker drafts, edits and submits a version;
-// config_checker approves or rejects one someone else made; space_admin shares. Query 400 → guard 401/403 → body 400 →
+// config_checker approves or rejects one someone else made; space_admin shares; any role of the owning space reads the
+// source's activity (any role reads the versions; through a share the published and retired ones). Query 400 → guard 401/403 → body 400 →
 // 404 → rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import {
-  CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsQuery, SourceListQuery, UpdateSourceVersionBody,
+  CreateSourceBody, IngestListQuery, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsQuery, SourceListQuery,
+  SourceVersionListQuery, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  approveVersion, createDraft, createSource, previewVersion, refusedSpec, rejectVersion, setConnection, shareSource, sourceColumns, sourceDetail, sourcePage, submitVersion,
-  testConnection, unshareSource, updateVersion,
+  approveVersion, createDraft, createSource, previewVersion, queryColumns, refusedSpec, rejectVersion, setConnection, shareSource, sourceActivity, sourceColumns, sourceDetail,
+  sourcePage, submitVersion, testConnection, unshareSource, updateVersion, versionDetail, versionPage,
 } from "./service";
 
 const MAKERS = ["source_admin", "config_maker"] as const;
@@ -34,11 +36,25 @@ export const sourcesController = () =>
       return setConnection(c.ctx, idParam(c.params.sourceId, "source"), b);
     }, { guard: { space: ["source_admin"] } })
     /** Connects with the stored credential (or reads the file inbox folder); changes nothing. */
-    .post("/v1/spaces/:spaceId/sources/:sourceId/connection/test", ({ ctx, params }) =>
-      testConnection(ctx, idParam(params.sourceId, "source")), { guard: { space: ["source_admin"] } })
+    .post("/v1/spaces/:spaceId/sources/:sourceId/connection/test", async (c) => {
+      const b = await body(c, TestConnectionBody);
+      return testConnection(c.ctx, idParam(c.params.sourceId, "source"), b);
+    }, { guard: { space: ["source_admin"] } })
     /** The columns of one table of the source database. */
     .get("/v1/spaces/:spaceId/sources/:sourceId/connection/columns", ({ ctx, params, query }) =>
       sourceColumns(ctx, idParam(params.sourceId, "source"), query.table), { query: SourceColumnsQuery, guard: { space: ["source_admin"] } })
+    /** The result columns of a SELECT (a read sent as POST for its body). */
+    .post("/v1/spaces/:spaceId/sources/:sourceId/connection/columns", async (c) => {
+      const b = await body(c, QueryColumnsBody);
+      return queryColumns(c.ctx, idParam(c.params.sourceId, "source"), b);
+    }, { guard: { space: ["source_admin"] } })
+    /** The source's own activity: its creation, connection, every version step and share. */
+    .get("/v1/spaces/:spaceId/sources/:sourceId/activity", ({ ctx, params, query }) =>
+      sourceActivity(ctx, idParam(params.sourceId, "source"), query), { query: IngestListQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/sources/:sourceId/versions", ({ ctx, params, query }) =>
+      versionPage(ctx, idParam(params.sourceId, "source"), query), { query: SourceVersionListQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId", ({ ctx, params }) =>
+      versionDetail(ctx, idParam(params.sourceId, "source"), idParam(params.versionId, "version")), { guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions", async (c) => {
       const v = await createDraft(c.ctx, idParam(c.params.sourceId, "source"));
       c.set.status = 201;
@@ -49,7 +65,7 @@ export const sourcesController = () =>
       return updateVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
     }, { guard: { space: MAKERS } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview", async (c) => {
-      const b = await body(c, PreviewSourceBody);
+      const b = await body(c, PreviewSourceBody).catch(refusedSpec);
       return previewVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
     }, { guard: { space: MAKERS } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/submit", ({ ctx, params }) =>

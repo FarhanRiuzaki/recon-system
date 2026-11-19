@@ -2,7 +2,8 @@
 // `<test database>_src` (test/helpers/source-db.ts); the file inbox check under INBOX_ROOTS (set by the test preload).
 // The stored credential is decrypted server-side only: it never reaches an answer, a log line or an activity entry.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { SourceDto, SourcePreviewDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -28,7 +29,7 @@ const errOf = async (r: Response) => ((await r.json()) as { error: { code: strin
 const made = async (kind: string, code = kind.replace("_", "-")) => json<SourceDto>(call("POST", base(), { token: t.adm, body: { code, name: code, kind } }));
 const connect = (id: string, over: Record<string, unknown> = {}) =>
   call("PUT", `${base()}/${id}/connection`, { token: t.adm, body: { engine: "postgres", ...secret, ...over } });
-const test_ = (token: string, id: string) => call("POST", `${base()}/${id}/connection/test`, { token });
+const test_ = (token: string, id: string, body: unknown = {}) => call("POST", `${base()}/${id}/connection/test`, { token, body });
 const columns = (token: string | undefined, id: string, table: string) => call("GET", `${base()}/${id}/connection/columns?table=${encodeURIComponent(table)}`, { token });
 const draftWith = async (id: string, spec: unknown) => {
   const v = await json<SourceVersionDto>(call("POST", `${base()}/${id}/versions`, { token: t.mk }));
@@ -108,7 +109,7 @@ describe("POST …/connection/test (file inbox)", () => {
     for (const f of ["act20261102.txt", "act20261103.txt", "act20261104.txt", "bal20261102.txt"]) writeFileSync(path.join(root, "ksei", f), "x");
     const s = await made("file_inbox");
     const none = await test_(t.adm, s.id);
-    expect([none.status, (await errOf(none)).message]).toEqual([400, "This source has no folder yet. Save it in a draft first."]);
+    expect([none.status, (await errOf(none)).message]).toEqual([400, "This source has no folder yet. Enter the folder and the pattern, then test."]);
     const k = ksei();
     const v = await draftWith(s.id, { ...k, input: { ...k.input, path: path.join(root, "ksei") } });
     expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt", code: null });
@@ -116,6 +117,61 @@ describe("POST …/connection/test (file inbox)", () => {
     expect(r.status).toBe(200);
     const out = await test_(t.adm, s.id);
     expect([out.status, (await errOf(out)).code]).toEqual([400, "bad_request"]);
+  });
+});
+
+describe("POST …/connection/test (file inbox, the folder being typed)", () => {
+  it("tests the folder and pattern in the body before any spec exists; still inside INBOX_ROOTS after symlinks", async () => {
+    const root = config().INBOX_ROOTS[0]!;
+    mkdirSync(path.join(root, "typed"), { recursive: true });
+    for (const f of ["act20261102.txt", "act20261103.txt", "x.pdf"]) writeFileSync(path.join(root, "typed", f), "x");
+    const s = await made("file_inbox");
+    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 2 files match act*.txt", code: null });
+    // the typed folder wins over the draft's
+    const k = ksei();
+    await draftWith(s.id, { ...k, input: { ...k.input, path: "/nowhere" } });
+    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "*.pdf" }))).toMatchObject({ ok: true, message: "Folder readable · 1 file matches *.pdf" });
+    const missing = await json(test_(t.adm, s.id, { path: path.join(root, "absent"), pattern: "*.txt" }));
+    expect(missing).toEqual({ ok: false, message: "The folder can't be read (ENOENT). Check that it exists and that this server may read it.", code: null });
+    // outside the roots: as written, through a dot segment, and through a link inside a root that leads out
+    const outside = mkdtempSync(path.join(tmpdir(), "recon-out-"));
+    const link = path.join(root, `link-${Date.now()}`);
+    symlinkSync(outside, link);
+    try {
+      for (const p of ["/etc", path.join(root, "..", "x"), link]) {
+        const r = await test_(t.adm, s.id, { path: p, pattern: "*" });
+        expect([r.status, (await errOf(r)).message]).toEqual([400, "The folder must be inside one of the inbox folders this install allows (INBOX_ROOTS)."]);
+      }
+    } finally {
+      rmSync(link);
+      rmSync(outside, { recursive: true });
+    }
+    // the folder and the pattern go together; a database source sends neither
+    expect((await test_(t.adm, s.id, { path: path.join(root, "typed") })).status).toBe(400);
+    const d = await made("db_watermark");
+    await connect(d.id);
+    expect((await test_(t.adm, d.id, { path: root, pattern: "*" })).status).toBe(400);
+    expect((await test_(t.mk, s.id, { path: root, pattern: "*" })).status).toBe(403);
+    // a test records nothing
+    expect((await db.select({ action: activity.action }).from(activity)).map((e) => e.action).sort())
+      .toEqual(["source.connection_set", "source.create", "source.create", "source.version_create", "source.version_update"]);
+  });
+});
+
+describe("POST …/connection/columns (a SELECT)", () => {
+  it("the result columns of the query with :business_date bound, nullability unknown; source_admin only", async () => {
+    const s = await made("db_snapshot");
+    await connect(s.id);
+    const q = (token: string, body: unknown) => call("POST", `${base()}/${s.id}/connection/columns`, { token, body });
+    const r = await q(t.adm, { query: "select sid, qty from conn_pos where business_date = :business_date", businessDate: "2026-11-02" });
+    expect([r.status, await r.json()]).toMatchObject([200, { table: null, columns: [{ name: "sid", nullable: null }, { name: "qty", nullable: null }] }]);
+    const twice = await q(t.adm, { query: "select sid, sid from conn_pos" });
+    expect([twice.status, (await errOf(twice)).message]).toEqual([400, 'The query returns column "sid" twice. Give each column its own name.']);
+    expect((await q(t.mk, { query: "select 1" })).status).toBe(403);
+    expect((await q(t.adm, { query: "" })).status).toBe(400);
+    const f = await made("file_inbox");
+    expect((await call("POST", `${base()}/${f.id}/connection/columns`, { token: t.adm, body: { query: "select 1" } })).status).toBe(400);
+    expect(await db.select({ action: activity.action }).from(activity).where(eq(activity.action, "source.version_update"))).toEqual([]);
   });
 });
 

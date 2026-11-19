@@ -4,4 +4,4 @@ export { auditController } from "./controller";
 export { recordActivity, recordAuth } from "./record";
 export { snapshot } from "./rules";
 export { activity, authLog } from "./schema";
-export { purgeAudit, recentActivity } from "./service";
+export { purgeAudit, recentActivity, targetActivityPage } from "./service";

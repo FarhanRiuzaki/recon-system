@@ -5,7 +5,7 @@ import { spaces } from "../spaces/schema";
 
 // Space-owned tables (space_id in every key and foreign key, spec §8) under row level security: the standard space
 // policy, plus read-only policies that let the space a source is shared to read it (drizzle/0011_sources_rls.sql).
-// Ids are UUIDv7 made by the app. maker_id / contributor_ids / checker_id have no foreign key: a deleted user's versions
+// Ids are UUIDv7 made by the app. maker_id / contributor_ids / submitted_by / checker_id have no foreign key: a deleted user's versions
 // keep who made them.
 
 const stamps = {
@@ -59,6 +59,9 @@ export const sourceVersions = pgTable("source_versions", {
   makerId: uuid("maker_id"),
   /** Everyone who created, edited (spec changed) or submitted this version, in order; none of them may check it. */
   contributorIds: uuid("contributor_ids").array().notNull().default(sql`'{}'`),
+  /** Who sent it to review last, and when (kept through a reject until the next submit). */
+  submittedBy: uuid("submitted_by"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
   checkerId: uuid("checker_id"),
   reviewComment: text("review_comment"),
   publishedAt: timestamp("published_at", { withTimezone: true }),
