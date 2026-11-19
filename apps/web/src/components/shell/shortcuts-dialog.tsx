@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Switch } from "@starterkit/ui/ui/switch";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { navFor } from "@/lib/shared/nav";
+import { pagesFor } from "@/lib/shared/nav";
 import { goKeys } from "@/lib/shared/shortcuts";
 
 const Row = ({ label, keys, said }: { label: string; keys: string[]; said: string }) => (
@@ -23,7 +23,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const { perms } = useAuth();
   const { prefs, update } = usePrefs();
   const on = prefs.keys !== "off";
-  const pages = navFor(perms).flatMap((s) => s.items).filter((n) => n.shortcut);
+  const pages = pagesFor(perms).filter((n) => n.shortcut);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] md:max-w-md">

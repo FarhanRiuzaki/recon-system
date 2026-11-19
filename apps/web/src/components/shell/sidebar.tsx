@@ -22,6 +22,7 @@ import { goKeys } from "@/lib/shared/shortcuts";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
 import { SidebarRailMenu } from "./sidebar-rail-menu";
+import { SoonItem } from "./soon-item";
 
 /**
  * True once the caller's spaces are known to be none (the switcher's list, prefetched by the layout; useSpaces reads
@@ -86,6 +87,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
             {/* Hidden in the rail, still names the group (aria-labelledby reads hidden text). */}
             <span key={`${s.id}-${collapsed}`} id={`nav-section-${s.id}`} className={cn("eyebrow hidden px-2.5 pt-2 pb-2 text-fg-3", label("xl:block"))}>{s.label}</span>
             {s.items.map((n) => {
+              if (n.soon) return <SoonItem key={n.href} item={n} text={cn("hidden", label("xl:inline"))} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
               const active = isActive(path, n.href);
               const child = active ? activeChild(n, path, sp) : null;
               return (

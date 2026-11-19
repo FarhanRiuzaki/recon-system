@@ -1,27 +1,37 @@
 import type { PermissionName } from "@starterkit/shared/permissions";
 import { canonicalSelection } from "@starterkit/shared/filter-selection";
 
-export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members";
-export type NavGroup = "main" | "space" | "access" | "audit" | "personal";
+export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
+  | "today" | "breaks" | "approvals" | "recons" | "sources";
+export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
+/** Why a `soon` item is off: its tooltip, and the caption on a touch screen (AGENTS.md §10). */
+export const SOON_REASON = "Coming soon \u2014 this page is part of a later release.";
 /**
  * `shortcut` is "" for an item without one; `perm` null = every signed-in user. `children`, listed under the item in
  * the sidebar while its section is open: views of its own page (same path, a filter in the query) or pages below it
  * (a sub-route: another path), which share the item's permission (`pagePerm`) and breadcrumb.
+ * `soon`: a page of a later release, shown disabled (not a link, no shortcut, not in the palette). `hidden`: a
+ * template page whose route still works (guard, breadcrumb) but that the navigation does not list.
  */
-export type NavItem = { href: string; label: string; icon: NavIcon; shortcut: string; group: NavGroup; perm: PermissionName | null; children?: readonly NavChild[] };
+export type NavItem = { href: string; label: string; icon: NavIcon; shortcut: string; group: NavGroup; perm: PermissionName | null; children?: readonly NavChild[]; soon?: true; hidden?: true };
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
 
 export const NAV: readonly NavItem[] = [
   { href: "/", label: "Dashboard", icon: "dashboard", shortcut: "G D", group: "main", perm: null },
-  { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view" },
+  { href: "/today", label: "Today", icon: "today", shortcut: "", group: "work", perm: null, soon: true },
+  { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true },
+  { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "", group: "work", perm: null, soon: true },
+  { href: "/recons", label: "Recons", icon: "recons", shortcut: "", group: "setup", perm: null, soon: true },
+  { href: "/sources", label: "Sources", icon: "sources", shortcut: "", group: "setup", perm: null, soon: true },
+  { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
   { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null },
   { href: "/users", label: "Users", icon: "users", shortcut: "G U", group: "access", perm: "user.view" },
   { href: "/roles", label: "Roles", icon: "roles", shortcut: "G R", group: "access", perm: "role.view" },
   { href: "/permissions", label: "Permissions", icon: "permissions", shortcut: "G P", group: "access", perm: "permission.view" },
   { href: "/audit/activity", label: "Activity log", icon: "activity", shortcut: "G A", group: "audit", perm: "audit.view" },
   { href: "/audit/auth", label: "Sign-in log", icon: "signin", shortcut: "G S", group: "audit", perm: "audit.view" },
-  { href: "/ds", label: "Design system", icon: "ds", shortcut: "", group: "personal", perm: null, children: [
+  { href: "/ds", label: "Design system", icon: "ds", shortcut: "", group: "personal", perm: null, hidden: true, children: [
     { href: "/ds", label: "Overview" }, { href: "/ds/foundations", label: "Foundations" }, { href: "/ds/components", label: "Components" },
     { href: "/ds/forms", label: "Forms" }, { href: "/ds/feedback", label: "Feedback" }, { href: "/ds/data", label: "Data display" },
     { href: "/ds/visuals", label: "Illustrations" }, { href: "/ds/motion", label: "Motion" },
@@ -30,7 +40,7 @@ export const NAV: readonly NavItem[] = [
 ];
 
 const GROUPS: { id: NavGroup; label: string }[] = [
-  { id: "main", label: "Main" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
+  { id: "main", label: "Main" }, { id: "work", label: "Work" }, { id: "setup", label: "Setup" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
 ];
 
 /**
@@ -42,9 +52,12 @@ export function navFor(perms: ReadonlySet<PermissionName>, noSpace = false): Nav
   const dropSpace = noSpace && !perms.has("space.manage");
   return GROUPS
     .filter((g) => !(dropSpace && g.id === "space"))
-    .map((g) => ({ ...g, items: NAV.filter((n) => n.group === g.id && (n.perm === null || perms.has(n.perm))) }))
+    .map((g) => ({ ...g, items: NAV.filter((n) => !n.hidden && n.group === g.id && (n.perm === null || perms.has(n.perm))) }))
     .filter((s) => s.items.length > 0);
 }
+
+/** The openable pages (palette, "G" shortcuts, shortcut list): the sidebar's items without the `soon` ones. */
+export const pagesFor = (perms: ReadonlySet<PermissionName>): NavItem[] => navFor(perms).flatMap((s) => s.items).filter((n) => !n.soon);
 
 /** `exact`: active only on its own path. "/" is always exact. */
 export function isActive(pathname: string, href: string, exact = false): boolean {
@@ -71,8 +84,8 @@ export function activeChild(item: NavItem, pathname: string, sp: URLSearchParams
 }
 
 const clean = (pathname: string) => (pathname.split(/[?#]/)[0] ?? "/").replace(/\/+$/, "") || "/";
-/** The nav page a path belongs to (longest href wins, so /audit/auth is not /audit). */
-const navItemOf = (p: string) => [...NAV].sort((a, b) => b.href.length - a.href.length).find((n) => isActive(p, n.href));
+/** The nav page a path belongs to (hidden pages count, `soon` ones have no page yet; longest href wins, so /audit/auth is not /audit). */
+const navItemOf = (p: string) => [...NAV].filter((n) => !n.soon).sort((a, b) => b.href.length - a.href.length).find((n) => isActive(p, n.href));
 
 /**
  * Top bar breadcrumb: the nav page the path belongs to, only when the viewer may open it, so a page the role can't

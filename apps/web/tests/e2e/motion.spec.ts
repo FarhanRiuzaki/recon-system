@@ -162,7 +162,7 @@ test.describe("console", () => {
       await page.waitForLoadState("networkidle");
     }
     const menu = page.getByRole("navigation", { name: "Menu" });
-    for (const name of ["Dashboard", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Design system", "Profile"]) {
+    for (const name of ["Dashboard", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Profile"]) {
       await menu.getByRole("link", { name }).click();
       await heading(page, name);
     }

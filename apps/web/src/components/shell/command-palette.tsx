@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { navFor } from "@/lib/shared/nav";
+import { pagesFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { isHelpKey, matchSequence } from "@/lib/shared/shortcuts";
 
@@ -35,7 +35,7 @@ export function CommandPalette() {
   const prev = useRef<{ key: string; at: number } | null>(null);
 
   useEffect(() => {
-    const items = navFor(perms).flatMap((s) => s.items);
+    const items = pagesFor(perms);
     const onOpen = () => { setUsed(true); setOpen(true); };
     const onHelp = () => { setOpen(false); setHelpUsed(true); setHelp(true); };
     const onKey = (e: KeyboardEvent) => {

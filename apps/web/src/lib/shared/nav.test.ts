@@ -1,27 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, pagePerm, type NavItem } from "./nav";
+import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, pagePerm, pagesFor, SOON_REASON, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
+const SOON = ["Today", "Breaks", "Approvals", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
 describe("navFor", () => {
-  it("user.view sees Dashboard, Users, Design system, Profile only", () => {
-    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", "Members", "Users", "Design system", "Profile"]);
+  it("user.view sees Dashboard, the coming-soon items, Members, Users, Profile only", () => {
+    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", ...SOON, "Members", "Users", "Profile"]);
   });
 
   it("no permissions: items without a permission only; empty groups disappear", () => {
     const sections = navFor(new Set());
-    expect(sections.map((s) => s.id)).toEqual(["main", "space", "personal"]);
-    expect(labels(new Set())).toEqual(["Dashboard", "Members", "Design system", "Profile"]);
+    expect(sections.map((s) => s.id)).toEqual(["main", "work", "setup", "space", "personal"]);
+    expect(labels(new Set())).toEqual(["Dashboard", ...SOON, "Members", "Profile"]);
   });
 
-  it("all permissions: every item, the brief's eight keeping their order (a new module's item goes anywhere between)", () => {
-    const BRIEF = ["Dashboard", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Design system", "Profile"];
-    const all = NAV.map((n) => n.label);
-    expect(all.filter((l) => BRIEF.includes(l))).toEqual(BRIEF);
-    expect([all[0], ...all.slice(-2)]).toEqual(["Dashboard", "Design system", "Profile"]);
+  it("all permissions: every item but the hidden template pages, groups in the designed order", () => {
+    const all = NAV.filter((n) => !n.hidden).map((n) => n.label);
+    expect(all).toEqual(["Dashboard", ...SOON, "Members", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Profile"]);
     expect(labels(new Set(PERMISSIONS))).toEqual(all);
+    expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "space", "access", "audit", "personal"]);
+  });
+
+  it("Projects and Design system are not in the navigation, but their routes stay guarded and in the breadcrumb", () => {
+    const all = labels(new Set(PERMISSIONS));
+    expect(all).not.toContain("Projects");
+    expect(all).not.toContain("Design system");
+    expect(pagePerm("/projects")).toBe("project.view");
+    expect(pagePerm("/projects/new")).toBe("project.create");
+    expect(pagePerm("/ds/forms")).toBeNull();
+    expect(crumbs("/projects", new Set(PERMISSIONS)).map((c) => c.label)).toEqual(["Projects"]);
+    expect(crumbs("/projects", new Set())).toEqual([]);
+  });
+
+  it("coming-soon items: no shortcut, no permission, not in the palette or shortcut list, no page behind them", () => {
+    const soon = NAV.filter((n) => n.soon);
+    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Today"], ["work", "Breaks"], ["work", "Approvals"], ["setup", "Recons"], ["setup", "Sources"]]);
+    expect(soon.every((n) => n.shortcut === "" && n.perm === null)).toBe(true);
+    const pages = pagesFor(new Set(PERMISSIONS));
+    expect(pages.some((n) => n.soon || n.hidden)).toBe(false);
+    expect(pages.map((n) => n.label)).not.toContain("Today");
+    expect(pagePerm("/today")).toBeNull();
+    expect(crumbs("/today", new Set(PERMISSIONS))).toEqual([]);
+    expect(SOON_REASON).toMatch(/^Coming soon/);
   });
 
   it("shortcuts are unique", () => {
@@ -33,15 +56,15 @@ describe("navFor", () => {
 describe("space group", () => {
   it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
     const admin = new Set(["user.view", "role.view", "space.view"] as const);
-    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", "Users", "Roles", "Design system", "Profile"]);
-    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "personal"]);
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...SOON, "Users", "Roles", "Profile"]);
+    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "setup", "personal"]);
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
   });
 
   it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {
     const s = navFor(new Set()).find((x) => x.label === "Space");
-    expect(s?.items.map((i) => [i.label, i.href])).toEqual([["Members", "/spaces"]]);
+    expect(s?.items.map((i) => [i.label, i.href, i.soon])).toEqual([["Members", "/spaces", undefined]]);
     expect(isActive("/spaces", "/spaces")).toBe(true);
     expect(isActive("/spaces/5b0c1f2e-0000-4000-8000-000000000000/members", "/spaces")).toBe(true);
   });

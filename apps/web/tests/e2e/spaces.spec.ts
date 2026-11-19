@@ -85,7 +85,7 @@ test("a user without a space sees who adds them and their username, and no switc
   await expect(page).toHaveURL("/");
   await expect(trigger(page)).toHaveCount(0);
   // In no space: the Space group (its pages all need a space) is gone; every other page the Viewer role opens stays.
-  await expect(navLinks(page)).toHaveText(["Dashboard", "Users", "Activity log", "Sign-in log", "Design system", "Profile"]);
+  await expect(navLinks(page)).toHaveText(["Dashboard", "Users", "Activity log", "Sign-in log", "Profile"]);
   await page.goto("/spaces");
   await expect(page).toHaveURL(/\/spaces$/);
   await expect(page.getByRole("heading", { level: 1, name: "You're not a member of any space yet" })).toBeVisible();

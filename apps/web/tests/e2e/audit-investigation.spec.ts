@@ -182,11 +182,11 @@ test("controlled slow past-end list cannot replace the route after leaving Activ
   });
   await pushUrl(page, "/audit/activity?range=90d&page=1000");
   await expect.poll(() => seen).toBe(true);
-  await page.getByRole("link", { name: "Projects", exact: true }).first().click();
-  await expect(page).toHaveURL(url => url.pathname === "/projects");
+  await page.getByRole("link", { name: "Users", exact: true }).first().click();
+  await expect(page).toHaveURL(url => url.pathname === "/users");
   release();
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  await expect(page).toHaveURL(url => url.pathname === "/projects");
+  await expect(page).toHaveURL(url => url.pathname === "/users");
 });
 
 test("activity entry visual states wrap at reference widths with keyboard and reduced motion", async ({ page }) => {

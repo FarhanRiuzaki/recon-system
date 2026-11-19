@@ -122,7 +122,7 @@ numbers from examples.
 | recovery code | backup code | Shown once; never display it again |
 | active / inactive | enabled / disabled, on / off | A user's state; an inactive user can't sign in |
 | Healthy / Degraded / Down / Stopped / Unknown | OK, Warning, Error, Offline, N/A | The five health states |
-| Dashboard, Projects, Members, Users, Roles, Permissions, Activity log, Sign-in log, Design system, Profile | Home, Admin, History, Account | The navigation labels: a new module adds its own (a plural noun, sentence case) to this row. Sessions live at /me/sessions and on a user's detail page, not in the nav |
+| Dashboard, Today, Breaks, Approvals, Recons, Sources, Members, Users, Roles, Permissions, Activity log, Sign-in log, Profile (Projects and Design system are not listed in the navigation; their routes work) | Home, Admin, History, Account | The navigation labels: a new module adds its own (a plural noun, sentence case) to this row. Sessions live at /me/sessions and on a user's detail page, not in the nav. Today, Breaks, Approvals, Recons, Sources are shown disabled with a "Soon" tag; reason text: "Coming soon — this page is part of a later release." |
 | Overview, Foundations, Components, Forms, Feedback, Data display, Illustrations, Motion | | The submenu labels under Design system, one per page; each is also its page's title, except Overview, whose page title is "Design system" |
 
 ## 6. Words to avoid

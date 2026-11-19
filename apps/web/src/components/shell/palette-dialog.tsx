@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { navFor } from "@/lib/shared/nav";
+import { pagesFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
 import { openShortcuts } from "./command-palette";
@@ -35,7 +35,7 @@ export function PaletteDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <CommandEmpty>No pages match.</CommandEmpty>
             <CommandGroup heading="Pages">
               {/* A submenu's pages follow their item ("Design system / Forms"); a child on the item's own path is the item. */}
-              {navFor(perms).flatMap((s) => s.items).flatMap((n) => [n, ...(n.children ?? []).filter((c) => c.href !== n.href)
+              {pagesFor(perms).flatMap((n) => [n, ...(n.children ?? []).filter((c) => c.href !== n.href)
                 .map((c) => ({ href: c.href, label: `${n.label} / ${c.label}`, icon: n.icon, shortcut: "" }))]).map((n) => (
                 <CommandItem key={n.href} value={`${n.label} ${n.href}`} onSelect={() => go(n.href)}>
                   <NavGlyph icon={n.icon} />{n.label}{n.shortcut && <span className="ml-auto"><Kbd keys={goKeys(n.shortcut)} /></span>}

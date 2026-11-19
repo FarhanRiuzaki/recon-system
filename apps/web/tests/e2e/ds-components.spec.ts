@@ -16,9 +16,6 @@ test("account belongs to sidebar, route tabs use grey, and time controls are mod
   await page.getByRole("button", { name: "Auto-refresh interval", exact: true }).click();
   await page.getByRole("menuitemradio", { name: "Every 30 seconds" }).click();
   await expect(page).toHaveURL(/refresh=30/);
-  // The submenu tree is drawn under "Design system" (the only item with children) while one of its pages is open.
-  await page.goto("/ds");
-  expect(await page.getByRole("navigation", { name: "Menu" }).locator(".nav-tree-branch").first().evaluate(el => getComputedStyle(el).borderBottomLeftRadius)).not.toBe("0px");
   await page.goto("/users/new");
   await expect(page.getByLabel("Page time controls")).toHaveCount(0);
 });
