@@ -122,7 +122,7 @@ pemilik: lokal saja). Hanya PostgreSQL yang terpasang di mesin ini, jadi hanya P
 
 | Engine | Driver + versi | Runtime | Yang diverifikasi | Verdict |
 |---|---|---|---|---|
-| PostgreSQL | `Bun.SQL` bawaan | bun 1.4.4 | 1.000.000 baris sisi A (`synthPair`) ke `src_txn` (900.000 baris berlebih pada timestamp kembar, 10 baris per ms), indeks `(updated_at, id)`. Keyset paging `(updated_at, id) > ($wm, $id)` per 10.000: count tepat 1.000.000 dalam 316 ms. RSS diukur di proses baru, baseline tepat sebelum tarik: chunked tumbuh 34 MB (ambang <= 100 MB), kontrol load-all (select semua sekaligus) 486 MB. `pg_sleep(5)` dengan `statement_timeout` 1 s error `ERR_POSTGRES_SERVER_ERROR` setelah 1002 ms (assertion < 1500). TLS tidak dites (klaster lokal tanpa TLS). | bun |
+| PostgreSQL | `Bun.SQL` bawaan | bun 1.4.4 | 1.000.000 baris sisi A (`synthPair`) ke `src_txn`: 7 baris per timestamp kembar (857.142 baris berlebih; grup melintasi batas halaman 10.000) dengan presisi mikrodetik, indeks `(updated_at, id)`. Keyset paging `(updated_at, id) > ($wm, $id)` per 10.000: count tepat 1.000.000 dan jumlah id sama dengan 1..1.000.000, 370 ms. Kontrol negatif `updated_at > $wm` saja: 999.703 baris (kehilangan 297 baris tie di batas halaman). Watermark dibawa sebagai teks SQL (`updated_at::text`, mikrodetik penuh). RSS diukur di proses baru, baseline tepat sebelum tarik: chunked tumbuh 44 MB (ambang <= 100 MB), kontrol load-all 489 MB. `pg_sleep(5)` dengan `statement_timeout` 1 s error `ERR_POSTGRES_SERVER_ERROR` setelah 1002 ms (assertion < 1500). TLS tidak dites (klaster lokal tanpa TLS). | bun |
 | MySQL | `Bun.SQL` (adapter mysql) dan `mysql2` 3.24.6 | bun 1.4.4 | Impor, konstruksi pool (`mysql2.createPool`; `new SQL`), percobaan koneksi: port tertutup `ERR_MYSQL_CONNECTION_REFUSED` / `ECONNREFUSED`; alamat blackhole 10.255.255.1 error `ERR_MYSQL_CONNECTION_TIMEOUT` / `ETIMEDOUT` setelah 2002 ms. | partial, tanpa server |
 | SQL Server | `mssql` 12.7.15 | bun 1.4.4 | `ConnectionPool` dikonstruksi (`encrypt: true, trustServerCertificate: true`). Port tertutup `ESOCKET`; blackhole `ETIMEOUT` setelah 2002 ms. | partial, tanpa server |
 | Oracle | `oracledb` 26.0.0, mode Thin (tanpa `initOracleClient`) | bun 1.4.4 | `createPool` (poolMin 0) dikonstruksi, `oracledb.thin === true`. Port tertutup `NJS-503`; blackhole `NJS-510` setelah 2004 ms. | partial, tanpa server |
@@ -138,6 +138,9 @@ keras 5 s):
 | oracledb | `transportConnectTimeout` | detik |
 
 Batas hasil:
+- Peringatan Plan 2: `timestamptz` PostgreSQL berpresisi mikrodetik, tetapi `Date.toISOString()` memotong ke milidetik; watermark
+  harus dibawa sebagai teks dari SQL (atau dibandingkan langsung di SQL). Pemotongan ke ms membuat baris tie diulang. Uji
+  S7 tidak menjalankan varian terpotong; klaim ini berdasar penalaran, data uji sengaja berpresisi mikrodetik agar terdeteksi.
 - Pull PostgreSQL adalah keyset paging `(updated_at, id)`, bukan stream kursor. Pada putaran pertama pull salah hitung
   1.000.004 baris: `order by id` memakai alias keluaran `id::text` (urutan teks), bukan kolom bigint. Diperbaiki dengan
   `order by updated_at, src_txn.id`; Plan 2 harus mengurutkan memakai kolom asli, bukan alias.

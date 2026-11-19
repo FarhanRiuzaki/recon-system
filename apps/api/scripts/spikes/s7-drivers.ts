@@ -25,41 +25,55 @@ const check = (ok: boolean, msg: string) => {
   if (!ok) failures.push(msg)
 }
 
-// Proses anak: baseline RSS tepat sebelum tarik; mode 'chunked' = keyset paging, 'all' = kontrol load-all.
+// Proses anak: baseline RSS tepat sebelum tarik; 'chunked' = keyset (updated_at, id), 'naive' = kontrol negatif
+// updated_at > wm, 'all' = kontrol load-all.
 async function pull(mode: string) {
   const sql = new SQL({ url: PG_URL, max: 1 })
   Bun.gc(true)
   const rss0 = process.memoryUsage().rss
   let peak = rss0
   let count = 0
+  let idSum = 0
   const t0 = performance.now()
   if (mode === 'all') {
     const rows = await sql`select ext_ref, account_ref, amount_minor, currency, event_time, business_date, updated_at, id from src_txn`
     count = rows.length
     peak = Math.max(peak, process.memoryUsage().rss)
   } else {
-    let wm = new Date(0).toISOString()
+    // wm dibawa sebagai teks dari SQL (presisi mikrodetik penuh); toISOString() memotong ke milidetik.
+    let wm = '1970-01-01 00:00:00+00'
     let id = '0'
     for (;;) {
-      const rows = await sql`select ext_ref, account_ref, amount_minor, currency, event_time, business_date, updated_at, id::text as id
-        from src_txn where (updated_at, id) > (${wm}::timestamptz, ${id}::bigint)
-        order by updated_at, src_txn.id limit ${CHUNK}` // src_txn.id: tanpa prefiks, ORDER BY memakai alias teks id::text
+      const rows =
+        mode === 'naive'
+          ? await sql`select ext_ref, account_ref, amount_minor, currency, event_time, business_date, updated_at::text as wm, id::text as id
+              from src_txn where updated_at > ${wm}::timestamptz
+              order by updated_at, src_txn.id limit ${CHUNK}`
+          : await sql`select ext_ref, account_ref, amount_minor, currency, event_time, business_date, updated_at::text as wm, id::text as id
+              from src_txn where (updated_at, id) > (${wm}::timestamptz, ${id}::bigint)
+              order by updated_at, src_txn.id limit ${CHUNK}` // src_txn.id: tanpa prefiks, ORDER BY memakai alias teks id::text
       if (rows.length === 0) break
       count += rows.length
+      for (const r of rows) idSum += Number(r.id)
       const last = rows[rows.length - 1]
-      wm = (last.updated_at as Date).toISOString()
+      wm = last.wm as string
       id = last.id as string
       peak = Math.max(peak, process.memoryUsage().rss)
     }
   }
-  console.log(JSON.stringify({ mode, count, ms: Math.round(performance.now() - t0), rssBaseMB: mb(rss0), rssGrowthMB: mb(peak - rss0) }))
+  console.log(JSON.stringify({ mode, count, idSum, ms: Math.round(performance.now() - t0), rssBaseMB: mb(rss0), rssGrowthMB: mb(peak - rss0) }))
   await sql.close()
 }
 
 function child(mode: string) {
   const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--pull-only', mode], { encoding: 'utf8' })
   if (r.status !== 0) throw new Error(`anak ${mode} gagal: ${r.stderr}`)
-  return JSON.parse(r.stdout.trim().split('\n').pop()!) as { count: number; ms: number; rssBaseMB: number; rssGrowthMB: number }
+  return JSON.parse(r.stdout.trim().split('\n').pop()!) as { count: number; idSum: number; ms: number; rssBaseMB: number; rssGrowthMB: number }
+}
+
+// Grup g: g ms + (g*37 mod 1000) mikrodetik, monoton naik; string ISO 6 digit pecahan.
+function ts(base: number, g: number) {
+  return new Date(base + g).toISOString().replace('Z', `${String((g * 37) % 1000).padStart(3, '0')}Z`)
 }
 
 async function pg() {
@@ -71,24 +85,27 @@ async function pg() {
   const base = Date.parse('2026-11-19T00:00:00Z')
   for (let i = 0; i < a.length; i += CHUNK) {
     const c = a.slice(i, i + CHUNK)
-    // 10 baris per milidetik: timestamp kembar sengaja, supaya paging tie-safe teruji
+    // 7 baris per timestamp kembar (grup tidak habis dibagi CHUNK, jadi grup melintasi batas halaman), presisi mikrodetik
     await sql`insert into src_txn (ext_ref, account_ref, amount_minor, currency, event_time, business_date, updated_at)
       select * from unnest(
       ${c.map((r) => r.ext_ref)}::text[], ${c.map((r) => r.account_ref)}::text[],
       ${c.map((r) => String(r.amount_minor))}::bigint[], ${c.map((r) => r.currency)}::text[],
       ${c.map((r) => r.event_time.toISOString())}::timestamptz[], ${c.map((r) => r.business_date)}::date[],
-      ${c.map((_, j) => new Date(base + Math.floor((i + j) / 10)).toISOString())}::timestamptz[])`
+      ${c.map((_, j) => ts(base, Math.floor((i + j) / 7)))}::timestamptz[])`
   }
   await sql`create index src_txn_wm on src_txn (updated_at, id)`
   await sql`analyze src_txn`
   const [{ d }] = await sql`select count(*)::int - count(distinct updated_at)::int as d from src_txn`
-  check(d > 0, `data punya timestamp kembar (${d} baris berlebih)`)
+  check(d > 0 && d < ROWS, `data punya timestamp kembar (${d} baris berlebih, 7 per grup)`)
   await sql.close() // proses ini menampung ~2 juta objek; ukur RSS di proses baru
   const chunked = child('chunked')
+  const naive = child('naive')
   const all = child('all')
-  console.log(JSON.stringify({ chunked, control_load_all: all }))
+  console.log(JSON.stringify({ chunked, control_naive: naive, control_load_all: all }))
   check(chunked.count === ROWS, `keyset paging (updated_at, id): count ${chunked.count} === ${ROWS}`)
   check(chunked.rssGrowthMB <= 100, `RSS chunked tumbuh ${chunked.rssGrowthMB} MB <= 100 MB (kontrol load-all: ${all.rssGrowthMB} MB)`)
+  check(chunked.idSum === (ROWS * (ROWS + 1)) / 2, `keyset: jumlah id ${chunked.idSum} sama dengan 1..${ROWS} (tanpa duplikat+hilang yang saling meniadakan)`)
+  check(naive.count < ROWS, `kontrol negatif updated_at > wm: ${naive.count} < ${ROWS} (tie di batas halaman hilang)`)
   check(all.count === ROWS, `kontrol load-all count ${all.count}`)
 
   // Bun.SQL tidak punya opsi timeout query; pakai statement_timeout server pada koneksi khusus.
