@@ -462,3 +462,12 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 ## DEC-042 — Baca source yang di-share lewat policy SELECT tambahan
 
 20 November 2026 — core-recon (Plan 2 Task 2). Spec §11 dan komentar `0007_space_rls.sql` menetapkan policy RLS hanya memeriksa baris sendiri (`recon_space_visible(space_id)`). Share source lintas space (§11 "dibagi ke space lain lewat `source_share` read-only") tidak bisa dinyatakan begitu, jadi `sources` dan `source_versions` mendapat satu policy permisif `FOR SELECT` tambahan (`<tabel>_shared`) dengan sub-select ke `source_shares`, dan `source_shares` mendapat policy `FOR SELECT` atas `recon_space_visible(to_space_id)`. Policy semua-perintah yang standar tetap satu per tabel, sehingga tulis tetap hanya di space pemilik. Pemeriksa RLS di `boundaries.test.ts` memuat daftar policy SELECT tambahan ini dengan alasannya; entri basi menggagalkan tes. Versi `retired` ikut terbaca karena record lama (Task 5) menunjuk versi source yang dipakai saat ingest. Policy yang sama dipakai untuk `records`/`raw_rows` di Task 5. Biaya bila keliru: sub-select per baris pada baca lintas space; diukur saat data volume Plan 2 Task 5.
+
+## DEC-043 — Aturan break/hari untuk Plan 5 (jawaban audit page 05)
+
+20 November 2026 — core-recon, atas pertanyaan designer-recon (Build notes 05). Usulan bawaan; angka ambang tetap data milik bank.
+- **Purge**: fase 1 tanpa purge manual. Data lama dihapus oleh retensi terjadwal (janitor, per tabel, dicatat di activity). Baris "purge" di matriks approval §11 berlaku saat purge manual dibuat (fase 2); layar tidak didesain sekarang.
+- **Batas write-off**: diatur `space_admin` di halaman pengaturan space ("Write-off limit for reviewers", per mata uang). Kosong = setiap write-off dan adjust di-approve `space_admin`. Tidak ada angka bawaan; contoh di desain hanya ilustrasi.
+- **Hari macet di Closing**: hari pindah ke Closing pada `close_at` config; bila source belum lengkap sampai `close_at + grace_minutes`, hari ditutup sebagai Closed dengan tanda "Data incomplete" (alasan per source), item tanpa pasangan menjadi break. Data yang datang kemudian menutup break lewat AUTO_MATCHED_LATE_DATA hanya bila `carry_over_days` > 0.
+- **Approve Adjusted**: sama dengan write-off: `reviewer` bila nilai penyesuaian dalam batas, `space_admin` bila di atas batas; maker ≠ checker per user id.
+- **Konfirmasi non-destruktif**: `ConfirmActionDialog` mendapat varian tombol primary untuk aksi massal yang tidak destruktif (assign, resolve tanpa approval); dikerjakan di Plan 5.
