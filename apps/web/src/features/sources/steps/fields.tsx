@@ -60,7 +60,8 @@ export type FieldsStepProps = {
   onUseHeader: () => void;
   /** Stored names as typed, by field, while they aren't valid yet (the spec keeps the last valid one). */
   typedNames: Record<string, string>;
-  onTypedName: (field: string, name: string | undefined) => void;
+  /** A stored name as typed (undefined = none typed); `clear` = the controls whose earlier error the change ends. */
+  onTypedName: (field: string, name: string | undefined, clear: string[]) => void;
 };
 
 /**
@@ -145,8 +146,8 @@ export function FieldsStep(p: FieldsStepProps) {
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                <TableHead>Column</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
-                <TableHead>Empty ok</TableHead><TableHead>Match key</TableHead><TableHead>Stored as</TableHead>
+                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
+                <TableHead>Empty ok</TableHead><TableHead>Match key</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {s.fields.map((f, i) => {
@@ -158,13 +159,34 @@ export function FieldsStep(p: FieldsStepProps) {
                   const nameId = `src-attr-${i}`;
                   const typedName = p.typedNames[f.name];
                   const nameWhy = (typedName !== undefined ? storedNameProblem(typedName, f.name, s) : null) ?? err(nameId) ?? (stored ? err(ctl(`mapping.attrs.${stored}`)) : undefined);
+                  const shown = [nameId, ...(stored ? [ctl(`mapping.attrs.${stored}`)] : [])]; // an error from Next or the API, until the value changes
                   const setName = (v: string) => {
-                    p.onTypedName(f.name, v);
+                    p.onTypedName(f.name, v, shown);
                     if (!storedNameProblem(v, f.name, s)) setSpec((x) => storeAs(x, f.name, v));
                   };
                   return (
                     <TableRow key={f.name}>
                       <TableCell className="font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label">{f.name}</TableCell>
+                      <TableCell className="max-xl:order-last max-xl:col-span-2">
+                        <Cap>Stored as</Cap>
+                        <span className="grid gap-1">
+                          <span className="flex items-center gap-2">
+                            <Checkbox label={`${f.name} is stored`} checked={stored !== null} onToggle={() => {
+                              p.onTypedName(f.name, undefined, shown);
+                              setSpec((x) => {
+                                if (storedName(x, f.name) !== null) return storeAs(x, f.name, null);
+                                const want = attrNameOf(f.name);
+                                return storeAs(x, f.name, storedNameProblem(want, f.name, x) ? `${want.slice(0, 58)}_${i + 1}` : want);
+                              });
+                            }} />
+                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
+                            <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
+                              placeholder="Not stored" value={typedName ?? stored ?? ""} aria-invalid={!!nameWhy || undefined} aria-describedby={nameWhy ? `${nameId}-why` : undefined}
+                              onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
+                          </span>
+                          {nameWhy && <span id={`${nameId}-why`} role="alert" className="max-w-72 whitespace-normal text-caption text-down-ink">{nameWhy}</span>}
+                        </span>
+                      </TableCell>
                       <TableCell className="max-w-40 truncate font-mono text-mono text-fg-3 max-xl:col-span-2 max-xl:max-w-none"><Cap>Example</Cap>{examples.get(f.name)?.[0] ?? "—"}</TableCell>
                       <TableCell className="max-xl:col-span-2">
                         <Cap>Type</Cap>
@@ -181,26 +203,6 @@ export function FieldsStep(p: FieldsStepProps) {
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} is part of the match key`} checked={key}
                         onToggle={() => setSpec((x) => ({ ...x, key_fields: key ? x.key_fields.filter((k) => k !== f.name) : [...x.key_fields, f.name] }))} /><Cap inline>Match key</Cap></span></TableCell>
-                      <TableCell className="max-xl:col-span-2">
-                        <Cap>Stored as</Cap>
-                        <span className="grid gap-1">
-                          <span className="flex items-center gap-2">
-                            <Checkbox label={`${f.name} is stored`} checked={stored !== null} onToggle={() => {
-                              p.onTypedName(f.name, undefined);
-                              setSpec((x) => {
-                                if (storedName(x, f.name) !== null) return storeAs(x, f.name, null);
-                                const want = attrNameOf(f.name);
-                                return storeAs(x, f.name, storedNameProblem(want, f.name, x) ? `${want.slice(0, 58)}_${i + 1}` : want);
-                              });
-                            }} />
-                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
-                            <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
-                              placeholder="Not stored" value={typedName ?? stored ?? ""} aria-invalid={!!nameWhy || undefined} aria-describedby={nameWhy ? `${nameId}-why` : undefined}
-                              onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
-                          </span>
-                          {nameWhy && <span id={`${nameId}-why`} role="alert" className="max-w-72 whitespace-normal text-caption text-down-ink">{nameWhy}</span>}
-                        </span>
-                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -261,7 +263,7 @@ function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setForm
   const at = (k: string) => ctl(`fields.${i}.format.${k}`);
   if (f.type === "date" || f.type === "datetime") {
     return (
-      <span className="grid min-w-36 gap-1">
+      <span className={f.type === "datetime" ? "grid min-w-52 gap-1" : "grid min-w-36 gap-1"}>
         <Input id={at("date")} aria-label={`Date format of ${f.name}`} placeholder={f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"} className="font-mono" value={f.format?.date ?? ""}
           onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
         {f.type === "datetime" && (

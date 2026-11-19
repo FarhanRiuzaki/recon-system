@@ -236,7 +236,7 @@ test("a config checker rejects with a comment (required) and approves; the decis
     await expect(c.getByRole("heading", { level: 1 })).toBeFocused();
     // sent back: no decision any more; the comment, and Edit version 1 (a checker may not edit: blocked with the reason)
     await expect(c.getByText("Sent back by Admin User: Name col_03 sre before it goes live.")).toBeVisible();
-    await expect(c.getByText("Draft · sent back by a config checker")).toBeVisible();
+    await expect(c.getByText("Draft · sent back by Admin User", { exact: true })).toBeVisible();
     await expect(c.getByRole("button", { name: "Approve version 1", exact: true })).toHaveCount(0);
     await blockedWith(c, "Edit version 1", "Only a source admin or a config maker of this space changes a source.");
 

@@ -131,8 +131,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [discarding, setDiscarding] = useState(false);
   const [headerHint, setHeaderHint] = useState(false);
   const [typedNames, setTypedNames] = useState<Record<string, string>>({});
-  const typeName = (field: string, name: string | undefined) => {
+  const typeName = (field: string, name: string | undefined, clear: string[]) => {
     setEdited(true);
+    setProblems((x) => Object.fromEntries(Object.entries(x).filter(([id]) => !clear.includes(id))));
+    setFieldErr((x) => (x && clear.includes(x.id) ? null : x));
     setTypedNames((t) => { const { [field]: _drop, ...rest } = t; return name === undefined ? rest : { ...rest, [field]: name }; });
   };
   const [tested, setTested] = useState<Tested | null>(null);

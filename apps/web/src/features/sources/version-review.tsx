@@ -41,7 +41,7 @@ function lineOf(v: SourceVersionDetailDto, published: number | null): string {
       published ? `version ${published} stays published until this is approved` : "nothing is ingested until this is approved"].join(" · ");
   }
   // sent back (designer's copy, Figma 127:10092)
-  if (v.status === "draft" && v.reviewComment) return ["Draft", "sent back by a config checker", ...(published ? [`version ${published} stays published`] : [])].join(" · ");
+  if (v.status === "draft" && v.reviewComment) return ["Draft", `sent back by ${nameOf(v, v.checkerId) ?? "a config checker"}`, ...(published ? [`version ${published} stays published`] : [])].join(" · ");
   if (v.status === "published") return `Published${v.publishedAt ? ` ${at(v.publishedAt)}` : ""}${v.checkerId ? ` · approved by ${nameOf(v, v.checkerId)}` : ""} · in use`;
   if (v.status === "retired") return `Retired · replaced by a newer published version${v.checkerId ? ` · approved by ${nameOf(v, v.checkerId)}` : ""}`;
   return `Draft · last saved by ${nameOf(v, v.makerId) ?? "nobody yet"}, ${at(v.updatedAt)}`;
