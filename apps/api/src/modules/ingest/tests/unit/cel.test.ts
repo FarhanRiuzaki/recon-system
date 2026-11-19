@@ -19,6 +19,10 @@ describe("compileDerive", () => {
     expect(compileDerive('1 + "x"')).toEqual({ error: expect.stringContaining("Type error") });
   });
 
+  it("replace() is not in S3's allowlist", () => {
+    expect(compileDerive('row.a.replace("a", "b")')).toEqual({ error: expect.stringContaining("not allowed") });
+  });
+
   it("re_match takes only a whitelisted pattern id, written as a literal", () => {
     expect(compileDerive('re_match(row.a, "nope")')).toEqual({ error: expect.stringContaining("nope") });
     expect(compileDerive("re_match(row.a, row.b)")).toEqual({ error: expect.stringContaining("literal") });

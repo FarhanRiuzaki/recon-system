@@ -383,6 +383,20 @@ describe("CEL on save and the preview (Task 3)", () => {
     expect((await patch(t.mk, s.id, v.id, withDerive({ sid_ok: 're_match(row.sid, "alnum")' }))).status).toBe(200);
   });
 
+  it("saving rejects an unknown time zone and an amount_minor that is not decimal/integer at scale 2", async () => {
+    const s = await made();
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    const k = ksei();
+    const zone = { ...k, fields: [...k.fields, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "Mars/Olympus" } }] };
+    expect((await patch(t.mk, s.id, v.id, zone)).status).toBe(400);
+    const fields = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 4 } }, { name: "txt", type: "string", nullable: true, trim: true }];
+    for (const [name, status] of [["amt", 400], ["txt", 400]] as const) {
+      expect((await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: name } } })).status).toBe(status);
+    }
+    const ok = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "UTC" } }];
+    expect((await patch(t.mk, s.id, v.id, { ...k, fields: ok, mapping: { ...k.mapping, amount_minor: { field: "amt" } } })).status).toBe(200);
+  });
+
   it("previews a KSEI file: 10 records and 2 quarantined lines with a reason per column", async () => {
     const { s, v } = await published();
     const before = (await acts()).length;

@@ -23,7 +23,7 @@ export const ksei = (): SourceSpec => ({
   calendar: "id-default",
   input: {
     kind: "file_inbox", path: "/inbox/ksei", pattern: "act*.txt", completion: { kind: "stable_seconds", seconds: 60 },
-    format: { kind: "delimited", delimiter: "|", header: false, encoding: "utf-8" },
+    format: { kind: "delimited", delimiter: "|", quote: null, header: false, encoding: "utf-8" },
   },
 });
 

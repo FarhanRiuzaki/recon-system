@@ -21,8 +21,21 @@ describe("parseText", () => {
     expect(lines.map((l) => (l.ok ? l.raw : null))).toEqual([{ a: "x,1", b: 'he said "hi"' }, { a: "y", b: "2" }]);
     expect(lines.map((l) => l.line)).toEqual([2, 4]);
   });
-  it("a broken quote quarantines the line instead of stopping", async () => {
-    const lines = await parseText('a,b\n"x,1\ny,2\n', { delimiter: ",", header: false, encoding: "utf-8" }, ["a", "b"]);
+  it("a stray quote quarantines from where it opened, with the raw text and a sentence-case reason; lines before it stay in order", async () => {
+    const lines = await parseText('a|b\n"x|1\ny|2\nz|3\n', { delimiter: "|", header: false, encoding: "utf-8" }, ["a", "b"]);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatchObject({ line: 1, ok: true, raw: { a: "a", b: "b" } });
+    expect(lines[1]).toMatchObject({ line: 2, ok: false });
+    const bad = lines[1] as Extract<ParsedLine, { ok: false }>;
+    expect(bad.cells.join("")).toContain('"x|1');
+    expect(bad.reasons._row).toMatch(/^Quote not closed/);
+  });
+  it("quote: null reads quotes as plain text (KSEI pipe files)", async () => {
+    const lines = await parseText('a|"b\nc|d\n', { delimiter: "|", header: false, encoding: "utf-8", quote: null }, ["a", "b"]);
+    expect(lines.map((l) => (l.ok ? l.raw : null))).toEqual([{ a: "a", b: '"b' }, { a: "c", b: "d" }]);
+  });
+  it("a line over 1 MB is quarantined, not buffered without end", async () => {
+    const lines = await parseText(`a|"${"x".repeat(2_000_000)}\nz|3\n`, { delimiter: "|", header: false, encoding: "utf-8" }, ["a", "b"]);
     expect(lines.some((l) => !l.ok)).toBe(true);
   });
 });
@@ -35,6 +48,23 @@ describe("parseDelimited (stream)", () => {
     const out: ParsedLine[] = [];
     for await (const l of parseDelimited(stream, fmt, ["a", "b"])) out.push(l);
     expect(out.map((l) => (l.ok ? l.raw : null))).toEqual([{ a: "é", b: "ü" }, { a: "z", b: "y" }]);
+  });
+  const chunk = new TextEncoder().encode("x|y\n".repeat(20000));
+  const within = <T,>(p: Promise<T>, ms = 1500) => Promise.race([p, new Promise<never>((_, r) => setTimeout(() => r(new Error("hung")), ms))]);
+  it("returns promptly when the consumer stops early, and stops pulling the source", async () => {
+    let pulls = 0;
+    const src = new ReadableStream<Uint8Array>({ pull(c) { if (++pulls > 50) c.close(); else c.enqueue(chunk); } });
+    let n = 0;
+    await within((async () => { for await (const _ of parseDelimited(src, fmt, ["a", "b"])) if (++n === 10) break; })());
+    const at = pulls;
+    await new Promise((r) => setTimeout(r, 50));
+    expect(pulls).toBeLessThanOrEqual(at + 1);
+    expect(pulls).toBeLessThan(50);
+  });
+  it("a consumer that throws gets its error promptly", async () => {
+    const src = new ReadableStream<Uint8Array>({ start(c) { for (let i = 0; i < 50; i++) c.enqueue(chunk); c.close(); } });
+    const run = (async () => { for await (const _ of parseDelimited(src, fmt, ["a", "b"])) throw new Error("db insert failed"); })();
+    await expect(within(run)).rejects.toThrow("db insert failed");
   });
   it("yields to the event loop while a big file streams (heartbeat, S2)", async () => {
     const row = `${"x".repeat(20)}|${"y".repeat(20)}\n`;

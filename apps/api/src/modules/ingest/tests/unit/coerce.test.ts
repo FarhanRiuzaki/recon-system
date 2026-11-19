@@ -40,6 +40,19 @@ describe("decimal (R-5: no floats)", () => {
   });
 });
 
+describe("thousand separators must group by three", () => {
+  const d = f("decimal", { format: { scale: 2, thousandSeparator: "," } });
+  it("accepts grouped and plain digits, rejects stray separators", () => {
+    expect(val("1,234,567.8", d)).toBe(123456780n);
+    expect(val("1234.5", d)).toBe(123450n);
+    expect(val("-1,000", d)).toBe(-100000n);
+    for (const bad of ["1,00,0", "1,5", "12,34", ",123", "1,234,", "1,2345"]) expect(why(bad, d)).toBe(`amount: not a decimal (${JSON.stringify(bad)})`);
+    const i = f("integer", { format: { thousandSeparator: "," } });
+    expect(val("1,234", i)).toBe(1234n);
+    expect(why("1,5", i)).toBe('amount: not an integer ("1,5")');
+  });
+});
+
 describe("other types", () => {
   it("integer, boolean, string with trim and case", () => {
     expect(val(" 42 ", f("integer"))).toBe(42n);

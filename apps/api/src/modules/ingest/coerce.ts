@@ -95,20 +95,27 @@ function readDate(s: string, f: FieldSpec): string | null {
   return new Date(utc + ms).toISOString();
 }
 
+/** `int` (no sign) with its thousand separators checked and removed: plain digits, or groups of three after 1–3 leading digits. */
+function ungroup(int: string, tsep?: string): string | null {
+  if (!tsep || !int.includes(tsep)) return /^\d*$/.test(int) ? int : null;
+  const parts = int.split(tsep);
+  return /^\d{1,3}$/.test(parts[0]!) && parts.slice(1).every((p) => /^\d{3}$/.test(p)) ? parts.join("") : null;
+}
+
 /** Digits of a decimal text as a scaled bigint, or why not (a reason without the column). */
 function readDecimal(s: string, f: FieldSpec): { v: bigint } | { why: string } {
   const scale = f.format?.scale ?? DEFAULT_SCALE;
   const dsep = f.format?.decimalSeparator ?? ".";
-  const tsep = f.format?.thousandSeparator;
-  let t = tsep && tsep !== dsep ? s.split(tsep).join("") : s;
-  if (dsep !== "." && t.includes(".")) return { why: "not a decimal" };
-  if (dsep !== ".") t = t.replace(dsep, ".");
-  const m = /^([+-]?)(\d*)(?:\.(\d+))?$/.exec(t);
-  if (!m || (!m[2] && !m[3])) return { why: "not a decimal" };
-  const frac = m[3] ?? "";
+  const tsep = f.format?.thousandSeparator === dsep ? undefined : f.format?.thousandSeparator;
+  const neg = s.startsWith("-");
+  const body = /^[+-]/.test(s) ? s.slice(1) : s;
+  const parts = body.split(dsep);
+  const int = parts.length <= 2 ? ungroup(parts[0]!, tsep) : null;
+  const frac = parts[1] ?? "";
+  if (int === null || !/^\d*$/.test(frac) || (parts.length === 2 && !frac) || (!int && !frac)) return { why: "not a decimal" };
   if (frac.length > scale && /[1-9]/.test(frac.slice(scale))) return { why: `more than ${scale} decimal places` };
-  const n = BigInt((m[2] || "0") + frac.slice(0, scale).padEnd(scale, "0"));
-  return { v: m[1] === "-" ? -n : n };
+  const n = BigInt((int || "0") + frac.slice(0, scale).padEnd(scale, "0"));
+  return { v: neg ? -n : n };
 }
 
 const BOOLS: Record<string, boolean> = { true: true, false: false, "1": true, "0": false, y: true, n: false, yes: true, no: false, t: true, f: false };
@@ -121,8 +128,8 @@ export function coerce(value: string, field: FieldSpec): Coerced {
   switch (field.type) {
     case "string": return { ok: true, value: field.case === "upper" ? s.toUpperCase() : field.case === "lower" ? s.toLowerCase() : s };
     case "integer": {
-      const t = field.format?.thousandSeparator ? s.split(field.format.thousandSeparator).join("") : s;
-      return /^[+-]?\d+$/.test(t) ? { ok: true, value: BigInt(t) } : no("not an integer");
+      const g = ungroup(/^[+-]/.test(s) ? s.slice(1) : s, field.format?.thousandSeparator);
+      return g ? { ok: true, value: BigInt(s.startsWith("-") ? `-${g}` : g) } : no("not an integer");
     }
     case "decimal": {
       const r = readDecimal(s, field);

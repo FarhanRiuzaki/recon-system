@@ -112,6 +112,7 @@ const cleanText = (raw: string, f: FieldSpec) => {
   return f.case === "upper" ? t.toUpperCase() : f.case === "lower" ? t.toLowerCase() : t;
 };
 const sha256 = (s: string) => new Bun.CryptoHasher("sha256").update(s).digest("hex");
+const INT64_MAX = 9223372036854775807n;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function toRecord(raw: Record<string, string>, spec: SourceSpec, ctx: MapContext): MapResult {
@@ -159,7 +160,9 @@ export function toRecord(raw: Record<string, string>, spec: SourceSpec, ctx: Map
   {
     const r = resolve("business_date", m.business_date);
     if (typeof r === "string") reasons.business_date = r;
-    else if (r.f?.type === "datetime" && typeof r.v === "string") business_date = localDate(r.v, r.f.format?.timezone ?? DEFAULT_TIMEZONE);
+    else if (r.f?.type === "datetime" && typeof r.v === "string") {
+      try { business_date = localDate(r.v, r.f.format?.timezone ?? DEFAULT_TIMEZONE); } catch { fail("business_date", `unknown time zone "${r.f.format?.timezone}"`); }
+    }
     else if (typeof r.v === "string" && ISO_DATE.test(r.v) && realIso(r.v)) business_date = r.v;
     else if (r.v === "" && "cel" in m.business_date && m.business_date.cel.includes("file_date") && !fileDate) fail("business_date", "the file name has no date (yyyymmdd)");
     else fail("business_date", r.v === null || r.v === "" ? "is empty" : `not a date (${JSON.stringify(String(r.v))})`);
@@ -169,9 +172,10 @@ export function toRecord(raw: Record<string, string>, spec: SourceSpec, ctx: Map
   if (m.amount_minor) {
     const r = resolve("amount_minor", m.amount_minor);
     if (typeof r === "string") reasons.amount_minor = r;
-    else if (typeof r.v === "bigint") amount_minor = r.v; // decimal fields arrive in minor units of their scale
+    else if (typeof r.v === "bigint") amount_minor = r.v; // a decimal field is at scale 2 (checked when the spec is saved)
     else if (typeof r.v === "string" && /^[+-]?\d+$/.test(r.v)) amount_minor = BigInt(r.v);
     else if (r.v !== null) fail("amount_minor", `not whole minor units (${JSON.stringify(String(r.v))})`);
+    if (amount_minor !== null && (amount_minor > INT64_MAX || amount_minor < -INT64_MAX - 1n)) { fail("amount_minor", "out of range for a bigint column"); amount_minor = null; }
   }
   let event_time: string | null = null;
   if (m.event_time) {

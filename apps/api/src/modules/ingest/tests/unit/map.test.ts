@@ -102,6 +102,28 @@ describe("business_date sources", () => {
   });
 });
 
+describe("zones and amounts", () => {
+  const spec = (): SourceSpec => ({
+    fields: [
+      { name: "ts", type: "datetime", nullable: false, trim: true, format: { timezone: "Mars/Olympus" } },
+      { name: "amt", type: "decimal", nullable: false, trim: true, format: { scale: 2 } },
+    ],
+    mapping: { business_date: { field: "ts" }, amount_minor: { field: "amt" }, attrs: {} },
+    derive: {}, key_fields: [], mutable: false, calendar: "id-default",
+    input: { kind: "db_snapshot", query: "select 1 where :business_date is not null", schedule: "0 6 * * *" },
+  });
+  it("an unknown zone with an explicit offset is a reason, not a throw", () => {
+    expect(toRecord({ ts: "2026-11-02T08:30:00+07:00", amt: "1" }, spec(), ctx)).toMatchObject({ ok: false, reasons: { business_date: expect.stringContaining("time zone") } });
+  });
+  it("amount_minor outside int64 is quarantined; the edge passes", () => {
+    const s = spec();
+    s.fields[0]!.format = { timezone: "UTC" };
+    expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "92233720368547758.07" }, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 9223372036854775807n } });
+    expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "92233720368547758.08" }, s, ctx)).toMatchObject({ ok: false, reasons: { amount_minor: expect.stringContaining("out of range") } });
+    expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "99999999999999999999999" }, s, ctx)).toMatchObject({ ok: false });
+  });
+});
+
 describe("bday_index", () => {
   const c = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-04"] });
   it("counts business days: weekends and holidays share the previous index", () => {

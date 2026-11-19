@@ -15,6 +15,11 @@ const query = z.string().trim().min(1).max(20_000);
 export const ValueRef = z.union([z.strictObject({ field: name }), z.strictObject({ cel })]);
 export type ValueRef = z.infer<typeof ValueRef>;
 
+/** `tz` is a time zone name the runtime knows (not Intl.supportedValuesOf: Bun's list lacks Etc/UTC). */
+const isTimeZone = (tz: string) => {
+  try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); return true; } catch { return false; }
+};
+
 /** One column of the source as declared: its logical type and how to parse it (spec §7 step 2). */
 export const FieldSpec = z.strictObject({
   name,
@@ -24,7 +29,7 @@ export const FieldSpec = z.strictObject({
     decimalSeparator: z.enum([".", ","]).optional(),
     thousandSeparator: z.enum([",", ".", " ", "'"]).optional(),
     scale: z.number().int().min(0).max(18).optional(),
-    timezone: z.string().min(1).max(64).optional(),
+    timezone: z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone").optional(),
   }).optional(),
   nullable: z.boolean(),
   trim: z.boolean(),
@@ -64,7 +69,7 @@ const FileInboxInput = z.strictObject({
     z.strictObject({ kind: z.literal("stable_seconds"), seconds: z.number().int().min(1).max(86_400) }),
     z.strictObject({ kind: z.literal("marker_file") }),
   ]),
-  format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) }),
+  format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) }),
 });
 
 /**
@@ -85,6 +90,11 @@ export const SourceSpec = z.strictObject({
   const fields = new Set<string>();
   s.fields.forEach((f, i) => (fields.has(f.name) ? issue(`Field "${f.name}" is declared twice`, ["fields", i, "name"]) : fields.add(f.name)));
   for (const d of Object.keys(s.derive)) if (fields.has(d)) issue(`Derived value "${d}" has a field's name`, ["derive", d]);
+  const amount = s.mapping.amount_minor;
+  if (amount && "field" in amount) {
+    const f = s.fields.find((x) => x.name === amount.field);
+    if (f && !(f.type === "integer" || (f.type === "decimal" && (f.format?.scale ?? 2) === 2))) issue(`amount_minor needs an integer or a decimal at scale 2; "${f.name}" is ${f.type}${f.type === "decimal" ? ` at scale ${f.format?.scale ?? 2}` : ""}`, ["mapping", "amount_minor"]);
+  }
   const known = (n: string) => fields.has(n) || Object.hasOwn(s.derive, n);
   const { attrs, ...core } = s.mapping;
   const refs: [PropertyKey[], ValueRef | undefined][] = [

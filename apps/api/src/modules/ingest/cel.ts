@@ -10,7 +10,7 @@ export const MAX_EXPR_LENGTH = 1000;
 export const ALLOWED_FUNCTIONS = new Set([
   "int", "double", "string", "bool", "size", "has", "dyn",
   "startsWith", "endsWith", "contains", "lowerAscii", "upperAscii", "trim",
-  "indexOf", "lastIndexOf", "substring", "split", "join", "replace",
+  "indexOf", "lastIndexOf", "substring", "split", "join",
   "re_match",
 ]);
 export const SAFE_PATTERNS: Record<string, RegExp> = {
