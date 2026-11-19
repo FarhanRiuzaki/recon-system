@@ -13,7 +13,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
 import { FILE_DATE, fieldTypeOf, TYPE_LABEL } from "../spec-draft";
-import { ctl, type Draft, type Preview } from "./model";
+import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
 const CORE: { key: Core; label: string; note: string }[] = [
@@ -49,6 +49,15 @@ export type FieldsStepProps = {
   businessDate: string;
   onBusinessDate: (d: string) => void;
   preview: Preview;
+  /** A database source previews on demand (each preview pulls from the source database); a file source live. */
+  onPreview: (() => void) | null;
+  /** The source's columns as read (nullability for the watermark pickers); null when not read here. */
+  columns: Column[] | null;
+  /** A source admin changes how the source is read (watermark, header); anyone else sees it. */
+  canChangeReading: boolean;
+  /** The sample's first line looks like column names while "First row is a header" is off. */
+  headerHint: boolean;
+  onUseHeader: () => void;
 };
 
 /**
@@ -62,6 +71,8 @@ export function FieldsStep(p: FieldsStepProps) {
   const file = s.input.kind === "file_inbox";
   const setSpec = (fn: (s: SourceSpec) => SourceSpec) => set((x) => ({ ...x, spec: fn(x.spec) }));
   const setField = (i: number, patch: Partial<FieldSpec>) => setSpec((x) => ({ ...x, fields: x.fields.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
+  /** A new type with the format it starts with: a date as yyyy-MM-dd, a decimal at 2 places. */
+  const setType = (i: number, type: FieldSpec["type"]) => setField(i, { type, format: type === "decimal" ? { scale: 2 } : type === "date" ? { date: "yyyy-MM-dd" } : undefined });
   const setFormat = (i: number, patch: NonNullable<FieldSpec["format"]>) => setSpec((x) => ({
     ...x, fields: x.fields.map((f, j) => (j === i ? { ...f, format: Object.fromEntries(Object.entries({ ...f.format, ...patch }).filter(([, v]) => v !== undefined && v !== "")) } : f)),
   }));
@@ -74,6 +85,14 @@ export function FieldsStep(p: FieldsStepProps) {
       {file ? (
         <Panel title="Sample of the file" description="Read in the browser and sent only to preview; nothing is stored" bodyClassName="grid gap-4">
           <SampleInput {...p} />
+          {p.headerHint && (
+            <Notice live>
+              The first line looks like column names, but &quot;First row is a header&quot; is off, so it is read as data and every column comes out as text.{" "}
+              {p.canChangeReading
+                ? <Button type="button" variant="link" size="sm" onClick={p.onUseHeader}>Use the first line as the header</Button>
+                : "A source admin turns it on in step 1."}
+            </Notice>
+          )}
         </Panel>
       ) : (
         <Panel title="Columns of the source" description={s.input.kind === "db_watermark" && s.input.table ? `From ${s.input.table}` : "From the query"} bodyClassName="grid gap-3">
@@ -110,14 +129,17 @@ export function FieldsStep(p: FieldsStepProps) {
         {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
       </Panel>
 
+      {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
+
       <Panel flush title="Columns" description={`${s.fields.length} columns · type, format, empty allowed, match key and where each is stored`}>
         {err(ctl("key_fields")) && <p role="alert" className="px-4 pt-3 text-body-sm text-down-ink">{err(ctl("key_fields"))}</p>}
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
-          <div className="scroll-quiet overflow-x-auto">
-            <Table aria-label="Columns">
-              <TableHeader><TableRow>
+          <div className="scroll-quiet overflow-x-auto max-md:overflow-visible">
+            {/* below 768 px each column is a card: the header row hides, each cell shows its own label (one DOM) */}
+            <Table aria-label="Columns" className="max-md:block max-md:[&_tbody]:block max-md:[&_tr]:grid max-md:[&_tr]:grid-cols-2 max-md:[&_tr]:gap-x-3 max-md:[&_tr]:gap-y-2 max-md:[&_tr]:border-b max-md:[&_tr]:border-line max-md:[&_tr]:px-4 max-md:[&_tr]:py-3 max-md:[&_td]:block max-md:[&_td]:border-0 max-md:[&_td]:p-0">
+              <TableHeader className="max-md:hidden"><TableRow>
                 <TableHead>Column</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
                 <TableHead>Empty ok</TableHead><TableHead>Match key</TableHead><TableHead>Stored as</TableHead>
               </TableRow></TableHeader>
@@ -130,24 +152,26 @@ export function FieldsStep(p: FieldsStepProps) {
                   const stored = Object.hasOwn(s.mapping.attrs, f.name);
                   return (
                     <TableRow key={f.name}>
-                      <TableCell className="font-mono text-mono text-fg">{f.name}</TableCell>
-                      <TableCell className="max-w-48 truncate font-mono text-mono text-fg-3">{examples.get(f.name)?.[0] ?? "—"}</TableCell>
-                      <TableCell>
+                      <TableCell className="font-mono text-mono text-fg max-md:col-span-2 max-md:text-label">{f.name}</TableCell>
+                      <TableCell className="max-w-40 truncate font-mono text-mono text-fg-3 max-md:col-span-2 max-md:max-w-none"><Cap>Example</Cap>{examples.get(f.name)?.[0] ?? "—"}</TableCell>
+                      <TableCell className="max-md:col-span-2">
+                        <Cap>Type</Cap>
                         <span className="grid gap-1">
                           <Select id={id} aria-label={`Type of ${f.name}`} value={f.type} aria-invalid={!!why || undefined} aria-describedby={why ? `${id}-why` : hint ? `${id}-hint` : undefined}
-                            onChange={(e) => setField(i, { type: e.target.value as FieldSpec["type"], format: e.target.value === "decimal" ? { scale: 2 } : undefined })}>
+                            className="w-full min-w-0" onChange={(e) => setType(i, e.target.value as FieldSpec["type"])}>
                             {FIELD_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
                           </Select>
                           {why && <span id={`${id}-why`} role="alert" className="max-w-64 whitespace-normal text-caption text-down-ink">{why}</span>}
                           {!why && hint && <span id={`${id}-hint`} className="max-w-64 whitespace-normal text-caption text-fg-3">{hint}</span>}
                         </span>
                       </TableCell>
-                      <TableCell><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
-                      <TableCell><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /></TableCell>
-                      <TableCell><Checkbox label={`${f.name} is part of the match key`} checked={key}
-                        onToggle={() => setSpec((x) => ({ ...x, key_fields: key ? x.key_fields.filter((k) => k !== f.name) : [...x.key_fields, f.name] }))} /></TableCell>
-                      <TableCell>
-                        <Select aria-label={`Where ${f.name} is stored`} value={stored ? "attrs" : ""} onChange={(e) => setSpec((x) => {
+                      <TableCell className="max-md:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
+                      <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
+                      <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} is part of the match key`} checked={key}
+                        onToggle={() => setSpec((x) => ({ ...x, key_fields: key ? x.key_fields.filter((k) => k !== f.name) : [...x.key_fields, f.name] }))} /><Cap inline>Match key</Cap></span></TableCell>
+                      <TableCell className="max-md:col-span-2">
+                        <Cap>Stored as</Cap>
+                        <Select aria-label={`Where ${f.name} is stored`} className="w-full min-w-32" value={stored ? "attrs" : ""} onChange={(e) => setSpec((x) => {
                           const { [f.name]: _drop, ...rest } = x.mapping.attrs;
                           return { ...x, mapping: { ...x.mapping, attrs: e.target.value ? { ...rest, [f.name]: { field: f.name } } : rest } };
                         })}>
@@ -170,12 +194,49 @@ export function FieldsStep(p: FieldsStepProps) {
   );
 }
 
+/** A cell's label, shown only on the phone card (the table's header row names the columns from 768 px). */
+function Cap({ children, inline }: { children: string; inline?: boolean }) {
+  return <span aria-hidden="true" className={inline ? "font-sans text-caption text-fg-3 md:hidden" : "mb-1 block font-sans text-caption text-fg-3 md:hidden"}>{children}</span>;
+}
+
+/**
+ * How new rows are found (ruling 4): the watermark and id columns, from the columns read. A column that can be empty is
+ * offered disabled with the reason; a SELECT can't say, so a warning says it. A source admin's: anyone else sees it.
+ */
+function WatermarkPanel({ d, set, err, columns, canChangeReading }: FieldsStepProps) {
+  const i = d.spec.input;
+  if (i.kind !== "db_watermark") return null;
+  const options = columns ?? d.spec.fields.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable }));
+  const pick = (key: "column" | "id_column", label: string, note: string) => (
+    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))}>
+      <Select id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" value={i.watermark[key]} disabled={!canChangeReading}
+        onChange={(e) => set((x) => (x.spec.input.kind === "db_watermark"
+          ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, [key]: e.target.value } } } } : x))}>
+        <option value="">Pick a column</option>
+        {options.map((c) => {
+          const empty = d.from === "table" && c.nullable === true;
+          return <option key={c.name} value={c.name} disabled={empty}>{empty ? `${c.name} — ${NULLABLE_REASON}` : c.name}</option>;
+        })}
+      </Select>
+    </Field>
+  );
+  return (
+    <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table ?? "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
+      {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>}
+      <div className="grid gap-4 md:grid-cols-2">
+        {pick("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at.")}
+        {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.")}
+      </div>
+    </Panel>
+  );
+}
+
 /** The format a type is read with: a date's pattern, a datetime's pattern and zone, a decimal's places and separators. */
 function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setFormat: (i: number, p: NonNullable<FieldSpec["format"]>) => void; err: (id: string) => string | undefined }) {
   const at = (k: string) => ctl(`fields.${i}.format.${k}`);
   if (f.type === "date" || f.type === "datetime") {
     return (
-      <span className="grid min-w-40 gap-1">
+      <span className="grid min-w-28 gap-1">
         <Input id={at("date")} aria-label={`Date format of ${f.name}`} placeholder={f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"} className="font-mono" value={f.format?.date ?? ""}
           onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
         {f.type === "datetime" && (
@@ -188,11 +249,11 @@ function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setForm
   }
   if (f.type === "decimal") {
     return (
-      <span className="flex min-w-56 items-center gap-2">
-        <Select id={at("scale")} aria-label={`Places of ${f.name}`} value={String(f.format?.scale ?? 2)} onChange={(e) => setFormat(i, { scale: Number(e.target.value) })}>
+      <span className="grid min-w-28 gap-1">
+        <Select id={at("scale")} className="w-full" aria-label={`Places of ${f.name}`} value={String(f.format?.scale ?? 2)} onChange={(e) => setFormat(i, { scale: Number(e.target.value) })}>
           {[0, 1, 2, 3, 4, 5, 6, 8].map((n) => <option key={n} value={n}>{n} places</option>)}
         </Select>
-        <Select id={at("decimalSeparator")} aria-label={`Decimal separator of ${f.name}`} value={f.format?.decimalSeparator ?? "."}
+        <Select id={at("decimalSeparator")} className="w-full" aria-label={`Decimal separator of ${f.name}`} value={f.format?.decimalSeparator ?? "."}
           onChange={(e) => setFormat(i, { decimalSeparator: e.target.value as "." | "," })}>
           <option value=".">1,234.50</option><option value=",">1.234,50</option>
         </Select>
@@ -259,7 +320,7 @@ function PreviewPanel(p: FieldsStepProps) {
   const r = p.preview.result;
   const file = p.d.spec.input.kind === "file_inbox";
   return (
-    <Panel flush title="Preview" description={file ? `${p.fileName || "the sample"} · updates as you change columns · not stored` : "Pulled from the source · updates as you change columns · not stored"}>
+    <Panel flush title="Preview" description={file ? `${p.fileName || "the sample"} · updates as you change columns · not stored` : "Pulled from the source on demand · not stored"}>
       <div className="grid gap-3 p-4">
         {p.d.spec.input.kind === "db_snapshot" && (
           <div className="max-w-xs">
@@ -268,8 +329,19 @@ function PreviewPanel(p: FieldsStepProps) {
             </Field>
           </div>
         )}
+        {p.onPreview && (
+          <span>
+            <Button type="button" variant="secondary" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
+              {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Preview rows
+            </Button>
+          </span>
+        )}
         <PreviewResult preview={p.preview} />
-        {!r && !p.preview.error && !p.preview.pending && <p className="text-body-sm text-fg-3">The preview appears once the columns are read and the business date is mapped.</p>}
+        {!r && !p.preview.error && !p.preview.pending && (
+          <p className="text-body-sm text-fg-3">{p.onPreview
+            ? "Preview rows pulls up to 200 rows from the source with the columns on screen; nothing is stored."
+            : "The preview appears once the columns are read and the business date is mapped."}</p>
+        )}
       </div>
     </Panel>
   );

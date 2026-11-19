@@ -13,7 +13,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { DB_ENGINES, FILE_ENCODINGS, type SourceKind } from "@starterkit/shared/sources";
 import { scheduleText } from "../source-text";
-import { emptySpec, type Column, type Conn, ctl, DEFAULT_PORT, type Draft, NULLABLE_REASON, type Tested } from "./model";
+import { emptySpec, type Conn, ctl, DEFAULT_PORT, type Draft, type Tested } from "./model";
 
 const ENGINE_LABEL = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" } as const;
 const STORED = "Stored. Enter a new value to replace it.";
@@ -32,15 +32,15 @@ export type ConnectionStepProps = {
   tested: Tested | null;
   testing: boolean;
   onTest: () => void;
-  columns: Column[] | null;
-  reading: boolean;
-  onReadColumns: () => void;
 };
+/** Under the test's panel title until the source exists (designer's copy). */
+const SAVED_AT_NEXT = "Next unlocks once the test passes; the source is saved at Next";
 
 /**
  * Step 1, Connection (Figma 20:5937 file inbox, 21:6049 database, 97:9270 / 101:9658 a failed test): the source's name,
  * where its data comes from, the connection or folder and how it is pulled. A source admin's step; Test connection
- * checks exactly the values on screen, and the wizard's Next counts the pass only while they stay the same.
+ * checks exactly the values on screen, without storing them; the wizard's Next counts the pass only while they stay the
+ * same, and makes the source (or replaces its connection) only then.
  */
 export function ConnectionStep(p: ConnectionStepProps) {
   const { d, set, created, err } = p;
@@ -69,7 +69,7 @@ export function ConnectionStep(p: ConnectionStepProps) {
       </Panel>
 
       {db ? (
-        <Panel title="Connection" description="Only source admins see and change this" bodyClassName="grid gap-4">
+        <Panel title="Connection" description={created ? "Only source admins see and change this" : `Only source admins see and change this · ${SAVED_AT_NEXT}`} bodyClassName="grid gap-4">
           <div className="grid gap-4 md:grid-cols-3">
             <Field id="src-engine" label="Engine">
               <Select className="w-full min-w-0" id="src-engine" value={d.conn.engine} onChange={(e) => {
@@ -106,7 +106,7 @@ export function ConnectionStep(p: ConnectionStepProps) {
           <TestResult tested={p.tested} />
         </Panel>
       ) : i.kind === "file_inbox" && (
-        <Panel title="File inbox" bodyClassName="grid gap-4 md:grid-cols-2">
+        <Panel title="File inbox" description={created ? undefined : SAVED_AT_NEXT} bodyClassName="grid gap-4 md:grid-cols-2">
           <Field id={ctl("input.path")} label="Folder" note="A folder inside the inbox folders this install allows, as a full path." error={err(ctl("input.path"))}>
             <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
@@ -166,15 +166,10 @@ function TestResult({ tested }: { tested: Tested | null }) {
   return <Notice tone={tested.result.ok ? "info" : "warn"} live>{tested.result.message}</Notice>;
 }
 
-/** How a database source is pulled: by watermark from a table or a SELECT, or a snapshot per business date. */
+/** How a database source is pulled: by watermark from a table or a SELECT, or a snapshot per business date. Its watermark and id columns are picked in step 2, once the columns are read. */
 function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void; setKind: (k: SourceKind) => void }) {
   const { d, set, err, created, setInput } = p;
   const i = d.spec.input;
-  const read = (
-    <Button type="button" variant="secondary" onClick={p.onReadColumns} disabled={p.reading} aria-busy={p.reading || undefined}>
-      {p.reading && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Read the columns
-    </Button>
-  );
   let body: ReactNode = null;
   if (i.kind === "db_snapshot") {
     body = (
@@ -187,24 +182,10 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
           note={`A cron expression in ${APP_TIME_ZONE_LABEL}: minute hour day month weekday. ${i.schedule.trim() ? `Now: ${scheduleText(i.schedule)}.` : ""}`}>
           <Input id={ctl("input.schedule")} value={i.schedule} className="font-mono" onChange={(e) => setInput({ schedule: e.target.value })} autoComplete="off" spellCheck={false} />
         </Field>
-        <span>{read}</span>
       </>
     );
   } else if (i.kind === "db_watermark") {
     const w = i as WatermarkInput;
-    const pick = (key: "column" | "id_column", label: string, note: string) => (
-      <Field id={ctl(`input.watermark.${key}`)} label={label} note={note} error={err(ctl(`input.watermark.${key}`))}>
-        <Select className="w-full min-w-0" id={ctl(`input.watermark.${key}`)} value={w.watermark[key]} disabled={!p.columns}
-          onChange={(e) => setInput({ watermark: { ...w.watermark, [key]: e.target.value } } as Partial<WatermarkInput>)}>
-          <option value="">{p.columns ? "Pick a column" : "Read the columns first"}</option>
-          {(p.columns ?? []).map((c) => (
-            <option key={c.name} value={c.name} disabled={d.from === "table" && c.nullable === true}>
-              {d.from === "table" && c.nullable === true ? `${c.name} — ${NULLABLE_REASON}` : c.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-    );
     body = (
       <>
         <Segmented label="Read from" value={d.from} onChange={(from) => set((x) => ({ ...x, from }))} options={[{ value: "table", label: "A table" }, { value: "query", label: "A SELECT" }]} />
@@ -213,17 +194,11 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
             <Input id={ctl("input.table")} value={w.table ?? ""} className="font-mono" onChange={(e) => setInput({ table: e.target.value } as Partial<WatermarkInput>)} autoComplete="off" spellCheck={false} />
           </Field>
         ) : (
-          <>
-            <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed. Rows are read from it page by page, ordered by the watermark." error={err(ctl("input.query"))}>
-              <Textarea id={ctl("input.query")} value={w.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
-            </Field>
-            <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>
-          </>
+          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed. Rows are read from it page by page, ordered by the watermark." error={err(ctl("input.query"))}>
+            <Textarea id={ctl("input.query")} value={w.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
+          </Field>
         )}
-        <span>{read}</span>
         <div className="grid gap-4 md:grid-cols-2">
-          {pick("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at.")}
-          {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.")}
           <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
             <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
               onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, Number(e.target.value.replace(/\D/g, "")) || 0) } as Partial<WatermarkInput>)} />
@@ -245,7 +220,6 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
           description="Pulls the full position for one date on a schedule. For accounts and balances." />
       </div>
       {body}
-      {p.columns && <p role="status" className="text-body-sm text-fg-2">{p.columns.length} columns read: {p.columns.map((c) => c.name).join(", ")}.</p>}
     </Panel>
   );
 }

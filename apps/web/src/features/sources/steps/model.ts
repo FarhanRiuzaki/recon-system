@@ -46,8 +46,13 @@ export const connKey = (d: Draft): string => {
   const i = d.spec.input;
   return JSON.stringify(d.kind === "file_inbox" && i.kind === "file_inbox" ? [i.path.trim(), i.pattern.trim()] : d.conn);
 };
-/** Any credential field typed: the connection is replaced (all five then needed); none = test the stored one. */
-export const credsTyped = (c: Conn) => !!(c.host || c.database || c.user || c.password);
+/**
+ * The connection on screen differs from the one the wizard opened with (engine, port, TLS or any credential field):
+ * it replaces the stored one, so every field is needed and it is tested as typed (fix round 1, I2).
+ */
+export const connChanged = (c: Conn, from: Conn) => JSON.stringify(c) !== JSON.stringify(from);
+/** The typed connection as the API takes it (PUT …/connection, a typed test, the create body). */
+export const connBody = (c: Conn) => ({ engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls } });
 
 /** The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed. */
 export function buildSpec(d: Draft): SourceSpec {
@@ -65,7 +70,7 @@ export function buildSpec(d: Draft): SourceSpec {
 }
 
 /** Why step 1 can't go on yet, per control, in screen order (shown after Test or Next is pressed). */
-export function connectionProblems(d: Draft, o: { created: boolean; stored: boolean }): { id: string; reason: string }[] {
+export function connectionProblems(d: Draft, o: { created: boolean; replace: boolean }): { id: string; reason: string }[] {
   const out: { id: string; reason: string }[] = [];
   const need = (ok: boolean, id: string, reason: string) => { if (!ok) out.push({ id, reason }); };
   if (!o.created) {
@@ -79,17 +84,17 @@ export function connectionProblems(d: Draft, o: { created: boolean; stored: bool
     return out;
   }
   const c = d.conn;
-  if (credsTyped(c) || !o.stored) {
+  if (o.replace) {
     need(!!c.host.trim(), "src-host", "Enter the host.");
     need(/^\d{1,5}$/.test(c.port) && +c.port >= 1 && +c.port <= 65535, "src-port", "Enter a port from 1 to 65535.");
     need(!!c.database.trim(), "src-database", "Enter the database or service name.");
     need(!!c.user.trim(), "src-user", "Enter the username.");
-    need(!!c.password, "src-password", o.stored ? "Enter the password too: a new connection replaces the stored one whole." : "Enter the password.");
+    need(!!c.password, "src-password", o.created ? "Enter the password too: a new connection replaces the stored one whole." : "Enter the password.");
   }
   return out;
 }
 
-/** Why step 1's pull settings aren't complete (checked on Next, after the test passed). */
+/** Why step 1's pull settings aren't complete (checked on Next, after the test passed); the watermark is step 2's. */
 export function pullProblems(d: Draft): { id: string; reason: string }[] {
   const i = d.spec.input;
   const out: { id: string; reason: string }[] = [];
@@ -100,10 +105,18 @@ export function pullProblems(d: Draft): { id: string; reason: string }[] {
   if (i.kind === "db_watermark") {
     if (d.from === "table" && !(i.table ?? "").trim()) out.push({ id: ctl("input.table"), reason: "Enter the table, as table or schema.table." });
     if (d.from === "query" && !(i.query ?? "").trim()) out.push({ id: ctl("input.query"), reason: "Write the SELECT." });
-    if (!i.watermark.column) out.push({ id: ctl("input.watermark.column"), reason: "Pick the column that grows when a row is added or changed." });
-    if (!i.watermark.id_column) out.push({ id: ctl("input.watermark.id_column"), reason: "Pick the column that tells rows with the same watermark apart." });
   }
   return out;
+}
+
+/** Why a watermark source's watermark and id columns aren't picked yet (step 2, where the columns are read). */
+export function watermarkProblems(d: Draft): { id: string; reason: string }[] {
+  const i = d.spec.input;
+  if (i.kind !== "db_watermark") return [];
+  return [
+    ...(i.watermark.column ? [] : [{ id: ctl("input.watermark.column"), reason: "Pick the column that grows when a row is added or changed." }]),
+    ...(i.watermark.id_column ? [] : [{ id: ctl("input.watermark.id_column"), reason: "Pick the column that tells rows with the same watermark apart." }]),
+  ];
 }
 
 /** Why step 2 can't be previewed or saved yet (no field, no business date). */

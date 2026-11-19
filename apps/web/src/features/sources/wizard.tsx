@@ -20,13 +20,14 @@ import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
-import { fieldError, fieldsOfColumns, mergeFields, sampleColumns, sampleHead } from "./spec-draft";
+import { fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead } from "./spec-draft";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
-  buildSpec, type Column, connectionProblems, connKey, controlOf, credsTyped, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
-  type Tested,
+  buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
+  type Tested, watermarkProblems,
 } from "./steps/model";
+import { DiscardDialog } from "./discard-dialog";
 import { ReviewStep } from "./steps/review";
 import {
   EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, versionHref,
@@ -41,7 +42,7 @@ const DESCRIPTION = [
 ] as const;
 /** Ruling 1: Next needs a passing test of exactly the values on screen. */
 const UNTESTED = { db: "Test the connection first; step 2 reads the columns through it.", file: "Test the folder first; files are picked up from it." } as const;
-const CHANGED = "The connection changed since the last test. Test it again.";
+const CHANGED = { db: "The connection changed since the last test. Test it again.", file: "The folder changed since the last test. Test it again." } as const;
 
 const step0 = (n: number | null, admin: boolean) => Math.min(2, Math.max(admin ? 0 : 1, (n ?? (admin ? 1 : 2)) - 1));
 
@@ -125,6 +126,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [step, setStep] = useState(start);
   const [ids, setIds] = useState<Ids>(source ? { sourceId: source.s.id, versionId: source.v.id, version: source.v.version } : null);
   const [stored, setStored] = useState(!!source?.s.connection);
+  /** The connection as stored, as the form shows it: a difference replaces it (all fields, a test, a PUT at Next). */
+  const [base, setBase] = useState(initial.conn);
+  const [discarding, setDiscarding] = useState(false);
+  const [headerHint, setHeaderHint] = useState(false);
   const [tested, setTested] = useState<Tested | null>(null);
   const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit">(null);
   const [columns, setColumns] = useState<Column[] | null>(null);
@@ -169,46 +174,24 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     } else setFormError(errorText(e));
   };
 
-  /** The source and its draft, made the first time a test runs (a new source); their ids. */
-  async function ensureSource(): Promise<Ids> {
-    if (ids) return ids;
-    try {
-      const s = await api<SourceDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, { method: "POST", body: JSON.stringify({ code: d.code.trim().toLowerCase(), name: d.name.trim(), kind: d.kind }) });
-      const v = await api<SourceVersionDto>(sourceApi(spaceId, s.id, `/versions`), { method: "POST", body: "{}" });
-      const next = { sourceId: s.id, versionId: v.id, version: v.version };
-      setIds(next);
-      void qc.invalidateQueries({ queryKey: SOURCES_KEY });
-      return next;
-    } catch (e) {
-      if (e instanceof ApiError && e.code === "duplicate") show([{ id: "src-code", reason: errorText(e) }]);
-      else setFormError(errorText(e));
-      return null;
-    }
-  }
+  const replace = !ids || !stored || connChanged(d.conn, base);
 
+  /**
+   * Tests exactly the values on screen, storing nothing (fix round 1, I1): a new source's through the space's test
+   * route, an existing one's typed connection (or `{}` for the stored one) and folder through its own.
+   */
   async function test() {
     setFormError(null);
     setFieldErr(null);
-    if (!show(connectionProblems(d, { created: !!ids, stored }))) return;
+    if (!show(connectionProblems(d, { created: !!ids, replace }))) return;
     setBusy("test");
     try {
-      const made = await ensureSource();
-      if (!made) return;
       const key = connKey(d);
-      let result: ConnectionTestDto;
       const i = d.spec.input;
-      if (i.kind === "file_inbox") {
-        result = await api<ConnectionTestDto>(sourceApi(spaceId, made.sourceId, "/connection/test"), { method: "POST", body: JSON.stringify({ path: i.path.trim(), pattern: i.pattern.trim() }) });
-      } else {
-        if (credsTyped(d.conn) || !stored) {
-          const c = d.conn;
-          await api(sourceApi(spaceId, made.sourceId, "/connection"), { method: "PUT", body: JSON.stringify({
-            engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls },
-          }) });
-          setStored(true);
-        }
-        result = await api<ConnectionTestDto>(sourceApi(spaceId, made.sourceId, "/connection/test"), { method: "POST", body: "{}" });
-      }
+      const typed = i.kind === "file_inbox" ? { path: i.path.trim(), pattern: i.pattern.trim() } : replace ? { connection: connBody(d.conn) } : {};
+      const result = ids
+        ? await api<ConnectionTestDto>(sourceApi(spaceId, ids.sourceId, "/connection/test"), { method: "POST", body: JSON.stringify(typed) })
+        : await api<ConnectionTestDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/connection-test`, { method: "POST", body: JSON.stringify({ kind: d.kind, ...typed }) });
       setTested({ result, key });
     } catch (e) {
       fail(e, true, file ? "src-input-path" : "src-host");
@@ -217,9 +200,39 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     }
   }
 
+  /**
+   * After a pass (Next on step 1): a new source, its connection and first draft in one call (a taken code shows on the
+   * Code field, nothing is made); an existing source's changed connection replaced. Then its ids.
+   */
+  async function commitConnection(): Promise<Ids> {
+    try {
+      if (!ids) {
+        const s = await api<SourceDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources`, { method: "POST", body: JSON.stringify({
+          code: d.code.trim().toLowerCase(), name: d.name.trim(), kind: d.kind, draft: true, ...(file ? {} : { connection: connBody(d.conn) }),
+        }) });
+        const made = { sourceId: s.id, versionId: s.draft!.id, version: s.draft!.version };
+        setIds(made);
+        setStored(!file);
+        setBase(d.conn);
+        void qc.invalidateQueries({ queryKey: SOURCES_KEY });
+        return made;
+      }
+      if (!file && replace) {
+        await api(sourceApi(spaceId, ids.sourceId, "/connection"), { method: "PUT", body: JSON.stringify(connBody(d.conn)) });
+        setStored(true);
+        setBase(d.conn);
+      }
+      return ids;
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "duplicate") show([{ id: "src-code", reason: errorText(e) }]);
+      else fail(e, true, "src-name");
+      return null;
+    }
+  }
+
   /** The source table's (or SELECT's) columns; the fields follow them (merged: what the user set stays). */
-  async function readColumns(): Promise<boolean> {
-    if (!ids) { setFormError("Test the connection first; the columns are read through it."); return false; }
+  async function readColumns(at: Ids = ids): Promise<boolean> {
+    if (!at) return false;
     const i = d.spec.input;
     setBusy("columns");
     setFieldErr(null);
@@ -227,8 +240,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const table = i.kind === "db_watermark" && d.from === "table" ? (i.table ?? "").trim() : null;
       const query = i.kind === "db_snapshot" ? i.query : i.kind === "db_watermark" ? (i.query ?? "") : "";
       const r = table
-        ? await api<SourceColumnsDto>(sourceApi(spaceId, ids.sourceId, `/connection/columns?${new URLSearchParams({ table })}`))
-        : await api<SourceColumnsDto>(sourceApi(spaceId, ids.sourceId, "/connection/columns"), { method: "POST", body: JSON.stringify({ query, ...(businessDate ? { businessDate } : {}) }) });
+        ? await api<SourceColumnsDto>(sourceApi(spaceId, at.sourceId, `/connection/columns?${new URLSearchParams({ table })}`))
+        : await api<SourceColumnsDto>(sourceApi(spaceId, at.sourceId, "/connection/columns"), { method: "POST", body: JSON.stringify({ query, ...(businessDate ? { businessDate } : {}) }) });
       setColumns(r.columns);
       const engine = source?.s.connection?.engine ?? d.conn.engine;
       set((x) => {
@@ -254,6 +267,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const names = sampleColumns(sample.text, i.format.delimiter, i.format.quote ?? null, i.format.header);
     if (!names.length) { show([{ id: "src-sample", reason: "Paste at least one line of the file." }]); return; }
     setProblems({});
+    setHeaderHint(!i.format.header && looksLikeHeader(sample.text, i.format.delimiter, i.format.quote ?? null));
     set((x) => {
       const fields = mergeFields(x.spec.fields, names.map((name) => ({ name, type: "string" as const, nullable: true, trim: true })));
       const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name)).map((f) => f.name);
@@ -267,39 +281,44 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const specKey = JSON.stringify(spec);
   const previewable = !mappingProblem(spec) && (!file || !!sample.text.trim());
   const seq = useRef(0);
-  useEffect(() => {
-    if (step !== 1 || !ids || !previewable) return;
+  /** One preview of the spec on screen (a file's sample, or rows pulled from the source database); the latest wins. */
+  const runPreview = async () => {
+    if (!ids || !previewable) return;
     const n = ++seq.current;
-    const t = setTimeout(async () => {
-      setPreview((p) => ({ ...p, pending: true }));
-      try {
-        const body = file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}) };
-        const result = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify(body) });
-        if (n !== seq.current) return;
-        setFieldErr(null);
-        setPreview({ result, error: null, pending: false });
-        if (detect.current.size) {
-          const guess = new Map(result.columns.map((c) => [c.name, c]));
-          const fresh = detect.current;
-          detect.current = new Set();
-          setDraft((x) => ({ ...x, spec: { ...x.spec, fields: x.spec.fields.map((f) => {
-            const g = fresh.has(f.name) ? guess.get(f.name) : undefined;
-            if (!g || g.type === "string") return f;
-            const places = Math.max(2, ...g.examples.map((e) => /[.,](\d+)$/.exec(e)?.[1]?.length ?? 0));
-            return { ...f, type: g.type, ...(g.type === "decimal" ? { format: { scale: Math.min(18, places) } } : g.type === "date" && g.examples.every((e) => /^\d{8}$/.test(e)) ? { format: { date: "yyyyMMdd" } } : {}) };
-          }) } }));
-        }
-      } catch (e) {
-        if (n !== seq.current) return;
-        const named = e instanceof ApiError ? fieldError(e.message) : null;
-        if (named) setFieldErr({ id: controlOf(named.path) ?? "src-columns", reason: named.reason });
-        setPreview({ result: null, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
+    setPreview((p) => ({ ...p, pending: true }));
+    try {
+      const body = file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}) };
+      const result = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify(body) });
+      if (n !== seq.current) return;
+      setFieldErr(null);
+      setPreview({ result, error: null, pending: false });
+      if (detect.current.size) {
+        const guess = new Map(result.columns.map((c) => [c.name, c]));
+        const fresh = detect.current;
+        detect.current = new Set();
+        setDraft((x) => ({ ...x, spec: { ...x.spec, fields: x.spec.fields.map((f) => {
+          const g = fresh.has(f.name) ? guess.get(f.name) : undefined;
+          if (!g || g.type === "string") return f;
+          const places = Math.max(2, ...g.examples.map((e) => /[.,](\d+)$/.exec(e)?.[1]?.length ?? 0));
+          return { ...f, type: g.type, ...(g.type === "decimal" ? { format: { scale: Math.min(18, places) } } : g.type === "date" && g.examples.every((e) => /^\d{8}$/.test(e)) ? { format: { date: "yyyyMMdd" } } : {}) };
+        }) } }));
       }
-    }, 600);
+    } catch (e) {
+      if (n !== seq.current) return;
+      const named = e instanceof ApiError ? fieldError(e.message) : null;
+      if (named) setFieldErr({ id: controlOf(named.path) ?? "src-columns", reason: named.reason });
+      setPreview({ result: null, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
+    }
+  };
+  // a file's preview is live (ruling 2): a moment after the last change. A database source's pulls from the bank's
+  // database, so it runs on demand only (Preview rows; fix round 1).
+  useEffect(() => {
+    if (step !== 1 || !file || !ids || !previewable) return;
+    const t = setTimeout(() => void runPreview(), 600);
     return () => clearTimeout(t);
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, ids, specKey, previewable, sample.text, fileName, businessDate, file, spaceId]);
+  }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId]);
 
   /** Saves the spec when it changed since the last save; a refused field is shown and focused. */
   async function save(): Promise<boolean> {
@@ -320,13 +339,18 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     setFieldErr(null);
     if (step === 0) {
       if (!show(pullProblems(d))) return;
-      if (!file && !columns && !(await readColumns())) return;
+      setBusy("next");
+      const at = await commitConnection();
+      setBusy(null);
+      if (!at) return;
+      if (!file && !(await readColumns(at))) return;
       setStep(1);
       return;
     }
     if (step === 1) {
       const p = mappingProblem(spec);
       if (p) { show([p]); return; }
+      if (admin && !show(watermarkProblems(d))) return;
       setProblems({});
       setBusy("next");
       const ok = await save();
@@ -349,7 +373,17 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     }
   }
 
-  const blocked = step === 0 ? (!tested || !tested.result.ok ? UNTESTED[file ? "file" : "db"] : tested.key !== connKey(d) ? CHANGED : null) : null;
+  const blocked = step === 0 ? (!tested || !tested.result.ok ? UNTESTED[file ? "file" : "db"] : tested.key !== connKey(d) ? CHANGED[file ? "file" : "db"] : null) : null;
+  /** A draft source nobody submitted or shared (DELETE …/sources/{id} takes it): made here, or opened as such. */
+  const deletable = !!ids && (!source || (source.s.publishedVersion === null && !source.v.submitterId && !source.s.shares.length));
+  async function discard() {
+    if (!ids) return;
+    await api(sourceApi(spaceId, ids.sourceId), { method: "DELETE" });
+    setDone(true);
+    toast(`Deleted the draft source ${d.name.trim()}.`);
+    await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+    router.push(sourcesHref(spaceId));
+  }
   const title = source ? `Edit ${source.s.name}` : "New source";
   const steps = STEPS.map((label, i) => ({ id: label, label, status: (i === step ? "current" : i < step || (i === 0 && !admin) ? "done" : "todo") as "current" | "done" | "todo" }));
   const working = busy !== null;
@@ -361,18 +395,20 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (!blocked && !working) void next(); }} className="grid gap-section">
           <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>
           {step === 0 && (
-            <ConnectionStep d={d} set={set} created={!!ids} stored={stored} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
-              columns={columns} reading={busy === "columns"} onReadColumns={() => void readColumns()} />
+            <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()} />
           )}
           {step === 1 && (
             <FieldsStep d={d} set={set} err={err} engine={file ? null : (source?.s.connection?.engine ?? d.conn.engine)} native={native} canRead={admin && !!ids}
               reading={busy === "columns"} onReadColumns={() => void readColumns()} sample={sample.text} sampleCut={sample.cut} fileName={fileName}
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
-              businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }} />
+              businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }}
+              onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint}
+              onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
           {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep} />}
           {formError && <p role="alert" className="text-body-sm text-down-ink">{formError}</p>}
           <FormActions className="justify-end">
+            {deletable && admin && <Button type="button" variant="ghost" className="mr-auto text-down-ink" disabled={working} onClick={() => setDiscarding(true)}>Delete draft source</Button>}
             <Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)}>Cancel</Link></Button>
             {step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
             <BlockedButton type="submit" reason={blocked} disabled={working && !blocked} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
@@ -384,9 +420,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without submitting"
           onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }}
-          description={ids ? `Version ${ids.version} stays a draft with what was saved; changes on this step aren't saved.` : "This source isn't created yet."}
+          description={ids ? `Version ${ids.version} stays a draft with what was saved; changes on this step aren't saved.${deletable ? " To remove the source, use Delete draft source." : ""}` : "This source isn't created yet: nothing is saved."}
           impact={["What you typed and didn't save is discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
       )}
+      {discarding && <DiscardDialog name={d.name.trim()} onClose={() => setDiscarding(false)} onConfirm={discard} />}
     </div>
   );
 }

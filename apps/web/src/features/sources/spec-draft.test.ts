@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { FILE_DATE, fieldError, fieldsOfColumns, fieldTypeOf, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
+import { activitySentence, changes, FILE_DATE, fieldError, fieldsOfColumns, fieldTypeOf, looksLikeHeader, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
 
 const spec = (over: Partial<SourceSpec> = {}): SourceSpec => ({
   fields: [{ name: "sid", type: "string", nullable: false, trim: true }, { name: "bal", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }],
@@ -103,5 +103,32 @@ describe("reviewReason", () => {
     expect(reviewReason(v, "m", true, "reject")).toBe("You worked on this version. A config checker who didn't work on it rejects it.");
     expect(reviewReason(v, "x", false, "approve")).toBe("Only a config checker of this space approves source versions.");
     expect(reviewReason(v, "x", true, "approve")).toBeNull();
+  });
+});
+
+describe("looksLikeHeader", () => {
+  it("a first line of names over a line with numbers; not a data line, not an all-text file", () => {
+    expect(looksLikeHeader("ref|amount|value_date\nR1|100.50|20261102\n", "|", '"')).toBe(true);
+    expect(looksLikeHeader("R1|100.50|20261102\nR2|7|20261103\n", "|", '"')).toBe(false);
+    expect(looksLikeHeader("ACT|KSEI|SRE\nACT|KSEI|SRE2\n", "|", '"')).toBe(false);
+    expect(looksLikeHeader("ref|amount\n", "|", '"')).toBe(false);
+  });
+});
+
+describe("activitySentence", () => {
+  const e = (action: string, after: unknown = null, before: unknown = null) => ({ action, actor: { name: "Ayu" }, before, after });
+  it("one sentence per event: who did what to which version; never a hash", () => {
+    expect(activitySentence(e("source.create", { code: "x" }))).toBe("Ayu created the source.");
+    expect(activitySentence(e("source.connection_set", { engine: "postgres" }))).toBe("Ayu set the connection.");
+    expect(activitySentence(e("source.connection_set", { engine: "postgres" }, { engine: "mysql" }))).toBe("Ayu replaced the connection.");
+    expect(activitySentence(e("source.version_create", { version: 2, from: 1 }))).toBe("Ayu started version 2 from version 1.");
+    expect(activitySentence(e("source.version_update", { version: 2, specHash: "58bc7319" }))).toBe("Ayu edited version 2.");
+    expect(activitySentence(e("source.version_submit", { version: 2, specHash: "58bc" }))).toBe("Ayu submitted version 2.");
+    expect(activitySentence(e("source.version_approve", { version: 2, retired: 1 }))).toBe("Ayu approved version 2; version 1 retired.");
+    expect(activitySentence(e("source.version_reject", { version: 2, comment: "Name col_03" }))).toBe("Ayu sent version 2 back: \u201cName col_03\u201d");
+    expect(activitySentence(e("source.share", { space: { name: "CTOP" } }))).toBe("Ayu shared the source with CTOP.");
+  });
+  it("counts changes in words", () => {
+    expect([changes(1), changes(3)]).toEqual(["1 change", "3 changes"]);
   });
 });

@@ -181,3 +181,41 @@ export function reviewReason(v: { status: string; submitterId: string | null; ma
   if (!checker) return `Only a config checker of this space ${act}s source versions.`;
   return null;
 }
+
+const NUMERIC = /^[+-]?\d+([.,]\d+)?$/;
+/**
+ * Whether a sample's first line looks like column names: no cell of it is a number, a later line has a number where it
+ * has text (so it is no data line of an all-text file). The wizard then suggests "First row is a header".
+ */
+export function looksLikeHeader(sample: string, delimiter: string, quote: string | null): boolean {
+  const [a, b] = sample.replace(/^\uFEFF/, "").split(/\r?\n/).filter((l) => l.trim() !== "").slice(0, 2).map((l) => cells(l, delimiter, quote).map((c) => c.trim()));
+  if (!a || !b) return false;
+  return a.every((c) => c !== "" && !NUMERIC.test(c)) && b.some((c, i) => NUMERIC.test(c) && !NUMERIC.test(a[i] ?? ""));
+}
+
+type Entry = { action: string; actor: { name: string }; before: unknown; after: unknown };
+const field = (o: unknown, k: string): unknown => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined);
+/**
+ * One sentence per entry of a source's activity (designer review 03): who did what to which version, never a hash or a
+ * raw before/after; a check's comment is quoted.
+ */
+export function activitySentence(e: Entry): string {
+  const who = e.actor.name || "Someone";
+  const v = field(e.after, "version");
+  switch (e.action) {
+    case "source.create": return `${who} created the source.`;
+    case "source.connection_set": return e.before ? `${who} replaced the connection.` : `${who} set the connection.`;
+    case "source.version_create": { const from = field(e.after, "from"); return `${who} started version ${String(v)}${from ? ` from version ${String(from)}` : ""}.`; }
+    case "source.version_update": return `${who} edited version ${String(v)}.`;
+    case "source.version_submit": return `${who} submitted version ${String(v)}.`;
+    case "source.version_approve": { const retired = field(e.after, "retired"); return `${who} approved version ${String(v)}${retired ? `; version ${String(retired)} retired` : ""}.`; }
+    case "source.version_reject": return `${who} sent version ${String(v)} back: \u201c${String(field(e.after, "comment") ?? "")}\u201d`;
+    case "source.share": return `${who} shared the source with ${String(field(field(e.after, "space"), "name") ?? "another space")}.`;
+    case "source.unshare": return `${who} stopped sharing the source with ${String(field(field(e.before, "space"), "name") ?? "another space")}.`;
+    case "source.run": { const d = field(e.after, "businessDate"); return d ? `${who} pulled ${String(d)} again.` : `${who} started a pull.`; }
+    default: return `${who}: ${e.action}.`;
+  }
+}
+
+/** "1 change", "3 changes". */
+export const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
