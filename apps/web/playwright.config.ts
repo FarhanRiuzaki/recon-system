@@ -7,7 +7,8 @@ import { INBOX, SCRATCH } from "./tests/e2e/global-setup";
 /**
  * Playwright against the real stack: the API on E2E_API_PORT (4123) over its own database, reset and seeded at
  * start, and a production build of the web on E2E_PORT (3123) in .next-e2e; never the dev servers (:3000, :4000) or
- * their .next. Three projects (design-system §0): `desktop` 1440 × 900 runs every spec; `tablet` 834 × 1112 runs
+ * their .next. Three projects (design-system §0), and `spaces` (spaces.spec at 1440 × 900, after the three: it deletes
+ * and restores every space, so the demo sources go with them): `desktop` 1440 × 900 runs every other spec; `tablet` 834 × 1112 runs
  * responsive.spec, responsive-data.spec and a11y.spec; `mobile` 390 × 844 (touch, mobile emulation, 3× pixels) runs
  * those, no-flicker.spec (its sidebar navigations are desktop and tablet only), ds.spec (the phone baselines) and
  * reauth.spec (the password sheet before connecting an account). One worker (the database and the sign-in rate limits are shared by every test),
@@ -47,9 +48,12 @@ export default defineConfig({
   globalSetup: "./tests/e2e/global-setup.ts",
   use: { baseURL: `http://localhost:${PORT}`, trace: "retain-on-failure" },
   projects: [
-    { name: "desktop", use: { viewport: { width: 1440, height: 900 } } },
+    // spaces.spec deletes and restores every space, which cascades to the demo sources other specs read: it runs last,
+    // in its own project after the three (fix round 1, I4)
+    { name: "desktop", testIgnore: /\/spaces\.spec\.ts$/, use: { viewport: { width: 1440, height: 900 } } },
     { name: "tablet", testMatch: /(responsive|responsive-data|a11y)\.spec\.ts/, use: { viewport: { width: 834, height: 1112 } } },
     { name: "mobile", testMatch: /(responsive|responsive-data|a11y|no-flicker|ds|reauth)\.spec\.ts/, use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } },
+    { name: "spaces", testMatch: /\/spaces\.spec\.ts$/, dependencies: ["desktop", "tablet", "mobile"], use: { viewport: { width: 1440, height: 900 } } },
   ],
   webServer: [
     {

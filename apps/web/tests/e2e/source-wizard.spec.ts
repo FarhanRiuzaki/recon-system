@@ -92,8 +92,10 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText("Folder readable · 2 files match act*.txt");
   // a pass counts only for the values tested
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(`${folder}/`);
-  await blockedWith(page, "Next: fields & mapping", "The connection changed since the last test. Test it again.");
+  await blockedWith(page, "Next: fields & mapping", "The folder changed since the last test. Test it again.");
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
+  // the test stored nothing: the source is made at Next
+  expect((await (await page.request.get(`/api/spaces/${ids.fico}/sources?q=ksei-act-${RUN}`)).json() as { total: number }).total).toBe(0);
   await next(page, "Next: fields & mapping").click();
 
   await expect(page).toHaveURL(/step=2$/);
@@ -132,17 +134,19 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   fileVersion = page.url().split("/").at(-1)!;
   fileSource = page.url().split("/sources/")[1]!.split("/")[0]!;
   await expect(page.getByRole("heading", { level: 1, name: "KSEI ACT e2e · version 1" })).toBeVisible();
-  // the maker can't decide on its own version
+  // the maker can't decide on its own version: one line and the blocked Approve (Figma 98:9467), no comment field
+  await expect(page.getByText("A config checker other than you approves or rejects this version.")).toBeVisible();
   await blockedWith(page, "Approve version 1", "You submitted this version. Another config checker approves it.");
-  await blockedWith(page, "Reject", "You submitted this version. Another config checker rejects it.");
+  await expect(page.getByRole("textbox", { name: "Comment", exact: true })).toHaveCount(0);
 });
 
-test("a PostgreSQL watermark source: a failed test, then a pass; read the table, refuse nullable watermark columns, preview a pull, submit", async ({ page, baseURL }) => {
+test("a PostgreSQL watermark source: a failed test, then a pass; a taken code; read the table, refuse nullable watermark columns, preview a pull on demand, submit", async ({ page, baseURL }) => {
   const ids = await demoIds(baseURL);
   const src = sourceDatabase();
   await page.goto(`/spaces/${ids.fico}/sources/new?step=1`);
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("BI-FAST core e2e");
-  await page.getByRole("textbox", { name: "Code", exact: true }).fill(`bifast-${RUN}`);
+  // the file source's code: taken, which shows on Code at Next, before anything is made
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill(`ksei-act-${RUN}`);
   await page.getByRole("radio", { name: /^Database/ }).check();
   await page.getByRole("textbox", { name: "Host", exact: true }).fill(src.hostname);
   await page.getByRole("textbox", { name: "Port", exact: true }).fill(src.port || "5432");
@@ -159,13 +163,19 @@ test("a PostgreSQL watermark source: a failed test, then a pass; read the table,
   await expect(page.getByRole("status").filter({ hasText: "Connected." })).toHaveText("Connected.");
 
   await page.getByRole("textbox", { name: "Table", exact: true }).fill(SRC_TABLE);
-  await page.getByRole("button", { name: "Read the columns" }).click();
+  await next(page, "Next: fields & mapping").click();
+  const code = page.getByRole("textbox", { name: "Code", exact: true });
+  await expect(code).toBeFocused();
+  await expect(page.getByText("Another source in this space already has this code. Use a different one.")).toBeVisible();
+  await code.fill(`bifast-${RUN}`);
+  await next(page, "Next: fields & mapping").click();
+
+  // step 2: the columns read through the stored connection; the watermark picker refuses a column that can be empty
   const wm = page.getByRole("combobox", { name: "Watermark column", exact: true });
   await expect(wm.locator("option", { hasText: "note" })).toBeDisabled();
   await expect(wm.locator("option", { hasText: "note" })).toHaveText("note — This column can be empty; rows with no value would never be pulled.");
   await wm.selectOption("updated_at");
   await page.getByRole("combobox", { name: "Id column", exact: true }).selectOption("id");
-  await next(page, "Next: fields & mapping").click();
 
   const columns = page.getByRole("table", { name: "Columns" });
   await expect(columns.locator("tbody tr")).toHaveCount(5);
@@ -175,8 +185,10 @@ test("a PostgreSQL watermark source: a failed test, then a pass; read the table,
   await page.getByRole("combobox", { name: "Amount", exact: true }).selectOption("f:amount");
   await page.getByRole("combobox", { name: "Reference", exact: true }).selectOption("f:ref");
   await columns.getByRole("checkbox", { name: "ref is part of the match key" }).click();
-  // 100.5 is stored as the whole number 10050: decimals never pass through a float
+  // a database source previews on demand (it pulls from the bank's database); 100.5 becomes the whole number 10050
   const records = page.getByRole("table", { name: "Preview records" });
+  await expect(records).toHaveCount(0);
+  await page.getByRole("button", { name: "Preview rows", exact: true }).click();
   await expect(records.getByRole("row").filter({ hasText: "BF001" })).toContainText("10050");
   await expect(records.getByRole("row").filter({ hasText: "BF002" })).toContainText("700");
   await next(page, "Next: review").click();
@@ -214,8 +226,11 @@ test("a config checker rejects with a comment (required) and approves; the decis
     await c.getByRole("button", { name: "Reject", exact: true }).click();
     await expect(c.getByText(/sent back to its maker with your comment/)).toBeVisible();
     await expect(c.getByRole("heading", { level: 1 })).toBeFocused();
-    await blockedWith(c, "Approve version 1", "This version is no longer waiting for approval.");
+    // sent back: no decision any more; the comment, and Edit version 1 (a checker may not edit: blocked with the reason)
     await expect(c.getByText("Sent back by a config checker: Name col_03 sre before it goes live.")).toBeVisible();
+    await expect(c.getByText("Draft · sent back by a config checker")).toBeVisible();
+    await expect(c.getByRole("button", { name: "Approve version 1", exact: true })).toHaveCount(0);
+    await blockedWith(c, "Edit version 1", "Only a source admin or a config maker of this space changes a source.");
 
     await c.goto(`/spaces/${ids.fico}/sources/${dbSource}/versions/${dbVersion}`);
     await c.getByRole("button", { name: "Approve version 1", exact: true }).click();
@@ -236,13 +251,48 @@ test("the source's Versions and Activity tabs: server-paged, state chips, every 
   await page.getByRole("link", { name: "Activity", exact: true }).click();
   await expect(page).toHaveURL(/tab=activity/);
   const activity = page.getByRole("table", { name: "Activity" });
-  for (const what of ["Source version approved", "Source version submitted", "Source version edited", "Source version drafted", "Source connection set", "Source created"]) {
+  // one sentence per event, never a hash
+  for (const what of ["Admin User approved version 1.", "Super Admin submitted version 1.", "Super Admin edited version 1.", "Super Admin started version 1.", "Super Admin set the connection.", "Super Admin created the source."]) {
     await expect(activity.getByRole("row").filter({ hasText: what }).first()).toBeVisible();
   }
+  await expect(activity).not.toContainText(/[0-9a-f]{64}/);
   // the credential is never recorded
   await expect(activity).not.toContainText(new URL(process.env.E2E_DB!).password || "never-empty-sentinel");
   // Edit source opens the wizard over a new draft
   await page.getByRole("button", { name: "Edit source", exact: true }).click();
   await expect(page).toHaveURL(/\/versions\/new\?step=2$/);
   await expect(page.getByRole("heading", { level: 1, name: "Edit BI-FAST core e2e" })).toBeVisible();
+});
+
+test("a source admin's sent-back version opens in the wizard; a draft source nobody submitted can be deleted", async ({ page, baseURL }) => {
+  test.skip(!fileVersion, "needs the file version sent back above");
+  const ids = await demoIds(baseURL);
+  await page.goto(`/spaces/${ids.fico}/sources/${fileSource}?tab=versions`);
+  const row = page.getByRole("table", { name: "Versions" }).getByRole("row").filter({ hasText: "Version 1" });
+  await expect(row).toContainText("Sent back");
+  await expect(row).toContainText("Sent back by Admin User");
+  await page.goto(`/spaces/${ids.fico}/sources/${fileSource}/versions/${fileVersion}`);
+  await page.getByRole("link", { name: "Edit version 1", exact: true }).click();
+  await expect(page).toHaveURL(/\/versions\/new\?step=1$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Edit KSEI ACT e2e" })).toBeVisible();
+  // it was submitted once, so it has a history: no Delete draft source
+  await expect(page.getByRole("button", { name: "Delete draft source" })).toHaveCount(0);
+
+  // a new source made at Next and never submitted: deleted from the wizard
+  const folder = path.join(INBOX, "ksei");
+  await page.goto(`/spaces/${ids.fico}/sources/new?step=1`);
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Throwaway e2e");
+  await page.getByRole("textbox", { name: "Code", exact: true }).fill(`throwaway-${RUN}`);
+  await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
+  await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
+  await page.getByRole("button", { name: "Test the folder" }).click();
+  await next(page, "Next: fields & mapping").click();
+  await expect(page).toHaveURL(/step=2$/);
+  await page.getByRole("button", { name: "Delete draft source", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete this draft source?" });
+  await expect(dialog).toContainText("Throwaway e2e was never submitted, so nothing was pulled or ingested. Its connection and draft settings are removed. This can't be undone.");
+  await dialog.getByRole("button", { name: "Delete draft source", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/spaces/${ids.fico}/sources$`));
+  await expect(page.getByText("Deleted the draft source Throwaway e2e.")).toBeVisible();
+  expect((await (await page.request.get(`/api/spaces/${ids.fico}/sources?q=throwaway-${RUN}`)).json() as { total: number }).total).toBe(0);
 });

@@ -110,7 +110,10 @@ numbers from examples.
 "Fields & mapping", "Review & submit"; Next reads "Next: fields & mapping", "Next: review", "Submit for approval".
 - Next on Connection is blocked until a test passes for the values on screen: "Test the connection first; step 2
   reads the columns through it." (a file inbox: "Test the folder first; files are picked up from it."); after a
-  change: "The connection changed since the last test. Test it again."
+  change: "The connection changed since the last test. Test it again." (a file inbox: "The folder changed since the
+  last test. Test it again."). Until the source exists, the test's panel says "Next unlocks once the test passes; the
+  source is saved at Next". A folder outside the inbox roots, on the Folder field: "Use a folder inside the inbox
+  folders this install allows." (never an environment variable's name).
 - The test's answer is the API's sentence, as is (`connectors/errors.ts`, `inbox.ts`): "Connected.", "Folder readable
   · 3 files match act*.txt", "The server did not answer within 8 s.", "The server refused the login (ORA-01017).
   Check the user and password." Never add "Nothing was saved": the connection is stored before it is tested.
@@ -127,7 +130,22 @@ numbers from examples.
   space approves source versions." / "This version is no longer waiting for approval." Reject uses the same sentences
   with "rejects" / "rejects source versions". A reject without a comment: "Enter a comment to reject: say what the
   maker should change."
-- Version states: Draft, In review (neutral), Published (healthy), Retired (stopped).
+- Version states: Draft, Sent back, In review (neutral), Published (healthy), Retired (stopped). A sent-back version's
+  subtitle: "Draft · sent back by a config checker · version {n} stays published" (the last part only when one is
+  published), the comment in a Notice ("Sent back by a config checker: {comment}"), the page action "Edit version
+  {n}"; the Versions tab adds "Sent back by {name}". The decision panel is on a version in review only; anyone who
+  may not decide sees one line ("A config checker other than you approves or rejects this version.") and the blocked
+  Approve.
+- Activity tab: one sentence per event, never a hash or a raw before/after: "{name} created the source.", "{name} set
+  the connection." / "{name} replaced the connection.", "{name} started version {n} from version {m}.", "{name}
+  edited version {n}.", "{name} submitted version {n}.", "{name} approved version {n}; version {m} retired.", "{name}
+  sent version {n} back: “{comment}”", "{name} shared the source with {space}.".
+- Delete a draft source (a source admin's, for a source never submitted or shared): action "Delete draft source";
+  dialog title "Delete this draft source?", body "{name} was never submitted, so nothing was pulled or ingested. Its
+  connection and draft settings are removed. This can't be undone.", confirm "Delete draft source"; toast "Deleted the
+  draft source {name}."
+- The connection panel's option reads "Connect timeout for scheduled pulls"; a test always waits 8 s at most.
+- A count of changes: "1 change", "3 changes".
 - "New source" for anyone but a source admin: "Only a source admin of this space adds sources."; "Edit source" for
   anyone but a source admin or config maker: "Only a source admin or a config maker of this space changes a source."
 
