@@ -66,6 +66,36 @@ describe("parseDelimited (stream)", () => {
     const run = (async () => { for await (const _ of parseDelimited(src, fmt, ["a", "b"])) throw new Error("db insert failed"); })();
     await expect(within(run)).rejects.toThrow("db insert failed");
   });
+  it("a source whose close rejects never leaves an unhandled rejection (it would end the worker)", async () => {
+    const unhandled: unknown[] = [];
+    const on = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", on);
+    try {
+      const source: AsyncIterable<Uint8Array> = {
+        [Symbol.asyncIterator]: () => ({
+          next: async () => ({ done: false, value: chunk }),
+          return: () => Promise.reject(new Error("socket closed")),
+        }),
+      };
+      let n = 0;
+      for await (const _ of parseDelimited(source, fmt, ["a", "b"])) if (++n === 5) break;
+      await new Promise((r) => setTimeout(r, 20));
+    } finally {
+      process.off("unhandledRejection", on);
+    }
+    expect(unhandled).toEqual([]);
+  });
+  it("marks a fault of the whole file: a quote never closed or a line over 1 MB (file), a header of another width (schema)", async () => {
+    const quote = await parseText('a|b\n"x|1\ny|2\n', { delimiter: "|", header: false, encoding: "utf-8" }, ["a", "b"]);
+    expect(quote.filter((l) => !l.ok).map((l) => (l.ok ? null : l.fatal))).toEqual(["file"]);
+    const long = await parseText(`a|"${"x".repeat(2_000_000)}\nz|3\n`, { delimiter: "|", header: false, encoding: "utf-8" }, ["a", "b"]);
+    expect(long.some((l) => !l.ok && l.fatal === "file")).toBe(true);
+    const header = await parseText("a,b,c\n1,2\n", { delimiter: ",", header: true, encoding: "utf-8" }, ["a", "b"]);
+    expect(header[0]).toMatchObject({ ok: false, fatal: "schema", reasons: { _row: "The header has 3 columns; the source declares 2" } });
+    const columns = await parseText("1|2|3\n", fmt, ["a", "b"]);
+    expect(columns[0]).toMatchObject({ ok: false, reasons: { _row: "Expected 2 columns, got 3" } });
+    expect((columns[0] as { fatal?: string }).fatal).toBeUndefined(); // one line of another width is that line's fault
+  });
   it("yields to the event loop while a big file streams (heartbeat, S2)", async () => {
     const row = `${"x".repeat(20)}|${"y".repeat(20)}\n`;
     const total = 60_000;

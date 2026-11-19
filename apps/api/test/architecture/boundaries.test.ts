@@ -191,7 +191,12 @@ const VISIBLE = "recon_space_visible(space_id)";
 const EXTRA_READ_POLICIES: Record<string, string> = {
   "sources.sources_shared": "a source shared to a space (source_shares) is readable there (spec §11: source_share read-only)",
   "source_versions.source_versions_shared": "a shared source's published and retired versions are readable where it is shared",
-  "source_shares.source_shares_to": "the space a source is shared to sees its share row, which the two _shared policies read",
+  "source_shares.source_shares_to": "the space a source is shared to sees its share row, which the _shared policies read",
+  "records.records_shared": "a shared source's records are what a recon in the space it is shared to matches on (DEC-042)",
+  "raw_rows.raw_rows_shared": "a shared source's raw rows, the provenance of those records (DEC-042)",
+  "source_cursors.source_cursors_shared": "complete_through of a shared source: the grace of a recon reading it and its health",
+  "source_snapshots.source_snapshots_shared": "which snapshot of a shared source is active for a date: its records count only then",
+  "source_files.source_files_shared": "which files of a shared source are ingested for a date: its health in the space it is shared to",
 };
 
 /**

@@ -147,16 +147,23 @@ describe("bday_index", () => {
 });
 
 describe("a database row's SQL NULL (connectors)", () => {
-  it("types like an empty cell, but row_hash and natural_key tell NULL from \"\"", () => {
-    const spec = { ...ksei(), key_fields: ["sid", "sre"] };
+  it("types like an empty cell, but row_hash tells NULL from \"\"", () => {
+    const spec = ksei();
     const raw = Object.fromEntries(spec.fields.map((f) => [f.name, "x"])) as Record<string, string | null>;
     raw.sid = "TSTSID000000001";
     const empty = toRecord({ ...raw, sre: "" }, spec, ctx);
     const nul = toRecord({ ...raw, sre: null }, spec, ctx);
     if (!empty.ok || !nul.ok) throw new Error("both map");
     expect([empty.record.attrs.sre, nul.record.attrs.sre]).toEqual([null, null]);
-    expect([empty.record.natural_key, nul.record.natural_key]).toEqual(["TSTSID000000001\u001f", "TSTSID000000001\u001f\u001e"]);
+    expect(empty.record.natural_key).toBe(nul.record.natural_key);
     expect(empty.record.row_hash).not.toBe(nul.record.row_hash);
     expect(toRecord({ ...raw, sid: null }, spec, ctx)).toEqual({ ok: false, reasons: { sid: "sid is required" } });
+  });
+
+  it("a key field that is empty or NULL quarantines the row with that column's reason, even when the field may be empty", () => {
+    const spec = { ...ksei(), key_fields: ["sid", "sre"] };
+    const raw = Object.fromEntries(spec.fields.map((f) => [f.name, "x"])) as Record<string, string | null>;
+    raw.sid = "TSTSID000000001";
+    for (const sre of ["", "  ", null]) expect(toRecord({ ...raw, sre }, spec, ctx)).toEqual({ ok: false, reasons: { sre: "sre is required (a key field)" } });
   });
 });

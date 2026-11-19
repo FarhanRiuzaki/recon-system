@@ -148,16 +148,14 @@ describe("preview of a database source", () => {
   it("a watermark source pulls a sample (watermark predicate omitted) through the mapping: NULL is null, not \"\"", async () => {
     const s = await made("db_watermark");
     await connect(s.id);
-    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: ["ref", "note"], mutable: false, calendar: "id-default",
+    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default",
       input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 60, chunk: 1000 } });
     const p = await json<SourcePreviewDto>(preview(s.id, v.id));
     expect(p).toMatchObject({ lines: 3, ok: 2, quarantined: 1 });
     expect(p.records.map((r) => [r.extRef, r.amountMinor, r.eventTime, r.businessDate, r.attrs.note])).toEqual([
       ["R1", "10050", "2026-11-02T01:00:00.000Z", "2026-11-02", null], ["R2", "700", "2026-11-02T02:00:00.000Z", "2026-11-02", null],
     ]);
-    // "" (R1) and NULL (R2) give different natural keys and row hashes
-    expect(p.records[0]!.naturalKey).toBe("R1\u001f");
-    expect(p.records[1]!.naturalKey).toBe("R2\u001f\u001e");
+    expect(p.records.map((r) => r.naturalKey)).toEqual(["R1", "R2"]);
     expect(p.quarantine).toEqual([{ line: 3, cells: ["", "1.00", "2026-11-02T03:00:00.000000Z", "x"], reasons: { ref: "ref is required" } }]);
     // a sample in the body is for file sources
     expect((await preview(s.id, v.id, { sample: "x" })).status).toBe(400);

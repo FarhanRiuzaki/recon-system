@@ -7,9 +7,14 @@
 import { parse } from "csv-parse";
 
 export type ParseFormat = { delimiter: string; header: boolean; encoding: string; /** the quote character; null = no quoting (default `"`) */ quote?: string | null };
+/**
+ * A line, or why it can't be read. `fatal` marks a fault of the whole file, not of one line: "file" = a quote never
+ * closed or a line over MAX_LINE_BYTES (the rest of the file can't be trusted), "schema" = a header whose column count
+ * isn't the declared one (the sender changed the layout). The pipeline fails such a file; the preview lists it.
+ */
 export type ParsedLine =
   | { line: number; ok: true; raw: Record<string, string> }
-  | { line: number; ok: false; cells: string[]; reasons: Record<string, string> };
+  | { line: number; ok: false; cells: string[]; reasons: Record<string, string>; fatal?: "file" | "schema" };
 export type ParseOptions = { yieldEvery?: number };
 
 export const WHOLE_ROW = "_row";
@@ -34,7 +39,8 @@ async function* lines(chunks: AsyncIterable<string>, f: ParseFormat, columns: st
     on_skip: (err: { message?: string; code?: string; lines?: number } | undefined, raw: string | undefined) => {
       const text = (raw ?? "").replace(/\r?\n$/, "");
       const line = Math.max(1, (err?.lines ?? 1) - newlines(text)); // csv-parse reports where it noticed; the line starts where its text began
-      skipped.push({ line, ok: false, cells: [text.slice(0, 1000)], reasons: { [WHOLE_ROW]: reasonOf(err, line) } });
+      const fatal = err?.code === "CSV_QUOTE_NOT_CLOSED" || err?.code === "CSV_MAX_RECORD_SIZE" ? { fatal: "file" as const } : {};
+      skipped.push({ line, ok: false, cells: [text.slice(0, 1000)], reasons: { [WHOLE_ROW]: reasonOf(err, line) }, ...fatal });
     },
   });
   const it = chunks[Symbol.asyncIterator]();
@@ -59,7 +65,10 @@ async function* lines(chunks: AsyncIterable<string>, f: ParseFormat, columns: st
       const { record: cells, info } = item;
       const start = info.lines - newlines(item.raw.replace(/\r?\n$/, ""));
       while (skipped.length && skipped[0]!.line < start) yield skipped.shift()!;
-      if (f.header && seen++ === 0) continue;
+      if (f.header && seen++ === 0) {
+        if (cells.length !== columns.length) yield { line: start, ok: false, cells, reasons: { [WHOLE_ROW]: `The header has ${cells.length} columns; the source declares ${columns.length}` }, fatal: "schema" };
+        continue;
+      }
       if (cells.length !== columns.length) yield { line: start, ok: false, cells, reasons: { [WHOLE_ROW]: `Expected ${columns.length} columns, got ${cells.length}` } };
       else yield { line: start, ok: true, raw: Object.fromEntries(columns.map((c, i) => [c, cells[i]!])) };
       if (++n % yieldEvery === 0) await nextTurn();
@@ -67,7 +76,9 @@ async function* lines(chunks: AsyncIterable<string>, f: ParseFormat, columns: st
     yield* skipped.splice(0);
   } finally {
     parser.destroy();
-    void it.return?.(); // closes the source; not awaited: a source blocked in a read can't hold the consumer
+    // closes the source; not awaited (a source blocked in a read can't hold the consumer), and its rejection is
+    // dropped: unhandled, it would end the worker process
+    it.return?.()?.catch(() => {});
     void feed;
   }
 }
