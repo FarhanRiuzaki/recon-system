@@ -30,6 +30,7 @@ const RAW_SQL_OK: Record<string, string> = {
   "src/db/seed/demo-sources.ts": "the snapshot query of a demo source: text a source database would run, stored in its spec, never sent to ours",
   "src/modules/ingest/copy.ts": "the bulk writes of ingest (DEC-036): one multi-row INSERT … ON CONFLICT DO NOTHING per chunk and the supersede UPDATE of mutable sources; values bound, identifiers fixed",
   "src/modules/ingest/tests/integration/pipeline.test.ts": "builds the tables the pipeline pulls from in <test database>_src, a source database, not the app's",
+  "src/modules/ingest/tests/integration/rows-today-perf.test.ts": "seeds a million records per source with generate_series in one INSERT … SELECT for the rowsToday measurement (off unless PERF_ROWS_TODAY)",
 };
 const rawSqlOk = (file: string) => Object.keys(RAW_SQL_OK).some((k) => (k.endsWith("/") ? file.startsWith(k) : file === k));
 
