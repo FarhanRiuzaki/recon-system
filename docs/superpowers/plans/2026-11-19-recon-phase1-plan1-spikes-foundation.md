@@ -17,16 +17,18 @@ Starterkit (AGENTS.md §12–13): modul baru `spaces`, perluasan `guard` di modu
 di `docs/decisions.md`).
 
 **Posisi plan ini di fase 1.** Fase 1 (scope PO: walking skeleton BI-FAST interval 2 menit + KSEI harian
-`carry_over_days = 0`, export CSV) dipecah jadi lima plan. Plan 2–5 ditulis **setelah** hasil spike plan ini, karena
-hasil S1 dan S7 bisa mengubah desain engine dan konektor (spec §12: "Spike sebelum desain dikunci").
+`carry_over_days = 0`, export CSV) dikerjakan per flow **(pemilik, 2026-11-19)**: desain Figma selalu satu flow di depan
+backend; layar web sebuah flow masuk ke plan flow itu (satu modul = folder API + folder feature web, AGENTS.md §1).
+Plan 2+ ditulis setelah hasil spike plan ini, karena S1 dan S7 bisa mengubah desain engine dan konektor (spec §12).
 
 | Plan | Isi | Bergantung pada |
 |---|---|---|
 | **1 (ini)** | S1, S3, S7 + space/RLS + worker/pg-boss (S2, S4 dalam bentuk kode produksi) | — |
-| 2 | `sources` (skema, deteksi, mapping, CEL derive, versi), konektor DB, `ingest` (pull, file SFTP/NFS, COPY, karantina, completeness, mutable) | S1, S3, S7 |
-| 3 | `recon` (config berversi, simulasi) + `engine` (pass → SQL, tick interval, run harian, carry-over, tutup hari) | S1, Plan 2 |
-| 4 | `breaks` + `approvals` + sign-off + export CSV | Plan 3 |
-| 5 | Layar web (space switcher, source wizard, builder kanvas React Flow + S6, live day, workbench) | desain Figma designer-recon, Plan 2–4 |
+| 1b | Layar space + shell (space switcher, anggota & role) | Figma flow 1, Plan 1 |
+| 2 | `sources` + konektor DB + `ingest` + layar Sources (wizard, deteksi, mapping, preview karantina) | S1, S3, S7, Figma flow 2 |
+| 3 | `recon` (config berversi, simulasi) + `engine` (tick interval, run harian, carry-over, tutup hari) + layar builder | Plan 2, Figma flow 3 (pilih varian A/B) |
+| 4 | Layar Live day + Today | Plan 3, Figma flow 4 |
+| 5 | `breaks` + `approvals` + sign-off + export CSV + layar Breaks/Explain/Approvals | Plan 3, Figma flow 5 |
 
 S5 (teks POJK 11/2022, PADK 1/2026) bukan pekerjaan kode; dicatat sebagai tugas compliance/PO.
 
