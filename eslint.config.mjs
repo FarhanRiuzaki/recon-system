@@ -15,7 +15,7 @@ const config = [
   },
   { settings: { next: { rootDir: ["apps/web/"] } } },
   // Local assistant skill scripts are tooling with their own runtime conventions, outside the application.
-  { ignores: [".next/**", "node_modules/**", "test-results/**", "next-env.d.ts", "**/.next/**", "**/.next-e2e/**", ".superpowers/**", ".agents/**", ".claude/**"] },
+  { ignores: [".next/**", "node_modules/**", "test-results/**", "next-env.d.ts", "**/.next/**", "**/.next-e2e/**", "**/.next-*/**", ".superpowers/**", ".agents/**", ".claude/**"] },
   // Vendored affectUI sources, kept as upstream wrote them (packages/ui/src/affect/README.md).
   { ignores: ["packages/ui/src/affect/**"] },
 ];
