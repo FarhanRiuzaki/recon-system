@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FieldSpec",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "string",
+        "integer",
+        "decimal",
+        "date",
+        "datetime",
+        "boolean"
+      ]
+    },
+    "format": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "decimalSeparator": {
+          "type": "string",
+          "enum": [
+            ".",
+            ","
+          ]
+        },
+        "thousandSeparator": {
+          "type": "string",
+          "enum": [
+            ",",
+            ".",
+            " ",
+            "'"
+          ]
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18
+        },
+        "timezone": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "additionalProperties": false
+    },
+    "nullable": {
+      "type": "boolean"
+    },
+    "trim": {
+      "type": "boolean"
+    },
+    "case": {
+      "type": "string",
+      "enum": [
+        "upper",
+        "lower"
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "type",
+    "nullable",
+    "trim"
+  ],
+  "additionalProperties": false
+}

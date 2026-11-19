@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateSourceBody",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{1,63}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "db_watermark",
+        "db_snapshot",
+        "file_inbox"
+      ]
+    }
+  },
+  "required": [
+    "code",
+    "name",
+    "kind"
+  ],
+  "additionalProperties": false
+}

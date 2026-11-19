@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConnectionOptions",
+  "type": "object",
+  "properties": {
+    "tls": {
+      "default": false,
+      "type": "boolean"
+    },
+    "connectTimeoutSeconds": {
+      "default": 15,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 120
+    }
+  },
+  "required": [
+    "tls",
+    "connectTimeoutSeconds"
+  ],
+  "additionalProperties": false
+}

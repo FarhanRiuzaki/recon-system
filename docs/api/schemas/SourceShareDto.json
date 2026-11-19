@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourceShareDto",
+  "type": "object",
+  "properties": {
+    "spaceId": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "spaceId",
+    "code",
+    "name"
+  ],
+  "additionalProperties": false
+}

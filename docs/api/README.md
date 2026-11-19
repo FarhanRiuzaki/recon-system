@@ -46,7 +46,7 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   `bad_request` 400, `duplicate` 409, `rate_limited` 429, `invalid_credentials` 401, `account_inactive` 403,
   `invalid_code` 400, `superadmin_locked` 409, `last_superadmin` 409, `self_action` 409, `role_in_use` 409,
   `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `last_space_admin` 409, `space_archived` 409,
-  `internal` 500.
+  `self_approval` 409, `invalid_state` 409, `internal` 500.
   One code is sent with another status on purpose: `invalid_credentials` is 400 when a signed-in user's current
   password is wrong (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser
   doesn't take it for an ended session.
@@ -178,6 +178,21 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   seed gives Admin `space.view` and `space.manage` (an existing deployment's Admin does not get `space.*`
   automatically), so an Admin can add themselves to any space (recorded as `space.member_set`; no second approval,
   spec §11b); taking that away is a one-line exception to Admin's permissions in `apps/api/src/db/seed/system.ts`.
+- Sources: every route under `/api/spaces/{spaceId}/sources` takes a role in the space and names no global permission
+  (a platform admin has no data access), so in an archived space each change is 409 `space_archived`. A source belongs
+  to one space; `PUT …/shares/{toSpaceId}` lets another space read it and its published versions, never its draft or
+  connection, and change nothing (row level security, `drizzle/0011_sources_rls.sql`): there it is listed with
+  `shared: true`, and its change routes answer 404. The connection's host, port, database, user and password are stored
+  encrypted and never answered, logged or recorded; the answer and the entry carry `engine` and `options` only. A
+  version moves draft → in review (`submit`) → published (`approve`; the published one before it retires) or back to
+  draft (`reject`, with a comment); a source has at most one draft or version in review (409 `duplicate` for a second).
+  The maker is who last saved the spec (`makerId`; the draft's creator until then); approving or rejecting one's own
+  version is 409 `self_approval`; a step from the wrong status is 409 `invalid_state`. `spec` ([SourceSpec](schemas/SourceSpec.json))
+  is checked across fields too (a name a mapping or key uses must be a field or derived value, field names unique, a
+  mutable source has key fields, a watermark input names a table or a query, a snapshot query takes `:business_date`),
+  its `input.kind` must be the source's kind and its `calendar` an existing calendar code (`id-default` on every
+  install), else 400; `specHash` is SHA-256 of the spec as JSON with sorted keys, so the same spec saved again changes
+  nothing.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
 
@@ -243,6 +258,15 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `space.update` | Space updated | space | changed fields only, of `name`, `status` | the same fields, new values |
 | `space.member_set` | Space roles set | space | `{ user: { id, name }, roles }` (`[]` for a new member) | `{ user: { id, name }, roles }` |
 | `space.member_remove` | Space member removed | space | `{ user: { id, name }, roles }` | – |
+| `source.create` | Source created | source | – | `{ code, name, kind }` |
+| `source.connection_set` | Source connection set | source | `{ engine, options }` (null for the first) | `{ engine, options }` (never the credential) |
+| `source.version_create` | Source version drafted | source | – | `{ version, from }` (`from` = the published version copied, or null) |
+| `source.version_update` | Source version edited | source | `{ version, specHash }` | `{ version, specHash }` |
+| `source.version_submit` | Source version submitted | source | – | `{ version, specHash }` |
+| `source.version_approve` | Source version approved | source | – | `{ version, specHash, retired }` (`retired` = the version it replaced, or null) |
+| `source.version_reject` | Source version rejected | source | – | `{ version, comment }` |
+| `source.share` | Source shared | source | – | `{ space: { id, code, name } }` |
+| `source.unshare` | Source share removed | source | `{ space: { id, code, name } }` | – |
 <!-- actions:end -->
 
 ### Backend notes
@@ -315,6 +339,17 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | GET | `/api/spaces/{spaceId}/candidates` | `space_admin` in the space, or `space.manage` | [SpaceCandidateListQuery](schemas/SpaceCandidateListQuery.json) (`q` matches name or username) | [SpaceCandidatePage](schemas/SpaceCandidatePage.json) (every user of the app; `member` = already in the space) | `not_found` |
 | PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin`, `forbidden` (adds or drops `source_admin` without `space.manage`) |
 | DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin`, `forbidden` (removes a `source_admin` without `space.manage`) |
+| GET | `/api/spaces/{spaceId}/sources` | any role in the space | [SourceListQuery](schemas/SourceListQuery.json) (`q` matches code or name) | [SourcePage](schemas/SourcePage.json) (rows are [SourceRowDto](schemas/SourceRowDto.json): the space's sources and those shared to it) | none |
+| POST | `/api/spaces/{spaceId}/sources` | `source_admin` in the space | [CreateSourceBody](schemas/CreateSourceBody.json) | 201 [SourceDto](schemas/SourceDto.json) | `duplicate` (code in the space, any case), `space_archived` |
+| GET | `/api/spaces/{spaceId}/sources/{sourceId}` | any role in the space | none | [SourceDto](schemas/SourceDto.json) (through a share: the published version only) | `not_found` |
+| PUT | `/api/spaces/{spaceId}/sources/{sourceId}/connection` | `source_admin` in the space | [SetConnectionBody](schemas/SetConnectionBody.json) (replaces the credential) | [SourceConnectionDto](schemas/SourceConnectionDto.json) (never the credential) | `not_found`, `bad_request` (a file inbox source), `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions` | `source_admin` or `config_maker` in the space | none (a draft with the published spec, or none) | 201 [SourceVersionDto](schemas/SourceVersionDto.json) | `not_found`, `duplicate` (a draft or a version in review exists), `space_archived` |
+| PATCH | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}` | `source_admin` or `config_maker` in the space | [UpdateSourceVersionBody](schemas/UpdateSourceVersionBody.json) (the whole spec; the caller becomes the maker; the same spec = no entry) | [SourceVersionDto](schemas/SourceVersionDto.json) | `not_found`, `invalid_state` (not a draft), `bad_request` (input of another kind, unknown calendar), `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/submit` | `source_admin` or `config_maker` in the space | none | [SourceVersionDto](schemas/SourceVersionDto.json) (in review) | `not_found`, `invalid_state`, `bad_request` (no spec yet), `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/approve` | `config_checker` in the space, not the maker | none | [SourceVersionDto](schemas/SourceVersionDto.json) (published) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/reject` | `config_checker` in the space, not the maker | [RejectSourceVersionBody](schemas/RejectSourceVersionBody.json) (comment required) | [SourceVersionDto](schemas/SourceVersionDto.json) (back to draft) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
+| PUT | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none (already shared = no entry) | [SourceShareDto](schemas/SourceShareDto.json) | `not_found` (source or space), `bad_request` (its own space), `space_archived` |
+| DELETE | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none | [OkDto](schemas/OkDto.json) | `not_found` (source, space or not shared), `bad_request` (its own space), `space_archived` |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
 | POST | `/api/roles` | `role.create` | [CreateRoleBody](schemas/CreateRoleBody.json) | 201 [RoleDto](schemas/RoleDto.json) | `forbidden` (escalation), `duplicate` |
 | GET | `/api/roles/{id}` | `role.view` | none | [RoleDetailDto](schemas/RoleDetailDto.json) (the role plus the whole catalog, for its matrix) | `not_found` |

@@ -1,7 +1,7 @@
 import { MASK, SECRET_KEY } from "@starterkit/shared/audit";
 
-/** UserRow fields that must never reach an entry, even when a caller passes the raw row. */
-const HIDDEN = new Set(["passwordHash", "totpSecret", "pendingTotpSecret", "recoveryCodes"]);
+/** Credential fields of a row (a user, a source connection) that must never reach an entry, even when a caller passes the raw row. */
+const HIDDEN = new Set(["passwordHash", "totpSecret", "pendingTotpSecret", "recoveryCodes", "secretEnc"]);
 
 /**
  * Plain-data copy of a `before`/`after` value, or null when there is none: the row's own credential fields are dropped,

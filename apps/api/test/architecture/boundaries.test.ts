@@ -4,7 +4,8 @@
 // statement in src/ outside the migration runner, (6) every module index and app.ts load alone in a fresh process and
 // build their controllers (the module indexes import each other: no export of another module may be used at load),
 // (7) modules/spaces never imports kernel/worker-db (the API process loads it, and must not open the worker pool),
-// (8) every table with a space_id column has row level security forced with the one recon_space_visible policy.
+// (8) every table with a space_id column has row level security forced with the one recon_space_visible policy, plus
+// only the allowlisted read-only (FOR SELECT) policies.
 // Each rule has a fixture that proves it fails.
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -136,12 +137,12 @@ function workerPoolImports(files: File[]): string[] {
     .flatMap((f) => importsOf(f).filter((to) => to === "src/kernel/worker-db").map(() => `${f.file}: imports kernel/worker-db; the API process loads modules/spaces and must not open the worker pool`));
 }
 
-type SpaceTable = { table: string; rls: boolean; force: boolean; policies: { cmd: string; permissive: boolean; using: string | null; check: string | null }[] };
+type SpaceTable = { table: string; rls: boolean; force: boolean; policies: { name: string; cmd: string; permissive: boolean; using: string | null; check: string | null }[] };
 
 /** Every table (partitions included) of the current schema with a space_id column, its RLS flags and its policies. */
 const spaceTables = (q: Q): Promise<SpaceTable[]> => q<SpaceTable[]>`
   select c.relname as table, c.relrowsecurity as rls, c.relforcerowsecurity as force,
-    coalesce(json_agg(json_build_object('cmd', p.polcmd, 'permissive', p.polpermissive, 'using', pg_get_expr(p.polqual, p.polrelid),
+    coalesce(json_agg(json_build_object('name', p.polname, 'cmd', p.polcmd, 'permissive', p.polpermissive, 'using', pg_get_expr(p.polqual, p.polrelid),
       'check', pg_get_expr(p.polwithcheck, p.polrelid)) order by p.polname) filter (where p.oid is not null), '[]') as policies
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   join pg_attribute a on a.attrelid = c.oid and a.attname = 'space_id' and not a.attisdropped
@@ -159,19 +160,39 @@ const RLS_EXEMPT: Record<string, string> = {
 const VISIBLE = "recon_space_visible(space_id)";
 
 /**
- * (8) A space_id table without ENABLE and FORCE row level security, or whose policies are not exactly one permissive
- * policy for every command with recon_space_visible(space_id) as USING and WITH CHECK (drizzle/0009, recon_enable_space_rls).
+ * Extra policies ("table.policy") a space_id table may have besides its standard one: permissive and FOR SELECT only,
+ * so they widen what a space reads and never what it writes (permissive policies OR together per command; INSERT,
+ * UPDATE and DELETE see only the standard one). A stale entry fails.
  */
-function rlsGaps(rows: SpaceTable[], exempt: Record<string, string> = RLS_EXEMPT): string[] {
+const EXTRA_READ_POLICIES: Record<string, string> = {
+  "sources.sources_shared": "a source shared to a space (source_shares) is readable there (spec §11: source_share read-only)",
+  "source_versions.source_versions_shared": "a shared source's published and retired versions are readable where it is shared",
+  "source_shares.source_shares_to": "the space a source is shared to sees its share row, which the two _shared policies read",
+};
+
+/**
+ * (8) A space_id table without ENABLE and FORCE row level security, or whose policies are not exactly one permissive
+ * policy for every command with recon_space_visible(space_id) as USING and WITH CHECK (drizzle/0009,
+ * recon_enable_space_rls) plus only allowlisted permissive FOR SELECT policies.
+ */
+function rlsGaps(rows: SpaceTable[], exempt: Record<string, string> = RLS_EXEMPT, extra: Record<string, string> = EXTRA_READ_POLICIES): string[] {
   const out: string[] = [];
   for (const r of rows.filter((x) => !(x.table in exempt))) {
     if (!r.rls || !r.force) out.push(`${r.table}: has space_id but row level security is not enabled and forced`);
-    const [p, ...more] = r.policies;
+    const standard = r.policies.filter((p) => !(`${r.table}.${p.name}` in extra));
+    const [p, ...more] = standard;
     if (!p || more.length || p.cmd !== "*" || !p.permissive || p.using !== VISIBLE || p.check !== VISIBLE) {
       out.push(`${r.table}: needs exactly one policy, for all commands, USING and WITH CHECK ${VISIBLE} (select recon_enable_space_rls('${r.table}'))`);
     }
+    for (const x of r.policies.filter((q) => `${r.table}.${q.name}` in extra && (q.cmd !== "r" || !q.permissive))) {
+      out.push(`${r.table}: allowlisted policy ${x.name} must be permissive and FOR SELECT only`);
+    }
   }
   for (const t of Object.keys(exempt)) if (!rows.some((r) => r.table === t)) out.push(`${t}: exempt from the RLS rule but no such table has space_id`);
+  for (const k of Object.keys(extra)) {
+    const [t, name] = k.split(".");
+    if (!rows.some((r) => r.table === t && r.policies.some((p) => p.name === name))) out.push(`${k}: allowlisted read policy but no such policy`);
+  }
   return out;
 }
 
@@ -340,7 +361,7 @@ describe("module boundaries: fixtures", () => {
     ]);
   });
 
-  it("fixture: a space_id table without RLS, without FORCE or with a wrong or extra policy fails; recon_enable_space_rls passes; a partition is no table of its own", async () => {
+  it("fixture: a space_id table without RLS, without FORCE or with a wrong or extra policy fails; recon_enable_space_rls passes; an allowlisted FOR SELECT policy passes; a partition is no table of its own", async () => {
     const ROLLBACK = new Error("rollback");
     let seen = null as { gaps: string[]; tables: string[] } | null;
     await client.begin(async (tx) => {
@@ -356,17 +377,27 @@ describe("module boundaries: fixtures", () => {
       await tx`select recon_enable_space_rls('fx_ok')`;
       await tx`select recon_enable_space_rls('fx_ok_2026_11')`;
       await tx`create table fx_plain (id uuid)`;
+      await tx`create table fx_read (space_id uuid not null)`;
+      await tx`select recon_enable_space_rls('fx_read')`;
+      await tx`create policy fx_read_more on fx_read for select using (true)`;
+      await tx`create table fx_write (space_id uuid not null)`;
+      await tx`select recon_enable_space_rls('fx_write')`;
+      await tx`create policy fx_write_more on fx_write for update using (true)`;
       const q = tx as unknown as Q;
-      seen = { gaps: rlsGaps((await spaceTables(q)).filter((r) => r.table.startsWith("fx_")), {}), tables: (await dbTables(q)).filter((t) => t.startsWith("fx_")).sort() };
+      const extra = { "fx_read.fx_read_more": "fixture", "fx_write.fx_write_more": "fixture", "fx_gone.fx_gone_more": "fixture" };
+      seen = { gaps: rlsGaps((await spaceTables(q)).filter((r) => r.table.startsWith("fx_")), {}, extra), tables: (await dbTables(q)).filter((t) => t.startsWith("fx_")).sort() };
       throw ROLLBACK;
     }).catch((e: unknown) => {
       if (e !== ROLLBACK) throw e;
     });
     const policy = (t: string) => `${t}: needs exactly one policy, for all commands, USING and WITH CHECK ${VISIBLE} (select recon_enable_space_rls('${t}'))`;
     expect(seen).toEqual({
-      gaps: ["fx_none: has space_id but row level security is not enabled and forced", policy("fx_none"), "fx_soft: has space_id but row level security is not enabled and forced", policy("fx_wide")],
-      tables: ["fx_none", "fx_ok", "fx_plain", "fx_soft", "fx_wide"],
+      gaps: [
+        "fx_none: has space_id but row level security is not enabled and forced", policy("fx_none"), "fx_soft: has space_id but row level security is not enabled and forced",
+        policy("fx_wide"), "fx_write: allowlisted policy fx_write_more must be permissive and FOR SELECT only", "fx_gone.fx_gone_more: allowlisted read policy but no such policy",
+      ],
+      tables: ["fx_none", "fx_ok", "fx_plain", "fx_read", "fx_soft", "fx_wide", "fx_write"],
     });
-    expect(rlsGaps([], { gone: "x" })).toEqual(["gone: exempt from the RLS rule but no such table has space_id"]);
+    expect(rlsGaps([], { gone: "x" }, {})).toEqual(["gone: exempt from the RLS rule but no such table has space_id"]);
   });
 });

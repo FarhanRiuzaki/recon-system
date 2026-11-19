@@ -22,6 +22,8 @@ const COPY: Partial<Record<ErrorCode, string>> = {
   role_in_use: "Users still have this role. Remove it from them first, then delete the role.",
   last_space_admin: "This is the last space admin of the space. Make another member space admin first.",
   space_archived: "This space is archived, so its data can't change. Ask a space admin to reactivate it.",
+  self_approval: "You made this version, so someone else has to approve or reject it.",
+  invalid_state: "This record changed since you opened it. Reload the page and try again.",
 };
 
 /**

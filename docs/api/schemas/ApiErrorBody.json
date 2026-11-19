@@ -28,6 +28,8 @@
             "only_sign_in_method",
             "last_space_admin",
             "space_archived",
+            "self_approval",
+            "invalid_state",
             "internal"
           ]
         },

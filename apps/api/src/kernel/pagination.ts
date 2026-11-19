@@ -1,7 +1,7 @@
 import { asc, count, desc, type SQL, sql } from "drizzle-orm";
 import type { PgColumn, PgSelect } from "drizzle-orm/pg-core";
 import type { Page } from "@starterkit/shared/contracts/common";
-import { db } from "./db";
+import { db, type Tx } from "./db";
 
 /** Rows counted at most; a longer list answers `total: COUNT_CAP, totalCapped: true`. */
 export const COUNT_CAP = 100_000;
@@ -12,15 +12,16 @@ export type SortExpr = PgColumn | SQL;
 /**
  * One page of `rows` (a `.$dynamic()` select without order or limit) and the total of `count` (the same from/where,
  * selecting a constant), both queries at once. The total stops at COUNT_CAP, so a deep count on a big table stays cheap.
+ * `on` runs the count: the transaction the rows were built on when they are space data (withSpace), else `db`.
  */
 export async function pageQuery<Q extends PgSelect, T>(o: {
-  rows: Q; count: PgSelect; orderBy: SQL[]; query: { page: number; pageSize: number }; map: (row: Awaited<Q>[number]) => T;
+  rows: Q; count: PgSelect; orderBy: SQL[]; query: { page: number; pageSize: number }; map: (row: Awaited<Q>[number]) => T; on?: Tx;
 }): Promise<Page<T>> {
   const { page, pageSize } = o.query;
   const capped = o.count.limit(COUNT_CAP + 1).as("t");
   const [rows, [counted]] = await Promise.all([
     o.rows.orderBy(...o.orderBy).limit(pageSize).offset((page - 1) * pageSize),
-    db.select({ n: count() }).from(capped),
+    (o.on ?? db).select({ n: count() }).from(capped),
   ]);
   const total = counted!.n > COUNT_CAP ? { total: COUNT_CAP, totalCapped: true } : { total: counted!.n };
   return { items: (rows as Awaited<Q>).map(o.map), ...total, page, pageSize };

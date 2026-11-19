@@ -54,6 +54,9 @@ export const ACTION_LABEL = {
   "me.2fa_disable": "Two-factor turned off",
   "project.create": "Project created", "project.update": "Project updated", "project.delete": "Project deleted",
   "space.create": "Space created", "space.update": "Space updated", "space.member_set": "Space roles set", "space.member_remove": "Space member removed",
+  "source.create": "Source created", "source.connection_set": "Source connection set", "source.version_create": "Source version drafted",
+  "source.version_update": "Source version edited", "source.version_submit": "Source version submitted", "source.version_approve": "Source version approved",
+  "source.version_reject": "Source version rejected", "source.share": "Source shared", "source.unshare": "Source share removed",
 } satisfies Record<string, string>;
 /** An action of the vocabulary (what the API records). */
 export type ActivityAction = keyof typeof ACTION_LABEL;

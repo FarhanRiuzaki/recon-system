@@ -4,7 +4,7 @@ export const CENSOR = "[redacted]";
 /** Field names whose values never reach the log, at the top level and one level down. */
 export const SECRET_FIELDS = [
   "password", "passwordHash", "token", "cookie", "code", "csrf",
-  "otpauth", "otpauthUri", "uri", "secret", "totpSecret", "recoveryCodes", "formToken", "phone", "email",
+  "otpauth", "otpauthUri", "uri", "secret", "secretEnc", "totpSecret", "recoveryCodes", "formToken", "phone", "email",
 ];
 
 /** OTP secrets inside free text: an otpauth URI, a `secret=` query value, a "Secret: <B32>" line. */

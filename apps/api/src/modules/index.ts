@@ -7,6 +7,7 @@ import { meController } from "./me";
 import { oauthController } from "./oauth";
 import { projectsController } from "./projects";
 import { rbacController } from "./rbac";
+import { sourcesController } from "./sources";
 import { spacesController } from "./spaces";
 import { usersController } from "./users";
 
@@ -29,4 +30,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(auditController())
     .use(dashboardController())
     .use(projectsController())
-    .use(spacesController());
+    .use(spacesController())
+    .use(sourcesController());
