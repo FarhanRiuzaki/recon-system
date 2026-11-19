@@ -192,6 +192,8 @@ route preview di `sources` (memakai `ingest` index).
 **Files:** `apps/web/src/features/sources/*`, `apps/web/src/app/(main)/spaces/[spaceId]/sources/{page,loading}.tsx`,
 `…/sources/[sourceId]/{page,loading}.tsx`, `lib/shared/{queries,nav,prefs}.ts`, `lib/server/prefetch.tsx`, E2E `sources.spec.ts`.
 
+**Demo seed:** source demo Treasury memakai nama dari Figma page 04 Space map (BI settlement file, Core bank · BI-FAST incoming/outgoing, BI-RTGS statement, Core bank · RTGS, SKNBI clearing file, Core bank · SKNBI, MT950 · Citi New York, GL nostro USD) supaya desain dan app sama.
+
 **Interfaces:** daftar (nama, jenis, health + lag + complete through, rows hari ini, karantina, share) sesuai Figma page 02;
 detail per jenis: file inbox (file Ingested/Rejected + sha256 pendek, karantina dengan raw line), DB watermark (cursor, lag,
 run sekarang), snapshot (Active/Failed/Superseded per tanggal, Retry, BlockedButton rerun hari tertutup); state "No active
