@@ -66,3 +66,7 @@ export const rows = async (q: PromiseLike<unknown>): Promise<any[]> => (await q)
 export const partitionsOf = (parent: string): Promise<{ name: string; rls: boolean; force: boolean; policies: number }[]> => client`
   select c.relname as name, c.relrowsecurity as rls, c.relforcerowsecurity as force, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies
   from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = ${parent}::regclass order by c.relname`;
+
+/** Functions `names` with whether they are security definer and their SET options, by name; a catalog read src/ tests can't spell. */
+export const functionsOf = (names: string[]): Promise<{ proname: string; prosecdef: boolean; proconfig: string[] | null }[]> => client`
+  select p.proname, p.prosecdef, p.proconfig from pg_proc p where p.proname in ${client(names)} order by p.proname`;

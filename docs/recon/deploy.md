@@ -35,7 +35,8 @@ tanpa itu (pengecualian: `space_members`, dibaca guard sebelum scope space ada).
 
 Partisi bulanan (`<tabel>_YYYY_MM`) dibuat saat jalan oleh `recon_ensure_month_partitions`, function `SECURITY DEFINER`
 milik owner: role aplikasi tidak bisa membuat tabel, dan PostgreSQL hanya mengizinkan owner menambah partisi. Jangan
-memberi `CREATE` pada schema ke role aplikasi.
+memberi `CREATE` pada schema ke role aplikasi. `EXECUTE` function itu dicabut dari `PUBLIC` (0009) dan hanya diberikan
+ke `APP_DB_ROLE` oleh `db:migrate` (§3): jalankan migrate dengan `APP_DB_ROLE` terisi.
 
 ## 3. pg-boss
 

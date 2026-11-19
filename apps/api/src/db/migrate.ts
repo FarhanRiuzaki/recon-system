@@ -92,7 +92,8 @@ export async function resetSchema(db: SQL): Promise<string[]> {
 /**
  * Installs or upgrades pg-boss's schema (`pgboss`) as the schema owner, then grants APP_DB_ROLE, when set, DML on its
  * tables, now and on the ones later pg-boss upgrades create: the app role never runs DDL, so workers start pg-boss with
- * `migrate: false` (kernel/jobs.ts). Opens and closes its own MIGRATION_DATABASE_URL connection.
+ * `migrate: false` (kernel/jobs.ts). It also grants APP_DB_ROLE EXECUTE on recon_ensure_month_partitions (0009 revokes
+ * it from PUBLIC). Opens and closes its own MIGRATION_DATABASE_URL connection.
  */
 export async function migrateJobs(): Promise<void> {
   const conn = migrationSql();
@@ -108,7 +109,8 @@ export async function migrateJobs(): Promise<void> {
 grant select, insert, update, delete on all tables in schema pgboss to ${r};
 grant usage, select on all sequences in schema pgboss to ${r};
 alter default privileges in schema pgboss grant select, insert, update, delete on tables to ${r};
-alter default privileges in schema pgboss grant usage, select on sequences to ${r};`);
+alter default privileges in schema pgboss grant usage, select on sequences to ${r};
+grant execute on function recon_ensure_month_partitions(regclass, date, int) to ${r};`);
   } finally {
     await conn.close();
   }

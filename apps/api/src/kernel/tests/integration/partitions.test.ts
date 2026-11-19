@@ -3,8 +3,9 @@
 // partition the space policy.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { sql } from "drizzle-orm";
+import { migrateJobs } from "../../../db/migrate";
 import { asAppRole, partProbe } from "../../../../test/helpers/app-role";
-import { holdTx, lockWaiters, partitionsOf } from "../../../../test/helpers/db";
+import { functionsOf, holdTx, lockWaiters, partitionsOf } from "../../../../test/helpers/db";
 import { client, db, type Tx } from "../../db";
 import { xactLock } from "../../locks";
 import { ensureMonthPartitions } from "../../partitions";
@@ -66,12 +67,41 @@ describe("ensureMonthPartitions", () => {
     expect(await names()).toContain("part_probe_2028_01");
   });
 
-  it("refuses a months count outside 1–24 and a table that is not partitioned by range", async () => {
+  it("refuses a months count outside 1–24 and any parent but a range-partitioned table on business_date (date) with space_id", async () => {
     for (const n of [0, 25]) expect(await ensure("2026-11-01", n).catch((e: unknown) => e)).toBeInstanceOf(Error);
-    const e = await db.transaction(async (tx) => {
-      await tx.execute(sql`create temp table plain_probe (space_id uuid, business_date date) on commit drop`);
-      await tx.execute(sql`select recon_ensure_month_partitions('plain_probe'::regclass, '2026-11-01'::date, 1)`);
-    }).catch((e: unknown) => e);
-    expect(e).toBeInstanceOf(Error);
+    const refused = (ddl: ReturnType<typeof sql>) => db.transaction(async (tx) => {
+      await tx.execute(ddl);
+      await tx.execute(sql`select recon_ensure_month_partitions('bad_probe'::regclass, '2026-11-01'::date, 1)`);
+    }).then(() => "created", (e: unknown) => String((e as { cause?: unknown }).cause ?? e));
+    const notDomain = "is not a domain table of its owner partitioned by range of business_date (date) with space_id";
+    expect(await refused(sql`create temp table bad_probe (space_id uuid, business_date date) on commit drop`)).toContain(notDomain); // not partitioned
+    expect(await refused(sql`create temp table bad_probe (space_id uuid, created_on date) partition by range (created_on) on commit drop`)).toContain(notDomain); // another key column
+    expect(await refused(sql`create temp table bad_probe (space_id uuid, business_date timestamptz) partition by range (business_date) on commit drop`)).toContain(notDomain); // not a date
+    expect(await refused(sql`create temp table bad_probe (ref text, business_date date) partition by range (business_date) on commit drop`)).toContain(notDomain); // no space_id
   });
+
+  it("runs only for a role granted EXECUTE (db:migrate grants APP_DB_ROLE), with search_path pinned to pg_catalog, pg_temp", async () => {
+    await client.unsafe(`do $$ begin
+  begin create role recon_noexec_probe nologin nosuperuser nobypassrls; exception when duplicate_object or unique_violation then null; end;
+  execute format('grant usage on schema %I to recon_noexec_probe', current_schema());
+end $$`);
+    await client`revoke execute on function recon_ensure_month_partitions(regclass, date, int) from recon_noexec_probe`;
+    const call = () => db.transaction(async (tx) => {
+      await tx.execute(sql`set local role recon_noexec_probe`);
+      await ensureMonthPartitions(tx, partProbe, new Date("2029-01-01"), 1);
+    }).then(() => "ok", (e: unknown) => errno(e));
+    expect(await call()).toBe("42501"); // permission denied for function recon_ensure_month_partitions
+    process.env.APP_DB_ROLE = "recon_noexec_probe";
+    try {
+      await migrateJobs();
+    } finally {
+      delete process.env.APP_DB_ROLE;
+    }
+    expect(await call()).toBe("ok");
+    expect(await names()).toContain("part_probe_2029_01");
+    expect(await functionsOf(["recon_enable_space_rls", "recon_ensure_month_partitions"])).toEqual([
+      { proname: "recon_enable_space_rls", prosecdef: false, proconfig: ["search_path=pg_catalog, pg_temp"] },
+      { proname: "recon_ensure_month_partitions", prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"] },
+    ]);
+  }, 20_000);
 });
