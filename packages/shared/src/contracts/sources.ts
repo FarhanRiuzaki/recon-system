@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { SOURCE_SORTS } from "../paging";
 import {
-  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, REVIEW_COMMENT_MAX, SOURCE_CODE, SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
+  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_KINDS, SOURCE_NAME_MAX,
+  SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -69,7 +70,8 @@ const FileInboxInput = z.strictObject({
     z.strictObject({ kind: z.literal("stable_seconds"), seconds: z.number().int().min(1).max(86_400) }),
     z.strictObject({ kind: z.literal("marker_file") }),
   ]),
-  format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) }),
+  format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) })
+    .refine((f) => f.quote !== f.delimiter, { message: "The quote character can't be the delimiter", path: ["quote"] }),
 });
 
 /**
@@ -263,3 +265,61 @@ export const SourcePreviewDto = z.object({
   quarantine: z.array(PreviewQuarantineDto),
 });
 export type SourcePreviewDto = z.infer<typeof SourcePreviewDto>;
+
+/** GET …/sources/{sourceId}/files, /snapshots, /quarantine: newest first; `q` is not read. */
+export const IngestListQuery = ListQuery.omit({ q: true, sort: true });
+export type IngestListQuery = z.infer<typeof IngestListQuery>;
+
+/**
+ * A file the inbox picked up. `version` = its place among the ingested files of the same name (1 = first); `reason` =
+ * why it was rejected or failed. `rowsNew` = records it added; `rowsOk` − `rowsNew` were stored already.
+ */
+export const SourceFileDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  sha256: z.string(),
+  size: z.number().int(),
+  status: z.enum(SOURCE_FILE_STATUSES),
+  reason: z.string().nullable(),
+  version: z.number().int().nullable(),
+  versionOf: z.string().nullable(),
+  businessDate: z.string().nullable(),
+  rowsTotal: z.number().int(),
+  rowsOk: z.number().int(),
+  rowsNew: z.number().int(),
+  rowsQuarantined: z.number().int(),
+  receivedAt: z.string(),
+});
+export type SourceFileDto = z.infer<typeof SourceFileDto>;
+
+/** A snapshot of one business date: at most one active per date; `error` = why it failed. */
+export const SourceSnapshotDto = z.object({
+  id: z.string(),
+  businessDate: z.string(),
+  status: z.enum(SNAPSHOT_STATUSES),
+  rows: z.number().int(),
+  error: z.string().nullable(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+});
+export type SourceSnapshotDto = z.infer<typeof SourceSnapshotDto>;
+
+/** A quarantined line: where it came from, its raw text and a reason per column (`_row` when the whole line is at fault). */
+export const QuarantineRowDto = z.object({
+  id: z.string(),
+  origin: z.enum(["file", "pull", "snapshot"]),
+  originId: z.string(),
+  line: z.number().int(),
+  raw: z.string(),
+  reasons: z.record(z.string(), z.string()),
+  businessDate: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type QuarantineRowDto = z.infer<typeof QuarantineRowDto>;
+
+/** POST …/sources/{sourceId}/run: a snapshot source takes the business date to pull (required); others send `{}`. */
+export const RunSourceBody = z.strictObject({ businessDate: isoDate.optional() });
+export type RunSourceBody = z.infer<typeof RunSourceBody>;
+/** `queued` false: a run of the same source (and date) was already waiting, and this one joined it. */
+export const RunSourceDto = z.object({ queued: z.boolean() });
+export type RunSourceDto = z.infer<typeof RunSourceDto>;

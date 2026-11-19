@@ -11,6 +11,8 @@ import { log } from "./log";
 export const QUEUES = {
   ingestPull: "ingest.pull",
   ingestFile: "ingest.file",
+  ingestSnapshot: "ingest.snapshot",
+  maintenancePartitions: "maintenance.partitions",
   reconTick: "recon.tick",
   reconDaily: "recon.daily",
   reconHeavy: "recon.heavy",
@@ -20,7 +22,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 /** Jobs of one queue a worker process runs at once, so EOD runs and reruns don't starve the 2-minute ticks. */
 export const CONCURRENCY: Record<QueueName, number> = {
-  "ingest.pull": 4, "ingest.file": 2, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
+  "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
 };
 
 /**
@@ -28,9 +30,13 @@ export const CONCURRENCY: Record<QueueName, number> = {
  * heartbeatSeconds: a running handler refreshes its job every heartbeatSeconds / 2 (pg-boss's default refresh); a job
  * whose worker died is failed and retried once its heartbeat is that old, plus up to one supervise pass (60 s), instead
  * of waiting out expireInSeconds (pg-boss's default 900 s, still the bound on a handler that is alive but stuck).
+ * The ingest queues set expireInSeconds above their longest legitimate run (spike S2): a pull or a file is chunked and
+ * one source's step runs at a time (sourceLock); a snapshot of a whole position per date may take longer.
  */
 export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
-  "ingest.pull": { heartbeatSeconds: 30 }, "ingest.file": { heartbeatSeconds: 30 }, "recon.tick": { heartbeatSeconds: 30 },
+  "ingest.pull": { heartbeatSeconds: 30, expireInSeconds: 1800 }, "ingest.file": { heartbeatSeconds: 30, expireInSeconds: 1800 },
+  "ingest.snapshot": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "maintenance.partitions": { heartbeatSeconds: 30, expireInSeconds: 600 },
+  "recon.tick": { heartbeatSeconds: 30 },
   "recon.daily": { heartbeatSeconds: 30 }, "recon.heavy": { heartbeatSeconds: 30 }, "breaks.sla": { heartbeatSeconds: 30 },
 };
 
@@ -165,4 +171,15 @@ export async function closeJobs(): Promise<void> {
   await b?.stop({ graceful: false, close: false });
   await pool?.close();
   pool = undefined;
+}
+
+/** Whether `cron` is a schedule pg-boss accepts, evaluated in Asia/Jakarta (a source's snapshot schedule, at save). */
+export async function isCron(cron: string): Promise<boolean> {
+  const b = await boss();
+  try {
+    b.previewSchedule(cron, { tz: JOB_TZ, count: 1 });
+    return true;
+  } catch {
+    return false;
+  }
 }

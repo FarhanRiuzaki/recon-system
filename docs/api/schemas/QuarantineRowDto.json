@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QuarantineRowDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "origin": {
+      "type": "string",
+      "enum": [
+        "file",
+        "pull",
+        "snapshot"
+      ]
+    },
+    "originId": {
+      "type": "string"
+    },
+    "line": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "raw": {
+      "type": "string"
+    },
+    "reasons": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "businessDate": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "createdAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "origin",
+    "originId",
+    "line",
+    "raw",
+    "reasons",
+    "businessDate",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

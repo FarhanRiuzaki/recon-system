@@ -3,6 +3,7 @@ import { auditController } from "./audit";
 import { authController } from "./auth";
 import { dashboardController } from "./dashboard";
 import { healthController, type Pingable } from "./health";
+import { ingestController } from "./ingest";
 import { meController } from "./me";
 import { oauthController } from "./oauth";
 import { projectsController } from "./projects";
@@ -31,4 +32,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(dashboardController())
     .use(projectsController())
     .use(spacesController())
-    .use(sourcesController());
+    .use(sourcesController())
+    .use(ingestController());

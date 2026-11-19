@@ -14,10 +14,13 @@ import { config } from "../../kernel/config";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
+import { isCron } from "../../kernel/jobs";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
-import { type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, type Secret, specCelError, within } from "../ingest";
+import {
+  type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, specCelError, within,
+} from "../ingest";
 import { spaces, withSpace } from "../spaces";
 import { canStep, specHash } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
@@ -192,6 +195,9 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     if (!calendar) throw new ApiError("bad_request", `There is no calendar ${b.spec.calendar}. Pick one of the calendars set up for this install.`);
     const celError = specCelError(b.spec);
     if (celError) throw new ApiError("bad_request", `Check the expression at ${celError}`);
+    if (b.spec.input.kind === "db_snapshot" && !(await isCron(b.spec.input.schedule))) {
+      throw new ApiError("bad_request", "The snapshot schedule is not a cron expression (minute hour day month weekday, Asia/Jakarta).");
+    }
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v);
     const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
@@ -333,7 +339,10 @@ function notAContributor(ctx: Ctx, v: VersionRow): void {
   if (v.makerId === ctx.user.id || v.contributorIds.includes(ctx.user.id)) throw new ApiError("self_approval");
 }
 
-/** Publishes a version in review; the published one before it retires. */
+/**
+ * Publishes a version in review; the published one before it retires. The source becomes active again (a source paused
+ * because its columns changed is fixed by a new version, spec §7 step 4) and its pull is scheduled with the new spec.
+ */
 export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
@@ -344,6 +353,8 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
       .where(and(ofSource(s), eq(sourceVersions.status, "published"))).returning({ version: sourceVersions.version });
     const [row] = await tx.update(sourceVersions).set({ status: "published", checkerId: ctx.user.id, publishedAt: NOW, reviewComment: null, updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
+    if (s.status !== "active") await tx.update(sources).set({ status: "active", updatedAt: NOW }).where(eq(sources.id, s.id));
+    await scheduleSource({ spaceId, sourceId: s.id }, row.spec as SourceSpec);
     await recordActivity(tx, ctx, { action: "source.version_approve", target: target(s), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null } });
     return versionDto(row);
   });
@@ -393,4 +404,12 @@ export function unshareSource(ctx: Ctx, id: string, toSpaceId: string): Promise<
     if (!gone.length) throw notFound("share");
     await recordActivity(tx, ctx, { action: "source.unshare", target: target(s), before: shareLog(to) });
   });
+}
+
+/**
+ * Pauses source `sourceId` of `spaceId` (the ingest pipeline, when the source's columns no longer fit its spec): pulls
+ * write nothing until a new version is approved. `tx` is the caller's withSpace transaction.
+ */
+export async function pauseSource(tx: InTx, spaceId: string, sourceId: string): Promise<void> {
+  await tx.update(sources).set({ status: "paused", updatedAt: NOW }).where(and(eq(sources.spaceId, spaceId), eq(sources.id, sourceId)));
 }

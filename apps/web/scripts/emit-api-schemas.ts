@@ -49,6 +49,9 @@ const COMPOSED = {
   SpaceCandidatePage: pageOf(spaces.SpaceCandidateDto),
   UserSpacePage: pageOf(spaces.UserSpaceDto),
   SourcePage: pageOf(sources.SourceRowDto),
+  SourceFilePage: pageOf(sources.SourceFileDto),
+  SourceSnapshotPage: pageOf(sources.SourceSnapshotDto),
+  QuarantinePage: pageOf(sources.QuarantineRowDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };
@@ -105,6 +108,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.version_reject": ["source", "–", "`{ version, comment }`"],
   "source.share": ["source", "–", "`{ space: { id, code, name } }`"],
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
+  "source.run": ["source", "–", "`{ businessDate }` (the snapshot date pulled again, or null for a pull or scan)"],
 };
 
 export const README = path.join(path.dirname(SCHEMA_DIR), "README.md");

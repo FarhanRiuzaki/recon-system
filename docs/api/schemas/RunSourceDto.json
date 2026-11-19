@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunSourceDto",
+  "type": "object",
+  "properties": {
+    "queued": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "queued"
+  ],
+  "additionalProperties": false
+}

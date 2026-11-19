@@ -5,7 +5,7 @@ export const ERROR_CODES = [
   "unauthenticated", "forbidden", "csrf", "not_found", "bad_request", "duplicate", "rate_limited",
   "invalid_credentials", "account_inactive", "invalid_code", "superadmin_locked", "last_superadmin",
   "self_action", "role_in_use", "ldap_password", "already_enabled", "only_sign_in_method", "last_space_admin", "space_archived",
-  "self_approval", "invalid_state", "internal",
+  "self_approval", "invalid_state", "day_closed", "internal",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -14,7 +14,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   rate_limited: 429, invalid_credentials: 401, account_inactive: 403, invalid_code: 400,
   superadmin_locked: 409, last_superadmin: 409, self_action: 409, role_in_use: 409, ldap_password: 409,
   already_enabled: 409, only_sign_in_method: 409, last_space_admin: 409, space_archived: 409,
-  self_approval: 409, invalid_state: 409, internal: 500,
+  self_approval: 409, invalid_state: 409, day_closed: 409, internal: 500,
 };
 
 export const ApiErrorBody = z.object({ error: z.object({ code: z.enum(ERROR_CODES), message: z.string() }) });

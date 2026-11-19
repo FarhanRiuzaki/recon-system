@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourceSnapshotDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "loading",
+        "active",
+        "failed",
+        "superseded"
+      ]
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "startedAt": {
+      "type": "string"
+    },
+    "finishedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "businessDate",
+    "status",
+    "rows",
+    "error",
+    "startedAt",
+    "finishedAt"
+  ],
+  "additionalProperties": false
+}

@@ -62,7 +62,10 @@ const JobsFields = Fields.pick({ DATABASE_URL: true, JOBS_POOL_MAX: true });
 /** What the worker process reads (src/worker.ts, kernel/worker-db.ts); it needs none of the API's secrets. */
 const WorkerFields = Fields.pick({
   DATABASE_URL: true, JOBS_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
+  DATA_ENCRYPTION_KEY: true, INBOX_ROOTS: true,
 });
+/** The key of encryptSecret/decryptSecret (kernel/crypto.ts), read alone so the worker decrypts without the API's secrets. */
+const KeyFields = Fields.pick({ DATA_ENCRYPTION_KEY: true });
 
 export type Config = z.output<typeof Schema>;
 
@@ -142,6 +145,10 @@ function loadPicked<S extends z.ZodType>(fields: S, env: Record<string, string |
   if (r.success) return r.data;
   throw invalid(issues(r.error));
 }
+
+let key: string | undefined;
+/** DATA_ENCRYPTION_KEY from process.env, validated, read once. */
+export const encryptionKey = (): string => (key ??= loadPicked(KeyFields, process.env).DATA_ENCRYPTION_KEY);
 
 let cached: Config | undefined;
 /** `loadConfig(process.env)`, read once. */

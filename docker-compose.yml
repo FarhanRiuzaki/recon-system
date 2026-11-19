@@ -85,7 +85,11 @@ services:
     stop_grace_period: 30s
     environment:
       DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
-      # Optional (apps/api/.env.example); empty = the default.
+      # Decrypts a source's stored connection for its pulls (kernel/crypto.ts).
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set in .env.compose}
+      # Optional (apps/api/.env.example); empty = the default. INBOX_ROOTS: the file inbox folders, mounted into this
+      # service as volumes by the install.
+      INBOX_ROOTS: ${INBOX_ROOTS:-}
       WORKER_DB_POOL_MAX: ${WORKER_DB_POOL_MAX:-}
       JOB_STATEMENT_TIMEOUT_MS: ${JOB_STATEMENT_TIMEOUT_MS:-}
       JOBS_POOL_MAX: ${JOBS_POOL_MAX:-}

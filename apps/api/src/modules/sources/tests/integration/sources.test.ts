@@ -13,7 +13,8 @@ import { log } from "../../../../kernel/log";
 import { activity } from "../../../audit";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { calendars, sourceConnections } from "../../schema";
+import { boss, QUEUES } from "../../../../kernel/jobs";
+import { calendars, sourceConnections, sources } from "../../schema";
 import { ksei } from "../spec";
 
 const PASSWORD = "Pa55-word-nobody-guesses";
@@ -290,6 +291,31 @@ describe("versions: draft, submit, approve, reject", () => {
     const db = { kind: "db_watermark", table: "trx", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 };
     expect((await patch(t.mk, s.id, v.id, { ...ksei(), input: db })).status).toBe(400);
     expect((await patch(t.mk, s.id, v.id, { ...ksei(), calendar: "nowhere" })).status).toBe(400);
+  });
+
+  it("a quote character equal to the delimiter, or a snapshot schedule that is no cron, can't be saved (400)", async () => {
+    const s = await made();
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    const k = ksei();
+    expect((await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } })).status).toBe(400);
+    expect((await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: null } } })).status).toBe(200);
+    const snap = await made({ code: "medallion", name: "Medallion", kind: "db_snapshot" });
+    const sv = await json<SourceVersionDto>(draft(t.mk, snap.id));
+    const input = (schedule: string) => ({ ...k, input: { kind: "db_snapshot", query: "select :business_date as d", schedule } });
+    const bad = await patch(t.mk, snap.id, sv.id, input("every morning"));
+    expect([bad.status, await code(bad)]).toEqual([400, "bad_request"]);
+    expect((await patch(t.mk, snap.id, sv.id, input("0 6 * * 1-5"))).status).toBe(200);
+  });
+
+  it("approving a version schedules the source's runs and starts a paused source again", async () => {
+    const { s } = await published();
+    expect((await (await boss()).getSchedule(QUEUES.ingestPull, s.id))?.cron).toBe("* * * * *");
+    await db.update(sources).set({ status: "paused" }).where(eq(sources.id, s.id));
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    expect((await patch(t.mk, s.id, v.id, { ...ksei(), input: { ...ksei().input, pattern: "act2*.txt" } })).status).toBe(200);
+    expect((await step(t.mk, s.id, v.id, "submit")).status).toBe(200);
+    expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
+    expect((await json<SourceDto>(detail(t.op, s.id))).status).toBe("active");
   });
 
   it("reject needs a comment (400), sends the version back to draft with it; a new draft starts from the published spec", async () => {

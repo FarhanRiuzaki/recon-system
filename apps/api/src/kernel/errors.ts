@@ -24,6 +24,7 @@ const COPY: Partial<Record<ErrorCode, string>> = {
   space_archived: "This space is archived, so its data can't change. Ask a space admin to reactivate it.",
   self_approval: "You made this version, so someone else has to approve or reject it.",
   invalid_state: "This record changed since you opened it. Reload the page and try again.",
+  day_closed: "This business day is closed. Pulling it again needs a rerun request.",
 };
 
 /**

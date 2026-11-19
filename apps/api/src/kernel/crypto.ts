@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { config } from "./config";
+import { encryptionKey } from "./config";
 
-const key = () => Buffer.from(config().DATA_ENCRYPTION_KEY, "base64");
+const key = () => Buffer.from(encryptionKey(), "base64");
 const b64u = (b: Buffer) => b.toString("base64url");
 
 /** 32 random bytes, base64url: session, challenge, reset and OAuth state tokens. */

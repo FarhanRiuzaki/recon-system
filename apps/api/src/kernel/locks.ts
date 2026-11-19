@@ -28,7 +28,7 @@ export async function xactLock(tx: Tx, name: LockName): Promise<void> {
  * Two-key advisory locks (`pg_advisory_xact_lock(int, int)`): first key = the kind of object, second = a hash of its
  * id. PostgreSQL keeps the two-key space apart from the one-bigint space of LOCKS, so neither can collide with the other.
  */
-const LOCK_KINDS = { config: 1 } as const;
+const LOCK_KINDS = { config: 1, source: 2 } as const;
 
 /**
  * Takes the lock of recon config `configId` until `tx` ends (spec §9 run tick, step 1): one config never runs twice at
@@ -36,4 +36,12 @@ const LOCK_KINDS = { config: 1 } as const;
  */
 export async function configLock(tx: Tx, configId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_KINDS.config}::int, hashtext(${configId}))`);
+}
+
+/**
+ * Takes the lock of source `sourceId` until `tx` ends: its ingest steps (a pull page, a file, a snapshot switch) run one
+ * after the other, whichever queue they come from. Same hashing as configLock, in a kind of its own.
+ */
+export async function sourceLock(tx: Tx, sourceId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_KINDS.source}::int, hashtext(${sourceId}))`);
 }

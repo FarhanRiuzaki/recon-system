@@ -46,7 +46,7 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   `bad_request` 400, `duplicate` 409, `rate_limited` 429, `invalid_credentials` 401, `account_inactive` 403,
   `invalid_code` 400, `superadmin_locked` 409, `last_superadmin` 409, `self_action` 409, `role_in_use` 409,
   `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `last_space_admin` 409, `space_archived` 409,
-  `self_approval` 409, `invalid_state` 409, `internal` 500.
+  `self_approval` 409, `invalid_state` 409, `day_closed` 409, `internal` 500.
   One code is sent with another status on purpose: `invalid_credentials` is 400 when a signed-in user's current
   password is wrong (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser
   doesn't take it for an ended session.
@@ -273,6 +273,7 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `source.version_reject` | Source version rejected | source | – | `{ version, comment }` |
 | `source.share` | Source shared | source | – | `{ space: { id, code, name } }` |
 | `source.unshare` | Source share removed | source | `{ space: { id, code, name } }` | – |
+| `source.run` | Source pull started | source | – | `{ businessDate }` (the snapshot date pulled again, or null for a pull or scan) |
 <!-- actions:end -->
 
 ### Backend notes
@@ -359,6 +360,10 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/spaces/{spaceId}/sources/{sourceId}/versions/{versionId}/reject` | `config_checker` in the space, not a contributor | [RejectSourceVersionBody](schemas/RejectSourceVersionBody.json) (comment required) | [SourceVersionDto](schemas/SourceVersionDto.json) (back to draft) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
 | PUT | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none (already shared = no entry) | [SourceShareDto](schemas/SourceShareDto.json) | `not_found` (source or space), `bad_request` (its own space), `space_archived` |
 | DELETE | `/api/spaces/{spaceId}/sources/{sourceId}/shares/{toSpaceId}` | `space_admin` in the space | none | [OkDto](schemas/OkDto.json) | `not_found` (source, space or not shared), `bad_request` (its own space), `space_archived` |
+| GET | `/api/spaces/{spaceId}/sources/{sourceId}/files` | any role in the space | [IngestListQuery](schemas/IngestListQuery.json) | [SourceFilePage](schemas/SourceFilePage.json) (files the inbox picked up, newest first: ingested, rejected as the same content again, or failed with nothing written; also of a source shared to the space) | `not_found` |
+| GET | `/api/spaces/{spaceId}/sources/{sourceId}/snapshots` | any role in the space | [IngestListQuery](schemas/IngestListQuery.json) | [SourceSnapshotPage](schemas/SourceSnapshotPage.json) (per business date, newest first: at most one active; replaced ones superseded; also of a source shared to the space) | `not_found` |
+| GET | `/api/spaces/{spaceId}/sources/{sourceId}/quarantine` | any role in the space | [IngestListQuery](schemas/IngestListQuery.json) | [QuarantinePage](schemas/QuarantinePage.json) (lines that became no record, with a reason per column, newest first; the space's own sources only) | `not_found` (also for a source only shared to the space) |
+| POST | `/api/spaces/{spaceId}/sources/{sourceId}/run` | `source_admin` in the space | [RunSourceBody](schemas/RunSourceBody.json) (`{}` for a pull or an inbox scan; a snapshot source: the `businessDate` to pull again) | [RunSourceDto](schemas/RunSourceDto.json) (`queued` false: a run already waiting took it in, no entry) | `not_found`, `bad_request` (no published version, a date missing or not wanted), `invalid_state` (paused), `day_closed` (that day is closed: a rerun request, later release), `space_archived` |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
 | POST | `/api/roles` | `role.create` | [CreateRoleBody](schemas/CreateRoleBody.json) | 201 [RoleDto](schemas/RoleDto.json) | `forbidden` (escalation), `duplicate` |
 | GET | `/api/roles/{id}` | `role.view` | none | [RoleDetailDto](schemas/RoleDetailDto.json) (the role plus the whole catalog, for its matrix) | `not_found` |
