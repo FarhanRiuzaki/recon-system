@@ -116,28 +116,40 @@ Konsekuensi ke desain:
 
 ## S7: driver DB sumber di Bun
 
-Skrip: `apps/api/scripts/spikes/s7-drivers.ts` (`bun scripts/spikes/s7-drivers.ts [--only pg|mysql|mssql|oracle]`). Docker tidak
-dipakai (registry tidak terjangkau; keputusan pemilik: lokal saja). Hanya PostgreSQL yang terpasang di mesin ini, jadi hanya
-PostgreSQL yang diuji penuh. Bun 1.4.4, macOS.
+Skrip: `apps/api/scripts/spikes/s7-drivers.ts` (`bun scripts/spikes/s7-drivers.ts [--only pg|mysql|mssql|oracle]`; exit non-zero
+bila ada assertion gagal, `S7_FORCE_FAIL=1` memaksa satu gagal). Docker tidak dipakai (registry tidak terjangkau; keputusan
+pemilik: lokal saja). Hanya PostgreSQL yang terpasang di mesin ini, jadi hanya PostgreSQL yang diuji penuh. Bun 1.4.4, macOS.
 
 | Engine | Driver + versi | Runtime | Yang diverifikasi | Verdict |
 |---|---|---|---|---|
-| PostgreSQL | `Bun.SQL` bawaan | bun 1.4.4 | 1.000.000 baris sisi A (`synthPair`) ke `src_txn` berkolom watermark `updated_at`; tarik per chunk 10.000 (`updated_at > $wm order by updated_at limit 10000`): 1.000.000 baris, 2,15 s, pertumbuhan RSS 0 MB (puncak diambil per chunk, ambang ≤ 100 MB); `pg_sleep(5)` dengan `statement_timeout` 1 s error `ERR_POSTGRES_SERVER_ERROR` setelah 1,0 s. TLS tidak dites (klaster lokal tanpa TLS). | bun |
-| MySQL | `Bun.SQL` (adapter mysql) dan `mysql2` 3.24.6 | bun 1.4.4 | Impor dan konstruksi ok. Koneksi ke port tertutup error cepat: `MySQLError/ERR_MYSQL_CONNECTION_REFUSED` (Bun.SQL), `AggregateError/ECONNREFUSED` (mysql2). | partial, tanpa server |
-| SQL Server | `mssql` 12.7.15 | bun 1.4.4 | Impor dan konstruksi pool ok (`encrypt: true, trustServerCertificate: true`). Port tertutup: `ConnectionError/ESOCKET`. | partial, tanpa server |
-| Oracle | `oracledb` 26.0.0, mode Thin (tanpa `initOracleClient`) | bun 1.4.4 | Impor ok, `oracledb.thin === true`. Port tertutup: `NJS-503`. | partial, tanpa server |
+| PostgreSQL | `Bun.SQL` bawaan | bun 1.4.4 | 1.000.000 baris sisi A (`synthPair`) ke `src_txn` (900.000 baris berlebih pada timestamp kembar, 10 baris per ms), indeks `(updated_at, id)`. Keyset paging `(updated_at, id) > ($wm, $id)` per 10.000: count tepat 1.000.000 dalam 316 ms. RSS diukur di proses baru, baseline tepat sebelum tarik: chunked tumbuh 34 MB (ambang <= 100 MB), kontrol load-all (select semua sekaligus) 486 MB. `pg_sleep(5)` dengan `statement_timeout` 1 s error `ERR_POSTGRES_SERVER_ERROR` setelah 1002 ms (assertion < 1500). TLS tidak dites (klaster lokal tanpa TLS). | bun |
+| MySQL | `Bun.SQL` (adapter mysql) dan `mysql2` 3.24.6 | bun 1.4.4 | Impor, konstruksi pool (`mysql2.createPool`; `new SQL`), percobaan koneksi: port tertutup `ERR_MYSQL_CONNECTION_REFUSED` / `ECONNREFUSED`; alamat blackhole 10.255.255.1 error `ERR_MYSQL_CONNECTION_TIMEOUT` / `ETIMEDOUT` setelah 2002 ms. | partial, tanpa server |
+| SQL Server | `mssql` 12.7.15 | bun 1.4.4 | `ConnectionPool` dikonstruksi (`encrypt: true, trustServerCertificate: true`). Port tertutup `ESOCKET`; blackhole `ETIMEOUT` setelah 2002 ms. | partial, tanpa server |
+| Oracle | `oracledb` 26.0.0, mode Thin (tanpa `initOracleClient`) | bun 1.4.4 | `createPool` (poolMin 0) dikonstruksi, `oracledb.thin === true`. Port tertutup `NJS-503`; blackhole `NJS-510` setelah 2004 ms. | partial, tanpa server |
+
+Opsi yang membatasi waktu connect (diset 2 s; semua error di blackhole dalam 2002 sampai 2004 ms, batas assertion 3 s, batas
+keras 5 s):
+
+| Driver | Opsi | Satuan |
+|---|---|---|
+| Bun.SQL | `connectionTimeout` | detik |
+| mysql2 | `connectTimeout` | ms |
+| mssql | `connectionTimeout` | ms |
+| oracledb | `transportConnectTimeout` | detik |
 
 Batas hasil:
-- `Bun.SQL` tidak punya opsi timeout query; timeout PostgreSQL di atas memakai `statement_timeout` sisi server. Untuk MySQL,
-  MSSQL, Oracle belum diuji timeout query.
-- Port tertutup menolak koneksi seketika (2 sampai 75 ms), jadi `connectTimeout` 2 s dikonfigurasi tetapi tidak benar-benar
-  terpicu (host yang menjatuhkan paket tidak diuji). Tidak ada hang dan tidak ada crash proses.
-- Untuk MySQL, MSSQL, Oracle tidak ada klaim stream, memori, TLS, jumlah baris, atau timeout query. Fallback Node 24 tidak
-  dijalankan karena uji (a) dan (b) lulus di Bun.
-- Pengukuran RSS 0 MB berarti puncak yang disampel per chunk tidak melampaui RSS awal setelah GC; bukan jaminan untuk tipe
-  baris lain.
+- Pull PostgreSQL adalah keyset paging `(updated_at, id)`, bukan stream kursor. Pada putaran pertama pull salah hitung
+  1.000.004 baris: `order by id` memakai alias keluaran `id::text` (urutan teks), bukan kolom bigint. Diperbaiki dengan
+  `order by updated_at, src_txn.id`; Plan 2 harus mengurutkan memakai kolom asli, bukan alias.
+- `Bun.SQL` tidak punya opsi timeout query; timeout PostgreSQL memakai `statement_timeout` sisi server. Timeout query
+  MySQL, MSSQL, Oracle belum diuji.
+- Blackhole 10.255.255.1 benar-benar menjatuhkan paket di jaringan mesin ini (error baru muncul pada 2 s), jadi mekanisme
+  timeout connect terbukti per driver. Jaringan bank yang menjawab "no route" tidak diuji.
+- Untuk MySQL, MSSQL, Oracle tidak ada klaim paging, memori, TLS, jumlah baris, atau timeout query. Fallback Node 24 tidak
+  dijalankan karena semua uji koneksi lulus di Bun.
+- `new SQL(...)` (Bun.SQL) membuat pool secara malas; konstruksi baru terbukti sebatas objek, koneksi pertama saat query.
 
 Oracle ada di jalur kritis KSEI (spec §8 mode snapshot; Medallion memakai Oracle) dan tetap menjadi risiko terbuka sampai
 diuji terhadap server Oracle nyata (DB dev bank, atau Docker bila jaringannya sudah bisa). Ini gerbang untuk Plan 2 / backlog
-REC-F2. Hal yang harus diuji di sana: login Thin ke versi Oracle bank (termasuk native network encryption/TLS), stream 1 juta
+REC-F2. Hal yang harus diuji di sana: login Thin ke versi Oracle bank (termasuk native network encryption/TLS), tarik 1 juta
 baris, dan timeout query (`callTimeout`).
