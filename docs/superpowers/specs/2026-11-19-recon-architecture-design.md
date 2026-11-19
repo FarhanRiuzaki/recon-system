@@ -295,6 +295,9 @@ config
 - **Operator tertutup**, masing-masing tahu fragmen SQL-nya: `eq`, `eq_normalized`, `amount_abs_tol`,
   `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity` (pg_trgm, hanya di dalam window sempit),
   `eq_sum` (pass 1:N/N:1: jumlah anggota grup sama dengan amount sisi tunggal, dalam toleransi).
+- **Dua sisi per config di fase 1 (core-recon)**: setiap pass membandingkan sisi A dengan sisi B; recon tiga sisi atau lebih
+  (mis. switching vs core vs settlement) ditunda ke fase 2. `match_group` sudah menampung N sisi, jadi tidak ada migrasi
+  data saat itu masuk; graf Explain cukup menambah satu lajur.
 - **N:1 / 1:N** = group-by kunci lalu bandingkan agregat (O(n)). Subset-sum ditunda (NP-complete; laporan riset).
 - **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*. Sisanya diatur per pass lewat `on_ambiguous`
   = `break` | `suggest` (core-recon): default `break` untuk pass yang hanya mencocokkan kunci tanpa measure (label
