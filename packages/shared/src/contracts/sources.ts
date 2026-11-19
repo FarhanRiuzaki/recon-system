@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS } from "../paging";
 import {
-  DB_ENGINES, FIELD_TYPES, FILE_ENCODINGS, REVIEW_COMMENT_MAX, SOURCE_CODE, SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
+  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, REVIEW_COMMENT_MAX, SOURCE_CODE, SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -141,13 +141,39 @@ export type SetConnectionBody = z.infer<typeof SetConnectionBody>;
 export const UpdateSourceVersionBody = z.strictObject({ spec: SourceSpec });
 export type UpdateSourceVersionBody = z.infer<typeof UpdateSourceVersionBody>;
 
-/** POST …/versions/{versionId}/preview: a text sample of the source's file (up to 64 KB, the body limit) and its name, for a business date taken from the name. */
-export const PreviewSourceBody = z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional() });
+const realDate = (d: string) => { const t = Date.parse(`${d}T00:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().startsWith(d); };
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "Not a real date");
+
+/**
+ * POST …/versions/{versionId}/preview. A file source: a text sample of its file (up to 64 KB, the body limit) and its
+ * name, for a business date taken from the name. A database source: nothing, or the business date a snapshot query
+ * takes (default: today in Asia/Jakarta); up to 200 rows are pulled through the stored connection.
+ */
+export const PreviewSourceBody = z.union([
+  z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional() }),
+  z.strictObject({ businessDate: isoDate.optional() }),
+]);
 export type PreviewSourceBody = z.infer<typeof PreviewSourceBody>;
 
 /** POST …/versions/{versionId}/reject: why, for the maker. */
 export const RejectSourceVersionBody = z.strictObject({ comment: z.string().trim().min(1).max(REVIEW_COMMENT_MAX) });
 export type RejectSourceVersionBody = z.infer<typeof RejectSourceVersionBody>;
+
+/** GET …/connection/columns: the table to read, `table` or `schema.table` as the source's catalog spells it. */
+export const SourceColumnsQuery = z.object({ table: z.string().regex(DB_TABLE_NAME) });
+export type SourceColumnsQuery = z.infer<typeof SourceColumnsQuery>;
+
+/** A column of a source table: its native type as the engine names it; `nullable` null when the engine doesn't say. */
+export const SourceColumnDto = z.object({ name: z.string(), type: z.string(), nullable: z.boolean().nullable() });
+export const SourceColumnsDto = z.object({ table: z.string(), columns: z.array(SourceColumnDto) });
+export type SourceColumnsDto = z.infer<typeof SourceColumnsDto>;
+
+/**
+ * POST …/connection/test: whether the stored connection (or a file source's folder) works now. `message` is one fixed
+ * sentence per outcome; `code` is the driver's error code when it failed (ORA-01017, 28P01 …), never its text.
+ */
+export const ConnectionTestDto = z.object({ ok: z.boolean(), message: z.string(), code: z.string().nullable() });
+export type ConnectionTestDto = z.infer<typeof ConnectionTestDto>;
 
 /** GET /api/spaces/{spaceId}/sources: `q` matches the code or the name. */
 export const SourceListQuery = ListQuery.extend({ sort: sortParam(SOURCE_SORTS) });

@@ -433,6 +433,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     const dv = await json<SourceVersionDto>(draft(t.mk, db_.id));
     const spec = { ...ksei(), input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } };
     expect((await patch(t.mk, db_.id, dv.id, spec)).status).toBe(200);
-    expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("Preview reads a sample of a file");
+    expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("A database source previews rows pulled through its connection");
+    expect(await msg(await preview(t.mk, s.id, v.id, {}))).toContain("Paste a sample of the file");
   });
 });

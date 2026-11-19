@@ -242,6 +242,7 @@ type Allow = {
 const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/dashboard": "summary numbers; its recent list is fixed at 5",
   "GET /v1/me": "the signed-in user",
+  "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };
 const ONE_RECORD = /\/:\w+$/;
 /**
@@ -256,7 +257,8 @@ const NO_ACTIVITY: Record<string, string> = {
   "POST /v1/me/reauth": "proves the user again on this session (stamps reauth_at); an auth step, and the sign-in log has no event for it",
   "POST /v1/me/views": "saves the caller's own named list view: a viewer preference like the prefs cookie, seen by no one else",
   "DELETE /v1/me/views/:id": "deletes the caller's own saved list view: a viewer preference, seen by no one else",
-  "POST /v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview": "a read sent as POST for its body (a text sample); parses it and answers, stores nothing",
+  "POST /v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview": "a read sent as POST for its body (a text sample, or a pull from the source database); answers, stores nothing",
+  "POST /v1/spaces/:spaceId/sources/:sourceId/connection/test": "connects to the source database (or reads the inbox folder) and answers whether it works; changes no record",
 };
 /** The sign-in controllers, by file: they answer before a session exists. A route elsewhere, even under /v1/auth, follows every rule. */
 const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controller.ts"];

@@ -5,18 +5,19 @@
 // pool connects as. A change locks the source row first, so changes to one source run one after the other.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceConnectionDto, SourceDto, SourceListQuery, SourceRowDto, SourceShareDto,
-  SourcePreviewDto, SourceSpec, SourceVersionDto, UpdateSourceVersionBody,
+  ConnectionTestDto, CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto, SourceDto, SourceListQuery,
+  SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDto, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
-import type { SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
+import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
-import { encryptSecret } from "../../kernel/crypto";
+import { config } from "../../kernel/config";
+import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
-import { previewSample, specCelError } from "../ingest";
+import { type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, type Secret, specCelError, within } from "../ingest";
 import { spaces, withSpace } from "../spaces";
 import { canStep, specHash } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
@@ -201,20 +202,114 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
 }
 
 /**
- * What a text sample of a file source's file gives under this version's spec: the rows that would enter the core record and
- * the lines that would be quarantined, with their reasons. Reads only; a version in any state with a spec.
+ * A connector call someone waits on (connection test, columns, a database preview) finishes within this many seconds,
+ * connect included: the web's backend client gives up after 10 s (apps/web/src/lib/server/backend.ts), so a slower
+ * answer would reach the user as a bare 500.
  */
-export function previewVersion(ctx: Ctx, id: string, versionId: string, b: PreviewSourceBody): Promise<SourcePreviewDto> {
-  return inSpace(ctx, async (tx, spaceId) => {
+export const INTERACTIVE_SECONDS = 8;
+/** Rows a database preview pulls at most. */
+export const PREVIEW_PULL_ROWS = 200;
+
+type StoredConnection = { engine: string; options: unknown; secretEnc: string };
+
+/** The source's stored connection with its credential (only ever decrypted into a connector); null when none is set. */
+async function storedConnection(tx: InTx, s: SourceRow): Promise<StoredConnection | null> {
+  const [c] = await tx.select({ engine: sourceConnections.engine, options: sourceConnections.options, secretEnc: sourceConnections.secretEnc })
+    .from(sourceConnections).where(and(eq(sourceConnections.spaceId, s.spaceId), eq(sourceConnections.sourceId, s.id)));
+  return c ?? null;
+}
+const noConnection = () => new ApiError("bad_request", "This source has no connection yet. Set it first.");
+
+/** A connector over the stored connection, with the interactive timeouts; called after the transaction that read it ended. */
+function interactiveConnector(c: StoredConnection): Connector {
+  const o = c.options as { tls: boolean; connectTimeoutSeconds: number };
+  return connectorFor(c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, {
+    tls: o.tls, connectTimeoutSeconds: Math.min(o.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000,
+  });
+}
+/** `fn` over the stored connection; a connector failure is 400 with its fixed sentence. */
+async function overConnection<T>(c: StoredConnection, fn: (x: Connector) => Promise<T>): Promise<T> {
+  try {
+    return await within(interactiveConnector(c), INTERACTIVE_SECONDS, fn);
+  } catch (e) {
+    throw e instanceof ConnectorError ? new ApiError("bad_request", e.message) : e;
+  }
+}
+
+/** The spec being worked on (the open draft or version in review), else the published one, else null. */
+async function workingSpec(tx: InTx, s: SourceRow): Promise<SourceSpec | null> {
+  const vs = await tx.select({ status: sourceVersions.status, spec: sourceVersions.spec }).from(sourceVersions)
+    .where(and(ofSource(s), inArray(sourceVersions.status, ["draft", "in_review", "published"])));
+  return ((vs.find((v) => v.status !== "published") ?? vs[0])?.spec as SourceSpec | null | undefined) ?? null;
+}
+
+/**
+ * POST …/connection/test: a database source connects with its stored credential and runs SELECT 1; a file inbox source
+ * reads its folder (from the spec being worked on) inside INBOX_ROOTS and counts the files its pattern matches. A
+ * failure answers ok false with one fixed sentence and the driver's code, never its text. Changes nothing.
+ */
+export async function testConnection(ctx: Ctx, id: string): Promise<ConnectionTestDto> {
+  const got = await inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    return s.kind === "file_inbox" ? { spec: await workingSpec(tx, s) } : { conn: await storedConnection(tx, s) };
+  });
+  if ("spec" in got) {
+    const input = got.spec?.input;
+    if (input?.kind !== "file_inbox") throw new ApiError("bad_request", "This source has no folder yet. Save it in a draft first.");
+    return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
+  }
+  if (!got.conn) throw noConnection();
+  try {
+    await within(interactiveConnector(got.conn), INTERACTIVE_SECONDS, (c) => c.test());
+    return { ok: true, message: "Connected.", code: null };
+  } catch (e) {
+    if (e instanceof ConnectorError) return { ok: false, message: e.message, code: e.code };
+    throw e;
+  }
+}
+
+/** GET …/connection/columns: the columns of `table` in the source database's catalog (400 when it has no such table). */
+export async function sourceColumns(ctx: Ctx, id: string, table: string): Promise<SourceColumnsDto> {
+  const conn = await inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    if (s.kind === "file_inbox") throw new ApiError("bad_request", "A file inbox source has no tables.");
+    return storedConnection(tx, s);
+  });
+  if (!conn) throw noConnection();
+  return { table, columns: await overConnection(conn, (c) => c.introspect({ table })) };
+}
+
+/** Today in Asia/Jakarta as yyyy-mm-dd: a snapshot preview's business date when the body names none. */
+const todayJakarta = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+
+/**
+ * What a sample gives under this version's spec: the rows that would enter the core record and the lines that would be
+ * quarantined, with their reasons. A file source: the text sample in the body. A database source: up to
+ * PREVIEW_PULL_ROWS rows pulled through the stored connection (watermark predicate left out; a snapshot query for the
+ * body's business date). Reads only; a version in any state with a spec.
+ */
+export async function previewVersion(ctx: Ctx, id: string, versionId: string, b: PreviewSourceBody): Promise<SourcePreviewDto> {
+  const { spec, cal, conn } = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     const spec = v.spec as SourceSpec | null;
     if (spec === null) throw new ApiError("bad_request", "This version has no fields and mapping yet. Save them, then preview.");
-    if (spec.input.kind !== "file_inbox") throw new ApiError("bad_request", "Preview reads a sample of a file. Database sources preview from a pulled sample, which isn't available yet.");
     const [cal] = await tx.select({ weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars).where(eq(calendars.code, spec.calendar));
     if (!cal) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
-    return previewSample(spec, b.sample, cal, b.fileName);
+    return { spec, cal, conn: spec.input.kind === "file_inbox" ? null : await storedConnection(tx, s) };
   });
+  const input = spec.input;
+  if (input.kind === "file_inbox") {
+    if (!("sample" in b)) throw new ApiError("bad_request", "Paste a sample of the file to preview it.");
+    return previewSample(spec, b.sample, cal, b.fileName);
+  }
+  if ("sample" in b) throw new ApiError("bad_request", "A database source previews rows pulled through its connection: send no sample.");
+  if (!conn) throw noConnection();
+  const columns = spec.fields.map((f) => f.name);
+  const rows = await overConnection(conn, (c) => input.kind === "db_snapshot"
+    ? c.sample({ query: input.query, businessDate: b.businessDate ?? todayJakarta() }, columns, PREVIEW_PULL_ROWS)
+    : c.sample(input.table !== undefined ? { table: input.table } : { query: input.query! }, columns, PREVIEW_PULL_ROWS));
+  return previewRows(spec, rows, cal);
 }
 
 /** Sends a draft with a spec to review; the caller becomes a contributor. */

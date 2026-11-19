@@ -34,6 +34,14 @@ Temuan review Plan 1 yang sengaja tidak dikerjakan di Plan 1 (sumber: review per
 | Plan 3/4 | `expireInSeconds` per antrean untuk `recon.daily`/`recon.heavy` (default 900 s). Maintenance pg-boss di bawah `statement_timeout` 5 s saat volume besar. Engine: *mutual unique best* wajib (S1 menemukan 1 pasangan salah tanpa itu) dan run harian diproses per chunk. Handler tidak boleh memblok event loop > heartbeat 30 s. |
 | Pemilik / IT risk | REC-Q11: Admin bawaan (instalasi baru) punya `space.manage` → bisa memasukkan dirinya ke space mana pun (tercatat). Revoke rbac tidak mengambil lock `spaceAdmins` (race kecil yang sudah ada sebelumnya). |
 
+## Bawaan dari Plan 2 Task 4 (konektor DB)
+
+| Ke | Item |
+|---|---|
+| Go-live KSEI (REC-F2) | **Oracle tetap gerbang go-live**: konektor `oracledb` 26.0.0 Thin hanya diuji unit (SQL per dialek); `apps/api/src/modules/ingest/tests/integration/engines.test.ts` harus lulus dengan `TEST_ORACLE_URL` ke server Oracle versi bank (login Thin, native network encryption/TLS `tcps://`, tarik 1 juta baris, `callTimeout`, kode error timeout/TLS yang sebenarnya). |
+| Sebelum source MySQL / SQL Server pertama | Sama untuk `TEST_MYSQL_URL` / `TEST_MSSQL_URL`: belum pernah jalan ke server nyata (S7 hanya port tertutup + blackhole). SQL Server tidak punya sesi read-only: akun wajib read-only. Format teks `datetime` SQL Server (presisi 1/300 s) lewat `datetime2(7)` belum dicek untuk tie di keyset. |
+| Task 5 | Baris dengan watermark NULL tidak pernah ditarik (keyset tidak bisa menempatkannya): kolom watermark harus NOT NULL, introspect memberi `nullable`. TLS PostgreSQL (`tls: true`, verifikasi sertifikat) belum dites (klaster lokal tanpa TLS). |
+
 ## Bawaan dari Plan 1b untuk plan berikutnya
 
 | Ke | Item |

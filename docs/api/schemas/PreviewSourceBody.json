@@ -1,21 +1,35 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "PreviewSourceBody",
-  "type": "object",
-  "properties": {
-    "sample": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 65536
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "sample": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 65536
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        }
+      },
+      "required": [
+        "sample"
+      ],
+      "additionalProperties": false
     },
-    "fileName": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 255
+    {
+      "type": "object",
+      "properties": {
+        "businessDate": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+        }
+      },
+      "additionalProperties": false
     }
-  },
-  "required": [
-    "sample"
-  ],
-  "additionalProperties": false
+  ]
 }

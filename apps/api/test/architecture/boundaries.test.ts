@@ -5,7 +5,8 @@
 // build their controllers (the module indexes import each other: no export of another module may be used at load),
 // (7) modules/spaces never imports kernel/worker-db (the API process loads it, and must not open the worker pool),
 // (8) every table with a space_id column has row level security forced with the one recon_space_visible policy, plus
-// only the allowlisted read-only (FOR SELECT) policies.
+// only the allowlisted read-only (FOR SELECT) policies, (9) each source database driver is imported only by its
+// connector file (modules/ingest/connectors/{mysql,mssql,oracle}.ts).
 // Each rule has a fixture that proves it fails.
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -18,8 +19,23 @@ type File = { file: string; src: string };
 
 const ROOT = path.join(import.meta.dir, "../..");
 
-/** The migration runner applies SQL files and creates databases: the only place that writes SQL by hand. */
-const RAW_SQL_OK = ["src/db/migrate.ts"];
+/** Where SQL is written by hand, and why; a key ending in "/" covers that folder. */
+const RAW_SQL_OK: Record<string, string> = {
+  "src/db/migrate.ts": "the migration runner applies SQL files and creates databases",
+  "src/modules/ingest/connectors/": "SQL sent to a source database (PostgreSQL, MySQL, SQL Server, Oracle), not ours: Drizzle builds PostgreSQL only; values bound, identifiers from the source's catalog (DEC-036)",
+  "src/modules/ingest/tests/unit/dialect.test.ts": "the expected per-dialect SQL of the connectors' query builder",
+  "src/modules/ingest/tests/integration/postgres.test.ts": "builds the tables the PostgreSQL connector reads in <test database>_src, a source database, not the app's",
+  "src/modules/ingest/tests/integration/engines.test.ts": "builds the tables the MySQL, SQL Server and Oracle connectors read on a test server",
+  "src/modules/sources/tests/integration/connection.test.ts": "builds the tables the connection routes read in <test database>_src, a source database, not the app's",
+};
+const rawSqlOk = (file: string) => Object.keys(RAW_SQL_OK).some((k) => (k.endsWith("/") ? file.startsWith(k) : file === k));
+
+/** Each source database driver and the one connector file that may import it (its tests may too). */
+const DRIVER_FILES: Record<string, string> = {
+  mysql2: "src/modules/ingest/connectors/mysql.ts",
+  mssql: "src/modules/ingest/connectors/mssql.ts",
+  oracledb: "src/modules/ingest/connectors/oracle.ts",
+};
 
 const moduleOf = (f: string) => /^src\/modules\/([\w-]+)\//.exec(f)?.[1] ?? null;
 
@@ -54,6 +70,14 @@ function deepImports(files: File[]): string[] {
     if (!m || m[1] === moduleOf(f.file)) return [];
     if (m[2] === "schema" && /^src\/modules\/[\w-]+\/schema\.ts$/.test(f.file)) return [];
     return [`${f.file} → ${to}: import "src/modules/${m[1]}" (its index.ts), not its internals`];
+  }));
+}
+
+/** (9) A source database driver imported outside its connector file (tests excepted: they set up a real server). */
+function driverImports(files: File[]): string[] {
+  return files.filter((f) => f.file.startsWith("src/") && !f.file.includes("/tests/")).flatMap((f) => importsOf(f).flatMap((to) => {
+    const pkg = Object.keys(DRIVER_FILES).find((p) => to === p || to.startsWith(`${p}/`));
+    return pkg && DRIVER_FILES[pkg] !== f.file ? [`${f.file} imports ${to}: only ${DRIVER_FILES[pkg]} imports ${pkg}`] : [];
   }));
 }
 
@@ -96,7 +120,7 @@ const STATEMENT = [/\bselect\b[\s\S]*?\bfrom\b/i, /\binsert\s+into\b/i, /\bupdat
 
 /** (5) A string or template literal (placeholders as `?`) that spells a full SELECT…FROM / INSERT INTO / UPDATE…SET / DELETE FROM. */
 function rawSql(files: File[]): string[] {
-  return files.filter((f) => f.file.startsWith("src/") && !RAW_SQL_OK.includes(f.file)).flatMap((f) => {
+  return files.filter((f) => f.file.startsWith("src/") && !rawSqlOk(f.file)).flatMap((f) => {
     const sf = ts.createSourceFile(f.file, f.src, ts.ScriptTarget.Latest, true);
     const hits: string[] = [];
     const visit = (n: ts.Node) => {
@@ -220,6 +244,11 @@ describe("module boundaries (apps/api)", () => {
     expect(workerPoolImports(real)).toEqual([]);
   });
 
+  it("each source database driver is imported only by its connector file; every allowlisted SQL path exists", () => {
+    expect(driverImports(real)).toEqual([]);
+    expect(Object.keys(RAW_SQL_OK).filter((k) => !real.some((x) => (k.endsWith("/") ? x.file.startsWith(k) : x.file === k)))).toEqual([]);
+  });
+
   it("every table with a space_id column forces row level security with the one recon_space_visible policy (exemptions are real tables)", async () => {
     const rows = await spaceTables(client);
     expect(rows.length).toBeGreaterThan(0);
@@ -338,6 +367,7 @@ describe("module boundaries: fixtures", () => {
         "const o = \"Update the role set before you save.\";",
       ].join("\n")),
       f("src/db/migrate.ts", "await conn`select name from schema_migrations`;"),
+      f("src/modules/ingest/connectors/postgres.ts", "await sql.unsafe(\"SELECT oid FROM pg_type\");"),
       f("test/helpers/db.ts", "await client`select 1 from pg_tables`;"),
     ])).toEqual([
       "src/modules/a/service.ts:1: SQL statement written by hand; use the Drizzle builder",
@@ -345,6 +375,19 @@ describe("module boundaries: fixtures", () => {
       "src/modules/a/service.ts:3: SQL statement written by hand; use the Drizzle builder",
       "src/modules/a/service.ts:4: SQL statement written by hand; use the Drizzle builder",
       ...[7, 8, 9, 10, 11].map((n) => `src/modules/a/service.ts:${n}: SQL statement written by hand; use the Drizzle builder`),
+    ]);
+  });
+
+  it("fixture: a driver imported outside its connector file fails; its own file and tests pass", () => {
+    expect(driverImports([
+      f("src/modules/ingest/connectors/oracle.ts", `import oracledb from "oracledb";`),
+      f("src/modules/ingest/connectors/mysql.ts", `import { createConnection } from "mysql2/promise";`),
+      f("src/modules/ingest/connectors/postgres.ts", `import oracledb from "oracledb";`),
+      f("src/modules/sources/service.ts", `import { ConnectionPool } from "mssql";`),
+      f("src/modules/ingest/tests/integration/engines.test.ts", `import { ConnectionPool } from "mssql";`),
+    ])).toEqual([
+      "src/modules/ingest/connectors/postgres.ts imports oracledb: only src/modules/ingest/connectors/oracle.ts imports oracledb",
+      "src/modules/sources/service.ts imports mssql: only src/modules/ingest/connectors/mssql.ts imports mssql",
     ]);
   });
 

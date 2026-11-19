@@ -5,7 +5,9 @@
 //
 // row_hash = SHA-256 (hex) of the raw row as JSON with its keys sorted (so column order never changes it): the
 // dedup key of immutable sources (spec §8). natural_key = the key_fields values joined by U+001F (rendered as in attrs;
-// null when the source declares no key fields).
+// null when the source declares no key fields). A database row's SQL NULL arrives as null, never "" (connectors/):
+// typed it is null like an empty cell, but the hash keeps null and a NULL key part is U+001E, so neither hash nor key
+// mistakes NULL for "".
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
 import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type Value } from "./coerce";
@@ -115,7 +117,10 @@ const sha256 = (s: string) => new Bun.CryptoHasher("sha256").update(s).digest("h
 const INT64_MAX = 9223372036854775807n;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-export function toRecord(raw: Record<string, string>, spec: SourceSpec, ctx: MapContext): MapResult {
+/** A key part for a field whose raw value is SQL NULL (an empty cell renders as ""). */
+export const NULL_KEY = "\u001e";
+
+export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, ctx: MapContext): MapResult {
   const p = prepare(spec);
   const reasons: Record<string, string> = {};
   const typed: Record<string, Value> = {};
@@ -194,7 +199,8 @@ export function toRecord(raw: Record<string, string>, spec: SourceSpec, ctx: Map
   }
   if (Object.keys(reasons).length) return { ok: false, reasons };
 
-  const natural_key = spec.key_fields.length ? spec.key_fields.map((k) => String(render(typed[k] ?? null, byName.get(k)) ?? "")).join("\u001f") : null;
+  const natural_key = spec.key_fields.length
+    ? spec.key_fields.map((k) => (raw[k] === null ? NULL_KEY : String(render(typed[k] ?? null, byName.get(k)) ?? ""))).join("\u001f") : null;
   const sorted = Object.fromEntries(Object.entries(raw).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   return {
     ok: true,

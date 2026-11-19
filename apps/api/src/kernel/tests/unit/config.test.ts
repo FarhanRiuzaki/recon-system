@@ -38,6 +38,14 @@ describe("loadConfig", () => {
     expect(msg).not.toContain(KEY);
   });
 
+  it("INBOX_ROOTS: absolute paths, comma-separated; a relative one is rejected by key, without its value", () => {
+    expect(loadConfig({ ...base, INBOX_ROOTS: " /data/inbox , /mnt/ksei " }).INBOX_ROOTS).toEqual(["/data/inbox", "/mnt/ksei"]);
+    expect(loadConfig(base).INBOX_ROOTS).toEqual([]);
+    const msg = failure({ ...base, INBOX_ROOTS: "/data/inbox,inbox-rel" });
+    expect(msg).toContain("INBOX_ROOTS");
+    expect(msg).not.toContain("inbox-rel");
+  });
+
   it("rejects a short INTERNAL_API_TOKEN", () => {
     expect(failure({ ...base, INTERNAL_API_TOKEN: "x".repeat(31) })).toContain("INTERNAL_API_TOKEN");
   });

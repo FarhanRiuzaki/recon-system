@@ -1,3 +1,4 @@
+import { isAbsolute } from "node:path";
 import { z } from "zod";
 
 const int = (min: number, max: number, dflt: number) => z.coerce.number().int().min(min).max(max).default(dflt);
@@ -31,6 +32,9 @@ const Fields = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().optional(),
   AUDIT_RETENTION_DAYS: int(30, 3650, 365),
+  /** Folders a file inbox source may read from (and below): absolute paths, comma-separated; none = no file inbox. */
+  INBOX_ROOTS: z.string().default("").transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
+    .refine((roots) => roots.every((r) => isAbsolute(r)), { message: "must be absolute paths, comma-separated" }),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   OAUTH_MOCK: flag,
   LDAP_MOCK: flag,

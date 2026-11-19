@@ -1,8 +1,14 @@
 // `bun test` preload: points the API at the test database, creates it when missing and migrates it once.
 // Bun loads apps/api/.env first, so every value that could reach the dev database is overwritten here.
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { testDatabaseUrl } from "./test-url";
 
 const url = testDatabaseUrl(process.env);
+/** The file inbox root of the tests (INBOX_ROOTS): a folder of its own under the OS temp folder. */
+const inbox = path.join(tmpdir(), "recon-test-inbox");
+mkdirSync(inbox, { recursive: true });
 Object.assign(process.env, {
   NODE_ENV: "test",
   DATABASE_URL: url,
@@ -13,6 +19,7 @@ Object.assign(process.env, {
   LDAP_MOCK: "true",
   MAIL_TRANSPORT: "log",
   LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? "silent",
+  INBOX_ROOTS: inbox,
 });
 
 // After the env above: the logger reads LOG_LEVEL when it loads.
