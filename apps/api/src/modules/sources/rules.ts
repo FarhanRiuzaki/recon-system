@@ -25,8 +25,10 @@ export function specIssue(e: unknown, root = "spec"): string | null {
   if (!(e instanceof $ZodError)) return null;
   // a union (the preview body) holds each option's issues, with paths relative to the union's
   type Issue = (typeof e.issues)[number];
+  // a record's refused key (an attrs name) holds its own issues, at the key's path
   const flat = (xs: Issue[], at: PropertyKey[] = []): Issue[] => xs.flatMap((x) => x.code === "invalid_union"
-    ? flat(x.errors.flat(), [...at, ...x.path]) : [{ ...x, path: [...at, ...x.path] }]);
+    ? flat(x.errors.flat(), [...at, ...x.path])
+    : x.code === "invalid_key" ? flat(x.issues as Issue[], [...at, ...x.path]) : [{ ...x, path: [...at, ...x.path] }]);
   const i = flat(e.issues).find((x) => x.path[0] === root && (x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid"))));
   if (!i) return null;
   const why = i.message.charAt(0).toUpperCase() + i.message.slice(1);

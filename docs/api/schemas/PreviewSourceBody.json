@@ -333,8 +333,7 @@
                   "type": "object",
                   "propertyNames": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
                   },
                   "additionalProperties": {
                     "anyOf": [
@@ -957,8 +956,7 @@
                   "type": "object",
                   "propertyNames": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
                   },
                   "additionalProperties": {
                     "anyOf": [

@@ -31,3 +31,5 @@ export const HEALTH_DEADLINE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const DEFAULT_CALENDAR = "id-default";
 /** A source table as `table` or `schema.table`: identifier characters only (also checked against the source's catalog). */
 export const DB_TABLE_NAME = /^[A-Za-z_][A-Za-z0-9_$#]{0,127}(\.[A-Za-z_][A-Za-z0-9_$#]{0,127})?$/;
+/** A stored attribute's name (`attrs.<name>` of a record): a-z, 0-9 and _, starting with a letter, at most 63 characters. */
+export const ATTR_NAME = /^[a-z][a-z0-9_]{0,62}$/;

@@ -75,6 +75,8 @@ describe("specIssue", () => {
     const k = ksei();
     expect(issueOf({ ...k, mutable: true, key_fields: [] })).toBe("Check key_fields: A mutable source needs key fields.");
     expect(issueOf({ ...k, health: { deadline: "24:00" } })).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
+    expect(issueOf({ ...k, mapping: { ...k.mapping, attrs: { "Bad Name": { field: "sre" } } } })).toBe("Check mapping.attrs.Bad Name: Use a-z, 0-9 and _, starting with a letter, up to 63 characters.");
+    expect(issueOf({ ...k, mapping: { ...k.mapping, attrs: { sid: { field: "sid" } } } })).toBeNull(); // any field, under a valid name
     expect(issueOf({ ...k, fields: [{ ...k.fields[0], format: { timezone: "Mars/Olympus" } }, ...k.fields.slice(1)] }))
       .toBe("Check fields.0.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta.");
   });

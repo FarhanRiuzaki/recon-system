@@ -37,6 +37,12 @@
               "boolean"
             ]
           },
+          "format": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "examples": {
             "type": "array",
             "items": {
@@ -50,6 +56,7 @@
         "required": [
           "name",
           "type",
+          "format",
           "examples",
           "emptyPct"
         ],

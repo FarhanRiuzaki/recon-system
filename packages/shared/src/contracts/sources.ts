@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  ATTR_NAME, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -49,7 +49,8 @@ const Mapping = z.strictObject({
   business_date: ValueRef,
   ext_ref: ValueRef.optional(),
   account_ref: ValueRef.optional(),
-  attrs: z.record(name, ValueRef).default({}),
+  /** Stored names: `a-z`, `0-9` and `_`, starting with a letter (ATTR_NAME); each column or derived value under one name. */
+  attrs: z.record(z.string().regex(ATTR_NAME, "Use a-z, 0-9 and _, starting with a letter, up to 63 characters"), ValueRef).default({}),
 });
 
 /** A DB table or SELECT pulled by keyset `(column, id_column) > (watermark, id)`, `lookback_seconds` back, `chunk` rows at a time. */
@@ -345,8 +346,8 @@ export const SourceDto = SourceRowDto.extend({
 });
 export type SourceDto = z.infer<typeof SourceDto>;
 
-/** A guessed column of the sample: `emptyPct` = share of empty cells, 0–100 with one decimal. */
-export const PreviewColumnDto = z.object({ name: z.string(), type: z.enum(FIELD_TYPES), examples: z.array(z.string()), emptyPct: z.number() });
+/** A guessed column of the sample: `format` = the date format it was read in (yyyyMMdd, yyyy-MM-dd) or null; `emptyPct` = share of empty cells, 0–100 with one decimal. */
+export const PreviewColumnDto = z.object({ name: z.string(), type: z.enum(FIELD_TYPES), format: z.string().nullable(), examples: z.array(z.string()), emptyPct: z.number() });
 /** A row as it would enter `record`: `amountMinor` is whole minor units as text (never a float). */
 export const PreviewRecordDto = z.object({
   line: z.number().int(),
