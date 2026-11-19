@@ -12,10 +12,11 @@ import { decryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
 import { log } from "../../../../kernel/log";
 import { activity } from "../../../audit";
-import { spaceMembers, spaces } from "../../../spaces";
+import { spaceMembers, spaces, withSpace } from "../../../spaces";
 import { users } from "../../../users";
 import { boss, QUEUES } from "../../../../kernel/jobs";
-import { calendars, sourceConnections, sources } from "../../schema";
+import { calendars, sourceConnections, sourceVersions, sources } from "../../schema";
+import { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { ksei } from "../spec";
 
 const PASSWORD = "Pa55-word-nobody-guesses";
@@ -70,10 +71,18 @@ const step = (token: string, src: string, v: string, what: "submit" | "approve" 
   call("POST", `${base(A)}/${src}/versions/${v}/${what}`, { token, body });
 const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
 
+/**
+ * How draft `v` reads its source, saved as a source admin does in step 1 (spec §7 step 3a): `spec`'s input with no key
+ * yet. A config maker then saves the rest of the spec; changing the input is a source admin's (400 for anyone else).
+ */
+const adminSetsReading = (v: string, spec: unknown) => withSpace({ spaceIds: [A], userId: ids.mk }, (tx) =>
+  tx.update(sourceVersions).set({ spec: { ...SourceSpec.parse(spec), key_fields: [], mutable: false }, specHash: "set-by-a-source-admin" }).where(eq(sourceVersions.id, v)));
+
 /** A file inbox source with version 1 published (made by `mk`, approved by `ck`). */
 async function published() {
   const s = await made();
   const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+  await adminSetsReading(v.id, ksei());
   expect((await patch(t.mk, s.id, v.id, ksei())).status).toBe(200);
   expect((await step(t.mk, s.id, v.id, "submit")).status).toBe(200);
   expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
@@ -212,6 +221,7 @@ describe("versions: draft, submit, approve, reject", () => {
     expect(v).toMatchObject({ version: 1, status: "draft", spec: null, specHash: null, makerId: ids.both });
     const dup = await draft(t.mk, s.id);
     expect([dup.status, await code(dup)]).toEqual([409, "duplicate"]);
+    await adminSetsReading(v.id, ksei());
 
     const edited = await json<SourceVersionDto>(patch(t.both, s.id, v.id, ksei()));
     expect(edited.specHash).toMatch(/^[0-9a-f]{64}$/);
@@ -240,6 +250,7 @@ describe("versions: draft, submit, approve, reject", () => {
 
     // both writes the draft, mk changes one field last (maker_id → mk), both submits and tries to approve
     const v = await json<SourceVersionDto>(draft(t.both, s.id));
+    await adminSetsReading(v.id, ksei());
     expect((await patch(t.both, s.id, v.id, ksei())).status).toBe(200);
     const last = await json<SourceVersionDto>(patch(t.mk, s.id, v.id, { ...ksei(), key_fields: ["sid", "sre"] }));
     expect(last.makerId).toBe(ids.mk);
@@ -266,6 +277,7 @@ describe("versions: draft, submit, approve, reject", () => {
     await db.insert(spaceMembers).values({ spaceId: A, userId: ids.mk, role: "config_checker" });
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.both, s.id));
+    await adminSetsReading(v.id, ksei());
     expect((await patch(t.both, s.id, v.id, ksei())).status).toBe(200);
     expect((await json<SourceVersionDto>(step(t.mk, s.id, v.id, "submit"))).contributorIds).toEqual([ids.both, ids.mk]);
     const r = await step(t.mk, s.id, v.id, "approve");
@@ -277,6 +289,7 @@ describe("versions: draft, submit, approve, reject", () => {
   it("the same spec again changes nothing and records nothing; the hash is the same for the same spec", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    await adminSetsReading(v.id, ksei());
     const first = await json<SourceVersionDto>(patch(t.mk, s.id, v.id, ksei()));
     const n = (await acts()).length;
     const reordered = Object.fromEntries(Object.entries(ksei()).reverse());
@@ -298,16 +311,17 @@ describe("versions: draft, submit, approve, reject", () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     const k = ksei();
-    expect((await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } })).status).toBe(400);
-    expect((await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: null } } })).status).toBe(200);
+    // how the file is read is a source admin's (a maker's input change is 400 for that reason alone)
+    expect((await patch(t.adm, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } })).status).toBe(400);
+    expect((await patch(t.adm, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: null } } })).status).toBe(200);
     const snap = await made({ code: "medallion", name: "Medallion", kind: "db_snapshot" });
     const sv = await json<SourceVersionDto>(draft(t.mk, snap.id));
     const input = (schedule: string) => ({ ...k, input: { kind: "db_snapshot", query: "select :business_date as d", schedule } });
-    const bad = await patch(t.mk, snap.id, sv.id, input("every morning"));
+    const bad = await patch(t.adm, snap.id, sv.id, input("every morning"));
     expect([bad.status, await code(bad)]).toEqual([400, "bad_request"]);
-    expect((await patch(t.mk, snap.id, sv.id, input("0 6 * * 1-5"))).status).toBe(200);
+    expect((await patch(t.adm, snap.id, sv.id, input("0 6 * * 1-5"))).status).toBe(200);
     // a snapshot is replaced whole per date: a mutable one could supersede the active rows while loading
-    const mutable = await patch(t.mk, snap.id, sv.id, { ...input("0 6 * * 1-5"), mutable: true });
+    const mutable = await patch(t.adm, snap.id, sv.id, { ...input("0 6 * * 1-5"), mutable: true });
     expect([mutable.status, await code(mutable)]).toEqual([400, "bad_request"]);
   });
 
@@ -316,7 +330,7 @@ describe("versions: draft, submit, approve, reject", () => {
     expect((await (await boss()).getSchedule(QUEUES.ingestPull, s.id))?.cron).toBe("* * * * *");
     await db.update(sources).set({ status: "paused" }).where(eq(sources.id, s.id));
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
-    expect((await patch(t.mk, s.id, v.id, { ...ksei(), input: { ...ksei().input, pattern: "act2*.txt" } })).status).toBe(200);
+    expect((await patch(t.adm, s.id, v.id, { ...ksei(), input: { ...ksei().input, pattern: "act2*.txt" } })).status).toBe(200);
     expect((await step(t.mk, s.id, v.id, "submit")).status).toBe(200);
     expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
     expect((await json<SourceDto>(detail(t.op, s.id))).status).toBe("active");
@@ -401,6 +415,7 @@ describe("CEL on save and the preview (Task 3)", () => {
   it("saving a spec with an invalid CEL expression is 400 naming where; a valid one saves", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    await adminSetsReading(v.id, ksei());
     for (const [expr, text] of [['row.sid.matches("a+")', "matches"], ["row.sid +", "parse"], ['1 + "x"', "Type error"], ["bytes(row.sid)", "not allowed"]] as const) {
       const r = await patch(t.mk, s.id, v.id, withDerive({ net: expr }));
       expect(r.status).toBe(400);
@@ -416,6 +431,7 @@ describe("CEL on save and the preview (Task 3)", () => {
   it("saving rejects an unknown time zone and an amount_minor that is not decimal/integer at scale 2", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    await adminSetsReading(v.id, ksei());
     const k = ksei();
     const zone = { ...k, fields: [...k.fields, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "Mars/Olympus" } }] };
     const tz = await patch(t.mk, s.id, v.id, zone);
@@ -426,7 +442,7 @@ describe("CEL on save and the preview (Task 3)", () => {
       expect([r.status, await msg(r)]).toEqual([400, `Check mapping.amount_minor: The amount needs an integer, or a decimal at scale 2; ${why}.`]);
     }
     // every refine names its field, the same shape as a CEL error; a plain type miss stays the fixed sentence
-    const quote = await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } });
+    const quote = await patch(t.adm, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } });
     expect(await msg(quote)).toBe("Check input.format.quote: The quote character can't be the delimiter.");
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, key_fields: ["nope"] }))).toBe('Check key_fields.0: "nope" is not a field or derived value.');
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, health: { deadline: "9:00" } }))).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
@@ -470,6 +486,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     const db_ = await made({ code: "core-bifast", name: "BI-FAST", kind: "db_watermark" });
     const dv = await json<SourceVersionDto>(draft(t.mk, db_.id));
     const spec = { ...ksei(), input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } };
+    await adminSetsReading(dv.id, spec);
     expect((await patch(t.mk, db_.id, dv.id, spec)).status).toBe(200);
     expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("A database source previews rows pulled through its connection");
     expect(await msg(await preview(t.mk, s.id, v.id, {}))).toContain("Paste a sample of the file");
@@ -483,8 +500,9 @@ describe("an unsaved spec in the preview (Task 7)", () => {
 
   it("previews edits not yet saved, checked exactly like a save (named fields, kind, calendar, CEL), and writes nothing", async () => {
     const s = await made();
-    const v = await json<SourceVersionDto>(draft(t.mk, s.id)); // no spec saved yet
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     const k = ksei();
+    await adminSetsReading(v.id, k); // how it is read, saved by a source admin; the maker previews the rest unsaved
     const before = (await acts()).length;
     const p = await json<SourcePreviewDto>(preview(s.id, v.id, { sample: SAMPLE, fileName: "act20261102.txt", spec: k }));
     expect(p).toMatchObject({ lines: 1, ok: 1, quarantined: 0 });
@@ -498,7 +516,40 @@ describe("an unsaved spec in the preview (Task 7)", () => {
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: db_ }))).toContain("its spec's input must be of that kind");
     expect(await acts()).toHaveLength(before);
     // the saved spec is untouched
-    expect((await json<SourceDto>(detail(t.mk, s.id))).draft?.spec).toBeNull();
+    expect((await json<SourceDto>(detail(t.mk, s.id))).draft?.specHash).toBe("set-by-a-source-admin");
+  });
+
+  it("how the source is read is a source admin's: a maker's other table or query is 400, a checker sends no spec (403), a source admin changes it", async () => {
+    const READ = "Only a source admin changes how the source is read.";
+    const wm = { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 };
+    const s = await made({ code: "core-bifast", name: "BI-FAST", kind: "db_watermark" });
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    const spec = { ...ksei(), input: wm };
+    // nothing saved yet: a maker can't set how it is read at all
+    expect(await msg(await patch(t.mk, s.id, v.id, spec))).toBe(READ);
+    await adminSetsReading(v.id, spec);
+    expect((await patch(t.mk, s.id, v.id, spec)).status).toBe(200);
+    // another table, a SELECT, another watermark: 400 to save and to preview (no row leaves the source)
+    for (const input of [{ ...wm, table: "secret_txn" }, { ...wm, table: undefined, query: "select 1 as secret" }, { ...wm, watermark: { column: "created_at", id_column: "id" } }]) {
+      const r = await patch(t.mk, s.id, v.id, { ...spec, input });
+      expect([r.status, await msg(r)]).toEqual([400, READ]);
+      const p = await call("POST", `${base(A)}/${s.id}/versions/${v.id}/preview`, { token: t.mk, body: { spec: { ...spec, input } } });
+      expect([p.status, await msg(p)]).toEqual([400, READ]);
+    }
+    // a snapshot's query the same way
+    const snap = await made({ code: "medallion", name: "Medallion", kind: "db_snapshot" });
+    const sv = await json<SourceVersionDto>(draft(t.mk, snap.id));
+    const q = { ...ksei(), input: { kind: "db_snapshot", query: "select :business_date as d", schedule: "0 6 * * *" } };
+    await adminSetsReading(sv.id, q);
+    expect(await msg(await patch(t.mk, snap.id, sv.id, { ...q, input: { ...q.input, query: "select :business_date as secret" } }))).toBe(READ);
+    expect(await msg(await patch(t.mk, snap.id, sv.id, { ...q, input: { ...q.input, schedule: "0 7 * * *" } }))).toBe(READ);
+    // a config checker previews the saved spec only
+    const ck = await call("POST", `${base(A)}/${s.id}/versions/${v.id}/preview`, { token: t.ck, body: { spec } });
+    expect([ck.status, await code(ck)]).toEqual([403, "forbidden"]);
+    // a source admin changes it
+    expect((await patch(t.adm, s.id, v.id, { ...spec, input: { ...wm, table: "core.txn" } })).status).toBe(200);
+    // and the maker then sends it as saved
+    expect((await patch(t.mk, s.id, v.id, { ...spec, input: { ...wm, table: "core.txn" }, key_fields: [] })).status).toBe(200);
   });
 });
 

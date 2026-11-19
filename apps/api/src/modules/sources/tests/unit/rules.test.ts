@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SourceSpec, UpdateSourceVersionBody as UpdateBody } from "@starterkit/shared/contracts/sources";
-import { canStep, specHash, specIssue } from "../../rules";
+import { canStep, readsDifferently, specHash, specIssue } from "../../rules";
 import { ksei } from "../spec";
 
 describe("specHash", () => {
@@ -82,5 +82,16 @@ describe("specIssue", () => {
     expect(issueOf({ ...ksei(), mutable: "yes" })).toBeNull();
     expect(issueOf({ ...ksei(), health: { graceMinutes: 0 } })).toBeNull();
     expect(specIssue(new Error("x"))).toBeNull();
+  });
+});
+
+describe("readsDifferently", () => {
+  it("any difference in how the source is read, or nothing saved, counts; key order doesn't", () => {
+    const i = ksei().input;
+    expect(readsDifferently(i, { ...i })).toBe(false);
+    expect(readsDifferently(Object.fromEntries(Object.entries(i).reverse()), i)).toBe(false);
+    expect(readsDifferently({ ...i, pattern: "x*.txt" }, i)).toBe(true);
+    expect(readsDifferently({ ...i, format: { ...i.format, header: true } }, i)).toBe(true);
+    expect(readsDifferently(i, null)).toBe(true);
   });
 });

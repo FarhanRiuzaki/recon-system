@@ -10,6 +10,7 @@ import type {
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceVersionRowDto, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
+import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
@@ -25,7 +26,7 @@ import {
 } from "../ingest";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { canStep, specHash, specIssue } from "./rules";
+import { canStep, readsDifferently, specHash, specIssue } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -292,6 +293,26 @@ async function checkSpec(tx: InTx, s: SourceRow, spec: SourceSpec): Promise<void
   }
 }
 
+/** The input of a stored spec as the contract reads it (defaults filled in, so a seeded spec compares like a saved one). */
+const inputOf = (spec: unknown): unknown => {
+  const r = SourceSpecSchema.safeParse(spec);
+  return r.success ? r.data.input : (spec as { input?: unknown } | null)?.input ?? null;
+};
+
+/**
+ * How the source is read (`input`: table, query, watermark, schedule, folder, pattern, file format) is a source admin's
+ * (spec §7 step 3a); a config maker sends it as saved: the version's own, else the published version's. 400 otherwise.
+ */
+async function sameReading(tx: InTx, ctx: Ctx, s: SourceRow, v: VersionRow, next: SourceSpec): Promise<void> {
+  if (ctx.space!.roles.includes("source_admin")) return;
+  let saved = v.spec ? inputOf(v.spec) : null;
+  if (saved === null) {
+    const [p] = await tx.select({ spec: sourceVersions.spec }).from(sourceVersions).where(and(ofSource(s), eq(sourceVersions.status, "published")));
+    saved = p?.spec ? inputOf(p.spec) : null;
+  }
+  if (readsDifferently(next.input, saved)) throw new ApiError("bad_request", "Only a source admin changes how the source is read.");
+}
+
 /**
  * Saves a draft's whole spec; the caller becomes its maker (who last wrote the spec) and a contributor. The spec's input
  * must be of the source's kind and its calendar must exist (400). The same spec again: the version as it is, no entry.
@@ -302,6 +323,7 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     const v = await versionOf(tx, s, versionId);
     if (!canStep("edit", v.status as VersionStatus)) throw wrongState("Only a draft can be edited. Make a new draft from the published version.");
     await checkSpec(tx, s, b.spec);
+    await sameReading(tx, ctx, s, v, b.spec);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v);
     const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
@@ -415,7 +437,12 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   const { spec, cal, conn } = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
-    if (b.spec) await checkSpec(tx, s, b.spec);
+    if (b.spec) {
+      // a config checker previews the version as saved; unsaved edits are a maker's or a source admin's
+      if (!ctx.space!.roles.some((r) => r === "source_admin" || r === "config_maker")) throw new ApiError("forbidden");
+      await checkSpec(tx, s, b.spec);
+      await sameReading(tx, ctx, s, v, b.spec);
+    }
     const spec = b.spec ?? (v.spec as SourceSpec | null);
     if (spec === null) throw new ApiError("bad_request", "This version has no fields and mapping yet. Save them, then preview.");
     const [cal] = await tx.select({ weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars).where(eq(calendars.code, spec.calendar));

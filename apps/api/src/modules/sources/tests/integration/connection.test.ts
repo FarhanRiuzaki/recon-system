@@ -33,7 +33,7 @@ const test_ = (token: string, id: string, body: unknown = {}) => call("POST", `$
 const columns = (token: string | undefined, id: string, table: string) => call("GET", `${base()}/${id}/connection/columns?table=${encodeURIComponent(table)}`, { token });
 const draftWith = async (id: string, spec: unknown) => {
   const v = await json<SourceVersionDto>(call("POST", `${base()}/${id}/versions`, { token: t.mk }));
-  const r = await call("PATCH", `${base()}/${id}/versions/${v.id}`, { token: t.mk, body: { spec } });
+  const r = await call("PATCH", `${base()}/${id}/versions/${v.id}`, { token: t.adm, body: { spec } }); // how it is read: a source admin's
   expect([r.status, r.status === 200 ? "" : await r.text()]).toEqual([200, ""]);
   return v;
 };
@@ -113,7 +113,7 @@ describe("POST …/connection/test (file inbox)", () => {
     const k = ksei();
     const v = await draftWith(s.id, { ...k, input: { ...k.input, path: path.join(root, "ksei") } });
     expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt", code: null });
-    const r = await call("PATCH", `${base()}/${s.id}/versions/${v.id}`, { token: t.mk, body: { spec: { ...k, input: { ...k.input, path: "/etc" } } } });
+    const r = await call("PATCH", `${base()}/${s.id}/versions/${v.id}`, { token: t.adm, body: { spec: { ...k, input: { ...k.input, path: "/etc" } } } });
     expect(r.status).toBe(200);
     const out = await test_(t.adm, s.id);
     expect([out.status, (await errOf(out)).code]).toEqual([400, "bad_request"]);

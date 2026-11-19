@@ -32,3 +32,9 @@ export function specIssue(e: unknown, root = "spec"): string | null {
   const why = i.message.charAt(0).toUpperCase() + i.message.slice(1);
   return `Check ${i.path.slice(1).join(".")}: ${why}${/[.?]$/.test(why) ? "" : "."}`;
 }
+
+/**
+ * Whether `next` reads the source differently from `saved` (spec §7 step 3a: the table, query, watermark, schedule,
+ * folder, pattern and file format are a source admin's): any difference, or nothing saved to compare with.
+ */
+export const readsDifferently = (next: unknown, saved: unknown): boolean => saved == null || specHash(next) !== specHash(saved);
