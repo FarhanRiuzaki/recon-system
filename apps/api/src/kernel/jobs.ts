@@ -30,8 +30,9 @@ export const CONCURRENCY: Record<QueueName, number> = {
  * heartbeatSeconds: a running handler refreshes its job every heartbeatSeconds / 2 (pg-boss's default refresh); a job
  * whose worker died is failed and retried once its heartbeat is that old, plus up to one supervise pass (60 s), instead
  * of waiting out expireInSeconds (pg-boss's default 900 s, still the bound on a handler that is alive but stuck).
- * The ingest queues set expireInSeconds above their longest legitimate run (spike S2): a pull or a file is chunked and
- * one source's step runs at a time (sourceLock); a snapshot of a whole position per date may take longer.
+ * The ingest queues set expireInSeconds above their longest legitimate run (spike S2). ingest.file: a 1M-line file
+ * took 58 s end to end (docs/recon/spikes.md "S1 ingest (Plan 2)"), so 1800 s is 3× a 10M-line file at that rate.
+ * ingest.pull is chunked per page and gets the same; a snapshot of a whole position per date may take longer.
  */
 export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "ingest.pull": { heartbeatSeconds: 30, expireInSeconds: 1800 }, "ingest.file": { heartbeatSeconds: 30, expireInSeconds: 1800 },

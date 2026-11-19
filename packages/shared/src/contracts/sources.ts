@@ -106,6 +106,7 @@ export const SourceSpec = z.strictObject({
   for (const [path, r] of refs) if (r && "field" in r && !known(r.field)) issue(`"${r.field}" is not a field or derived value`, path);
   s.key_fields.forEach((k, i) => known(k) || issue(`"${k}" is not a field or derived value`, ["key_fields", i]));
   if (s.mutable && !s.key_fields.length) issue("A mutable source needs key fields", ["key_fields"]);
+  if (s.mutable && s.input.kind === "db_snapshot") issue("A snapshot source is replaced whole per business date, so it can't be mutable", ["mutable"]);
   if (s.input.kind === "db_watermark" && (s.input.table === undefined) === (s.input.query === undefined)) issue("Give either a table or a query", ["input"]);
   if (s.input.kind === "db_snapshot" && !/:business_date\b/.test(s.input.query)) issue("The snapshot query needs the :business_date parameter", ["input", "query"]);
 });

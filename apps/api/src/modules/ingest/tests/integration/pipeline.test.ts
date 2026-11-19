@@ -9,10 +9,10 @@ import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SQL } from "bun";
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, isNotNull } from "drizzle-orm";
 import { DEFAULTS, synthPair } from "../../../../../scripts/spikes/synth";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
-import { partitionsOf, truncateAll } from "../../../../../test/helpers/db";
+import { dropPartitions, partitionsOf, truncateAll, xmins } from "../../../../../test/helpers/db";
 import { sourceDb } from "../../../../../test/helpers/source-db";
 import { encryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
@@ -203,6 +203,37 @@ describe("Review Focus 2: a snapshot that fails halfway", () => {
     expect(await current(m, D)).toBe(10);
   });
 
+  it("a query that answers no rows never replaces a date that has data; with no active one, an empty snapshot activates", async () => {
+    const m = await source(A, medallionSpec());
+    await medallion(D, [1, 2, 3]);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    await src`delete from medallion`;
+    expect(await snapshotSource(scope(m), D, probe)).toBe("failed");
+    const of = (date: string) => db.select({ status: sourceSnapshots.status, error: sourceSnapshots.error }).from(sourceSnapshots)
+      .where(and(eq(sourceSnapshots.sourceId, m.sourceId), eq(sourceSnapshots.businessDate, date))).orderBy(asc(sourceSnapshots.startedAt), asc(sourceSnapshots.id));
+    expect(await of(D)).toEqual([{ status: "active", error: null }, { status: "failed", error: "The pull returned no rows; the active snapshot was kept." }]);
+    expect(await current(m, D)).toBe(3);
+    expect((await cursorOf(m))?.lastError).toBe(`Snapshot ${D}: The pull returned no rows; the active snapshot was kept.`);
+    expect(await snapshotSource(scope(m), D1, probe)).toBe("active");
+    expect(await of(D1)).toEqual([{ status: "active", error: null }]);
+  });
+
+  it("a mutable snapshot source (refused at save; here written straight to the table) never supersedes the active rows while loading", async () => {
+    const m = await source(A, { ...medallionSpec(), mutable: true });
+    await medallion(D, [1, 2, 3, 4, 5, 6, 7, 8, 11], true);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    await src`update medallion set sre = sre || 'X'`; // every row changed: a mutable source would supersede each key
+    await src`update medallion set fail = true where sid = ${sid(7)}`;
+    ingestHooks.connect = (c) => {
+      const real = defaultHooks.connect(c);
+      return { ...real, pullSnapshot: (q, d, o) => real.pullSnapshot(q, d, { ...o, chunk: 5 }) };
+    };
+    expect(await snapshotSource(scope(m), D, probe)).toBe("failed");
+    expect(await current(m, D)).toBe(11);
+    const superseded = await db.select({ n: count() }).from(records).where(and(eq(records.sourceId, m.sourceId), isNotNull(records.supersededBy)));
+    expect(superseded[0]!.n).toBe(0);
+  });
+
   it("a closed day is not pulled again (Plan 5: rerun with approval)", async () => {
     const m = await source(A, medallionSpec());
     ingestHooks.dayClosed = async () => true;
@@ -260,7 +291,8 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     const page: Row[] = [1, 2, 3].map((i) => ({ ext_ref: `R${i}`, account_ref: "ACC1", amount: "1.00", event_time: "2026-11-19T01:00:00Z", updated_at: "2026-11-19T01:00:00Z", id: String(i) }));
     const stuck = new ConnectorError("spec", null, "The pull did not move past watermark 2026-11-19T01:00:00Z and id 3.");
     ingestHooks.connect = () => ({
-      introspect: async () => ["ext_ref", "account_ref", "amount", "event_time", "updated_at", "id"].map((name) => ({ name, type: "text", nullable: false })),
+      introspect: async () => [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"],
+        ["updated_at", "timestamp with time zone"], ["id", "bigint"]].map(([name, type]) => ({ name: name!, type: type!, nullable: false })),
       pullWatermark: async function* () { yield page; yield page; throw stuck; },
       close: async () => {},
     }) as unknown as Connector;
@@ -297,9 +329,31 @@ describe("Review Focus 4: the source's columns change", () => {
     await src`insert into chg (updated_at, ref, amt) values (now() + interval '1 second', 'R2', 'abc')`;
     expect(await pullSource(scope(s), probe)).toBe("paused");
     expect(await allRecords(s)).toBe(1);
-    expect([await statusOf(s), (await cursorOf(s))?.lastError]).toEqual(["paused", 'Column "amt" changed from numeric(18,2) to text in table public.chg. Make a new source version for the columns it has now.']);
+    expect([await statusOf(s), (await cursorOf(s))?.lastError]).toEqual(["paused", 'Column "amt" of table public.chg is text, which can\'t hold the field\'s type decimal. Make a new source version for the columns it has now.']);
     expect(await pullSource(scope(s), probe)).toBe("skipped"); // paused: pulls write nothing
     await src.unsafe("alter table chg alter column amt type numeric(18,2) using null");
+  });
+
+  it("a type that still fits the field but changed since the version's first pull pauses too (the baseline)", async () => {
+    await src`insert into chg (updated_at, ref, amt) values (now(), 'R1', 1.5)`;
+    const s = await source(A, chgSpec());
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    await src.unsafe("alter table chg alter column amt type bigint using amt::bigint");
+    try {
+      expect(await pullSource(scope(s), probe)).toBe("paused");
+      expect((await cursorOf(s))?.lastError).toBe('Column "amt" changed from numeric(18,2) to bigint in table public.chg. Make a new source version for the columns it has now.');
+    } finally {
+      await src.unsafe("alter table chg alter column amt type numeric(18,2)");
+    }
+  });
+
+  it("on the first pull, a column whose native type can't hold its declared field pauses with the reason per column", async () => {
+    await src`insert into chg (updated_at, ref, amt, extra) values (now(), 'R1', 1.5, '2026-11-19')`;
+    const spec = chgSpec();
+    const s = await source(A, { ...spec, fields: [...spec.fields, { name: "extra", type: "integer", nullable: true, trim: true }] });
+    expect(await pullSource(scope(s), probe)).toBe("paused");
+    expect(await allRecords(s)).toBe(0);
+    expect((await cursorOf(s))?.lastError).toBe('Column "extra" of table public.chg is text, which can\'t hold the field\'s type integer. Make a new source version for the columns it has now.');
   });
 
   it("a missing column pauses the source before any row is read", async () => {
@@ -372,7 +426,36 @@ describe("maintenance.partitions", () => {
   it("adds this month and the next two to records and raw_rows, as the app role", async () => {
     await ensureIngestPartitions(probe, new Date("2027-05-20T00:00:00Z"));
     for (const t of ["records", "raw_rows"]) {
-      expect((await partitionsOf(t)).map((p) => p.name).filter((n) => n >= `${t}_2027_05`)).toEqual([`${t}_2027_05`, `${t}_2027_06`, `${t}_2027_07`]);
+      expect((await partitionsOf(t)).map((p) => p.name).filter((n) => n >= `${t}_2027_05` && n <= `${t}_2027_12`)).toEqual([`${t}_2027_05`, `${t}_2027_06`, `${t}_2027_07`]);
     }
+  });
+});
+
+describe("a month with no partition yet, met during ingest", () => {
+  const months = ["2031_03", "2031_04"];
+  beforeEach(async () => {
+    await dropPartitions(months.flatMap((m) => [`raw_rows_${m}`, `records_${m}`]));
+  });
+
+  it("a first ingest of the month that rolls back leaves the partition there; the next file of the month ingests", async () => {
+    const k = await source(A, kseiSpec({ format: { kind: "delimited", delimiter: "|", quote: '"', header: false, encoding: "utf-8" } } as never));
+    // a first batch of 1,000 lines written, then a quote never closed: the file's transaction rolls back
+    await put("act20310305.txt", `${Array.from({ length: 1000 }, () => kseiLine(1)).join("\n")}\n"${kseiLine(2)}\n`);
+    expect(await deliver(k)).toEqual(["failed"]);
+    await put("act20310306.txt", `${kseiLine(1)}\n${kseiLine(2)}\n`);
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await current(k, "2031-03-06")).toBe(2);
+  });
+
+  it("two files of a new month at once both ingest; the partition is made in its own transaction, never in the file's", async () => {
+    const [k1, k2] = [await source(A, kseiSpec()), await source(A, kseiSpec())];
+    await put("act20310407.txt", [1, 2, 3].map(kseiLine).join("\n") + "\n");
+    const [f1] = await scanSource(scope(k1), probe, LATER()) as [InboxFile];
+    const [f2] = await scanSource(scope(k2), probe, LATER()) as [InboxFile];
+    expect(await Promise.all([ingestFile(scope(k1), f1, probe), ingestFile(scope(k2), f2, probe)])).toEqual(["ingested", "ingested"]);
+    expect([await current(k1), await current(k2)]).toEqual([3, 3]);
+    const x = await xmins("records_2031_04", "records", k1.sourceId);
+    expect(x.rows).toHaveLength(1);
+    expect(x.rows).not.toContain(x.ddl);
   });
 });

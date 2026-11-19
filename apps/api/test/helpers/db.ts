@@ -70,3 +70,13 @@ export const partitionsOf = (parent: string): Promise<{ name: string; rls: boole
 /** Functions `names` with whether they are security definer and their SET options, by name; a catalog read src/ tests can't spell. */
 export const functionsOf = (names: string[]): Promise<{ proname: string; prosecdef: boolean; proconfig: string[] | null }[]> => client`
   select p.proname, p.prosecdef, p.proconfig from pg_proc p where p.proname in ${client(names)} order by p.proname`;
+
+/** Drops monthly partitions `names` (a test that needs a month with no partition yet); a catalog change src/ tests can't spell. */
+export const dropPartitions = (names: string[]) => client.unsafe(names.map((n) => `drop table if exists "${n}"`).join("; "));
+
+/** The transaction ids that wrote `relname`'s catalog row and the rows of `table` from source `sourceId` (xmin). */
+export const xmins = async (relname: string, table: string, sourceId: string): Promise<{ ddl: string; rows: string[] }> => {
+  const [d] = await client`select xmin::text as x from pg_class where relname = ${relname}`;
+  const rows = await client.unsafe(`select distinct xmin::text as x from "${table}" where source_id = $1`, [sourceId]);
+  return { ddl: d.x, rows: (rows as { x: string }[]).map((r) => r.x) };
+};

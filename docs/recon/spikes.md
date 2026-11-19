@@ -114,6 +114,26 @@ Konsekuensi ke desain:
   dan dengan beberapa config interval sekaligus (spec §12 menyebut "beberapa config interval"; spike ini menjalankan satu
   config interval + satu run harian).
 
+### S1 ingest (Plan 2): fallback multi-row INSERT
+
+Tanggal 2026-11-20 (Plan 2 Task 5, fix 1). `COPY … FROM STDIN` tidak ada di Bun 1.4.3 (versi pin): `sql.unsafe('copy …
+from stdin').writable()` → "q.writable is not a function" pada biner 1.4.3; di 1.4.4 jalan. Role app juga tidak bisa
+membuat tabel staging UNLOGGED. Jadi ingest memakai fallback: satu `INSERT … ON CONFLICT DO NOTHING` multi-baris per
+1.000 baris (`apps/api/src/modules/ingest/copy.ts`), seluruh file dalam satu transaksi.
+
+Ukuran: satu file KSEI-ACT sintetis 1.000.000 baris (65,9 MB, 14 kolom, SID unik) lewat `scanSource` + `ingestFile`
+sebagai role app (`appRoleDb`), database test lokal (PostgreSQL 18 cluster :5434, mesin yang sama dengan S1), tes
+sementara di `apps/api/src/modules/ingest/tests/integration/` (tidak di-commit).
+
+| Bun | Hash saat scan | Ingest (parse + map + tulis, satu transaksi) | Baris/s | RSS dasar → puncak |
+|---|---|---|---|---|
+| 1.4.4 | 0,03 s | 58,4 s | 17.112 | 178 → 248 MB |
+| 1.4.3 | 0,04 s | 55,8 s | 17.908 | 160 → 238 MB |
+
+Sekitar 10× lebih lambat dari COPY + INSERT di S1 (180 ribu baris/s); belum diprofil bagian mana (parse, `toRecord`
+dengan sha256 per baris, atau insert) yang dominan. `expireInSeconds` `ingest.file` 1800 s = 3× file 10 juta baris
+pada laju ini. Upgrade path: COPY ke temp table saat Bun yang di-pin punya `writable()`, diukur ulang terhadap angka ini.
+
 ## S7: driver DB sumber di Bun
 
 Skrip: `apps/api/scripts/spikes/s7-drivers.ts` (`bun scripts/spikes/s7-drivers.ts [--only pg|mysql|mssql|oracle]`; exit non-zero

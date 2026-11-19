@@ -293,7 +293,7 @@ describe("versions: draft, submit, approve, reject", () => {
     expect((await patch(t.mk, s.id, v.id, { ...ksei(), calendar: "nowhere" })).status).toBe(400);
   });
 
-  it("a quote character equal to the delimiter, or a snapshot schedule that is no cron, can't be saved (400)", async () => {
+  it("a quote character equal to the delimiter, a snapshot schedule that is no cron or a mutable snapshot source can't be saved (400)", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     const k = ksei();
@@ -305,6 +305,9 @@ describe("versions: draft, submit, approve, reject", () => {
     const bad = await patch(t.mk, snap.id, sv.id, input("every morning"));
     expect([bad.status, await code(bad)]).toEqual([400, "bad_request"]);
     expect((await patch(t.mk, snap.id, sv.id, input("0 6 * * 1-5"))).status).toBe(200);
+    // a snapshot is replaced whole per date: a mutable one could supersede the active rows while loading
+    const mutable = await patch(t.mk, snap.id, sv.id, { ...input("0 6 * * 1-5"), mutable: true });
+    expect([mutable.status, await code(mutable)]).toEqual([400, "bad_request"]);
   });
 
   it("approving a version schedules the source's runs and starts a paused source again", async () => {

@@ -32,7 +32,8 @@ import type { Ctx } from "../auth";
 import { calendars, pauseSource, sourceConnections, sources, sourceShares, sourceVersions } from "../sources";
 import { withSpace } from "../spaces";
 import { type Connector, ConnectorError, connectorFor, type From, type Row, type Secret } from "./connectors";
-import { insertBatch, supersede } from "./copy";
+import { familyOf } from "./connectors/dialect";
+import { insertBatch, makePartitions, MissingPartition, supersede } from "./copy";
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
 import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
@@ -46,6 +47,7 @@ export type InboxFile = { name: string; size: number; modifiedAt: number; sha256
 type StoredConnection = { engine: string; options: unknown; secretEnc: string };
 
 const NOW = sql`now()`;
+const EMPTY_SNAPSHOT = "The pull returned no rows; the active snapshot was kept.";
 /** Rows a snapshot page holds (a snapshot query has no chunk setting of its own). */
 const SNAPSHOT_CHUNK = 5000;
 /** Lines of a file written per batch. */
@@ -128,7 +130,6 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
   const qDate = o.businessDate ?? (o.fileName ? fileDateOf(o.fileName) : null);
   const base = { spaceId: s.spaceId, sourceId: s.sourceId, origin: o.origin, originId: o.originId };
   for (const x of lines) {
-    counts.total++;
     let reasons = x.ok ? null : x.reasons;
     const r = x.ok ? toRecord(x.raw, l.spec, { calendar: l.calendar, fileName: o.fileName }) : null;
     if (r && !r.ok) reasons = r.reasons;
@@ -149,15 +150,34 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
       snapshotId: o.snapshotId, originId: o.originId,
     });
   }
+  const added = await insertBatch(tx, raw, recs, quarantine);
+  counts.total += lines.length;
   counts.ok += recs.length;
   counts.quarantined += quarantine.length;
-  const added = await insertBatch(tx, raw, recs, quarantine);
   counts.added += added.length;
-  if (l.spec.mutable && added.length) {
+  // a snapshot is replaced whole per date (a mutable snapshot source is refused at save): its loading rows never
+  // supersede the active snapshot's, so a failed pull can't leave the date empty
+  if (l.spec.mutable && !o.snapshotId && added.length) {
     const latest = new Map<string, string>(); // the newest record per key (UUIDv7 ids sort by creation)
     for (const a of added) if (a.naturalKey !== null && (latest.get(a.naturalKey) ?? "") < a.id) latest.set(a.naturalKey, a.id);
     const replaced = await supersede(tx, s.spaceId, s.sourceId, [...latest].map(([key, id]) => ({ key, id })));
     if (replaced.length) await ingestHooks.onRecordChanged(tx, replaced);
+  }
+}
+
+/**
+ * Runs `step` (one transaction); when its batch needs a month raw_rows or records has no partition for, the step has
+ * rolled back, the month is made in a short transaction of its own (makePartitions), and the step runs again. So no
+ * ingest transaction ever runs DDL.
+ */
+async function withPartitions<T>(on: Tx, step: () => Promise<T>): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await step();
+    } catch (e) {
+      if (!(e instanceof MissingPartition) || i >= 3) throw e;
+      await makePartitions(on, e.months);
+    }
   }
 }
 
@@ -180,7 +200,7 @@ async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: Fro
   const names = [...l.spec.fields.map((f) => f.name), ...keyset];
   const cols = await c.introspect(from);
   const baseline = l.cursor?.columnsVersionId === l.versionId ? (l.cursor.columns as Baseline) : null;
-  const drift = driftOf(cols, l.spec.fields.map((f) => f.name), keyset, baseline, "table" in from ? `table ${from.table}` : "the query");
+  const drift = driftOf(cols, l.spec.fields, keyset, baseline, "table" in from ? `table ${from.table}` : "the query", (t) => familyOf(l.conn!.engine as DbEngine, t));
   if (drift) return drift;
   if (!baseline) await inScope(s, on, (tx) => setCursor(tx, s, { columns: baselineOf(cols, names), columnsVersionId: l.versionId }));
   return null;
@@ -212,11 +232,12 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
     for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookbackSeconds: input.lookback_seconds, chunk: input.chunk })) {
       const last = page[page.length - 1]!;
       const mark = { watermark: last[wm.column]!, watermarkId: last[wm.id_column]! };
-      await inScope(s, on, async (tx) => {
+      const lines = page.map((raw) => ({ line: ++n, ok: true as const, raw }));
+      await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);
-        await writeLines(tx, s, l, origin, page.map((raw) => ({ line: ++n, ok: true as const, raw })), counts);
+        await writeLines(tx, s, l, origin, lines, counts);
         await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, input.lookback_seconds, wmField));
-      });
+      }));
     }
     if (!n) await inScope(s, on, (tx) => setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }));
     return "pulled";
@@ -255,15 +276,26 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
     const origin: Origin = { origin: "snapshot", originId: id, snapshotId: id, businessDate, text: (cells) => JSON.stringify(cells) };
     let n = 0;
     for await (const page of c.pullSnapshot(query, businessDate, { columns: l.spec.fields.map((f) => f.name), chunk: SNAPSHOT_CHUNK })) {
-      await inScope(s, on, (tx) => writeLines(tx, s, l, origin, page.map((raw) => ({ line: ++n, ok: true as const, raw })), counts));
+      const lines = page.map((raw) => ({ line: ++n, ok: true as const, raw }));
+      await withPartitions(on, () => inScope(s, on, (tx) => writeLines(tx, s, l, origin, lines, counts)));
     }
-    await inScope(s, on, async (tx) => {
+    const kept = await inScope(s, on, async (tx) => {
       await sourceLock(tx, s.sourceId);
+      // a query that answered no rows never replaces a date that has data (an empty table, a wrong filter, a day not loaded yet)
+      if (n === 0) {
+        const [active] = await tx.select({ rows: sourceSnapshots.rows }).from(sourceSnapshots).where(and(ofDate, eq(sourceSnapshots.status, "active")));
+        if (active && active.rows > 0) {
+          await tx.update(sourceSnapshots).set({ status: "failed", error: EMPTY_SNAPSHOT, finishedAt: NOW }).where(eq(sourceSnapshots.id, id));
+          await setCursor(tx, s, { lastError: `Snapshot ${businessDate}: ${EMPTY_SNAPSHOT}` });
+          return true;
+        }
+      }
       await tx.update(sourceSnapshots).set({ status: "superseded" }).where(and(ofDate, eq(sourceSnapshots.status, "active")));
       await tx.update(sourceSnapshots).set({ status: "active", rows: counts.added, finishedAt: NOW }).where(eq(sourceSnapshots.id, id));
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, endOfDay(businessDate));
+      return false;
     });
-    return "active";
+    return kept ? "failed" : "active";
   } catch (e) {
     const reason = e instanceof ConnectorError ? e.message : "The snapshot stopped on an unexpected error.";
     await inScope(s, on, (tx) => tx.update(sourceSnapshots).set({ status: "failed", rows: counts.added, error: reason, finishedAt: NOW })
@@ -329,15 +361,15 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
   const row = { id: Bun.randomUUIDv7(), ...s, name: f.name, sha256: f.sha256, size: f.size, modifiedAt: new Date(f.modifiedAt), businessDate: fileDateOf(f.name) };
   const mine = and(eq(sourceFiles.spaceId, s.spaceId), eq(sourceFiles.sourceId, s.sourceId));
   try {
-    return await inScope(s, on, async (tx) => {
+    return await withPartitions(on, () => inScope(s, on, async (tx) => {
       await sourceLock(tx, s.sourceId);
       const [arrived] = await tx.select({ id: sourceFiles.id }).from(sourceFiles)
         .where(and(mine, eq(sourceFiles.name, f.name), eq(sourceFiles.size, f.size), eq(sourceFiles.modifiedAt, row.modifiedAt)));
-      if (arrived) return "skipped";
+      if (arrived) return "skipped" as const;
       const [same] = await tx.select({ id: sourceFiles.id }).from(sourceFiles).where(and(mine, eq(sourceFiles.sha256, f.sha256), eq(sourceFiles.status, "ingested")));
       if (same) {
         await tx.insert(sourceFiles).values({ ...row, status: "rejected", reason: "Same file already ingested", versionOf: same.id });
-        return "rejected";
+        return "rejected" as const;
       }
       const [prev] = await tx.select({ id: sourceFiles.id, version: sourceFiles.version }).from(sourceFiles)
         .where(and(mine, eq(sourceFiles.name, f.name), eq(sourceFiles.status, "ingested"))).orderBy(desc(sourceFiles.version)).limit(1);
@@ -358,8 +390,8 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
         rowsTotal: counts.total, rowsOk: counts.ok, rowsNew: counts.added, rowsQuarantined: counts.quarantined,
       });
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, row.businessDate ? endOfDay(row.businessDate) : null);
-      return "ingested";
-    });
+      return "ingested" as const;
+    }));
   } catch (e) {
     if (!(e instanceof FileFailure)) throw e;
     await inScope(s, on, async (tx) => {

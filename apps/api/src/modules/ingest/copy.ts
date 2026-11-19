@@ -6,9 +6,11 @@
 // table once the pinned Bun has it, measured against this.
 //
 // The only file of ingest with SQL written by hand (boundaries.test.ts allowlists it): the supersede UPDATE of mutable
-// sources and the partition lookup. Values are bound; identifiers come from the declared tables.
+// sources and the partition lookup. Values are bound; identifiers come from the declared tables. A batch never makes a
+// partition: it throws MissingPartition, and the caller makes the month (makePartitions) outside its transaction and
+// runs the step again.
 import { getTableName, sql } from "drizzle-orm";
-import type { InTx } from "../../kernel/db";
+import type { InTx, Tx } from "../../kernel/db";
 import { log } from "../../kernel/log";
 import { ensureMonthPartitions } from "../../kernel/partitions";
 import { quarantineRows, rawRows, records } from "./schema";
@@ -18,27 +20,38 @@ export const CHUNK = 1000;
 
 const chunks = <T>(rows: T[]): T[][] => Array.from({ length: Math.ceil(rows.length / CHUNK) }, (_, i) => rows.slice(i * CHUNK, (i + 1) * CHUNK));
 
-/** Partitions this process has seen; a month missing from it is looked up once. */
-const known = new Set<string>();
+/** A batch needs months that raw_rows or records has no partition for yet; nothing was written for it. */
+export class MissingPartition extends Error {
+  constructor(readonly months: string[]) { super(`ingest: no partition for ${months.join(", ")}`); }
+}
 
 /**
- * Makes sure raw_rows and records have the month of each date. maintenance.partitions makes them ahead (creating one
- * locks the parent for the rest of the transaction); a month it hasn't made (an old date sent late) is made here, and
- * logged, as the fallback.
+ * Throws MissingPartition for the months of `dates` that raw_rows or records lacks. Never makes one here: creating a
+ * partition takes ACCESS EXCLUSIVE on the parent until the transaction ends, and an ingest transaction (a whole file)
+ * can be long. Looked up per batch (no process cache: a partition made in a transaction that rolled back is gone).
  */
-async function ensureMonths(tx: InTx, dates: Iterable<string>): Promise<void> {
+async function checkMonths(tx: InTx, dates: Iterable<string>): Promise<void> {
+  const missing: string[] = [];
   for (const month of new Set([...dates].map((d) => d.slice(0, 7)))) {
-    for (const t of [rawRows, records]) {
-      const name = `${getTableName(t)}_${month.replace("-", "_")}`;
-      if (known.has(name)) continue;
-      const [r] = (await tx.execute(sql`select to_regclass(${name}) is not null as ok`)) as unknown as { ok: boolean }[];
-      if (!r?.ok) {
-        log.warn({ partition: name }, "partition made during ingest: maintenance.partitions had not made it");
-        await ensureMonthPartitions(tx, t, new Date(`${month}-01T00:00:00Z`), 1);
-      }
-      known.add(name);
-    }
+    const names = [rawRows, records].map((t) => `${getTableName(t)}_${month.replace("-", "_")}`);
+    const [r] = (await tx.execute(sql`select to_regclass(${names[0]}) is not null and to_regclass(${names[1]}) is not null as ok`)) as unknown as { ok: boolean }[];
+    if (!r?.ok) missing.push(month);
   }
+  if (missing.length) throw new MissingPartition(missing);
+}
+
+/**
+ * The fallback for a month maintenance.partitions hasn't made (an old date sent late): makes it in a short transaction
+ * of its own, waiting at most 5 s for the parent's lock (a long reader makes it fail and the job retry), then logs it.
+ */
+export async function makePartitions(on: Tx, months: string[]): Promise<void> {
+  await on.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('lock_timeout', '5s', true)`);
+    for (const m of months) {
+      for (const t of [rawRows, records]) await ensureMonthPartitions(tx, t, new Date(`${m}-01T00:00:00Z`), 1);
+    }
+  });
+  log.warn({ months }, "partitions made during ingest: maintenance.partitions had not made them");
 }
 
 /**
@@ -48,7 +61,7 @@ async function ensureMonths(tx: InTx, dates: Iterable<string>): Promise<void> {
 export async function insertBatch(
   tx: InTx, raw: (typeof rawRows.$inferInsert)[], recs: (typeof records.$inferInsert)[], quarantine: (typeof quarantineRows.$inferInsert)[],
 ): Promise<{ id: string; naturalKey: string | null }[]> {
-  await ensureMonths(tx, recs.map((r) => r.businessDate));
+  await checkMonths(tx, recs.map((r) => r.businessDate));
   for (const c of chunks(raw)) await tx.insert(rawRows).values(c).onConflictDoNothing();
   const added: { id: string; naturalKey: string | null }[] = [];
   for (const c of chunks(recs)) added.push(...await tx.insert(records).values(c).onConflictDoNothing().returning({ id: records.id, naturalKey: records.naturalKey }));
