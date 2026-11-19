@@ -14,18 +14,22 @@ import { isUuid } from "../../kernel/parse";
 import { recordActivity } from "../audit";
 import { actorPermissions, type Ctx } from "../auth";
 import { users } from "../users";
-import { canManageMembers } from "./rules";
+import { canManageMembers, sourceAdminChanged } from "./rules";
 import { spaceMembers, spaces } from "./schema";
 
 /**
- * Runs `fn` in a transaction that sees only rows of `spaceIds` in tables whose policy is `recon_space_visible(space_id)`
- * (drizzle/0007_space_rls.sql). The settings are transaction-local: once it ends, the pooled connection is back to ''
+ * Runs `fn` in a transaction on `on` that sees only rows of `spaceIds` in tables whose policy is
+ * `recon_space_visible(space_id)` (drizzle/0007_space_rls.sql, 0008). `userId` null (a job) sets app.user_id to ''.
+ * A job handler passes `workerDb` (kernel/worker-db.ts) as `on`; this module never imports it, so the API process
+ * never opens the worker pool. The settings are transaction-local: once it ends, the pooled connection is back to ''
  * and sees nothing. Ids must be UUIDs: they travel comma-joined, so a comma in one would add a space.
  */
-export function withSpace<T>(scope: { spaceIds: string[]; userId: string }, fn: (tx: InTx) => Promise<T>): Promise<T> {
-  if (!scope.spaceIds.every(isUuid) || !isUuid(scope.userId)) return Promise.reject(new Error("withSpace: space and user ids must be UUIDs"));
-  return db.transaction(async (tx) => {
-    await tx.execute(sql`select set_config('app.space_ids', ${scope.spaceIds.join(",")}, true), set_config('app.user_id', ${scope.userId}, true)`);
+export function withSpace<T>(scope: { spaceIds: string[]; userId: string | null }, fn: (tx: InTx) => Promise<T>, on: Tx = db): Promise<T> {
+  if (!scope.spaceIds.every(isUuid) || (scope.userId !== null && !isUuid(scope.userId))) {
+    return Promise.reject(new Error("withSpace: space and user ids must be UUIDs"));
+  }
+  return on.transaction(async (tx) => {
+    await tx.execute(sql`select set_config('app.space_ids', ${scope.spaceIds.join(",")}, true), set_config('app.user_id', ${scope.userId ?? ""}, true)`);
     return fn(tx);
   });
 }
@@ -123,17 +127,20 @@ export async function memberPage(spaceId: string, q: SpaceMemberListQuery): Prom
 
 /**
  * Takes the space-admin lock, then reads what the change depends on: the space (404), the user (404), the actor's
- * right to manage members (403, read now: the guard's read may be stale) and the user's current roles.
+ * right to manage members (403, read now: the guard's read may be stale), whether the actor holds `space.manage` and
+ * the user's current roles.
  */
 async function memberChange(tx: Tx, ctx: Ctx, spaceId: string, userId: string) {
   await xactLock(tx, "spaceAdmins");
   const space = await spaceRow(tx, spaceId);
   const [user] = await tx.select({ id: users.id, name: users.name, username: users.username }).from(users).where(eq(users.id, userId));
   if (!user) throw notFound("user");
-  const allowed = canManageMembers(await spaceRolesOf(tx, ctx.user.id, spaceId), (await actorPermissions(tx, ctx.user.id)).has("space.manage"));
-  if (!allowed) throw new ApiError("forbidden");
-  return { space, user, roles: await spaceRolesOf(tx, userId, spaceId) };
+  const manage = (await actorPermissions(tx, ctx.user.id)).has("space.manage");
+  if (!canManageMembers(await spaceRolesOf(tx, ctx.user.id, spaceId), manage)) throw new ApiError("forbidden");
+  return { space, user, manage, roles: await spaceRolesOf(tx, userId, spaceId) };
 }
+
+const SOURCE_ADMIN_ONLY = () => new ApiError("forbidden", "Only an administrator with space.manage can grant or remove source_admin.");
 
 /** 409 when `userId` is the space's only space_admin (counted under the space-admin lock). */
 async function keepAnAdmin(tx: Tx, spaceId: string, userId: string): Promise<void> {
@@ -141,13 +148,17 @@ async function keepAnAdmin(tx: Tx, spaceId: string, userId: string): Promise<voi
   if (!others) throw new ApiError("last_space_admin");
 }
 
-/** Replaces the user's role set in the space; one `space.member_set` entry. The same set → no entry. */
+/**
+ * Replaces the user's role set in the space; one `space.member_set` entry. The same set → no entry. Gaining or losing
+ * source_admin needs `space.manage` (403 for a space_admin without it).
+ */
 export async function setMember(ctx: Ctx, spaceId: string, userId: string, b: SetSpaceMemberBody): Promise<SpaceMemberDto> {
   return db.transaction(async (tx) => {
-    const { space, user, roles: before } = await memberChange(tx, ctx, spaceId, userId);
+    const { space, user, manage, roles: before } = await memberChange(tx, ctx, spaceId, userId);
     const roles = inOrder(b.roles);
     const member = { userId, name: user.name, username: user.username, roles };
     if (roles.join() === before.join()) return member;
+    if (!manage && sourceAdminChanged(before, roles)) throw SOURCE_ADMIN_ONLY();
     if (before.includes("space_admin") && !roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
     const of = and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId));
     await tx.delete(spaceMembers).where(of);
@@ -158,11 +169,15 @@ export async function setMember(ctx: Ctx, spaceId: string, userId: string, b: Se
   });
 }
 
-/** Removes the user from the space (404 when not a member); one `space.member_remove` entry. */
+/**
+ * Removes the user from the space (404 when not a member); one `space.member_remove` entry. Removing a source_admin
+ * needs `space.manage`.
+ */
 export async function removeMember(ctx: Ctx, spaceId: string, userId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    const { space, user, roles } = await memberChange(tx, ctx, spaceId, userId);
+    const { space, user, manage, roles } = await memberChange(tx, ctx, spaceId, userId);
     if (!roles.length) throw notFound("member");
+    if (!manage && roles.includes("source_admin")) throw SOURCE_ADMIN_ONLY();
     if (roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
     await tx.delete(spaceMembers).where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId)));
     await recordActivity(tx, ctx, { action: "space.member_remove", target: { type: "space", id: spaceId, label: space.name }, before: { user: { id: userId, name: user.name }, roles } });

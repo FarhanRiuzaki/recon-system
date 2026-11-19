@@ -57,6 +57,13 @@
       "when": 1795076044961,
       "tag": "0007_space_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795079203218,
+      "tag": "0008_space_rls_index",
+      "breakpoints": true
     }
   ]
 }

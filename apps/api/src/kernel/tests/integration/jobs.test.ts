@@ -1,6 +1,6 @@
 // The job kernel on pg-boss (spec §9, spike S2): merged ticks per key, the per-queue cap, recovery after a worker dies,
 // the Asia/Jakarta cron, a graceful stop and the app role's rights on the pgboss schema.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { SQL } from "bun";
 import { count, eq } from "drizzle-orm";
 import path from "node:path";
@@ -9,7 +9,8 @@ import { migrateJobs } from "../../../db/migrate";
 import { asAppRole } from "../../../../test/helpers/app-role";
 import { applyOnce, dropProbe, effects, resetProbe } from "../../../../test/helpers/jobs";
 import { db } from "../../db";
-import { boss, enqueue, ensureQueues, QUEUE_OPTIONS, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "../../jobs";
+import { boss, closeJobs, enqueue, ensureQueues, QUEUE_OPTIONS, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "../../jobs";
+import { log } from "../../log";
 import { workerDb } from "../../worker-db";
 
 const ROOT = path.join(import.meta.dir, "../../../..");
@@ -244,6 +245,42 @@ describe("job kernel", () => {
     } finally {
       await app.stop({ close: false, graceful: false });
       await asApp.close();
+    }
+  }, 20_000);
+
+  it("startWorker's real options (supervise, schedule, reindex false) run a job end to end as the app role", async () => {
+    await db.transaction(async (tx) => asAppRole(tx));
+    process.env.APP_DB_ROLE = "recon_app_probe";
+    try {
+      await migrateJobs();
+    } finally {
+      delete process.env.APP_DB_ROLE;
+    }
+    // jobs.ts's own pool, reopened on a URL whose startup parameter `role` makes every connection the app role.
+    const url = process.env.DATABASE_URL!;
+    const asApp = new URL(url);
+    asApp.searchParams.set("role", "recon_app_probe");
+    await closeJobs();
+    process.env.DATABASE_URL = asApp.href;
+    const errors = spyOn(log, "error");
+    let ran = 0;
+    try {
+      const stop = await startWorker({ [QUEUES.ingestFile]: async () => void ran++ }, FAST);
+      try {
+        const [who] = (await (await boss()).getDb().executeSql("select current_user as u")).rows as { u: string }[];
+        expect(who!.u).toBe("recon_app_probe");
+        const id = await enqueue(QUEUES.ingestFile, {}, { key: "noop" });
+        await until(async () => (await stateOf(QUEUES.ingestFile, id!))?.state === "completed");
+        await Bun.sleep(2500); // two supervise passes (1 s) and the cron's first pass
+        expect(ran).toBe(1);
+        expect(errors.mock.calls).toEqual([]);
+      } finally {
+        await stop();
+      }
+    } finally {
+      errors.mockRestore();
+      await closeJobs();
+      process.env.DATABASE_URL = url;
     }
   }, 20_000);
 

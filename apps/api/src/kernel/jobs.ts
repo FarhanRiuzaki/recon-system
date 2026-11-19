@@ -3,7 +3,7 @@
 // app role, over a Bun SQL pool of its own.
 import { SQL } from "bun";
 import { fromBunSql, PgBoss, type ConstructorOptions, type QueueOptions } from "pg-boss";
-import { loadDbConfig } from "./config";
+import { loadJobsConfig } from "./config";
 import { errorDetail } from "./errors";
 import { log } from "./log";
 
@@ -47,13 +47,14 @@ export type JobHandler = (job: { id: string; data: unknown }) => Promise<void>;
 
 let pool: SQL | undefined;
 /**
- * pg-boss's pool: DATABASE_URL, DB_POOL_MAX connections, the API pool's timeouts (its statements are short). Opened on
- * first use, so db:migrate can import QUEUES without a DATABASE_URL.
+ * pg-boss's pool: DATABASE_URL, JOBS_POOL_MAX connections (3 by default, apart from the API's and the worker's pools),
+ * the API pool's timeouts (its statements are short). Opened on first use, so db:migrate can import QUEUES without a
+ * DATABASE_URL.
  */
 function jobsPool(): SQL {
   if (pool) return pool;
-  const { DATABASE_URL, DB_POOL_MAX } = loadDbConfig(process.env);
-  return (pool = new SQL(DATABASE_URL, { max: DB_POOL_MAX, connection: { statement_timeout: 5000, idle_in_transaction_session_timeout: 10000 } }));
+  const { DATABASE_URL, JOBS_POOL_MAX } = loadJobsConfig(process.env);
+  return (pool = new SQL(DATABASE_URL, { max: JOBS_POOL_MAX, connection: { statement_timeout: 5000, idle_in_transaction_session_timeout: 10000 } }));
 }
 
 function newBoss(options: ConstructorOptions): PgBoss {

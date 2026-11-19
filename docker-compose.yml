@@ -88,6 +88,7 @@ services:
       # Optional (apps/api/.env.example); empty = the default.
       WORKER_DB_POOL_MAX: ${WORKER_DB_POOL_MAX:-}
       JOB_STATEMENT_TIMEOUT_MS: ${JOB_STATEMENT_TIMEOUT_MS:-}
+      JOBS_POOL_MAX: ${JOBS_POOL_MAX:-}
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:4100/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 10s

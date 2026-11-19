@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { CONFIG_KEYS, loadConfig, loadDbConfig } from "../../config";
+import { CONFIG_KEYS, loadConfig, loadDbConfig, loadJobsConfig } from "../../config";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
 const base = {
@@ -80,6 +80,12 @@ describe("loadConfig", () => {
     expect(loadDbConfig({ DATABASE_URL: base.DATABASE_URL })).toEqual({ DATABASE_URL: base.DATABASE_URL, DB_POOL_MAX: 10 });
     expect(loadDbConfig({ DATABASE_URL: base.DATABASE_URL, DB_POOL_MAX: "3", INTERNAL_API_TOKEN: "" })).toEqual({ DATABASE_URL: base.DATABASE_URL, DB_POOL_MAX: 3 });
     expect(() => loadDbConfig({ DATABASE_URL: "" })).toThrow("Invalid API configuration: DATABASE_URL (invalid_type)");
+  });
+
+  it("loadJobsConfig: pg-boss's pool has its own small cap, JOBS_POOL_MAX 1–20, default 3", () => {
+    expect(loadJobsConfig({ DATABASE_URL: base.DATABASE_URL, DB_POOL_MAX: "50" })).toEqual({ DATABASE_URL: base.DATABASE_URL, JOBS_POOL_MAX: 3 });
+    expect(loadJobsConfig({ DATABASE_URL: base.DATABASE_URL, JOBS_POOL_MAX: "20" }).JOBS_POOL_MAX).toBe(20);
+    for (const v of ["0", "21"]) expect(() => loadJobsConfig({ DATABASE_URL: base.DATABASE_URL, JOBS_POOL_MAX: v })).toThrow("JOBS_POOL_MAX");
   });
 
   it("production requires APP_URL (the links in reset and invitation mail); elsewhere it defaults to the dev web", () => {

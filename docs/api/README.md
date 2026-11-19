@@ -167,9 +167,11 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
   401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
   to leave a space without a `space_admin` (409 `last_space_admin`, also for a PUT that drops the role); two such
-  changes run one after the other. A code may be sent in any letter case
-  (the schema shows the stored form); it is stored in lower case and unique. The default seed gives Admin `space.view`
-  and `space.manage`, so an Admin can add themselves to any space (recorded as `space.member_set`; no second approval,
+  changes run one after the other. Granting or removing `source_admin` (a PUT that adds or drops it, a DELETE of its
+  holder) needs `space.manage`; a `space_admin` without it gets 403 `forbidden` (spec §11b). A code may be sent in any
+  letter case (the schema shows the stored form); it is stored in lower case and unique. On fresh installs the default
+  seed gives Admin `space.view` and `space.manage` (an existing deployment's Admin does not get `space.*`
+  automatically), so an Admin can add themselves to any space (recorded as `space.member_set`; no second approval,
   spec §11b); taking that away is a one-line exception to Admin's permissions in `apps/api/src/db/seed/system.ts`.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
@@ -304,8 +306,8 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/spaces` | `space.manage` | [CreateSpaceBody](schemas/CreateSpaceBody.json) (no members yet) | 201 [SpaceDto](schemas/SpaceDto.json) | `duplicate` (a space of that code, any case) |
 | PATCH | `/api/spaces/{spaceId}` | `space_admin` in the space, or `space.manage` | [UpdateSpaceBody](schemas/UpdateSpaceBody.json) (nothing to change = no entry) | [SpaceDto](schemas/SpaceDto.json) | `not_found` |
 | GET | `/api/spaces/{spaceId}/members` | any role in the space, or `space.manage` | [SpaceMemberListQuery](schemas/SpaceMemberListQuery.json) | [SpaceMemberPage](schemas/SpaceMemberPage.json) | `not_found` |
-| PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin` |
-| DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin` |
+| PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin`, `forbidden` (adds or drops `source_admin` without `space.manage`) |
+| DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin`, `forbidden` (removes a `source_admin` without `space.manage`) |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
 | POST | `/api/roles` | `role.create` | [CreateRoleBody](schemas/CreateRoleBody.json) | 201 [RoleDto](schemas/RoleDto.json) | `forbidden` (escalation), `duplicate` |
 | GET | `/api/roles/{id}` | `role.view` | none | [RoleDetailDto](schemas/RoleDetailDto.json) (the role plus the whole catalog, for its matrix) | `not_found` |

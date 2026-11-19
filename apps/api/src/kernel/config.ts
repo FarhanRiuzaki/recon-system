@@ -18,6 +18,8 @@ const Fields = z.object({
   WORKER_DB_POOL_MAX: int(1, 100, 10),
   JOB_STATEMENT_TIMEOUT_MS: int(1000, 3_600_000, 120_000),
   WORKER_HEALTH_PORT: int(1, 65535, 4100),
+  /** pg-boss's own pool (kernel/jobs.ts), in the API and the worker: its statements are short, so it stays small. */
+  JOBS_POOL_MAX: int(1, 20, 3),
   /** The role of DATABASE_URL; db:migrate grants it DML on pg-boss's schema (it never runs DDL there). */
   APP_DB_ROLE: z.string().optional(),
   INTERNAL_API_TOKEN: z.string().min(32),
@@ -51,9 +53,11 @@ const Fields = z.object({
 const Schema = Fields.transform((c) => ({ ...c, MIGRATION_DATABASE_URL: c.MIGRATION_DATABASE_URL ?? c.DATABASE_URL }));
 /** What the pool needs (kernel/db.ts builds it when it loads). */
 const DbFields = Fields.pick({ DATABASE_URL: true, DB_POOL_MAX: true });
+/** What pg-boss's pool needs (kernel/jobs.ts opens it on first use). */
+const JobsFields = Fields.pick({ DATABASE_URL: true, JOBS_POOL_MAX: true });
 /** What the worker process reads (src/worker.ts, kernel/worker-db.ts); it needs none of the API's secrets. */
 const WorkerFields = Fields.pick({
-  DATABASE_URL: true, DB_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
+  DATABASE_URL: true, JOBS_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
 });
 
 export type Config = z.output<typeof Schema>;
@@ -117,6 +121,11 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
  */
 export function loadDbConfig(env: Record<string, string | undefined>): z.output<typeof DbFields> {
   return loadPicked(DbFields, env);
+}
+
+/** Only DATABASE_URL and JOBS_POOL_MAX (pg-boss's pool), validated the same way. */
+export function loadJobsConfig(env: Record<string, string | undefined>): z.output<typeof JobsFields> {
+  return loadPicked(JobsFields, env);
 }
 
 /** Only the keys the worker process reads (WorkerFields), validated the same way. */

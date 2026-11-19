@@ -214,6 +214,31 @@ describe("members", () => {
     expect(await admins(A)).toBe(1);
   });
 
+  it("only space.manage grants or removes source_admin: a space_admin gets 403 with nothing changed", async () => {
+    const [viewer, google, apple] = [await idOf("viewer"), await idOf("google"), await idOf("apple")];
+    await member(A, google, "space_admin");
+    await member(A, viewer, "source_admin", "viewer");
+    await member(A, apple, "source_admin");
+    const g = await signIn("google");
+    const forbidden = async (r: Response) => [r.status, await code(r)];
+    const fresh = await idOf("admin"); // no role in A
+
+    expect(await forbidden(await put(A, fresh, { roles: ["source_admin"] }, g))).toEqual([403, "forbidden"]); // grant
+    expect(await rolesIn(A, fresh)).toEqual([]);
+    expect(await forbidden(await put(A, viewer, { roles: ["viewer"] }, g))).toEqual([403, "forbidden"]); // revoke
+    expect(await rolesIn(A, viewer)).toEqual(["source_admin", "viewer"]);
+    expect(await forbidden(await del(A, apple, g))).toEqual([403, "forbidden"]); // removal takes source_admin too
+    expect(await rolesIn(A, apple)).toEqual(["source_admin"]);
+    expect(await acts()).toEqual([]);
+    expect((await put(A, apple, { roles: ["source_admin", "viewer"] }, g)).status).toBe(200); // source_admin kept
+
+    // the same three with space.manage
+    expect((await put(A, fresh, { roles: ["source_admin"] }, sa)).status).toBe(200);
+    expect((await put(A, viewer, { roles: ["viewer"] }, sa)).status).toBe(200);
+    expect((await del(A, apple, sa)).status).toBe(200);
+    expect([await rolesIn(A, fresh), await rolesIn(A, viewer), await rolesIn(A, apple)]).toEqual([["source_admin"], ["viewer"], []]);
+  });
+
   it("space.manage without membership can manage members but GET /v1/spaces lists the space without data access", async () => {
     const apple = await idOf("apple");
     expect((await put(A, apple, { roles: ["space_admin"] }, sa)).status).toBe(200);
