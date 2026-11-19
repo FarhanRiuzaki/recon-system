@@ -60,6 +60,8 @@ assert(/depth/i.test(depthMsg), `kurung 30 tingkat harus ditolak maxDepth, dapat
 console.log('kurung 30 tingkat:', first(depthMsg))
 assert(validate('x'.repeat(MAX_EXPR_LENGTH + 1)) !== null, 'panjang ekspresi harus dibatasi')
 assert(validate('row.ref.matches("a")')?.includes('matches'), 'matches harus ditolak allowlist')
+for (const e of ['[1].all(x, x > 0)', '[1].exists(x, x > 0)', '[1].map(x, x * 2)', '[1].filter(x, x > 0)', 'bytes("a")', 'timestamp("2026-01-01T00:00:00Z")'])
+  assert(validate(e) !== null, `harus ditolak: ${e}`)
 assert(validate('int(row.amount) * 100') === null, 'ekspresi normal harus lolos')
 
 // 3. Throughput 1.000.000 evaluasi
