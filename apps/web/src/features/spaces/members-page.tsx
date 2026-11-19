@@ -47,14 +47,25 @@ export function MembersPage({ id }: { id: string }) {
   type Open = { kind: "add" } | { kind: "roles" | "remove"; member: SpaceMemberDto };
   const [dialog, setDialog] = useState<Open | null>(null);
   // Focus goes back to what opened the dialog: the row's menu button (its item is gone by then) or Add member; the
-  // page's h1 when that row was removed.
+  // next row's actions (or the list) when that row was removed (AGENTS.md §7: focus in a row that goes away moves to the next row).
   const origin = useRef<HTMLElement | null>(null);
+  const rowIndex = useRef(0);
   const open = (d: Open) => {
     origin.current = document.querySelector<HTMLElement>('[data-slot="action-menu-trigger"][aria-expanded="true"]') ?? activeElement();
+    const tr = origin.current?.closest("tr[data-key]");
+    rowIndex.current = tr ? [...tr.parentElement!.children].indexOf(tr) : 0;
     setDialog(d);
   };
   const close = () => setDialog(null);
-  const returnFocus = () => focusBack(origin.current);
+  // The removed row is gone by now (the dialog closes after the list refreshed), so `origin` is unusable and the fallbacks apply: the
+  // row that took its place, else the one before it, else the list.
+  const returnFocus = () => {
+    const n = document.querySelectorAll("tr[data-key]").length;
+    focusBack(origin.current, document, { fallbacks: [
+      `tr[data-key]:nth-child(${Math.min(rowIndex.current + 1, Math.max(n, 1))}) [data-slot="action-menu-trigger"]`,
+      '[role="region"][aria-label^="Members,"]',
+    ] });
+  };
   // ponytail: the only active space admin is known only while the table holds every member (no search, one page);
   // otherwise nothing is locked here and the API's 409 last_space_admin shows in the dialog. A role filter on the
   // members API would lift that ceiling.
@@ -87,7 +98,7 @@ export function MembersPage({ id }: { id: string }) {
           rowActions={can("audit.view") || manage ? (m) => {
             const blocked = removeBlocked(m);
             return (
-              <ActionMenu label={`Actions for ${m.name}`} actions={[
+              <ActionMenu label={`Actions for ${m.name} (${m.username})`} actions={[
                 ...(can("audit.view") ? [{ id: "activity", label: "View activity", onSelect: () => router.push(activityInvestigationHref("range=90d", { actorId: m.userId })) }] : []),
                 ...(manage ? [
                   { id: "roles", label: "Change roles", onSelect: () => open({ kind: "roles", member: m }) },

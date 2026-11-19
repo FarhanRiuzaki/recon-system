@@ -100,7 +100,7 @@ export function ChangeRolesDialog({ space, member, canSourceAdmin, lockedSpaceAd
   return (
     <RolesDialog title={`Change roles for ${member.name}`} description={`Roles apply to the ${space.name} space only.`} busy={busy} error={error}
       submitLabel="Save roles" canSubmit={changed && !none} onClose={onClose} returnFocus={returnFocus} focusRole
-      onSubmit={() => void run(async () => { await setMember(member.userId, roles); toast(`Changed the roles of ${member.name}.`); })}>
+      onSubmit={() => void run(async () => { await setMember(member.userId, roles); toast(`Changed the roles of ${member.name} (${member.username}).`); })}>
       <RoleChecklist legend={`Roles in ${space.name}`} value={roles} onChange={setRoles} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={lockedSpaceAdmin} />
       {lockedSpaceAdmin && (
         <p className="text-body-sm text-fg-2">{lastAdminText(member.name)}</p>
@@ -112,12 +112,14 @@ export function ChangeRolesDialog({ space, member, canSourceAdmin, lockedSpaceAd
 
 /**
  * Add member (Figma 01 Dialog/Add member): a person from the app's users (GET …/candidates; members are marked and
- * can't be picked) and their roles; Add member is off until both are chosen; one PUT for that user.
+ * can't be picked) and their roles; Add member stays on, and submitting without a person or a role says what is missing
+ * inline (as Change roles does for no roles); one PUT for that user.
  */
 export function AddMemberDialog({ space, canSourceAdmin, onClose, returnFocus }: { space: Space; canSourceAdmin: boolean; onClose: () => void; returnFocus: () => void }) {
   const qc = useQueryClient();
   const [person, setPerson] = useState<ComboOption | null>(null);
   const [roles, setRoles] = useState<SpaceRole[]>([]);
+  const [tried, setTried] = useState(false);
   const setMember = useSetRoles(space);
   const { busy, error, run } = useRun(onClose);
   const loadOptions = useCallback(async (q: string, signal: AbortSignal) => {
@@ -128,13 +130,18 @@ export function AddMemberDialog({ space, canSourceAdmin, onClose, returnFocus }:
   return (
     <RolesDialog title={`Add a member to ${space.name}`} phone="top" busy={busy} error={error}
       description="People sign in with their bank directory account. Only people who have signed in once can be found."
-      submitLabel="Add member" canSubmit={!!person && roles.length > 0} onClose={onClose} returnFocus={returnFocus}
-      onSubmit={() => void run(async () => { await setMember(person!.value, roles); toast(`Added ${person!.label} to ${space.name}.`); })}>
-      <Field id="add-member-person" label="Person">
+      submitLabel="Add member" canSubmit onClose={onClose} returnFocus={returnFocus}
+      onSubmit={() => {
+        if (!person || roles.length === 0) { setTried(true); if (!person) document.getElementById("add-member-person")?.focus(); return; }
+        // A candidate that can be picked is not a member yet, so its description is the username.
+        void run(async () => { await setMember(person.value, roles); toast(`Added ${person.label} (${person.description}) to ${space.name}.`); });
+      }}>
+      <Field id="add-member-person" label="Person" error={tried && !person ? "Pick a person" : null}>
         <Combobox id="add-member-person" label="Person" placeholder="Name or username" value={person} onChange={setPerson} loadOptions={loadOptions}
           emptyText="No one matches. Try another name or username." />
       </Field>
       <RoleChecklist legend={`Roles in ${space.name}`} value={roles} onChange={setRoles} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={false} />
+      {tried && roles.length === 0 && <p role="alert" className={ERROR}>Pick at least one role.</p>}
     </RolesDialog>
   );
 }
@@ -156,7 +163,7 @@ export function RemoveMemberDialog({ space, member, onClose, returnFocus }: {
     } catch (err) {
       throw new Error(memberError(err, member.name));
     }
-    toast(`Removed ${member.name} from ${space.name}.`);
+    toast(`Removed ${member.name} (${member.username}) from ${space.name}.`);
     if (self) router.push("/spaces");
     await qc.invalidateQueries({ queryKey: self ? spaceOptions().key : SPACES_KEY });
   }

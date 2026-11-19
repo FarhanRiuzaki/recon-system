@@ -68,7 +68,7 @@ export function FilePicker({ label, files, onFilesChange, accept, maxBytes, mult
       onDragLeave={() => { dragDepth.current = Math.max(0, dragDepth.current - 1); if (!dragDepth.current) setDragging(false); }}
       onDrop={e => { e.preventDefault(); dragDepth.current = 0; setDragging(false); choose(Array.from(e.dataTransfer.files)); }}>
       <button ref={browse} type="button" data-slot="file-dropzone-trigger" aria-label={`Choose files for ${label}`} aria-describedby={`${id}-hint${issue ? ` ${id}-error` : ""}`} disabled={unavailable}
-        className="grid min-h-40 w-full cursor-pointer justify-items-center content-center gap-2 rounded-lg p-6 text-center outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed"
+        className="grid min-h-40 w-full cursor-pointer justify-items-center content-center gap-2 rounded-lg p-6 text-center outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed"
         onClick={() => input.current?.click()}>
         <span data-slot="upload-icon" className={cn("mb-1 flex size-10 items-center justify-center rounded-full transition-transform duration-(--dur-fast) ease-standard", activeDrag ? "motion-safe:-translate-y-0.5" : "bg-tray")}><Icon icon={UploadIcon} className="size-5" /></span>
         <span className="text-body font-medium" aria-live="polite">{activeDrag ? "Drop to upload" : prompt ?? (multiple ? "Drop files here or browse" : "Drop a file here or browse")}</span>

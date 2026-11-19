@@ -188,3 +188,13 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
   });
 }
+
+test("a keyboard-focused design system button shows a solid focus ring", async ({ page }) => {
+  await page.goto("/ds/components");
+  const button = page.locator("#content").getByRole("button", { name: "Create user", exact: true }).first();
+  await button.scrollIntoViewIfNeeded();
+  await page.keyboard.press("Shift");
+  await button.focus();
+  await expect(button).toBeFocused();
+  expect(await button.evaluate((el) => { const c = getComputedStyle(el); return { style: c.outlineStyle, width: parseFloat(c.outlineWidth) }; })).toEqual({ style: "solid", width: 2 });
+});

@@ -38,7 +38,7 @@ export function FilterChip({ children, onRemove, removeLabel, monospace = true, 
     <span data-slot="filter-chip" className={cn("inline-flex h-6 max-w-full items-center gap-1 rounded-sm bg-primary-soft pr-0.5 pl-2 text-label text-primary-ink", monospace && "font-mono")}>
       <span className="min-w-0 truncate" title={typeof children === "string" ? children : undefined}>{children}</span>
       <button type="button" aria-label={removeLabel} onClick={onRemove} disabled={disabled}
-        className="press-feedback relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs outline-none after:absolute after:-inset-1 after:content-[''] hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary">
+        className="press-feedback relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs outline-none after:absolute after:-inset-1 after:content-[''] hover:bg-primary/15 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-primary">
         <Icon icon={CloseIcon} className="size-3.5" />
       </button>
     </span>

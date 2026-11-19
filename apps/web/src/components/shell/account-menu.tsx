@@ -30,7 +30,7 @@ export function AccountMenu({ compact, drawer }: { compact?: boolean; drawer?: b
       <DropdownMenuTrigger asChild>
         {/* 32 px initials avatar, name + role, chevron; avatar only in the rail. */}
         <button type="button" aria-label={`${user.name}, account menu`}
-          className={cn("flex h-11 w-full cursor-pointer items-center justify-center gap-2.5 rounded-md px-1.5 text-left outline-none hover:bg-tray focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=open]:bg-tray", drawer ? "justify-start" : !compact && "xl:justify-start")}>
+          className={cn("flex h-11 w-full cursor-pointer items-center justify-center gap-2.5 rounded-md px-1.5 text-left outline-none hover:bg-tray focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=open]:bg-tray", drawer ? "justify-start" : !compact && "xl:justify-start")}>
           <Avatar name={user.name} seed={user.username} size={32} />
           <span className={cn("hidden min-w-0 flex-1 leading-tight", drawer ? "grid" : !compact && "xl:grid")}>
             <span className="truncate text-body-sm font-medium text-fg">{user.name}</span>

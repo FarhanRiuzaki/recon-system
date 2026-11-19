@@ -31,7 +31,7 @@ export function RadioGroup<T extends string>({ name, legend, options, value, onC
                 aria-labelledby={`${name}-${o.value}`} aria-describedby={o.description ? `${name}-${o.value}-note` : undefined}
                 className={cn("grid size-4 shrink-0 cursor-pointer appearance-none place-content-center rounded-full border border-line-strong bg-card outline-none",
                   "before:size-2 before:scale-0 before:rounded-full before:bg-primary-foreground before:transition-transform before:duration-(--dur-fast) checked:border-primary checked:bg-primary checked:before:scale-100",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed", (variant === "cards" || o.description) && "mt-0.5")} />
+                  "focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed", (variant === "cards" || o.description) && "mt-0.5")} />
               <span className="grid min-w-0 gap-0.5">
                 <span id={`${name}-${o.value}`} className={cn(variant === "cards" && "font-medium")}>{o.label}</span>
                 {o.description && <span id={`${name}-${o.value}-note`} className="text-body-sm text-fg-3">{o.description}</span>}

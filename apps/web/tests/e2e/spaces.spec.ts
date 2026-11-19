@@ -230,6 +230,18 @@ test("a member sees who is in the space and what each role may do; a viewer only
     ["—Not allowed", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Approves", "—Not allowed"]);
   await expect(page.locator("#content").getByText("Source admin is granted and removed only by an app admin, not by a space admin.")).toBeVisible();
 
+  // Action column: 340 px, one line, not sticky from 1280; 160 px, wrapping, sticky below (CSS breakpoints only).
+  const actionCell = matrix.getByRole("rowheader", { name: "Assign, comment and set a reason on breaks" });
+  const cellInfo = () => actionCell.evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, pos: getComputedStyle(el).position }));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  expect(await cellInfo()).toEqual({ w: 340, h: 40, pos: "static" });
+  await page.setViewportSize({ width: 1279, height: 900 });
+  const narrow = await cellInfo();
+  expect(narrow.w).toBe(160);
+  expect(narrow.pos).toBe("sticky");
+  expect(narrow.h).toBeGreaterThan(40); // wraps
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   // FICO: not a member. A real 404 on the document load (the layout checks membership before streaming), "Page not
   // found" inside the shell, and neither the answer nor the tab names the space.
   const res = await page.goto(`/spaces/${ids.fico}/members`);
@@ -273,12 +285,23 @@ test("a space admin adds a member, changes their roles and removes them; the las
     const row = (name: string) => table.getByRole("row").filter({ hasText: name });
     const chips = (name: string) => row(name).getByRole("cell").nth(1).locator('[data-slot="category-chip"]');
 
+    // A keyboard-focused button shows a ring (AGENTS §7): `outline-none` plus `focus-visible:outline-2` once left outline-style at none.
+    const addButton = page.getByRole("button", { name: "Add member" });
+    await page.keyboard.press("Shift");
+    await addButton.focus();
+    await expect(addButton).toBeFocused();
+    expect(await addButton.evaluate((el) => { const c = getComputedStyle(el); return { style: c.outlineStyle, width: parseFloat(c.outlineWidth) }; })).toEqual({ style: "solid", width: 2 });
+
     // Add member: the person and at least one role; members are marked and can't be picked; Source admin is an app admin's.
     await page.getByRole("button", { name: "Add member" }).click();
     let dialog = page.getByRole("dialog", { name: "Add a member to FICO" });
     await expect(dialog.getByText("People sign in with their bank directory account. Only people who have signed in once can be found.")).toBeVisible();
     const add = dialog.getByRole("button", { name: "Add member" });
-    await expect(add).toBeDisabled();
+    await expect(add).toBeEnabled(); // never disabled without a reason: submitting says what is missing
+    await add.click();
+    await expect(dialog.getByText("Pick a person")).toBeVisible();
+    await expect(dialog.getByRole("alert")).toHaveText("Pick at least one role.");
+    await expect(dialog.getByRole("combobox", { name: "Person" })).toBeFocused();
     const sourceAdmin = dialog.getByRole("checkbox", { name: "Source admin" });
     await expect(sourceAdmin).toHaveAttribute("aria-readonly", "true");
     await expect(sourceAdmin).toHaveAccessibleDescription("Only an app admin can grant or remove Source admin.");
@@ -288,17 +311,20 @@ test("a space admin adds a member, changes their roles and removes them; the las
     await expect(dialog.getByRole("option").filter({ hasText: `${other.username} (already a member)` }).first()).toHaveAttribute("aria-disabled", "true");
     await person.fill("Viewer User");
     await dialog.getByRole("option").filter({ hasText: "Viewer User" }).click();
-    await expect(add).toBeDisabled(); // no role yet
+    await add.click(); // no role yet
+    await expect(dialog.getByText("Pick a person")).toHaveCount(0);
+    await expect(dialog.getByRole("alert")).toHaveText("Pick at least one role.");
     await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
     await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toHaveCount(0);
     await add.click();
-    await expect(page.getByText("Added Viewer User to FICO.")).toBeVisible();
+    await expect(page.getByText("Added Viewer User (viewer) to FICO.")).toBeVisible();
     await expect(dialog).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Add member" })).toBeFocused();
     await expect(chips("Viewer User")).toHaveText(["Operator", "Reviewer"]);
 
     // Change roles: Save roles waits for a change; an empty set says how to remove instead.
-    await row("Viewer User").getByRole("button", { name: "Actions for Viewer User" }).click();
+    await row("Viewer User").getByRole("button", { name: "Actions for Viewer User (viewer)", exact: true }).click();
     await expect(page.getByRole("menuitem")).toHaveText(["View activity", "Change roles", "Remove from space"]);
     await page.getByRole("menuitem", { name: "Change roles" }).click();
     dialog = page.getByRole("dialog", { name: "Change roles for Viewer User" });
@@ -312,7 +338,7 @@ test("a space admin adds a member, changes their roles and removes them; the las
     await dialog.getByRole("checkbox", { name: "Viewer", exact: true }).click();
     await expect(dialog.getByRole("alert")).toHaveCount(0);
     await save.click();
-    await expect(page.getByText("Changed the roles of Viewer User.")).toBeVisible();
+    await expect(page.getByText("Changed the roles of Viewer User (viewer).")).toBeVisible();
     await expect(chips("Viewer User")).toHaveText(["Viewer"]);
 
     // Remove from space: destructive confirm, no break or approval lines in this phase.
@@ -322,9 +348,10 @@ test("a space admin adds a member, changes their roles and removes them; the las
     await expect(dialog.getByText("Viewer User loses access to FICO right away. Viewer User's past actions stay in the activity log.")).toBeVisible();
     await expect(dialog.getByText("Impact")).toHaveCount(0);
     await dialog.getByRole("button", { name: "Remove from space" }).click();
-    await expect(page.getByText("Removed Viewer User from FICO.")).toBeVisible();
+    await expect(page.getByText("Removed Viewer User (viewer) from FICO.")).toBeVisible();
     await expect(row("Viewer User")).toHaveCount(0);
-    await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeFocused(); // its row is gone
+    await expect(page.locator(":focus")).toHaveAccessibleName(/^Actions for /); // its row is gone: focus is on the next row's actions (AGENTS §7)
+    await expect(page.locator(":focus")).not.toHaveAccessibleName(/Viewer User/);
 
     // The only space admin: Remove from space is off with the reason; Space admin is locked in Change roles.
     const mine = row(admin.name).getByRole("button", { name: `Actions for ${admin.name}` });

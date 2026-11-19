@@ -107,7 +107,7 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
       <Tooltip>
         <TooltipTrigger asChild>
           {/* Not a control, but focusable: the rail shows only the mark, and the tooltip naming the space opens on focus. */}
-          <div data-slot="space-switcher" tabIndex={0} className={cn(box, "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary")}
+          <div data-slot="space-switcher" tabIndex={0} className={cn(box, "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary")}
             aria-label={`Space: ${current.name}`} role="group">{label}</div>
         </TooltipTrigger>
         {tooltip}
@@ -122,7 +122,7 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <button type="button" data-slot="space-switcher" aria-label={`${current.name}, switch space`}
-              className={cn(box, "cursor-pointer outline-none hover:bg-tray focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=open]:border-fg-4")}>
+              className={cn(box, "cursor-pointer outline-none hover:bg-tray focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary data-[state=open]:border-fg-4")}>
               {label}
               <Icon icon={ChevronsUpDownIcon} className={cn("size-4 shrink-0 text-fg-3", drawer ? "block" : compact ? "hidden" : "hidden xl:block")} />
             </button>

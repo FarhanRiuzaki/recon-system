@@ -179,7 +179,7 @@ export function SearchCombobox(props: Single | Multiple) {
           <span key={c.value} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm bg-tray pr-0.5 pl-2 text-body-sm text-fg">
             <span className="truncate">{c.label}</span>
             <button type="button" aria-label={`Remove ${c.label}`} onClick={() => remove(c.value)}
-              className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-3 outline-none after:absolute after:-inset-1 hover:bg-line hover:text-fg focus-visible:outline-2 focus-visible:outline-primary">
+              className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-3 outline-none after:absolute after:-inset-1 hover:bg-line hover:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-primary">
               <Icon icon={CloseIcon} className="size-3.5" />
             </button>
           </span>

@@ -97,7 +97,7 @@ export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize,
         <p className="text-body text-fg">
           {over ? "Drop to add" : <>Drag {multiple ? "files" : "a file"} here, paste, or{" "}
             <button type="button" disabled={disabled} aria-describedby={limits ? hintId : undefined} onClick={() => inputRef.current?.click()}
-              className="cursor-pointer rounded-xs font-medium text-primary-ink underline underline-offset-4 outline-none hover:decoration-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">choose {multiple ? "files" : "a file"}</button></>}
+              className="cursor-pointer rounded-xs font-medium text-primary-ink underline underline-offset-4 outline-none hover:decoration-2 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary">choose {multiple ? "files" : "a file"}</button></>}
         </p>
         {limits && <p id={hintId} className="text-caption text-fg-3">{limits[0]!.toUpperCase() + limits.slice(1)}</p>}
         {/* The native input does the picking (the button opens it); out of the Tab order, so focus lands on the button. */}

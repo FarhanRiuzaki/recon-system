@@ -86,7 +86,7 @@ export function FormWizard({ steps, check, onSubmit, submitLabel, error, label, 
                 {/* The vertical connector runs from under this marker to the next one (xl). */}
                 {i < steps.length - 1 && <span aria-hidden="true" className="absolute top-6 bottom-1 left-2.5 w-px -translate-x-1/2 bg-line-strong max-xl:hidden" />}
                 {st === "done" && !busy
-                  ? <button type="button" onClick={() => jump(i)} className="flex min-w-0 cursor-pointer items-center gap-2 rounded-xs outline-none hover:[&_.text-label]:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary xl:items-start">{mark}</button>
+                  ? <button type="button" onClick={() => jump(i)} className="flex min-w-0 cursor-pointer items-center gap-2 rounded-xs outline-none hover:[&_.text-label]:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary xl:items-start">{mark}</button>
                   : <span className="flex min-w-0 items-center gap-2 xl:items-start">{mark}</span>}
               </li>
             );

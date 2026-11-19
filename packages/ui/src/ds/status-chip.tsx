@@ -104,7 +104,7 @@ export function StatusChip(props: StatusChipProps) {
         props.wrap ? "min-h-5.5 max-w-full rounded-lg py-0.5 leading-tight" : "h-5.5 rounded-full whitespace-nowrap",
         INK[health], props.strong ? cn("border-transparent", SOFT[health]) : "border-line bg-card",
         description && "cursor-help",
-        focusable && "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        focusable && "outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary",
         where?.card && description && "relative z-10")}>
       {props.pending ? <Icon icon={SpinnerIcon} className="size-3 shrink-0 motion-safe:animate-spin text-fg-2" /> : props.live ? (
         <span className="relative inline-grid size-3 shrink-0 place-items-center" aria-hidden="true">

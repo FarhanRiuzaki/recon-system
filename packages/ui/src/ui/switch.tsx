@@ -12,7 +12,7 @@ export function Switch({ checked, onChange, label, disabled, describedBy, classN
   return (
     <button type="button" role="switch" aria-checked={checked} aria-label={label} aria-describedby={describedBy} disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cn("group inline-grid h-7 shrink-0 cursor-pointer place-items-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50", className)}>
+      className={cn("group inline-grid h-7 shrink-0 cursor-pointer place-items-center rounded-full outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50", className)}>
       <span aria-hidden="true" className={cn("relative h-5 w-9 rounded-full transition-colors duration-(--dur-fast)", checked ? "bg-primary" : "bg-line-strong")}>
         <span className={cn("absolute top-0.5 left-0.5 size-4 rounded-full bg-card shadow-sm transition-transform duration-(--dur-fast) ease-standard motion-reduce:transition-none",
           checked && "translate-x-4")} />

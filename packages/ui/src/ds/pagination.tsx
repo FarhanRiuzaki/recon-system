@@ -55,7 +55,7 @@ const WIDE = "max-md:hidden";
 function PageButton({ children, onClick, disabled, current, label, className }: { children: ReactNode; onClick: () => void; disabled?: boolean; current?: boolean; label: string; className?: string }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-label={label} aria-current={current ? "page" : undefined}
-      className={cn("press-feedback inline-grid h-7 min-w-7 cursor-pointer place-items-center rounded-md border border-transparent px-1.5 text-body-sm tabular outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-40",
+      className={cn("press-feedback inline-grid h-7 min-w-7 cursor-pointer place-items-center rounded-md border border-transparent px-1.5 text-body-sm tabular outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-40",
         current ? "bg-tray text-fg" : "text-fg-2 hover:bg-tray hover:text-fg", className)}>
       {children}
     </button>

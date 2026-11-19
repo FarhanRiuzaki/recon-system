@@ -45,8 +45,9 @@ function MatrixCell({ cell }: { cell: Cell }) {
 const TITLE = "What each role can do";
 const TH = "h-10 border-b border-line bg-tray px-3 text-label font-normal whitespace-nowrap text-fg-2";
 
-// The Action column sticks to the card's left edge while the role columns scroll (DataTable's sticky first column); opaque, with a hairline.
-const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line";
+// Below 1280 the Action column is 160 px, wraps and sticks to the card's left edge while the role columns scroll (DataTable's sticky first column); opaque, with a hairline.
+// From 1280 it is 340 px on one line and does not stick (Figma 4:83).
+const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:static xl:w-85 xl:min-w-85";
 
 /** Scrolls sideways inside its card when the card is narrower than the table (160 + 7 × 108 px wide); the Action column stays. */
 export function RoleMatrix() {
@@ -58,8 +59,8 @@ export function RoleMatrix() {
     </>}>
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
-      <div tabIndex={0} role="region" aria-label={TITLE} className="scroll-quiet relative overflow-x-auto outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary">
-        <table aria-label={TITLE} className="w-full min-w-229 border-collapse text-body-sm">
+      <div tabIndex={0} role="region" aria-label={TITLE} className="scroll-quiet relative overflow-x-auto outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
+        <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-274 border-collapse text-body-sm">
           <thead>
             <tr>
               <th scope="col" className={`${TH} ${STICK} z-2 text-left`}>Action</th>
@@ -71,7 +72,7 @@ export function RoleMatrix() {
               <tr><th scope="rowgroup" className={`${STICK} h-9 border-b bg-card px-3 text-left eyebrow text-fg-3`}>{g.group}</th><td colSpan={SPACE_ROLES.length} className="border-b border-line" /></tr>
               {g.rows.map((r) => (
                 <tr key={r.action}>
-                  <th scope="row" className={`${STICK} h-10 border-b bg-card px-3 py-2 text-left font-normal text-fg`}>{r.action}</th>
+                  <th scope="row" className={`${STICK} h-10 border-b bg-card px-3 py-2 text-left font-normal text-fg xl:whitespace-nowrap`}>{r.action}</th>
                   {r.cells.map((c, i) => <td key={SPACE_ROLES[i]} className="h-10 border-b border-line px-2 text-center"><MatrixCell cell={c} /></td>)}
                 </tr>
               ))}

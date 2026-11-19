@@ -42,6 +42,12 @@ function sharedViolations(fs: F[]): string[] {
   return fs.filter(({ r }) => r.startsWith(SHARED)).flatMap(({ r, imp }) => imp.filter(bad).map((s) => `${r} → ${s}`));
 }
 
+/** Tailwind 4: `outline-none` sets --tw-outline-style: none, which `focus-visible:outline-2` reads, so no ring shows unless `focus-visible:outline-solid` is also there (AGENTS.md §7). */
+function focusRingViolations(fs: F[]): string[] {
+  return fs.filter(({ r }) => r.endsWith(".tsx")).flatMap(({ r, src }) =>
+    src.split("\n").flatMap((l, i) => (/\boutline-none\b/.test(l) && /focus-visible:-?outline-\d/.test(l) && !/focus-visible:outline-solid\b/.test(l) ? [`${r}:${i + 1}`] : [])));
+}
+
 /** sonner (~10 kB gz) loads on demand: `toast` from ui/toast.ts, the Toaster through next/dynamic (providers.tsx). */
 function sonnerViolations(fs: F[]): string[] {
   const own = [`${UI}ui/sonner.tsx`, `${UI}ui/toast.ts`];
@@ -296,6 +302,10 @@ describe("architecture", () => {
     expect(brandViolations(files)).toEqual([]);
   });
 
+  it("outline-none with a focus-visible outline width also sets focus-visible:outline-solid", () => {
+    expect(focusRingViolations(files)).toEqual([]);
+  });
+
   it("layers import downward only (ui/motion → ds → charts → components/shell → features)", () => {
     expect(layerViolations(files)).toEqual([]);
   });
@@ -410,6 +420,13 @@ describe("architecture", () => {
 /** The rules above are vacuous until shell, features and routes exist; these fixtures prove each checker bites. */
 describe("architecture checkers (fixtures)", () => {
   const f = (r: string, src: string): F => ({ r, src, imp: [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!) });
+
+  it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
+    expect(focusRingViolations([
+      f(`${UI}ui/a.tsx`, `<b className="outline-none focus-visible:outline-2 focus-visible:outline-primary" />`),
+      f(`${UI}ui/b.tsx`, `<b className="outline-none focus-visible:outline-2 focus-visible:outline-solid" />`),
+    ])).toEqual([`${UI}ui/a.tsx:1`]);
+  });
 
   it("layer: shell importing a feature, ds importing charts", () => {
     expect(layerViolations([

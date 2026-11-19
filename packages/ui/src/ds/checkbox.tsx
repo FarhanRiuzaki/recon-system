@@ -21,7 +21,7 @@ export function Checkbox({ checked, onToggle, label, readOnly, reason, className
   const box = (
     <button id={givenId} data-slot="checkbox" type="button" role="checkbox" aria-checked={checked} aria-label={label} aria-readonly={fixed || undefined}
       aria-describedby={reason ? id : undefined} onClick={fixed ? undefined : onToggle}
-      className={cn("inline-grid size-7 shrink-0 place-items-center rounded-md outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
+      className={cn("inline-grid size-7 shrink-0 place-items-center rounded-md outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-1 focus-visible:outline-primary",
         fixed ? "cursor-default" : "press-feedback cursor-pointer hover:bg-tray", className)}>
       <span data-slot="checkbox-mark" aria-hidden="true" className={cn("grid size-4 place-items-center rounded-xs border",
         checked ? "border-primary bg-primary text-primary-foreground" : "border-control-border bg-card", fixed && "opacity-60")}>

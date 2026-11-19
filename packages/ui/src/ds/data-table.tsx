@@ -244,7 +244,7 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
                   className={cn("bg-tray md:sticky md:top-0 md:z-10", c.align === "right" && "text-right", c.className, stickAt(columns.indexOf(c)) && cn(STICK[stickAt(columns.indexOf(c))!], STICK_HEAD))}
                   aria-sort={active ? (sort?.dir === "asc" ? "ascending" : "descending") : undefined}>
                   {c.sortable && onSortChange ? (
-                    <button type="button" onClick={() => toggle(c)} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-xs hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary outline-none", active && "text-fg-2")}>
+                    <button type="button" onClick={() => toggle(c)} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-xs hover:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary outline-none", active && "text-fg-2")}>
                       {c.header}<Icon icon={sortIcon} className="size-3" />
                     </button>
                   ) : c.headerCell ?? c.header}
