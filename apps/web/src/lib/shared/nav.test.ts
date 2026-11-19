@@ -7,13 +7,13 @@ const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s
 
 describe("navFor", () => {
   it("user.view sees Dashboard, Users, Design system, Profile only", () => {
-    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", "Users", "Design system", "Profile"]);
+    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", "Members", "Users", "Design system", "Profile"]);
   });
 
   it("no permissions: items without a permission only; empty groups disappear", () => {
     const sections = navFor(new Set());
-    expect(sections.map((s) => s.id)).toEqual(["main", "personal"]);
-    expect(labels(new Set())).toEqual(["Dashboard", "Design system", "Profile"]);
+    expect(sections.map((s) => s.id)).toEqual(["main", "space", "personal"]);
+    expect(labels(new Set())).toEqual(["Dashboard", "Members", "Design system", "Profile"]);
   });
 
   it("all permissions: every item, the brief's eight keeping their order (a new module's item goes anywhere between)", () => {
@@ -27,6 +27,15 @@ describe("navFor", () => {
   it("shortcuts are unique", () => {
     const keys = NAV.map((n) => n.shortcut).filter(Boolean);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("space group", () => {
+  it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {
+    const s = navFor(new Set()).find((x) => x.label === "Space");
+    expect(s?.items.map((i) => [i.label, i.href])).toEqual([["Members", "/spaces"]]);
+    expect(isActive("/spaces", "/spaces")).toBe(true);
+    expect(isActive("/spaces/5b0c1f2e-0000-4000-8000-000000000000/members", "/spaces")).toBe(true);
   });
 });
 

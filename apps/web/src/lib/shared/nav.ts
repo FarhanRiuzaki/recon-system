@@ -1,8 +1,8 @@
 import type { PermissionName } from "@starterkit/shared/permissions";
 import { canonicalSelection } from "@starterkit/shared/filter-selection";
 
-export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects";
-export type NavGroup = "main" | "access" | "audit" | "personal";
+export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members";
+export type NavGroup = "main" | "space" | "access" | "audit" | "personal";
 /**
  * `shortcut` is "" for an item without one; `perm` null = every signed-in user. `children`, listed under the item in
  * the sidebar while its section is open: views of its own page (same path, a filter in the query) or pages below it
@@ -15,6 +15,7 @@ export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
 export const NAV: readonly NavItem[] = [
   { href: "/", label: "Dashboard", icon: "dashboard", shortcut: "G D", group: "main", perm: null },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view" },
+  { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null },
   { href: "/users", label: "Users", icon: "users", shortcut: "G U", group: "access", perm: "user.view" },
   { href: "/roles", label: "Roles", icon: "roles", shortcut: "G R", group: "access", perm: "role.view" },
   { href: "/permissions", label: "Permissions", icon: "permissions", shortcut: "G P", group: "access", perm: "permission.view" },
@@ -29,7 +30,7 @@ export const NAV: readonly NavItem[] = [
 ];
 
 const GROUPS: { id: NavGroup; label: string }[] = [
-  { id: "main", label: "Main" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
+  { id: "main", label: "Main" }, { id: "space", label: "Space" }, { id: "access", label: "Access" }, { id: "audit", label: "Audit" }, { id: "personal", label: "Personal" },
 ];
 
 /** Sidebar sections for these permissions: items the user cannot open are left out, then empty groups. */

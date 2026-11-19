@@ -1,12 +1,12 @@
 // What a screen reads first, as query keys and API URLs: the browser hooks (features/*) and the server prefetch
 // (lib/server/prefetch.tsx) both build their keys here, so a server-prefetched query is exactly the one the hook asks
 // for and the browser never fetches it again. Pure (no React, no zod).
-// Key scheme: the first element is the module that owns the data (users, rbac, me, audit, dashboard, projects), then what
+// Key scheme: the first element is the module that owns the data (users, rbac, me, audit, dashboard, projects, spaces), then what
 // identifies the read (a table's URL, "detail" + id, …), so invalidating a module's key refreshes all of it.
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SPACE_MEMBER_SORTS, SPACE_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
@@ -69,6 +69,20 @@ export const PROJECTS: TableDef<ProjectFilters> = {
   spec: { sorts: PROJECT_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), status: multiChoice() } },
 };
 export const projectDetail = (id: string) => ({ key: [...PROJECTS_KEY, "detail", id] as const, url: `/api/projects/${encodeURIComponent(id)}` });
+
+export const SPACES_KEY = ["spaces"] as const;
+export const SPACES: TableDef<NoFilters> = { key: SPACES_KEY[0], path: "/api/spaces", spec: { sorts: SPACE_SORTS, defaultSort: "name", filters: {} } };
+/** The switcher's list: all the caller's spaces, not the URL state of any table. */
+export const spaceOptions = () => ({ key: [...SPACES_KEY, "options"] as const, url: "/api/spaces?pageSize=100" });
+export const spaceDetail = (id: string) => ({ key: [...SPACES_KEY, "detail", id] as const, url: `/api/spaces/${encodeURIComponent(id)}` });
+export const SPACE_MEMBERS = (id: string): TableDef<NoFilters> => ({
+  key: SPACES_KEY[0], path: `/api/spaces/${encodeURIComponent(id)}/members`, spec: { sorts: SPACE_MEMBER_SORTS, defaultSort: "name", filters: {} },
+});
+/** Add-member picker: one page of 100 users (name A–Z), or those matching `q`, each flagged when already a member. */
+export const spaceCandidates = (id: string, q = "") => ({
+  key: [...SPACES_KEY, "candidates", id, q] as const,
+  url: `/api/spaces/${encodeURIComponent(id)}/candidates?${new URLSearchParams({ pageSize: "100", ...(q ? { q } : {}) })}`,
+});
 
 export const AUDIT_KEY = ["audit"] as const;
 /** Entry identity is independent of list state; only validated, normalized UUIDs become BFF paths. */

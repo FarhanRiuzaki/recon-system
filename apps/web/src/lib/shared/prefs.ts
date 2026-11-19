@@ -5,14 +5,15 @@ import { canonicalFilterQuery } from "@starterkit/shared/filter-selection";
  * as it was left (the server reads the cookie, so the page renders filtered on first paint). Never the page number or
  * the search text: those belong to one visit. `hidden`: the columns each list page's viewer hid (ColumnsMenu), so the
  * table renders without them on first paint. `keys`: single-key shortcuts ("G then a letter", "?") on or off (WCAG 2.1.4:
- * a character-key shortcut can be turned off); ⌘K has a modifier and stays.
+ * a character-key shortcut can be turned off); ⌘K has a modifier and stays. `space`: the last space opened (per browser).
  */
 export type Prefs = {
   sidebar: "expanded" | "collapsed"; density: "comfortable" | "compact"; views: Partial<Record<ViewPage, string>>;
-  hidden: Partial<Record<ViewPage, string[]>>; keys: "on" | "off";
+  hidden: Partial<Record<ViewPage, string[]>>; keys: "on" | "off"; space: string | null;
 };
+const isUuid = (v: string | null | undefined) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 export const PREFS_COOKIE = "sk_prefs";
-export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable", views: {}, hidden: {}, keys: "on" };
+export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable", views: {}, hidden: {}, keys: "on", space: null };
 
 /** The list pages whose view is remembered (each a `useTableQuery` screen). */
 export const VIEW_PAGES = ["/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects"] as const;
@@ -48,11 +49,13 @@ export function parsePrefs(raw: string | undefined): Prefs {
     views,
     hidden,
     keys: q.get("keys") === "off" ? "off" : "on",
+    space: isUuid(q.get("space")) ? q.get("space") : null,
   };
 }
 
 export function prefsCookie(p: Prefs, secure: boolean): string {
   const q = new URLSearchParams({ sidebar: p.sidebar, density: p.density, keys: p.keys });
+  if (p.space && isUuid(p.space)) q.set("space", p.space);
   for (const [page, raw] of Object.entries(p.views)) { const v = page === "/audit/activity" ? viewParams(page, raw ?? "").toString() : raw ?? ""; if (v && isViewPage(page) && v.length <= VIEW_MAX) q.set(`view:${page}`, v); }
   for (const [page, h] of Object.entries(p.hidden)) { const keys = hiddenKeys(h?.join(",") ?? null); if (keys.length && isViewPage(page)) q.set(`cols:${page}`, keys.join(",")); }
   return `${PREFS_COOKIE}=${encodeURIComponent(q.toString())}; Path=/; Max-Age=31536000; SameSite=Strict${secure ? "; Secure" : ""}`;

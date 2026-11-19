@@ -4,7 +4,7 @@ import type { NavIcon } from "@/lib/shared/nav";
 
 const MAP = {
   dashboard: OverviewIcon, users: UsersIcon, roles: KeyIcon, permissions: SecureIcon, activity: LogIcon, signin: SessionsIcon,
-  ds: SurfacesIcon, profile: IdentityIcon, projects: FolderIcon,
+  ds: SurfacesIcon, profile: IdentityIcon, projects: FolderIcon, members: UsersIcon,
 } as const satisfies Record<NavIcon, IconData>;
 
 /** 16 px stroke-1.5 nav icon; nothing for a nav child without one. */

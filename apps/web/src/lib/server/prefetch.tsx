@@ -8,10 +8,11 @@ import { Hydrate } from "@/lib/client/hydrate";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
+import { SpaceListQuery, SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
-  ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
+  ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, SPACES, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable,
 } from "@/lib/shared/queries";
 import { readTable, tableRequest } from "@/lib/shared/table-state";
@@ -60,6 +61,10 @@ export const reads = {
   authLog: (sp: URLSearchParams) => table(AUTH_LOG, sp, AuthLogQuery),
   projects: (sp: URLSearchParams) => table(PROJECTS, sp, ProjectListQuery),
   project: (id: string): Read => ({ key: projectDetail(id).key, path: projectDetail(id).url }),
+  spaces: (sp: URLSearchParams) => table(SPACES, sp, SpaceListQuery),
+  spaceOptions: (): Read => ({ key: spaceOptions().key, path: spaceOptions().url }),
+  space: (id: string): Read => ({ key: spaceDetail(id).key, path: spaceDetail(id).url }),
+  spaceMembers: (id: string, sp: URLSearchParams) => table(SPACE_MEMBERS(id), sp, SpaceMemberListQuery),
 };
 
 /**
