@@ -9,7 +9,7 @@ import type { SourceKind } from "@starterkit/shared/sources";
 import { encryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
 import { ensureMonthPartitions } from "../../kernel/partitions";
-import { makeCalendar, previousBusinessDay, quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots, todayIn } from "../../modules/ingest";
+import { makeCalendar, previousBusinessDay, quarantineRows, rawHashOf, records, sourceCursors, sourceFiles, sourceSnapshots, todayIn } from "../../modules/ingest";
 import { sourceConnections, sourceShares, sources, sourceVersions } from "../../modules/sources";
 import { withSpace } from "../../modules/spaces";
 
@@ -99,7 +99,7 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     };
     const quarantine: (typeof quarantineRows.$inferInsert)[] = [];
     const quarantined = (x: Source, origin: "file" | "pull" | "snapshot", originId: string, businessDate: string | null, lines: [number, string, Record<string, string>][]) => {
-      for (const [lineNo, raw, reasons] of lines) quarantine.push({ id: id(), ...s(x), origin, originId, lineNo, raw, reasons, businessDate });
+      for (const [lineNo, raw, reasons] of lines) quarantine.push({ id: id(), ...s(x), origin, originId, lineNo, raw, rawHash: rawHashOf(raw), reasons, businessDate });
     };
 
     // (a) BI settlement file: D−2 with a quarantine of 18 lines (two pages), D−1 as version 1, the same content again
@@ -119,7 +119,8 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     const line = (n: number, date: string, cells = 3) => [`BIS-${compact(date)}-${String(n).padStart(4, "0")}`, "1250000.00", compact(date)].slice(0, cells).join("|");
     quarantined(bi, "file", f2.id, shift(D, -2), Array.from({ length: 18 }, (_, i): [number, string, Record<string, string>] => i % 3 === 0
       ? [i + 2, line(i + 2, shift(D, -2), 2), { _row: "Expected 3 columns, found 2" }]
-      : i % 3 === 1 ? [i + 2, `|1250000.00|${compact(shift(D, -2))}`, { ref: "Empty; ref can't be empty" }]
+      // each line its own text: quarantine keeps one line per raw text (drizzle/0017)
+      : i % 3 === 1 ? [i + 2, `|12500${String(i + 2).padStart(2, "0")}.00|${compact(shift(D, -2))}`, { ref: "Empty; ref can't be empty" }]
         : [i + 2, `BIS-${i + 2}|12,50.0|${compact(shift(D, -2))}`, { amount: "'12,50.0' isn't a decimal with . as the separator" }]));
     quarantined(bi, "file", f1v1.id, shift(D, -1), [[11, line(11, shift(D, -1), 2), { _row: "Expected 3 columns, found 2" }], [12, `|1250000.00|${compact(shift(D, -1))}`, { ref: "Empty; ref can't be empty" }]]);
     quarantined(bi, "file", f0.id, D, [[7, `BIS-0007|1250000.00|${compact(D).slice(0, 6)}31`, { value_date: `'${compact(D).slice(0, 6)}31' isn't a date in yyyyMMdd` }]]);

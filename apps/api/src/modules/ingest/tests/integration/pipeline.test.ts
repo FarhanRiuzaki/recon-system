@@ -375,6 +375,61 @@ describe("Review Focus 4: the source's columns change", () => {
     expect([await allRecords(k), await statusOf(k)]).toEqual([0, "paused"]);
     expect((await filesOf(k))[0]!.reason).toBe("The header has 15 columns; the source declares 14");
   });
+
+  it("a file whose header swaps two named columns (same width) fails, writes nothing and pauses with the drift per column", async () => {
+    const names = ksei().fields.map((f) => f.name);
+    const header = names.map((n) => (n === "sid" ? "sre" : n === "sre" ? "sid" : `h${n}`)); // col_NN cells are not compared
+    const k = await source(A, kseiSpec({ format: { kind: "delimited", delimiter: "|", quote: null, header: true, encoding: "utf-8" } } as never));
+    await put("act20261102.txt", `${header.join("|")}\n${kseiLine(1)}\n`);
+    expect(await deliver(k)).toEqual(["failed"]);
+    expect([await allRecords(k), (await quarantined(k)).length, await statusOf(k)]).toEqual([0, 0, "paused"]);
+    const c = await cursorOf(k);
+    expect(c?.lastError).toStartWith('act20261102.txt: The header\'s columns are not the declared ones: column 3 is "sid", declared "sre"; column 13 is "sre", declared "sid".');
+    expect((c?.drift as { column: string }[]).map((d) => d.column)).toEqual(["sre", "sid"]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ final review fixes
+describe("final review: integrity of what a run keeps", () => {
+  it("a snapshot whose every row is quarantined never replaces a date that has data", async () => {
+    const m = await source(A, medallionSpec());
+    await medallion(D, [1, 2, 3]);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    await src`delete from medallion`;
+    await src`insert into medallion (business_date, sid, sre) values (${D}::date, '', 'X1'), (${D}::date, '  ', 'X2')`; // sid required
+    expect(await snapshotSource(scope(m), D, probe)).toBe("failed");
+    const snaps = await db.select({ status: sourceSnapshots.status, error: sourceSnapshots.error }).from(sourceSnapshots)
+      .where(eq(sourceSnapshots.sourceId, m.sourceId)).orderBy(asc(sourceSnapshots.startedAt), asc(sourceSnapshots.id));
+    expect(snaps).toEqual([{ status: "active", error: null }, { status: "failed", error: "Every row of the pull was quarantined; the active snapshot was kept." }]);
+    expect(await current(m, D)).toBe(3);
+    expect((await cursorOf(m))?.lastError).toBe(`Snapshot ${D}: Every row of the pull was quarantined; the active snapshot was kept.`);
+    expect((await quarantined(m)).length).toBe(2); // the lines stay for the owner to see
+  });
+
+  it("a bad row read again through the lookback is quarantined once", async () => {
+    await src`insert into bifast (updated_at, ext_ref, account_ref, amount, event_time)
+      values ('2026-11-19T01:00:00Z', 'R1', 'ACC1', 1.00, '2026-11-19T01:00:00Z'), ('2026-11-19T01:00:01Z', 'R2', '', 2.00, '2026-11-19T01:00:01Z')`;
+    const s = await source(A, bifastSpec());
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await pullSource(scope(s), probe)).toBe("pulled"); // the lookback reads both rows again
+    expect([await allRecords(s), (await quarantined(s)).length]).toEqual([1, 1]);
+  });
+
+  it("an archived space ingests nothing: pulls, scans, files and snapshots skip", async () => {
+    const k = await source(A, kseiSpec());
+    await put("act20261102.txt", KSEI_FILE);
+    const [file] = await scanSource(scope(k), probe, LATER()) as [InboxFile];
+    const w = await source(A, bifastSpec());
+    const m = await source(A, medallionSpec());
+    await medallion(D, [1]);
+    await db.update(spaces).set({ status: "archived" }).where(eq(spaces.id, A));
+    expect(await scanSource(scope(k), probe, LATER())).toEqual([]);
+    expect(await ingestFile(scope(k), file, probe)).toBe("skipped");
+    expect(await pullSource(scope(w), probe)).toBe("skipped");
+    expect(await snapshotSource(scope(m), D, probe)).toBe("skipped");
+    expect([await allRecords(k), await allRecords(w), await allRecords(m)]).toEqual([0, 0, 0]);
+    expect((await db.select().from(sourceSnapshots)).length).toBe(0);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------ Review Focus 5

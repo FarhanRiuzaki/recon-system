@@ -57,7 +57,7 @@ beforeEach(async () => {
     id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, name: `act2026110${n}.txt`, sha256: `sha${n}`, size: 10, modifiedAt: at(n),
     status: n === 3 ? "rejected" : "ingested", reason: n === 3 ? "Same file already ingested" : null, version: n === 3 ? null : 1, businessDate: `2026-11-0${n}`, receivedAt: at(n),
   })));
-  await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: Bun.randomUUIDv7(), lineNo: 12, raw: "A1|B1", reasons: { sid: "sid is required" }, businessDate: "2026-11-02" });
+  await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: Bun.randomUUIDv7(), lineNo: 12, raw: "A1|B1", rawHash: "h1", reasons: { sid: "sid is required" }, businessDate: "2026-11-02" });
   await db.insert(sourceSnapshots).values([
     { id: Bun.randomUUIDv7(), spaceId: A, sourceId: SNAP_SRC, businessDate: "2026-11-02", status: "superseded", rows: 11, startedAt: at(1) },
     { id: Bun.randomUUIDv7(), spaceId: A, sourceId: SNAP_SRC, businessDate: "2026-11-02", status: "active", rows: 11, startedAt: at(2) },
@@ -154,7 +154,7 @@ describe("the sources list and detail read model", () => {
       id: fileId, spaceId: A, sourceId: FILE_SRC, name: "act-today.txt", sha256: "shaD", size: 10, modifiedAt: new Date(), status: "ingested", version: 1, businessDate: D(),
     });
     await db.insert(records).values([record(FILE_SRC, D(), 1), record(FILE_SRC, D(), 2), record(FILE_SRC, "2026-11-02", 3)]);
-    await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: fileId, lineNo: 3, raw: "x", reasons: {}, businessDate: D() });
+    await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: fileId, lineNo: 3, raw: "x", rawHash: "hx", reasons: {}, businessDate: D() });
   });
 
   it("a quarantined line names the file it came in, with the file's version; a line of an unknown origin names none", async () => {

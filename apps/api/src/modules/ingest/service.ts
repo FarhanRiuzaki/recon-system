@@ -11,8 +11,9 @@
 // business_date, snapshot), so a page or file sent again adds nothing.
 //
 // A source whose columns no longer fit its spec (a field gone, a type changed since the first pull of the version, a
-// header of another width, a watermark that may be NULL) is paused with the reason and writes nothing until a new
+// header of another width or with other names, a watermark that may be NULL) is paused with the reason and writes nothing until a new
 // version is approved. A connection that fails leaves the source active with last_error; the next run tries again.
+// A source of an archived space is not run at all (load answers null).
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
   IngestListQuery, QuarantineRowDto, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourceSnapshotDto, SourceSpec,
@@ -30,10 +31,10 @@ import { ensureMonthPartitions } from "../../kernel/partitions";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { calendars, pauseSource, sourceConnections, sources, sourceShares, sourceVersions } from "../sources";
-import { withSpace } from "../spaces";
+import { isSpaceArchived, withSpace } from "../spaces";
 import { type Connector, ConnectorError, connectorFor, type From, type Row, type Secret } from "./connectors";
 import { familyOf } from "./connectors/dialect";
-import { insertBatch, makePartitions, MissingPartition, supersede } from "./copy";
+import { insertBatch, makePartitions, MissingPartition, rawHashOf, supersede } from "./copy";
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
 import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
@@ -50,6 +51,7 @@ type StoredConnection = { engine: string; options: unknown; secretEnc: string };
 
 const NOW = sql`now()`;
 const EMPTY_SNAPSHOT = "The pull returned no rows; the active snapshot was kept.";
+const QUARANTINED_SNAPSHOT = "Every row of the pull was quarantined; the active snapshot was kept.";
 /** Rows a snapshot page holds (a snapshot query has no chunk setting of its own). */
 const SNAPSHOT_CHUNK = 5000;
 /** Lines of a file written per batch. */
@@ -85,8 +87,12 @@ type Loaded = {
   cursor: typeof sourceCursors.$inferSelect | undefined; conn: StoredConnection | undefined;
 };
 
-/** Source `s` in its own space with its published version, calendar, cursor and connection; null when it has no published version. */
+/**
+ * Source `s` in its own space with its published version, calendar, cursor and connection; null when it has no
+ * published version or its space is archived (an archived space keeps its data and ingests nothing more).
+ */
 async function load(tx: InTx, s: Scope): Promise<Loaded | null> {
+  if (await isSpaceArchived(tx, s.spaceId)) return null;
   const [src] = await tx.select({ status: sources.status }).from(sources).where(and(eq(sources.spaceId, s.spaceId), eq(sources.id, s.sourceId)));
   if (!src) return null;
   const [v] = await tx.select({ id: sourceVersions.id, spec: sourceVersions.spec }).from(sourceVersions)
@@ -141,7 +147,8 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
     }
     if (reasons || !r?.ok || !x.ok) {
       const cells = x.ok ? names.map((n) => x.raw[n] ?? "") : x.cells;
-      quarantine.push({ id: Bun.randomUUIDv7(), ...base, lineNo: x.line, raw: o.text(cells), reasons: reasons ?? {}, businessDate: qDate });
+      const text = o.text(cells);
+      quarantine.push({ id: Bun.randomUUIDv7(), ...base, lineNo: x.line, raw: text, rawHash: rawHashOf(text), reasons: reasons ?? {}, businessDate: qDate });
       continue;
     }
     const c = r.record;
@@ -285,12 +292,14 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
     }
     const kept = await inScope(s, on, async (tx) => {
       await sourceLock(tx, s.sourceId);
-      // a query that answered no rows never replaces a date that has data (an empty table, a wrong filter, a day not loaded yet)
-      if (n === 0) {
+      // a pull that gave no record never replaces a date that has data: no rows (an empty table, a wrong filter, a day
+      // not loaded yet), or every row quarantined (a changed format, a wrong column); its quarantined lines stay
+      if (counts.ok === 0) {
         const [active] = await tx.select({ rows: sourceSnapshots.rows }).from(sourceSnapshots).where(and(ofDate, eq(sourceSnapshots.status, "active")));
         if (active && active.rows > 0) {
-          await tx.update(sourceSnapshots).set({ status: "failed", error: EMPTY_SNAPSHOT, finishedAt: NOW }).where(eq(sourceSnapshots.id, id));
-          await setCursor(tx, s, { lastError: `Snapshot ${businessDate}: ${EMPTY_SNAPSHOT}` });
+          const error = n === 0 ? EMPTY_SNAPSHOT : QUARANTINED_SNAPSHOT;
+          await tx.update(sourceSnapshots).set({ status: "failed", error, finishedAt: NOW }).where(eq(sourceSnapshots.id, id));
+          await setCursor(tx, s, { lastError: `Snapshot ${businessDate}: ${error}` });
           return true;
         }
       }
@@ -334,9 +343,9 @@ export async function scanSource(s: Scope, on: Tx, now = Date.now()): Promise<In
   return out;
 }
 
-/** A fault of the whole file: it is recorded failed with `message`; `schema` = its layout changed, which also pauses the source. */
+/** A fault of the whole file: it is recorded failed with `message`; `schema` = its layout changed, which also pauses the source (with `drift` per column when known). */
 class FileFailure extends Error {
-  constructor(message: string, readonly schema: boolean) { super(message); }
+  constructor(message: string, readonly schema: boolean, readonly drift: DriftColumn[] | null = null) { super(message); }
 }
 
 /** The bytes of a stream, hashed as they pass. */
@@ -347,7 +356,7 @@ async function* hashed(src: AsyncIterable<Uint8Array>, h: Bun.CryptoHasher): Asy
 /**
  * Ingests one file the scan found (spec §7 step 3a): the same content as an ingested file → `rejected` "Same file
  * already ingested"; a known name with new content → its next version. All its rows, its quarantine and its
- * source_files row commit together. A quote never closed, a line over 1 MB or a header of another width → `failed`,
+ * source_files row commit together. A quote never closed, a line over 1 MB or a header of another width or names → `failed`,
  * nothing of it written (the header case pauses the source too). The same arrival again → "skipped".
  */
 export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"ingested" | "rejected" | "failed" | "skipped"> {
@@ -382,7 +391,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
       const h = new Bun.CryptoHasher("sha256");
       let batch: Line[] = [];
       for await (const line of parseDelimited(hashed(Bun.file(file).stream(), h), input.format, l.spec.fields.map((x) => x.name))) {
-        if (!line.ok && line.fatal) throw new FileFailure(Object.values(line.reasons)[0] ?? "The file can't be read.", line.fatal === "schema");
+        if (!line.ok && line.fatal) throw new FileFailure(Object.values(line.reasons)[0] ?? "The file can't be read.", line.fatal === "schema", line.drift);
         batch.push(line);
         if (batch.length >= FILE_BATCH) { await writeLines(tx, s, l, origin, batch, counts); batch = []; }
       }
@@ -401,7 +410,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
     await inScope(s, on, async (tx) => {
       await sourceLock(tx, s.sourceId);
       await tx.insert(sourceFiles).values({ ...row, status: "failed", reason: e.message }).onConflictDoNothing();
-      if (e.schema) await pause(tx, s, `${f.name}: ${e.message}`);
+      if (e.schema) await pause(tx, s, `${f.name}: ${e.message}`, e.drift);
     });
     return "failed";
   }

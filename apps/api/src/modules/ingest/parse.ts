@@ -5,16 +5,19 @@
 // never blocks it long enough to starve the job heartbeat (30 s, spike S2); the source is read only as fast as the
 // consumer asks (back-pressure).
 import { parse } from "csv-parse";
+import type { DriftColumn } from "./rules";
 
 export type ParseFormat = { delimiter: string; header: boolean; encoding: string; /** the quote character; null = no quoting (default `"`) */ quote?: string | null };
 /**
  * A line, or why it can't be read. `fatal` marks a fault of the whole file, not of one line: "file" = a quote never
  * closed or a line over MAX_LINE_BYTES (the rest of the file can't be trusted), "schema" = a header whose column count
- * isn't the declared one (the sender changed the layout). The pipeline fails such a file; the preview lists it.
+ * isn't the declared one, or whose names (trimmed) aren't the declared ones in that order (the sender changed the
+ * layout; `drift` per column for a name). The wizard's col_NN placeholders are not compared. The pipeline fails such a
+ * file; the preview lists it.
  */
 export type ParsedLine =
   | { line: number; ok: true; raw: Record<string, string> }
-  | { line: number; ok: false; cells: string[]; reasons: Record<string, string>; fatal?: "file" | "schema" };
+  | { line: number; ok: false; cells: string[]; reasons: Record<string, string>; fatal?: "file" | "schema"; drift?: DriftColumn[] };
 export type ParseOptions = { yieldEvery?: number };
 
 export const WHOLE_ROW = "_row";
@@ -22,6 +25,16 @@ export const WHOLE_ROW = "_row";
 export const MAX_LINE_BYTES = 1024 * 1024;
 const nextTurn = () => new Promise<void>((r) => setImmediate(r));
 const newlines = (s: string) => s.split("\n").length - 1;
+/** The name the wizard gives a column without one (an empty or repeated header cell, a headerless file). */
+const PLACEHOLDER = /^col_\d+$/;
+
+/** The declared columns the header names differently, in file order (placeholders skipped). */
+function headerDrift(cells: string[], columns: string[]): DriftColumn[] {
+  return columns.flatMap((c, i) => (PLACEHOLDER.test(c) || cells[i]!.trim() === c ? [] : [{
+    column: c, expected: `"${c}" in column ${i + 1}`, found: `"${cells[i]!.trim()}"`,
+    effect: "The file's header names another column here, so its values would be read into the wrong field. Make a new version for the file's layout.",
+  }]));
+}
 
 /** csv-parse's error as one sentence-case reason: "Quote not closed (line 4)". */
 function reasonOf(err: { message?: string; code?: string } | undefined, line: number): string {
@@ -67,6 +80,11 @@ async function* lines(chunks: AsyncIterable<string>, f: ParseFormat, columns: st
       while (skipped.length && skipped[0]!.line < start) yield skipped.shift()!;
       if (f.header && seen++ === 0) {
         if (cells.length !== columns.length) yield { line: start, ok: false, cells, reasons: { [WHOLE_ROW]: `The header has ${cells.length} columns; the source declares ${columns.length}` }, fatal: "schema" };
+        else {
+          const drift = headerDrift(cells, columns);
+          const said = drift.map((d) => `column ${columns.indexOf(d.column) + 1} is ${d.found}, declared "${d.column}"`).join("; ");
+          if (drift.length) yield { line: start, ok: false, cells, reasons: { [WHOLE_ROW]: `The header's columns are not the declared ones: ${said}. Make a new source version for the file's layout.` }, fatal: "schema", drift };
+        }
         continue;
       }
       if (cells.length !== columns.length) yield { line: start, ok: false, cells, reasons: { [WHOLE_ROW]: `Expected ${columns.length} columns, got ${cells.length}` } };

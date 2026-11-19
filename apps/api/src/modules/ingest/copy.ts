@@ -20,6 +20,9 @@ export const CHUNK = 1000;
 
 const chunks = <T>(rows: T[]): T[][] => Array.from({ length: Math.ceil(rows.length / CHUNK) }, (_, i) => rows.slice(i * CHUNK, (i + 1) * CHUNK));
 
+/** A quarantined line's dedup hash (quarantine_rows.raw_hash, drizzle/0017): SHA-256 of its text as UTF-8, in hex. */
+export const rawHashOf = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
+
 /** A batch needs months that raw_rows or records has no partition for yet; nothing was written for it. */
 export class MissingPartition extends Error {
   constructor(readonly months: string[]) { super(`ingest: no partition for ${months.join(", ")}`); }
@@ -55,8 +58,8 @@ export async function makePartitions(on: Tx, months: string[]): Promise<void> {
 }
 
 /**
- * Writes one batch: raw rows and records once per dedup key (a row already stored is dropped), quarantined lines all.
- * Answers the records it added.
+ * Writes one batch: raw rows, records and quarantined lines once per dedup key (a row or line already stored is
+ * dropped). Answers the records it added.
  */
 export async function insertBatch(
   tx: InTx, raw: (typeof rawRows.$inferInsert)[], recs: (typeof records.$inferInsert)[], quarantine: (typeof quarantineRows.$inferInsert)[],
@@ -65,7 +68,7 @@ export async function insertBatch(
   for (const c of chunks(raw)) await tx.insert(rawRows).values(c).onConflictDoNothing();
   const added: { id: string; naturalKey: string | null }[] = [];
   for (const c of chunks(recs)) added.push(...await tx.insert(records).values(c).onConflictDoNothing().returning({ id: records.id, naturalKey: records.naturalKey }));
-  for (const c of chunks(quarantine)) await tx.insert(quarantineRows).values(c);
+  for (const c of chunks(quarantine)) await tx.insert(quarantineRows).values(c).onConflictDoNothing();
   return added;
 }
 

@@ -45,7 +45,7 @@ beforeEach(async () => {
   await db.insert(sourceCursors).values({ spaceId: A, sourceId: SRC });
   await db.insert(rawRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, origin: "file", originId: FILE, lineNo: 1, payload: { sid: "S1" }, rowHash: "h1", businessDate: DAY });
   await db.insert(records).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, sourceVersionId: V1, businessDate: DAY, bdayIndex: 1, attrs: {}, rowHash: "h1", originId: FILE });
-  await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, origin: "file", originId: FILE, lineNo: 2, raw: "x", reasons: {} });
+  await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, origin: "file", originId: FILE, lineNo: 2, raw: "x", rawHash: "hx", reasons: {} });
 });
 
 describe("ingest tables under row level security", () => {

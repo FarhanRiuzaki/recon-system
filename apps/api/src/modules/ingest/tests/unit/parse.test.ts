@@ -92,6 +92,16 @@ describe("parseDelimited (stream)", () => {
     expect(long.some((l) => !l.ok && l.fatal === "file")).toBe(true);
     const header = await parseText("a,b,c\n1,2\n", { delimiter: ",", header: true, encoding: "utf-8" }, ["a", "b"]);
     expect(header[0]).toMatchObject({ ok: false, fatal: "schema", reasons: { _row: "The header has 3 columns; the source declares 2" } });
+    // same width, names swapped: the values would land in the wrong fields
+    const swapped = await parseText(" b , a \n1,2\n", { delimiter: ",", header: true, encoding: "utf-8" }, ["a", "b"]);
+    expect(swapped[0]).toMatchObject({
+      ok: false, fatal: "schema",
+      reasons: { _row: 'The header\'s columns are not the declared ones: column 1 is "b", declared "a"; column 2 is "a", declared "b". Make a new source version for the file\'s layout.' },
+      drift: [{ column: "a", expected: '"a" in column 1', found: '"b"' }, { column: "b", expected: '"b" in column 2', found: '"a"' }],
+    });
+    // the wizard's col_NN placeholders (an empty or repeated header cell) are not compared
+    const placeholders = await parseText("a,whatever\n1,2\n", { delimiter: ",", header: true, encoding: "utf-8" }, ["a", "col_02"]);
+    expect(placeholders).toMatchObject([{ ok: true, raw: { a: "1", col_02: "2" } }]);
     const columns = await parseText("1|2|3\n", fmt, ["a", "b"]);
     expect(columns[0]).toMatchObject({ ok: false, reasons: { _row: "Expected 2 columns, got 3" } });
     expect((columns[0] as { fatal?: string }).fatal).toBeUndefined(); // one line of another width is that line's fault

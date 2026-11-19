@@ -5,6 +5,7 @@
 export { compileDerive, runDerive } from "./cel";
 export { type Column, type Connector, ConnectorError, connectorFor, type From, type Row, type Secret, within } from "./connectors";
 export { ingestController } from "./controller";
+export { rawHashOf } from "./copy";
 export { type HealthSource, type SourceHealth, sourceHealth } from "./health";
 export { inboxProbe } from "./inbox";
 export { type Calendar, type CalendarData, type CoreRecord, fileDateOf, makeCalendar, toRecord, specCelError } from "./map";
