@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { canStep, specHash } from "../../rules";
+import { SourceSpec, UpdateSourceVersionBody as UpdateBody } from "@starterkit/shared/contracts/sources";
+import { canStep, specHash, specIssue } from "../../rules";
 import { ksei } from "../spec";
 
 describe("specHash", () => {
@@ -66,5 +66,21 @@ describe("SourceSpec", () => {
     expect(issues({ ...ksei(), input: db })).toEqual(["Give either a table or a query"]);
     expect(issues({ ...ksei(), input: { kind: "db_snapshot", query: query(""), schedule: "0 7 * * *" } })).toEqual(["The snapshot query needs the :business_date parameter"]);
     expect(issues({ ...ksei(), input: { kind: "db_snapshot", query: query(" where d = :business_date"), schedule: "0 7 * * *" } })).toEqual([]);
+  });
+});
+
+describe("specIssue", () => {
+  const issueOf = (spec: unknown) => specIssue(UpdateBody.safeParse({ spec }).error);
+  it("names the field of a refine or a pattern with its own message, in sentence case with a full stop", () => {
+    const k = ksei();
+    expect(issueOf({ ...k, mutable: true, key_fields: [] })).toBe("Check key_fields: A mutable source needs key fields.");
+    expect(issueOf({ ...k, health: { deadline: "24:00" } })).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
+    expect(issueOf({ ...k, fields: [{ ...k.fields[0], format: { timezone: "Mars/Olympus" } }, ...k.fields.slice(1)] }))
+      .toBe("Check fields.0.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta.");
+  });
+  it("is null for a schema miss with zod's own message, and for anything that is no zod error", () => {
+    expect(issueOf({ ...ksei(), mutable: "yes" })).toBeNull();
+    expect(issueOf({ ...ksei(), health: { graceMinutes: 0 } })).toBeNull();
+    expect(specIssue(new Error("x"))).toBeNull();
   });
 });

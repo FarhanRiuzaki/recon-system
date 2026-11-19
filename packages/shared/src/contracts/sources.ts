@@ -30,7 +30,7 @@ export const FieldSpec = z.strictObject({
     decimalSeparator: z.enum([".", ","]).optional(),
     thousandSeparator: z.enum([",", ".", " ", "'"]).optional(),
     scale: z.number().int().min(0).max(18).optional(),
-    timezone: z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone").optional(),
+    timezone: z.string().min(1).max(64).refine(isTimeZone, "Unknown time zone. Use a name such as Asia/Jakarta").optional(),
   }).optional(),
   nullable: z.boolean(),
   trim: z.boolean(),
@@ -104,7 +104,7 @@ export const SourceSpec = z.strictObject({
   const amount = s.mapping.amount_minor;
   if (amount && "field" in amount) {
     const f = s.fields.find((x) => x.name === amount.field);
-    if (f && !(f.type === "integer" || (f.type === "decimal" && (f.format?.scale ?? 2) === 2))) issue(`amount_minor needs an integer or a decimal at scale 2; "${f.name}" is ${f.type}${f.type === "decimal" ? ` at scale ${f.format?.scale ?? 2}` : ""}`, ["mapping", "amount_minor"]);
+    if (f && !(f.type === "integer" || (f.type === "decimal" && (f.format?.scale ?? 2) === 2))) issue(`The amount needs an integer, or a decimal at scale 2; "${f.name}" is ${f.type}${f.type === "decimal" ? ` at scale ${f.format?.scale ?? 2}` : ""}`, ["mapping", "amount_minor"]);
   }
   const known = (n: string) => fields.has(n) || Object.hasOwn(s.derive, n);
   const { attrs, ...core } = s.mapping;

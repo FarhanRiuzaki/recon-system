@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { $ZodError } from "zod/v4/core";
 import type { VersionStatus } from "@starterkit/shared/sources";
 
 /** `v` with every object's keys sorted, at any depth; arrays keep their order (field order means something). */
@@ -14,3 +15,16 @@ export const specHash = (spec: unknown): string => createHash("sha256").update(J
 const FROM = { edit: "draft", submit: "draft", approve: "in_review", reject: "in_review" } as const satisfies Record<string, VersionStatus>;
 export type VersionStep = keyof typeof FROM;
 export const canStep = (step: VersionStep, status: VersionStatus): boolean => FROM[step] === status;
+
+/**
+ * Why the contract refused a spec, naming the field ("Check mapping.amount_minor: The amount needs …."), when the reason
+ * was written for a person (a refine or a pattern with its own message); null for any other schema miss (the fixed 400).
+ * `root` is where the spec sits in the body. The same shape as a CEL error ("Check the expression at derive.x: …").
+ */
+export function specIssue(e: unknown, root = "spec"): string | null {
+  if (!(e instanceof $ZodError)) return null;
+  const i = e.issues.find((x) => x.path[0] === root && (x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid"))));
+  if (!i) return null;
+  const why = i.message.charAt(0).toUpperCase() + i.message.slice(1);
+  return `Check ${i.path.slice(1).join(".")}: ${why}${/[.?]$/.test(why) ? "" : "."}`;
+}

@@ -11,7 +11,7 @@ import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  approveVersion, createDraft, createSource, previewVersion, rejectVersion, setConnection, shareSource, sourceColumns, sourceDetail, sourcePage, submitVersion,
+  approveVersion, createDraft, createSource, previewVersion, refusedSpec, rejectVersion, setConnection, shareSource, sourceColumns, sourceDetail, sourcePage, submitVersion,
   testConnection, unshareSource, updateVersion,
 } from "./service";
 
@@ -45,7 +45,7 @@ export const sourcesController = () =>
       return v;
     }, { guard: { space: MAKERS } })
     .patch("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId", async (c) => {
-      const b = await body(c, UpdateSourceVersionBody);
+      const b = await body(c, UpdateSourceVersionBody).catch(refusedSpec);
       return updateVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
     }, { guard: { space: MAKERS } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview", async (c) => {

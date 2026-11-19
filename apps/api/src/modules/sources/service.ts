@@ -22,7 +22,7 @@ import {
   type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState, sourceStates, specCelError, within,
 } from "../ingest";
 import { spaceNames, spaces, withSpace } from "../spaces";
-import { canStep, specHash } from "./rules";
+import { canStep, specHash, specIssue } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -200,6 +200,12 @@ export function createDraft(ctx: Ctx, id: string): Promise<SourceVersionDto> {
     await recordActivity(tx, ctx, { action: "source.version_create", target: target(s), after: { version: v.version, from: from?.version ?? null } });
     return versionDto(v);
   });
+}
+
+/** A body the contract refused: 400 naming the spec's field when its reason was written for a person, else as thrown. */
+export function refusedSpec(e: unknown): never {
+  const why = specIssue(e);
+  throw why ? new ApiError("bad_request", why) : e;
 }
 
 /**

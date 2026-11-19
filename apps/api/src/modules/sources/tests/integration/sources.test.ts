@@ -417,11 +417,19 @@ describe("CEL on save and the preview (Task 3)", () => {
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     const k = ksei();
     const zone = { ...k, fields: [...k.fields, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "Mars/Olympus" } }] };
-    expect((await patch(t.mk, s.id, v.id, zone)).status).toBe(400);
+    const tz = await patch(t.mk, s.id, v.id, zone);
+    expect([tz.status, await msg(tz)]).toEqual([400, "Check fields.14.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta."]);
     const fields = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 4 } }, { name: "txt", type: "string", nullable: true, trim: true }];
-    for (const [name, status] of [["amt", 400], ["txt", 400]] as const) {
-      expect((await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: name } } })).status).toBe(status);
+    for (const [name, why] of [["amt", '"amt" is decimal at scale 4'], ["txt", '"txt" is string']] as const) {
+      const r = await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: name } } });
+      expect([r.status, await msg(r)]).toEqual([400, `Check mapping.amount_minor: The amount needs an integer, or a decimal at scale 2; ${why}.`]);
     }
+    // every refine names its field, the same shape as a CEL error; a plain type miss stays the fixed sentence
+    const quote = await patch(t.mk, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } });
+    expect(await msg(quote)).toBe("Check input.format.quote: The quote character can't be the delimiter.");
+    expect(await msg(await patch(t.mk, s.id, v.id, { ...k, key_fields: ["nope"] }))).toBe('Check key_fields.0: "nope" is not a field or derived value.');
+    expect(await msg(await patch(t.mk, s.id, v.id, { ...k, health: { deadline: "9:00" } }))).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
+    expect(await msg(await patch(t.mk, s.id, v.id, { ...k, mutable: "yes" }))).toBe("A request parameter has an unsupported value.");
     const ok = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "UTC" } }];
     expect((await patch(t.mk, s.id, v.id, { ...k, fields: ok, mapping: { ...k.mapping, amount_minor: { field: "amt" } } })).status).toBe(200);
   });
