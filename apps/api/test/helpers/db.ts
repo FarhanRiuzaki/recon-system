@@ -61,3 +61,8 @@ export const sqlColumns = (t: PgTable): Record<string, PgColumn> => Object.fromE
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- those assertions read rows without a row type
 export const rows = async (q: PromiseLike<unknown>): Promise<any[]> => (await q) as any[];
+
+/** The partitions of `parent` (by name) with their row level security flags and policy count; a catalog read src/ tests can't spell. */
+export const partitionsOf = (parent: string): Promise<{ name: string; rls: boolean; force: boolean; policies: number }[]> => client`
+  select c.relname as name, c.relrowsecurity as rls, c.relforcerowsecurity as force, (select count(*)::int from pg_policy p where p.polrelid = c.oid) as policies
+  from pg_inherits i join pg_class c on c.oid = i.inhrelid where i.inhparent = ${parent}::regclass order by c.relname`;

@@ -19,11 +19,11 @@ const Row = ({ label, keys, said }: { label: string; keys: string[]; said: strin
  * Every keyboard shortcut of the console (GitHub, Linear: "?" lists them), the "Go to" ones only for the pages the
  * viewer can open, and the switch for single-key shortcuts (WCAG 2.1.4). Loaded on first open (CommandPalette).
  */
-export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function ShortcutsDialog({ open, onOpenChange, noSpace }: { open: boolean; onOpenChange: (o: boolean) => void; noSpace: boolean }) {
   const { perms } = useAuth();
   const { prefs, update } = usePrefs();
   const on = prefs.keys !== "off";
-  const pages = pagesFor(perms).filter((n) => n.shortcut);
+  const pages = pagesFor(perms, noSpace).filter((n) => n.shortcut);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] md:max-w-md">

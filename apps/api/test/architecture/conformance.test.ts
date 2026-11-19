@@ -1,8 +1,9 @@
 // The API against its contract, read from createApp() and from the source with the TypeScript compiler API:
 // (a) the routes are the README's endpoint table. For every /v1 route of a modules/*/controller.ts but the sign-in ones:
 // (b) the `guard` option runs before the handler (an in-handler permission check only where allowlisted, before any
-// service call); (c) a change records activity (only an allowlisted auth step doesn't); (d) a list GET pages through
-// pageQuery and a CSV branch is capped at CSV_MAX_ROWS; (e) nothing answers 404 or reads data before the request body;
+// service call; a { space } guard names `or` only on a route that never reaches withSpace, unless allowlisted); (c) a
+// change records activity (only an allowlisted auth step doesn't); (d) a list GET pages through pageQuery and a CSV
+// branch is capped at CSV_MAX_ROWS; (e) nothing answers 404 or reads data before the request body;
 // (f) a handler that reads the query has a `query` schema (validated before the guard); (g) the exemptions name real
 // controllers. Calls are followed across files, through module indexes, into the services a handler calls and everything
 // they call (one call graph of src/); src/ uses only the import forms that graph follows, and a function that records
@@ -153,7 +154,7 @@ function graphOf(files: File[]) {
 type Call = { name: string; id: string | null; pos: number };
 type Handler = {
   file: string; method: string; path: string; inline: boolean; calls: Call[]; csv: boolean; options: string[];
-  guard: "missing" | "null" | "perm" | "space"; readsQuery: boolean;
+  guard: "missing" | "null" | "perm" | "space"; spaceOr: boolean; readsQuery: boolean;
 };
 const ROUTE_METHODS = ["get", "post", "patch", "put", "delete"];
 /** What a controller's `new Elysia()` chain may call: plugins and routes. A lifecycle hook (derive, resolve, onBeforeHandle…) would run code the scan can't order against the guard. */
@@ -194,6 +195,8 @@ function handlersOf(file: string, g: ReturnType<typeof graphOf>, useOk: string[]
           options: options.map((o) => o.name?.getText(sf) ?? "?"),
           guard: !guardOpt ? "missing" : !ts.isPropertyAssignment(guardOpt) ? "perm"
             : guardOpt.initializer.kind === ts.SyntaxKind.NullKeyword ? "null" : ts.isObjectLiteralExpression(guardOpt.initializer) ? "space" : "perm",
+          spaceOr: !!guardOpt && ts.isPropertyAssignment(guardOpt) && ts.isObjectLiteralExpression(guardOpt.initializer)
+            && guardOpt.initializer.properties.some((p) => p.name?.getText(sf) === "or"),
           readsQuery: false,
         };
         if (fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
@@ -227,7 +230,10 @@ function handlersOf(file: string, g: ReturnType<typeof graphOf>, useOk: string[]
   return { handlers, chain, uses };
 }
 
-type Allow = { nonList: Record<string, string>; gates: Record<string, string>; authFiles: string[]; noActivity?: Record<string, string>; use?: string[] };
+type Allow = {
+  nonList: Record<string, string>; gates: Record<string, string>; authFiles: string[]; noActivity?: Record<string, string>; use?: string[];
+  orWithSpace?: Record<string, string>;
+};
 
 /**
  * GET routes that answer a summary or the caller, not a list. A GET whose path ends in a parameter (`/v1/x/:id`) answers
@@ -253,7 +259,13 @@ const NO_ACTIVITY: Record<string, string> = {
 };
 /** The sign-in controllers, by file: they answer before a session exists. A route elsewhere, even under /v1/auth, follows every rule. */
 const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controller.ts"];
-const REAL_ALLOW: Allow = { nonList: NON_LIST_GETS, gates: IN_HANDLER_GATES, authFiles: AUTH_ROUTE_FILES, noActivity: NO_ACTIVITY };
+/**
+ * Space management routes whose `{ space, or }` guard lets a global permission in and that still reach withSpace (spec
+ * §11: a platform admin has no data access, so a route with `or` reads no space data). None today: the members and
+ * detail routes name `or` and read only spaces and space_members, which have no RLS.
+ */
+const OR_WITH_SPACE: Record<string, string> = {};
+const REAL_ALLOW: Allow = { nonList: NON_LIST_GETS, gates: IN_HANDLER_GATES, authFiles: AUTH_ROUTE_FILES, noActivity: NO_ACTIVITY, orWithSpace: OR_WITH_SPACE };
 
 /** A path inside one space: its :spaceId segment is what the { space } guard checks. */
 const SPACE_PATH = /\/:spaceId(\/|$)/;
@@ -269,6 +281,8 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
   const pagers = g.reaching(["kernel/pagination.ts#pageQuery"]);
   const csvFns = g.named((id) => /#\w*Csv$/.test(id));
   const csvReach = g.reaching(csvFns);
+  const spaceData = g.reaching(["modules/spaces/service.ts#withSpace"]);
+  const orWithSpace = new Set<string>();
   const useOk = allow.use ?? USE_OK;
   const scanned = files.filter((f) => CONTROLLER.test(f.file)).map((f) => ({ file: f.file, ...handlersOf(f.file, g, useOk) }));
   const out: string[] = [];
@@ -293,6 +307,10 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
       const inSpace = SPACE_PATH.test(h.path);
       if (h.guard === "space" && !inSpace) out.push(`${id}: a { space } guard needs :spaceId in the path`);
       if (inSpace && (h.guard === "perm" || h.guard === "null")) out.push(`${id}: a route under :spaceId needs the { space } guard`);
+      if (h.spaceOr && reaches(spaceData)) {
+        orWithSpace.add(key);
+        if (!(key in (allow.orWithSpace ?? {}))) out.push(`${id}: reaches withSpace with \`or\` in its guard; a global permission gives no data access (allowlist a management route with its reason)`);
+      }
       for (const o of h.options.filter((x) => !HOOK_OK.has(x))) out.push(`${id}: route option ${o} runs code the scan can't order against the guard`);
       const gate = h.calls.some((c) => c.name === "forbidden");
       if (gate && !(key in allow.gates)) out.push(`${id}: checks a permission in the handler; use the guard option`);
@@ -330,6 +348,7 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
   for (const k of Object.keys(allow.nonList)) if (!seen.has(k) || !k.startsWith("GET ")) out.push(`${k}: listed as a non-list GET but has no such handler`);
   for (const k of Object.keys(allow.noActivity ?? {})) if (!seen.has(k) || k.startsWith("GET ")) out.push(`${k}: listed as a change without activity but has no such handler`);
   for (const k of Object.keys(allow.gates)) if (!gated.has(k)) out.push(`${k}: listed as an in-handler permission check but has no such handler`);
+  for (const k of Object.keys(allow.orWithSpace ?? {})) if (!orWithSpace.has(k)) out.push(`${k}: allowlisted to reach withSpace with \`or\` but has no such handler`);
   for (const u of useOk) if (!scanned.some((s) => !allow.authFiles.includes(s.file) && s.uses.includes(u))) out.push(`${u}: allowed in .use( but no checked controller uses it`);
   for (const f of allow.authFiles) {
     if (!scanned.some((s) => s.file === f && s.handlers.length)) out.push(`${f}: listed as a sign-in controller but has no routes`);
@@ -461,6 +480,22 @@ export const xController = () => new Elysia().use(guard)${code};` });
     // the object form is still a guard option: the other rules apply to the handler behind it
     expect(run(`.post("/v1/spaces/:spaceId/x", async (c) => { await lookup(1); return save(c.ctx, await body(c, B)); }, { guard: { space: ["viewer"] } })`))
       .toEqual([`${X} POST /v1/spaces/:spaceId/x: answers 404 or reads data before the request body (400)`]);
+  });
+
+  it("fixture (b): a handler that reaches withSpace takes no `or` in its { space } guard (a platform admin has no data access), unless allowlisted", () => {
+    const spaces: File = { file: "modules/spaces/service.ts", src: `export function withSpace(scope, fn, on) { return on.transaction(fn); }` };
+    const data: File = { file: "modules/x/data.ts", src: `import { withSpace } from "../spaces/service"; export const items = (ctx) => withSpace({ spaceIds: [ctx.space.id] }, (tx) => tx.select());` };
+    const files = (code: string) => [...KERNEL, SERVICE, spaces, data, { ...controller(code), src: `import { items } from "./data";\n${controller(code).src}` }];
+    const route = (guardOpt: string) => `.get("/v1/spaces/:spaceId/items/:id", ({ ctx }) => items(ctx), { guard: ${guardOpt} })`;
+    expect(routeViolations(files(route(`{ space: ["viewer"] }`)), NONE)).toEqual([]);
+    expect(routeViolations(files(route(`{ space: ["viewer"], or: "space.view" }`)), NONE))
+      .toEqual([`${X} GET /v1/spaces/:spaceId/items/:id: reaches withSpace with \`or\` in its guard; a global permission gives no data access (allowlist a management route with its reason)`]);
+    const ok: Allow = { ...NONE, orWithSpace: { "GET /v1/spaces/:spaceId/items/:id": "management: reason" } };
+    expect(routeViolations(files(route(`{ space: ["viewer"], or: "space.view" }`)), ok)).toEqual([]);
+    // a management route with `or` that never reaches withSpace needs no entry, and an entry for it is stale
+    expect(routeViolations(files(`.get("/v1/spaces/:spaceId/x/:id", () => pure(1), { guard: { space: ["viewer"], or: "space.view" } })`), NONE)).toEqual([]);
+    expect(routeViolations(files(route(`{ space: ["viewer"] }`)), ok))
+      .toEqual(["GET /v1/spaces/:spaceId/items/:id: allowlisted to reach withSpace with `or` but has no such handler"]);
   });
 
   it("fixture (b): .use( takes only the listed plugins (the auth guard), and a listed plugin no controller uses is stale", () => {

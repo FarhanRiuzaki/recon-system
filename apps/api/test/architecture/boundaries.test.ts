@@ -2,7 +2,9 @@
 // (1) a module is used only through its index.ts, (2) kernel/ never imports modules/, and neither imports db/, (3) every table has exactly one
 // owning modules/<m>/schema.ts, (4) tests live only in tests/ folders or apps/api/test, (5) no hand-written SQL
 // statement in src/ outside the migration runner, (6) every module index and app.ts load alone in a fresh process and
-// build their controllers (the module indexes import each other: no export of another module may be used at load).
+// build their controllers (the module indexes import each other: no export of another module may be used at load),
+// (7) modules/spaces never imports kernel/worker-db (the API process loads it, and must not open the worker pool),
+// (8) every table with a space_id column has row level security forced with the one recon_space_visible policy.
 // Each rule has a fixture that proves it fails.
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -120,6 +122,59 @@ process.exit(0);`;
   return { ok: r.exitCode === 0, out: r.stderr.toString() };
 }
 
+/** Bun SQL or a transaction of it: the tagged template the catalog queries run on. */
+type Q = <T>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T>;
+
+/** The current schema's tables but schema_migrations; a partition counts as its parent's (it has no owner of its own). */
+const dbTables = async (q: Q): Promise<string[]> => (await q<{ t: string }[]>`
+  select c.relname as t from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = current_schema() and c.relkind in ('r', 'p') and not c.relispartition and c.relname <> 'schema_migrations'`).map((r) => r.t);
+
+/** (7) A file of modules/spaces outside its tests importing kernel/worker-db. */
+function workerPoolImports(files: File[]): string[] {
+  return files.filter((f) => f.file.startsWith("src/modules/spaces/") && !f.file.includes("/tests/"))
+    .flatMap((f) => importsOf(f).filter((to) => to === "src/kernel/worker-db").map(() => `${f.file}: imports kernel/worker-db; the API process loads modules/spaces and must not open the worker pool`));
+}
+
+type SpaceTable = { table: string; rls: boolean; force: boolean; policies: { cmd: string; permissive: boolean; using: string | null; check: string | null }[] };
+
+/** Every table (partitions included) of the current schema with a space_id column, its RLS flags and its policies. */
+const spaceTables = (q: Q): Promise<SpaceTable[]> => q<SpaceTable[]>`
+  select c.relname as table, c.relrowsecurity as rls, c.relforcerowsecurity as force,
+    coalesce(json_agg(json_build_object('cmd', p.polcmd, 'permissive', p.polpermissive, 'using', pg_get_expr(p.polqual, p.polrelid),
+      'check', pg_get_expr(p.polwithcheck, p.polrelid)) order by p.polname) filter (where p.oid is not null), '[]') as policies
+  from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  join pg_attribute a on a.attrelid = c.oid and a.attname = 'space_id' and not a.attisdropped
+  left join pg_policy p on p.polrelid = c.oid
+  where n.nspname = current_schema() and c.relkind in ('r', 'p')
+  group by c.oid order by c.relname`;
+
+/**
+ * Tables with a space_id column that are not space data: read before any space scope exists, so RLS would hide them
+ * from the guard itself. A stale entry fails.
+ */
+const RLS_EXEMPT: Record<string, string> = {
+  space_members: "who holds which role in a space: the guard reads it to decide the scope, before withSpace can set one",
+};
+const VISIBLE = "recon_space_visible(space_id)";
+
+/**
+ * (8) A space_id table without ENABLE and FORCE row level security, or whose policies are not exactly one permissive
+ * policy for every command with recon_space_visible(space_id) as USING and WITH CHECK (drizzle/0009, recon_enable_space_rls).
+ */
+function rlsGaps(rows: SpaceTable[], exempt: Record<string, string> = RLS_EXEMPT): string[] {
+  const out: string[] = [];
+  for (const r of rows.filter((x) => !(x.table in exempt))) {
+    if (!r.rls || !r.force) out.push(`${r.table}: has space_id but row level security is not enabled and forced`);
+    const [p, ...more] = r.policies;
+    if (!p || more.length || p.cmd !== "*" || !p.permissive || p.using !== VISIBLE || p.check !== VISIBLE) {
+      out.push(`${r.table}: needs exactly one policy, for all commands, USING and WITH CHECK ${VISIBLE} (select recon_enable_space_rls('${r.table}'))`);
+    }
+  }
+  for (const t of Object.keys(exempt)) if (!rows.some((r) => r.table === t)) out.push(`${t}: exempt from the RLS rule but no such table has space_id`);
+  return out;
+}
+
 const scan = (dir: string): File[] =>
   [...new Bun.Glob("**/*.ts").scanSync(path.join(ROOT, dir))].map((f) => `${dir}/${f}`).map((file) => ({ file, src: readFileSync(path.join(ROOT, file), "utf8") }));
 const real = [...scan("src"), ...scan("test")];
@@ -135,9 +190,19 @@ describe("module boundaries (apps/api)", () => {
   });
 
   it("every table is owned by exactly one module, the database's tables included", async () => {
-    const rows: { tablename: string }[] = await client`select tablename from pg_tables where schemaname = current_schema() and tablename <> 'schema_migrations'`;
+    const tables = await dbTables(client);
+    expect(tables.length).toBeGreaterThan(0);
+    expect(tableOwners(real, tables)).toEqual([]);
+  });
+
+  it("modules/spaces never imports kernel/worker-db (its tests may)", () => {
+    expect(workerPoolImports(real)).toEqual([]);
+  });
+
+  it("every table with a space_id column forces row level security with the one recon_space_visible policy (exemptions are real tables)", async () => {
+    const rows = await spaceTables(client);
     expect(rows.length).toBeGreaterThan(0);
-    expect(tableOwners(real, rows.map((r) => r.tablename))).toEqual([]);
+    expect(rlsGaps(rows)).toEqual([]);
   });
 
   it("no test file sits beside the source", () => {
@@ -260,5 +325,48 @@ describe("module boundaries: fixtures", () => {
       "src/modules/a/service.ts:4: SQL statement written by hand; use the Drizzle builder",
       ...[7, 8, 9, 10, 11].map((n) => `src/modules/a/service.ts:${n}: SQL statement written by hand; use the Drizzle builder`),
     ]);
+  });
+
+  it("fixture: modules/spaces importing kernel/worker-db fails; its tests and other modules pass", () => {
+    expect(workerPoolImports([
+      f("src/modules/spaces/service.ts", `import { workerDb } from "../../kernel/worker-db";`),
+      f("src/modules/spaces/jobs.ts", `export { workerDb } from "@starterkit/api/src/kernel/worker-db.ts";`),
+      f("src/modules/spaces/tests/integration/rls.test.ts", `import { workerDb } from "../../../../kernel/worker-db";`),
+      f("src/modules/ingest/handlers.ts", `import { workerDb } from "../../kernel/worker-db";`),
+      f("src/modules/spaces/index.ts", `import { db } from "../../kernel/db";`),
+    ])).toEqual([
+      "src/modules/spaces/service.ts: imports kernel/worker-db; the API process loads modules/spaces and must not open the worker pool",
+      "src/modules/spaces/jobs.ts: imports kernel/worker-db; the API process loads modules/spaces and must not open the worker pool",
+    ]);
+  });
+
+  it("fixture: a space_id table without RLS, without FORCE or with a wrong or extra policy fails; recon_enable_space_rls passes; a partition is no table of its own", async () => {
+    const ROLLBACK = new Error("rollback");
+    let seen = null as { gaps: string[]; tables: string[] } | null;
+    await client.begin(async (tx) => {
+      await tx`create table fx_none (space_id uuid not null, x int)`;
+      await tx`create table fx_soft (space_id uuid not null)`;
+      await tx`alter table fx_soft enable row level security`;
+      await tx`create policy fx_soft_space on fx_soft using (recon_space_visible(space_id)) with check (recon_space_visible(space_id))`;
+      await tx`create table fx_wide (space_id uuid not null)`;
+      await tx`select recon_enable_space_rls('fx_wide')`;
+      await tx`create policy fx_wide_all on fx_wide for select using (true)`;
+      await tx`create table fx_ok (space_id uuid not null, business_date date not null) partition by range (business_date)`;
+      await tx`create table fx_ok_2026_11 partition of fx_ok for values from ('2026-11-01') to ('2026-12-01')`;
+      await tx`select recon_enable_space_rls('fx_ok')`;
+      await tx`select recon_enable_space_rls('fx_ok_2026_11')`;
+      await tx`create table fx_plain (id uuid)`;
+      const q = tx as unknown as Q;
+      seen = { gaps: rlsGaps((await spaceTables(q)).filter((r) => r.table.startsWith("fx_")), {}), tables: (await dbTables(q)).filter((t) => t.startsWith("fx_")).sort() };
+      throw ROLLBACK;
+    }).catch((e: unknown) => {
+      if (e !== ROLLBACK) throw e;
+    });
+    const policy = (t: string) => `${t}: needs exactly one policy, for all commands, USING and WITH CHECK ${VISIBLE} (select recon_enable_space_rls('${t}'))`;
+    expect(seen).toEqual({
+      gaps: ["fx_none: has space_id but row level security is not enabled and forced", policy("fx_none"), "fx_soft: has space_id but row level security is not enabled and forced", policy("fx_wide")],
+      tables: ["fx_none", "fx_ok", "fx_plain", "fx_soft", "fx_wide"],
+    });
+    expect(rlsGaps([], { gone: "x" })).toEqual(["gone: exempt from the RLS rule but no such table has space_id"]);
   });
 });

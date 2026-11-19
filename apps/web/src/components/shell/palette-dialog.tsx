@@ -20,7 +20,7 @@ const PLACEHOLDER = "Search pages";
  * The ⌘K dialog (cmdk). Loaded on first open by CommandPalette, so cmdk is not in any route's first load. On a phone it
  * hangs from the top edge (`phone="top"`), its results at most half the screen, so the keyboard doesn't cover them.
  */
-export function PaletteDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function PaletteDialog({ open, onOpenChange, noSpace }: { open: boolean; onOpenChange: (o: boolean) => void; noSpace: boolean }) {
   const router = useRouter();
   const { perms } = useAuth();
   const { prefs } = usePrefs();
@@ -35,7 +35,7 @@ export function PaletteDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <CommandEmpty>No pages match.</CommandEmpty>
             <CommandGroup heading="Pages">
               {/* A submenu's pages follow their item ("Design system / Forms"); a child on the item's own path is the item. */}
-              {pagesFor(perms).flatMap((n) => [n, ...(n.children ?? []).filter((c) => c.href !== n.href)
+              {pagesFor(perms, noSpace).flatMap((n) => [n, ...(n.children ?? []).filter((c) => c.href !== n.href)
                 .map((c) => ({ href: c.href, label: `${n.label} / ${c.label}`, icon: n.icon, shortcut: "" }))]).map((n) => (
                 <CommandItem key={n.href} value={`${n.label} ${n.href}`} onSelect={() => go(n.href)}>
                   <NavGlyph icon={n.icon} />{n.label}{n.shortcut && <span className="ml-auto"><Kbd keys={goKeys(n.shortcut)} /></span>}

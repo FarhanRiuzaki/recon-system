@@ -45,7 +45,8 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
 - Error codes and statuses are fixed: `unauthenticated` 401, `forbidden` 403, `csrf` 403, `not_found` 404,
   `bad_request` 400, `duplicate` 409, `rate_limited` 429, `invalid_credentials` 401, `account_inactive` 403,
   `invalid_code` 400, `superadmin_locked` 409, `last_superadmin` 409, `self_action` 409, `role_in_use` 409,
-  `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `last_space_admin` 409, `internal` 500.
+  `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `last_space_admin` 409, `space_archived` 409,
+  `internal` 500.
   One code is sent with another status on purpose: `invalid_credentials` is 400 when a signed-in user's current
   password is wrong (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser
   doesn't take it for an ended session.
@@ -165,7 +166,9 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
 - Spaces: a route under `/api/spaces/{spaceId}` checks the caller's roles in that space on every request (a removed
   member is 403 on the next one) and lets a non-member in only where its row names a global permission (`space.view` to read the space and its
   members, `space.manage` to change them): that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
-  401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
+  401. In an archived space a change on a data route (one whose row names no global permission) is 409 `space_archived`
+  after the 403; reads and the space's own management rows (`PATCH /api/spaces/{spaceId}`, members) still work, so a
+  space admin can reactivate it. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
   to leave a space without an active `space_admin` (409 `last_space_admin`, also for a PUT that drops the role; an
   inactive account's `space_admin` role does not count); two such changes run one after the other. Deleting or
   deactivating the only active `space_admin` of a space through `/api/users*` is 409 `last_space_admin` too, its message naming the space

@@ -259,13 +259,17 @@ const scrollViolations = (fs: F[]) => fs.filter(({ r }) => r.endsWith(".tsx")).f
  * file and the module it imports, with the reason.
  */
 const SSR_DYNAMIC_ALLOWED: Record<string, string> = {};
-/** "file → module" of each `dynamic(` call without `ssr: false` (the module = the first import("…") in its arguments). */
+/**
+ * "file → module" of each `dynamic(` call without `ssr: false` (the module = the first import("…") in its arguments).
+ * The call is found under the name the file imports it as (`import lazy from`, `import { default as lazy } from`), also
+ * with a type argument (`dynamic<Props>(`) or a space before the parenthesis.
+ */
 function dynamicSsrCalls(fs: F[]): string[] {
   return fs.filter(({ r, imp }) => r.startsWith(WEB) && imp.includes("next/dynamic")).flatMap(({ r, src }) => {
     const code = strip(src);
-    const name = /import\s+(\w+)\s+from\s+["']next\/dynamic["']/.exec(code)?.[1] ?? "dynamic";
+    const name = /import\s+(?:(\w+)|\{[^}]*\bdefault\s+as\s+(\w+)[^}]*\})\s+from\s+["']next\/dynamic["']/.exec(code)?.slice(1).find(Boolean) ?? "dynamic";
     const out: string[] = [];
-    for (const m of code.matchAll(new RegExp(`\\b${name}\\(`, "g"))) {
+    for (const m of code.matchAll(new RegExp(`\\b${name}\\s*(?:<[^()]*?>)?\\s*\\(`, "g"))) {
       let depth = 0, end = m.index + m[0].length - 1;
       for (; end < code.length; end++) {
         if (code[end] === "(") depth++;
@@ -699,5 +703,16 @@ describe("architecture checkers (fixtures)", () => {
       `${WEB}features/users/d.tsx → ./g: pass ssr: false (or allowlist it with a reason)`,
     ]);
     expect(dynamicSsrViolations(fx, { [`${WEB}features/users/a.tsx → ./panel`]: "reason", [`${WEB}features/users/b.tsx → ./filters`]: "reason", [`${WEB}features/users/d.tsx → ./g`]: "reason" })).toEqual([]);
+  });
+  it("fixture: the ssr: false check sees a type argument, a space before the parenthesis and a named default import", () => {
+    expect(dynamicSsrViolations([
+      f(`${WEB}features/users/f.tsx`, `import dynamic from "next/dynamic";\nconst A = dynamic<{ id: string }>(() => import("./typed"));\nconst B = dynamic<Props<X>>(() => import("./nested"), { ssr: false });`),
+      f(`${WEB}features/users/g.tsx`, `import dynamic from "next/dynamic";\nconst C = dynamic (() => import("./spaced"));`),
+      f(`${WEB}features/users/h.tsx`, `import { default as later } from "next/dynamic";\nconst D = later(() => import("./aliased"));\nconst E = later<P>(() => import("./ok"), { ssr: false });`),
+    ], {})).toEqual([
+      `${WEB}features/users/f.tsx → ./typed: pass ssr: false (or allowlist it with a reason)`,
+      `${WEB}features/users/g.tsx → ./spaced: pass ssr: false (or allowlist it with a reason)`,
+      `${WEB}features/users/h.tsx → ./aliased: pass ssr: false (or allowlist it with a reason)`,
+    ]);
   });
 });

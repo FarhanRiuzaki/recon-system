@@ -3,4 +3,4 @@ export type { SpaceRole } from "@starterkit/shared/spaces";
 export { spacesController } from "./controller";
 export { canManageMembers, isSpaceRole } from "./rules";
 export { spaceMembers, spaces } from "./schema";
-export { assertNotLastSpaceAdmin, spaceRolesOf, withSpace } from "./service";
+export { assertNotLastSpaceAdmin, isSpaceArchived, spaceRolesOf, withSpace } from "./service";

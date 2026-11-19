@@ -384,3 +384,50 @@ describe("GET /v1/users/:id/spaces", () => {
     for (const bad of [await spacesOf("abc", sa), await spacesOf(Bun.randomUUIDv7(), sa)]) expect([bad.status, await code(bad)]).toEqual([404, "not_found"]);
   });
 });
+
+describe("the space guard: roles without a row lock, archived spaces", () => {
+  /** A data route of Plan 2+ (no `or`): a GET and a POST that note whether they ran. */
+  const dataRoutes = () => {
+    const ran: string[] = [];
+    const app = api().use(guard)
+      .get("/v1/spaces/:spaceId/data", () => (ran.push("GET"), { ok: true }), { guard: { space: SPACE_ROLES } })
+      .post("/v1/spaces/:spaceId/data", () => (ran.push("POST"), { ok: true }), { guard: { space: ["operator"] } });
+    const go = (method: string, token: string, s = A) =>
+      request(app, `/v1/spaces/${s}/data`, { method, headers: { "X-Internal-Token": process.env.INTERNAL_API_TOKEN!, Authorization: `Bearer ${token}` } });
+    return { ran, go };
+  };
+
+  it("the guard reads the caller's roles without locking them: a member row locked by a change does not hold up a request", async () => {
+    const viewer = await idOf("viewer");
+    await member(A, viewer, "viewer");
+    const t = await signIn("viewer");
+    const holder = await holdTx((tx) => tx.select().from(spaceMembers).where(eq(spaceMembers.userId, viewer)).for("update"));
+    let answer: string;
+    try {
+      answer = await Promise.race([get(`/v1/spaces/${A}`, t).then((r) => `status ${r.status}`), Bun.sleep(1000).then(() => "still waiting")]);
+    } finally {
+      await holder.rollback();
+    }
+    expect(answer).toBe("status 200");
+  });
+
+  it("an archived space: a data change is 409 space_archived before the handler; reads, management routes and unarchiving still work", async () => {
+    const viewer = await idOf("viewer");
+    await member(A, viewer, "operator", "space_admin");
+    const t = await signIn("viewer");
+    const { ran, go } = dataRoutes();
+    expect((await go("POST", t)).status).toBe(200);
+    await db.update(spaces).set({ status: "archived" }).where(eq(spaces.id, A));
+    const r = await go("POST", t);
+    expect([r.status, await code(r)]).toEqual([409, "space_archived"]);
+    expect((await go("GET", t)).status).toBe(200);
+    expect(ran).toEqual(["POST", "GET"]);
+    // a non-member learns nothing about the space: 403 as before, not 409
+    const other = await go("POST", await signIn("apple"));
+    expect([other.status, await code(other)]).toEqual([403, "forbidden"]);
+    // management routes (they name `or` and touch no data) still work, so the space can be set straight and reopened
+    expect((await put(A, await idOf("google"), { roles: ["viewer"] }, t)).status).toBe(200);
+    expect((await call("PATCH", `/v1/spaces/${A}`, { token: t, body: { status: "active" } })).status).toBe(200);
+    expect((await go("POST", t)).status).toBe(200);
+  });
+});

@@ -27,6 +27,7 @@
             "already_enabled",
             "only_sign_in_method",
             "last_space_admin",
+            "space_archived",
             "internal"
           ]
         },

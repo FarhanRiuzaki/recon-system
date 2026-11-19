@@ -28,7 +28,9 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const path = h.get("x-pathname") ?? "/";
   const need = pagePerm(path);
   if (need && !perms.includes(need) && h.get("rsc") !== "1") notFound();
-  // A space page: membership comes from the API (openSpace, cached for the page in the same request).
+  // A space page: membership comes from the API (openSpace, cached for the page in the same request). Checked here, not
+  // only in spaces/[spaceId]/layout.tsx: that layout renders inside this segment's loading boundary, after the response
+  // has started, so its notFound() alone answers 200 (spaces.spec.ts "a non-member gets a 404").
   const spaceId = spaceIdOf(path);
   if (spaceId && h.get("rsc") !== "1" && !(await openSpace(spaceId))) notFound();
   const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);

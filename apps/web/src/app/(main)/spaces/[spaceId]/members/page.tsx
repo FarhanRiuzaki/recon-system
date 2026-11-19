@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { MembersPage } from "@/features/spaces/members-page";
 import { guardedTitle, openSpace, requirePagePermission } from "@/lib/server/page-guard";
 import { Prefetch, reads, type SearchParams, toSearch } from "@/lib/server/prefetch";
@@ -12,10 +11,9 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   return guardedTitle(space ? `Members · ${space.name}` : "Page not found");
 }
 
-/** The (main) layout answers a document load's 404 for a space the caller can't open; this covers client navigations. */
+/** The space's layout (spaces/[spaceId]/layout.tsx) answers "Page not found" for a space the caller can't open. */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
   await requirePagePermission(null);
   const { spaceId } = await params;
-  if (!(await openSpace(spaceId))) notFound();
   return <Prefetch reads={[reads.space(spaceId), reads.spaceMembers(spaceId, toSearch(await searchParams))]}><MembersPage id={spaceId} /></Prefetch>;
 }

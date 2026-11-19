@@ -8,6 +8,7 @@ import { usePrefs } from "@/lib/client/prefs-context";
 import { pagesFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { isHelpKey, matchSequence } from "@/lib/shared/shortcuts";
+import { useNoSpace } from "./sidebar";
 
 export const OPEN_PALETTE = "sk:open-palette";
 export const OPEN_SHORTCUTS = "sk:open-shortcuts";
@@ -27,6 +28,7 @@ const ShortcutsDialog = dynamic(() => import("./shortcuts-dialog").then((m) => m
 export function CommandPalette() {
   const { perms } = useAuth();
   const { prefs } = usePrefs();
+  const noSpace = useNoSpace();
   const [open, setOpen] = useState(false);
   const [used, setUsed] = useState(false);
   const [help, setHelp] = useState(false);
@@ -35,7 +37,7 @@ export function CommandPalette() {
   const prev = useRef<{ key: string; at: number } | null>(null);
 
   useEffect(() => {
-    const items = pagesFor(perms);
+    const items = pagesFor(perms, noSpace);
     const onOpen = () => { setUsed(true); setOpen(true); };
     const onHelp = () => { setOpen(false); setHelpUsed(true); setHelp(true); };
     const onKey = (e: KeyboardEvent) => {
@@ -53,12 +55,12 @@ export function CommandPalette() {
     return () => {
       window.removeEventListener(OPEN_PALETTE, onOpen); window.removeEventListener(OPEN_SHORTCUTS, onHelp); window.removeEventListener("keydown", onKey);
     };
-  }, [router, perms, prefs]);
+  }, [router, perms, prefs, noSpace]);
 
   return (
     <>
-      {used && <PaletteDialog open={open} onOpenChange={setOpen} />}
-      {helpUsed && <ShortcutsDialog open={help} onOpenChange={setHelp} />}
+      {used && <PaletteDialog open={open} onOpenChange={setOpen} noSpace={noSpace} />}
+      {helpUsed && <ShortcutsDialog open={help} onOpenChange={setHelp} noSpace={noSpace} />}
     </>
   );
 }

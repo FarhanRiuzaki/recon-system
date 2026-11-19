@@ -35,11 +35,20 @@ export function withSpace<T>(scope: { spaceIds: string[]; userId: string | null 
   });
 }
 
-/** The roles `userId` holds in `spaceId`, in SPACE_ROLES order, share-locked until `tx` ends; [] = not a member. */
+/**
+ * The roles `userId` holds in `spaceId`, in SPACE_ROLES order; [] = not a member. A plain read, no row lock: the guard
+ * reads it on every request, and a member change re-reads it after the space-admin lock (memberChange).
+ */
 export async function spaceRolesOf(tx: Tx, userId: string, spaceId: string): Promise<SpaceRole[]> {
   const rows = await tx.select({ role: spaceMembers.role }).from(spaceMembers)
-    .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId))).for("share");
+    .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId)));
   return SPACE_ROLES.filter((r) => rows.some((x) => x.role === r));
+}
+
+/** Space `spaceId` is archived (false for no such space: the guard has answered 403 for it already). */
+export async function isSpaceArchived(tx: Tx, spaceId: string): Promise<boolean> {
+  const [r] = await tx.select({ status: spaces.status }).from(spaces).where(eq(spaces.id, spaceId));
+  return r?.status === "archived";
 }
 
 const NOW = sql`now()`;
