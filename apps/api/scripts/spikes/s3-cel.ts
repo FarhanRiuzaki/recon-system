@@ -1,5 +1,5 @@
 // S3: batas aman CEL untuk input konfigurator. Jalankan: bun scripts/spikes/s3-cel.ts
-import { Environment } from '@marcbachmann/cel-js'
+import { Environment, type ParseResult } from '@marcbachmann/cel-js'
 
 export const LIMITS = { maxAstNodes: 200, maxDepth: 20, maxListElements: 100, maxMapEntries: 100, maxCallArguments: 8 }
 export const MAX_EXPR_LENGTH = 1000
@@ -12,11 +12,12 @@ export const ALLOWED_FUNCTIONS = new Set([
 
 const env = new Environment({ limits: LIMITS }).registerVariable('row', 'map').registerVariable('amount', 'int')
 
-function calledFunctions(node: any, out = new Set<string>()): Set<string> {
+function calledFunctions(node: unknown, out = new Set<string>()): Set<string> {
   if (Array.isArray(node)) node.forEach((n) => calledFunctions(n, out))
   else if (node && typeof node === 'object') {
-    if (node.op === 'call' || node.op === 'rcall') out.add(node.args[0])
-    calledFunctions(node.args, out)
+    const { op, args } = node as { op?: string; args?: unknown }
+    if ((op === 'call' || op === 'rcall') && Array.isArray(args)) out.add(String(args[0]))
+    calledFunctions(args, out)
   }
   return out
 }
@@ -24,7 +25,7 @@ function calledFunctions(node: any, out = new Set<string>()): Set<string> {
 /** Validasi ekspresi konfigurator; kembalikan alasan penolakan atau null. */
 export function validate(expr: string): string | null {
   if (expr.length > MAX_EXPR_LENGTH) return `panjang > ${MAX_EXPR_LENGTH}`
-  let parsed: any
+  let parsed: ParseResult
   try { parsed = env.parse(expr) } catch (e) { return `parse: ${(e as Error).message}` }
   for (const f of calledFunctions(parsed.ast)) if (!ALLOWED_FUNCTIONS.has(f)) return `fungsi tidak diizinkan: ${f}`
   const c = env.check(expr)
@@ -40,7 +41,7 @@ const ms = (f: () => void) => { const t = performance.now(); f(); return perform
 // 1. check() menolak tipe tidak cocok tanpa evaluasi
 const bad = env.check('amount + "x"')
 assert(!bad.valid, 'check harus menolak amount + "x"')
-console.log('check amount + "x":', first((bad as any).error.message))
+console.log('check amount + "x":', first(bad.error?.message ?? ''))
 
 // 2. 10.000 node ditolak oleh limit parse (pohon seimbang supaya bukan maxDepth yang kena)
 const tree = (n: number): string => (n <= 1 ? '1' : `(${tree(n >> 1)}+${tree(n - (n >> 1))})`)
@@ -61,7 +62,7 @@ console.log('kurung 30 tingkat:', first(depthMsg))
 assert(validate('x'.repeat(MAX_EXPR_LENGTH + 1)) !== null, 'panjang ekspresi harus dibatasi')
 assert(validate('row.ref.matches("a")')?.includes('matches'), 'matches harus ditolak allowlist')
 for (const e of ['[1].all(x, x > 0)', '[1].exists(x, x > 0)', '[1].map(x, x * 2)', '[1].filter(x, x > 0)', 'bytes("a")', 'timestamp("2026-01-01T00:00:00Z")'])
-  assert(validate(e) !== null, `harus ditolak: ${e}`)
+  assert(/fungsi tidak diizinkan/.test(validate(e) ?? ''), `harus ditolak oleh allowlist: ${e}`)
 assert(validate('int(row.amount) * 100') === null, 'ekspresi normal harus lolos')
 
 // 3. Throughput 1.000.000 evaluasi
@@ -70,7 +71,7 @@ const ctx = { row: { amount: '12345' } }
 t = ms(() => { for (let i = 0; i < N; i++) env.evaluate('int(row.amount) * 100', ctx) })
 console.log(`throughput: ${N} evaluasi dalam ${t.toFixed(0)} ms = ${Math.round(N / (t / 1000))}/detik`)
 assert(env.evaluate('int(row.amount) * 100', ctx) === 1234500n, 'hasil evaluasi salah')
-const compiled: any = env.parse('int(row.amount) * 100')
+const compiled: ParseResult = env.parse('int(row.amount) * 100')
 t = ms(() => { for (let i = 0; i < N; i++) compiled(ctx) })
 console.log(`throughput (parse sekali): ${N} evaluasi dalam ${t.toFixed(0)} ms = ${Math.round(N / (t / 1000))}/detik`)
 
