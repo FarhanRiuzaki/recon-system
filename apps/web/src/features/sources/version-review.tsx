@@ -79,7 +79,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const approveWhy = reviewReason(v, user.id, checker, "approve");
   const rejectWhy = reviewReason(v, user.id, checker, "reject");
   const published = s.published;
-  const isPublished = published?.id === v.id;
+  // a published or retired version shows its own settings: comparing a retired one with the newer published one reads backwards
+  const isPublished = published?.id === v.id || v.status === "retired";
   const rows = v.spec ? specDiff(isPublished ? null : (published?.spec ?? null), v.spec) : [];
   const sentBack = v.status === "draft" && !!v.reviewComment;
   const st = versionChip(v);
@@ -115,7 +116,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
     <div className="grid gap-section">
       <PageHeader title={`${s.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
         description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} actions={edit || undefined} />
-      {sentBack && <Notice tone="warn">Sent back by a config checker: {v.reviewComment}</Notice>}
+      {sentBack && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
 
       <Panel flush title={isPublished || !published ? `Settings of version ${v.version}` : `Changes from version ${published.version}`}
         description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${changes(rows.length)}; everything else is as in version ${published.version}` : "Nothing differs"}>
@@ -221,7 +222,7 @@ function VersionPreview({ spaceId, id, v, canPreview }: { spaceId: string; id: s
           {p.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Run the preview
         </Button>
       </span>
-      <PreviewResult preview={{ ...p, pending: false }} />
+      <PreviewResult preview={{ ...p, pending: false }} file={file} />
     </Panel>
   );
 }

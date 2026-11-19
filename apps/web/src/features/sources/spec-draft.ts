@@ -2,7 +2,7 @@
 // field type a database column starts as, the field an API error names, and a version's changes against another.
 // The API checks every spec again (refines, CEL, kind, calendar); this only shapes what the user edits and reads.
 import type { FieldSpec, SourceColumnsDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import type { DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
+import { ATTR_NAME, type DbEngine, type FIELD_TYPES } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 
 export type FieldType = (typeof FIELD_TYPES)[number];
@@ -219,3 +219,35 @@ export function activitySentence(e: Entry): string {
 
 /** "1 change", "3 changes". */
 export const changes = (n: number) => `${n} ${n === 1 ? "change" : "changes"}`;
+
+/** A column's stored name as it starts: its own name in lower case, other characters as `_`, a letter first (ATTR_NAME). */
+export function attrNameOf(column: string): string {
+  const s = column.toLowerCase().replace(/[^a-z0-9_]/g, "_");
+  return (/^[a-z]/.test(s) ? s : `c_${s}`).slice(0, 63);
+}
+
+/** The name field `field` is stored under in attrs (`attrs.<name>`), or null when it isn't stored. */
+export function storedName(s: SourceSpec, field: string): string | null {
+  return Object.entries(s.mapping.attrs).find(([, r]) => "field" in r && r.field === field)?.[0] ?? null;
+}
+
+/** `s` with field `field` stored under `name` (null: not stored); the other names keep their place. */
+export function storeAs(s: SourceSpec, field: string, name: string | null): SourceSpec {
+  const old = storedName(s, field);
+  const entries = Object.entries(s.mapping.attrs);
+  const next = old === null
+    ? (name === null ? entries : [...entries, [name, { field }] as [string, ValueRef]])
+    : entries.flatMap(([k, r]): [string, ValueRef][] => (k === old ? (name === null ? [] : [[name, r]]) : [[k, r]]));
+  return { ...s, mapping: { ...s.mapping, attrs: Object.fromEntries(next) } };
+}
+
+/**
+ * Why a stored name can't be saved, per field (in field order): not an identifier (ATTR_NAME), or the name of another
+ * stored column too. Typing keeps the draft's own text in `typed` until it is valid, so a half-typed name is no key yet.
+ */
+export function storedNameProblem(name: string, field: string, s: SourceSpec): string | null {
+  if (!ATTR_NAME.test(name)) return "Use a-z, 0-9 and _, starting with a letter, up to 63 characters.";
+  const owner = s.mapping.attrs[name];
+  if (owner && !("field" in owner && owner.field === field)) return `Another column is stored as ${name}. Use a different name.`;
+  return null;
+}

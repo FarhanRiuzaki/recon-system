@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
-import { FILE_DATE, fieldTypeOf, TYPE_LABEL } from "../spec-draft";
+import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL } from "../spec-draft";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
@@ -58,6 +58,9 @@ export type FieldsStepProps = {
   /** The sample's first line looks like column names while "First row is a header" is off. */
   headerHint: boolean;
   onUseHeader: () => void;
+  /** Stored names as typed, by field, while they aren't valid yet (the spec keeps the last valid one). */
+  typedNames: Record<string, string>;
+  onTypedName: (field: string, name: string | undefined) => void;
 };
 
 /**
@@ -101,6 +104,7 @@ export function FieldsStep(p: FieldsStepProps) {
               {p.reading && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Read the columns again</Button></span>
             : <p id="src-columns" tabIndex={-1} className="text-body-sm text-fg-2">These are the fields of the version this draft started from. A source admin reads the columns the table has now.</p>}
           {err("src-columns") && <p role="alert" className="text-body-sm text-down-ink">{err("src-columns")}</p>}
+          {p.columns && <p role="status" className="text-body-sm text-fg-2">{p.columns.length} columns read: {p.columns.map((c) => c.name).join(", ")}.</p>}
         </Panel>
       )}
 
@@ -136,10 +140,11 @@ export function FieldsStep(p: FieldsStepProps) {
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
-          <div className="scroll-quiet overflow-x-auto max-md:overflow-visible">
-            {/* below 768 px each column is a card: the header row hides, each cell shows its own label (one DOM) */}
-            <Table aria-label="Columns" className="max-md:block max-md:[&_tbody]:block max-md:[&_tr]:grid max-md:[&_tr]:grid-cols-2 max-md:[&_tr]:gap-x-3 max-md:[&_tr]:gap-y-2 max-md:[&_tr]:border-b max-md:[&_tr]:border-line max-md:[&_tr]:px-4 max-md:[&_tr]:py-3 max-md:[&_td]:block max-md:[&_td]:border-0 max-md:[&_td]:p-0">
-              <TableHeader className="max-md:hidden"><TableRow>
+          <div className="scroll-quiet overflow-x-auto max-xl:overflow-visible">
+            {/* below 1280 px each column is a card: the header row hides, each cell shows its own label (one DOM); from
+                1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
+            <Table aria-label="Columns" className={CARDS}>
+              <TableHeader className="max-xl:hidden"><TableRow>
                 <TableHead>Column</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
                 <TableHead>Empty ok</TableHead><TableHead>Match key</TableHead><TableHead>Stored as</TableHead>
               </TableRow></TableHeader>
@@ -149,35 +154,52 @@ export function FieldsStep(p: FieldsStepProps) {
                   const hint = p.engine ? fieldTypeOf(p.engine, p.native.get(f.name) ?? "").note : undefined;
                   const why = err(id) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`));
                   const key = s.key_fields.includes(f.name);
-                  const stored = Object.hasOwn(s.mapping.attrs, f.name);
+                  const stored = storedName(s, f.name);
+                  const nameId = `src-attr-${i}`;
+                  const typedName = p.typedNames[f.name];
+                  const nameWhy = (typedName !== undefined ? storedNameProblem(typedName, f.name, s) : null) ?? err(nameId) ?? (stored ? err(ctl(`mapping.attrs.${stored}`)) : undefined);
+                  const setName = (v: string) => {
+                    p.onTypedName(f.name, v);
+                    if (!storedNameProblem(v, f.name, s)) setSpec((x) => storeAs(x, f.name, v));
+                  };
                   return (
                     <TableRow key={f.name}>
-                      <TableCell className="font-mono text-mono text-fg max-md:col-span-2 max-md:text-label">{f.name}</TableCell>
-                      <TableCell className="max-w-40 truncate font-mono text-mono text-fg-3 max-md:col-span-2 max-md:max-w-none"><Cap>Example</Cap>{examples.get(f.name)?.[0] ?? "—"}</TableCell>
-                      <TableCell className="max-md:col-span-2">
+                      <TableCell className="font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label">{f.name}</TableCell>
+                      <TableCell className="max-w-40 truncate font-mono text-mono text-fg-3 max-xl:col-span-2 max-xl:max-w-none"><Cap>Example</Cap>{examples.get(f.name)?.[0] ?? "—"}</TableCell>
+                      <TableCell className="max-xl:col-span-2">
                         <Cap>Type</Cap>
                         <span className="grid gap-1">
                           <Select id={id} aria-label={`Type of ${f.name}`} value={f.type} aria-invalid={!!why || undefined} aria-describedby={why ? `${id}-why` : hint ? `${id}-hint` : undefined}
-                            className="w-full min-w-0" onChange={(e) => setType(i, e.target.value as FieldSpec["type"])}>
+                            className="w-full min-w-36" onChange={(e) => setType(i, e.target.value as FieldSpec["type"])}>
                             {FIELD_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
                           </Select>
                           {why && <span id={`${id}-why`} role="alert" className="max-w-64 whitespace-normal text-caption text-down-ink">{why}</span>}
                           {!why && hint && <span id={`${id}-hint`} className="max-w-64 whitespace-normal text-caption text-fg-3">{hint}</span>}
                         </span>
                       </TableCell>
-                      <TableCell className="max-md:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
+                      <TableCell className="max-xl:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} is part of the match key`} checked={key}
                         onToggle={() => setSpec((x) => ({ ...x, key_fields: key ? x.key_fields.filter((k) => k !== f.name) : [...x.key_fields, f.name] }))} /><Cap inline>Match key</Cap></span></TableCell>
-                      <TableCell className="max-md:col-span-2">
+                      <TableCell className="max-xl:col-span-2">
                         <Cap>Stored as</Cap>
-                        <Select aria-label={`Where ${f.name} is stored`} className="w-full min-w-32" value={stored ? "attrs" : ""} onChange={(e) => setSpec((x) => {
-                          const { [f.name]: _drop, ...rest } = x.mapping.attrs;
-                          return { ...x, mapping: { ...x.mapping, attrs: e.target.value ? { ...rest, [f.name]: { field: f.name } } : rest } };
-                        })}>
-                          <option value="attrs">attrs.{f.name}</option>
-                          <option value="">Not stored</option>
-                        </Select>
+                        <span className="grid gap-1">
+                          <span className="flex items-center gap-2">
+                            <Checkbox label={`${f.name} is stored`} checked={stored !== null} onToggle={() => {
+                              p.onTypedName(f.name, undefined);
+                              setSpec((x) => {
+                                if (storedName(x, f.name) !== null) return storeAs(x, f.name, null);
+                                const want = attrNameOf(f.name);
+                                return storeAs(x, f.name, storedNameProblem(want, f.name, x) ? `${want.slice(0, 58)}_${i + 1}` : want);
+                              });
+                            }} />
+                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
+                            <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
+                              placeholder="Not stored" value={typedName ?? stored ?? ""} aria-invalid={!!nameWhy || undefined} aria-describedby={nameWhy ? `${nameId}-why` : undefined}
+                              onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
+                          </span>
+                          {nameWhy && <span id={`${nameId}-why`} role="alert" className="max-w-72 whitespace-normal text-caption text-down-ink">{nameWhy}</span>}
+                        </span>
                       </TableCell>
                     </TableRow>
                   );
@@ -194,9 +216,12 @@ export function FieldsStep(p: FieldsStepProps) {
   );
 }
 
-/** A cell's label, shown only on the phone card (the table's header row names the columns from 768 px). */
+/** The Columns table as cards below 1280 px (a cell's height stays its content's: no fixed row height). */
+const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_tr]:grid-cols-2 max-xl:[&_tr]:gap-x-3 max-xl:[&_tr]:gap-y-3 max-xl:[&_tr]:border-b max-xl:[&_tr]:border-line max-xl:[&_tr]:px-4 max-xl:[&_tr]:py-3 max-xl:[&_td]:block max-xl:[&_td]:h-auto max-xl:[&_td]:border-0 max-xl:[&_td]:p-0 max-xl:[&_td]:whitespace-normal";
+
+/** A cell's label, shown only on the card (the table's header row names the columns from 768 px). */
 function Cap({ children, inline }: { children: string; inline?: boolean }) {
-  return <span aria-hidden="true" className={inline ? "font-sans text-caption text-fg-3 md:hidden" : "mb-1 block font-sans text-caption text-fg-3 md:hidden"}>{children}</span>;
+  return <span aria-hidden="true" className={inline ? "font-sans text-caption text-fg-3 xl:hidden" : "mb-1 block font-sans text-caption text-fg-3 xl:hidden"}>{children}</span>;
 }
 
 /**
@@ -236,7 +261,7 @@ function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setForm
   const at = (k: string) => ctl(`fields.${i}.format.${k}`);
   if (f.type === "date" || f.type === "datetime") {
     return (
-      <span className="grid min-w-28 gap-1">
+      <span className="grid min-w-36 gap-1">
         <Input id={at("date")} aria-label={`Date format of ${f.name}`} placeholder={f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"} className="font-mono" value={f.format?.date ?? ""}
           onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
         {f.type === "datetime" && (
@@ -249,7 +274,7 @@ function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setForm
   }
   if (f.type === "decimal") {
     return (
-      <span className="grid min-w-28 gap-1">
+      <span className="grid min-w-36 gap-1">
         <Select id={at("scale")} className="w-full" aria-label={`Places of ${f.name}`} value={String(f.format?.scale ?? 2)} onChange={(e) => setFormat(i, { scale: Number(e.target.value) })}>
           {[0, 1, 2, 3, 4, 5, 6, 8].map((n) => <option key={n} value={n}>{n} places</option>)}
         </Select>
@@ -336,7 +361,7 @@ function PreviewPanel(p: FieldsStepProps) {
             </Button>
           </span>
         )}
-        <PreviewResult preview={p.preview} />
+        <PreviewResult preview={p.preview} file={file} />
         {!r && !p.preview.error && !p.preview.pending && (
           <p className="text-body-sm text-fg-3">{p.onPreview
             ? "Preview rows pulls up to 200 rows from the source with the columns on screen; nothing is stored."
@@ -348,7 +373,7 @@ function PreviewPanel(p: FieldsStepProps) {
 }
 
 /** The preview's counts, its first records and its quarantined lines with a reason per column. Shared with the version page. */
-export function PreviewResult({ preview }: { preview: Preview }) {
+export function PreviewResult({ preview, file }: { preview: Preview; file: boolean }) {
   const r = preview.result;
   return (
     <div aria-busy={preview.pending || undefined} className="grid gap-3">
@@ -357,7 +382,7 @@ export function PreviewResult({ preview }: { preview: Preview }) {
       {r && (
         <>
           <p role="status" className="text-body-sm text-fg">
-            {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records, {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the file.
+            {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records, {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the {file ? "file" : "pull"}.
           </p>
           {r.records.length > 0 && (
             <div className="scroll-quiet overflow-x-auto">

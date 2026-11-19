@@ -105,17 +105,25 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await page.getByRole("button", { name: "Read the sample" }).click();
   const columns = page.getByRole("table", { name: "Columns" });
   await expect(columns.locator("tbody tr")).toHaveCount(14);
-  // the preview guesses col_07 (20201015) as a whole number; the user corrects it to a date read as yyyyMMdd
-  await expect(columns.getByRole("combobox", { name: "Type of col_07", exact: true })).toHaveValue("integer");
-  await columns.getByRole("combobox", { name: "Type of col_07", exact: true }).selectOption("date");
-  await columns.getByRole("textbox", { name: "Date format of col_07", exact: true }).fill("yyyyMMdd");
+  // eight digits that are real dates (20201015) are detected as a date read as yyyyMMdd, the format filled in
+  await expect(columns.getByRole("combobox", { name: "Type of col_07", exact: true })).toHaveValue("date");
+  await expect(columns.getByRole("textbox", { name: "Date format of col_07", exact: true })).toHaveValue("yyyyMMdd");
   await expect(page.getByRole("status").filter({ hasText: "rows read" })).toHaveText(/12 rows read: 11 become records, 1 go to quarantine/);
   // col_13 is the SID: never empty, the match key, stored as the account
   await columns.getByRole("checkbox", { name: "col_13 may be empty" }).click();
   await columns.getByRole("checkbox", { name: "col_13 is part of the match key" }).click();
   await page.getByRole("combobox", { name: "Account", exact: true }).selectOption("f:col_13");
+  // a headerless file names its columns col_NN: col_13 is stored as attrs.sid (a name must be an identifier)
+  const sidName = columns.getByRole("textbox", { name: "Stored name of col_13", exact: true });
+  await expect(sidName).toHaveValue("col_13");
+  await sidName.fill("SID");
+  await expect(columns.getByRole("alert").filter({ hasText: "Use a-z, 0-9 and _, starting with a letter" })).toBeVisible();
+  await sidName.fill("col_03");
+  await expect(columns.getByText("Another column is stored as col_03. Use a different name.")).toBeVisible();
+  await sidName.fill("sid");
   await expect(page.getByRole("status").filter({ hasText: "rows read" })).toHaveText(/12 rows read: 10 become records, 2 go to quarantine/);
   await expect(page.getByText("Row 11 · Expected 14 columns, got 13")).toBeVisible();
+  await expect(page.getByRole("table", { name: "Preview records" }).getByRole("row").nth(1)).toContainText("sid=TSTSID000000001");
   await expect(page.getByText(/Row 12 · col_13 is required/)).toBeVisible();
   // a refused field is named on the field: a time zone the runtime doesn't know
   await columns.getByRole("combobox", { name: "Type of col_04", exact: true }).selectOption("datetime");
@@ -227,7 +235,7 @@ test("a config checker rejects with a comment (required) and approves; the decis
     await expect(c.getByText(/sent back to its maker with your comment/)).toBeVisible();
     await expect(c.getByRole("heading", { level: 1 })).toBeFocused();
     // sent back: no decision any more; the comment, and Edit version 1 (a checker may not edit: blocked with the reason)
-    await expect(c.getByText("Sent back by a config checker: Name col_03 sre before it goes live.")).toBeVisible();
+    await expect(c.getByText("Sent back by Admin User: Name col_03 sre before it goes live.")).toBeVisible();
     await expect(c.getByText("Draft · sent back by a config checker")).toBeVisible();
     await expect(c.getByRole("button", { name: "Approve version 1", exact: true })).toHaveCount(0);
     await blockedWith(c, "Edit version 1", "Only a source admin or a config maker of this space changes a source.");
@@ -262,6 +270,9 @@ test("the source's Versions and Activity tabs: server-paged, state chips, every 
   await page.getByRole("button", { name: "Edit source", exact: true }).click();
   await expect(page).toHaveURL(/\/versions\/new\?step=2$/);
   await expect(page.getByRole("heading", { level: 1, name: "Edit BI-FAST core e2e" })).toBeVisible();
+  // a saved draft reads its table's columns again through the stored connection
+  await page.getByRole("button", { name: "Read the columns again", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "columns read" })).toHaveText("5 columns read: id, updated_at, ref, amount, note.");
 });
 
 test("a source admin's sent-back version opens in the wizard; a draft source nobody submitted can be deleted", async ({ page, baseURL }) => {

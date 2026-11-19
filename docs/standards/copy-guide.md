@@ -146,6 +146,10 @@ numbers from examples.
   draft source {name}."
 - The connection panel's option reads "Connect timeout for scheduled pulls"; a test always waits 8 s at most.
 - A count of changes: "1 change", "3 changes".
+- Stored as: a checkbox "{column} is stored" and the name after "attrs.", the column's own name to start; a bad name:
+  "Use a-z, 0-9 and _, starting with a letter, up to 63 characters."; a taken one: "Another column is stored as
+  {name}. Use a different name." A sent-back Notice names the checker: "Sent back by {name}: {comment}". A database
+  preview says "Quarantined rows don't stop the pull." ("… the file." for a file).
 - "New source" for anyone but a source admin: "Only a source admin of this space adds sources."; "Edit source" for
   anyone but a source admin or config maker: "Only a source admin or a config maker of this space changes a source."
 

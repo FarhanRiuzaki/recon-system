@@ -20,7 +20,7 @@ import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
-import { fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead } from "./spec-draft";
+import { attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
@@ -130,6 +130,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [base, setBase] = useState(initial.conn);
   const [discarding, setDiscarding] = useState(false);
   const [headerHint, setHeaderHint] = useState(false);
+  const [typedNames, setTypedNames] = useState<Record<string, string>>({});
+  const typeName = (field: string, name: string | undefined) => {
+    setEdited(true);
+    setTypedNames((t) => { const { [field]: _drop, ...rest } = t; return name === undefined ? rest : { ...rest, [field]: name }; });
+  };
   const [tested, setTested] = useState<Tested | null>(null);
   const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit">(null);
   const [columns, setColumns] = useState<Column[] | null>(null);
@@ -247,7 +252,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       set((x) => {
         const fields = mergeFields(x.spec.fields, fieldsOfColumns(engine, r.columns));
         const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name));
-        return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((f) => [f.name, { field: f.name }])) } } } };
+        return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((f) => [attrNameOf(f.name), { field: f.name }])) } } } };
       });
       return true;
     } catch (e) {
@@ -272,7 +277,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const fields = mergeFields(x.spec.fields, names.map((name) => ({ name, type: "string" as const, nullable: true, trim: true })));
       const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name)).map((f) => f.name);
       detect.current = new Set(fresh);
-      return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [n, { field: n }])) } } } };
+      return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [attrNameOf(n), { field: n }])) } } } };
     });
   }
 
@@ -300,7 +305,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
           const g = fresh.has(f.name) ? guess.get(f.name) : undefined;
           if (!g || g.type === "string") return f;
           const places = Math.max(2, ...g.examples.map((e) => /[.,](\d+)$/.exec(e)?.[1]?.length ?? 0));
-          return { ...f, type: g.type, ...(g.type === "decimal" ? { format: { scale: Math.min(18, places) } } : g.type === "date" && g.examples.every((e) => /^\d{8}$/.test(e)) ? { format: { date: "yyyyMMdd" } } : {}) };
+          // the format the sample was read in comes with the type (20261119 → Date, yyyyMMdd)
+          return { ...f, type: g.type, ...(g.type === "decimal" ? { format: { scale: Math.min(18, places) } } : g.format ? { format: { date: g.format } } : {}) };
         }) } }));
       }
     } catch (e) {
@@ -351,6 +357,12 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const p = mappingProblem(spec);
       if (p) { show([p]); return; }
       if (admin && !show(watermarkProblems(d))) return;
+      const badNames = d.spec.fields.flatMap((f, i) => {
+        const t = typedNames[f.name];
+        const why = t === undefined ? null : storedNameProblem(t, f.name, d.spec);
+        return why ? [{ id: `src-attr-${i}`, reason: why }] : [];
+      });
+      if (!show(badNames)) return;
       setProblems({});
       setBusy("next");
       const ok = await save();
@@ -402,7 +414,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               reading={busy === "columns"} onReadColumns={() => void readColumns()} sample={sample.text} sampleCut={sample.cut} fileName={fileName}
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
               businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }}
-              onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint}
+              onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
           {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep} />}

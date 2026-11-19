@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { activitySentence, changes, FILE_DATE, fieldError, fieldsOfColumns, fieldTypeOf, looksLikeHeader, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
+import { activitySentence, attrNameOf, changes, storeAs, storedName, storedNameProblem, FILE_DATE, fieldError, fieldsOfColumns, fieldTypeOf, looksLikeHeader, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
 
 const spec = (over: Partial<SourceSpec> = {}): SourceSpec => ({
   fields: [{ name: "sid", type: "string", nullable: false, trim: true }, { name: "bal", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }],
@@ -130,5 +130,31 @@ describe("activitySentence", () => {
   });
   it("counts changes in words", () => {
     expect([changes(1), changes(3)]).toEqual(["1 change", "3 changes"]);
+  });
+});
+
+describe("stored names (fix round 2)", () => {
+  it("a column starts stored under its own name, as an identifier", () => {
+    expect(attrNameOf("col_13")).toBe("col_13");
+    expect(attrNameOf("REFERENCE_NO")).toBe("reference_no");
+    expect(attrNameOf("Value Date")).toBe("value_date");
+    expect(attrNameOf("1st")).toBe("c_1st");
+  });
+  it("renames, stops and restarts storing a column; the other names keep their place", () => {
+    const s = spec();
+    expect(storedName(s, "bal")).toBe("bal");
+    const renamed = storeAs(s, "bal", "balance");
+    expect(Object.keys(renamed.mapping.attrs)).toEqual(["balance"]);
+    expect(storedName(renamed, "bal")).toBe("balance");
+    const off = storeAs(renamed, "bal", null);
+    expect(off.mapping.attrs).toEqual({});
+    expect(storeAs(off, "sid", "sid").mapping.attrs).toEqual({ sid: { field: "sid" } });
+  });
+  it("a name must be an identifier, and no other column's", () => {
+    const s = storeAs(spec(), "sid", "sid");
+    expect(storedNameProblem("Sid", "bal", s)).toBe("Use a-z, 0-9 and _, starting with a letter, up to 63 characters.");
+    expect(storedNameProblem("sid", "bal", s)).toBe("Another column is stored as sid. Use a different name.");
+    expect(storedNameProblem("sid", "sid", s)).toBeNull();
+    expect(storedNameProblem("balance", "bal", s)).toBeNull();
   });
 });
