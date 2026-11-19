@@ -3,7 +3,7 @@
 // just the pool keys when it loads (`loadDbConfig`).
 import { drizzle } from "drizzle-orm/bun-sql";
 import { log } from "../../kernel/log";
-import { migrationSql, resetSchema } from "../migrate";
+import { migrateJobs, migrationSql, resetSchema } from "../migrate";
 import { seedDemo } from "./demo";
 import { seedSystem } from "./system";
 
@@ -16,6 +16,7 @@ const db = drizzle({ client: raw });
 try {
   if (cmd === "reset") {
     await resetSchema(raw);
+    await migrateJobs(); // pg-boss's schema too, as db:migrate does: without it a run (POST …/run) answers 500
     log.info("schema dropped and migrated");
   }
   if (cmd !== "demo") {
