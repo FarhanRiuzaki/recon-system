@@ -27,8 +27,10 @@ format file BI belum diketahui) dan KSEI (`daily`, `carry_over_days = 0`).
 ## 2. Pengguna dan kewenangan
 
 - **Operator ops** di tiap tim: memantau recon, menangani break, manual match, sign-off harian **(pemilik)**.
-- **Konfigurator**: ops atau tim IT **(pemilik)**. Pembagian **(Claude)**: IT membuat source dan koneksi (kredensial DB,
-  path file); konfigurator mengubah rule, toleransi, grace, jadwal; semua perubahan config lewat maker-checker.
+- **Konfigurator**: ops atau tim IT **(pemilik)**. Pembagian **(Claude)**: hanya IT yang membuat source dan koneksi
+  (kredensial DB, path file); skema field dan mapping source boleh diselesaikan IT atau `config_maker` (prototipe
+  designer: "started by IT, finished by IT or a config maker"); `config_maker` mengubah rule, toleransi, grace, jadwal;
+  semua publish (versi source dan config) lewat maker-checker.
 - Setiap tim bekerja di **space** sendiri dengan login masing-masing; satu user bisa anggota beberapa space **(pemilik)**.
 
 ## 3. Goals, non-goals, anti-goals
