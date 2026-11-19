@@ -36,7 +36,7 @@ export type UpdateSpaceBody = z.infer<typeof UpdateSpaceBody>;
 
 /**
  * One member of a space with every role they hold in it (SPACE_ROLES order), whether their account is active, and
- * their last sign-in (ISO; the latest `login_success` or `2fa_success` in the sign-in log, null when it holds none).
+ * their last full sign-in (ISO, the user's `last_login_at`; null when they never signed in).
  */
 export const SpaceMemberDto = z.object({
   userId: z.string(), name: z.string(), username: z.string(), roles: z.array(z.enum(SPACE_ROLES)), active: z.boolean(), lastSignInAt: z.string().nullable(),

@@ -6,13 +6,13 @@ import type {
   SpaceRowDto, SpaceStatus, UpdateSpaceBody,
 } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
-import { and, eq, exists, ilike, inArray, isNotNull, max, ne, or, type SQLWrapper, sql } from "drizzle-orm";
+import { and, eq, exists, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db, type InTx, type Tx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { xactLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { isUuid } from "../../kernel/parse";
-import { authLog, recordActivity } from "../audit";
+import { recordActivity } from "../audit";
 import { actorPermissions, type Ctx } from "../auth";
 import { users } from "../users";
 import { canManageMembers, sourceAdminChanged } from "./rules";
@@ -116,13 +116,8 @@ export async function spaceDetail(id: string, roles: SpaceRole[]): Promise<Space
   return { ...dto(await spaceRow(db, id)), roles };
 }
 
-/** SQL: the user's last sign-in, the latest `login_success` or `2fa_success` in auth_log (index auth_log_user); null for none. */
-const lastSignInOf = (userId: SQLWrapper) =>
-  sql`(${db.select({ at: max(authLog.at) }).from(authLog)
-    .where(and(eq(authLog.userId, userId), inArray(authLog.event, ["login_success", "2fa_success"])))})`.mapWith(authLog.at);
-
-/** The member fields that come from the user's account (a function: built per query, never at module load). */
-const memberUser = () => ({ userId: users.id, name: users.name, username: users.username, active: users.isActive, lastSignInAt: lastSignInOf(users.id) });
+/** The member fields that come from the user's account, `lastSignInAt` = `last_login_at` (a function: `users` is another module's export). */
+const memberUser = () => ({ userId: users.id, name: users.name, username: users.username, active: users.isActive, lastSignInAt: users.lastLoginAt });
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
 /** `q` (trimmed) as a name-or-username match. */
@@ -177,7 +172,10 @@ async function memberChange(tx: Tx, ctx: Ctx, spaceId: string, userId: string) {
 
 const SOURCE_ADMIN_ONLY = () => new ApiError("forbidden", "Only an administrator with space.manage can grant or remove source_admin.");
 
-/** 409 when no other active user is a space_admin of the space (counted under the space-admin lock). */
+/**
+ * 409 when no other active user is a space_admin of the space (counted under the space-admin lock). Called for an active
+ * target only: removing or demoting an inactive admin does not lower the active count.
+ */
 async function keepAnAdmin(tx: Tx, spaceId: string, userId: string): Promise<void> {
   const [other] = await tx.select(one).from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId))
     .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.role, "space_admin"), eq(users.isActive, true), ne(spaceMembers.userId, userId))).limit(1);
@@ -212,7 +210,7 @@ export async function setMember(ctx: Ctx, spaceId: string, userId: string, b: Se
     const member = { ...user, lastSignInAt: iso(user.lastSignInAt), roles };
     if (roles.join() === before.join()) return member;
     if (!manage && sourceAdminChanged(before, roles)) throw SOURCE_ADMIN_ONLY();
-    if (before.includes("space_admin") && !roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
+    if (user.active && before.includes("space_admin") && !roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
     const of = and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId));
     await tx.delete(spaceMembers).where(of);
     await tx.insert(spaceMembers).values(roles.map((role) => ({ spaceId, userId, role })));
@@ -231,7 +229,7 @@ export async function removeMember(ctx: Ctx, spaceId: string, userId: string): P
     const { space, user, manage, roles } = await memberChange(tx, ctx, spaceId, userId);
     if (!roles.length) throw notFound("member");
     if (!manage && roles.includes("source_admin")) throw SOURCE_ADMIN_ONLY();
-    if (roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
+    if (user.active && roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);
     await tx.delete(spaceMembers).where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, userId)));
     await recordActivity(tx, ctx, { action: "space.member_remove", target: { type: "space", id: spaceId, label: space.name }, before: { user: { id: userId, name: user.name }, roles } });
   });
