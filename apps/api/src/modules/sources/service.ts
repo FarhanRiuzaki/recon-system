@@ -5,8 +5,8 @@
 // pool connects as. A change locks the source row first, so changes to one source run one after the other.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  CreateSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceConnectionDto, SourceDto, SourceListQuery, SourceRowDto, SourceShareDto,
-  SourceSpec, SourceVersionDto, UpdateSourceVersionBody,
+  CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceConnectionDto, SourceDto, SourceListQuery, SourceRowDto, SourceShareDto,
+  SourcePreviewDto, SourceSpec, SourceVersionDto, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import type { SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
@@ -16,6 +16,7 @@ import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
+import { previewSample, specCelError } from "../ingest";
 import { spaces, withSpace } from "../spaces";
 import { canStep, specHash } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
@@ -188,12 +189,31 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     if (b.spec.input.kind !== s.kind) throw new ApiError("bad_request", `This source's kind is ${s.kind}; its spec's input must be of that kind.`);
     const [calendar] = await tx.select({ id: calendars.id }).from(calendars).where(eq(calendars.code, b.spec.calendar));
     if (!calendar) throw new ApiError("bad_request", `There is no calendar ${b.spec.calendar}. Pick one of the calendars set up for this install.`);
+    const celError = specCelError(b.spec);
+    if (celError) throw new ApiError("bad_request", `Check the expression at ${celError}`);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v);
     const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_update", target: target(s), before: { version: v.version, specHash: v.specHash }, after: { version: v.version, specHash: hash } });
     return versionDto(row);
+  });
+}
+
+/**
+ * What a text sample of a file source's file gives under this version's spec: the rows that would enter the core record and
+ * the lines that would be quarantined, with their reasons. Reads only; a version in any state with a spec.
+ */
+export function previewVersion(ctx: Ctx, id: string, versionId: string, b: PreviewSourceBody): Promise<SourcePreviewDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    const v = await versionOf(tx, s, versionId);
+    const spec = v.spec as SourceSpec | null;
+    if (spec === null) throw new ApiError("bad_request", "This version has no fields and mapping yet. Save them, then preview.");
+    if (spec.input.kind !== "file_inbox") throw new ApiError("bad_request", "Preview reads a sample of a file. Database sources preview from a pulled sample, which isn't available yet.");
+    const [cal] = await tx.select({ weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars).where(eq(calendars.code, spec.calendar));
+    if (!cal) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
+    return previewSample(spec, b.sample, cal, b.fileName);
   });
 }
 

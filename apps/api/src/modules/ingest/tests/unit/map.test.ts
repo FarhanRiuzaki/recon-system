@@ -1,0 +1,125 @@
+import { describe, expect, it } from "bun:test";
+import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import { fileDateOf, makeCalendar, toRecord } from "../../map";
+import { parseText } from "../../parse";
+import { idDefault, KSEI_FILE, ksei } from "./fixtures";
+
+const cal = makeCalendar(idDefault);
+const ctx = { calendar: cal, fileName: "act20261102.txt" };
+
+describe("KSEI fixture through parse + toRecord", () => {
+  it("12 lines: 10 records, 2 quarantined with per-column reasons", async () => {
+    const spec = ksei();
+    const lines = await parseText(KSEI_FILE, spec.input.kind === "file_inbox" ? spec.input.format : (null as never), spec.fields.map((f) => f.name));
+    const records: unknown[] = [];
+    const quarantine: Record<string, string>[] = [];
+    for (const l of lines) {
+      if (!l.ok) { quarantine.push(l.reasons); continue; }
+      const r = toRecord(l.raw, spec, ctx);
+      if (r.ok) records.push(r.record); else quarantine.push(r.reasons);
+    }
+    expect(records).toHaveLength(10);
+    expect(quarantine).toEqual([{ _row: "Expected 14 columns, got 13" }, { sid: "sid is required" }]);
+  });
+  it("record: business_date from the file name, bday_index, attrs, natural key, row hash", () => {
+    const raw = Object.fromEntries(ksei().fields.map((f, i) => [f.name, `v${i}`]));
+    raw.sid = "TSTSID000000001";
+    const r = toRecord(raw, ksei(), ctx);
+    if (!r.ok) throw new Error(JSON.stringify(r.reasons));
+    expect(r.record).toMatchObject({ business_date: "2026-11-02", account_ref: "TSTSID000000001", attrs: { sre: "v2" }, natural_key: "TSTSID000000001", amount_minor: null });
+    expect(r.record.row_hash).toMatch(/^[0-9a-f]{64}$/);
+    // key order of the raw row does not change the hash
+    const shuffled = Object.fromEntries(Object.entries(raw).reverse());
+    const r2 = toRecord(shuffled, ksei(), ctx);
+    expect(r2.ok && r2.record.row_hash).toBe(r.record.row_hash);
+    const r3 = toRecord({ ...raw, col_01: "other" }, ksei(), ctx);
+    expect(r3.ok && r3.record.row_hash).not.toBe(r.record.row_hash);
+  });
+});
+
+describe("business_date sources", () => {
+  const base = (): SourceSpec => ({
+    fields: [
+      { name: "ref", type: "string", nullable: false, trim: true },
+      { name: "amt", type: "decimal", nullable: false, trim: true, format: { scale: 2 } },
+      { name: "ccy", type: "string", nullable: true, trim: true, case: "upper" },
+      { name: "ts", type: "datetime", nullable: true, trim: true, format: { date: "yyyy-MM-dd HH:mm:ss" } },
+      { name: "d", type: "date", nullable: true, trim: true, format: { date: "yyyyMMdd" } },
+    ],
+    mapping: { business_date: { field: "d" }, amount_minor: { field: "amt" }, currency: { field: "ccy" }, event_time: { field: "ts" }, ext_ref: { field: "ref" }, attrs: { amt_text: { field: "amt" } } },
+    derive: {},
+    key_fields: ["ref", "d"],
+    mutable: true,
+    calendar: "id-default",
+    input: { kind: "db_snapshot", query: "select 1 where :business_date is not null", schedule: "0 6 * * *" },
+  });
+  const raw = { ref: "R1", amt: "100.5", ccy: "idr", ts: "2026-11-02 23:30:00", d: "20261102" };
+
+  it("from a field; amount in minor units; currency upper-cased; natural key joins the key fields", () => {
+    const r = toRecord(raw, base(), ctx);
+    if (!r.ok) throw new Error(JSON.stringify(r.reasons));
+    expect(r.record).toMatchObject({ business_date: "2026-11-02", amount_minor: 10050n, currency: "IDR", ext_ref: "R1", event_time: "2026-11-02T16:30:00.000Z", natural_key: "R1\u001f2026-11-02", attrs: { amt_text: "100.50" } });
+  });
+  it("from a datetime field: the date in the field's timezone (23:30 Jakarta is still the 2nd)", () => {
+    const s = base();
+    s.mapping.business_date = { field: "ts" };
+    const r = toRecord(raw, s, ctx);
+    expect(r.ok && r.record.business_date).toBe("2026-11-02");
+    const r2 = toRecord({ ...raw, ts: "2026-11-02 17:30:00" }, { ...s, fields: s.fields.map((f) => f.name === "ts" ? { ...f, format: { ...f.format, timezone: "UTC" } } : f) }, ctx);
+    expect(r2.ok && r2.record.business_date).toBe("2026-11-02");
+    const r3 = toRecord({ ...raw, ts: "2026-11-02 17:30:00" }, s, ctx); // 17:30 Jakarta = 10:30Z, same day
+    expect(r3.ok && r3.record.business_date).toBe("2026-11-02");
+  });
+  it("from CEL over the row, and from a derived value", () => {
+    const s = base();
+    s.derive = { dd: 'row.d.substring(0, 4) + "-" + row.d.substring(4, 6) + "-" + row.d.substring(6, 8)' };
+    s.mapping.business_date = { cel: 'row.d.substring(0, 4) + "-" + row.d.substring(4, 6) + "-" + row.d.substring(6, 8)' };
+    expect((toRecord(raw, s, ctx) as { record: { business_date: string } }).record.business_date).toBe("2026-11-02");
+    s.mapping.business_date = { field: "dd" };
+    expect((toRecord(raw, s, ctx) as { record: { business_date: string } }).record.business_date).toBe("2026-11-02");
+  });
+  it("from the file name, or a CEL on file_name; missing file date is a reason", () => {
+    const s = ksei();
+    const r = { ...Object.fromEntries(s.fields.map((f) => [f.name, "x"])) };
+    expect(toRecord(r, s, { calendar: cal, fileName: "act20261103.txt" })).toMatchObject({ ok: true, record: { business_date: "2026-11-03" } });
+    expect(toRecord(r, s, { calendar: cal })).toMatchObject({ ok: false, reasons: { business_date: expect.stringContaining("file name") } });
+    expect(fileDateOf("act20261102.txt")).toBe("2026-11-02");
+    expect(fileDateOf("act20261302.txt")).toBeNull();
+    expect(fileDateOf("report.txt")).toBeNull();
+  });
+  it("a derived value feeds amount_minor (integer minor units from CEL)", () => {
+    const s = base();
+    s.derive = { minor: 'int(row.ref.substring(1)) * 100' };
+    s.mapping.amount_minor = { cel: "int(row.ref.substring(1)) * 100" };
+    expect(toRecord(raw, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 100n } });
+    s.mapping.amount_minor = { field: "minor" };
+    s.key_fields = ["minor"];
+    expect(toRecord(raw, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 100n, natural_key: "100" } });
+  });
+  it("reasons per column, all of them", () => {
+    const r = toRecord({ ...raw, amt: "12,3x", d: "20261399", ref: "" }, base(), ctx);
+    expect(r).toEqual({ ok: false, reasons: { amt: 'amt: not a decimal ("12,3x")', d: 'd: not a date ("20261399")', ref: "ref is required" } });
+  });
+});
+
+describe("bday_index", () => {
+  const c = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-04"] });
+  it("counts business days: weekends and holidays share the previous index", () => {
+    const i = (d: string) => c.bdayIndex(d);
+    expect(i("2026-11-03")).toBe(i("2026-11-02") + 1); // Mon → Tue
+    expect(i("2026-11-04")).toBe(i("2026-11-03")); // holiday Wed
+    expect(i("2026-11-05")).toBe(i("2026-11-03") + 1);
+    expect(i("2026-11-06")).toBe(i("2026-11-05") + 1); // Fri
+    expect(i("2026-11-07")).toBe(i("2026-11-06")); // Sat
+    expect(i("2026-11-08")).toBe(i("2026-11-06")); // Sun
+    expect(i("2026-11-09")).toBe(i("2026-11-06") + 1); // Mon
+  });
+  it("a holiday on a weekend is not subtracted twice", () => {
+    const w = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-07"] });
+    expect(w.bdayIndex("2026-11-09")).toBe(w.bdayIndex("2026-11-06") + 1);
+  });
+  it("a different weekend (Fri-Sat)", () => {
+    const m = makeCalendar({ weekend: [5, 6], holidays: [] });
+    expect(m.bdayIndex("2026-11-08")).toBe(m.bdayIndex("2026-11-05") + 1); // Thu → Sun
+  });
+});

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PreviewRecordDto",
+  "type": "object",
+  "properties": {
+    "line": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "bdayIndex": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "amountMinor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "direction": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "eventTime": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "accountRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "attrs": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "boolean",
+          "null"
+        ]
+      }
+    },
+    "naturalKey": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "rowHash": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "line",
+    "businessDate",
+    "bdayIndex",
+    "amountMinor",
+    "currency",
+    "direction",
+    "eventTime",
+    "extRef",
+    "accountRef",
+    "attrs",
+    "naturalKey",
+    "rowHash"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourcePreviewDto",
+  "type": "object",
+  "properties": {
+    "lines": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "ok": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "quarantined": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "string",
+              "integer",
+              "decimal",
+              "date",
+              "datetime",
+              "boolean"
+            ]
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "emptyPct": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "examples",
+          "emptyPct"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "bdayIndex": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "amountMinor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "direction": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "extRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "accountRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "attrs": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          "naturalKey": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rowHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "line",
+          "businessDate",
+          "bdayIndex",
+          "amountMinor",
+          "currency",
+          "direction",
+          "eventTime",
+          "extRef",
+          "accountRef",
+          "attrs",
+          "naturalKey",
+          "rowHash"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "quarantine": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "line": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reasons": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "line",
+          "cells",
+          "reasons"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "lines",
+    "ok",
+    "quarantined",
+    "columns",
+    "records",
+    "quarantine"
+  ],
+  "additionalProperties": false
+}

@@ -4,12 +4,12 @@
 // config_checker approves or rejects one someone else made; space_admin shares. Query 400 → guard 401/403 → body 400 →
 // 404 → rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
-import { CreateSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceListQuery, UpdateSourceVersionBody } from "@starterkit/shared/contracts/sources";
+import { CreateSourceBody, PreviewSourceBody, RejectSourceVersionBody, SetConnectionBody, SourceListQuery, UpdateSourceVersionBody } from "@starterkit/shared/contracts/sources";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  approveVersion, createDraft, createSource, rejectVersion, setConnection, shareSource, sourceDetail, sourcePage, submitVersion, unshareSource, updateVersion,
+  approveVersion, createDraft, createSource, previewVersion, rejectVersion, setConnection, shareSource, sourceDetail, sourcePage, submitVersion, unshareSource, updateVersion,
 } from "./service";
 
 const MAKERS = ["source_admin", "config_maker"] as const;
@@ -38,6 +38,10 @@ export const sourcesController = () =>
     .patch("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId", async (c) => {
       const b = await body(c, UpdateSourceVersionBody);
       return updateVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
+    }, { guard: { space: MAKERS } })
+    .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview", async (c) => {
+      const b = await body(c, PreviewSourceBody);
+      return previewVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
     }, { guard: { space: MAKERS } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/submit", ({ ctx, params }) =>
       submitVersion(ctx, idParam(params.sourceId, "source"), idParam(params.versionId, "version")), { guard: { space: MAKERS } })

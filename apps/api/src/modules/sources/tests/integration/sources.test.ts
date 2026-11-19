@@ -2,7 +2,7 @@
 // shares, activity entries and the seeded calendar. Row level security itself: rls.test.ts (as the app role).
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SourceDto, SourceRowDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { SourceDto, SourcePreviewDto, SourceRowDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { asc, eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -356,5 +356,69 @@ describe("calendars", () => {
     await seedSystem(db, {});
     expect(await db.select({ code: calendars.code, weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars))
       .toEqual([{ code: "id-default", weekend: [6, 7], holidays: [] }]);
+  });
+});
+
+describe("CEL on save and the preview (Task 3)", () => {
+  const sid = (n: number) => `TSTSID0000000${String(n).padStart(2, "0")}`;
+  const line = (n: number, id = sid(n)) => ["A1", "B1", `TSTSRE${String(n).padStart(3, "0")}`, "D4", "E5", "F6", "G7", "H8", "I9", "J10", "K11", "L12", id, "N14"].join("|");
+  /** docs/recon/ksei-sample-data.md, day D: 10 valid lines, a 13-column line, a line with an empty sid. */
+  const FILE = [...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => line(n)), line(11).split("|").slice(0, 13).join("|"), line(12, "")].join("\n") + "\n";
+  const preview = (token: string, src: string, v: string, body: unknown) => call("POST", `${base(A)}/${src}/versions/${v}/preview`, { token, body });
+  const msg = async (r: Response) => ((await r.json()) as { error: { message: string } }).error.message;
+  const withDerive = (derive: Record<string, string>) => ({ ...ksei(), derive });
+
+  it("saving a spec with an invalid CEL expression is 400 naming where; a valid one saves", async () => {
+    const s = await made();
+    const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+    for (const [expr, text] of [['row.sid.matches("a+")', "matches"], ["row.sid +", "parse"], ['1 + "x"', "Type error"], ["bytes(row.sid)", "not allowed"]] as const) {
+      const r = await patch(t.mk, s.id, v.id, withDerive({ net: expr }));
+      expect(r.status).toBe(400);
+      const m = await msg(r);
+      expect(m).toContain("derive.net: ");
+      expect(m).toContain(text);
+    }
+    const mapped = { ...ksei(), mapping: { ...ksei().mapping, business_date: { cel: "row.nope.matches('x')" } } };
+    expect(await msg(await patch(t.mk, s.id, v.id, mapped))).toContain("mapping.business_date: ");
+    expect((await patch(t.mk, s.id, v.id, withDerive({ sid_ok: 're_match(row.sid, "alnum")' }))).status).toBe(200);
+  });
+
+  it("previews a KSEI file: 10 records and 2 quarantined lines with a reason per column", async () => {
+    const { s, v } = await published();
+    const before = (await acts()).length;
+    const r = await preview(t.mk, s.id, v.id, { sample: FILE, fileName: "act20261102.txt" });
+    expect(r.status).toBe(200);
+    const p = await json<SourcePreviewDto>(Promise.resolve(r));
+    expect(p).toMatchObject({ lines: 12, ok: 10, quarantined: 2 });
+    expect(p.quarantine.map((q) => [q.line, q.reasons])).toEqual([[11, { _row: "Expected 14 columns, got 13" }], [12, { sid: "sid is required" }]]);
+    expect(p.records).toHaveLength(10);
+    expect(p.records[0]).toMatchObject({ line: 1, businessDate: "2026-11-02", accountRef: "TSTSID000000001", attrs: { sre: "TSTSRE001" }, naturalKey: "TSTSID000000001", amountMinor: null });
+    expect(p.records[0]!.rowHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(p.columns).toHaveLength(14);
+    expect(p.columns[12]).toMatchObject({ name: "sid", type: "string", emptyPct: 9.1 });
+    // without a file name the business date has nothing to come from: every line is quarantined, with the reason
+    const none = await json<SourcePreviewDto>(preview(t.mk, s.id, v.id, { sample: FILE }));
+    expect(none).toMatchObject({ ok: 0, quarantined: 12 });
+    expect(none.quarantine[0]!.reasons.business_date).toContain("file name");
+    expect(await acts()).toHaveLength(before); // writes nothing
+  });
+
+  it("roles, body, state and kind", async () => {
+    const { s, v } = await published();
+    expect((await preview(t.op, s.id, v.id, { sample: FILE })).status).toBe(403);
+    expect((await preview(t.ck, s.id, v.id, { sample: FILE })).status).toBe(403);
+    expect((await preview(t.adm, s.id, v.id, { sample: FILE, fileName: "act20261102.txt" })).status).toBe(200);
+    expect((await preview(t.mk, s.id, v.id, { sample: "" })).status).toBe(400);
+    expect((await preview(t.mk, s.id, v.id, { sample: "x".repeat(65 * 1024) })).status).toBe(400);
+    expect((await preview(t.mk, s.id, v.id, { sample: "x", extra: 1 })).status).toBe(400);
+    expect((await preview(t.mk, s.id, Bun.randomUUIDv7(), { sample: "x" })).status).toBe(404);
+    const other = await made({ code: "ksei-2", name: "KSEI 2", kind: "file_inbox" });
+    const fresh = await json<SourceVersionDto>(draft(t.mk, other.id));
+    expect(await msg(await preview(t.mk, other.id, fresh.id, { sample: "x" }))).toContain("no fields and mapping");
+    const db_ = await made({ code: "core-bifast", name: "BI-FAST", kind: "db_watermark" });
+    const dv = await json<SourceVersionDto>(draft(t.mk, db_.id));
+    const spec = { ...ksei(), input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } };
+    expect((await patch(t.mk, db_.id, dv.id, spec)).status).toBe(200);
+    expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("Preview reads a sample of a file");
   });
 });

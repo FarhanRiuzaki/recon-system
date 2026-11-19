@@ -131,6 +131,10 @@ export type SetConnectionBody = z.infer<typeof SetConnectionBody>;
 export const UpdateSourceVersionBody = z.strictObject({ spec: SourceSpec });
 export type UpdateSourceVersionBody = z.infer<typeof UpdateSourceVersionBody>;
 
+/** POST …/versions/{versionId}/preview: a text sample of the source's file (up to 64 KB, the body limit) and its name, for a business date taken from the name. */
+export const PreviewSourceBody = z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional() });
+export type PreviewSourceBody = z.infer<typeof PreviewSourceBody>;
+
 /** POST …/versions/{versionId}/reject: why, for the maker. */
 export const RejectSourceVersionBody = z.strictObject({ comment: z.string().trim().min(1).max(REVIEW_COMMENT_MAX) });
 export type RejectSourceVersionBody = z.infer<typeof RejectSourceVersionBody>;
@@ -193,3 +197,33 @@ export const SourceDto = SourceRowDto.extend({
   draft: SourceVersionDto.nullable(),
 });
 export type SourceDto = z.infer<typeof SourceDto>;
+
+/** A guessed column of the sample: `emptyPct` = share of empty cells, 0–100 with one decimal. */
+export const PreviewColumnDto = z.object({ name: z.string(), type: z.enum(FIELD_TYPES), examples: z.array(z.string()), emptyPct: z.number() });
+/** A row as it would enter `record`: `amountMinor` is whole minor units as text (never a float). */
+export const PreviewRecordDto = z.object({
+  line: z.number().int(),
+  businessDate: z.string(),
+  bdayIndex: z.number().int(),
+  amountMinor: z.string().nullable(),
+  currency: z.string().nullable(),
+  direction: z.string().nullable(),
+  eventTime: z.string().nullable(),
+  extRef: z.string().nullable(),
+  accountRef: z.string().nullable(),
+  attrs: z.record(z.string(), z.union([z.string(), z.boolean(), z.null()])),
+  naturalKey: z.string().nullable(),
+  rowHash: z.string(),
+});
+/** A line that would be quarantined: its cells and a reason per column (`_row` when the whole line is at fault). */
+export const PreviewQuarantineDto = z.object({ line: z.number().int(), cells: z.array(z.string()), reasons: z.record(z.string(), z.string()) });
+/** The preview: counts over the whole sample, the first 100 records and quarantined lines, and the column guesses from its first 200 lines. */
+export const SourcePreviewDto = z.object({
+  lines: z.number().int(),
+  ok: z.number().int(),
+  quarantined: z.number().int(),
+  columns: z.array(PreviewColumnDto),
+  records: z.array(PreviewRecordDto),
+  quarantine: z.array(PreviewQuarantineDto),
+});
+export type SourcePreviewDto = z.infer<typeof SourcePreviewDto>;
