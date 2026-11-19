@@ -113,3 +113,31 @@ Konsekuensi ke desain:
 - Sebelum SLA dikunci: ulangi S1 di perangkat keras dan setelan PG produksi (`max_wal_size`, `shared_buffers`, `work_mem`),
   dan dengan beberapa config interval sekaligus (spec §12 menyebut "beberapa config interval"; spike ini menjalankan satu
   config interval + satu run harian).
+
+## S7: driver DB sumber di Bun
+
+Skrip: `apps/api/scripts/spikes/s7-drivers.ts` (`bun scripts/spikes/s7-drivers.ts [--only pg|mysql|mssql|oracle]`). Docker tidak
+dipakai (registry tidak terjangkau; keputusan pemilik: lokal saja). Hanya PostgreSQL yang terpasang di mesin ini, jadi hanya
+PostgreSQL yang diuji penuh. Bun 1.4.4, macOS.
+
+| Engine | Driver + versi | Runtime | Yang diverifikasi | Verdict |
+|---|---|---|---|---|
+| PostgreSQL | `Bun.SQL` bawaan | bun 1.4.4 | 1.000.000 baris sisi A (`synthPair`) ke `src_txn` berkolom watermark `updated_at`; tarik per chunk 10.000 (`updated_at > $wm order by updated_at limit 10000`): 1.000.000 baris, 2,15 s, pertumbuhan RSS 0 MB (puncak diambil per chunk, ambang ≤ 100 MB); `pg_sleep(5)` dengan `statement_timeout` 1 s error `ERR_POSTGRES_SERVER_ERROR` setelah 1,0 s. TLS tidak dites (klaster lokal tanpa TLS). | bun |
+| MySQL | `Bun.SQL` (adapter mysql) dan `mysql2` 3.24.6 | bun 1.4.4 | Impor dan konstruksi ok. Koneksi ke port tertutup error cepat: `MySQLError/ERR_MYSQL_CONNECTION_REFUSED` (Bun.SQL), `AggregateError/ECONNREFUSED` (mysql2). | partial, tanpa server |
+| SQL Server | `mssql` 12.7.15 | bun 1.4.4 | Impor dan konstruksi pool ok (`encrypt: true, trustServerCertificate: true`). Port tertutup: `ConnectionError/ESOCKET`. | partial, tanpa server |
+| Oracle | `oracledb` 26.0.0, mode Thin (tanpa `initOracleClient`) | bun 1.4.4 | Impor ok, `oracledb.thin === true`. Port tertutup: `NJS-503`. | partial, tanpa server |
+
+Batas hasil:
+- `Bun.SQL` tidak punya opsi timeout query; timeout PostgreSQL di atas memakai `statement_timeout` sisi server. Untuk MySQL,
+  MSSQL, Oracle belum diuji timeout query.
+- Port tertutup menolak koneksi seketika (2 sampai 75 ms), jadi `connectTimeout` 2 s dikonfigurasi tetapi tidak benar-benar
+  terpicu (host yang menjatuhkan paket tidak diuji). Tidak ada hang dan tidak ada crash proses.
+- Untuk MySQL, MSSQL, Oracle tidak ada klaim stream, memori, TLS, jumlah baris, atau timeout query. Fallback Node 24 tidak
+  dijalankan karena uji (a) dan (b) lulus di Bun.
+- Pengukuran RSS 0 MB berarti puncak yang disampel per chunk tidak melampaui RSS awal setelah GC; bukan jaminan untuk tipe
+  baris lain.
+
+Oracle ada di jalur kritis KSEI (spec §8 mode snapshot; Medallion memakai Oracle) dan tetap menjadi risiko terbuka sampai
+diuji terhadap server Oracle nyata (DB dev bank, atau Docker bila jaringannya sudah bisa). Ini gerbang untuk Plan 2 / backlog
+REC-F2. Hal yang harus diuji di sana: login Thin ke versi Oracle bank (termasuk native network encryption/TLS), stream 1 juta
+baris, dan timeout query (`callTimeout`).
