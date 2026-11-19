@@ -9,7 +9,7 @@ Browser → Next.js BFF `/api/*` → API privat `/v1/*` → PostgreSQL.
 | Batas | Tanggung jawab dan kontrak implementasi |
 | --- | --- |
 | `apps/web` | Next 16 App Router pada Node 24. Browser hanya same-origin `/api/*`; catch-all meneruskan data, route auth mengatur cookie sendiri. Page tipis memakai permission guard, title dan prefetch; screen/hook milik feature. Client tidak mengimpor server/database. |
-| `apps/api` | Bun/Elysia, controller → service → Drizzle. API memutuskan otorisasi dan aturan bisnis; registry memasang health/auth/oauth/me/rbac/users/audit/dashboard/projects. Akses antar modul hanya melalui index, kecuali FK schema sesuai aturan repo. Kernel tidak mengimpor modul. |
+| `apps/api` | Bun/Elysia, controller → service → Drizzle. API memutuskan otorisasi dan aturan bisnis; registry memasang health/auth/oauth/me/rbac/users/audit/dashboard/projects/spaces. Akses antar modul hanya melalui index, kecuali FK schema sesuai aturan repo. Kernel tidak mengimpor modul. |
 | `packages/shared` | DTO/query/body zod, permission catalog, paging, activity vocabulary, redaksi dan brand. Kontrak adalah source of truth, JSON Schema/docs adalah hasil yang diperiksa terhadapnya. Client mengimpor contract sebagai type dan konstanta ringan dari file bebas zod. |
 | `packages/ui` | Tokens → primitives/motion → DS → charts; tidak mengimpor domain aplikasi. API hanya memakai helper murni `lib/*`. Perubahan UI bersama diperlihatkan di halaman design system (`/ds` dan tujuh halaman di bawahnya, DEC-030). |
 | PostgreSQL 18 | Seluruh persistent/shared state: data, session, limiter/backoff dan OAuth state. Transaksi + row/advisory lock untuk invariant konkuren; tidak ada event bus. |
@@ -20,13 +20,14 @@ State shareable list/range/tab/page berada di URL; query keys hanya dibangun di 
 
 | Modul pemilik | Tabel utama | Relasi / invariant penting |
 | --- | --- | --- |
-| users | users, recovery_codes | Username/email unik tanpa membedakan case; credential/TOTP milik users, recovery terkait user dan single use. Tidak ada tenant. |
+| users | users, recovery_codes | Username/email unik tanpa membedakan case; credential/TOTP milik users, recovery terkait user dan single use. User global; pemisahan per tim lewat space (baris spaces). |
 | rbac | roles, permissions, role_permissions, user_roles | User↔role dan role↔permission many-to-many; Superadmin terkunci, active Superadmin terakhir dilindungi; actor rank dan escalation diperiksa dalam transaksi. |
 | auth | sessions, auth_challenges, user_tokens, rate_limits, login_backoff | Session/challenge/link terkait user. Hanya hash token disimpan; absolute/idle expiry; reset/invite single use. Limiter atomik dan shared; tabel limiter UNLOGGED, reset setelah crash adalah perilaku sengaja. |
 | oauth | user_identities, oauth_states | Provider+subject unik; satu identity per user/provider; state hashed dan single use dengan binding browser. Linking membutuhkan session live dan recent proof; tidak membuat user/mencocokkan email otomatis. |
 | me | saved_views | FK user; unik per user/path/nama tanpa membedakan case. Hanya pemilik yang membaca/menghapus; batas jumlah mengikuti kontrak yang ada. |
 | audit | activity, auth_log | Append-only terhadap update; activity perubahan atomik dengan transaksi data. Retention purge oleh janitor, bukan janji penyimpanan selamanya. |
 | projects | projects | UUIDv7; name unik melalui lower(name), description nullable, status active/archived, createdAt/updatedAt. Tidak memiliki owner/tenant atau membership. Akses berdasarkan permission organisasi tunggal. |
+| spaces | spaces, space_members | DEC-034: satu aplikasi, banyak tim; tiap tim satu space (code unik lower(code), status active/archived). Membership = baris per role per user (tujuh role tetap, `SPACE_ROLES`). Route `/v1/spaces/:spaceId/*` memakai guard `{ space: roles, or?: permission }`: role user di space dibaca tiap request; `or` (mis. `space.manage`) hanya membuka route manajemen space/member, bukan data. Space_admin terakhir dilindungi di bawah advisory lock `spaceAdmins`. Tabel domain recon (Plan 2+) memakai RLS `recon_space_visible(space_id)` lewat `withSpace`. |
 | health, dashboard | Tidak memiliki tabel domain baru | Health/readiness dan agregasi melalui API modul yang diperbolehkan. |
 
 Schema ada di `apps/api/src/modules/*/schema.ts`; migrasi 0000–0005 tersedia, termasuk indeks pencarian projects. Diagram relasi rinci tidak diperlukan untuk menambah layanan baru karena tidak ada layanan baru yang direncanakan.

@@ -47,7 +47,8 @@
             "role",
             "permission",
             "audit",
-            "project"
+            "project",
+            "space"
           ]
         },
         {
@@ -60,7 +61,8 @@
               "role",
               "permission",
               "audit",
-              "project"
+              "project",
+              "space"
             ]
           }
         }

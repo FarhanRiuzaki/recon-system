@@ -20,6 +20,7 @@ const COPY: Partial<Record<ErrorCode, string>> = {
   ldap_password: "This account signs in with a directory password. Change it in your directory.",
   superadmin_locked: "The Superadmin role holds every permission and can't be changed or deleted.",
   role_in_use: "Users still have this role. Remove it from them first, then delete the role.",
+  last_space_admin: "This is the last space admin of the space. Make another member space admin first.",
 };
 
 /**

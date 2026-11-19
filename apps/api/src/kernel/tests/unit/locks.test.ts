@@ -9,6 +9,6 @@ describe("LOCKS", () => {
   });
 
   it("names the sections the API serializes", () => {
-    expect(Object.keys(LOCKS).sort()).toEqual(["catalog", "janitor", "migrations", "superadmin"]);
+    expect(Object.keys(LOCKS).sort()).toEqual(["catalog", "janitor", "migrations", "spaceAdmins", "superadmin"]);
   });
 });

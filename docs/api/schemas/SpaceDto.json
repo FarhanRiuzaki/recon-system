@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpaceDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ]
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "code",
+    "name",
+    "status",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

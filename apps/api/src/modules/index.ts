@@ -7,6 +7,7 @@ import { meController } from "./me";
 import { oauthController } from "./oauth";
 import { projectsController } from "./projects";
 import { rbacController } from "./rbac";
+import { spacesController } from "./spaces";
 import { usersController } from "./users";
 
 /** What tests may swap in when they build the app. */
@@ -27,4 +28,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(usersController())
     .use(auditController())
     .use(dashboardController())
-    .use(projectsController());
+    .use(projectsController())
+    .use(spacesController());

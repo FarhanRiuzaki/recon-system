@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpaceRowDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "archived"
+      ]
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "space_admin",
+          "source_admin",
+          "config_maker",
+          "config_checker",
+          "operator",
+          "reviewer",
+          "viewer"
+        ]
+      }
+    }
+  },
+  "required": [
+    "id",
+    "code",
+    "name",
+    "status",
+    "createdAt",
+    "updatedAt",
+    "roles"
+  ],
+  "additionalProperties": false
+}

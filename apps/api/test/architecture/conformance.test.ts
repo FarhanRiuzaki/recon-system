@@ -153,7 +153,7 @@ function graphOf(files: File[]) {
 type Call = { name: string; id: string | null; pos: number };
 type Handler = {
   file: string; method: string; path: string; inline: boolean; calls: Call[]; csv: boolean; options: string[];
-  guard: "missing" | "null" | "perm"; readsQuery: boolean;
+  guard: "missing" | "null" | "perm" | "space"; readsQuery: boolean;
 };
 const ROUTE_METHODS = ["get", "post", "patch", "put", "delete"];
 /** What a controller's `new Elysia()` chain may call: plugins and routes. A lifecycle hook (derive, resolve, onBeforeHandle…) would run code the scan can't order against the guard. */
@@ -192,7 +192,8 @@ function handlersOf(file: string, g: ReturnType<typeof graphOf>, useOk: string[]
         const h: Handler = {
           file, method: method.toUpperCase(), path: p.text, inline: !!fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn)), calls: [], csv: false,
           options: options.map((o) => o.name?.getText(sf) ?? "?"),
-          guard: !guardOpt ? "missing" : ts.isPropertyAssignment(guardOpt) && guardOpt.initializer.kind === ts.SyntaxKind.NullKeyword ? "null" : "perm",
+          guard: !guardOpt ? "missing" : !ts.isPropertyAssignment(guardOpt) ? "perm"
+            : guardOpt.initializer.kind === ts.SyntaxKind.NullKeyword ? "null" : ts.isObjectLiteralExpression(guardOpt.initializer) ? "space" : "perm",
           readsQuery: false,
         };
         if (fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))) {
@@ -284,6 +285,8 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
       const service = firstPos((c) => c.id !== null && data.has(c.id));
       // (b) the guard option, or the allowlisted in-handler gate
       if (h.guard === "missing") out.push(`${id}: no guard option`);
+      // the { space, or? } form reads the space from :spaceId; without it every request would be 404
+      if (h.guard === "space" && !h.path.includes("/:spaceId")) out.push(`${id}: a { space } guard needs :spaceId in the path`);
       for (const o of h.options.filter((x) => !HOOK_OK.has(x))) out.push(`${id}: route option ${o} runs code the scan can't order against the guard`);
       const gate = h.calls.some((c) => c.name === "forbidden");
       if (gate && !(key in allow.gates)) out.push(`${id}: checks a permission in the handler; use the guard option`);
@@ -435,6 +438,15 @@ export const xController = () => new Elysia().use(guard)${code};` });
     expect(run(`.derive(() => ({ row: lookup(1) })).get("/v1/x", () => thingPage({}), { guard: "x.view" })`))
       .toEqual([`${X}: .derive( on a controller runs code the scan can't order against the guard`]);
     expect(run(`.get("/v1/x", handler, { guard: "x.view" })`)).toEqual([`${X} GET /v1/x: handler is not an inline function (the scan can't read it)`]);
+  });
+
+  it("fixture (b): guard object option runs before the handler, and needs :spaceId in the path", () => {
+    expect(run(`.patch("/v1/spaces/:spaceId", async (c) => save(c.ctx, await body(c, B)), { guard: { space: ["space_admin"], or: "space.manage" } })
+  .get("/v1/spaces/:spaceId/items", ({ query }) => thingPage(query), { query: Q, guard: { space: SPACE_ROLES } })`)).toEqual([]);
+    expect(run(`.get("/v1/x", () => thingPage({}), { guard: { space: ["viewer"] } })`)).toEqual([`${X} GET /v1/x: a { space } guard needs :spaceId in the path`]);
+    // the object form is still a guard option: the other rules apply to the handler behind it
+    expect(run(`.post("/v1/spaces/:spaceId/x", async (c) => { await lookup(1); return save(c.ctx, await body(c, B)); }, { guard: { space: ["viewer"] } })`))
+      .toEqual([`${X} POST /v1/spaces/:spaceId/x: answers 404 or reads data before the request body (400)`]);
   });
 
   it("fixture (b): .use( takes only the listed plugins (the auth guard), and a listed plugin no controller uses is stale", () => {

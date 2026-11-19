@@ -162,6 +162,13 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
 - Projects: names are unique ignoring letter case (409 `duplicate`); an empty `description` is stored as none
   (`null`). `PATCH /api/projects/{id}` writes one `project.update` entry with only the changed fields of `name`,
   `description`, `status`; nothing to change → 200 with the project, no entry.
+- Spaces: a route under `/api/spaces/{spaceId}` checks the caller's roles in that space on every request (a removed
+  member is 403 on the next one) and lets a non-member in only where its row names a global permission (`space.manage`):
+  that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
+  401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
+  to leave a space without a `space_admin` (409 `last_space_admin`, also for a PUT that drops the role); two such
+  changes run one after the other. A code may be sent in any letter case
+  (the schema shows the stored form); it is stored in lower case and unique.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
 
@@ -223,6 +230,10 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `project.create` | Project created | project | – | the new project ([ProjectDto](schemas/ProjectDto.json)) |
 | `project.update` | Project updated | project | changed fields only, of `name`, `description`, `status` | the same fields, new values |
 | `project.delete` | Project deleted | project | the project ([ProjectDto](schemas/ProjectDto.json)) | – |
+| `space.create` | Space created | space | – | the new space ([SpaceDto](schemas/SpaceDto.json)) |
+| `space.update` | Space updated | space | changed fields only, of `name`, `status` | the same fields, new values |
+| `space.member_set` | Space roles set | space | `{ user: { id, name }, roles }` (`[]` for a new member) | `{ user: { id, name }, roles }` |
+| `space.member_remove` | Space member removed | space | `{ user: { id, name }, roles }` | – |
 <!-- actions:end -->
 
 ### Backend notes
@@ -287,6 +298,12 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | GET | `/api/projects/{id}` | `project.view` | none | [ProjectDto](schemas/ProjectDto.json) | `not_found` |
 | PATCH | `/api/projects/{id}` | `project.edit` | [UpdateProjectBody](schemas/UpdateProjectBody.json) (nothing to change = no entry) | [ProjectDto](schemas/ProjectDto.json) | `not_found`, `duplicate` |
 | DELETE | `/api/projects/{id}` | `project.delete` | none | [OkDto](schemas/OkDto.json) | `not_found` |
+| GET | `/api/spaces` | Signed in (every space with `space.view`, else the caller's own) | [SpaceListQuery](schemas/SpaceListQuery.json) | [SpacePage](schemas/SpacePage.json) (rows are [SpaceRowDto](schemas/SpaceRowDto.json): the space plus the caller's `roles` in it) | none |
+| POST | `/api/spaces` | `space.manage` | [CreateSpaceBody](schemas/CreateSpaceBody.json) (no members yet) | 201 [SpaceDto](schemas/SpaceDto.json) | `duplicate` (a space of that code, any case) |
+| PATCH | `/api/spaces/{spaceId}` | `space_admin` in the space, or `space.manage` | [UpdateSpaceBody](schemas/UpdateSpaceBody.json) (nothing to change = no entry) | [SpaceDto](schemas/SpaceDto.json) | `not_found` |
+| GET | `/api/spaces/{spaceId}/members` | any role in the space, or `space.manage` | [SpaceMemberListQuery](schemas/SpaceMemberListQuery.json) | [SpaceMemberPage](schemas/SpaceMemberPage.json) | `not_found` |
+| PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin` |
+| DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin` |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
 | POST | `/api/roles` | `role.create` | [CreateRoleBody](schemas/CreateRoleBody.json) | 201 [RoleDto](schemas/RoleDto.json) | `forbidden` (escalation), `duplicate` |
 | GET | `/api/roles/{id}` | `role.view` | none | [RoleDetailDto](schemas/RoleDetailDto.json) (the role plus the whole catalog, for its matrix) | `not_found` |

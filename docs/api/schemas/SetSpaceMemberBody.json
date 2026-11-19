@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SetSpaceMemberBody",
+  "type": "object",
+  "properties": {
+    "roles": {
+      "minItems": 1,
+      "maxItems": 7,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "space_admin",
+          "source_admin",
+          "config_maker",
+          "config_checker",
+          "operator",
+          "reviewer",
+          "viewer"
+        ]
+      }
+    }
+  },
+  "required": [
+    "roles"
+  ],
+  "additionalProperties": false
+}

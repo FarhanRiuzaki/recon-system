@@ -19,6 +19,7 @@ import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
+import * as spaces from "@starterkit/shared/contracts/spaces";
 import * as users from "@starterkit/shared/contracts/users";
 
 export const SCHEMA_DIR = path.resolve(import.meta.dirname, "../../../docs/api/schemas");
@@ -42,13 +43,15 @@ const COMPOSED = {
   ActivityPage: pageOf(audit.ActivityDto),
   AuthLogPage: pageOf(audit.AuthLogDto),
   ProjectPage: pageOf(projects.ProjectDto),
+  SpacePage: pageOf(spaces.SpaceRowDto),
+  SpaceMemberPage: pageOf(spaces.SpaceMemberDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [audit, auth, common, dashboard, me, projects, rbac, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [audit, auth, common, dashboard, me, projects, rbac, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -85,6 +88,10 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "project.create": ["project", "–", "the new project ([ProjectDto](schemas/ProjectDto.json))"],
   "project.update": ["project", "changed fields only, of `name`, `description`, `status`", "the same fields, new values"],
   "project.delete": ["project", "the project ([ProjectDto](schemas/ProjectDto.json))", "–"],
+  "space.create": ["space", "–", "the new space ([SpaceDto](schemas/SpaceDto.json))"],
+  "space.update": ["space", "changed fields only, of `name`, `status`", "the same fields, new values"],
+  "space.member_set": ["space", "`{ user: { id, name }, roles }` (`[]` for a new member)", "`{ user: { id, name }, roles }`"],
+  "space.member_remove": ["space", "`{ user: { id, name }, roles }`", "–"],
 };
 
 export const README = path.join(path.dirname(SCHEMA_DIR), "README.md");

@@ -2,7 +2,7 @@
 // test harness use. Other modules import only this file.
 export { authController } from "./controller";
 export { authChallenges, loginBackoff, rateLimits, sessions, userTokens } from "./schema";
-export { type Ctx, authenticate, bearer, guard } from "./guard";
+export { type Ctx, authenticate, bearer, guard, type SpaceGuard } from "./guard";
 export { LDAP_PASSWORD } from "./ldap";
 export { hitIp, oauthStartLimits, retryText } from "./limits";
 export { hashPassword, verifyPassword } from "./password";

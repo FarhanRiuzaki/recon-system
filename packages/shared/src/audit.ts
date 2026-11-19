@@ -53,6 +53,7 @@ export const ACTION_LABEL = {
   "me.session_end": "Own session ended", "me.2fa_setup": "Two-factor setup started", "me.2fa_enable": "Two-factor turned on",
   "me.2fa_disable": "Two-factor turned off",
   "project.create": "Project created", "project.update": "Project updated", "project.delete": "Project deleted",
+  "space.create": "Space created", "space.update": "Space updated", "space.member_set": "Space roles set", "space.member_remove": "Space member removed",
 } satisfies Record<string, string>;
 /** An action of the vocabulary (what the API records). */
 export type ActivityAction = keyof typeof ACTION_LABEL;

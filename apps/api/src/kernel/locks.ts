@@ -11,6 +11,8 @@ export const LOCKS = {
   superadmin: 50_002n,
   /** The clean-up job: one instance at a time across API processes. */
   janitor: 50_003n,
+  /** Changes that can lower the number of space_admin members of a space. */
+  spaceAdmins: 50_004n,
 } as const;
 
 export type LockName = keyof typeof LOCKS;
