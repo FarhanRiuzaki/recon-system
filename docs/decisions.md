@@ -420,7 +420,7 @@ Batas yang diketahui:
 
 ## DEC-034 — Space multi-tim + RLS (mengubah "Tidak ada tenant")
 
-Satu aplikasi dipakai banyak tim (Treasury, CTOP, FICO, …), tiap tim punya space dan membership sendiri. Model pool: tabel bersama dengan `space_id` + Row Level Security (`FORCE`, role app non-owner tanpa `BYPASSRLS`, `SET LOCAL` per transaksi), `space_id` di setiap unique/FK. Role global yang ada tetap untuk administrasi aplikasi; enam role per space (enum tetap di fase 1). `docs/architecture.md` bagian "Tidak ada tenant" perlu diperbarui saat modul `spaces` dibangun. Terbuka: penerimaan IT risk bank atas isolasi logis.
+Satu aplikasi dipakai banyak tim (Treasury, CTOP, FICO, …), tiap tim punya space dan membership sendiri. Model pool: tabel bersama dengan `space_id` + Row Level Security (`FORCE`, role app non-owner tanpa `BYPASSRLS`, `SET LOCAL` per transaksi), `space_id` di setiap unique/FK. Role global yang ada tetap untuk administrasi aplikasi; enam role per space (enum tetap di fase 1; kini tujuh role, lihat DEC-037). `docs/architecture.md` bagian "Tidak ada tenant" perlu diperbarui saat modul `spaces` dibangun. Terbuka: penerimaan IT risk bank atas isolasi logis.
 
 Catatan 19 November 2026 (Task 5, route `spaces`): seed default memberi role Admin `space.view` + `space.manage`, jadi Admin bisa menambahkan dirinya ke space mana pun (tercatat di activity sebagai `space.member_set`; tanpa approval kedua sesuai spec §11b). Menghapusnya cukup satu pengecualian di permission Admin pada `apps/api/src/db/seed/system.ts`.
 
@@ -430,7 +430,7 @@ Catatan 19 November 2026 (Task 5, route `spaces`): seed default memberi role Adm
 
 ## DEC-036 — Pengecualian sempit aturan AGENTS.md untuk engine dan ingest
 
-Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: SQL hasil kompilasi rule hanya di `modules/engine/sql/*` dan `COPY` hanya di `modules/ingest/copy.ts` (allowlist `boundaries.test.ts`, nilai tetap parameter terikat); pool koneksi worker dengan `statement_timeout` per queue (pool api tetap 5 s); tabel berpartisi lewat migration SQL custom. Dependency baru dipin exact: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB sumber (`mssql`, `oracledb`, `mysql2`/`ibm_db` bila perlu), `@xyflow/react` (web, di-load lazy).
+Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: SQL hasil kompilasi rule hanya di `modules/engine/sql/*` dan `COPY` hanya di `modules/ingest/copy.ts` (allowlist `boundaries.test.ts`, nilai tetap parameter terikat); pool koneksi worker dengan `statement_timeout` per queue (pool api tetap 5 s); tabel berpartisi lewat migration SQL custom. Dependency baru dipin exact: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB sumber (`mssql`, `oracledb`, `mysql2`/`ibm_db` bila perlu), `@xyflow/react` (web, di-load lazy; dibatalkan oleh DEC-037, tidak dipasang).
 
 ## DEC-037 — Record generik, mode snapshot, builder pipeline, role source_admin
 

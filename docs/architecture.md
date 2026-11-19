@@ -1,6 +1,6 @@
 # Arsitektur minimum SunnyGo
 
-Sesi 1, 8 November 2026. Audit source baseline `2ba4b9f`; target pertama adalah template lokal. Pertahankan implementasi modular monolith yang ada. Tidak ada kebutuhan MVP untuk layanan, database, cache atau broker baru. Detail aturan tetap di [AGENTS](../AGENTS.md), [API](api/README.md) dan standar UI.
+Sesi 1, 8 November 2026. Audit source baseline `2ba4b9f`; target pertama adalah template lokal. Pertahankan implementasi modular monolith yang ada. Tidak ada layanan, database, cache atau broker baru; satu peran proses tambahan, worker job dari image API yang sama (DEC-035). Detail aturan tetap di [AGENTS](../AGENTS.md), [API](api/README.md) dan standar UI.
 
 ## Batas sistem
 
@@ -12,7 +12,8 @@ Browser → Next.js BFF `/api/*` → API privat `/v1/*` → PostgreSQL.
 | `apps/api` | Bun/Elysia, controller → service → Drizzle. API memutuskan otorisasi dan aturan bisnis; registry memasang health/auth/oauth/me/rbac/users/audit/dashboard/projects/spaces. Akses antar modul hanya melalui index, kecuali FK schema sesuai aturan repo. Kernel tidak mengimpor modul. |
 | `packages/shared` | DTO/query/body zod, permission catalog, paging, activity vocabulary, redaksi dan brand. Kontrak adalah source of truth, JSON Schema/docs adalah hasil yang diperiksa terhadapnya. Client mengimpor contract sebagai type dan konstanta ringan dari file bebas zod. |
 | `packages/ui` | Tokens → primitives/motion → DS → charts; tidak mengimpor domain aplikasi. API hanya memakai helper murni `lib/*`. Perubahan UI bersama diperlihatkan di halaman design system (`/ds` dan tujuh halaman di bawahnya, DEC-030). |
-| PostgreSQL 18 | Seluruh persistent/shared state: data, session, limiter/backoff dan OAuth state. Transaksi + row/advisory lock untuk invariant konkuren; tidak ada event bus. |
+| worker (`apps/api`) | Image yang sama dengan API, entrypoint `src/worker.ts` (DEC-035). Menjalankan handler job dan cron lewat pg-boss (`kernel/jobs.ts`); queue disimpan di PostgreSQL (skema `pgboss`), tanpa broker. Pool sendiri `workerDb` dengan `JOB_STATEMENT_TIMEOUT_MS` (DEC-036); satu-satunya port adalah probe `/healthz`. |
+| PostgreSQL 18 | Seluruh persistent/shared state: data, session, limiter/backoff, OAuth state dan queue job pg-boss. Transaksi + row/advisory lock untuk invariant konkuren; tidak ada event bus. |
 
 State shareable list/range/tab/page berada di URL; query keys hanya dibangun di `apps/web/src/lib/shared/queries.ts`, prefix sesuai pemilik data. Prefetch dan browser memakai key/URL yang sama. Feature web tidak mengimpor feature lain.
 
@@ -30,7 +31,7 @@ State shareable list/range/tab/page berada di URL; query keys hanya dibangun di 
 | spaces | spaces, space_members | DEC-034: satu aplikasi, banyak tim; tiap tim satu space (code unik lower(code), status active/archived). Membership = baris per role per user (tujuh role tetap, `SPACE_ROLES`). Route `/v1/spaces/:spaceId/*` memakai guard `{ space: roles, or?: permission }`: role user di space dibaca tiap request; `or` (mis. `space.manage`) hanya membuka route manajemen space/member, bukan data. Space_admin terakhir dilindungi di bawah advisory lock `spaceAdmins`. Tabel domain recon (Plan 2+) memakai RLS `recon_space_visible(space_id)` lewat `withSpace`. |
 | health, dashboard | Tidak memiliki tabel domain baru | Health/readiness dan agregasi melalui API modul yang diperbolehkan. |
 
-Schema ada di `apps/api/src/modules/*/schema.ts`; migrasi 0000–0005 tersedia, termasuk indeks pencarian projects. Diagram relasi rinci tidak diperlukan untuk menambah layanan baru karena tidak ada layanan baru yang direncanakan.
+Schema ada di `apps/api/src/modules/*/schema.ts`; migrasi 0000–0008 tersedia, termasuk indeks pencarian projects, tabel spaces dan fungsi RLS `recon_space_visible`. Diagram relasi rinci tidak diperlukan: tidak ada layanan atau broker baru, hanya proses worker dari image API (DEC-035).
 
 ## Kontrak konkret contoh projects
 
@@ -116,7 +117,7 @@ Kontrak minimum untuk FIL-DES-001 → FIL-DEV-001 → FIL-QA-002 (perencanaan QA
 
 Migrasi forward-only dengan checksum/advisory lock; jangan edit migrasi yang sudah diterapkan. Migrator/system seed sebagai schema owner, API produksi DML-only. Setup/bootstrap harus idempotent. Check/test hanya DB khusus `_test`, E2E hanya `_e2e`; jangan reset database pengguna.
 
-Health/readiness, graceful shutdown, request-id/log redaction dan janitor tersedia. Backup/restore, monitoring eksternal, rotasi/recovery encryption key dan SMTP delivery belum dibuktikan sebagai operasi produksi. Mail dikirim setelah commit secara fire-and-forget: kegagalan tercatat, tanpa outbox/retry persisten; terima batas ini untuk template lokal, nilai ulang sebelum SLA delivery dijanjikan. Jangan menambah queue tanpa kebutuhan.
+Health/readiness, graceful shutdown, request-id/log redaction dan janitor tersedia. Backup/restore, monitoring eksternal, rotasi/recovery encryption key dan SMTP delivery belum dibuktikan sebagai operasi produksi. Mail dikirim setelah commit secara fire-and-forget: kegagalan tercatat, tanpa outbox/retry persisten; terima batas ini untuk template lokal, nilai ulang sebelum SLA delivery dijanjikan. Job memakai queue pg-boss di PostgreSQL (DEC-035); jangan menambah queue lain tanpa kebutuhan.
 
 Provider mock/log cukup untuk demonstrasi lokal, tidak membuktikan provider nyata. Production menolak mock dan membutuhkan SMTP TLS; rencana staging/provider ada di OPS-001/002 dan INT-001. Pemilihan provider tidak diperlukan untuk memulai MVP lokal.
 

@@ -17,5 +17,7 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
 
 ## Dokumen pendukung
 
-- [`spikes.md`](spikes.md) — hasil spike S1–S7 (angka, verdict, konsekuensi).
+- [`spikes.md`](spikes.md) — hasil spike S1, S2, S3 dan S7 (angka, verdict, konsekuensi). S4 (RLS) dibuktikan oleh tes
+  `apps/api/src/modules/spaces/tests/integration/rls.test.ts`; S5 adalah tugas compliance, bukan spike kode; S6 batal
+  (DEC-037).
 - [`ksei-sample-data.md`](ksei-sample-data.md) — spesifikasi fixture sintetis KSEI ACT (prefiks TST, tanpa data nyata).

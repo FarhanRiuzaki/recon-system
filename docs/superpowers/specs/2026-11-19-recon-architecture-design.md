@@ -1,7 +1,7 @@
 # Recon engine — desain arsitektur
 
 Tanggal: 2026-11-19. Sesi: core-recon (pilot arsitektur). Tim: po-recon (Product Owner), designer-recon (Figma).
-Status: **draft untuk review pemilik**. Keputusan pemilik ditandai **(pemilik)**, usulan Claude **(Claude)**.
+Status: **disetujui pemilik 2026-11-19**. Keputusan pemilik ditandai **(pemilik)**, usulan Claude **(Claude)**.
 Riset pendukung: `../RECON-ENIGNE/reports/Benchmark produk recon configurable.md` (selanjutnya "laporan riset") dan
 catatan per topik di `../RECON-ENIGNE/research_notes/Benchmark produk recon configurable/`.
 Referensi legacy: `../RECON-ENIGNE/recon-enegine` (Laravel 12), terutama `docs/features/RECON.md` dan `.planning/`.
@@ -111,7 +111,7 @@ Mengikuti pola `apps/api/src/modules/<nama>/{schema,service,controller,rules,ind
 
 | Modul | Tanggung jawab | Tabel utama |
 |---|---|---|
-| `spaces` | Space, membership `(user, space, role)`, konteks space per request, `SET LOCAL` untuk RLS | `space`, `space_member` |
+| `spaces` | Space, membership `(user, space, role)`, konteks space per request, `SET LOCAL` untuk RLS | `spaces`, `space_members` |
 | `sources` | Definisi source (jenis, koneksi terenkripsi, skema field + tipe, parser, mapping ke core, CEL derive), share ke space lain, versi | `source`, `source_version`, `source_share` |
 | `ingest` | Pull DB berwatermark, ambil file, parse stream, COPY ke staging, normalisasi, karantina, completeness | `source_cursor`, `source_file`, `raw_row`, `record`, `quarantine_row` |
 | `recon` | Definisi config, versi `draft → in_review → published → retired`, simulasi, diff antar versi | `recon_config`, `recon_config_version` |
@@ -323,7 +323,7 @@ reopen hari yang sudah sign-off, purge. Ambang write-off per space = data milik 
 **Space & RBAC**: model pool (tabel bersama + `space_id`) + RLS: `FORCE ROW LEVEL SECURITY`, app connect sebagai role
 non-owner tanpa `BYPASSRLS`, tiap transaksi `SET LOCAL app.space_ids, app.user_id`, policy hanya memeriksa baris
 sendiri. Role global (RBAC Starterkit yang ada): `platform_admin` (tanpa akses data default), `auditor`,
-`mgmt_reporting`. Role per space: `space_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer`; satu user boleh
+`mgmt_reporting`. Role per space (tujuh): `space_admin`, `source_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer`; satu user boleh
 memegang beberapa role di satu space (mis. operator + config_maker, prototipe designer) — SoD tetap dijaga per aksi lewat user id.
 Source dimiliki satu space, dibagi ke space lain lewat `source_share` read-only.
 

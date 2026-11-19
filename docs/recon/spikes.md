@@ -160,8 +160,8 @@ baris, dan timeout query (`callTimeout`).
 ## S2: antrean pg-boss di kode produksi
 
 Tanggal 2026-11-19. Kode: `apps/api/src/kernel/jobs.ts`, `kernel/worker-db.ts`, `src/worker.ts`, `migrateJobs` di
-`src/db/migrate.ts`. Tes: `apps/api/src/kernel/tests/integration/jobs.test.ts` (10 tes, 34 s) dan `locks.test.ts`
-(`configLock`). `pg-boss` 12.38.2 (exact), dijalankan di Bun 1.4.4 (runtime mesin ini; versi pin repo 1.4.3 tidak dites)
+`src/db/migrate.ts`. Tes: `apps/api/src/kernel/tests/integration/jobs.test.ts` (11 tes) dan `locks.test.ts`
+(`configLock`). `pg-boss` 12.38.2 (exact), dijalankan di Bun 1.4.4 (runtime mesin ini) dan, pada review akhir Plan 1, seluruh suite API di Bun 1.4.3 (versi pin repo, biner `@oven/bun-darwin-aarch64@1.4.3`): 608 lulus, 0 gagal
 melawan PostgreSQL 18 lokal. Nama opsi dibaca dari `node_modules/pg-boss/README.md` dan `dist/{index,types}.d.ts`.
 
 API pg-boss yang dipakai:
@@ -195,6 +195,7 @@ Perilaku yang terbukti (tes di atas):
 | Cron `0 23 * * *` = 16:00 UTC | bawaan (`tz`) | tes 7: baris jadwal tersimpan `timezone = Asia/Jakarta`; `previewSchedule` atas baris itu dari 2026-11-19T00:00Z memberi 2026-11-19T16:00Z dan 2026-11-20T16:00Z. Tidak menunggu jam nyata dan tidak memicu job; pass cron memakai pustaka dan zona yang sama (`cron-parser` di `timekeeper.js`). `TestClock` pg-boss butuh `setSessionStatements`, yang tidak ada di adapter `fromBunSql` |
 | `stop()` menunggu job berjalan dan tidak mengambil job baru | bawaan (`graceful`) | tes 8 |
 | Role app (DML saja) bisa send/fetch/complete setelah migrate memberi grant; DDL di `pgboss` ditolak | grant di `migrateJobs` | tes 9 (`recon_app_probe`) |
+| `startWorker` dengan opsi produksinya (`supervise`, `schedule`, `reindex: false`) menjalankan job sampai `completed` sebagai role app, tanpa event `error` | grant di `migrateJobs` | tes 10: pool `kernel/jobs.ts` dibuka ulang dengan parameter startup `role=recon_app_probe`; `current_user` = `recon_app_probe`, 2,5 s supervise tiap 1 s |
 
 Fallback spec §9 (advisory lock + re-queue `startAfter`) **tidak dipakai**: semua perilaku di atas bawaan pg-boss.
 `configLock(tx, configId)` (`kernel/locks.ts`, `pg_advisory_xact_lock(int, int)` dengan `hashtext`) tetap diperlukan untuk
@@ -229,8 +230,13 @@ Dari S1:
 - Ulangi S1 di perangkat keras dan setelan PG produksi, dengan beberapa config interval, sebelum SLA dikunci.
 
 Dari S2:
-- Handler didaftarkan di `HANDLERS` (`src/worker.ts`) dan memakai `workerDb`; job dikirim lewat `enqueue`/`scheduleEvery`
-  dengan kunci per source/file/config/(config, tanggal).
+- Handler didaftarkan di `HANDLERS` (`src/worker.ts`); query tabel domain lewat `withSpace(scope, fn, workerDb)`
+  (`scope = { spaceIds, userId: null }` untuk job tanpa user, pool worker dengan `JOB_STATEMENT_TIMEOUT_MS`). Modul
+  `spaces` tidak mengimpor `kernel/worker-db.ts` (proses API tidak membuka pool worker); handler yang meneruskan
+  `workerDb`. Job dikirim lewat `enqueue`/`scheduleEvery` dengan kunci per source/file/config/(config, tanggal).
+- Handler tidak boleh memblokir event loop lebih lama dari heartbeat (30 s), mis. parse sinkron file besar: refresh
+  heartbeat tidak jalan, job digagalkan dan di-retry oleh worker lain selagi yang pertama masih berjalan. Kerja berat
+  dipecah per chunk dengan `await` di antaranya, atau dijalankan di PostgreSQL.
 - Tiap langkah handler satu transaksi yang menulis efek + penanda selesai (job at-least-once).
 - Run tick mengambil `configLock` dulu (tick, daily dan heavy untuk config yang sama bisa aktif bersamaan antar queue).
 - Heartbeat 30 s untuk semua queue sudah dipasang (`QUEUE_OPTIONS`); `expireInSeconds` (bawaan 900 s) ditetapkan per queue saat
