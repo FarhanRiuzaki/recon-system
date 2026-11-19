@@ -14,7 +14,7 @@ import { expectNoHorizontalScroll, pending2faState, settleAnimations, smallTouch
 
 /** Every page: the nav pages with the pages of their submenu (/ds/…), the sub-pages, the sign-in pages (`{name}` = a demo id, helpers.ts demoIds). */
 const DS = NAV.find((n) => n.href === "/ds")!;
-const SIGNED_IN = [...new Set(NAV.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)])), "/users/new", "/users/{admin}", "/users/{admin}/edit", "/roles/{superadminRole}", "/projects/new", "/projects/{project}", "/projects/{project}/edit", "/me/security", "/me/sessions"];
+const SIGNED_IN = [...new Set(NAV.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)])), "/users/new", "/users/{admin}", "/users/{admin}/edit", "/roles/{superadminRole}", "/projects/new", "/projects/{project}", "/projects/{project}/edit", "/me/security", "/me/sessions", "/spaces/{treasury}/members"];
 const SIGNED_OUT = ["/login", "/forgot-password", "/reset-password"];
 /** The blocked "Deactivate user" button of /ds/components (features/ds/pages/components-body.tsx). */
 const BLOCKED_REASON = "This is the last active Superadmin. Make another user Superadmin first.";
@@ -273,8 +273,6 @@ test.describe("phone", () => {
       await expect(page).toHaveURL((u) => u.pathname === n.href || u.pathname.startsWith(`${n.href}/`));
       await expect(drawer(page)).toBeHidden();
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-      // Until the members page exists (Plan 1b Task 4), /spaces/<id>/members is the app's 404, outside the shell.
-      if (n.href === "/spaces") await open(page, "/");
     }
   });
 

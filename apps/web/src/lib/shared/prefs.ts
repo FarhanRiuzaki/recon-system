@@ -15,13 +15,19 @@ const isUuid = (v: string | null | undefined) => !!v && /^[0-9a-f]{8}-[0-9a-f]{4
 export const PREFS_COOKIE = "sk_prefs";
 export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable", views: {}, hidden: {}, keys: "on", space: null };
 
-/** The list pages whose view is remembered (each a `useTableQuery` screen). */
-export const VIEW_PAGES = ["/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects"] as const;
+/**
+ * The list pages whose view is remembered (each a `useTableQuery` screen). A `[segment]` matches any one path segment,
+ * so a space's members page keeps one view for every space (`viewPageOf`).
+ */
+export const VIEW_PAGES = ["/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects", "/spaces/[spaceId]/members"] as const;
 export type ViewPage = (typeof VIEW_PAGES)[number];
 const VIEW_MAX = REMEMBERED_VIEW_QUERY_MAX; // characters per view: the whole cookie stays far under the 4 KB limit
 /** Hidden column keys of one page: a column key's shape, at most 20 (anything else in the cookie is dropped). */
 const hiddenKeys = (v: string | null): string[] => [...new Set((v ?? "").split(",").filter((k) => /^[a-zA-Z][a-zA-Z0-9]{0,39}$/.test(k)))].slice(0, 20);
 const isViewPage = (p: string): p is ViewPage => (VIEW_PAGES as readonly string[]).includes(p);
+const VIEW_PATTERNS = VIEW_PAGES.map((p) => [p, new RegExp(`^${p.replace(/\[\w+\]/g, "[^/]+")}$`)] as const);
+/** The VIEW_PAGES entry a path is (`/spaces/<id>/members` → `/spaces/[spaceId]/members`), or null. */
+export const viewPageOf = (path: string): ViewPage | null => VIEW_PATTERNS.find(([, re]) => re.test(path))?.[0] ?? null;
 
 const viewParams = (path: string, raw: string | URLSearchParams) => { const q = new URLSearchParams(raw); if (path === "/audit/activity") q.delete("entry"); return q; };
 
@@ -63,7 +69,8 @@ export function prefsCookie(p: Prefs, secure: boolean): string {
 
 /** A navigation link to `href`, reopening its remembered view (the query is re-encoded, so it can't change the path). */
 export function viewHref(href: string, prefs: Prefs): string {
-  const v = isViewPage(href) ? prefs.views[href] : undefined;
-  const q = v ? viewParams(href, v).toString() : "";
+  const page = viewPageOf(href);
+  const v = page ? prefs.views[page] : undefined;
+  const q = v ? viewParams(page!, v).toString() : "";
   return q ? `${href}?${q}` : href;
 }

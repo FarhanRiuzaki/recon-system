@@ -27,10 +27,7 @@ async function spaceIds(browser: import("@playwright/test").Browser, baseURL: st
 const membersOf = (id: string) => new RegExp(`/spaces/${id}/members$`);
 const trigger = (page: Page) => page.getByRole("complementary", { name: "Main navigation" }).getByRole("button", { name: /, switch space$/ });
 
-/**
- * Demo seed: `viewer` belongs to Treasury and CTOP (not FICO), `google` to no space. The members page itself is Plan 1b
- * Task 4, so these check the URL the switcher and /spaces open, not that page's content.
- */
+/** Demo seed: `viewer` belongs to Treasury (Operator, Config maker) and CTOP (Viewer), not FICO; `google` to no space. */
 test("a member of two spaces switches by mouse and keyboard; /spaces skips a remembered space they can't open", async ({ page, browser, baseURL }) => {
   const ids = await spaceIds(browser, baseURL);
   await signIn(page, "viewer");
@@ -50,9 +47,7 @@ test("a member of two spaces switches by mouse and keyboard; /spaces skips a rem
   await expect(menu.getByRole("textbox", { name: "Find a space" })).toHaveCount(0); // under 5 spaces: no search
   await menu.getByRole("menuitemradio", { name: /Treasury/ }).click();
   await expect(page).toHaveURL(membersOf(ids.treasury!));
-  // Until the members route exists (Task 4) that URL is the app's 404, outside the shell: come back to a shell page,
-  // where the switcher now shows the remembered space.
-  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeVisible();
   await expect(button).toHaveAccessibleName("Treasury, switch space");
 
   // Keyboard: Enter opens on the first item, arrows move, Enter switches; Escape closes and focus returns to the trigger.
@@ -138,14 +133,58 @@ test("with no space in the app, a space.manage holder creates one: checks, a tak
     await code.fill(" E2E-Ops ");
     await dialog.getByRole("button", { name: "Create space" }).click();
     await expect(page).toHaveURL(/\/spaces\/[0-9a-f-]{36}\/members$/);
-    // The "Created …" toast lives in the shell; the members route is the root 404 until Task 4, so the API is checked.
-    const made = (await (await page.request.get("/api/spaces?pageSize=100&q=e2e-ops")).json()) as { items: { code: string }[] };
-    expect(made.items.map((s) => s.code)).toEqual(["e2e-ops"]);
+    await expect(page.getByText("Created E2E operations.")).toBeVisible();
+    await expect(page.getByText("People who can work in the E2E operations space and what each of them may do. A person can hold several roles.")).toBeVisible();
+    // A new space has no member yet: its creator holds space.manage, not a role in it.
+    await expect(page.getByText("No members yet")).toBeVisible();
   } finally {
     await ctx.close();
     // Restores only when the setup got as far as the copies; runs however far the test got.
     e2eSql(`do $$ begin if to_regclass('e2e_spaces_kept') is not null and to_regclass('e2e_members_kept') is not null then
       delete from spaces; insert into spaces select * from e2e_spaces_kept; insert into space_members select * from e2e_members_kept;
       drop table e2e_spaces_kept; drop table e2e_members_kept; end if; end $$;`);
+  }
+});
+
+test("a member sees who is in the space and what each role may do; a viewer only reads; a non-member gets a 404 that names no space", async ({ page, browser, baseURL }) => {
+  const ids = await spaceIds(browser, baseURL);
+  await signIn(page, "viewer");
+  await expect(page).toHaveURL("/");
+  await page.goto(`/spaces/${ids.treasury}/members`);
+  await expect(page.getByRole("heading", { level: 1, name: "Members" })).toBeVisible();
+  await expect(page).toHaveTitle(/^Treasury\b/);
+  await expect(page.getByText("People who can work in the Treasury space and what each of them may do. A person can hold several roles.")).toBeVisible();
+
+  const table = page.getByRole("table", { name: "Members" });
+  await expect(table.getByRole("columnheader")).toHaveText(["Member", "Roles in this space", "Status", "Username", "Last sign-in", "Actions"]);
+  const me = table.getByRole("row").filter({ hasText: "Viewer User" });
+  await expect(me.getByRole("cell").nth(1).locator('[data-slot="category-chip"]')).toHaveText(["Config maker", "Operator"]); // one chip per role, SPACE_ROLES order
+  await expect(me.getByRole("cell").nth(2)).toContainText("Active");
+  await expect(me.getByRole("cell").nth(3)).toContainText("viewer");
+  await expect(table.locator("tbody").getByRole("row")).toHaveCount(4); // the seed's Treasury members
+
+  // A viewer (no space admin role, no space.manage): no Add member; the row menu holds only View activity (audit.view).
+  await expect(page.getByRole("button", { name: "Add member" })).toHaveCount(0);
+  await me.getByRole("button", { name: "Actions for Viewer User" }).click();
+  await expect(page.getByRole("menuitem")).toHaveText(["View activity"]);
+  await page.getByRole("menuitem", { name: "View activity" }).click();
+  await expect(page).toHaveURL(/\/audit\/activity\?range=90d&actorId=[0-9a-f-]{36}$/);
+  await page.goBack();
+
+  const matrix = page.getByRole("table", { name: "What each role can do" });
+  await expect(matrix.getByRole("columnheader")).toHaveText(["Action", "Space admin", "Source admin", "Config maker", "Config checker", "Operator", "Reviewer", "Viewer"]);
+  await expect(matrix.getByRole("row", { name: /^Force match outside tolerance/ }).getByRole("cell")).toHaveText(
+    ["—Not allowed", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Approves", "—Not allowed"]);
+  await expect(page.locator("#content").getByText("Source admin is granted and removed only by an app admin, not by a space admin.")).toBeVisible();
+
+  // FICO: not a member. The page is "Page not found" inside the shell, and neither it nor the tab names the space.
+  await page.goto(`/spaces/${ids.fico}/members`);
+  await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+  await expect(page).toHaveTitle(/^Page not found\b/);
+  expect(await page.content()).not.toContain("FICO");
+  // An id that is no space, and one that is not a UUID: the same.
+  for (const id of ["0199f0a0-0000-7000-8000-0000000000ff", "nope"]) {
+    await page.goto(`/spaces/${id}/members`);
+    await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   }
 });

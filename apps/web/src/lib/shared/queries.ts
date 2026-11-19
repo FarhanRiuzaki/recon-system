@@ -75,9 +75,9 @@ export const SPACES: TableDef<NoFilters> = { key: SPACES_KEY[0], path: "/api/spa
 /** The switcher's list: all the caller's spaces, not the URL state of any table. */
 export const spaceOptions = () => ({ key: [...SPACES_KEY, "options"] as const, url: "/api/spaces?pageSize=100" });
 export const spaceDetail = (id: string) => ({ key: [...SPACES_KEY, "detail", id] as const, url: `/api/spaces/${encodeURIComponent(id)}` });
-export const SPACE_MEMBERS = (id: string): TableDef<NoFilters> => ({
-  key: SPACES_KEY[0], path: `/api/spaces/${encodeURIComponent(id)}/members`, spec: { sorts: SPACE_MEMBER_SORTS, defaultSort: "name", filters: {} },
-});
+/** One spec object for every space (useTableQuery memoizes on it); `q` matches the name or the username. */
+const SPACE_MEMBERS_SPEC: TableSpec<{ q: string }> = { sorts: SPACE_MEMBER_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
+export const SPACE_MEMBERS = (id: string): TableDef<{ q: string }> => ({ key: SPACES_KEY[0], path: `/api/spaces/${encodeURIComponent(id)}/members`, spec: SPACE_MEMBERS_SPEC });
 /** Add-member picker: one page of 100 users (name A–Z), or those matching `q`, each flagged when already a member. */
 export const spaceCandidates = (id: string, q = "") => ({
   key: [...SPACES_KEY, "candidates", id, q] as const,

@@ -71,6 +71,7 @@ describe("pagePerm", () => {
     expect(pagePerm("/permissions")).toBe("permission.view");
     expect(pagePerm("/audit/auth")).toBe("audit.view");
     expect(pagePerm("/nope")).toBeNull();
+    expect(pagePerm("/spaces/5b0c1f2e-0000-4000-8000-000000000000/members")).toBeNull(); // membership: page.tsx asks the API
   });
 });
 

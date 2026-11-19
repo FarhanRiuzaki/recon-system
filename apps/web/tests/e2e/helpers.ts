@@ -174,7 +174,7 @@ export async function smallTouchTargets(page: Page): Promise<string[]> {
 export const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 
 /** Ids of demo records; the API's seed makes them (UUIDv7), so tests look them up instead of writing them out. */
-export type DemoIds = { admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string };
+export type DemoIds = { admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string; treasury: string };
 let ids: Promise<DemoIds> | null = null;
 
 /** The demo ids, read once per worker through /api as the global-setup Superadmin (any role may call it). */
@@ -192,7 +192,8 @@ export function demoIds(baseURL: string | undefined): Promise<DemoIds> {
     const role = (name: string) => roles.find((r) => r.name === name)!.id;
     const out = { admin: await user("admin@example.com"), superadmin: await user("superadmin@example.com"),
       superadminRole: role("Superadmin"), adminRole: role("Admin"), viewerRole: role("Viewer"),
-      project: (await get<{ items: { id: string; name: string }[] }>("/api/projects?q=Apollo")).items.find((p) => p.name === "Apollo")!.id };
+      project: (await get<{ items: { id: string; name: string }[] }>("/api/projects?q=Apollo")).items.find((p) => p.name === "Apollo")!.id,
+      treasury: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=treasury")).items.find((s) => s.code === "treasury")!.id };
     await api.dispose();
     return out;
   })());

@@ -10,7 +10,7 @@ import { usePrefs } from "@/lib/client/prefs-context";
 import type { Page } from "@starterkit/shared/contracts/common";
 import { REMEMBERED_VIEW_QUERY_MAX } from "@starterkit/shared/views";
 import { MAX_PAGE, PAGE_SIZES, type PageSize } from "@starterkit/shared/paging";
-import { savedView, VIEW_PAGES, type ViewPage } from "@/lib/shared/prefs";
+import { savedView, viewPageOf } from "@/lib/shared/prefs";
 import { historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, writeTable } from "@/lib/shared/table-state";
 
 /**
@@ -40,15 +40,17 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
   const pathname = usePathname();
   const state: TableState<F> = useMemo(() => readTable(sp, spec), [sp, spec]);
   const { prefs, update } = usePrefs();
-  const view = (VIEW_PAGES as readonly string[]).includes(pathname) ? savedView(new URLSearchParams(sp.toString()), spec.search, pathname) : null;
+  // The page's VIEW_PAGES entry: one view per list page, one for every space's members page.
+  const listPage = viewPageOf(pathname);
+  const view = listPage ? savedView(new URLSearchParams(sp.toString()), spec.search, listPage) : null;
   useEffect(() => {
-    if (view === null) return;
+    if (view === null || !listPage) return;
     // An oversized view explicitly clears the cookie even if SSR saw no entry:
     // the departing page may have written its older view after this request began.
     const remembered = view.length <= REMEMBERED_VIEW_QUERY_MAX ? view : "";
-    if (remembered === prefs.views[pathname as ViewPage] || (view === "" && !prefs.views[pathname as ViewPage])) return;
-    update({ views: { ...prefs.views, [pathname]: remembered } });
-  }, [view, pathname, prefs.views, update]);
+    if (remembered === prefs.views[listPage] || (view === "" && !prefs.views[listPage])) return;
+    update({ views: { ...prefs.views, [listPage]: remembered } });
+  }, [view, listPage, prefs.views, update]);
 
   const set = useCallback((patch: Partial<TableState<F>>, options?: { history: "push" | "replace" }) => {
     if (window.location.pathname !== pathname) return;
@@ -88,7 +90,6 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
     onPageSizeChange: (size: number) => set({ pageSize: size as PageSize } as Partial<TableState<F>>),
   } satisfies DataTablePaging;
 
-  const listPage = (VIEW_PAGES as readonly string[]).includes(pathname) ? pathname as ViewPage : null;
   const hidden = (listPage && prefs.hidden[listPage]) || NONE;
   const setHidden = useCallback((keys: string[]) => {
     if (listPage) update({ hidden: { ...prefs.hidden, [listPage]: keys } });

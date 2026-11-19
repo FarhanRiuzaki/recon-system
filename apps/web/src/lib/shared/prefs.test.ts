@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { NAV } from "./nav";
-import { parsePrefs, prefsCookie, savedView, VIEW_PAGES, viewHref, DEFAULT_PREFS } from "./prefs";
+import { parsePrefs, prefsCookie, savedView, VIEW_PAGES, viewHref, viewPageOf, DEFAULT_PREFS } from "./prefs";
 
 const value = (cookie: string) => decodeURIComponent(cookie.split(";")[0]!.split("=").slice(1).join("="));
 
@@ -24,8 +24,19 @@ describe("prefs cookie", () => {
 });
 
 describe("remembered table views", () => {
-  it("every remembered list page is a navigation page (its link is the one that reopens the view)", () => {
-    for (const p of VIEW_PAGES) expect(NAV.map((n) => n.href)).toContain(p);
+  it("every remembered list page is a navigation page or below one (its link is the one that reopens the view)", () => {
+    for (const p of VIEW_PAGES) expect(NAV.some((n) => p === n.href || p.startsWith(`${n.href}/`)), p).toBe(true);
+  });
+  it("a space's members page is one view for every space: the pattern /spaces/[spaceId]/members", () => {
+    const [a, b] = ["5b0c1f2e-0000-4000-8000-00000000000a", "5b0c1f2e-0000-4000-8000-00000000000b"];
+    expect(viewPageOf(`/spaces/${a}/members`)).toBe("/spaces/[spaceId]/members");
+    expect(viewPageOf("/users")).toBe("/users");
+    for (const p of ["/spaces", `/spaces/${a}`, `/spaces/${a}/members/x`, "/spaces//members", "/users/x"]) expect(viewPageOf(p), p).toBeNull();
+    const prefs = { ...DEFAULT_PREFS, views: { "/spaces/[spaceId]/members": "pageSize=25&sort=-name" }, hidden: { "/spaces/[spaceId]/members": ["username"] } };
+    expect(viewHref(`/spaces/${b}/members`, prefs)).toBe(`/spaces/${b}/members?pageSize=25&sort=-name`);
+    const back = parsePrefs(value(prefsCookie(prefs, false)));
+    expect(back.views).toEqual(prefs.views);
+    expect(back.hidden).toEqual(prefs.hidden);
   });
   it("round-trip through the cookie for the list pages only", () => {
     const views = { "/users": "role=Admin&sort=-createdAt", "/audit/activity": "pageSize=50&range=30d" };

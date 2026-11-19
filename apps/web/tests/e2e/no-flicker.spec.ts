@@ -32,6 +32,7 @@ const PAGES = [
   { path: "/roles", filled: 'href="/roles/{viewerRole}"' },
   { path: "/audit/activity", filled: "View entry" },
   { path: "/me", filled: 'id="me-username"' },
+  { path: "/spaces/{treasury}/members", filled: "Viewer User" },
 ] as const;
 
 type Interval = { at: number; ms: number; path: string; what: string };

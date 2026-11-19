@@ -20,6 +20,7 @@ async function open(page: Page, path: string) {
 const TABLES = [
   ["/users", "Users"], ["/roles", "Roles"], ["/permissions", "Permissions"], ["/audit/activity", "Activity log"],
   ["/audit/auth", "Sign-in log"], ["/projects", "Projects"], ["/me/sessions", "My sessions"], ["/users/{superadmin}", "Active sessions"],
+  ["/spaces/{treasury}/members", "Members"],
 ] as const;
 
 const firstRowKey = (page: Page, table: string) => page.getByRole("table", { name: table }).getByRole("row").first().locator('[data-mobile="title"]').innerText();
