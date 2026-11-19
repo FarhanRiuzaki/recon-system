@@ -267,7 +267,8 @@ config
 - **Blocking eksplisit per pass**: cara mencari kandidat dipisah dari cara menilai. Ini memperbaiki cacat legacy di mana
   key hanya dibangun dari rule exact sehingga toleransi tidak pernah menghasilkan pasangan (`RECON.md` legacy, v4.4).
 - **Operator tertutup**, masing-masing tahu fragmen SQL-nya: `eq`, `eq_normalized`, `amount_abs_tol`,
-  `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity` (pg_trgm, hanya di dalam window sempit).
+  `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity` (pg_trgm, hanya di dalam window sempit),
+  `eq_sum` (pass 1:N/N:1: jumlah anggota grup sama dengan amount sisi tunggal, dalam toleransi).
 - **N:1 / 1:N** = group-by kunci lalu bandingkan agregat (O(n)). Subset-sum ditunda (NP-complete; laporan riset).
 - **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*; sisanya `suggested`. Duplikat exact dipasangkan
   FIFO deterministik (`ROW_NUMBER`), urutan tie-break terdokumentasi dan disimpan di evidence.
@@ -291,7 +292,8 @@ reopen hari yang sudah sign-off, purge. Ambang write-off per space = data milik 
 **Space & RBAC**: model pool (tabel bersama + `space_id`) + RLS: `FORCE ROW LEVEL SECURITY`, app connect sebagai role
 non-owner tanpa `BYPASSRLS`, tiap transaksi `SET LOCAL app.space_ids, app.user_id`, policy hanya memeriksa baris
 sendiri. Role global (RBAC Starterkit yang ada): `platform_admin` (tanpa akses data default), `auditor`,
-`mgmt_reporting`. Role per space: `space_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer`.
+`mgmt_reporting`. Role per space: `space_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer`; satu user boleh
+memegang beberapa role di satu space (mis. operator + config_maker, prototipe designer) — SoD tetap dijaga per aksi lewat user id.
 Source dimiliki satu space, dibagi ke space lain lewat `source_share` read-only.
 
 **Audit**: activity append-only (role app tanpa UPDATE/DELETE), `actor_type`, lineage per match (file/pull, row hash,

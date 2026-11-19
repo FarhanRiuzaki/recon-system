@@ -190,14 +190,14 @@ git commit -m "chore(spike): S3 CEL limits for configurator expressions"
 **Interfaces:**
 - Produces (dari `modules/spaces/index.ts`):
   - tabel `spaces (id uuid pk, code text, name text, status 'active'|'archived', created_at, updated_at)`, unique
-    `lower(code)`; `space_members (space_id fk, user_id fk → users, role text, created_at)`, pk `(space_id, user_id)`,
-    check role ∈ enum.
+    `lower(code)`; `space_members (space_id fk, user_id fk → users, role text, created_at)`, pk `(space_id, user_id, role)`,
+    check role ∈ enum. Satu user boleh beberapa role di satu space (spec §11); SoD dicek per aksi lewat user id.
   - `type SpaceRole = "space_admin" | "config_maker" | "config_checker" | "operator" | "reviewer" | "viewer"`;
     `SPACE_ROLES: readonly SpaceRole[]` di `packages/shared/src/spaces.ts` (bebas zod).
   - `withSpace<T>(scope: { spaceIds: string[]; userId: string }, fn: (tx: InTx) => Promise<T>): Promise<T>` — membuka
     `db.transaction`, lalu `select set_config('app.space_ids', $ids, true), set_config('app.user_id', $uid, true)`
     (parameter terikat, berlaku lokal transaksi), lalu `fn(tx)`.
-  - `spaceRoleOf(tx: Tx, userId: string, spaceId: string): Promise<SpaceRole | null>` (baca `for share`).
+  - `spaceRolesOf(tx: Tx, userId: string, spaceId: string): Promise<SpaceRole[]>` (baca `for share`; `[]` = bukan anggota).
   - Pola policy untuk tabel domain Plan 2+: fungsi SQL `recon_space_visible(space_id uuid) returns boolean` yang hanya
     membaca `current_setting('app.space_ids', true)` (tanpa sub-select ke tabel lain, spec §11).
 - `test/helpers/app-role.ts`: `asAppRole(tx: Tx): Promise<void>` — memastikan role `recon_app_probe` (NOLOGIN, tanpa
@@ -226,8 +226,8 @@ it("the same ref in two spaces is two rows, no 409", async () => { /* unique (sp
 
 - [ ] **Step 3: Implementasi** `schema.ts`, migration `0006_spaces.sql` (generate), `0007_space_rls.sql` (fungsi
   `recon_space_visible` — `space_id = any (string_to_array(nullif(current_setting('app.space_ids', true), ''), ',')::uuid[])`,
-  `stable`, aman saat setting kosong/NULL → false), `withSpace`, `spaceRoleOf`, `test/helpers/app-role.ts`.
-  `rules.ts`: `canManageMembers(actorRole: SpaceRole | null, hasSpaceManage: boolean): boolean` dan
+  `stable`, aman saat setting kosong/NULL → false), `withSpace`, `spaceRolesOf`, `test/helpers/app-role.ts`.
+  `rules.ts`: `canManageMembers(actorRoles: SpaceRole[], hasSpaceManage: boolean): boolean` dan
   `isSpaceRole(x: unknown): x is SpaceRole` + unit test-nya.
 
 - [ ] **Step 4: Jalankan tes, pastikan lulus**
@@ -253,11 +253,11 @@ git commit -m "feat(api): spaces module with row level security helper"
 - Test: `apps/api/src/modules/spaces/tests/integration/spaces.test.ts`
 
 **Interfaces:**
-- Consumes: `spaceRoleOf`, `SpaceRole` (Task 4).
+- Consumes: `spaceRolesOf`, `SpaceRole` (Task 4).
 - Produces: opsi route `guard: PermissionName | null | { space: SpaceRole[]; or?: PermissionName }`. Bentuk objek
-  membaca `params.spaceId` (UUID, selain itu 404), menolak 401 tanpa sesi, lalu lulus bila role user di space itu ada
+  membaca `params.spaceId` (UUID, selain itu 404), menolak 401 tanpa sesi, lalu lulus bila salah satu role user di space itu ada
   di `space`, atau bila `or` diberikan dan user memegang permission global itu; selain itu 403 sebelum handler.
-  `ctx.space = { id: string; role: SpaceRole | null }` tersedia di handler. Plan 2+ memakai bentuk ini untuk semua route
+  `ctx.space = { id: string; roles: SpaceRole[] }` tersedia di handler. Plan 2+ memakai bentuk ini untuk semua route
   `/v1/spaces/:spaceId/...`.
 - Route:
   | Method & path | Guard | Isi |
@@ -266,7 +266,7 @@ git commit -m "feat(api): spaces module with row level security helper"
   | `POST /v1/spaces` | `space.manage` | `{ code: 2–32 [a-z0-9-], name: 1–100 }` → 201; duplikat code (case-insensitive) 409 |
   | `PATCH /v1/spaces/:spaceId` | `{ space: ["space_admin"], or: "space.manage" }` | `name`, `status` |
   | `GET /v1/spaces/:spaceId/members` | `{ space: SPACE_ROLES, or: "space.manage" }` | paged |
-  | `PUT /v1/spaces/:spaceId/members/:userId` | `{ space: ["space_admin"], or: "space.manage" }` | `{ role }`; upsert |
+  | `PUT /v1/spaces/:spaceId/members/:userId` | `{ space: ["space_admin"], or: "space.manage" }` | `{ roles: SpaceRole[] }` (1–6, unik); ganti set role |
   | `DELETE /v1/spaces/:spaceId/members/:userId` | sama | menolak menghapus `space_admin` terakhir: 409 `last_space_admin` |
 
 - [ ] **Step 1: Tulis tes yang gagal** `spaces.test.ts`:
