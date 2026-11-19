@@ -413,3 +413,19 @@ Batas yang diketahui:
 - Hasil run 44467962556 pada `b87ee04` (ubuntu-24.04, Chromium): gitleaks, check dan empat shard E2E sukses; 533 lulus, 99 dilewati, 0 gagal; budget lulus, tersempit `/users` 260 byte.
 - Tidak didiagnosis: osilasi tinggi screenshot galeri mobile (CI-DEV-002) dan first paint kosong `/users` gelap/reduced di mobile (CI-DEV-003). Galeri tunggal itu sudah dipecah jadi tujuh halaman (DEC-030) dan kasus `/users` lulus di kedua run PR; akar masalah lama tetap tidak diketahui, jadi keduanya dipantau, bukan ditutup.
 
+
+## DEC-033 — Produk recon dibangun di atas Starterkit sebagai modulith
+
+19 November 2026 — pemilik menyetujui desain `docs/superpowers/specs/2026-11-19-recon-architecture-design.md` (sesi core-recon). Engine recon generik (jenis recon apa pun lewat config), modul baru `spaces`, `sources`, `ingest`, `recon`, `engine`, `breaks`, `approvals` di `apps/api` dengan feature web pasangannya. Matching set-based di PostgreSQL 18; DuckDB dan engine terpisah (Go/Rust) ditunda/ditolak (§5 desain). Throughput belum terukur: spike S1 dulu sebelum janji SLA.
+
+## DEC-034 — Space multi-tim + RLS (mengubah "Tidak ada tenant")
+
+Satu aplikasi dipakai banyak tim (Treasury, CTOP, FICO, …), tiap tim punya space dan membership sendiri. Model pool: tabel bersama dengan `space_id` + Row Level Security (`FORCE`, role app non-owner tanpa `BYPASSRLS`, `SET LOCAL` per transaksi), `space_id` di setiap unique/FK. Role global yang ada tetap untuk administrasi aplikasi; enam role per space (enum tetap di fase 1). `docs/architecture.md` bagian "Tidak ada tenant" perlu diperbarui saat modul `spaces` dibangun. Terbuka: penerimaan IT risk bank atas isolasi logis.
+
+## DEC-035 — Proses worker + pg-boss, tanpa broker baru
+
+`apps/api` punya dua entrypoint dari image yang sama: `api` dan `worker`. Job dan jadwal (interval tiap N menit, daily) lewat `pg-boss` di PostgreSQL yang sama; bukan k8s CronJob, bukan Redis/broker. Deploy: RKE untuk aplikasi, PostgreSQL HA di VM terpisah. Worker stateless dan auto catch-up dari watermark/file yang tersimpan. Perilaku pg-boss (gabung job per kunci, cap konkurensi, failover) diverifikasi di spike S2.
+
+## DEC-036 — Pengecualian sempit aturan AGENTS.md untuk engine dan ingest
+
+Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: SQL hasil kompilasi rule hanya di `modules/engine/sql/*` dan `COPY` hanya di `modules/ingest/copy.ts` (allowlist `boundaries.test.ts`, nilai tetap parameter terikat); pool koneksi worker dengan `statement_timeout` per queue (pool api tetap 5 s); tabel berpartisi lewat migration SQL custom. Dependency baru dipin exact: `pg-boss`, `@marcbachmann/cel-js`, `csv-parse`, driver DB sumber (`mssql`, `oracledb`, `mysql2`/`ibm_db` bila perlu), `@xyflow/react` (web, di-load lazy).
