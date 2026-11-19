@@ -16,8 +16,9 @@ Object.assign(process.env, {
 });
 
 // After the env above: the logger reads LOG_LEVEL when it loads.
-const { createDatabase, migrate } = await import("../../src/db/migrate");
+const { createDatabase, migrate, migrateJobs } = await import("../../src/db/migrate");
 await createDatabase(url);
 await migrate();
+await migrateJobs();
 
 export {};

@@ -1,6 +1,8 @@
 # The API image. Build from the repo root: `docker build -f apps/api/Dockerfile -t starterkit-api .`
 # Serves on API_PORT (4000): `bun src/index.ts`. One-shot migration (schema owner in MIGRATION_DATABASE_URL):
 # `docker run --rm -e MIGRATION_DATABASE_URL=… starterkit-api bun run db:migrate`; `bun run db:seed` the same way.
+# The job worker is the same image with the command `bun src/worker.ts` (probe GET /healthz on WORKER_HEALTH_PORT, 4100);
+# its orchestrator sets that probe, since the HEALTHCHECK below asks the API's port.
 FROM oven/bun:1.4.3 AS deps
 WORKDIR /app
 # Every workspace manifest, so the frozen lockfile matches; only the API's production dependencies are installed.

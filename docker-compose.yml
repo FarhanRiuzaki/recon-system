@@ -1,5 +1,5 @@
 # The stack as it runs in production: PostgreSQL 18, one-shot migrations, the API (reachable only inside the compose
-# network) and the web on http://localhost:3001 (never :3000, the dev server's port).
+# network), the job worker and the web on http://localhost:3001 (never :3000, the dev server's port).
 #   cp .env.compose.example .env.compose   # then replace every change-me and fill the secrets
 #   docker compose --env-file .env.compose up -d --build   # migrate also seeds the first Superadmin (SEED_SUPERADMIN_*)
 #   docker compose --env-file .env.compose down
@@ -37,6 +37,8 @@ services:
     environment:
       MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?set in .env.compose}
       DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
+      # The role of DATABASE_URL (scripts/compose-app-role.sh): granted DML on pg-boss's schema, which the migration owns.
+      APP_DB_ROLE: starterkit_app
       SEED_SUPERADMIN_NAME: ${SEED_SUPERADMIN_NAME:-}
       SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-}
       SEED_SUPERADMIN_USERNAME: ${SEED_SUPERADMIN_USERNAME:-}
@@ -69,6 +71,27 @@ services:
       APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_PRIVATE_KEY: ${APPLE_PRIVATE_KEY:-}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  # The job worker (apps/api/src/worker.ts): the API's image, pg-boss consumer and cron, connected as the app role. It
+  # publishes no port; its probe answers inside the container on 4100 (WORKER_HEALTH_PORT's default).
+  worker:
+    build: { context: ., dockerfile: apps/api/Dockerfile }
+    image: starterkit-api:local
+    command: ["bun", "src/worker.ts"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
+      # Optional (apps/api/.env.example); empty = the default.
+      WORKER_DB_POOL_MAX: ${WORKER_DB_POOL_MAX:-}
+      JOB_STATEMENT_TIMEOUT_MS: ${JOB_STATEMENT_TIMEOUT_MS:-}
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:4100/healthz').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped

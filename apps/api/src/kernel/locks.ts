@@ -21,3 +21,17 @@ export type LockName = keyof typeof LOCKS;
 export async function xactLock(tx: Tx, name: LockName): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(${LOCKS[name]})`);
 }
+
+/**
+ * Two-key advisory locks (`pg_advisory_xact_lock(int, int)`): first key = the kind of object, second = a hash of its
+ * id. PostgreSQL keeps the two-key space apart from the one-bigint space of LOCKS, so neither can collide with the other.
+ */
+const LOCK_KINDS = { config: 1 } as const;
+
+/**
+ * Takes the lock of recon config `configId` until `tx` ends (spec §9 run tick, step 1): one config never runs twice at
+ * once. Two configs whose ids hash alike (`hashtext`, 32 bits) wait on each other; they never run together wrongly.
+ */
+export async function configLock(tx: Tx, configId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_KINDS.config}::int, hashtext(${configId}))`);
+}

@@ -14,6 +14,12 @@ const Fields = z.object({
   DATABASE_URL: z.string(),
   MIGRATION_DATABASE_URL: z.string().optional(),
   DB_POOL_MAX: int(1, 100, 10),
+  // The worker process (src/worker.ts): its job pool (kernel/worker-db.ts) and its probe port on API_HOST.
+  WORKER_DB_POOL_MAX: int(1, 100, 10),
+  JOB_STATEMENT_TIMEOUT_MS: int(1000, 3_600_000, 120_000),
+  WORKER_HEALTH_PORT: int(1, 65535, 4100),
+  /** The role of DATABASE_URL; db:migrate grants it DML on pg-boss's schema (it never runs DDL there). */
+  APP_DB_ROLE: z.string().optional(),
   INTERNAL_API_TOKEN: z.string().min(32),
   DATA_ENCRYPTION_KEY: key32,
   SESSION_TTL_HOURS: int(1, 24, 12),
@@ -45,6 +51,10 @@ const Fields = z.object({
 const Schema = Fields.transform((c) => ({ ...c, MIGRATION_DATABASE_URL: c.MIGRATION_DATABASE_URL ?? c.DATABASE_URL }));
 /** What the pool needs (kernel/db.ts builds it when it loads). */
 const DbFields = Fields.pick({ DATABASE_URL: true, DB_POOL_MAX: true });
+/** What the worker process reads (src/worker.ts, kernel/worker-db.ts); it needs none of the API's secrets. */
+const WorkerFields = Fields.pick({
+  DATABASE_URL: true, DB_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
+});
 
 export type Config = z.output<typeof Schema>;
 
@@ -106,7 +116,16 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
  * (`config()` in index.ts).
  */
 export function loadDbConfig(env: Record<string, string | undefined>): z.output<typeof DbFields> {
-  const r = DbFields.safeParse(nonEmpty(env));
+  return loadPicked(DbFields, env);
+}
+
+/** Only the keys the worker process reads (WorkerFields), validated the same way. */
+export function loadWorkerConfig(env: Record<string, string | undefined>): z.output<typeof WorkerFields> {
+  return loadPicked(WorkerFields, env);
+}
+
+function loadPicked<S extends z.ZodType>(fields: S, env: Record<string, string | undefined>): z.output<S> {
+  const r = fields.safeParse(nonEmpty(env));
   if (r.success) return r.data;
   throw invalid(issues(r.error));
 }

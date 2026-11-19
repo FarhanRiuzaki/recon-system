@@ -1,6 +1,8 @@
 import { SQL } from "bun";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fromBunSql, PgBoss } from "pg-boss";
+import { errorDetail } from "../kernel/errors";
 import { LOCKS } from "../kernel/locks";
 import { log } from "../kernel/log";
 
@@ -87,7 +89,33 @@ export async function resetSchema(db: SQL): Promise<string[]> {
   return migrate(db);
 }
 
+/**
+ * Installs or upgrades pg-boss's schema (`pgboss`) as the schema owner, then grants APP_DB_ROLE, when set, DML on its
+ * tables, now and on the ones later pg-boss upgrades create: the app role never runs DDL, so workers start pg-boss with
+ * `migrate: false` (kernel/jobs.ts). Opens and closes its own MIGRATION_DATABASE_URL connection.
+ */
+export async function migrateJobs(): Promise<void> {
+  const conn = migrationSql();
+  try {
+    const boss = new PgBoss({ db: fromBunSql(conn), supervise: false, schedule: false, registerInstance: false });
+    boss.on("error", (err) => log.error({ err: errorDetail(err) }, "pg-boss migration error"));
+    await boss.start();
+    await boss.stop({ close: false });
+    const role = process.env.APP_DB_ROLE;
+    if (!role) return;
+    const r = `"${role.replaceAll('"', '""')}"`;
+    await conn.unsafe(`grant usage on schema pgboss to ${r};
+grant select, insert, update, delete on all tables in schema pgboss to ${r};
+grant usage, select on all sequences in schema pgboss to ${r};
+alter default privileges in schema pgboss grant select, insert, update, delete on tables to ${r};
+alter default privileges in schema pgboss grant usage, select on sequences to ${r};`);
+  } finally {
+    await conn.close();
+  }
+}
+
 if (import.meta.main) {
   const applied = await migrate();
+  await migrateJobs();
   log.info({ applied: applied.length }, applied.length ? "migrations done" : "no pending migrations");
 }

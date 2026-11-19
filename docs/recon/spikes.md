@@ -156,3 +156,88 @@ Oracle ada di jalur kritis KSEI (spec §8 mode snapshot; Medallion memakai Oracl
 diuji terhadap server Oracle nyata (DB dev bank, atau Docker bila jaringannya sudah bisa). Ini gerbang untuk Plan 2 / backlog
 REC-F2. Hal yang harus diuji di sana: login Thin ke versi Oracle bank (termasuk native network encryption/TLS), tarik 1 juta
 baris, dan timeout query (`callTimeout`).
+
+## S2: antrean pg-boss di kode produksi
+
+Tanggal 2026-11-19. Kode: `apps/api/src/kernel/jobs.ts`, `kernel/worker-db.ts`, `src/worker.ts`, `migrateJobs` di
+`src/db/migrate.ts`. Tes: `apps/api/src/kernel/tests/integration/jobs.test.ts` (8 tes, 12 s) dan `locks.test.ts`
+(`configLock`). `pg-boss` 12.38.2 (exact), dijalankan di Bun 1.4.4 (runtime mesin ini; versi pin repo 1.4.3 tidak dites)
+melawan PostgreSQL 18 lokal. Nama opsi dibaca dari `node_modules/pg-boss/README.md` dan `dist/{index,types}.d.ts`.
+
+API pg-boss yang dipakai:
+
+| Kebutuhan | Opsi / fungsi pg-boss |
+|---|---|
+| Driver | `fromBunSql(sql)` (adapter bawaan untuk `Bun.SQL`; pg-boss tidak memakai pool `pg`-nya) |
+| Gabung job per kunci | `createQueue(name, { policy: "stately" })` + `send(name, data, { singletonKey })`; `send` mengembalikan `null` bila ditolak |
+| Tunda | `send(…, { startAfter })` |
+| Cap per queue per proses | `work(name, { localConcurrency, pollingIntervalSeconds }, handler)` |
+| Job yang worker-nya mati | `expireInSeconds` (queue, bawaan 900; per job lewat `send`), dikembalikan ke `retry` oleh pass supervise (`superviseIntervalSeconds`, klaim per queue `monitorIntervalSeconds`, keduanya bawaan 60) |
+| Heartbeat | `heartbeatSeconds` (≥ 10, per queue) ada; **belum dipakai** |
+| Jadwal per kunci | `schedule(name, cron, data, { tz, key, singletonKey, missed })`, `unschedule(name, key)`, `getSchedule(name, key)` |
+| Zona waktu | `tz` (`Asia/Jakarta`); `previewSchedule(cron, { tz, from, count })` memberi kemunculan berikutnya |
+| Catch-up jadwal | `missed: "once"`: satu job untuk kemunculan terakhir yang terlewat saat tak ada worker (bawaan `skip`) |
+| Stop | `stop({ graceful: true, timeout, close: false })`: berhenti fetch, tunggu handler sampai `timeout`, lalu `fail` sisanya (di-retry) |
+| Pasang/upgrade skema | `start()` dengan `migrate: true` (bawaan) sebagai owner; worker dan API memakai `migrate: false` |
+| Tanpa hak DDL | `reindex: false` di worker (REINDEX butuh owner) |
+| `getConstructionPlans(schema)` | ada (SQL instalasi sebagai teks); **tidak dipakai**: `start()` sebagai owner juga menjalankan migrasi versi |
+
+Perilaku yang terbukti (tes di atas):
+
+| Perilaku brief | Bawaan pg-boss / fallback | Bukti |
+|---|---|---|
+| Enqueue kedua dengan kunci sama saat yang pertama antre → `null` | bawaan (`stately` + `singletonKey`) | tes 1 |
+| Tick yang masuk saat tick kunci sama aktif jalan sekali sesudahnya, tidak bersamaan, yang ketiga digabung | bawaan (`stately`: satu antre + satu aktif per kunci; job antre tidak diambil selama kuncinya aktif, walau 4 slot kosong selama 1,5 s) | tes 2 |
+| Cap `recon.heavy` 1 per worker: 10 job, maks 1 bersamaan | bawaan (`localConcurrency`) | tes 3 (5,1 s pada polling 0,5 s) |
+| Worker di-SIGKILL setelah efek commit → job diambil worker lain, efek tetap 1 baris | bawaan (expiry + retry, `retryCount` ≥ 1) + penanda selesai di transaksi yang sama dengan efek (spec §9) | tes 4 (expiry 2 s, supervise 1 s: 2,7 s) |
+| Cron `0 23 * * *` = 16:00 UTC | bawaan (`tz`) | tes 5: baris jadwal tersimpan `timezone = Asia/Jakarta`; `previewSchedule` atas baris itu dari 2026-11-19T00:00Z memberi 2026-11-19T16:00Z dan 2026-11-20T16:00Z. Tidak menunggu jam nyata dan tidak memicu job; pass cron memakai pustaka dan zona yang sama (`cron-parser` di `timekeeper.js`). `TestClock` pg-boss butuh `setSessionStatements`, yang tidak ada di adapter `fromBunSql` |
+| `stop()` menunggu job berjalan dan tidak mengambil job baru | bawaan (`graceful`) | tes 6 |
+| Role app (DML saja) bisa send/fetch/complete setelah migrate memberi grant; DDL di `pgboss` ditolak | grant di `migrateJobs` | tes 7 (`recon_app_probe`) |
+
+Fallback spec §9 (advisory lock + re-queue `startAfter`) **tidak dipakai**: semua perilaku di atas bawaan pg-boss.
+`configLock(tx, configId)` (`kernel/locks.ts`, `pg_advisory_xact_lock(int, int)` dengan `hashtext`) tetap diperlukan untuk
+langkah 1 run tick: `stately` hanya berlaku per queue, jadi `recon.tick` dan `recon.heavy` untuk config yang sama bisa
+aktif bersamaan.
+
+Batas dan angka yang belum diukur:
+- Pemulihan job dari worker mati di produksi = `expireInSeconds` (sekarang bawaan 900 s) + sampai 60 s supervise. Selama itu
+  job tetap `active`, jadi tick berikutnya config itu antre dan tidak jalan: config bisa tertahan sampai sekitar 16 menit.
+  Nilai `expireInSeconds`/`heartbeatSeconds` per queue diputuskan saat handler-nya dibuat (Plan 2–4).
+- Polling bawaan 2 s per slot: 14 slot per worker bila keenam queue punya handler (4+2+4+2+1+1), tiap slot satu query fetch tiap 2 s saat kosong; beban di
+  PostgreSQL produksi tidak diukur. LISTEN/NOTIFY (`useListenNotify`) tidak dipakai.
+- Upgrade pg-boss ke versi dengan migrasi async (BAM, mis. `CREATE INDEX CONCURRENTLY`) dijalankan oleh `migrateJobs` saat
+  `stop()` dengan tenggat bawaan 30 s; perilaku upgrade nyata belum dites (baru instalasi baru 12.38.2).
+- Failover PostgreSQL HA (koneksi putus lalu konek ulang) tidak dites.
+- `/healthz` worker: 200 bila tiap slot fetch dalam 60 s terakhir atau sedang memegang job; worker tanpa handler (plan ini)
+  dihitung hidup selama berjalan.
+
+Verdict: lulus. pg-boss 12.38.2 menyediakan gabung per kunci, cap per queue, recovery, cron ber-zona waktu dan catch-up
+jadwal tanpa fallback.
+
+## Konsekuensi untuk Plan 2–5
+
+Dari S1:
+- Matching set-based di PostgreSQL (pendekatan A); DuckDB tidak dipakai.
+- Run harian besar dipecah per chunk (awal dugaan 250.000 item per transaksi, disetel dari ukuran nyata); tick tidak dipecah.
+- Pass toleransi memakai *mutual unique best* sebelum auto-accept.
+- Ingest: COPY ke staging UNLOGGED lalu `INSERT … ON CONFLICT`.
+- Ulangi S1 di perangkat keras dan setelan PG produksi, dengan beberapa config interval, sebelum SLA dikunci.
+
+Dari S2:
+- Handler didaftarkan di `HANDLERS` (`src/worker.ts`) dan memakai `workerDb`; job dikirim lewat `enqueue`/`scheduleEvery`
+  dengan kunci per source/file/config/(config, tanggal).
+- Tiap langkah handler satu transaksi yang menulis efek + penanda selesai (job at-least-once).
+- Run tick mengambil `configLock` dulu (tick, daily dan heavy untuk config yang sama bisa aktif bersamaan antar queue).
+- Tetapkan `expireInSeconds`/`heartbeatSeconds` per queue saat handler dibuat; bawaan 15 menit menahan config selama itu bila
+  worker mati.
+
+Dari S3:
+- Evaluator `derive` (Plan 2) memakai `LIMITS` dan panjang maksimum 1000 karakter, urutan validasi panjang → parse → allowlist
+  AST → `check()`, parse sekali saat config disimpan.
+- `matches()` dilarang; regex lewat fungsi sendiri dengan pola dari daftar aman (dirancang di Plan 2).
+
+Dari S7:
+- Pull PostgreSQL: keyset paging `(updated_at, id)` dengan watermark teks mikrodetik dan urutan kolom asli.
+- Timeout connect per driver: `connectionTimeout` (Bun.SQL, detik), `connectTimeout` (mysql2, ms), `connectionTimeout`
+  (mssql, ms), `transportConnectTimeout` (oracledb, detik).
+- Oracle (KSEI), MySQL dan SQL Server belum diuji terhadap server nyata; Oracle adalah gerbang Plan 2 / REC-F2.
