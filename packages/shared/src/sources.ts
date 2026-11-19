@@ -25,6 +25,8 @@ export const FILE_ENCODINGS = ["utf-8", "latin1", "windows-1252", "utf-16le"] as
 export const SOURCE_CODE = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 export const SOURCE_NAME_MAX = 100;
 export const REVIEW_COMMENT_MAX = 1000;
+/** A source's daily health deadline, HH:MM in Asia/Jakarta. */
+export const HEALTH_DEADLINE = /^([01]\d|2[0-3]):[0-5]\d$/;
 /** The calendar every install has (system seed): Saturday and Sunday off, no holidays. */
 export const DEFAULT_CALENDAR = "id-default";
 /** A source table as `table` or `schema.table`: identifier characters only (also checked against the source's catalog). */

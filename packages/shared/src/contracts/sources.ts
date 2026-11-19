@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { SOURCE_SORTS } from "../paging";
 import {
-  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_KINDS, SOURCE_NAME_MAX,
-  SOURCE_STATUSES, VERSION_STATUSES,
+  DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -87,6 +87,15 @@ export const SourceSpec = z.strictObject({
   mutable: z.boolean(),
   calendar: z.string().trim().min(1).max(64),
   input: z.discriminatedUnion("kind", [DbWatermarkInput, DbSnapshotInput, FileInboxInput]),
+  /**
+   * The inputs of the source's health until the recon configs own them (Plan 3, which may tighten them): `graceMinutes`
+   * for a pulled source's lag, `deadline` (HH:MM, Asia/Jakarta) by which a date's snapshot or file is due. Left out =
+   * that rule doesn't judge the source.
+   */
+  health: z.strictObject({
+    graceMinutes: z.number().int().min(1).max(1440).optional(),
+    deadline: z.string().regex(HEALTH_DEADLINE, "Use HH:MM, 00:00–23:59").optional(),
+  }).optional(),
 }).superRefine((s, ctx) => {
   const issue = (message: string, path: PropertyKey[]) => ctx.addIssue({ code: "custom", message, path });
   const fields = new Set<string>();
@@ -210,7 +219,26 @@ export const SourceVersionDto = z.object({
 });
 export type SourceVersionDto = z.infer<typeof SourceVersionDto>;
 
-/** A row of GET /api/spaces/{spaceId}/sources: `shared` = owned by `spaceId`, another space, and shared to this one. */
+/**
+ * A source's health for the business date in progress (sourceHealth, apps/api/src/modules/ingest/health.ts): `reason`
+ * = why it isn't healthy; `lastError` = the last pull, file or snapshot failure, kept until one succeeds.
+ */
+export const SourceHealthDto = z.object({
+  state: z.enum(SOURCE_HEALTH),
+  businessDate: z.string(),
+  lagSeconds: z.number().int().nullable(),
+  completeThrough: z.string().nullable(),
+  reason: z.string().nullable(),
+  lastError: z.string().nullable(),
+});
+export type SourceHealthDto = z.infer<typeof SourceHealthDto>;
+
+/**
+ * A row of GET /api/spaces/{spaceId}/sources: `shared` = owned by another space and shared to this one (read-only),
+ * `owner` = that space. `health` null = no published version yet (nothing ingests). `rowsToday` = records that count
+ * for the health's business date; `quarantinedToday` = lines quarantined for it (null through a share: the quarantine
+ * stays with the owner).
+ */
 export const SourceRowDto = z.object({
   id: z.string(),
   spaceId: z.string(),
@@ -220,6 +248,10 @@ export const SourceRowDto = z.object({
   status: z.enum(SOURCE_STATUSES),
   shared: z.boolean(),
   publishedVersion: z.number().int().nullable(),
+  owner: z.object({ spaceId: z.string(), name: z.string() }).nullable(),
+  health: SourceHealthDto.nullable(),
+  rowsToday: z.number().int().nullable(),
+  quarantinedToday: z.number().int().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -230,6 +262,15 @@ export type SourceRowDto = z.infer<typeof SourceRowDto>;
  * review). Through a share: the published version only (connection null, no shares, no draft).
  */
 export const SourceDto = SourceRowDto.extend({
+  /** The health with the inputs it was judged on (the published spec's `health`; null = not set). */
+  health: SourceHealthDto.extend({ graceMinutes: z.number().int().nullable(), deadline: z.string().nullable() }).nullable(),
+  /** The next scheduled run (Asia/Jakarta cron of the source); null while paused or without a published version. */
+  nextRunAt: z.string().nullable(),
+  /** Why a paused source stopped, per column of its table: what the version expects, what was found, the effect. */
+  drift: z.object({
+    checkedAt: z.string(),
+    columns: z.array(z.object({ column: z.string(), expected: z.string(), found: z.string().nullable(), effect: z.string() })),
+  }).nullable(),
   connection: SourceConnectionDto.nullable(),
   shares: z.array(SourceShareDto),
   published: SourceVersionDto.nullable(),
@@ -302,6 +343,8 @@ export const SourceSnapshotDto = z.object({
   error: z.string().nullable(),
   startedAt: z.string(),
   finishedAt: z.string().nullable(),
+  /** The business date is closed: pulling it again needs a rerun request (Plan 5; none is closed before it). */
+  closed: z.boolean(),
 });
 export type SourceSnapshotDto = z.infer<typeof SourceSnapshotDto>;
 

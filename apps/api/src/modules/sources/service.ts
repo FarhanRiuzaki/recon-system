@@ -19,9 +19,9 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import {
-  type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, specCelError, within,
+  type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState, sourceStates, specCelError, within,
 } from "../ingest";
-import { spaces, withSpace } from "../spaces";
+import { spaceNames, spaces, withSpace } from "../spaces";
 import { canStep, specHash } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
@@ -35,10 +35,24 @@ const iso = (d: Date | null) => d?.toISOString() ?? null;
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
-const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string): SourceRowDto => ({
+type Owners = Map<string, string>;
+const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string, owners: Owners, state: SourceState | undefined): SourceRowDto => ({
   id: s.id, spaceId: s.spaceId, code: s.code, name: s.name, kind: s.kind as SourceKind, status: s.status as SourceStatus,
-  shared: s.spaceId !== spaceId, publishedVersion, createdAt: s.createdAt.toISOString(), updatedAt: s.updatedAt.toISOString(),
+  shared: s.spaceId !== spaceId, publishedVersion,
+  owner: s.spaceId !== spaceId ? { spaceId: s.spaceId, name: owners.get(s.spaceId) ?? "" } : null,
+  health: state?.health ? omitInputs(state.health) : null, rowsToday: state?.rowsToday ?? null, quarantinedToday: state?.quarantinedToday ?? null,
+  createdAt: s.createdAt.toISOString(), updatedAt: s.updatedAt.toISOString(),
 });
+/** The list's health: the detail's without the inputs it was judged on. */
+const omitInputs = ({ graceMinutes: _g, deadline: _d, ...h }: NonNullable<SourceState["health"]>) => h;
+/** What the screens show of `list` (ingest's read model) and the names of the spaces that own the shared ones. */
+async function readModel(tx: InTx, list: { s: SourceRow; spec: unknown }[], spaceId: string) {
+  const states = await sourceStates(tx, list.map(({ s, spec }) => ({
+    id: s.id, spaceId: s.spaceId, kind: s.kind as SourceKind, status: s.status as SourceStatus, spec: (spec ?? null) as SourceSpec | null,
+  })), spaceId);
+  const owners = await spaceNames(tx, list.filter(({ s }) => s.spaceId !== spaceId).map(({ s }) => s.spaceId));
+  return { states, owners };
+}
 const versionDto = (v: VersionRow): SourceVersionDto => ({
   id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as SourceSpec | null, specHash: v.specHash,
   makerId: v.makerId, contributorIds: v.contributorIds, checkerId: v.checkerId, reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
@@ -58,19 +72,21 @@ const ofSource = (s: SourceRow) => and(eq(sourceVersions.spaceId, s.spaceId), eq
 
 /** One page of the sources the space may read (its own and those shared to it), name A–Z unless `sort` says otherwise. */
 export function sourcePage(ctx: Ctx, q: SourceListQuery): Promise<Page<SourceRowDto>> {
-  return inSpace(ctx, (tx, spaceId) => {
+  return inSpace(ctx, async (tx, spaceId) => {
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const where = and(visibleIn(tx, spaceId), like ? or(ilike(sources.code, like), ilike(sources.name, like)) : undefined);
     // at most one published version per source (source_versions_published_key)
     const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
-    return pageQuery({
-      rows: tx.select({ s: sources, published: sourceVersions.version }).from(sources).leftJoin(sourceVersions, published).where(where).$dynamic(),
+    const page = await pageQuery({
+      rows: tx.select({ s: sources, published: sourceVersions.version, spec: sourceVersions.spec }).from(sources).leftJoin(sourceVersions, published).where(where).$dynamic(),
       count: tx.select(one).from(sources).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { name: sql`lower(${sources.name})`, createdAt: sources.createdAt }, "name", sources.id),
       query: q,
-      map: (r) => rowDto(r.s, r.published, spaceId),
+      map: (r) => r,
       on: tx,
     });
+    const { states, owners } = await readModel(tx, page.items, spaceId);
+    return { ...page, items: page.items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id))) };
   });
 }
 
@@ -90,8 +106,13 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string): Promise<Sourc
   const shares: SourceShareDto[] = own ? await tx.select({ spaceId: spaces.id, code: spaces.code, name: spaces.name }).from(sourceShares)
     .innerJoin(spaces, eq(spaces.id, sourceShares.toSpaceId))
     .where(and(eq(sourceShares.spaceId, s.spaceId), eq(sourceShares.sourceId, s.id))).orderBy(asc(spaces.name)) : [];
+  const { states, owners } = await readModel(tx, [{ s, spec: published?.spec }], spaceId);
+  const state = states.get(s.id);
   return {
-    ...rowDto(s, published?.version ?? null, spaceId),
+    ...rowDto(s, published?.version ?? null, spaceId, owners, state),
+    health: state?.health ?? null,
+    nextRunAt: state?.nextRunAt ?? null,
+    drift: state?.drift ?? null,
     connection: connection ? connectionDto(connection) : null,
     shares,
     published: published ? versionDto(published) : null,

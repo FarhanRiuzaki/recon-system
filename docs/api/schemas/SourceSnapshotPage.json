@@ -42,6 +42,9 @@
               "string",
               "null"
             ]
+          },
+          "closed": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -51,7 +54,8 @@
           "rows",
           "error",
           "startedAt",
-          "finishedAt"
+          "finishedAt",
+          "closed"
         ],
         "additionalProperties": false
       }

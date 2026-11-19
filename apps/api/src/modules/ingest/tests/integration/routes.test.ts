@@ -2,18 +2,21 @@
 // a source is shared to may read, the run now (queued once, activity entry, day_closed, paused).
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { QuarantineRowDto, SourceFileDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
+import type { QuarantineRowDto, SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
+import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { activity } from "../../../audit";
 import { sourceShares, sources, sourceVersions } from "../../../sources";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { quarantineRows, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
+import { makeCalendar } from "../../map";
+import { previousBusinessDay, todayIn } from "../../rules";
+import { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
 import { ingestHooks } from "../../service";
-import { ksei } from "../unit/fixtures";
+import { idDefault, ksei } from "../unit/fixtures";
 
 const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
 const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
@@ -128,5 +131,81 @@ describe("POST run", () => {
     await db.update(spaces).set({ status: "archived" }).where(eq(spaces.id, A));
     const r = await run(t.adm, FILE_SRC);
     expect([r.status, await code(r)]).toEqual([409, "space_archived"]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ read model
+// GET /v1/spaces/:spaceId/sources and /:sourceId carry what the screens show (ingest sourceStates): health, the
+// business date's records and quarantine, the owner of a shared source, the next run and a paused source's drift.
+describe("the sources list and detail read model", () => {
+  const today = () => todayIn(new Date());
+  /** The date a file or snapshot source is judged on now: the business day before today (sourceHealth's rule). */
+  const D = () => previousBusinessDay(makeCalendar(idDefault), today());
+  const list = async (s: string, token: string) => (await json<Page<SourceRowDto>>(call("GET", `/v1/spaces/${s}/sources`, { token }))).items;
+  const detail = (s: string, src: string, token: string) => json<SourceDto>(call("GET", `/v1/spaces/${s}/sources/${src}`, { token }));
+  const record = (sourceId: string, businessDate: string, n: number) => ({
+    id: Bun.randomUUIDv7(), spaceId: A, sourceId, sourceVersionId: Bun.randomUUIDv7(), businessDate, bdayIndex: 1, attrs: {}, rowHash: `h${n}`, originId: Bun.randomUUIDv7(),
+  });
+
+  beforeEach(async () => {
+    await db.transaction((tx) => ensureMonthPartitions(tx, records, new Date(`${D()}T00:00:00Z`), 1));
+    await db.insert(sourceFiles).values({
+      id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, name: "act-today.txt", sha256: "shaD", size: 10, modifiedAt: new Date(), status: "ingested", version: 1, businessDate: D(),
+    });
+    await db.insert(records).values([record(FILE_SRC, D(), 1), record(FILE_SRC, D(), 2), record(FILE_SRC, "2026-11-02", 3)]);
+    await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: Bun.randomUUIDv7(), lineNo: 3, raw: "x", reasons: {}, businessDate: D() });
+  });
+
+  it("the owner space: health, the business date's records and quarantine, no owner", async () => {
+    const rows = await list(A, t.op);
+    expect(rows.find((r) => r.id === FILE_SRC)).toMatchObject({
+      shared: false, owner: null, rowsToday: 2, quarantinedToday: 1,
+      health: { state: "healthy", businessDate: D(), reason: null, lastError: null },
+    });
+    // no active snapshot for D yet and no deadline set: degraded, never down
+    expect(rows.find((r) => r.id === SNAP_SRC)).toMatchObject({
+      rowsToday: 0, quarantinedToday: 0, health: { state: "degraded", businessDate: D(), reason: `No active snapshot for ${D()}` },
+    });
+    expect(rows[0]!.health).not.toHaveProperty("deadline");
+  });
+
+  it("the space it is shared to: the owner's name and the health, no quarantine count", async () => {
+    const [row] = await list(B, t.other);
+    expect(row).toMatchObject({ id: FILE_SRC, shared: true, owner: { spaceId: A, name: "TREASURY" }, rowsToday: 2, quarantinedToday: null, health: { state: "healthy" } });
+    expect(await detail(B, FILE_SRC, t.other)).toMatchObject({ owner: { spaceId: A, name: "TREASURY" }, quarantinedToday: null, drift: null });
+  });
+
+  it("a deadline that passed makes a missing snapshot down; the detail names the inputs and the next run", async () => {
+    await db.update(sourceVersions).set({ spec: { ...ksei(), input: { kind: "db_snapshot", query: "select 1 where :business_date is not null", schedule: "0 6 * * *" }, health: { deadline: "00:00" } } })
+      .where(eq(sourceVersions.sourceId, SNAP_SRC));
+    const d = await detail(A, SNAP_SRC, t.op);
+    expect(d.health).toMatchObject({ state: "down", graceMinutes: null, deadline: "00:00", reason: `No active snapshot for ${D()}` });
+    const next = new Date(d.nextRunAt!);
+    expect(next.getTime()).toBeGreaterThan(Date.now());
+    expect([next.getUTCHours(), next.getUTCMinutes()]).toEqual([23, 0]); // 06:00 WIB
+  });
+
+  it("a paused source: down with its last error and the drift per column; no next run", async () => {
+    const drift = [{ column: "gone", expected: "string", found: null, effect: "The column is gone, so it can't be read." }];
+    await db.update(sources).set({ status: "paused" }).where(eq(sources.id, SNAP_SRC));
+    await db.insert(sourceCursors).values({ spaceId: A, sourceId: SNAP_SRC, lastError: "Column \"gone\" is no longer in the query.", drift });
+    const d = await detail(A, SNAP_SRC, t.op);
+    expect(d).toMatchObject({ nextRunAt: null, health: { state: "down", lastError: "Column \"gone\" is no longer in the query." }, drift: { columns: drift } });
+    expect(typeof d.drift?.checkedAt).toBe("string");
+    // active again: an old drift is not shown
+    await db.update(sources).set({ status: "active" }).where(eq(sources.id, SNAP_SRC));
+    expect((await detail(A, SNAP_SRC, t.op)).drift).toBeNull();
+  });
+
+  it("a source without a published version has no health or counts", async () => {
+    await db.update(sourceVersions).set({ status: "draft" }).where(eq(sourceVersions.sourceId, SNAP_SRC));
+    expect((await list(A, t.op)).find((r) => r.id === SNAP_SRC)).toMatchObject({ publishedVersion: null, health: null, rowsToday: null, quarantinedToday: null });
+  });
+
+  it("each snapshot row says whether its day is closed (ingestHooks.dayClosed)", async () => {
+    const p = () => json<Page<SourceSnapshotDto>>(call("GET", path(A, SNAP_SRC, "snapshots"), { token: t.op }));
+    expect((await p()).items.map((x) => x.closed)).toEqual([false, false]);
+    ingestHooks.dayClosed = async (_tx, _s, d) => d === "2026-11-02";
+    expect((await p()).items.map((x) => x.closed)).toEqual([true, true]);
   });
 });

@@ -362,6 +362,10 @@ describe("Review Focus 4: the source's columns change", () => {
     expect(await pullSource(scope(s), probe)).toBe("paused");
     expect(await allRecords(s)).toBe(0);
     expect((await cursorOf(s))?.lastError).toBe('Column "gone" is no longer in table public.chg. Make a new source version for the columns it has now.');
+    // the detail's "What changed" table reads the same pause per column
+    expect((await cursorOf(s))?.drift).toEqual([
+      { column: "gone", expected: "string", found: null, effect: "The column is gone, so it can't be read. Renamed? Pick the new column in a new version." },
+    ]);
   });
 
   it("a file whose header is wider than the declared fields fails and pauses its source", async () => {

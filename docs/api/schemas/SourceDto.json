@@ -45,11 +45,196 @@
         }
       ]
     },
+    "owner": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "spaceId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "spaceId",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "health": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": [
+                "healthy",
+                "degraded",
+                "down"
+              ]
+            },
+            "businessDate": {
+              "type": "string"
+            },
+            "lagSeconds": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "completeThrough": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lastError": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "graceMinutes": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "deadline": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "state",
+            "businessDate",
+            "lagSeconds",
+            "completeThrough",
+            "reason",
+            "lastError",
+            "graceMinutes",
+            "deadline"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rowsToday": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "quarantinedToday": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "createdAt": {
       "type": "string"
     },
     "updatedAt": {
       "type": "string"
+    },
+    "nextRunAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "drift": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "checkedAt": {
+              "type": "string"
+            },
+            "columns": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "column": {
+                    "type": "string"
+                  },
+                  "expected": {
+                    "type": "string"
+                  },
+                  "found": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "effect": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "column",
+                  "expected",
+                  "found",
+                  "effect"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "checkedAt",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "connection": {
       "anyOf": [
@@ -734,6 +919,21 @@
                           "additionalProperties": false
                         }
                       ]
+                    },
+                    "health": {
+                      "type": "object",
+                      "properties": {
+                        "graceMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "deadline": {
+                          "type": "string",
+                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -1426,6 +1626,21 @@
                           "additionalProperties": false
                         }
                       ]
+                    },
+                    "health": {
+                      "type": "object",
+                      "properties": {
+                        "graceMinutes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 1440
+                        },
+                        "deadline": {
+                          "type": "string",
+                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   },
                   "required": [
@@ -1518,8 +1733,14 @@
     "status",
     "shared",
     "publishedVersion",
+    "owner",
+    "health",
+    "rowsToday",
+    "quarantinedToday",
     "createdAt",
     "updatedAt",
+    "nextRunAt",
+    "drift",
     "connection",
     "shares",
     "published",

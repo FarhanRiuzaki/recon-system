@@ -1,6 +1,7 @@
 // Pure rules of the ingest pipeline (unit-tested): which business date a scheduled snapshot pulls, where completeness
 // stands after a pull, a file or a snapshot, and whether a source's columns still are what its spec was approved on.
 import type { FieldSpec } from "@starterkit/shared/contracts/sources";
+import { CronExpressionParser } from "cron-parser";
 import { coerce, DEFAULT_TIMEZONE } from "./coerce";
 import type { Column } from "./connectors";
 import type { Family } from "./connectors/dialect";
@@ -52,6 +53,11 @@ const FITS: Record<FieldSpec["type"], Family[]> = {
 };
 const NEW_VERSION = "Make a new source version for the columns it has now.";
 
+/** One column a paused source no longer reads as its version expects: what the version expects, what is there now (null = gone) and the effect. */
+export type DriftColumn = { column: string; expected: string; found: string | null; effect: string };
+/** Why a source's columns no longer fit its spec: one sentence (its last error) and the columns behind it. */
+export type Drift = { message: string; columns: DriftColumn[] };
+
 /**
  * Why the source's columns no longer fit its spec, or null (spec §7 step 4): a declared field (or the watermark or id
  * column) missing; a watermark or id column that may be NULL (such a row would never be pulled: keyset paging skips
@@ -59,15 +65,43 @@ const NEW_VERSION = "Make a new source version for the columns it has now.";
  * column whose native type changed since the first pull under this version (`baseline`). `family` = the engine's
  * familyOf.
  */
-export function driftOf(cols: Column[], fields: Pick<FieldSpec, "name" | "type">[], keyset: string[], baseline: Baseline | null, where: string, family: (type: string) => Family): string | null {
+export function driftOf(cols: Column[], fields: Pick<FieldSpec, "name" | "type">[], keyset: string[], baseline: Baseline | null, where: string, family: (type: string) => Family): Drift | null {
   const byName = new Map(cols.map((c) => [c.name, c]));
-  const missing = [...fields.map((f) => f.name), ...keyset].filter((n) => !byName.has(n));
-  if (missing.length) return `Column ${missing.map((n) => `"${n}"`).join(", ")} is no longer in ${where}. ${NEW_VERSION}`;
+  const typeOf = new Map(fields.map((f) => [f.name, f.type as string]));
+  const quoted = (names: string[]) => names.map((n) => `"${n}"`).join(", ");
+  const missing = [...new Set([...fields.map((f) => f.name), ...keyset])].filter((n) => !byName.has(n));
+  if (missing.length) {
+    return {
+      message: `Column ${quoted(missing)} is no longer in ${where}. ${NEW_VERSION}`,
+      columns: missing.map((n) => ({ column: n, expected: typeOf.get(n) ?? "watermark or id", found: null, effect: "The column is gone, so it can't be read. Renamed? Pick the new column in a new version." })),
+    };
+  }
   const nullable = keyset.filter((n) => byName.get(n)!.nullable === true);
-  if (nullable.length) return `Column ${nullable.map((n) => `"${n}"`).join(", ")} of ${where} may be empty (nullable); a row without it would never be pulled. Use a watermark and id that are never empty.`;
+  if (nullable.length) {
+    return {
+      message: `Column ${quoted(nullable)} of ${where} may be empty (nullable); a row without it would never be pulled. Use a watermark and id that are never empty.`,
+      columns: nullable.map((n) => ({ column: n, expected: "never empty", found: `${byName.get(n)!.type}, may be empty`, effect: "A row without it would never be pulled. Use a watermark and id that are never empty." })),
+    };
+  }
   const misfit = fields.filter((f) => !FITS[f.type].includes(family(byName.get(f.name)!.type)));
-  if (misfit.length) return `${misfit.map((f) => `Column "${f.name}" of ${where} is ${byName.get(f.name)!.type}, which can't hold the field's type ${f.type}`).join("; ")}. ${NEW_VERSION}`;
+  if (misfit.length) {
+    return {
+      message: `${misfit.map((f) => `Column "${f.name}" of ${where} is ${byName.get(f.name)!.type}, which can't hold the field's type ${f.type}`).join("; ")}. ${NEW_VERSION}`,
+      columns: misfit.map((f) => ({ column: f.name, expected: f.type, found: byName.get(f.name)!.type, effect: `It can't hold a ${f.type}; set the field's type in a new version.` })),
+    };
+  }
   const changed = (baseline ?? []).filter((b) => byName.has(b.name) && byName.get(b.name)!.type !== b.type);
-  if (changed.length) return `Column ${changed.map((b) => `"${b.name}" changed from ${b.type} to ${byName.get(b.name)!.type}`).join(", ")} in ${where}. ${NEW_VERSION}`;
+  if (changed.length) {
+    return {
+      message: `Column ${changed.map((b) => `"${b.name}" changed from ${b.type} to ${byName.get(b.name)!.type}`).join(", ")} in ${where}. ${NEW_VERSION}`,
+      columns: changed.map((b) => ({ column: b.name, expected: b.type, found: byName.get(b.name)!.type, effect: "The type changed since this version's first pull; check the field's type and format in a new version." })),
+    };
+  }
   return null;
 }
+
+/** The instant `hhmm` (HH:MM) falls on `date` in Asia/Jakarta, which keeps UTC+7 all year (no daylight saving). */
+export const deadlineOn = (date: string, hhmm: string): Date => new Date(`${date}T${hhmm}:00+07:00`);
+
+/** The next occurrence of `cron` after `now`, evaluated in Asia/Jakarta as pg-boss does (kernel/jobs.ts JOB_TZ). */
+export const nextRunOf = (cron: string, now: Date): Date => CronExpressionParser.parse(cron, { currentDate: now, tz: DEFAULT_TIMEZONE }).next().toDate();

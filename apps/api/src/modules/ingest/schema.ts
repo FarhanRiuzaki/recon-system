@@ -47,7 +47,8 @@ export const sourceFiles = pgTable("source_files", {
  * Where a source's ingest stands: the pull watermark (last row's watermark and id, as the connector wrote them),
  * `complete_through` (data up to here is complete: watermark − lookback, or the end of the last business date with an
  * active snapshot or ingested file), the last success and the last error. `columns` = the source's columns (name and
- * native type) as first pulled under `columns_version_id`; a later pull that finds them changed pauses the source.
+ * native type) as first pulled under `columns_version_id`; a later pull that finds them changed pauses the source, with
+ * the columns that changed in `drift`.
  */
 export const sourceCursors = pgTable("source_cursors", {
   spaceId: uuid("space_id").notNull(),
@@ -59,6 +60,8 @@ export const sourceCursors = pgTable("source_cursors", {
   lastError: text("last_error"),
   columns: jsonb("columns"),
   columnsVersionId: uuid("columns_version_id"),
+  /** Why a paused source stopped, per column (rules.ts DriftColumn[]); cleared with last_error. */
+  drift: jsonb("drift"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   primaryKey({ name: "source_cursors_pkey", columns: [t.spaceId, t.sourceId] }),

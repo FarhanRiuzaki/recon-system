@@ -34,6 +34,15 @@ describe("canStep", () => {
 describe("SourceSpec", () => {
   const issues = (v: unknown) => SourceSpec.safeParse(v).error?.issues.map((i) => i.message) ?? [];
 
+  it("health inputs: grace 1–1440 minutes and a deadline HH:MM, each optional", () => {
+    expect(issues({ ...ksei(), health: { graceMinutes: 30, deadline: "09:00" } })).toEqual([]);
+    expect(issues({ ...ksei(), health: {} })).toEqual([]);
+    expect(issues({ ...ksei(), health: { graceMinutes: 0 } })).toHaveLength(1);
+    expect(issues({ ...ksei(), health: { graceMinutes: 1441 } })).toHaveLength(1);
+    expect(issues({ ...ksei(), health: { deadline: "24:00" } })).toEqual(["Use HH:MM, 00:00–23:59"]);
+    expect(issues({ ...ksei(), health: { deadline: "9:00" } })).toEqual(["Use HH:MM, 00:00–23:59"]);
+  });
+
   it("accepts the KSEI file inbox spec", () => {
     expect(issues(ksei())).toEqual([]);
   });

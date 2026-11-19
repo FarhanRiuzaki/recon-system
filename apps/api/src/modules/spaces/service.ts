@@ -51,6 +51,12 @@ export async function isSpaceArchived(tx: Tx, spaceId: string): Promise<boolean>
   return r?.status === "archived";
 }
 
+/** The names of spaces `ids`, by id (the owner of a source shared to another space). */
+export async function spaceNames(tx: Tx, ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  return new Map((await tx.select({ id: spaces.id, name: spaces.name }).from(spaces).where(inArray(spaces.id, [...new Set(ids)]))).map((r) => [r.id, r.name]));
+}
+
 const NOW = sql`now()`;
 const DUPLICATE = () => new ApiError("duplicate", "Another space already has this code. Use a different one.");
 

@@ -1,0 +1,1 @@
+ALTER TABLE "source_cursors" ADD COLUMN "drift" jsonb;

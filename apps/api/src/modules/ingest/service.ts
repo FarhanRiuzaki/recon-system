@@ -15,10 +15,10 @@
 // version is approved. A connection that fails leaves the source active with last_error; the next run tries again.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  IngestListQuery, QuarantineRowDto, RunSourceBody, RunSourceDto, SourceFileDto, SourceSnapshotDto, SourceSpec,
+  IngestListQuery, QuarantineRowDto, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
-import type { DbEngine } from "@starterkit/shared/sources";
-import { and, desc, eq, exists, inArray, isNull, or, sql } from "drizzle-orm";
+import type { DbEngine, SourceKind, SourceStatus } from "@starterkit/shared/sources";
+import { and, count, desc, eq, exists, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { loadWorkerConfig } from "../../kernel/config";
 import { decryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
@@ -37,7 +37,9 @@ import { insertBatch, makePartitions, MissingPartition, supersede } from "./copy
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
 import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
-import { type Baseline, completeThroughOf, driftOf, endOfDay, previousBusinessDay, todayIn } from "./rules";
+import { DEFAULT_TIMEZONE } from "./coerce";
+import { sourceHealth } from "./health";
+import { type Baseline, completeThroughOf, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, nextRunOf, previousBusinessDay, todayIn } from "./rules";
 import { quarantineRows, rawRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
@@ -99,17 +101,18 @@ async function load(tx: InTx, s: Scope): Promise<Loaded | null> {
   return { status: src.status, versionId: v.id, spec, calendar: makeCalendar(cal), cursor, conn };
 }
 
-/** Writes the cursor; `completeThrough` only moves forward. */
+/** Writes the cursor; `completeThrough` only moves forward; clearing `lastError` clears the drift that came with it. */
 async function setCursor(tx: InTx, s: Scope, set: Partial<typeof sourceCursors.$inferInsert>, completeThrough?: Date | null): Promise<void> {
+  if (set.lastError === null) set = { ...set, drift: null };
   const ct = completeThrough ? { completeThrough: sql`greatest(${sourceCursors.completeThrough}, ${completeThrough.toISOString()}::timestamptz)` } : {};
   await tx.insert(sourceCursors).values({ ...s, ...set, ...(completeThrough ? { completeThrough } : {}) })
     .onConflictDoUpdate({ target: [sourceCursors.spaceId, sourceCursors.sourceId], set: { ...set, ...ct, updatedAt: NOW } });
 }
 
-/** Pauses the source with `reason` as its last error. */
-async function pause(tx: InTx, s: Scope, reason: string): Promise<void> {
+/** Pauses the source with `reason` as its last error and, when its columns changed, `drift` per column. */
+async function pause(tx: InTx, s: Scope, reason: string, drift: DriftColumn[] | null = null): Promise<void> {
   await pauseSource(tx, s.spaceId, s.sourceId);
-  await setCursor(tx, s, { lastError: reason });
+  await setCursor(tx, s, { lastError: reason, drift });
 }
 
 type Line = { line: number; ok: true; raw: Row } | { line: number; ok: false; cells: string[]; reasons: Record<string, string> };
@@ -181,11 +184,11 @@ async function withPartitions<T>(on: Tx, step: () => Promise<T>): Promise<T> {
   }
 }
 
-/** A connector failure as the source's state: a spec error pauses it, anything else is its last error. */
-async function connectorFailed(s: Scope, on: Tx, e: unknown, prefix = ""): Promise<"paused" | "failed"> {
+/** A connector failure as the source's state: a spec error pauses it (with `drift` when its columns changed), anything else is its last error. */
+async function connectorFailed(s: Scope, on: Tx, e: unknown, prefix = "", drift: Drift | null = null): Promise<"paused" | "failed"> {
   if (!(e instanceof ConnectorError)) throw e;
   const reason = prefix + e.message;
-  await inScope(s, on, (tx) => (e.kind === "spec" ? pause(tx, s, reason) : setCursor(tx, s, { lastError: reason })));
+  await inScope(s, on, (tx) => (e.kind === "spec" ? pause(tx, s, reason, drift?.columns) : setCursor(tx, s, { lastError: reason })));
   return e.kind === "spec" ? "paused" : "failed";
 }
 
@@ -194,9 +197,9 @@ const baselineOf = (cols: { name: string; type: string }[], names: string[]): Ba
 
 /**
  * The columns of `from` checked against the spec (driftOf); a misfit pauses the source. Saves the baseline on the first
- * pull of a version. Answers the pause reason, or null.
+ * pull of a version. Answers why it no longer fits, or null.
  */
-async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: From, keyset: string[]): Promise<string | null> {
+async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: From, keyset: string[]): Promise<Drift | null> {
   const names = [...l.spec.fields.map((f) => f.name), ...keyset];
   const cols = await c.introspect(from);
   const baseline = l.cursor?.columnsVersionId === l.versionId ? (l.cursor.columns as Baseline) : null;
@@ -221,7 +224,7 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
   try {
     const drift = await checkColumns(s, on, l, c, from, [wm.column, wm.id_column]);
     if (drift) {
-      await inScope(s, on, (tx) => pause(tx, s, drift));
+      await inScope(s, on, (tx) => pause(tx, s, drift.message, drift.columns));
       return "paused";
     }
     const wmField = l.spec.fields.find((f) => f.name === wm.column);
@@ -270,9 +273,10 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
   if (!started) return "day_closed";
   const counts = newCounts();
   const c = ingestHooks.connect(l.conn);
+  let drift: Drift | null = null;
   try {
-    const drift = await checkColumns(s, on, l, c, { query, businessDate }, []);
-    if (drift) throw new ConnectorError("spec", null, drift);
+    drift = await checkColumns(s, on, l, c, { query, businessDate }, []);
+    if (drift) throw new ConnectorError("spec", null, drift.message);
     const origin: Origin = { origin: "snapshot", originId: id, snapshotId: id, businessDate, text: (cells) => JSON.stringify(cells) };
     let n = 0;
     for await (const page of c.pullSnapshot(query, businessDate, { columns: l.spec.fields.map((f) => f.name), chunk: SNAPSHOT_CHUNK })) {
@@ -300,7 +304,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
     const reason = e instanceof ConnectorError ? e.message : "The snapshot stopped on an unexpected error.";
     await inScope(s, on, (tx) => tx.update(sourceSnapshots).set({ status: "failed", rows: counts.added, error: reason, finishedAt: NOW })
       .where(and(eq(sourceSnapshots.id, id), eq(sourceSnapshots.status, "loading"))));
-    return connectorFailed(s, on, e, `Snapshot ${businessDate}: `);
+    return connectorFailed(s, on, e, `Snapshot ${businessDate}: `, drift);
   } finally {
     await c.close();
   }
@@ -447,6 +451,71 @@ export const ingestHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> =
   [QUEUES.maintenancePartitions]: async () => { await ensureIngestPartitions(on); },
 });
 
+// ------------------------------------------------------------------------------------------------ read model
+// What the sources screens show of each source (the sources module's list and detail call it): its health through
+// sourceHealth, the records and quarantined lines of the business date that health judges, the next scheduled run and
+// a paused source's drift. A fixed number of queries for a whole page of sources, never one per source.
+
+/** A source as the sources list reads it: `spec` = its published version's (null = none yet). */
+export type ReadSource = { id: string; spaceId: string; kind: SourceKind; status: SourceStatus; spec: SourceSpec | null };
+export type SourceState = Pick<SourceDto, "health" | "rowsToday" | "quarantinedToday" | "nextRunAt" | "drift">;
+const NO_STATE: SourceState = { health: null, rowsToday: null, quarantinedToday: null, nextRunAt: null, drift: null };
+
+/**
+ * The state of each of `list` as space `viewer` sees it, by source id. A source without a published version has none.
+ * `quarantinedToday` is null for a source shared to `viewer` (its quarantine stays with the owner, 0014 RLS).
+ */
+export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string, now = new Date()): Promise<Map<string, SourceState>> {
+  const out = new Map(list.map((x) => [x.id, NO_STATE]));
+  const pub = list.filter((x): x is ReadSource & { spec: SourceSpec } => x.spec !== null);
+  if (!pub.length) return out;
+  const ids = pub.map((x) => x.id);
+  const cals = await tx.select({ code: calendars.code, weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars)
+    .where(inArray(calendars.code, [...new Set(pub.map((x) => x.spec.calendar))]));
+  const calOf = new Map(cals.map((c) => [c.code, makeCalendar(c)]));
+  const cursors = new Map((await tx.select().from(sourceCursors).where(inArray(sourceCursors.sourceId, ids))).map((c) => [c.sourceId, c]));
+  const snaps = await tx.select({ id: sourceSnapshots.sourceId, date: max(sourceSnapshots.businessDate) }).from(sourceSnapshots)
+    .where(and(inArray(sourceSnapshots.sourceId, ids), eq(sourceSnapshots.status, "active"))).groupBy(sourceSnapshots.sourceId);
+  const files = await tx.select({ id: sourceFiles.sourceId, date: max(sourceFiles.businessDate) }).from(sourceFiles)
+    .where(and(inArray(sourceFiles.sourceId, ids), eq(sourceFiles.status, "ingested"))).groupBy(sourceFiles.sourceId);
+  const latest = new Map([...snaps, ...files].map((r) => [r.id, r.date]));
+  const today = todayIn(now);
+  const judged = pub.flatMap((x) => {
+    const calendar = calOf.get(x.spec.calendar);
+    if (!calendar) return [];
+    const c = cursors.get(x.id);
+    const { graceMinutes = null, deadline = null } = x.spec.health ?? {};
+    const h = sourceHealth({
+      kind: x.kind, status: x.status, lastError: c?.lastError ?? null, completeThrough: c?.completeThrough ?? null, calendar,
+      latestActiveDate: latest.get(x.id) ?? null, graceSeconds: graceMinutes === null ? null : graceMinutes * 60,
+      deadline: deadline === null ? null : deadlineOn(today, deadline),
+    }, now);
+    return [{ x, c, health: { ...h, lastError: c?.lastError ?? null, graceMinutes, deadline } }];
+  });
+  if (!judged.length) return out;
+  const rows = new Map((await tx.select({ id: records.sourceId, n: count() }).from(records).where(and(
+    or(...judged.map((j) => and(eq(records.spaceId, j.x.spaceId), eq(records.sourceId, j.x.id), eq(records.businessDate, j.health.businessDate)))),
+    currentRecord(tx),
+  )).groupBy(records.sourceId)).map((r) => [r.id, r.n]));
+  const own = judged.filter((j) => j.x.spaceId === viewer);
+  // a pulled line has no business date of its own: it counts on the day it was quarantined
+  const lineDate = sql`coalesce(${quarantineRows.businessDate}, (${quarantineRows.createdAt} at time zone ${DEFAULT_TIMEZONE})::date)`;
+  const quarantined = new Map(own.length ? (await tx.select({ id: quarantineRows.sourceId, n: count() }).from(quarantineRows).where(
+    or(...own.map((j) => and(eq(quarantineRows.spaceId, j.x.spaceId), eq(quarantineRows.sourceId, j.x.id), sql`${lineDate} = ${j.health.businessDate}::date`))),
+  ).groupBy(quarantineRows.sourceId)).map((r) => [r.id, r.n]) : []);
+  for (const { x, c, health } of judged) {
+    const cron = x.spec.input.kind === "db_snapshot" ? x.spec.input.schedule : EVERY_MINUTE;
+    out.set(x.id, {
+      health,
+      rowsToday: rows.get(x.id) ?? 0,
+      quarantinedToday: x.spaceId === viewer ? (quarantined.get(x.id) ?? 0) : null,
+      nextRunAt: x.status === "active" ? nextRunOf(cron, now).toISOString() : null,
+      drift: x.status === "paused" && c?.drift ? { checkedAt: c.updatedAt.toISOString(), columns: c.drift as DriftColumn[] } : null,
+    });
+  }
+  return out;
+}
+
 // ------------------------------------------------------------------------------------------------ routes
 // GET …/sources/:sourceId/files, /snapshots (the space's own sources and those shared to it, newest first),
 // /quarantine (own sources only: rejected lines are the owner's to fix), POST …/run (source_admin, own source).
@@ -484,7 +553,7 @@ export function snapshotPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await readable(tx, spaceId, id, false);
     const where = and(eq(sourceSnapshots.spaceId, s.spaceId), eq(sourceSnapshots.sourceId, s.id));
-    return pageQuery({
+    const page = await pageQuery({
       rows: tx.select().from(sourceSnapshots).where(where).$dynamic(), count: tx.select(one).from(sourceSnapshots).where(where).$dynamic(),
       orderBy: [desc(sourceSnapshots.businessDate), desc(sourceSnapshots.startedAt), desc(sourceSnapshots.id)], query: q, on: tx,
       map: (x) => ({
@@ -492,6 +561,10 @@ export function snapshotPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<
         startedAt: x.startedAt.toISOString(), finishedAt: iso(x.finishedAt),
       }),
     });
+    // ponytail: one dayClosed call per distinct date of the page (≤ 100), a no-op until Plan 5; a set-based hook if it reads a table then
+    const closed = new Map<string, boolean>();
+    for (const d of new Set(page.items.map((x) => x.businessDate))) closed.set(d, await ingestHooks.dayClosed(tx, { spaceId: s.spaceId, sourceId: s.id }, d));
+    return { ...page, items: page.items.map((x) => ({ ...x, closed: closed.get(x.businessDate) ?? false })) };
   });
 }
 
