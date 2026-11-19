@@ -450,3 +450,7 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 - Replikasi synchronous (mis. Patroni dengan 1 standby sync): aksi manual user (manual match, approval) tidak hilang saat failover.
 - Tanpa PgBouncer mode transaction: engine memakai LISTEN/NOTIFY (progres SSE) dan advisory lock per transaksi; bila pooler diperlukan, mode session. Pool aplikasi dibatasi lewat `DB_POOL_MAX`, `WORKER_DB_POOL_MAX`, `JOBS_POOL_MAX`.
 - Role aplikasi bukan superuser dan tanpa `BYPASSRLS` (syarat RLS antar space, DEC-034); migrasi berjalan sebagai owner schema.
+
+## DEC-040 — Budget first-load JS 300 kB; UX dan library interaktif didahulukan
+
+19 November 2026 — arahan pemilik: budget di atas 250 kB tidak masalah selama UI/UX bagus dan library interaktif yang tepat dipakai. Budget menjadi pagar terhadap pembengkakan yang tidak disengaja, bukan target: 300 kB gzip per route. Pemeriksaan `next/dynamic` harus `ssr: false` tetap berlaku supaya angka budget jujur. REC-PERF-1 (duplikasi modul DS antar chunk) turun dari penghalang ke perbaikan biasa. Menggantikan angka DEC-038.

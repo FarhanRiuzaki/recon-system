@@ -246,6 +246,34 @@ const scrollViolations = (fs: F[]) => fs.filter(({ r }) => r.endsWith(".tsx")).f
   [...strip(src).matchAll(/"[^"\n]*"|`[^`]*`/g)].map((m) => m[0]).filter((c) => OVERFLOW_AUTO.test(c) && !/\bscroll-(?:quiet|none)\b/.test(c))
     .map((c) => `${r}: ${c.match(OVERFLOW_AUTO)![0]} without scroll-quiet`));
 
+/**
+ * A `next/dynamic` component that renders on the server must load its chunk before the page hydrates, so it is part of
+ * the first load, but bundle-budget.mjs counts no dynamic chunk: every `dynamic(` call in apps/web passes `ssr: false`
+ * (below-the-fold content mounts through LazyMount, prefetched data renders from the cache). An exception names the
+ * file and the module it imports, with the reason.
+ */
+const SSR_DYNAMIC_ALLOWED: Record<string, string> = {};
+/** "file → module" of each `dynamic(` call without `ssr: false` (the module = the first import("…") in its arguments). */
+function dynamicSsrCalls(fs: F[]): string[] {
+  return fs.filter(({ r, imp }) => r.startsWith(WEB) && imp.includes("next/dynamic")).flatMap(({ r, src }) => {
+    const code = strip(src);
+    const name = /import\s+(\w+)\s+from\s+["']next\/dynamic["']/.exec(code)?.[1] ?? "dynamic";
+    const out: string[] = [];
+    for (const m of code.matchAll(new RegExp(`\\b${name}\\(`, "g"))) {
+      let depth = 0, end = m.index + m[0].length - 1;
+      for (; end < code.length; end++) {
+        if (code[end] === "(") depth++;
+        else if (code[end] === ")" && --depth === 0) break;
+      }
+      const args = code.slice(m.index, end + 1);
+      if (!/\bssr\s*:\s*false\b/.test(args)) out.push(`${r} → ${/import\(\s*["'`]([^"'`]+)/.exec(args)?.[1] ?? "?"}`);
+    }
+    return out;
+  });
+}
+const dynamicSsrViolations = (fs: F[], allowed: Record<string, string> = SSR_DYNAMIC_ALLOWED) =>
+  dynamicSsrCalls(fs).filter((c) => !(c in allowed)).map((c) => `${c}: pass ssr: false (or allowlist it with a reason)`);
+
 describe("architecture", () => {
   it("inner scroll areas use the quiet scrollbar (scroll-quiet next to overflow-*-auto)", () => {
     expect(scrollViolations(files)).toEqual([]);
@@ -318,6 +346,12 @@ describe("architecture", () => {
 
   it("only charts imports recharts", () => {
     expect(files.filter(({ r, imp }) => imp.includes("recharts") && !r.startsWith(`${UI}charts/`)).map((f) => f.r)).toEqual([]);
+  });
+
+  it("every next/dynamic call passes ssr: false (its chunk is outside the measured first load); the allowlist has no stale entry", () => {
+    expect(dynamicSsrViolations(files)).toEqual([]);
+    const calls = dynamicSsrCalls(files);
+    expect(Object.keys(SSR_DYNAMIC_ALLOWED).filter((k) => !calls.includes(k))).toEqual([]);
   });
 
   it("sonner stays out of first loads: only ui/sonner.tsx and ui/toast.ts import it; ui/sonner only through import()", () => {
@@ -633,5 +667,20 @@ describe("architecture checkers (fixtures)", () => {
       `${WEB}features/users/page.tsx: renders StatusLegend; pass Panel legend instead`,
       `${WEB}features/ds/gallery.tsx: renders StatusLegend; pass Panel legend instead`,
     ]);
+  });
+  it("fixture: a next/dynamic call without ssr: false is reported unless allowlisted; ssr: false (any layout) passes", () => {
+    const fx = [
+      f(`${WEB}features/users/a.tsx`, `import dynamic from "next/dynamic";\nconst P = dynamic(() => import("./panel").then((m) => m.P));`),
+      f(`${WEB}features/users/b.tsx`, `import dynamic from "next/dynamic";\nconst F = dynamic(() => import("./filters").then((m) => m.F), {\n  loading: () => <Spin />,\n});`),
+      f(`${WEB}features/users/c.tsx`, `import dynamic from "next/dynamic";\nconst D = dynamic(() => import("./dialog").then((m) => m.D), { ssr: false });\nconst E = dynamic(\n  () => import("./e"),\n  { loading: () => null, ssr: false },\n);`),
+      f(`${WEB}features/users/d.tsx`, `import lazy from "next/dynamic";\nconst G = lazy(() => import("./g")); // dynamic(() => import("./x"))`),
+      f(`${WEB}features/users/e.tsx`, `const dynamic = (x: unknown) => x; dynamic(() => import("./h"));`),
+    ];
+    expect(dynamicSsrViolations(fx, {})).toEqual([
+      `${WEB}features/users/a.tsx → ./panel: pass ssr: false (or allowlist it with a reason)`,
+      `${WEB}features/users/b.tsx → ./filters: pass ssr: false (or allowlist it with a reason)`,
+      `${WEB}features/users/d.tsx → ./g: pass ssr: false (or allowlist it with a reason)`,
+    ]);
+    expect(dynamicSsrViolations(fx, { [`${WEB}features/users/a.tsx → ./panel`]: "reason", [`${WEB}features/users/b.tsx → ./filters`]: "reason", [`${WEB}features/users/d.tsx → ./g`]: "reason" })).toEqual([]);
   });
 });

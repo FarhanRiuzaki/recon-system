@@ -7,9 +7,9 @@ import { gzipSync } from "node:zlib";
 import { budgetFrom } from "../../scripts/bundle-budget.mjs";
 
 describe("bundle-budget arguments", () => {
-  it("reads --budget wherever it is; defaults to 252 kB (DEC-038)", () => {
-    expect(budgetFrom([], {})).toBe(252);
-    expect(budgetFrom(["--json"], {})).toBe(252); // was NaN: the value after a missing --budget is args[0]
+  it("reads --budget wherever it is; defaults to 300 kB (DEC-040)", () => {
+    expect(budgetFrom([], {})).toBe(300);
+    expect(budgetFrom(["--json"], {})).toBe(300); // was NaN: the value after a missing --budget is args[0]
     expect(budgetFrom(["--json", "--budget", "180"], {})).toBe(180);
     expect(budgetFrom([], { BUNDLE_BUDGET_KB: "200" })).toBe(200);
   });

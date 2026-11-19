@@ -14,8 +14,19 @@ import { RoleChips } from "@/components/role-chips";
 import { api, errorText } from "@/lib/client/api";
 import { userSpaces } from "@/lib/shared/queries";
 
-/** Opened on click only (route budget, AGENTS.md §9). */
-const AddToSpaceDialog = dynamic(() => import("./add-to-space-dialog").then((m) => m.AddToSpaceDialog), { ssr: false });
+/** Opened on click only (route budget, AGENTS.md §9); the import starts on the first press or focus of its button. */
+const loadDialog = () => import("./add-to-space-dialog");
+const AddToSpaceDialog = dynamic(() => loadDialog().then((m) => m.AddToSpaceDialog), { ssr: false });
+const preloadDialog = () => void loadDialog();
+
+/**
+ * The ids of the user's spaces when the whole list is loaded, else null: the add dialog offers only spaces the user is
+ * not in, so it must know all of them (a PUT to a space they are in would replace their roles there).
+ */
+export function joinedSpaces(page: Page<UserSpaceDto> | undefined): string[] | null {
+  if (!page || page.totalCapped || page.total > page.items.length) return null;
+  return page.items.map((s) => s.spaceId);
+}
 
 const COLUMNS: Column<UserSpaceDto>[] = [
   { key: "name", header: "Space", mobile: "title", cell: (s) => <Link href={`/spaces/${encodeURIComponent(s.spaceId)}/members`} className="text-fg underline-offset-2 hover:underline">{s.name}</Link> },
@@ -29,20 +40,25 @@ const COLUMNS: Column<UserSpaceDto>[] = [
  */
 export function UserSpaces({ user, canManage }: { user: { id: string; name: string }; canManage: boolean }) {
   const { key, url } = userSpaces(user.id);
-  // ponytail: one page of 100 spaces; page it when a user can be in more.
+  // ponytail: one page of 100 spaces (past that, no Add to space: joinedSpaces); page it when a user can be in more.
   const q = useQuery({ queryKey: key, queryFn: () => api<Page<UserSpaceDto>>(url) });
-  const [adding, setAdding] = useState(false);
+  /** The user's space ids when the dialog opened (kept if a refresh fails meanwhile); null = closed. */
+  const [adding, setAdding] = useState<string[] | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const rows = q.data?.items ?? [];
+  // Not while loading, after a failed refresh (the list may be out of date) or past the first page.
+  const joined = q.error ? null : joinedSpaces(q.data);
   return (
     <Panel flush icon={SurfacesIcon} title="Spaces" description="Where this user works and their roles there" count={q.data?.total}
-      actions={canManage && <Button ref={addButton} variant="secondary" size="sm" onClick={() => setAdding(true)}>Add to space</Button>}>
+      actions={canManage && joined && (
+        <Button ref={addButton} variant="secondary" size="sm" onPointerDown={preloadDialog} onFocus={preloadDialog} onClick={() => setAdding(joined)}>Add to space</Button>
+      )}>
       {q.error && q.data && <Notice tone="warn" live>Couldn&apos;t refresh the spaces; showing the last loaded list.</Notice>}
       <DataTable label="Spaces" columns={COLUMNS} rows={rows} rowKey={(s) => s.spaceId} loading={q.isPending} skeletonRows={2}
         error={q.error && !q.data ? { title: "Couldn't load the spaces", cause: errorText(q.error), onRetry: () => void q.refetch() } : null}
         empty={{ icon: SurfacesIcon, title: "Not in any space yet", description: "Spaces appear here when someone adds this user to one." }} />
       {adding && (
-        <AddToSpaceDialog user={user} joined={rows.map((s) => s.spaceId)} onClose={() => setAdding(false)} returnFocus={() => addButton.current?.focus()} />
+        <AddToSpaceDialog user={user} joined={adding} onClose={() => setAdding(null)} returnFocus={() => addButton.current?.focus()} />
       )}
     </Panel>
   );

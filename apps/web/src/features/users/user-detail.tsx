@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
-import { BlockedButton, ChunkBoundary, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
+import { BlockedButton, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
 import { Stagger, StaggerItem, useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { ActivityIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
@@ -27,14 +27,13 @@ import { BRAND } from "@starterkit/shared/brand";
 import { UserStatusChip } from "./user-columns";
 import { patchUserCache, USERS_KEY, protection, rankBlock, useLastSuperadminId, userGone, useUserDetail } from "./use-users";
 import { USER_DETAIL_SHAPE } from "./shapes";
+import { UserSpaces } from "./user-spaces";
 
 const PROVIDER = { google: "Google", apple: "Apple" } as const;
 
 /** Opened on click only: the dialogs load then, outside the page's first load (route budget, AGENTS.md §9). */
 const ConfirmActionDialog = dynamic(() => import("@starterkit/ui/ds").then((m) => m.ConfirmActionDialog), { ssr: false });
 const SecretOnceDialog = dynamic(() => import("@starterkit/ui/ds").then((m) => m.SecretOnceDialog), { ssr: false });
-/** Below the fold, its own chunk (route budget); rendered on the server from the prefetched list, so no flicker; a failed chunk takes down only this panel. */
-const UserSpaces = dynamic(() => import("./user-spaces").then((m) => m.UserSpaces));
 
 const ACTIVITY_COLUMNS: Column<ActivityBrief>[] = [
   { key: "at", header: "When", cell: (a) => <RelativeTime at={Date.parse(a.at)} /> },
@@ -149,7 +148,8 @@ export function UserDetail({ id }: { id: string }) {
           })} />
         </Panel></StaggerItem>
       </Stagger>
-      {can("space.view") && <ChunkBoundary><UserSpaces user={u} canManage={can("space.manage")} /></ChunkBoundary>}
+      {/* Part of the first load (DEC-040): server-rendered from the list page.tsx prefetched, filled on first paint. */}
+      {can("space.view") && <UserSpaces user={u} canManage={can("space.manage")} />}
       {/* End session: no touch caption in the row; the same `rank` reason is the caption of the header's Edit user. */}
       <SessionsTable table={userSessions(id)} enabled={!userGone(q.error, deleted)} title="Active sessions" description="Where this user is signed in"
         current="Your session" emptyHint="Sessions appear here when this user signs in."

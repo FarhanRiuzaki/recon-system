@@ -19,10 +19,6 @@
       ],
       "type": "number"
     },
-    "q": {
-      "type": "string",
-      "maxLength": 200
-    },
     "sort": {
       "type": "string",
       "enum": [

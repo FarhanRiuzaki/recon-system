@@ -59,8 +59,8 @@ export type SpaceCandidateListQuery = z.infer<typeof SpaceCandidateListQuery>;
 export const UserSpaceDto = z.object({ spaceId: z.string(), code: z.string(), name: z.string(), status: z.enum(SPACE_STATUSES), roles: z.array(z.enum(SPACE_ROLES)) });
 export type UserSpaceDto = z.infer<typeof UserSpaceDto>;
 
-/** GET /api/users/{id}/spaces: name A–Z unless `sort` says otherwise. */
-export const UserSpaceListQuery = ListQuery.extend({ sort: sortParam(USER_SPACE_SORTS) });
+/** GET /api/users/{id}/spaces: name A–Z unless `sort` says otherwise; no search. */
+export const UserSpaceListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(USER_SPACE_SORTS) });
 export type UserSpaceListQuery = z.infer<typeof UserSpaceListQuery>;
 
 /** PUT /api/spaces/{spaceId}/members/{userId}: the user's whole role set in the space (1–7 roles, no repeats). */

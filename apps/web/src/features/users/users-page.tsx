@@ -49,6 +49,7 @@ const UsersActionDialog = dynamic(() => loadDialog().then((m) => m.UsersActionDi
 const preloadDialog = () => void loadDialog();
 
 const UsersFilters = dynamic(() => import("./users-filters").then(m => m.UsersFilters), {
+  ssr: false, // rendered only inside the filter panel, which loads in the browser on open
   loading: () => <div role="status" className="grid gap-4"><span className="sr-only">Loading filter fields…</span><Skeleton className="h-8" /><Skeleton className="h-8" /><Skeleton className="h-20" /></div>,
 });
 

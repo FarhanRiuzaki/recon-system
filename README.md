@@ -237,7 +237,7 @@ password must be 12 to 128 characters; elsewhere a shorter one is accepted with 
 | `bun run test:changed` | Tests touched by the files changed since the last commit. |
 | `bun run build` | Production build of `apps/web` (`NEXT_DIST_DIR=.next-e2e` builds into `apps/web/.next-e2e`). |
 | `bun run e2e` | Resets and demo-seeds `<database>_e2e`, starts the API on :4123 and a production web build (`apps/web/.next-e2e`) on :3123, and runs Playwright on the desktop (1440 × 900), tablet (834 × 1112) and mobile (390 × 844, touch) projects. `E2E_DATABASE_URL` picks another database (its name must end in `_e2e`); `E2E_REUSE=1` reuses servers already on `E2E_PORT` and `E2E_API_PORT`; artifacts go to `.superpowers/scratch/`. |
-| `bun run budget` | First-load JS per route after a build: at most 252 kB gzip each (DEC-038) (`NEXT_DIST_DIR=.next-e2e` reads the E2E build). |
+| `bun run budget` | First-load JS per route after a build: at most 300 kB gzip each (DEC-040) (`NEXT_DIST_DIR=.next-e2e` reads the E2E build). |
 | `bun run api:schemas` | Regenerates `docs/api/schemas/` and the activity action table from the zod contracts. |
 
 Playwright uses the Chromium it already has. The design system screenshot baselines (`ds.spec.ts`) are per project and platform:

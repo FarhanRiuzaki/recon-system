@@ -175,7 +175,7 @@ Detail pages add `Tabs` (line variant) directly under the header; the tab value 
 - State that a user would share or bookmark (filters, tab, range, view, page) lives in the URL; tables through
   `useTableQuery` + `TableSpec` (one parser per key, each with its own fallback; `apps/web/src/lib/shared/table-state.ts`).
   zod schemas live in `packages/shared/src/contracts/*` and are imported by the API and the web's server code; client
-  code imports them as types only, so zod never reaches a route's first load (≤ 252 kB gz, `bun run budget`).
+  code imports them as types only, so zod never reaches a route's first load (≤ 300 kB gz, `bun run budget`).
 - Disabled actions always explain why (tooltip / menu label; on touch the `BlockedButton` caption).
 - Keyboard: every action reachable; one tab stop per card; roving focus in segmented controls; focus moves to
   the region after pagination; ⌘K palette reaches every page.
@@ -199,7 +199,7 @@ Detail pages add `Tabs` (line variant) directly under the header; the tab value 
 - Animate `transform` and `opacity` only. No `layout`/`layoutId` and no stagger on table rows, list items or anything
   with > 20 siblings; tables fade in once. `will-change` never in static CSS.
 - `prefers-reduced-motion`: opacity only (no translate, scale, spring, stroke-draw, number tween, shimmer sweep).
-- Bundle: only the base layer is in a route's first load; each route stays ≤ 252 kB gz (`bun run budget`).
+- Bundle: only the base layer is in a route's first load; each route stays ≤ 300 kB gz (`bun run budget`, DEC-040).
   Below-the-fold tables load lazily (`next/dynamic`) when a route would otherwise cross the budget.
 
 ## 5b. Interaction standards (from Laws of UX, NN/g, WCAG 2.2, Airform)

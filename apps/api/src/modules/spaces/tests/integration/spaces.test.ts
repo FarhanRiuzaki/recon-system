@@ -347,6 +347,7 @@ describe("GET /v1/users/:id/spaces", () => {
     const admin = await signIn("admin"); // space.view, no role in either space
     const r = await spacesOf(viewer, admin);
     expect(r.status).toBe(200);
+    expect(((await r.clone().json()) as Page<UserSpaceDto>).total).toBe(2);
     expect(await rows(r)).toEqual([["ctop", "CTOP", "active", ["reviewer"]], ["treasury", "Treasury", "active", ["operator", "viewer"]]]);
     expect(((await (await spacesOf(viewer, sa)).json()) as Page<UserSpaceDto>).items[0]).toEqual({ spaceId: B, code: "ctop", name: "CTOP", status: "active", roles: ["reviewer"] });
     expect(await rows(await spacesOf(viewer, sa, "?sort=-name"))).toEqual([["treasury", "Treasury", "active", ["operator", "viewer"]], ["ctop", "CTOP", "active", ["reviewer"]]]);

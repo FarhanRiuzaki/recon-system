@@ -41,9 +41,10 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
     setError(null);
     try {
       await api(`/api/spaces/${encodeURIComponent(space.id)}/members/${encodeURIComponent(user.id)}`, { method: "PUT", body: JSON.stringify({ roles }) });
+      // Refreshed before closing (this panel, the members tables, the switcher), so a reopened dialog no longer offers this space.
+      await qc.invalidateQueries({ queryKey: SPACES_KEY });
       toast(`Added ${user.name} to ${space.name}.`);
       onClose();
-      await qc.invalidateQueries({ queryKey: SPACES_KEY }); // this panel, the members tables, the switcher
     } catch (err) {
       setError(errorText(err));
       setBusy(false);
