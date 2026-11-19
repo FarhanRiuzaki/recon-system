@@ -8,13 +8,13 @@ import { Hydrate } from "@/lib/client/hydrate";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
-import { IngestListQuery, SourceListQuery } from "@starterkit/shared/contracts/sources";
+import { IngestListQuery, SourceListQuery, SourceVersionListQuery } from "@starterkit/shared/contracts/sources";
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots,
+  sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
 import { readTable, tableRequest } from "@/lib/shared/table-state";
@@ -72,6 +72,9 @@ export const reads = {
   sourceFiles: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceFiles(spaceId, id), sp, IngestListQuery),
   sourceSnapshots: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceSnapshots(spaceId, id), sp, IngestListQuery),
   sourceQuarantine: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceQuarantine(spaceId, id), sp, IngestListQuery),
+  sourceVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceVersions(spaceId, id), sp, SourceVersionListQuery),
+  sourceActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceActivity(spaceId, id), sp, IngestListQuery),
+  sourceVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: sourceVersion(spaceId, id, versionId).key, path: sourceVersion(spaceId, id, versionId).url }),
 };
 
 /**

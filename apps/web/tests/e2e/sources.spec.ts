@@ -87,7 +87,8 @@ test("snapshots: a failed re-pull keeps the active one (b); no active snapshot s
   await expect(page.locator("p").filter({ hasText: /^Paused\. / })).toBeVisible();
   const drift = page.getByRole("table", { name: /Columns that no longer fit/ });
   await expect(drift.getByRole("row").filter({ hasText: "ref" }).first()).toContainText("Missing");
-  await expect(page.getByRole("link", { name: "Create a source version" })).toHaveAttribute("href", `/spaces/${ids.treasury}/sources/${ids.glNostro}/versions/new?step=2`);
+  // Task 7: no draft yet, so the button makes one from version 1 and opens the wizard at step 2 (source-wizard.spec covers the press)
+  await expect(page.getByRole("button", { name: "Create a source version" })).not.toHaveAttribute("aria-disabled", "true");
   await expect(page.getByRole("button", { name: /^Pull / }).first()).toHaveAttribute("aria-disabled", "true");
 });
 });

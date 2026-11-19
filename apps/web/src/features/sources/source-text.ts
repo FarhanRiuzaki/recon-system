@@ -93,3 +93,7 @@ export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt">)
   if (h.state === "degraded" && h.deadline) out.push(`Degraded until ${h.deadline} ${APP_TIME_ZONE_LABEL}, the daily deadline, then Down.`);
   return out.join(" ");
 }
+
+/** The tabs of a source's detail, in order (`?tab=`); the page reads them on the server, so they live outside the screen. */
+export const SOURCE_TABS = ["overview", "quarantine", "versions", "activity"] as const;
+export type SourceTab = (typeof SOURCE_TABS)[number];

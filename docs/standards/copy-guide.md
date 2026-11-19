@@ -106,6 +106,31 @@ summary under a ranking: "Top 5 total", "Share of all sign-ins", "Share of all f
 State the real thresholds from `packages/ui/src/lib/status.ts` (the glossary is the single source); never copy
 numbers from examples.
 
+**Source wizard and versions** (Figma page 02, Build notes 02; `apps/web/src/features/sources/`). Steps: "Connection",
+"Fields & mapping", "Review & submit"; Next reads "Next: fields & mapping", "Next: review", "Submit for approval".
+- Next on Connection is blocked until a test passes for the values on screen: "Test the connection first; step 2
+  reads the columns through it." (a file inbox: "Test the folder first; files are picked up from it."); after a
+  change: "The connection changed since the last test. Test it again."
+- The test's answer is the API's sentence, as is (`connectors/errors.ts`, `inbox.ts`): "Connected.", "Folder readable
+  · 3 files match act*.txt", "The server did not answer within 8 s.", "The server refused the login (ORA-01017).
+  Check the user and password." Never add "Nothing was saved": the connection is stored before it is tested.
+- Username hint: "Use an account that can only read. The app never writes here; a read-only account makes sure of it."
+  A stored credential field: "Stored. Enter a new value to replace it." (never the value).
+- A watermark or id column that allows NULL is offered disabled with "This column can be empty; rows with no value
+  would never be pulled."; SQL Server float and real: "SQL Server sends float and real in scientific notation (1.5E+2).
+  Keep it as text, or cast it to decimal in a custom SELECT."
+- A field the API refuses is named on the field: the API's "Check <field>: <reason>" shows its reason under that
+  control.
+- Version page, Approve and Reject (designer's final copy, 20 Nov 2026), buttons "Approve version {n}" and "Reject",
+  the reason as the BlockedButton's description: "You submitted this version. Another config checker approves it." /
+  "You worked on this version. A config checker who didn't work on it approves it." / "Only a config checker of this
+  space approves source versions." / "This version is no longer waiting for approval." Reject uses the same sentences
+  with "rejects" / "rejects source versions". A reject without a comment: "Enter a comment to reject: say what the
+  maker should change."
+- Version states: Draft, In review (neutral), Published (healthy), Retired (stopped).
+- "New source" for anyone but a source admin: "Only a source admin of this space adds sources."; "Edit source" for
+  anyone but a source admin or config maker: "Only a source admin or a config maker of this space changes a source."
+
 ## 5. Glossary (use exactly these terms)
 
 | Use | Not | Notes |

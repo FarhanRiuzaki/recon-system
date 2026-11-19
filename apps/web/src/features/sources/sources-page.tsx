@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import Link from "next/link";
+import { BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import { Button } from "@starterkit/ui/ui/button";
 import { DiskIcon } from "@starterkit/ui/ui/icons";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -11,6 +13,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import { SOURCES } from "@/lib/shared/queries";
 import { SOURCE_LEGEND } from "@/lib/shared/source-status";
 import { sourceColumns } from "./source-columns";
+import { NEW_SOURCE_REASON, newSourceHref, useSpaceRoles } from "./use-sources";
 
 const FILTER_DEFAULTS = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
@@ -18,15 +21,19 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 /**
  * A space's sources (Figma 17:5543 / 31:8132): its own and those shared to it, each with the health the API judged for
  * the business date in progress (page.tsx has checked the viewer holds a role in the space and prefetched the first
- * page). New source arrives with the wizard (Task 7).
+ * page). New source opens the wizard for a source admin; anyone else gets the reason.
  */
 export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const def = useMemo(() => SOURCES(spaceId), [spaceId]);
   const columns = useMemo(() => sourceColumns(spaceId), [spaceId]);
   const t = useTableQuery<SourceRowDto, { q: string }>(def);
+  const admin = useSpaceRoles(spaceId).includes("source_admin");
+  const add = admin
+    ? <Button asChild><Link href={newSourceHref(spaceId)}>New source</Link></Button>
+    : <BlockedButton reason={NEW_SOURCE_REASON}>New source</BlockedButton>;
   return (
     <div className="grid gap-section">
-      <PageHeader title="Sources"
+      <PageHeader title="Sources" actions={add}
         description="Each source is stored once and read by every recon in this space. Source admins set up connections; field mapping can be finished by a source admin or a config maker. Every new version needs approval." />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the sources; showing the ones loaded before. {errorText(t.staleError)}</Notice>}

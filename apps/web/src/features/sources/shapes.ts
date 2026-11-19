@@ -15,3 +15,18 @@ export const SOURCE_DETAIL_SHAPE: readonly Section[] = [
   { kind: "bar", h: 28 },
   { kind: "table", chrome: 144, rows: 4, rowHeight: 60 },
 ];
+
+/** The source wizard (new source, edit source): the header and its first step's panels beside the progress rail. */
+export const WIZARD_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "panels", panels: [[12, 160]] },
+  { kind: "panels", panels: [[12, 200]] },
+];
+
+/** A source version: the header, its changes, the preview and the decision. */
+export const VERSION_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "table", chrome: 120, rows: 3, rowHeight: 44 },
+  { kind: "panels", panels: [[12, 140]] },
+  { kind: "panels", panels: [[12, 200]] },
+];

@@ -15,7 +15,9 @@ import { expectNoHorizontalScroll, pending2faState, settleAnimations, smallTouch
 /** Every page: the nav pages with the pages of their submenu (/ds/…), the sub-pages, the sign-in pages (`{name}` = a demo id, helpers.ts demoIds). */
 const SIGNED_IN = [...new Set(NAV.flatMap((n) => [n.href, ...(n.children ?? []).map((c) => c.href)])), "/users/new", "/users/{admin}", "/users/{admin}/edit", "/roles/{superadminRole}", "/projects/new", "/projects/{project}", "/projects/{project}/edit", "/me/security", "/me/sessions", "/spaces/{treasury}/members",
   "/spaces/{treasury}/sources", "/spaces/{treasury}/sources/{biSettlement}", "/spaces/{treasury}/sources/{biSettlement}?tab=quarantine", "/spaces/{treasury}/sources/{coreRtgs}",
-  "/spaces/{treasury}/sources/{glNostro}", "/spaces/{treasury}/sources/{bifastIn}"];
+  "/spaces/{treasury}/sources/{glNostro}", "/spaces/{treasury}/sources/{bifastIn}",
+  "/spaces/{treasury}/sources/new", "/spaces/{treasury}/sources/{biSettlement}?tab=versions", "/spaces/{treasury}/sources/{biSettlement}?tab=activity",
+  "/spaces/{treasury}/sources/{biSettlement}/versions/{biSettlementV1}", "/spaces/{treasury}/sources/{biSettlement}/versions/new"];
 const SIGNED_OUT = ["/login", "/forgot-password", "/reset-password"];
 /** The blocked "Deactivate user" button of /ds/components (features/ds/pages/components-body.tsx). */
 const BLOCKED_REASON = "This is the last active Superadmin. Make another user Superadmin first.";

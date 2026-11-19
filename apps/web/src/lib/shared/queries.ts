@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
@@ -107,6 +107,18 @@ const ingestTable = (what: "files" | "snapshots" | "quarantine") => (spaceId: st
 export const sourceFiles = ingestTable("files");
 export const sourceSnapshots = ingestTable("snapshots");
 export const sourceQuarantine = ingestTable("quarantine");
+/** A source's versions, newest first (`tab` stays when the table pages). */
+const SOURCE_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: SOURCE_VERSION_SORTS, defaultSort: "-version", filters: {} };
+export const sourceVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
+  ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: SOURCE_VERSIONS_SPEC, transient: ["tab"] });
+/** A source's own activity (read through the sources module), newest first; the API takes no sort. */
+export const sourceActivity = (spaceId: string, id: string): TableDef<NoFilters> =>
+  ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: INGEST_SPEC, transient: ["tab"] });
+/** One version of a source, with the names of the people it names. */
+export const sourceVersion = (spaceId: string, id: string, versionId: string) => ({
+  key: [...SOURCES_KEY, "version", spaceId, id, versionId] as const,
+  url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+});
 
 export const AUDIT_KEY = ["audit"] as const;
 /** Entry identity is independent of list state; only validated, normalized UUIDs become BFF paths. */

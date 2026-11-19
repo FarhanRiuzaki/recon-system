@@ -1,19 +1,26 @@
 "use client";
 
+import Link from "next/link";
 import { type ReactNode, useMemo } from "react";
 import { BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import type { Health } from "@starterkit/ui/lib/status";
 import { formatNumber } from "@starterkit/ui/lib/format";
-import { AlertsIcon, DiskIcon, LogIcon } from "@starterkit/ui/ui/icons";
-import type { QuarantineRowDto, SourceFileDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
+import { ActivityIcon, AlertsIcon, BranchIcon, DiskIcon, LogIcon } from "@starterkit/ui/ui/icons";
+import { ACTION_LABEL } from "@starterkit/shared/audit";
+import { activityChangeText } from "@starterkit/shared/audit-changes";
+import type { ActivityDto } from "@starterkit/shared/contracts/audit";
+import type { QuarantineRowDto, SourceFileDto, SourceSnapshotDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { NoFilters } from "@/lib/shared/queries";
-import { sourceFiles, sourceQuarantine, sourceSnapshots } from "@/lib/shared/queries";
+import { sourceActivity, sourceFiles, sourceQuarantine, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
+import { VERSION_LEGEND, VERSION_STATUS } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
+import { versionHref } from "./use-sources";
 
-// The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, newest first,
+// The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, versions and
+// activity, newest first,
 // page and size in the URL. Each is a list in its own right: saved views and the column chooser like every list.
 
 const none = <span className="text-fg-3">—</span>;
@@ -138,5 +145,41 @@ export function QuarantineTable({ spaceId, id }: { spaceId: string; id: string }
         ]} />
       <p className="text-caption text-fg-3">Quarantined rows never become breaks and can&apos;t be released by hand. To fix them, the sender sends a corrected file (a new file version, kept beside the old one), or a source admin changes the source in a new version.</p>
     </>
+  );
+}
+
+const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const who = (p: SourceVersionRowDto["maker"]) => (p ? (p.name ?? "A removed user") : null);
+
+/** A source's versions (Versions tab), newest first, sortable by version or last change; each opens its version page. */
+export function VersionsTable({ spaceId, id }: { spaceId: string; id: string }) {
+  const def = useMemo(() => sourceVersions(spaceId, id), [spaceId, id]);
+  return (
+    <Table<SourceVersionRowDto> def={def} title="Versions" description="Every version of this source; a new one applies once a config checker approves it" icon={BranchIcon}
+      legendItems={VERSION_LEGEND} rowKey={(v) => v.id}
+      empty={{ title: "No versions yet", description: "A version appears here once a source admin or config maker starts one." }}
+      columns={() => [
+        { key: "version", header: "Version", sortable: true, mobile: "title", cell: (v) => <Link href={versionHref(spaceId, id, v.id)} className={LINK}>Version {v.version}</Link> },
+        { key: "status", header: "State", mobile: "meta", cell: (v) => <StatusChip health={VERSION_STATUS[v.status].health} label={VERSION_STATUS[v.status].label} /> },
+        { key: "maker", header: "Last edited by", mobile: "meta", cell: (v) => who(v.maker) ?? none },
+        { key: "submitter", header: "Submitted by", mobile: "meta", cell: (v) => (v.submitter ? `${who(v.submitter)}${v.submittedAt ? ` · ${at(v.submittedAt)}` : ""}` : none) },
+        { key: "checker", header: "Approved by", mobile: "meta", cell: (v) => (v.checker && v.status !== "draft" ? `${who(v.checker)}${v.publishedAt ? ` · ${at(v.publishedAt)}` : ""}` : none) },
+        { key: "updatedAt", header: "Changed", sortable: true, mobile: "meta", cell: (v) => at(v.updatedAt) },
+      ]} />
+  );
+}
+
+/** The source's own activity (Activity tab): who created it, set its connection, made and decided each version, shared it. */
+export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) {
+  const def = useMemo(() => sourceActivity(spaceId, id), [spaceId, id]);
+  return (
+    <Table<ActivityDto> def={def} title="Activity" description="Newest first; the credential is never recorded" icon={ActivityIcon} rowKey={(e) => e.id}
+      empty={{ title: "No activity yet", description: "Entries appear here when someone changes this source, its connection or a version." }}
+      columns={() => [
+        { key: "at", header: "When", mobile: "meta", cell: (e) => at(e.at) },
+        { key: "actor", header: "Who", mobile: "meta", cell: (e) => e.actor.name },
+        { key: "action", header: "What", mobile: "title", cell: (e) => <span className="font-medium text-fg">{(ACTION_LABEL as Record<string, string>)[e.action] ?? e.action}</span> },
+        { key: "changes", header: "Details", mobile: "meta", className: `${WRAP} min-w-64`, cell: (e) => activityChangeText(e.action, e.before, e.after) || none },
+      ]} />
   );
 }

@@ -175,9 +175,11 @@ export const heading = (page: Page, name: string | RegExp) => expect(page.getByR
 
 /** Ids of demo records; the API's seed makes them (UUIDv7), so tests look them up instead of writing them out. */
 export type DemoIds = {
-  admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string; treasury: string; ctop: string;
+  admin: string; superadmin: string; superadminRole: string; adminRole: string; viewerRole: string; project: string; treasury: string; ctop: string; fico: string;
   /** Treasury's demo sources (apps/api/src/db/seed/demo-sources.ts): file inbox shared to CTOP, snapshot (failed re-pull), snapshot (no active), paused, watermark. */
   biSettlement: string; coreRtgs: string; coreSknbi: string; glNostro: string; bifastIn: string;
+  /** BI settlement file's published version 1 (its version page). */
+  biSettlementV1: string;
 };
 let ids: Promise<DemoIds> | null = null;
 
@@ -198,12 +200,14 @@ export function demoIds(baseURL: string | undefined): Promise<DemoIds> {
       superadminRole: role("Superadmin"), adminRole: role("Admin"), viewerRole: role("Viewer"),
       project: (await get<{ items: { id: string; name: string }[] }>("/api/projects?q=Apollo")).items.find((p) => p.name === "Apollo")!.id,
       treasury: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=treasury")).items.find((s) => s.code === "treasury")!.id,
-      ctop: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=ctop")).items.find((s) => s.code === "ctop")!.id };
+      ctop: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=ctop")).items.find((s) => s.code === "ctop")!.id,
+      fico: (await get<{ items: { id: string; code: string }[] }>("/api/spaces?q=fico")).items.find((s) => s.code === "fico")!.id };
     // the global-setup Superadmin is a source admin of Treasury (demo seed)
     const sources = (await get<{ items: { id: string; code: string }[] }>(`/api/spaces/${out.treasury}/sources?pageSize=25`)).items;
     const source = (code: string) => sources.find((s) => s.code === code)!.id;
+    const v1 = (await get<{ items: { id: string; version: number }[] }>(`/api/spaces/${out.treasury}/sources/${source("bi-settlement")}/versions?sort=version`)).items[0]!.id;
     await api.dispose();
-    return { ...out, biSettlement: source("bi-settlement"), coreRtgs: source("core-rtgs"), coreSknbi: source("core-sknbi"), glNostro: source("gl-nostro-usd"), bifastIn: source("bifast-in") };
+    return { ...out, biSettlementV1: v1, biSettlement: source("bi-settlement"), coreRtgs: source("core-rtgs"), coreSknbi: source("core-sknbi"), glNostro: source("gl-nostro-usd"), bifastIn: source("bifast-in") };
   })());
 }
 

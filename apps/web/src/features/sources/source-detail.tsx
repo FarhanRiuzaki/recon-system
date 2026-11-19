@@ -12,14 +12,28 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { isNotFound } from "@/lib/client/api";
-import { FilesTable, QuarantineTable, SnapshotsTable } from "./ingest-tables";
+import type { HeaderAction } from "@/components/shell/page-header";
+import { ActivityTable, FilesTable, QuarantineTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
+import { SOURCE_TABS, type SourceTab } from "./source-text";
 import { at, completeText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
-import { newVersionHref, RUN_REASON, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles } from "./use-sources";
+import { EDIT_REASON, newVersionHref, RUN_REASON, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
-export type SourceTab = "overview" | "quarantine";
+const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", quarantine: "Quarantine", versions: "Versions", activity: "Activity" };
+
+/**
+ * "Edit source" (Build notes 02): the open draft in the wizard, a version in review on its page, or a new draft made
+ * from the published version; a role that may not change sources gets the reason.
+ */
+export function editAction(s: SourceDto, spaceId: string, roles: readonly string[], start: { busy: boolean; run: () => void }): HeaderAction {
+  const may = roles.includes("source_admin") || roles.includes("config_maker");
+  if (!may) return { label: "Edit source", reason: EDIT_REASON };
+  if (s.draft?.status === "in_review") return { label: `Open version ${s.draft.version}`, href: versionHref(spaceId, s.id, s.draft.id) };
+  if (s.draft) return { label: "Edit source", href: newVersionHref(spaceId, s.id, roles.includes("source_admin") ? 1 : 2) };
+  return { label: "Edit source", onSelect: start.run, busy: start.busy };
+}
 const PAUSED_REASON = "This source is paused. Pulls start again once a new source version is approved.";
 
 /** Label / value rows of a card (as on a user's details). */
@@ -61,14 +75,15 @@ const DRIFT_COLUMNS = (version: number | null): Column<DriftColumn>[] => [
  * expects, what is there now and the effect (a card per column on a phone), and the way out: a new source version
  * (the wizard, Task 7).
  */
-function Drift({ s, spaceId }: { s: SourceDto; spaceId: string }) {
+function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: HeaderAction }) {
   const d = s.drift!;
   return (
     <Panel flush title="What changed in the source table" description={`Checked against version ${s.publishedVersion ?? "–"} at ${at(d.checkedAt)}`}
       footnote={!s.owner && (
         <span className="flex flex-wrap items-center gap-3">
-          {/* no prefetch: the wizard's route arrives with Task 7 */}
-          <Button asChild><Link href={newVersionHref(spaceId, s.id)} prefetch={false}>Create a source version</Link></Button>
+          {edit.href
+            ? <Button asChild><Link href={s.draft?.status === "in_review" ? edit.href : newVersionHref(spaceId, s.id)}>{s.draft?.status === "in_review" ? edit.label : "Create a source version"}</Link></Button>
+            : <BlockedButton reason={edit.reason ?? null} disabled={edit.busy} aria-busy={edit.busy || undefined} onClick={edit.onSelect}>Create a source version</BlockedButton>}
           <span className="max-w-[72ch] text-caption text-fg-3">Opens step 2 with the columns the table has now. Recons keep reading the stored data until the new version is approved.</span>
         </span>
       )}>
@@ -88,6 +103,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const q = useSource(spaceId, id);
   const roles = useSpaceRoles(spaceId);
   const run = useRunSource(spaceId, id, q.data?.kind);
+  const start = useStartVersion(spaceId, id);
   const skeleton = useDelayedFlag(!q.data && !q.error);
 
   if (isNotFound(q.error)) return <DetailNotFound title="Source" noun="source" list={{ href: sourcesHref(spaceId), label: "Sources" }} />;
@@ -105,12 +121,14 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
       {date ? `Pull ${day(date)} now` : s.kind === "file_inbox" ? "Check the folder now" : "Pull now"}
     </BlockedButton>
   );
-  const quarantineTab = own ? (tab === "quarantine" ? "quarantine" : "overview") : "overview";
+  const shown: SourceTab = own ? tab : "overview";
   const missing = !!h?.missingDate;
+  const edit = editAction(s, spaceId, roles, { busy: start.isPending, run: () => start.mutate() });
+  const tabHref = (t: SourceTab) => (t === "overview" ? sourceHref(spaceId, id) : `${sourceHref(spaceId, id)}?tab=${t}`);
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined} />
+      <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined} more={own ? [edit] : undefined} />
       {s.owner && (
         <>
           <span><CategoryChip label={`Shared from ${s.owner.name}`} slot="neutral" /></span>
@@ -119,19 +137,22 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
       )}
       {own && (
         <RouteTabs aria-label="Source sections">
-          <Link href={sourceHref(spaceId, id)} aria-current={quarantineTab === "overview" ? "page" : undefined}>Overview</Link>
-          <Link href={`${sourceHref(spaceId, id)}?tab=quarantine`} aria-current={quarantineTab === "quarantine" ? "page" : undefined}>
-            Quarantine{s.quarantinedToday ? ` · ${s.quarantinedToday} today` : ""}
-          </Link>
+          {SOURCE_TABS.map((t) => (
+            <Link key={t} href={tabHref(t)} aria-current={shown === t ? "page" : undefined}>
+              {TAB_LABEL[t]}{t === "quarantine" && s.quarantinedToday ? ` · ${s.quarantinedToday} today` : ""}
+            </Link>
+          ))}
         </RouteTabs>
       )}
-      {quarantineTab === "quarantine" ? <QuarantineTable spaceId={spaceId} id={id} /> : (
+      {shown === "quarantine" ? <QuarantineTable spaceId={spaceId} id={id} />
+        : shown === "versions" ? <VersionsTable spaceId={spaceId} id={id} />
+        : shown === "activity" ? <ActivityTable spaceId={spaceId} id={id} /> : (
         <>
           {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this source; showing the last loaded details.</Notice>}
           {s.status === "paused" && (
             <Notice tone="warn">Paused. {h?.lastError ? errorSentence(h.lastError) : "The source changed."} Pulls stay paused until a source version matches it; data already stored is kept.</Notice>
           )}
-          {s.status === "paused" && s.drift && <Drift s={s} spaceId={spaceId} />}
+          {s.status === "paused" && s.drift && <Drift s={s} spaceId={spaceId} edit={edit} />}
           {missing && <Notice tone="warn">{missingText(s)}</Notice>}
           {s.kind === "file_inbox" && <FilesTable spaceId={spaceId} id={id} />}
           {s.kind === "db_snapshot" && (

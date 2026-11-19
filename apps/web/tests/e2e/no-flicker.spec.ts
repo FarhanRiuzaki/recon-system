@@ -35,6 +35,7 @@ const PAGES = [
   { path: "/spaces/{treasury}/members", filled: "Viewer User" },
   { path: "/spaces/{treasury}/sources", filled: 'href="/spaces/{treasury}/sources/{biSettlement}"' },
   { path: "/spaces/{treasury}/sources/{biSettlement}", filled: "bisettle" },
+  { path: "/spaces/{treasury}/sources/{biSettlement}/versions/{biSettlementV1}", filled: "BI settlement file · version 1" },
 ] as const;
 
 type Interval = { at: number; ms: number; path: string; what: string };

@@ -1,5 +1,6 @@
 import type { Health } from "@starterkit/ui/lib/status";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
+import type { VersionStatus } from "@starterkit/shared/sources";
 
 type Status = { health: Health; label: string };
 const STATE: Record<NonNullable<SourceRowDto["health"]>["state"], Status> = {
@@ -25,3 +26,12 @@ export const SOURCE_LEGEND: readonly (Status & { description: string })[] = [
   { health: "stopped", label: "Paused", description: "The source table or file changed. Nothing is written until a new source version is approved." },
   { health: "stopped", label: "Draft", description: "No approved version yet, so nothing is ingested." },
 ];
+
+/** A source version's state on the health states (task 7 ruling): draft and in review neutral, published healthy, retired stopped. */
+export const VERSION_STATUS: Record<VersionStatus, Status & { description: string }> = {
+  draft: { health: "unknown", label: "Draft", description: "Being edited. Nothing uses it until it is submitted and approved." },
+  in_review: { health: "unknown", label: "In review", description: "Submitted. A config checker who didn't work on it approves or rejects it." },
+  published: { health: "healthy", label: "Published", description: "In use: pulls and files are read with it." },
+  retired: { health: "stopped", label: "Retired", description: "Replaced by a newer published version; kept for the record." },
+};
+export const VERSION_LEGEND = Object.values(VERSION_STATUS);

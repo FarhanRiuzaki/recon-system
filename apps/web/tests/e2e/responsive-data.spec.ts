@@ -23,6 +23,8 @@ const TABLES = [
   ["/spaces/{treasury}/members", "Members"], ["/spaces/{treasury}/sources", "Sources"], ["/spaces/{treasury}/sources/{biSettlement}", "Files"],
   ["/spaces/{treasury}/sources/{coreRtgs}", "Snapshots"], ["/spaces/{treasury}/sources/{biSettlement}?tab=quarantine", "Quarantine"],
   ["/spaces/{treasury}/sources/{glNostro}", "Columns that no longer fit version 1"],
+  // the Activity tab of a demo source is empty (the seed writes its rows directly), so only Versions has rows here
+  ["/spaces/{treasury}/sources/{biSettlement}?tab=versions", "Versions"],
 ] as const;
 
 const firstRowKey = (page: Page, table: string) => page.getByRole("table", { name: table }).getByRole("row").first().locator('[data-mobile="title"]').innerText();

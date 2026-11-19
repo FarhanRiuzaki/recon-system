@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { defineConfig } from "@playwright/test";
-import { SCRATCH } from "./tests/e2e/global-setup";
+import { INBOX, SCRATCH } from "./tests/e2e/global-setup";
 
 /**
  * Playwright against the real stack: the API on E2E_API_PORT (4123) over its own database, reset and seeded at
@@ -63,7 +63,7 @@ export default defineConfig({
       env: {
         NODE_ENV: "development", DATABASE_URL: DB, MIGRATION_DATABASE_URL: DB, API_HOST: "127.0.0.1", API_PORT: String(API_PORT),
         INTERNAL_API_TOKEN, DATA_ENCRYPTION_KEY: randomBytes(32).toString("base64"), APP_URL: `http://localhost:${PORT}`,
-        OAUTH_MOCK: "true", LDAP_MOCK: "true", MAIL_TRANSPORT: "log", LOG_LEVEL: "warn",
+        OAUTH_MOCK: "true", LDAP_MOCK: "true", MAIL_TRANSPORT: "log", LOG_LEVEL: "warn", INBOX_ROOTS: INBOX,
         SEED_SUPERADMIN_NAME: "", SEED_SUPERADMIN_EMAIL: "", SEED_SUPERADMIN_USERNAME: "", SEED_SUPERADMIN_PASSWORD: "",
       },
     },

@@ -1,15 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
-import type { RunSourceDto, SourceDto } from "@starterkit/shared/contracts/sources";
+import type { RunSourceDto, SourceDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { INGEST_KEY, sourceDetail, SOURCES_KEY, spaceDetail } from "@/lib/shared/queries";
+import { INGEST_KEY, sourceDetail, SOURCES_KEY, sourceVersion, spaceDetail } from "@/lib/shared/queries";
 
 export const sourcesHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/sources`;
 export const sourceHref = (spaceId: string, id: string) => `${sourcesHref(spaceId)}/${encodeURIComponent(id)}`;
-/** Task 7's wizard opens step 2 of a new version with the columns the table has now (Build notes 02, proposed route). */
-export const newVersionHref = (spaceId: string, id: string) => `${sourceHref(spaceId, id)}/versions/new?step=2`;
+/** The wizard over a source's open draft (Build notes 02): step 2 by default, step 1 (connection) for a source admin. */
+export const newVersionHref = (spaceId: string, id: string, step: 1 | 2 | 3 = 2) => `${sourceHref(spaceId, id)}/versions/new?step=${step}`;
+export const newSourceHref = (spaceId: string) => `${sourcesHref(spaceId)}/new?step=1`;
+export const versionHref = (spaceId: string, id: string, versionId: string) => `${sourceHref(spaceId, id)}/versions/${encodeURIComponent(versionId)}`;
+/** The API path of a source, or of `rest` under it ("/versions"). */
+export const sourceApi = (spaceId: string, id: string, rest = "") => `/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(id)}${rest}`;
+
+/** Why a role other than source admin can't add a source (every disabled action says why). */
+export const NEW_SOURCE_REASON = "Only a source admin of this space adds sources.";
+/** Why a role other than source admin or config maker can't edit a source's fields and mapping. */
+export const EDIT_REASON = "Only a source admin or a config maker of this space changes a source.";
 
 /** Why Pull now is off for a role other than source admin (AGENTS.md §10: every disabled action says why). */
 export const RUN_REASON = "Only a source admin of this space starts a pull.";
@@ -42,5 +52,29 @@ export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
     },
     onError: (e) => toast.error(errorText(e)),
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
+  });
+}
+
+/** One version of a source with the names of the people it names. A 404 is final. */
+export function useVersion(spaceId: string, id: string, versionId: string) {
+  const { key, url } = sourceVersion(spaceId, id, versionId);
+  return useQuery({ queryKey: key, queryFn: () => api<SourceVersionDetailDto>(url), retry: retryUnlessNotFound });
+}
+
+/**
+ * "Edit source": opens the source's open draft in the wizard, or makes one from the published version first (POST
+ * …/versions) and then opens it. Pending on the trigger; a failure is a toast with the API's reason.
+ */
+export function useStartVersion(spaceId: string, id: string) {
+  const qc = useQueryClient();
+  const router = useRouter();
+  return useMutation({
+    mutationFn: () => api<SourceVersionDto>(sourceApi(spaceId, id, `/versions`), { method: "POST", body: "{}" }),
+    onSuccess: async (v) => {
+      await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+      router.push(newVersionHref(spaceId, id));
+      toast(`Draft version ${v.version} started.`);
+    },
+    onError: (e) => toast.error(errorText(e)),
   });
 }
