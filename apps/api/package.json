@@ -18,6 +18,7 @@
     "db:reset": "bun src/db/seed/cli.ts reset"
   },
   "dependencies": {
+    "@marcbachmann/cel-js": "8.0.0",
     "@starterkit/shared": "workspace:*",
     "@starterkit/ui": "workspace:*",
     "arctic": "3.7.0",
