@@ -151,6 +151,10 @@ hanya core `record`. Alur per source **(Claude)**:
    `business_date`, `ext_ref`, `account_ref`) atau ke `attrs`; field turunan lewat CEL (mis. direction dari tanda amount,
    reference dari substring). Tipe dicek saat mapping: config recon hanya bisa membandingkan field yang tipenya cocok
    (pelajaran dari tips Simetrik di laporan riset).
+3a. **Kelengkapan file** (core-recon): setting per source `completion` = `stable_seconds` (default 60) | `marker_file`
+   (`.done`). Nama file sama dengan sha256 berbeda = file versi baru yang tercatat, bukan menimpa. Config maker mulai dari
+   langkah mapping atas versi source yang ada; koneksi/kredensial/path hanya `source_admin`. Baris karantina tidak bisa
+   dilepas manual di fase 1 (perbaikan lewat file koreksi atau versi source baru).
 4. **Validasi saat ingest**: baris yang gagal parse/tipe masuk `quarantine_row` dengan alasan per kolom; sampel error
    tampil di UI source. Perubahan skema di sumber (kolom hilang/berubah tipe) menghentikan ingest source itu dengan
    alert, bukan menulis data salah; perbaikannya = versi source baru lewat approval.
@@ -208,6 +212,12 @@ untuk tanggal yang sudah tutup hari = rerun + approval.
   `reversed_by` dan mengembalikan item ke `open`.
 - `recon_run`: mode `tick | daily | rerun | simulation`, versi config yang dipin, jendela data, counter per tahap.
 - `recon_day (config_id, business_date)`: `open → closing → closed → signed_off`; snapshot break terbuka saat sign-off.
+
+**Pull watermark (hasil S7)**: keyset gabungan `(updated_at, id) > ($wm, $id)` dengan index `(updated_at, id)`; watermark
+dibawa dengan presisi penuh (mikrodetik, sebagai teks dari SQL), bukan lewat `Date`/`toISOString()` yang memotong ke
+milidetik. Watermark satu kolom terbukti kehilangan baris pada timestamp kembar (`docs/recon/spikes.md` S7).
+**Health source** = kelengkapan data untuk tanggal bisnis berjalan: snapshot/file tanggal itu belum aktif → Degraded,
+lewat batas waktu harian config → Down; re-pull gagal saat snapshot tanggal itu sudah aktif tetap Healthy.
 
 **Completeness** — `source_cursor.complete_through`: batas waktu di mana data source dianggap lengkap.
 DB pull: `watermark − lookback`. File: periode yang dicakup file terakhir yang lengkap (dari header/nama file —
