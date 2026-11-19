@@ -443,3 +443,10 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 ## DEC-038 — Budget first-load JS 252 kB
 
 19 November 2026 — keputusan core-recon (delegasi pemilik). SpaceSwitcher sekarang ada di shell setiap halaman (± 0,5 kB) dan potongan route-local tidak tersedia (halaman /users, /users/[id], /audit/activity, /audit/auth merender kodenya di first paint; dialog sudah lazy); kelebihan terbesar 740 B (/users/[id] 250,7 kB). Budget dinaikkan ke 252 kB. Tindak lanjut REC-PERF-1: Turbopack menduplikasi modul DS di beberapa chunk first-load (StatusChip ×3, EmptyState ×4 di /users/[id]); diselidiki sebelum Plan 4 menambah kode shell/live day.
+
+## DEC-039 — PostgreSQL dikelola tim sendiri
+
+19 November 2026 — info pemilik: PostgreSQL disetup tim kita sendiri; keputusan core-recon atas REC-Q2/Q3.
+- Replikasi synchronous (mis. Patroni dengan 1 standby sync): aksi manual user (manual match, approval) tidak hilang saat failover.
+- Tanpa PgBouncer mode transaction: engine memakai LISTEN/NOTIFY (progres SSE) dan advisory lock per transaksi; bila pooler diperlukan, mode session. Pool aplikasi dibatasi lewat `DB_POOL_MAX`, `WORKER_DB_POOL_MAX`, `JOBS_POOL_MAX`.
+- Role aplikasi bukan superuser dan tanpa `BYPASSRLS` (syarat RLS antar space, DEC-034); migrasi berjalan sebagai owner schema.

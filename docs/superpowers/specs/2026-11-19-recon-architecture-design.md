@@ -420,8 +420,8 @@ Milik pemilik / PO / infra:
    Kebutuhan audit atas daftar matched satu hari penuh belum diketahui sampai teks POJK/PADK terbaca (S5); bila wajib,
    bulk extract naik prioritas.
 2. Cara file BI sampai ke worker di RKE: SFTP pull atau volume NFS (infra).
-3. Replikasi Postgres HA sync atau async — async bisa kehilangan aksi manual terakhir saat failover (infra).
-4. Ada PgBouncer mode transaction di depan Postgres? Menentukan cara LISTEN dan lock (infra).
+3. ~~Replikasi Postgres~~ — diputuskan DEC-039: synchronous (PostgreSQL dikelola tim sendiri).
+4. ~~PgBouncer~~ — diputuskan DEC-039: tanpa mode transaction; mode session bila pooler diperlukan.
 5. Format file dan kolom source untuk kasus pertama (kunci match, periode cakupan file) — untuk completeness.
 6. IT risk bank menerima isolasi logis via RLS antar tim, atau minta DB terpisah.
 7. Ambang write-off dan matriks kewenangan per space.
