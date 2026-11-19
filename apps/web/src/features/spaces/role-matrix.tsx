@@ -45,7 +45,7 @@ function MatrixCell({ cell }: { cell: Cell }) {
 const TITLE = "What each role can do";
 const TH = "h-10 border-b border-line bg-tray px-3 text-label font-normal whitespace-nowrap text-fg-2";
 
-// The Action column sticks to the card's left edge at every width while the role columns scroll (DataTable's sticky first column); opaque, with a hairline.
+// The Action column sticks to the card's left edge at every width while the role columns scroll (DataTable's sticky first column); opaque, with a hairline. The table is border-separate like ui/table: in a collapsed table the sticky cell's border stays on the grid and scrolls away.
 // Below 1280 it is 160 px and wraps; from 1280 it is 340 px on one line (Figma 4:83). Sticky is harmless where the table doesn't overflow.
 const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:w-85 xl:min-w-85";
 
@@ -60,7 +60,7 @@ export function RoleMatrix() {
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
       <div tabIndex={0} role="region" aria-label={TITLE} className="scroll-quiet relative overflow-x-auto outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
-        <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-274 border-collapse text-body-sm">
+        <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-274 border-separate border-spacing-0 text-body-sm">
           <thead>
             <tr>
               <th scope="col" className={`${TH} ${STICK} z-2 text-left`}>Action</th>

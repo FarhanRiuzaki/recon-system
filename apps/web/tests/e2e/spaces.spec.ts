@@ -240,6 +240,12 @@ test("a member sees who is in the space and what each role may do; a viewer only
   expect(narrow.w).toBe(160);
   expect(narrow.pos).toBe("sticky");
   expect(narrow.h).toBeGreaterThan(40); // wraps
+  // Scrolled sideways (1280-1400 px still overflows), the Action column keeps its right edge: separate borders travel with a sticky cell.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const region = page.getByRole("region", { name: "What each role can do" });
+  await region.evaluate((el) => { el.scrollLeft = 80; });
+  expect(await region.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+  expect(await actionCell.evaluate((el) => { const s = getComputedStyle(el); return [getComputedStyle(el.closest("table")!).borderCollapse, s.borderRightWidth, s.borderRightStyle]; })).toEqual(["separate", "1px", "solid"]);
   await page.setViewportSize({ width: 1440, height: 900 });
 
   // FICO: not a member. A real 404 on the document load (the layout checks membership before streaming), "Page not
