@@ -1,14 +1,14 @@
 // /v1/spaces*: the per-space guard ({ space, or }), check order, membership, the last space_admin, activity entries.
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SpaceMemberDto, SpaceRowDto } from "@starterkit/shared/contracts/spaces";
+import type { SpaceCandidateDto, SpaceMemberDto, SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { and, asc, eq } from "drizzle-orm";
 import { api, call, request, resetData, signIn } from "../../../../../test/helpers/app";
 import { holdTx, lockWaiters } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
 import { xactLock } from "../../../../kernel/locks";
-import { activity } from "../../../audit";
+import { activity, authLog } from "../../../audit";
 import { guard } from "../../../auth";
 import { users } from "../../../users";
 import { spaceMembers, spaces } from "../../schema";
@@ -259,3 +259,71 @@ describe("members", () => {
   });
 });
 
+
+describe("space detail, member status, candidates", () => {
+  it("GET /v1/spaces/:spaceId gives a member the space and their roles; a non-member 403; non-UUID 404", async () => {
+    await member(A, await idOf("viewer"), "viewer", "operator");
+    const t = await signIn("viewer");
+    const r = await get(`/v1/spaces/${A}`, t);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as SpaceRowDto).toMatchObject({ id: A, code: "treasury", name: "Treasury", status: "active", roles: ["operator", "viewer"] });
+    expect(await code(await get(`/v1/spaces/${B}`, t))).toBe("forbidden");
+    expect(((await (await get(`/v1/spaces/${B}`, sa)).json()) as SpaceRowDto)).toMatchObject({ id: B, roles: [] }); // space.manage
+    for (const r of [await get("/v1/spaces/abc", t), await get(`/v1/spaces/${Bun.randomUUIDv7()}`, sa)]) expect([r.status, await code(r)]).toEqual([404, "not_found"]);
+    expect((await get(`/v1/spaces/${A}`)).status).toBe(401);
+  });
+
+  it("members carry active and lastSignInAt (null before any sign-in, the latest login_success/2fa_success after)", async () => {
+    const [viewer, apple] = [await idOf("viewer"), await idOf("apple")];
+    await member(A, viewer, "viewer");
+    await member(A, apple, "space_admin");
+    await db.delete(authLog);
+    await db.update(users).set({ isActive: false }).where(eq(users.id, viewer));
+    const log = (event: string, at: string) => ({ id: Bun.randomUUIDv7(), at: new Date(at), event, login: "apple", userId: apple, method: "password", ip: "10.0.0.1", device: "test" });
+    const page = async () => ((await (await get(`/v1/spaces/${A}/members`, sa)).json()) as Page<SpaceMemberDto>).items.map((m) => [m.name, m.active, m.lastSignInAt]);
+    expect(await page()).toEqual([["Apple User", true, null], ["Viewer User", false, null]]);
+    await db.insert(authLog).values([
+      log("login_success", "2026-01-01T08:00:00.000Z"), log("2fa_success", "2026-01-02T08:00:00.000Z"),
+      log("login_failed", "2026-01-03T08:00:00.000Z"), log("password_ok", "2026-01-04T08:00:00.000Z"), log("logout", "2026-01-05T08:00:00.000Z"),
+    ]);
+    expect(await page()).toEqual([["Apple User", true, "2026-01-02T08:00:00.000Z"], ["Viewer User", false, null]]);
+    const set = (await (await put(A, viewer, { roles: ["operator"] }, sa)).json()) as SpaceMemberDto;
+    expect(set).toEqual({ userId: viewer, name: "Viewer User", username: "viewer", roles: ["operator"], active: false, lastSignInAt: null });
+  });
+
+  it("candidates: space_admin sees app users with member flags; operator 403; q matches name and username", async () => {
+    const [viewer, apple] = [await idOf("viewer"), await idOf("apple")];
+    await member(A, apple, "space_admin");
+    await member(A, viewer, "operator");
+    const t = await signIn("apple");
+    const cands = async (qs: string, token = t) => (await (await get(`/v1/spaces/${A}/candidates?${qs}`, token)).json()) as Page<SpaceCandidateDto>;
+    const all = await cands("pageSize=100");
+    expect(all.total).toBe(await db.$count(users));
+    expect((await cands("q=user")).items.map((c) => [c.name, c.member])).toEqual([
+      ["Admin User", false], ["Apple User", true], ["Directory User", false], ["Google User", false], ["Inactive User", false], ["Viewer User", true],
+    ]);
+    expect((await cands("q=APPLE")).items).toEqual([{ userId: apple, name: "Apple User", username: "apple", active: true, member: true }]);
+    expect((await cands("q=ldap")).items).toEqual([{ userId: await idOf("ldap"), name: "Directory User", username: "ldap", active: true, member: false }]); // username only
+    expect((await cands("q=inactive%20user")).items.map((c) => [c.username, c.active])).toEqual([["inactive", false]]);
+    expect((await cands("q=%25")).total).toBe(0); // % is literal
+    expect(await code(await get(`/v1/spaces/${A}/candidates`, await signIn("viewer")))).toBe("forbidden");
+    expect((await get(`/v1/spaces/${A}/candidates`, sa)).status).toBe(200);
+    expect((await get(`/v1/spaces/${Bun.randomUUIDv7()}/candidates`, sa)).status).toBe(404);
+    expect((await get(`/v1/spaces/${A}/candidates?sort=email`, t)).status).toBe(400);
+  });
+
+  it("an inactive second space_admin does not count: removing the last active one is 409", async () => {
+    const [viewer, google] = [await idOf("viewer"), await idOf("google")];
+    await member(A, viewer, "space_admin");
+    await member(A, google, "space_admin");
+    await db.update(users).set({ isActive: false }).where(eq(users.id, google));
+    const r = await del(A, viewer, sa);
+    expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+    const r2 = await put(A, viewer, { roles: ["viewer"] }, sa);
+    expect([r2.status, await code(r2)]).toEqual([409, "last_space_admin"]);
+    expect(await rolesIn(A, viewer)).toEqual(["space_admin"]);
+    await db.update(users).set({ isActive: true }).where(eq(users.id, google));
+    expect((await del(A, viewer, sa)).status).toBe(200);
+    expect(await acts()).toHaveLength(1);
+  });
+});

@@ -19,4 +19,5 @@ export const SESSION_SORTS = ["lastSeenAt", "device"] as const;
 export const PROJECT_SORTS = ["name", "createdAt"] as const;
 export const SPACE_SORTS = ["name", "createdAt"] as const;
 export const SPACE_MEMBER_SORTS = ["name"] as const;
+export const SPACE_CANDIDATE_SORTS = ["name"] as const;
 export const SAVED_VIEW_SORTS = ["name", "createdAt"] as const;

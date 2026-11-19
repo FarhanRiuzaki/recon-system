@@ -1,9 +1,10 @@
 // The /v1/users* logic, and the writes on users and recovery_codes that other modules make (auth: sign-in, 2FA step,
 // reset; me: own profile, password and 2FA; each one statement, or one transaction step of the caller's `tx`).
-// Every check that compares the actor with another user runs inside the transaction: the target rows are locked first
-// (id order), then the roles the request names are share-locked (bulk share-locks its one role before the rows), then
-// the actor's permissions are read (never the request's earlier ctx.perms), and last the Superadmin count takes its
-// advisory lock.
+// Every check that compares the actor with another user runs inside the transaction: a delete or deactivation first
+// takes the space-admin lock (spaces' assertNotLastSpaceAdmin: a member change holds it while share-locking a user row,
+// so it comes before any user row), then the target rows are locked (id order), then the roles the request names are
+// share-locked (bulk share-locks its one role before the rows), then the actor's permissions are read (never the
+// request's earlier ctx.perms), and last the Superadmin count takes its advisory lock.
 import {
   and, asc, desc, eq, exists, getTableColumns, ilike, inArray, isNotNull, isNull, lt, ne, or, sql, type SQLWrapper,
 } from "drizzle-orm";
@@ -27,6 +28,7 @@ import {
   sessions, toUserRow,
 } from "../auth";
 import { checkRoleGrant, grantRoles, inCatalogOrder, type RoleRef, revokeRoles, roles, rolesByName, rolesOfUser, userRoles } from "../rbac";
+import { assertNotLastSpaceAdmin } from "../spaces";
 import { bulk, canonical, checkPasswordOp, checkTargetRank, checkUserChange, SUPERADMIN, temporaryPassword, type UserChange } from "./rules";
 import { recoveryCodes, users } from "./schema";
 
@@ -225,9 +227,28 @@ async function lockTarget(tx: Tx, ctx: Ctx, id: string): Promise<{ u: UserRowDto
 /** checkUserChange with the other active Superadmins counted under the Superadmin lock. */
 const userChange = (tx: Tx, ctx: Ctx, u: UserRowDto, change: UserChange) => checkUserChange(ctx.user.id, u, change, () => otherSuperadmins(tx, u.id));
 
-/** The rule for setting a user active or inactive (deactivating: not yourself, not the last active Superadmin); PATCH isActive, /status and bulk share it. */
+/** The space-admin lock, taken before any user row by a request that may delete or deactivate (see the top of this file). */
+const lockSpaceAdmins = (tx: Tx) => xactLock(tx, "spaceAdmins");
+
+/** `last_space_admin` when `u` is active and the only active space_admin of a space (under the space-admin lock). */
+const spaceAdminRule = async (tx: Tx, u: UserRowDto): Promise<ErrorCode | null> => {
+  if (!u.isActive) return null;
+  const e = await assertNotLastSpaceAdmin(tx, [u.id]).catch((e: unknown) => e);
+  if (e instanceof ApiError) return e.code;
+  if (e) throw e;
+  return null;
+};
+
+/** The rule for deleting a user: checkUserChange, then not the last active space_admin of a space. */
+const deleteRule = async (tx: Tx, ctx: Ctx, u: UserRowDto): Promise<ErrorCode | null> =>
+  (await userChange(tx, ctx, u, { kind: "delete" })) ?? spaceAdminRule(tx, u);
+
+/**
+ * The rule for setting a user active or inactive (deactivating: not yourself, not the last active Superadmin, not the
+ * last active space_admin of a space); PATCH isActive, /status and bulk share it.
+ */
 const statusRule = async (tx: Tx, ctx: Ctx, u: UserRowDto, active: boolean): Promise<ErrorCode | null> =>
-  active ? null : userChange(tx, ctx, u, { kind: "deactivate" });
+  active ? null : (await userChange(tx, ctx, u, { kind: "deactivate" })) ?? spaceAdminRule(tx, u);
 
 /**
  * Sets it: deactivating ends the user's sessions and spends their reset and invitation links; one entry, user.activate /
@@ -304,6 +325,7 @@ async function matchingIds(tx: InTx, filter: BulkUserFilter): Promise<string[]> 
 export async function bulkUsers(ctx: Ctx, b: BulkUserBody): Promise<BulkResult> {
   const { action, role: roleName } = b;
   return db.transaction(async (tx) => {
+    if (action === "delete" || action === "deactivate") await lockSpaceAdmins(tx);
     const ids = b.filter ? await matchingIds(tx, b.filter) : [...new Set(b.ids)];
     const role = roleName === undefined ? undefined : (await rolesByName(tx, [roleName])).get(roleName.toLowerCase());
     if (action === "assignRole" && !role) throw new ApiError("bad_request", "This role doesn't exist. Pick a role from the list.");
@@ -312,7 +334,7 @@ export async function bulkUsers(ctx: Ctx, b: BulkUserBody): Promise<BulkResult> 
     const grant = role ? checkRoleGrant(actor, role) : null;
     const rule = async (u: UserRowDto): Promise<ErrorCode | null> => {
       if (action === "activate" || action === "deactivate") return statusRule(tx, ctx, u, action === "activate");
-      if (action === "delete") return userChange(tx, ctx, u, { kind: "delete" });
+      if (action === "delete") return deleteRule(tx, ctx, u);
       if (u.roles.includes(role!.name)) return (await userChange(tx, ctx, u, { kind: "setRoles", roles: u.roles })) ?? grant;
       if (u.roles.length >= MAX_USER_ROLES) return "bad_request";
       return (await userChange(tx, ctx, u, { kind: "setRoles", roles: [...u.roles, role!.name] })) ?? grant;
@@ -345,6 +367,7 @@ const FIELDS = ["name", "username", "email", "roles"] as const;
  */
 export async function editUser(ctx: Ctx, id: string, b: UpdateUserBody): Promise<UserDto> {
   return db.transaction(async (tx) => {
+    if (b.isActive === false) await lockSpaceAdmins(tx);
     const u = (await lockUsers(tx, [id])).get(id);
     if (!u) throw notFound("user");
     const rs = b.roles ? canonical(b.roles, await rolesByName(tx, b.roles)) : undefined; // share-locks the roles named
@@ -390,11 +413,12 @@ export async function editUser(ctx: Ctx, id: string, b: UpdateUserBody): Promise
   });
 }
 
-/** Deletes another user (not yourself, not the last active Superadmin, not one who outranks you). */
+/** Deletes another user (not yourself, not the last active Superadmin or space_admin of a space, not one who outranks you). */
 export async function removeUser(ctx: Ctx, id: string): Promise<void> {
   await db.transaction(async (tx) => {
+    await lockSpaceAdmins(tx);
     const { u } = await lockTarget(tx, ctx, id);
-    const stop = await userChange(tx, ctx, u, { kind: "delete" });
+    const stop = await deleteRule(tx, ctx, u);
     if (stop) throw new ApiError(stop);
     await deleteUser(tx, ctx, u);
   });
@@ -421,6 +445,7 @@ export async function resetUserPassword(ctx: Ctx, id: string): Promise<string> {
 /** Activate or deactivate (the same rule and activity as PATCH isActive). Deactivating ends the user's sessions. */
 export async function setUserStatus(ctx: Ctx, id: string, active: boolean): Promise<UserDto> {
   return db.transaction(async (tx) => {
+    if (!active) await lockSpaceAdmins(tx);
     const { u } = await lockTarget(tx, ctx, id);
     const stop = await statusRule(tx, ctx, u, active);
     if (stop) throw new ApiError(stop);

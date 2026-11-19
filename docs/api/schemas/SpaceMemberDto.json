@@ -26,13 +26,24 @@
           "viewer"
         ]
       }
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "lastSignInAt": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
     "userId",
     "name",
     "username",
-    "roles"
+    "roles",
+    "active",
+    "lastSignInAt"
   ],
   "additionalProperties": false
 }

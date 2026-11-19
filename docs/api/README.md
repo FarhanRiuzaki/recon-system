@@ -166,8 +166,10 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   member is 403 on the next one) and lets a non-member in only where its row names a global permission (`space.manage`):
   that gives no access to the space's data. A `spaceId` that is not a UUID is 404 before the roles are read, after the
   401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
-  to leave a space without a `space_admin` (409 `last_space_admin`, also for a PUT that drops the role); two such
-  changes run one after the other. Granting or removing `source_admin` (a PUT that adds or drops it, a DELETE of its
+  to leave a space without an active `space_admin` (409 `last_space_admin`, also for a PUT that drops the role; an
+  inactive account's `space_admin` role does not count); two such changes run one after the other. Deleting or
+  deactivating the only active `space_admin` of a space through `/api/users*` is 409 `last_space_admin` too (bulk skips
+  that user with the code), under the same lock. Granting or removing `source_admin` (a PUT that adds or drops it, a DELETE of its
   holder) needs `space.manage`; a `space_admin` without it gets 403 `forbidden` (spec §11b). A code may be sent in any
   letter case (the schema shows the stored form); it is stored in lower case and unique. On fresh installs the default
   seed gives Admin `space.view` and `space.manage` (an existing deployment's Admin does not get `space.*`
@@ -304,8 +306,10 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | DELETE | `/api/projects/{id}` | `project.delete` | none | [OkDto](schemas/OkDto.json) | `not_found` |
 | GET | `/api/spaces` | Signed in (every space with `space.view`, else the caller's own) | [SpaceListQuery](schemas/SpaceListQuery.json) | [SpacePage](schemas/SpacePage.json) (rows are [SpaceRowDto](schemas/SpaceRowDto.json): the space plus the caller's `roles` in it) | none |
 | POST | `/api/spaces` | `space.manage` | [CreateSpaceBody](schemas/CreateSpaceBody.json) (no members yet) | 201 [SpaceDto](schemas/SpaceDto.json) | `duplicate` (a space of that code, any case) |
+| GET | `/api/spaces/{spaceId}` | any role in the space, or `space.manage` | none | [SpaceRowDto](schemas/SpaceRowDto.json) (the caller's `roles` in it; `[]` through `space.manage`) | `not_found` |
 | PATCH | `/api/spaces/{spaceId}` | `space_admin` in the space, or `space.manage` | [UpdateSpaceBody](schemas/UpdateSpaceBody.json) (nothing to change = no entry) | [SpaceDto](schemas/SpaceDto.json) | `not_found` |
 | GET | `/api/spaces/{spaceId}/members` | any role in the space, or `space.manage` | [SpaceMemberListQuery](schemas/SpaceMemberListQuery.json) | [SpaceMemberPage](schemas/SpaceMemberPage.json) | `not_found` |
+| GET | `/api/spaces/{spaceId}/candidates` | `space_admin` in the space, or `space.manage` | [SpaceCandidateListQuery](schemas/SpaceCandidateListQuery.json) (`q` matches name or username) | [SpaceCandidatePage](schemas/SpaceCandidatePage.json) (every user of the app; `member` = already in the space) | `not_found` |
 | PUT | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | [SetSpaceMemberBody](schemas/SetSpaceMemberBody.json) (replaces the user's roles in the space; the same set = no entry) | [SpaceMemberDto](schemas/SpaceMemberDto.json) | `not_found` (space or user), `last_space_admin`, `forbidden` (adds or drops `source_admin` without `space.manage`) |
 | DELETE | `/api/spaces/{spaceId}/members/{userId}` | `space_admin` in the space, or `space.manage` | none | [OkDto](schemas/OkDto.json) | `not_found` (space, user or not a member), `last_space_admin`, `forbidden` (removes a `source_admin` without `space.manage`) |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |
@@ -315,15 +319,15 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | DELETE | `/api/roles/{id}` | `role.delete` | none | [OkDto](schemas/OkDto.json) | `not_found`, `superadmin_locked`, `role_in_use` |
 | GET | `/api/users` | `user.view` | [UserListQuery](schemas/UserListQuery.json) | [UserPage](schemas/UserPage.json) (rows are [UserRowDto](schemas/UserRowDto.json): the user plus effective `permissions`) | none |
 | POST | `/api/users` | `user.create` | [CreateUserBody](schemas/CreateUserBody.json) | 201 [UserDto](schemas/UserDto.json) | `bad_request` (unknown role), `forbidden` (escalation), `duplicate` |
-| POST | `/api/users/bulk` | `user.edit`; `user.delete` for `action: "delete"` | [BulkUserBody](schemas/BulkUserBody.json): `ids` (at most 100) or `filter` (the list's `q`, `role`, `status`: every match, at most 1,000) | [BulkResult](schemas/BulkResult.json); skipped codes `self_action`, `last_superadmin`, `forbidden` (escalation, actor rank), `bad_request` (already 20 roles), `not_found` | `bad_request` (unknown role; both or neither of `ids` and `filter`; more than 1,000 users match `filter`) |
+| POST | `/api/users/bulk` | `user.edit`; `user.delete` for `action: "delete"` | [BulkUserBody](schemas/BulkUserBody.json): `ids` (at most 100) or `filter` (the list's `q`, `role`, `status`: every match, at most 1,000) | [BulkResult](schemas/BulkResult.json); skipped codes `self_action`, `last_superadmin`, `last_space_admin` (delete, deactivate), `forbidden` (escalation, actor rank), `bad_request` (already 20 roles), `not_found` | `bad_request` (unknown role; both or neither of `ids` and `filter`; more than 1,000 users match `filter`) |
 | GET | `/api/users/roles` | `user.view` | [RoleOptionQuery](schemas/RoleOptionQuery.json) | [RoleOptionPage](schemas/RoleOptionPage.json) | none |
 | GET | `/api/users/{id}` | `user.view` (recent activity needs `audit.view`, else null) | none | [UserDetailDto](schemas/UserDetailDto.json) | `not_found` |
-| PATCH | `/api/users/{id}` | `user.edit` | [UpdateUserBody](schemas/UpdateUserBody.json) (deactivating ends the user's sessions and spends their links; a new email spends the links; nothing to change = no entry) | [UserDto](schemas/UserDto.json) | `not_found`, `bad_request` (unknown role), `duplicate`, `forbidden` (escalation, actor rank), `self_action`, `last_superadmin` |
-| DELETE | `/api/users/{id}` | `user.delete` | none | [OkDto](schemas/OkDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin` |
+| PATCH | `/api/users/{id}` | `user.edit` | [UpdateUserBody](schemas/UpdateUserBody.json) (deactivating ends the user's sessions and spends their links; a new email spends the links; nothing to change = no entry) | [UserDto](schemas/UserDto.json) | `not_found`, `bad_request` (unknown role), `duplicate`, `forbidden` (escalation, actor rank), `self_action`, `last_superadmin`, `last_space_admin` (deactivating) |
+| DELETE | `/api/users/{id}` | `user.delete` | none | [OkDto](schemas/OkDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin`, `last_space_admin` |
 | POST | `/api/users/{id}/reset-password` | `user.edit` | none (the user's sessions end) | [TemporaryPasswordDto](schemas/TemporaryPasswordDto.json) (shown once, never logged) | `not_found`, `forbidden` (actor rank), `self_action`, `ldap_password` |
 | GET | `/api/users/{id}/sessions` | `user.view` | [SessionListQuery](schemas/SessionListQuery.json) | [SessionPage](schemas/SessionPage.json) | `not_found` |
 | DELETE | `/api/users/{id}/sessions/{sid}` | `user.edit` | none | [OkDto](schemas/OkDto.json) | `not_found` (also when the session isn't that user's), `forbidden` (actor rank), `self_action` |
-| POST | `/api/users/{id}/status` | `user.edit` | [SetUserStatusBody](schemas/SetUserStatusBody.json) (deactivating ends the user's sessions and spends their links) | [UserDto](schemas/UserDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin` |
+| POST | `/api/users/{id}/status` | `user.edit` | [SetUserStatusBody](schemas/SetUserStatusBody.json) (deactivating ends the user's sessions and spends their links) | [UserDto](schemas/UserDto.json) | `not_found`, `forbidden` (actor rank), `self_action`, `last_superadmin`, `last_space_admin` (deactivating) |
 | GET | `/api/audit/activity` | `audit.view` | [ActivityQuery](schemas/ActivityQuery.json) | [ActivityPage](schemas/ActivityPage.json), or CSV with `format=csv` | none |
 | GET | `/api/audit/activity/{id}` | `audit.view` | none | [ActivityDto](schemas/ActivityDto.json), retained entry independent of list range/filter/page | `not_found` (invalid UUID, missing or purged) |
 | GET | `/api/audit/auth` | `audit.view` | [AuthLogQuery](schemas/AuthLogQuery.json) | [AuthLogPage](schemas/AuthLogPage.json), or CSV with `format=csv` | none |

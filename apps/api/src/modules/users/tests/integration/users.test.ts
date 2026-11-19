@@ -17,6 +17,7 @@ import { activity } from "../../../audit";
 import { createSession, sessions, userTokens, verifyPassword } from "../../../auth";
 import { userIdentities } from "../../../oauth";
 import { rolePermissions, roles, userRoles } from "../../../rbac";
+import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../schema";
 
 const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
@@ -582,6 +583,77 @@ describe("POST /v1/users/bulk", () => {
     expect(await r.json()).toEqual({ done: [v], skipped: [{ id: me, code: "self_action" }] });
     expect(await hasSession(sess)).toBe(false);
     expect(await acts()).toHaveLength(1);
+  });
+});
+
+describe("the last active space_admin of a space", () => {
+  /** A new space whose space_admins are `admins` (usernames). */
+  const spaceWith = async (...admins: string[]) => {
+    const id = Bun.randomUUIDv7();
+    await db.insert(spaces).values({ id, code: `s${id.slice(-8)}`, name: "Treasury" });
+    for (const a of admins) await db.insert(spaceMembers).values({ spaceId: id, userId: await idOf(a), role: "space_admin" });
+    return id;
+  };
+  const adminsOf = async (spaceId: string) => db.$count(spaceMembers, and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.role, "space_admin")));
+
+  it("deleting the only active space_admin of a space is 409 last_space_admin and nothing changes", async () => {
+    const admin = await signIn("admin");
+    const [v, g] = [await idOf("viewer"), await idOf("google")];
+    const S = await spaceWith("viewer");
+    const r = await del(v, admin);
+    expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+    expect(await userRow(v)).toBeDefined();
+    expect(await adminsOf(S)).toBe(1);
+    const b = await bulk({ action: "delete", ids: [v] }, admin);
+    expect(await b.json()).toEqual({ done: [], skipped: [{ id: v, code: "last_space_admin" }] });
+    expect(await acts()).toHaveLength(0);
+    // a second active admin frees it; an inactive one can be deleted (it was not counted)
+    await db.insert(spaceMembers).values({ spaceId: S, userId: g, role: "space_admin" });
+    expect((await del(v, admin)).status).toBe(200);
+    await db.update(users).set({ isActive: false }).where(eq(users.id, g));
+    expect((await del(g, admin)).status).toBe(200);
+    expect(await adminsOf(S)).toBe(0);
+  });
+
+  it("deactivating the only active space_admin is 409; bulk deactivate skips them with code last_space_admin", async () => {
+    const admin = await signIn("admin");
+    const [v, g] = [await idOf("viewer"), await idOf("google")];
+    await spaceWith("viewer");
+    for (const r of [await setStatus(v, { active: false }, admin), await patch(v, { isActive: false }, admin)]) {
+      expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+    }
+    expect((await userRow(v)).is_active).toBe(true);
+    expect((await patch(v, { name: "Viewer Renamed" }, admin)).status).toBe(200); // other edits are not blocked
+    // two admins of one space deactivated together: the first goes, the second is now the last
+    await spaceWith("google", "apple");
+    const apple = await idOf("apple");
+    const b = await bulk({ action: "deactivate", ids: [v, g, apple] }, admin);
+    expect(await b.json()).toEqual({ done: [g], skipped: [{ id: v, code: "last_space_admin" }, { id: apple, code: "last_space_admin" }] });
+    expect([(await userRow(v)).is_active, (await userRow(g)).is_active, (await userRow(apple)).is_active]).toEqual([true, false, true]);
+    expect((await acts()).map((a) => [a.action, a.targetId])).toEqual([["user.update", v], ["user.deactivate", g]]);
+  });
+
+  it("a delete waiting on the spaceAdmins lock holds no user row yet and counts the admins after it", async () => {
+    // The holder drops google's admin role and adds viewer a role (its foreign key check share-locks viewer's row). Had
+    // the DELETE locked viewer's row before the advisory lock, the two would deadlock.
+    const admin = await signIn("admin");
+    const [v, g] = [await idOf("viewer"), await idOf("google")];
+    const S = await spaceWith("viewer", "google");
+    const holder = await holdTx((tx) => xactLock(tx, "spaceAdmins"));
+    let r: Response;
+    try {
+      const pending = del(v, admin);
+      if (!(await lockWaiters(1, "%pg_advisory_xact_lock%"))) throw new Error("the DELETE never waited on the lock");
+      await holder.commit(async (tx) => {
+        await tx.delete(spaceMembers).where(and(eq(spaceMembers.spaceId, S), eq(spaceMembers.userId, g)));
+        await tx.insert(spaceMembers).values({ spaceId: S, userId: v, role: "viewer" });
+      });
+      r = await pending;
+    } finally {
+      await holder.rollback();
+    }
+    expect([r.status, await code(r)]).toEqual([409, "last_space_admin"]);
+    expect(await userRow(v)).toBeDefined();
   });
 });
 

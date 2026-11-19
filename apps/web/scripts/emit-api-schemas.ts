@@ -45,6 +45,7 @@ const COMPOSED = {
   ProjectPage: pageOf(projects.ProjectDto),
   SpacePage: pageOf(spaces.SpaceRowDto),
   SpaceMemberPage: pageOf(spaces.SpaceMemberDto),
+  SpaceCandidatePage: pageOf(spaces.SpaceCandidateDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };

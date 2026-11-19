@@ -2,16 +2,17 @@
 // /v1/spaces*: 404 → rules → change → activity entry, in one transaction per change.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  CreateSpaceBody, SetSpaceMemberBody, SpaceDto, SpaceListQuery, SpaceMemberDto, SpaceMemberListQuery, SpaceRowDto, SpaceStatus, UpdateSpaceBody,
+  CreateSpaceBody, SetSpaceMemberBody, SpaceCandidateDto, SpaceCandidateListQuery, SpaceDto, SpaceListQuery, SpaceMemberDto, SpaceMemberListQuery,
+  SpaceRowDto, SpaceStatus, UpdateSpaceBody,
 } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
-import { and, eq, ilike, isNotNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, exists, ilike, inArray, isNotNull, max, ne, or, type SQLWrapper, sql } from "drizzle-orm";
 import { db, type InTx, type Tx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { xactLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { isUuid } from "../../kernel/parse";
-import { recordActivity } from "../audit";
+import { authLog, recordActivity } from "../audit";
 import { actorPermissions, type Ctx } from "../auth";
 import { users } from "../users";
 import { canManageMembers, sourceAdminChanged } from "./rules";
@@ -110,18 +111,52 @@ export async function updateSpace(ctx: Ctx, id: string, b: UpdateSpaceBody): Pro
   });
 }
 
+/** Space `id` with the caller's roles in it (GET /v1/spaces/:spaceId; [] when let in through `space.manage`); 404 when missing. */
+export async function spaceDetail(id: string, roles: SpaceRole[]): Promise<SpaceRowDto> {
+  return { ...dto(await spaceRow(db, id)), roles };
+}
+
+/** SQL: the user's last sign-in, the latest `login_success` or `2fa_success` in auth_log (index auth_log_user); null for none. */
+const lastSignInOf = (userId: SQLWrapper) =>
+  sql`(${db.select({ at: max(authLog.at) }).from(authLog)
+    .where(and(eq(authLog.userId, userId), inArray(authLog.event, ["login_success", "2fa_success"])))})`.mapWith(authLog.at);
+
+/** The member fields that come from the user's account (a function: built per query, never at module load). */
+const memberUser = () => ({ userId: users.id, name: users.name, username: users.username, active: users.isActive, lastSignInAt: lastSignInOf(users.id) });
+const iso = (d: Date | null) => d?.toISOString() ?? null;
+
+/** `q` (trimmed) as a name-or-username match. */
+const nameOrUsername = (q: string | undefined) => {
+  const like = q?.trim() ? `%${likeEscape(q.trim())}%` : null;
+  return like ? or(ilike(users.name, like), ilike(users.username, like)) : undefined;
+};
+
 /** One page of a space's members (404 for no such space), each with every role they hold there; name A–Z. */
 export async function memberPage(spaceId: string, q: SpaceMemberListQuery): Promise<Page<SpaceMemberDto>> {
   await spaceRow(db, spaceId);
-  const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
-  const where = and(eq(spaceMembers.spaceId, spaceId), like ? or(ilike(users.name, like), ilike(users.username, like)) : undefined);
+  const where = and(eq(spaceMembers.spaceId, spaceId), nameOrUsername(q.q));
   return pageQuery({
-    rows: db.select({ userId: users.id, name: users.name, username: users.username, roles: sql<string[]>`array_agg(${spaceMembers.role})` })
+    rows: db.select({ ...memberUser(), roles: sql<string[]>`array_agg(${spaceMembers.role})` })
       .from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId)).where(where).groupBy(users.id).$dynamic(),
     count: db.select(one).from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId)).where(where).groupBy(users.id).$dynamic(),
     orderBy: sortSql(q.sort, { name: sql`lower(${users.name})` }, "name", users.id),
     query: q,
-    map: (r) => ({ ...r, roles: inOrder(r.roles) }),
+    map: (r) => ({ ...r, roles: inOrder(r.roles), lastSignInAt: iso(r.lastSignInAt) }),
+  });
+}
+
+/** One page of the app's users (404 for no such space), each marked `member` when they hold a role in the space; name A–Z. */
+export async function candidatePage(spaceId: string, q: SpaceCandidateListQuery): Promise<Page<SpaceCandidateDto>> {
+  await spaceRow(db, spaceId);
+  const where = nameOrUsername(q.q);
+  const member = exists(db.select(one).from(spaceMembers).where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, users.id))));
+  return pageQuery({
+    rows: db.select({ userId: users.id, name: users.name, username: users.username, active: users.isActive, member: sql<boolean>`${member}` })
+      .from(users).where(where).$dynamic(),
+    count: db.select(one).from(users).where(where).$dynamic(),
+    orderBy: sortSql(q.sort, { name: sql`lower(${users.name})` }, "name", users.id),
+    query: q,
+    map: (r) => r,
   });
 }
 
@@ -133,7 +168,7 @@ export async function memberPage(spaceId: string, q: SpaceMemberListQuery): Prom
 async function memberChange(tx: Tx, ctx: Ctx, spaceId: string, userId: string) {
   await xactLock(tx, "spaceAdmins");
   const space = await spaceRow(tx, spaceId);
-  const [user] = await tx.select({ id: users.id, name: users.name, username: users.username }).from(users).where(eq(users.id, userId));
+  const [user] = await tx.select(memberUser()).from(users).where(eq(users.id, userId));
   if (!user) throw notFound("user");
   const manage = (await actorPermissions(tx, ctx.user.id)).has("space.manage");
   if (!canManageMembers(await spaceRolesOf(tx, ctx.user.id, spaceId), manage)) throw new ApiError("forbidden");
@@ -142,10 +177,28 @@ async function memberChange(tx: Tx, ctx: Ctx, spaceId: string, userId: string) {
 
 const SOURCE_ADMIN_ONLY = () => new ApiError("forbidden", "Only an administrator with space.manage can grant or remove source_admin.");
 
-/** 409 when `userId` is the space's only space_admin (counted under the space-admin lock). */
+/** 409 when no other active user is a space_admin of the space (counted under the space-admin lock). */
 async function keepAnAdmin(tx: Tx, spaceId: string, userId: string): Promise<void> {
-  const others = await tx.$count(spaceMembers, and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.role, "space_admin"), ne(spaceMembers.userId, userId)));
-  if (!others) throw new ApiError("last_space_admin");
+  const [other] = await tx.select(one).from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId))
+    .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.role, "space_admin"), eq(users.isActive, true), ne(spaceMembers.userId, userId))).limit(1);
+  if (!other) throw new ApiError("last_space_admin");
+}
+
+/**
+ * 409 `last_space_admin` when deleting or deactivating every user of `userIds` would leave a space with no active
+ * space_admin (users/service.ts: delete, deactivate, bulk). Takes the space-admin lock first; a caller that also locks
+ * user rows takes this lock before them (a member change holds it while its foreign key check share-locks a user row).
+ */
+export async function assertNotLastSpaceAdmin(tx: Tx, userIds: string[]): Promise<void> {
+  await xactLock(tx, "spaceAdmins");
+  if (!userIds.length) return;
+  const activeAdmin = and(eq(spaceMembers.role, "space_admin"), eq(users.isActive, true));
+  // The spaces where one of them is an active admin, kept only when every active admin there is one of them.
+  const [hit] = await tx.select({ spaceId: spaceMembers.spaceId }).from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId))
+    .where(and(activeAdmin, inArray(spaceMembers.spaceId, tx.select({ id: spaceMembers.spaceId }).from(spaceMembers)
+      .where(and(eq(spaceMembers.role, "space_admin"), inArray(spaceMembers.userId, userIds))))))
+    .groupBy(spaceMembers.spaceId).having(sql`bool_and(${inArray(spaceMembers.userId, userIds)})`).limit(1);
+  if (hit) throw new ApiError("last_space_admin", "This user is the only active space admin of a space. Make another member a space admin first.");
 }
 
 /**
@@ -156,7 +209,7 @@ export async function setMember(ctx: Ctx, spaceId: string, userId: string, b: Se
   return db.transaction(async (tx) => {
     const { space, user, manage, roles: before } = await memberChange(tx, ctx, spaceId, userId);
     const roles = inOrder(b.roles);
-    const member = { userId, name: user.name, username: user.username, roles };
+    const member = { ...user, lastSignInAt: iso(user.lastSignInAt), roles };
     if (roles.join() === before.join()) return member;
     if (!manage && sourceAdminChanged(before, roles)) throw SOURCE_ADMIN_ONLY();
     if (before.includes("space_admin") && !roles.includes("space_admin")) await keepAnAdmin(tx, spaceId, userId);

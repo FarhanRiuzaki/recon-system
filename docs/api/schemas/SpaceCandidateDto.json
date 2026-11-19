@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpaceCandidateDto",
+  "type": "object",
+  "properties": {
+    "userId": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "username": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean"
+    },
+    "member": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "userId",
+    "name",
+    "username",
+    "active",
+    "member"
+  ],
+  "additionalProperties": false
+}
