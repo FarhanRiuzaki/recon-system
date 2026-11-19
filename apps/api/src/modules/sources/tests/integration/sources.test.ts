@@ -458,7 +458,7 @@ describe("CEL on save and the preview (Task 3)", () => {
   it("roles, body, state and kind", async () => {
     const { s, v } = await published();
     expect((await preview(t.op, s.id, v.id, { sample: FILE })).status).toBe(403);
-    expect((await preview(t.ck, s.id, v.id, { sample: FILE })).status).toBe(403);
+    expect((await preview(t.ck, s.id, v.id, { sample: FILE, fileName: "act20261102.txt" })).status).toBe(200); // the checker previews what it reviews
     expect((await preview(t.adm, s.id, v.id, { sample: FILE, fileName: "act20261102.txt" })).status).toBe(200);
     expect((await preview(t.mk, s.id, v.id, { sample: "" })).status).toBe(400);
     expect((await preview(t.mk, s.id, v.id, { sample: "x".repeat(65 * 1024) })).status).toBe(400);

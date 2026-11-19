@@ -1,6 +1,7 @@
 // /v1/spaces/:spaceId/sources*: every route takes the space guard without `or` (a platform admin has no data access),
 // so in an archived space each change is 409 space_archived. Roles (spec §11, Plan 2): any role reads; source_admin
-// creates a source, sets, tests and reads its connection; source_admin or config_maker drafts, edits and submits a version;
+// creates a source, sets, tests and reads its connection; source_admin or config_maker drafts, edits and submits a version
+// (and a config_checker previews one it reviews);
 // config_checker approves or rejects one someone else made; space_admin shares; any role of the owning space reads the
 // source's activity (any role reads the versions; through a share the published and retired ones). Query 400 → guard 401/403 → body 400 →
 // 404 → rules → change → activity (the last four in service.ts).
@@ -67,7 +68,7 @@ export const sourcesController = () =>
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview", async (c) => {
       const b = await body(c, PreviewSourceBody).catch(refusedSpec);
       return previewVersion(c.ctx, idParam(c.params.sourceId, "source"), idParam(c.params.versionId, "version"), b);
-    }, { guard: { space: MAKERS } })
+    }, { guard: { space: [...MAKERS, "config_checker"] } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/submit", ({ ctx, params }) =>
       submitVersion(ctx, idParam(params.sourceId, "source"), idParam(params.versionId, "version")), { guard: { space: MAKERS } })
     .post("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/approve", ({ ctx, params }) =>
