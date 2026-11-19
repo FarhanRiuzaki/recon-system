@@ -236,3 +236,33 @@ penyesuaian copy diputuskan saat review desain-vs-implementasi.
 
 Minta designer-recon mereview implementasi terhadap page 01 (screenshot desktop/tablet/phone dari E2E). Catat
 selisih yang disengaja (nilai kode affectUI) dan perbaiki selisih yang tidak disengaja di plan berikutnya.
+
+### Task 6: Spaces di detail user (ditambahkan atas arahan pemilik, 19 Nov)
+
+Pemilik: anggota space berasal dari user RBAC yang sudah ada, "bisa dari situ juga" — admin aplikasi menambah user ke
+space langsung dari halaman detail user.
+
+**Files:**
+- Modify: `apps/api/src/modules/spaces/{controller,service}.ts`, `packages/shared/src/contracts/spaces.ts`,
+  `docs/api/README.md`, `apps/web/scripts/emit-api-schemas.ts`
+- Move: `apps/web/src/features/spaces/role-checklist.tsx` → `apps/web/src/components/role-checklist.tsx` (dipakai dua
+  feature; feature tidak boleh mengimpor feature lain, AGENTS §1)
+- Modify: `apps/web/src/features/users/user-detail.tsx` (+ dialog baru di `features/users/`), `lib/shared/queries.ts`,
+  `lib/server/prefetch.tsx`
+- Test: `apps/api/src/modules/spaces/tests/integration/spaces.test.ts`, `apps/web/tests/e2e/spaces.spec.ts`
+
+**Interfaces:**
+- `GET /v1/users/:userId/spaces` (milik modul `spaces`; guard `space.view`) → `Page<UserSpaceDto>`,
+  `UserSpaceDto = { spaceId, code, name, status, roles: SpaceRole[] }`, paged lewat `pageQuery`, sort `name`.
+- Panel "Spaces" di detail user, hanya untuk pemegang `space.view`: daftar space + role (chip) dengan link ke
+  `/spaces/<id>/members`; aksi "Add to space" hanya untuk `space.manage`: dialog pilih space (yang belum diikuti user) +
+  `RoleChecklist` (pemegang `space.manage` boleh Source admin) → `PUT /v1/spaces/{spaceId}/members/{userId}`.
+- Mengubah/menghapus keanggotaan tetap di halaman Members (satu tempat untuk aturan admin terakhir).
+
+- [ ] **Step 1: Tes gagal** — API: `space.view` melihat daftar space user; tanpa `space.view` 403; user tanpa space →
+  list kosong. E2E: admin dengan `space.manage` membuka detail user tanpa space, "Add to space" → pilih Treasury +
+  Operator → panel menampilkan Treasury/Operator dan halaman Members Treasury memuat user itu.
+- [ ] **Step 2: Jalankan, gagal.**
+- [ ] **Step 3: Implementasi.**
+- [ ] **Step 4: `bun run check`, E2E spaces + users, budget ≤ 252 kB.**
+- [ ] **Step 5: Commit** `feat: spaces panel on user detail with add to space`
