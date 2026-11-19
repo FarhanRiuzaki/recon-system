@@ -422,6 +422,8 @@ Batas yang diketahui:
 
 Satu aplikasi dipakai banyak tim (Treasury, CTOP, FICO, …), tiap tim punya space dan membership sendiri. Model pool: tabel bersama dengan `space_id` + Row Level Security (`FORCE`, role app non-owner tanpa `BYPASSRLS`, `SET LOCAL` per transaksi), `space_id` di setiap unique/FK. Role global yang ada tetap untuk administrasi aplikasi; enam role per space (enum tetap di fase 1). `docs/architecture.md` bagian "Tidak ada tenant" perlu diperbarui saat modul `spaces` dibangun. Terbuka: penerimaan IT risk bank atas isolasi logis.
 
+Catatan 19 November 2026 (Task 5, route `spaces`): seed default memberi role Admin `space.view` + `space.manage`, jadi Admin bisa menambahkan dirinya ke space mana pun (tercatat di activity sebagai `space.member_set`; tanpa approval kedua sesuai spec §11b). Menghapusnya cukup satu pengecualian di permission Admin pada `apps/api/src/db/seed/system.ts`.
+
 ## DEC-035 — Proses worker + pg-boss, tanpa broker baru
 
 `apps/api` punya dua entrypoint dari image yang sama: `api` dan `worker`. Job dan jadwal (interval tiap N menit, daily) lewat `pg-boss` di PostgreSQL yang sama; bukan k8s CronJob, bukan Redis/broker. Deploy: RKE untuk aplikasi, PostgreSQL HA di VM terpisah. Worker stateless dan auto catch-up dari watermark/file yang tersimpan. Perilaku pg-boss (gabung job per kunci, cap konkurensi, failover) diverifikasi di spike S2.

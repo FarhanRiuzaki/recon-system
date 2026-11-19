@@ -45,10 +45,10 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
 - Error codes and statuses are fixed: `unauthenticated` 401, `forbidden` 403, `csrf` 403, `not_found` 404,
   `bad_request` 400, `duplicate` 409, `rate_limited` 429, `invalid_credentials` 401, `account_inactive` 403,
   `invalid_code` 400, `superadmin_locked` 409, `last_superadmin` 409, `self_action` 409, `role_in_use` 409,
-  `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `internal` 500. One code is sent with
-  another status on purpose: `invalid_credentials` is 400 when a signed-in user's current password is wrong
-  (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser doesn't take it for
-  an ended session.
+  `ldap_password` 409, `already_enabled` 409, `only_sign_in_method` 409, `last_space_admin` 409, `internal` 500.
+  One code is sent with another status on purpose: `invalid_credentials` is 400 when a signed-in user's current
+  password is wrong (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser
+  doesn't take it for an ended session.
 - Check order in every guarded handler: parse the body or query (400) → session, CSRF, permission (401/403) →
   existence (404) → rules (403/409) → change → activity entry. A query is checked before the session (the GET rows
   below); a body's 400 comes right after the guard. `apps/api/test/architecture/conformance.test.ts` fails when a handler
@@ -168,7 +168,9 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   401. `PUT …/members/{userId}` and `DELETE` re-read the caller's right to manage members inside the change, and refuse
   to leave a space without a `space_admin` (409 `last_space_admin`, also for a PUT that drops the role); two such
   changes run one after the other. A code may be sent in any letter case
-  (the schema shows the stored form); it is stored in lower case and unique.
+  (the schema shows the stored form); it is stored in lower case and unique. The default seed gives Admin `space.view`
+  and `space.manage`, so an Admin can add themselves to any space (recorded as `space.member_set`; no second approval,
+  spec §11b); taking that away is a one-line exception to Admin's permissions in `apps/api/src/db/seed/system.ts`.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
 

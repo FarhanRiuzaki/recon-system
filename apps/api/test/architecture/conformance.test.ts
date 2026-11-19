@@ -255,6 +255,9 @@ const NO_ACTIVITY: Record<string, string> = {
 const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controller.ts"];
 const REAL_ALLOW: Allow = { nonList: NON_LIST_GETS, gates: IN_HANDLER_GATES, authFiles: AUTH_ROUTE_FILES, noActivity: NO_ACTIVITY };
 
+/** A path inside one space: its :spaceId segment is what the { space } guard checks. */
+const SPACE_PATH = /\/:spaceId(\/|$)/;
+
 const CONTROLLER = /^modules\/[\w-]+\/controller\.ts$/;
 
 /** Every rule's violations over `files` (paths relative to src/). */
@@ -285,8 +288,11 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
       const service = firstPos((c) => c.id !== null && data.has(c.id));
       // (b) the guard option, or the allowlisted in-handler gate
       if (h.guard === "missing") out.push(`${id}: no guard option`);
-      // the { space, or? } form reads the space from :spaceId; without it every request would be 404
-      if (h.guard === "space" && !h.path.includes("/:spaceId")) out.push(`${id}: a { space } guard needs :spaceId in the path`);
+      // the { space, or? } form reads the space from :spaceId (without it every request would be 404), and a route of a
+      // space takes only that form: a permission or null guard would let anyone holding it read any space's data
+      const inSpace = SPACE_PATH.test(h.path);
+      if (h.guard === "space" && !inSpace) out.push(`${id}: a { space } guard needs :spaceId in the path`);
+      if (inSpace && (h.guard === "perm" || h.guard === "null")) out.push(`${id}: a route under :spaceId needs the { space } guard`);
       for (const o of h.options.filter((x) => !HOOK_OK.has(x))) out.push(`${id}: route option ${o} runs code the scan can't order against the guard`);
       const gate = h.calls.some((c) => c.name === "forbidden");
       if (gate && !(key in allow.gates)) out.push(`${id}: checks a permission in the handler; use the guard option`);
@@ -440,10 +446,18 @@ export const xController = () => new Elysia().use(guard)${code};` });
     expect(run(`.get("/v1/x", handler, { guard: "x.view" })`)).toEqual([`${X} GET /v1/x: handler is not an inline function (the scan can't read it)`]);
   });
 
-  it("fixture (b): guard object option runs before the handler, and needs :spaceId in the path", () => {
+  it("fixture (b): guard object option runs before the handler; it needs :spaceId in the path, and a :spaceId path needs it", () => {
     expect(run(`.patch("/v1/spaces/:spaceId", async (c) => save(c.ctx, await body(c, B)), { guard: { space: ["space_admin"], or: "space.manage" } })
   .get("/v1/spaces/:spaceId/items", ({ query }) => thingPage(query), { query: Q, guard: { space: SPACE_ROLES } })`)).toEqual([]);
     expect(run(`.get("/v1/x", () => thingPage({}), { guard: { space: ["viewer"] } })`)).toEqual([`${X} GET /v1/x: a { space } guard needs :spaceId in the path`]);
+    // and the other way round: a path under :spaceId takes only the object form
+    expect(run(`.get("/v1/spaces/:spaceId/x", () => thingPage({}), { guard: "x.view" })
+  .delete("/v1/spaces/:spaceId/x/:id", ({ ctx }) => save(ctx), { guard: null })`)).toEqual([
+      `${X} DELETE /v1/spaces/:spaceId/x/:id: a route under :spaceId needs the { space } guard`, // the scan meets the chain's last call first
+      `${X} GET /v1/spaces/:spaceId/x: a route under :spaceId needs the { space } guard`,
+    ]);
+    expect(run(`.get("/v1/spaces/:spaceId/x", () => thingPage({}), { guard: { space: ["viewer"], or: "x.view" } })`)).toEqual([]);
+    expect(run(`.get("/v1/spaces/:spaceIdx/x", () => thingPage({}), { guard: "x.view" })`)).toEqual([]); // another parameter
     // the object form is still a guard option: the other rules apply to the handler behind it
     expect(run(`.post("/v1/spaces/:spaceId/x", async (c) => { await lookup(1); return save(c.ctx, await body(c, B)); }, { guard: { space: ["viewer"] } })`))
       .toEqual([`${X} POST /v1/spaces/:spaceId/x: answers 404 or reads data before the request body (400)`]);
