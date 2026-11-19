@@ -3,7 +3,7 @@
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
   CreateSpaceBody, SetSpaceMemberBody, SpaceCandidateDto, SpaceCandidateListQuery, SpaceDto, SpaceListQuery, SpaceMemberDto, SpaceMemberListQuery,
-  SpaceRowDto, SpaceStatus, UpdateSpaceBody,
+  SpaceRowDto, SpaceStatus, UpdateSpaceBody, UserSpaceDto, UserSpaceListQuery,
 } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { and, eq, exists, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
@@ -152,6 +152,21 @@ export async function candidatePage(spaceId: string, q: SpaceCandidateListQuery)
     orderBy: sortSql(q.sort, { name: sql`lower(${users.name})` }, "name", users.id),
     query: q,
     map: (r) => r,
+  });
+}
+
+/** One page of the spaces `userId` is a member of (404 for no such user), each with every role they hold there; name A–Z. */
+export async function userSpacePage(userId: string, q: UserSpaceListQuery): Promise<Page<UserSpaceDto>> {
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId));
+  if (!user) throw notFound("user");
+  const where = eq(spaceMembers.userId, userId);
+  return pageQuery({
+    rows: db.select({ spaceId: spaces.id, code: spaces.code, name: spaces.name, status: spaces.status, roles: sql<string[]>`array_agg(${spaceMembers.role})` })
+      .from(spaceMembers).innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).where(where).groupBy(spaces.id).$dynamic(),
+    count: db.select(one).from(spaceMembers).innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).where(where).groupBy(spaces.id).$dynamic(),
+    orderBy: sortSql(q.sort, { name: sql`lower(${spaces.name})` }, "name", spaces.id),
+    query: q,
+    map: (r) => ({ ...r, status: r.status as SpaceStatus, roles: inOrder(r.roles) }),
   });
 }
 

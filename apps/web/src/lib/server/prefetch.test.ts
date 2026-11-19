@@ -16,7 +16,7 @@ vi.mock("next/headers", () => ({
 import type { QueryKey } from "@tanstack/react-query";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { readTable, tableRequest, text } from "@/lib/shared/table-state";
-import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions } from "@/lib/shared/queries";
+import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions, userSpaces } from "@/lib/shared/queries";
 import { fakeApi, pathOf, sealCookie, TEST_TOKEN } from "@/test/session";
 import { Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
 
@@ -69,12 +69,14 @@ describe("server prefetch = the API's answer to the browser hook's own URL, unde
     expect(await dataAt(rs, SUPERADMINS.key)).toEqual(v1(SUPERADMINS.url));
   });
 
-  it("user detail and that user's sessions; own sessions", async () => {
+  it("user detail, that user's sessions and spaces; own sessions", async () => {
     echoApi();
     const id = "0199f0a0-0000-7000-8000-000000000002";
     const t = tableKey(userSessions(id), "sort=device");
-    const rs = [reads.user(id), reads.userSessions(id, sp("sort=device")), reads.mySessions(sp(""))];
+    expect(reads.userSpaces(id)).toEqual({ key: ["spaces", "user", id], path: `/api/users/${id}/spaces?pageSize=100` });
+    const rs = [reads.user(id), reads.userSessions(id, sp("sort=device")), reads.mySessions(sp("")), reads.userSpaces(id)];
     expect(await dataAt(rs, userDetail(id).key)).toEqual(v1(`/api/users/${id}`));
+    expect(await dataAt(rs, userSpaces(id).key)).toEqual(v1(`/api/users/${id}/spaces?pageSize=100`));
     expect(await dataAt(rs, t.key)).toEqual(v1(t.url));
     expect(await dataAt(rs, tableKey(MY_SESSIONS, "").key)).toEqual(v1(tableKey(MY_SESSIONS, "").url));
   });

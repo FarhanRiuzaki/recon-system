@@ -22,3 +22,7 @@ export const ROLE_DESCRIPTION: Record<SpaceRole, string> = {
   reviewer: "Approves operators' requests and signs off business days.",
   viewer: "Sees recons, breaks and explanations, and exports CSV.",
 };
+
+/** Why a member action is off (Build notes 01 final copy): the role checklist and the members page show them. */
+export const SOURCE_ADMIN_REASON = "Only an app admin can grant or remove Source admin.";
+export const LAST_SPACE_ADMIN = "A space needs at least one space admin.";

@@ -13,7 +13,7 @@ import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, SPACES, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable,
+  type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
 import { readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
@@ -53,6 +53,7 @@ export const reads = {
   superadmins: (): Read => ({ key: SUPERADMINS.key, path: SUPERADMINS.url }),
   user: (id: string): Read => ({ key: userDetailQuery(id).key, path: userDetailQuery(id).url }),
   userSessions: (id: string, sp: URLSearchParams) => table(userSessionsTable(id), sp, SessionListQuery),
+  userSpaces: (id: string): Read => ({ key: userSpacesQuery(id).key, path: userSpacesQuery(id).url }),
   roles: (sp: URLSearchParams) => table(ROLES, sp, RoleListQuery),
   role: (id: string): Read => ({ key: roleKey(id), path: roleUrl(id) }),
   permissions: (sp: URLSearchParams) => table(PERMISSIONS_TABLE, sp, PermissionListQuery),

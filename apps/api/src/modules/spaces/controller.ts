@@ -1,13 +1,15 @@
-// /v1/spaces*. Query 400 → guard 401/403 (a SpaceGuard: 404 for a non-UUID :spaceId, then the roles in that space) →
-// body 400 → 404 → rules → change → activity (the last four in service.ts).
+// /v1/spaces*, and GET /v1/users/:id/spaces (this module's data under the users path; `:id`, not `:userId`: the router
+// refuses two names for one segment, and /v1/users/:id is the users module's). Query 400 → guard 401/403 (a SpaceGuard:
+// 404 for a non-UUID :spaceId, then the roles in that space) → body 400 → 404 → rules → change → activity (the last four
+// in service.ts).
 import { Elysia } from "elysia";
-import { CreateSpaceBody, SetSpaceMemberBody, SpaceCandidateListQuery, SpaceListQuery, SpaceMemberListQuery, UpdateSpaceBody } from "@starterkit/shared/contracts/spaces";
+import { CreateSpaceBody, SetSpaceMemberBody, SpaceCandidateListQuery, SpaceListQuery, SpaceMemberListQuery, UpdateSpaceBody, UserSpaceListQuery } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { candidatePage, createSpace, memberPage, removeMember, setMember, spaceDetail, spacePage, updateSpace } from "./service";
+import { candidatePage, createSpace, memberPage, removeMember, setMember, spaceDetail, spacePage, updateSpace, userSpacePage } from "./service";
 
-/** The routes of /v1/spaces*. */
+/** The routes of /v1/spaces* and the user's spaces. */
 export const spacesController = () =>
   new Elysia()
     .use(guard)
@@ -31,4 +33,6 @@ export const spacesController = () =>
     .delete("/v1/spaces/:spaceId/members/:userId", async ({ ctx, params }) => {
       await removeMember(ctx, ctx.space!.id, idParam(params.userId, "user"));
       return { ok: true };
-    }, { guard: { space: ["space_admin"], or: "space.manage" } });
+    }, { guard: { space: ["space_admin"], or: "space.manage" } })
+    /** The spaces a user is a member of, with their roles in each (the user detail's Spaces panel). */
+    .get("/v1/users/:id/spaces", ({ params, query }) => userSpacePage(idParam(params.id, "user"), query), { query: UserSpaceListQuery, guard: "space.view" });

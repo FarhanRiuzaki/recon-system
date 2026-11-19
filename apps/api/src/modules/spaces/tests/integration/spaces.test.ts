@@ -1,7 +1,7 @@
 // /v1/spaces*: the per-space guard ({ space, or }), check order, membership, the last space_admin, activity entries.
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SpaceCandidateDto, SpaceMemberDto, SpaceRowDto } from "@starterkit/shared/contracts/spaces";
+import type { SpaceCandidateDto, SpaceMemberDto, SpaceRowDto, UserSpaceDto } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { api, call, request, resetData, signIn } from "../../../../../test/helpers/app";
@@ -333,5 +333,35 @@ describe("space detail, member status, candidates", () => {
     expect(await rolesIn(A, viewer)).toEqual(["operator"]);
     expect((await del(B, google, sa)).status).toBe(200);
     expect(await rolesIn(B, google)).toEqual([]);
+  });
+});
+
+describe("GET /v1/users/:id/spaces", () => {
+  const spacesOf = (userId: string, token?: string, qs = "") => get(`/v1/users/${userId}/spaces${qs}`, token);
+  const rows = async (r: Response) => ((await r.json()) as Page<UserSpaceDto>).items.map((s) => [s.code, s.name, s.status, s.roles]);
+
+  it("space.view lists the user's spaces with their roles there, name A–Z or by sort; a user in no space gets an empty page", async () => {
+    const [viewer, google] = [await idOf("viewer"), await idOf("google")];
+    await member(A, viewer, "viewer", "operator");
+    await member(B, viewer, "reviewer");
+    const admin = await signIn("admin"); // space.view, no role in either space
+    const r = await spacesOf(viewer, admin);
+    expect(r.status).toBe(200);
+    expect(await rows(r)).toEqual([["ctop", "CTOP", "active", ["reviewer"]], ["treasury", "Treasury", "active", ["operator", "viewer"]]]);
+    expect(((await (await spacesOf(viewer, sa)).json()) as Page<UserSpaceDto>).items[0]).toEqual({ spaceId: B, code: "ctop", name: "CTOP", status: "active", roles: ["reviewer"] });
+    expect(await rows(await spacesOf(viewer, sa, "?sort=-name"))).toEqual([["treasury", "Treasury", "active", ["operator", "viewer"]], ["ctop", "CTOP", "active", ["reviewer"]]]);
+    const none = (await (await spacesOf(google, sa)).json()) as Page<UserSpaceDto>;
+    expect([none.items, none.total]).toEqual([[], 0]);
+  });
+
+  it("without space.view 403 (even for the user's own spaces); signed out 401; a bad query 400 before the guard; a non-UUID or unknown user 404", async () => {
+    const viewer = await idOf("viewer");
+    await member(A, viewer, "space_admin");
+    const t = await signIn("viewer");
+    const r = await spacesOf(viewer, t);
+    expect([r.status, await code(r)]).toEqual([403, "forbidden"]);
+    expect((await spacesOf(viewer)).status).toBe(401);
+    for (const qs of ["?sort=code", "?pageSize=10", "?page=1001"]) expect((await spacesOf(viewer, undefined, qs)).status).toBe(400);
+    for (const bad of [await spacesOf("abc", sa), await spacesOf(Bun.randomUUIDv7(), sa)]) expect([bad.status, await code(bad)]).toEqual([404, "not_found"]);
   });
 });

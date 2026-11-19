@@ -10,9 +10,9 @@ import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceCandidateDto, SpaceMemberDto, SpaceRole } from "@starterkit/shared/contracts/spaces";
+import { RoleChecklist } from "@/components/role-checklist";
 import { api, errorText } from "@/lib/client/api";
 import { spaceCandidates } from "@/lib/shared/queries";
-import { RoleChecklist } from "./role-checklist";
 import { SPACES_KEY } from "./use-spaces";
 
 type Space = { id: string; name: string };

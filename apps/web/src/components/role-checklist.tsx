@@ -2,11 +2,9 @@
 
 import { useId } from "react";
 import { Checkbox } from "@starterkit/ui/ds";
-import { ROLE_DESCRIPTION, ROLE_LABEL, SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
-import { LAST_SPACE_ADMIN, SOURCE_ADMIN_REASON } from "./use-spaces";
+import { LAST_SPACE_ADMIN, ROLE_DESCRIPTION, ROLE_LABEL, SOURCE_ADMIN_REASON, SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 
 type Locks = { canSourceAdmin: boolean; lockedSpaceAdmin: boolean };
-
 
 /** The reason `role` can't be toggled, or null. */
 const lockOf = (role: SpaceRole, l: Locks): string | null =>
@@ -19,9 +17,10 @@ export function toggleRole(value: readonly SpaceRole[], role: SpaceRole, l: Lock
 }
 
 /**
- * The seven space roles with their descriptions (Figma 01 Dialog/Change roles). Source admin is read-only without
- * space.manage (`canSourceAdmin`), its reason as text under it, checked when already held; Space admin is read-only
- * when `lockedSpaceAdmin` (the member is the space's only active space admin; the dialog says why in full).
+ * The seven space roles with their descriptions (Figma 01 Dialog/Change roles), for the spaces and users features.
+ * Source admin is read-only without space.manage (`canSourceAdmin`), its reason as text under it, checked when already
+ * held; Space admin is read-only when `lockedSpaceAdmin` (the member is the space's only active space admin; the dialog
+ * says why in full).
  */
 export function RoleChecklist({ legend, value, onChange, canSourceAdmin, lockedSpaceAdmin }: {
   legend: string; value: readonly SpaceRole[]; onChange: (roles: SpaceRole[]) => void; canSourceAdmin: boolean; lockedSpaceAdmin: boolean;

@@ -13,11 +13,12 @@ import { errorText } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { SpaceMemberDto } from "@starterkit/shared/contracts/spaces";
+import { LAST_SPACE_ADMIN, SOURCE_ADMIN_REASON } from "@starterkit/shared/spaces";
 import { activityInvestigationHref } from "@/lib/shared/activity-links";
 import { SPACE_MEMBERS } from "@/lib/shared/queries";
 import { MEMBER_COLUMNS } from "./member-columns";
 import { RoleMatrix } from "./role-matrix";
-import { LAST_SPACE_ADMIN, SOURCE_ADMIN_REASON, useSpace } from "./use-spaces";
+import { useSpace } from "./use-spaces";
 
 /** The member dialogs load on click, outside the page's first load (route budget, AGENTS.md §9); the import starts on the first press or focus in the page. */
 const loadDialogs = () => import("./member-dialogs");

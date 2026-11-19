@@ -7,10 +7,6 @@ import { spaceCandidates, spaceDetail, spaceOptions, SPACES_KEY } from "@/lib/sh
 export { SPACES_KEY };
 export { ROLE_DESCRIPTION, ROLE_LABEL } from "@starterkit/shared/spaces";
 
-/** Why a member action is off (Build notes 01 final copy); shared by the members page and the role checklist. */
-export const SOURCE_ADMIN_REASON = "Only an app admin can grant or remove Source admin.";
-export const LAST_SPACE_ADMIN = "A space needs at least one space admin.";
-
 export const spaceHref = (id: string, page: "members") => `/spaces/${encodeURIComponent(id)}/${page}`;
 
 /** Every space the caller belongs to, for the switcher (one page of 100, name A–Z). The members table is the members screen's own `useTableQuery(SPACE_MEMBERS(id))`. */

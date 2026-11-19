@@ -281,3 +281,56 @@ test("a space admin adds a member, changes their roles and removes them; the las
   await expect(dialog).toHaveCount(0);
   await expect(mine).toBeFocused(); // focus back on the row's menu button
 });
+
+/**
+ * Demo seed: `google` is in no space. The global-setup Superadmin (space.manage) adds them to Treasury as an Operator
+ * from their user page; the test takes them out again. A Viewer-role user (no space.view) sees no Spaces panel.
+ */
+test("an app admin adds a user to a space from the user's page; the panel lists it and the space's members show them", async ({ page, browser, baseURL }) => {
+  const ids = await spaceIds(browser, baseURL);
+  const su = await browser.newContext({ storageState: AUTH_STATE, baseURL });
+  const users = (await (await su.request.get("/api/users?q=google")).json()) as { items: { id: string; username: string }[] };
+  const google = users.items.find((u) => u.username === "google")!.id;
+  const admin = await su.newPage();
+  try {
+    await admin.goto(`/users/${google}`);
+    const panel = admin.locator("section").filter({ has: admin.getByRole("heading", { level: 2, name: "Spaces" }) });
+    await expect(panel.getByText("Not in any space yet")).toBeVisible();
+
+    await panel.getByRole("button", { name: "Add to space" }).click();
+    const dialog = admin.getByRole("dialog", { name: "Add Google User to a space" });
+    const add = dialog.getByRole("button", { name: "Add to space" });
+    await expect(add).toBeDisabled();
+    await dialog.getByRole("combobox", { name: "Space" }).selectOption({ label: "Treasury" });
+    await expect(dialog.getByRole("checkbox", { name: "Source admin" })).not.toHaveAttribute("aria-readonly", "true"); // space.manage
+    await expect(add).toBeDisabled(); // no role yet
+    await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
+    await add.click();
+    await expect(admin.getByText("Added Google User to Treasury.")).toBeVisible();
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Add to space" })).toBeFocused();
+    const row = panel.getByRole("row").filter({ hasText: "Treasury" });
+    await expect(row.locator('[data-slot="category-chip"]')).toHaveText(["Operator"]);
+
+    // The dialog offers only the spaces the user is not in yet.
+    await panel.getByRole("button", { name: "Add to space" }).click();
+    await expect(admin.getByRole("dialog").getByRole("option", { name: "CTOP" })).toHaveCount(1);
+    await expect(admin.getByRole("dialog").getByRole("option", { name: "Treasury" })).toHaveCount(0);
+    await admin.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+
+    await row.getByRole("link", { name: "Treasury" }).click();
+    await expect(admin).toHaveURL(membersOf(ids.treasury!));
+    await expect(admin.getByRole("table", { name: "Members" }).getByRole("row").filter({ hasText: "Google User" })
+      .locator('[data-slot="category-chip"]')).toHaveText(["Operator"]);
+
+    // No space.view: no Spaces panel on the same page.
+    await signIn(page, "viewer");
+    await expect(page).toHaveURL("/");
+    await page.goto(`/users/${google}`);
+    await expect(page.getByRole("heading", { level: 1, name: "Google User" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Spaces" })).toHaveCount(0);
+  } finally {
+    await su.close();
+    e2eSql(`delete from space_members where user_id = '${google}' and space_id = '${ids.treasury}'`);
+  }
+});
