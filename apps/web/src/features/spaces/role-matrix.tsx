@@ -37,7 +37,7 @@ export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cell
 const CHIP = "inline-flex h-5.5 items-center rounded-sm px-2 text-label text-fg";
 function MatrixCell({ cell }: { cell: Cell }) {
   if (cell === "does") return <span className={`${CHIP} bg-inset`}>Does</span>;
-  if (cell === "approves") return <span className={`${CHIP} bg-primary-soft`}>Approves</span>;
+  if (cell === "approves") return <span className={`${CHIP} border border-control-border bg-card`}>Approves</span>;
   if (cell === "views") return <span className="text-label text-fg-2">Views</span>;
   return <><span aria-hidden="true" className="text-fg-3">—</span><span className="sr-only">Not allowed</span></>;
 }

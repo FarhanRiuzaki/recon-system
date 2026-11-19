@@ -269,4 +269,4 @@ Dari spec §14 dan temuan legacy KSEI. Jawaban dicatat di spec/decisions oleh co
 | REC-D2 | Komponen library Figma masih versi sebelum affectUI; perlu disamakan dengan komponen kode. | Designer | Tidak |
 | REC-D3 | Komponen Segmented perlu varian lebar hug (mengikuti isi). | Designer | Tidak |
 | REC-D4 | Cek visual mode gelap dan 4 palet di Figma. | Designer | Tidak |
-| REC-D5 | Palet Burgundy: chip "Approves" (role/admin/soft) tampil merah muda seperti tint error; kontras cukup (≥ 10:1). Periksa slot soft role per palet; token tidak diubah di kode. | Designer | Tidak |
+| REC-D5 | Selesai: Approves chip is a neutral outline (bg-card + control-border); meaning is carried by the word. (Palet Burgundy: chip "Approves" tampil merah muda seperti tint error; token tidak diubah di kode.) | Designer | Tidak |
