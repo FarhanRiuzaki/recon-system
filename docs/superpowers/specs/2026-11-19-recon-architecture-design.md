@@ -296,14 +296,18 @@ config
   `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity` (pg_trgm, hanya di dalam window sempit),
   `eq_sum` (pass 1:N/N:1: jumlah anggota grup sama dengan amount sisi tunggal, dalam toleransi).
 - **N:1 / 1:N** = group-by kunci lalu bandingkan agregat (O(n)). Subset-sum ditunda (NP-complete; laporan riset).
-- **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*; sisanya `suggested`. **Terbukti perlu oleh S1**:
+- **Ambiguitas**: auto-accept hanya bila pasangan *mutual unique best*. Sisanya diatur per pass lewat `on_ambiguous`
+  = `break` | `suggest` (core-recon): default `break` untuk pass yang hanya mencocokkan kunci tanpa measure (label
+  "Duplicate" bila sebabnya kunci dobel di satu sisi, mis. SID dobel KSEI), default `suggest` untuk pass bertoleransi. **Terbukti perlu oleh S1**:
   pass toleransi greedy tanpa cek ini menghasilkan 1 pasangan salah pada run harian 3 juta/sisi (`docs/recon/spikes.md`). Duplikat exact dipasangkan
   FIFO deterministik (`ROW_NUMBER`), urutan tie-break terdokumentasi dan disimpan di evidence.
 - **CEL** (`@marcbachmann/cel-js`) hanya untuk field turunan di mapping source (normalisasi), tidak di predikat match.
   Batas cost runtime dan engine regex-nya diverifikasi di spike S3.
 - **Simulasi**: draft dijalankan sebagai `recon_run.mode = simulation` atas data yang sama dengan versi live; hasilnya diff
   (match bertambah/hilang/berganti pasangan/bergeser auto→suggest). Publish nonaktif sampai simulasi jalan pada hash draft
-  terkini; diff jadi bahan review checker.
+  terkini; diff jadi bahan review checker. Simulasi memutar ulang satu hari: default hari terakhir yang sudah closed,
+  maker boleh memilih hari lain dalam 30 hari terakhir selama datanya masih dalam retensi. Checker melihat daftar
+  pasangan yang berubah (gained / lost / re-paired / suggested↔auto) secara paged dari Approvals.
 
 ## 11. Break, maker-checker, space, audit
 
@@ -344,7 +348,14 @@ versi config, run id). Retensi artefak pembukuan 10 tahun.
   approval di produk ini, posting dilakukan di sistem bank.
 - **PII**: tidak ada masking di fase 1; dicatat sebagai pertanyaan IT risk (§14).
 - **Anggota space (core-recon, dari review page Figma 01)**: `source_admin` = role IT di space untuk membuat/mengubah
-  source dan koneksi (kredensial), tanpa hak atas config recon atau break — memisahkan kredensial dari admin ops. Pemberian
+  source dan koneksi (kredensial), tanpa hak atas config recon atau break — memisahkan kredensial dari admin ops.
+  `source_admin` hanya bisa diberikan/dicabut oleh pemegang izin global `space.manage`; `space_admin` mengelola enam
+  role lainnya (REC-Q11b).
+- **Sign-off hari**: preparer (reviewer) → approver yang berbeda user id, bukan preparer dan tidak me-resolve item di
+  hari itu, role reviewer atau space_admin; diblokir selama ada request approval pending untuk hari itu. View
+  "Unassigned": space_admin/reviewer assign massal, operator hanya "Take" untuk dirinya sendiri.
+- **Route web per space**: `/spaces/[spaceId]/{today,members,sources,recons/[configId],breaks,approvals}` (UUID seperti
+  API; link bisa dibagikan, beberapa tab boleh membuka space berbeda). Sub-route detail dikonfirmasi di plan flow. Pemberian
   role tidak butuh approval kedua di fase 1 (tercatat di activity; SoD tetap per aksi). Add member hanya dari user yang sudah
   ada di aplikasi (pencarian LDAP langsung ditunda). Hapus anggota: break yang di-assign ke dia jadi tanpa owner (muncul di
   view "Unassigned"), request approval yang dia buat dan masih pending dibatalkan; dialog hapus menampilkan jumlah keduanya.
