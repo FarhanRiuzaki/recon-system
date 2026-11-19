@@ -538,14 +538,14 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
   });
 }
 
-/** Sends a version in review back to draft with the checker's comment. */
+/** Sends a version in review back to draft with the checker's comment; `checkerId` = who sent it back (approve overwrites it). */
 export function rejectVersion(ctx: Ctx, id: string, versionId: string, b: RejectSourceVersionBody): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     notAContributor(ctx, v);
     if (!canStep("reject", v.status as VersionStatus)) throw wrongState("Only a version in review can be rejected.");
-    const [row] = await tx.update(sourceVersions).set({ status: "draft", reviewComment: b.comment, updatedAt: NOW })
+    const [row] = await tx.update(sourceVersions).set({ status: "draft", reviewComment: b.comment, checkerId: ctx.user.id, updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_reject", target: target(s), after: { version: v.version, comment: b.comment } });
     return versionDto(row);

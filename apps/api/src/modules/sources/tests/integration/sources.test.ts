@@ -204,7 +204,8 @@ describe("create in one call, delete a draft source (fix round 1)", () => {
     const bv = await json<SourceVersionDto>(draft(t.mk, back.id));
     await adminSetsReading(bv.id, ksei());
     expect((await step(t.mk, back.id, bv.id, "submit")).status).toBe(200);
-    expect((await step(t.ck, back.id, bv.id, "reject", { comment: "no" })).status).toBe(200);
+    const sentBack = await json<SourceVersionDto>(step(t.ck, back.id, bv.id, "reject", { comment: "no" }));
+    expect([sentBack.status, sentBack.reviewComment, sentBack.checkerId]).toEqual(["draft", "no", await idOf("google")]); // who sent it back
     expect((await del(t.adm, back.id)).status).toBe(409);
     // shared: kept, and through the share it is 404
     const shared = await made({ code: "shared", name: "Shared", kind: "file_inbox" });
