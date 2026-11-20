@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, date, foreignKey, index, integer, numeric, pgTable, primaryKey, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, foreignKey, index, integer, numeric, pgTable, primaryKey, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { jsonb } from "../../kernel/columns";
 import { reconConfigs } from "../recon/schema";
 
@@ -77,6 +77,13 @@ export const reconItems = pgTable("recon_items", {
   breakReason: text("break_reason"),
   /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break or none. */
   breakPass: smallint("break_pass"),
+  /**
+   * A break for want of a counterpart (grace or day close, Task 6): a later run whose pool reaches its date (carry over
+   * > 0) may still pair it, and then closes it as AUTO_MATCHED_LATE_DATA (`resolution`). False for every other break.
+   */
+  lateMatch: boolean("late_match").notNull().default(false),
+  /** How a break was resolved; the engine writes only AUTO_MATCHED_LATE_DATA (the rest is Plan 5's). */
+  resolution: text("resolution"),
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -86,12 +93,37 @@ export const reconItems = pgTable("recon_items", {
   // the pool of a pass: open items of a config's side in a business-date window, live or of one simulation
   index("recon_items_open").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'open'`),
   index("recon_items_config_date").on(t.spaceId, t.configId, t.businessDate),
+  // the breaks a late counterpart may still close, read by the pool beside the open items when carry over > 0
+  index("recon_items_late").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'break' and ${t.lateMatch}`),
   // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
   index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   foreignKey({ name: "recon_items_sim_run_fkey", columns: [t.spaceId, t.simRunId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   check("recon_items_side_check", sql`${t.side} in ('a', 'b')`),
   check("recon_items_status_check", sql`${t.status} in ('open', 'matched', 'suggested', 'break', 'closed')`),
+]);
+
+/**
+ * A business date of a config once it starts to close (spec §9 "Tutup hari", DEC-043, DEC-046): no row = open;
+ * `closing` = its close time passed while a side's source was not complete through the date's end (it waits up to
+ * close + grace_minutes); `closed` = its open items became breaks and its unconfirmed suggestions breaks with their
+ * pair kept. `incomplete` = the sides whose source was not complete when it closed anyway ("Data incomplete"):
+ * [{ side, sourceId, completeThrough }], null when complete. `counters` = the breaks it made { open, suggested }.
+ * Sign-off is Plan 5's.
+ */
+export const reconDays = pgTable("recon_days", {
+  spaceId: uuid("space_id").notNull(),
+  configId: uuid("config_id").notNull(),
+  businessDate: date("business_date").notNull(),
+  status: text("status").notNull(),
+  incomplete: jsonb("incomplete"),
+  counters: jsonb("counters"),
+  closingAt: timestamp("closing_at", { withTimezone: true }).notNull().defaultNow(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+}, (t) => [
+  primaryKey({ name: "recon_days_pkey", columns: [t.spaceId, t.configId, t.businessDate] }),
+  foreignKey({ name: "recon_days_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
+  check("recon_days_status_check", sql`${t.status} in ('closing', 'closed')`),
 ]);
 
 /**

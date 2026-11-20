@@ -82,7 +82,7 @@ const ROUNDS_MAX = 50;
 export const INTAKE_CHUNK = 50_000;
 
 const DAY = 86_400_000;
-const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
 
 type Loaded = { spec: ReconSpec; sides: [SideRef, SideRef] };

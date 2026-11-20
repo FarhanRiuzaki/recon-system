@@ -27,7 +27,7 @@ const side = (key: "a" | "b", negate = false): SideRef => ({
   ]),
 });
 const ctx: StepCtx = {
-  spaceId: "s", configId: "c", versionId: "v", runId: "r", simRunId: null, sides: [side("a"), side("b")], lo: "2026-11-01", hi: "2026-11-02", current: sql`true`,
+  spaceId: "s", configId: "c", versionId: "v", runId: "r", simRunId: null, sides: [side("a"), side("b")], lo: "2026-11-01", hi: "2026-11-02", current: sql`true`, late: false,
 };
 const pass = (o: Partial<PassSpec> & { predicates: Predicate[] }): PassSpec => ({ no: 2, name: "P", cardinality: "1:1", blocking: [], accept: "suggest", on_ambiguous: "suggest", ...o });
 

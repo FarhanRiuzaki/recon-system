@@ -43,6 +43,12 @@ export type StepCtx = {
   sides: readonly [SideRef, SideRef]; lo: string; hi: string;
   /** ingest's currentRecord over `records` (a record that counts now), built on the step's transaction. */
   current: SQL;
+  /**
+   * Carry over > 0 (Task 6, DEC-043): the pool also holds the window's breaks for want of a counterpart (late_match), so
+   * a late counterpart pairs them; such a pair is accepted only automatically and closes the break as
+   * AUTO_MATCHED_LATE_DATA. With carry over 0 (KSEI) a break is never paired by later data.
+   */
+  late: boolean;
 };
 
 /** The record's own amount with its sign (ingest's signedAmount): negated when its direction is a debit code. */
@@ -125,8 +131,11 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
   }
 }
 
-/** Side `s`'s open items of the window, live or of the step's simulation (the `i` alias of recon_items). */
-const openItems = (c: StepCtx, s: 0 | 1): SQL => sql`i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${c.sides[s].key} and i.status = 'open'
+/** The statuses of the pool: open, and with `late` the breaks a late counterpart may close. */
+const poolStatus = (c: StepCtx): SQL => (c.late ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match))` : sql`i.status = 'open'`);
+
+/** Side `s`'s pool items of the window, live or of the step's simulation (the `i` alias of recon_items). */
+const openItems = (c: StepCtx, s: 0 | 1): SQL => sql`i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${c.sides[s].key} and ${poolStatus(c)}
       and ${c.simRunId === null ? sql`i.sim_run_id is null` : sql`i.sim_run_id = ${c.simRunId}`}
       and i.business_date between ${c.lo}::date and ${c.hi}::date`;
 
@@ -142,7 +151,7 @@ export function poolSql(c: StepCtx, p: PassSpec, s: 0 | 1): SQL {
     return sql`${op === "eq_normalized" ? normalized(x) : op === "contains" ? sql`nullif(${x}, '')` : x} as ${sql.raw(`x${i}`)}`;
   });
   const lock = sql.raw(`l${s}`);
-  return sql`select i.id, coalesce(${lock}.v, i.version) as v, ${lock}.id is not null as lk, i.business_date as bd, ${records.eventTime} as et, ${records.id} as rid,
+  return sql`select i.id, coalesce(${lock}.v, i.version) as v, ${lock}.id is not null as lk, i.status as st, i.business_date as bd, ${records.eventTime} as et, ${records.id} as rid,
       ${records.bdayIndex} as bday, ${records.currency} as ccy, ${signedSql()} as own, ${comparedAmount(side)} as amt${xs.length ? sql`, ${sql.join(xs, sql`, `)}` : sql``}
     from ${reconItems} i join ${records} on ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
       and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current}
@@ -168,7 +177,7 @@ export function candidatesSql(c: StepCtx, p: PassSpec): SQL {
   const dists = parts.flatMap((x) => (x.dist ? [x.dist] : []));
   const sumCol = `x${p.blocking.length + p.predicates.findIndex((q) => q.op === "eq_sum")}`;
   const sum = p.cardinality === "1:1" ? sql`` : sql`, a.${sql.raw(sumCol)} as a_s, b.${sql.raw(sumCol)} as b_s`;
-  const side = (x: "a" | "b") => sql.raw(["id", "v", "lk", "bd", "et", "rid", "own", "amt", "ccy"].map((k) => `${x}.${k} as ${x}_${k}`).join(", "));
+  const side = (x: "a" | "b") => sql.raw(["id", "v", "lk", "st", "bd", "et", "rid", "own", "amt", "ccy"].map((k) => `${x}.${k} as ${x}_${k}`).join(", "));
   return sql`l0 as materialized (select i.id, i.version as v from ${reconItems} i where ${openItems(c, 0)} for update skip locked),
   l1 as materialized (select i.id, i.version as v from ${reconItems} i where ${openItems(c, 1)} for update skip locked),
   pa as materialized (${poolSql(c, p, 0)}),
@@ -198,19 +207,29 @@ function pairEvidence(c: StepCtx, p: PassSpec, chosen: SQL): SQL {
 }
 
 /**
- * Writes the pairs of CTE `acc` (gid, a_*, b_*, d<j>; all locked) as groups of `kind`: both items claimed (open at the
- * version read, A1), a group dated at the later member's date, two members with the records' own signed amounts.
- * Answers { groups, items }: items = 2 × groups, else the caller rolls the step back.
+ * Claims the items of `from` (id, v, st, bd, as `x`) for `status`: each at the status and version read (A1); a break it
+ * pairs closes as late data.
+ */
+const claim = (c: StepCtx, status: string, from: SQL): SQL => sql`update ${reconItems} i set status = ${status}, version = i.version + 1,
+      resolution = case when x.st = 'break' then ${LATE_DATA} else i.resolution end
+      from (${from}) x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = x.st and i.version = x.v returning i.id`;
+/** The resolution of a break a late counterpart closed (spec §11, DEC-043). */
+export const LATE_DATA = "AUTO_MATCHED_LATE_DATA";
+
+/**
+ * Writes the pairs of CTE `acc` (gid, a_*, b_*, d<j>; all locked) as groups of `kind`: both items claimed (at the
+ * status and version read, A1), a group dated at the later member's date, two members with the records' own signed
+ * amounts. A suggestion takes open items only (a break waits for an automatic match or a person). Answers { groups,
+ * items }: items = 2 × groups, else the caller rolls the step back.
  */
 function writePairs(c: StepCtx, p: PassSpec, kind: "auto" | "suggested", chosen: SQL): SQL {
-  return sql`up as (update ${reconItems} i set status = ${kind === "auto" ? "matched" : "suggested"}, version = i.version + 1
-      from (select a_id as id, a_v as v, a_bd as bd from acc union all select b_id, b_v, b_bd from acc) x
-      where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.id),
+  return sql`ok as (select * from acc${kind === "suggested" ? sql` where a_st = 'open' and b_st = 'open'` : sql``}),
+  up as (${claim(c, kind === "auto" ? "matched" : "suggested", sql`select a_id as id, a_v as v, a_st as st, a_bd as bd from ok union all select b_id, b_v, b_st, b_bd from ok`)}),
   g as (insert into ${matchGroups} ${GROUP_COLS}
-      select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.a_bd, r.b_bd), ${pairEvidence(c, p, chosen)} from acc r),
+      select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.a_bd, r.b_bd), ${pairEvidence(c, p, chosen)} from ok r),
   m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)
-      select gid, ${c.spaceId}::uuid, a_id, 'a', a_own from acc union all select gid, ${c.spaceId}::uuid, b_id, 'b', b_own from acc)
-  select (select count(*) from acc)::int as groups, (select count(*) from up)::int as items`;
+      select gid, ${c.spaceId}::uuid, a_id, 'a', a_own from ok union all select gid, ${c.spaceId}::uuid, b_id, 'b', b_own from ok)
+  select (select count(*) from ok)::int as groups, (select count(*) from up)::int as items`;
 }
 const accepted = (p: PassSpec) => (p.accept === "auto" ? "auto" : "suggested");
 
@@ -259,13 +278,13 @@ export function tieSuggestSql(c: StepCtx, p: PassSpec): SQL {
 export function groupsSql(c: StepCtx, p: PassSpec): SQL {
   const [o, m] = p.cardinality === "N:1" ? (["b", "a"] as const) : (["a", "b"] as const);
   const f = (side: "a" | "b", x: string, as: string) => sql.raw(`${side}_${x} as ${as}`);
-  const cols = (side: "a" | "b", pre: string) => sql.join(["id", "v", "lk", "bd", "own", "s"].map((x) => f(side, x, `${pre}_${x}`)), sql`, `);
+  const cols = (side: "a" | "b", pre: string) => sql.join(["id", "v", "lk", "st", "bd", "own", "s"].map((x) => f(side, x, `${pre}_${x}`)), sql`, `);
   return sql`${candidatesSql(c, p)},
   cg as (select ${cols(o, "o")}, ${f(o, "ccy", "o_ccy")}, ${cols(m, "m")} from c),
   cm as (select cg.*, count(*) over (partition by m_id) as m_n from cg),
-  grp as (select o_id, o_v, o_lk, o_bd, o_own, o_ccy, o_s, sum(m_s) as s, count(*)::int as n, max(m_bd) as m_bd,
+  grp as (select o_id, o_v, o_lk, o_st, o_bd, o_own, o_ccy, o_s, sum(m_s) as s, count(*)::int as n, max(m_bd) as m_bd,
       bool_and(m_n = 1) as uniq, bool_and(m_lk) and o_lk as all_lk
-    from cm group by o_id, o_v, o_lk, o_bd, o_own, o_ccy, o_s)`;
+    from cm group by o_id, o_v, o_lk, o_st, o_bd, o_own, o_ccy, o_s)`;
 }
 
 /**
@@ -283,10 +302,8 @@ export function groupAcceptSql(c: StepCtx, p: PassSpec): SQL {
     'chosen', ${CHOSEN.group}::text, 'predicates', jsonb_build_array(${sql.join(preds, sql`, `)}))`;
   return sql`with ${groupsSql(c, p)},
   acc as materialized (select uuidv7() as gid, grp.* from grp where uniq and all_lk and abs(s - o_s) <= ${toleranceOf(sumP, sql.raw("grp.o_ccy"))}),
-  ms as (select acc.gid, cm.m_id, cm.m_v, cm.m_bd, cm.m_own from cm join acc using (o_id)),
-  up as (update ${reconItems} i set status = ${kind === "auto" ? "matched" : "suggested"}, version = i.version + 1
-      from (select o_id as id, o_v as v, o_bd as bd from acc union all select m_id, m_v, m_bd from ms) x
-      where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.id),
+  ms as (select acc.gid, cm.m_id, cm.m_v, cm.m_st, cm.m_bd, cm.m_own from cm join acc using (o_id)),
+  up as (${claim(c, kind === "auto" ? "matched" : "suggested", sql`select o_id as id, o_v as v, o_st as st, o_bd as bd from acc union all select m_id, m_v, m_st, m_bd from ms`)}),
   g as (insert into ${matchGroups} ${GROUP_COLS}
       select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.o_bd, r.m_bd), ${evidence} from acc r),
   m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)

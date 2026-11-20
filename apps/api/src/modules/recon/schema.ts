@@ -67,6 +67,12 @@ export const reconSourceUses = pgTable("recon_source_uses", {
   sourceId: uuid("source_id").notNull(),
   field: text("field").notNull(),
   configName: text("config_name").notNull(),
+  /**
+   * The config's health inputs for the source (Plan 2 carry-over, Task 6): its grace (null when 0) and its daily
+   * deadline, HH:MM Asia/Jakarta (a daily config's run time, else its close time). The same on every field row.
+   */
+  graceMinutes: integer("grace_minutes"),
+  deadline: text("deadline"),
 }, (t) => [
   primaryKey({ name: "recon_source_uses_pkey", columns: [t.spaceId, t.configId, t.sourceId, t.field] }),
   foreignKey({ name: "recon_source_uses_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),

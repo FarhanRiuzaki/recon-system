@@ -24,8 +24,8 @@ export function filterSql(s: SideRef, f: Filter): SQL {
   }
 }
 
-/** Inserts side `s`'s new items for the window; answers how many. */
-export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[]): SQL {
+/** Inserts side `s`'s new items for the window, at most `limit` (one chunk); answers how many. */
+export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[], limit?: number): SQL {
   const side = c.sides[s];
   const where = [
     sql`${records.spaceId} = ${side.sourceSpaceId}`, sql`${records.sourceId} = ${side.sourceId}`,
@@ -36,7 +36,7 @@ export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[]): SQL
   ];
   return sql`with ins as (insert into ${reconItems} (id, space_id, config_id, record_id, side, business_date, sim_run_id)
     select uuidv7(), ${c.spaceId}::uuid, ${c.configId}::uuid, ${records.id}, ${side.key}::text, ${records.businessDate}, ${c.simRunId}::uuid
-    from ${records} where ${sql.join(where, sql` and `)}
+    from ${records} where ${sql.join(where, sql` and `)}${limit ? sql` limit ${limit}` : sql``}
     on conflict do nothing returning 1)
   select count(*)::int as n from ins`;
 }
