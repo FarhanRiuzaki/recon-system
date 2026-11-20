@@ -232,6 +232,14 @@ Risiko tersisa: headroomActivity3B/Users35B/Auth258B, lima kegagalan CI main4250
 
 Sumber: spec `docs/superpowers/specs/2026-11-19-recon-architecture-design.md` (disetujui pemilik), Plan 1 `docs/superpowers/plans/2026-11-19-recon-phase1-plan1-spikes-foundation.md`, keputusan PO di spec §1, §3, §14. Urutan = urutan flow di Plan 1; Figma satu flow di depan backend. Walking skeleton = BI-FAST (`interval` 2 menit, data sintetis) + KSEI ACT (`daily`, `carry_over_days = 0`, fixture di `docs/recon/ksei-sample-data.md`). Effort diestimasi di plan tiap flow, tidak di sini. Pertanyaan pemilik/infra yang belum terjawab ada di tabel kedua; tidak menghalangi flow kecuali disebut di kolom Dependency.
 
+**Aturan lintas flow** (bagian dari AC setiap REC-F* yang belum selesai dan setiap plan berikutnya; aturan pemilik via Captain, 21 Nov):
+
+1. **Konsisten di semua page dan sub-page** (Jakob's law ke dalam: user belajar satu pola, dipakai di semua modul). Page sejenis memakai anatomi yang sama: list, detail, version, wizard/form. Anatomi = "Anatomi page recon" yang ditulis designer-recon dan diputuskan Captain (lokasi di `docs/standards/` menyusul). Contoh yang dilarang: hapus draft source di footer wizard sementara hapus draft recon di menu ⋯; halaman versi source dan versi recon dengan susunan berbeda.
+2. **Aksi berbahaya** (hapus, buang draft, cabut) selalu di menu ⋯ dan memakai dialog konfirmasi, di semua modul.
+3. **Perbaikan lewat komponen bersama** (`PageHeader`, layout detail, menu ⋯ yang sama), bukan disalin per halaman. Page baru yang menyimpang dari anatomi menambah varian di komponen bersama dulu, dengan alasan tercatat.
+4. Form dan wizard mengikuti `docs/recon/ux-form-rules.md`; teks layar tanpa AI slop (aturan 11 di file itu).
+5. **Bukti selesai per plan**: daftar deviasi page plan itu terhadap anatomi (page, deviasi, aturan, perbaikan) tanpa deviasi P1 yang terbuka; P1 = lokasi atau arti aksi berbeda, P2 = visual. Hanya tes yang terdampak, tanpa E2E.
+
 | ID | P | Owner | Status | Dependency | Acceptance criteria yang dapat diuji | Effort / target |
 | --- | --- | --- | --- | --- | --- | --- |
 | REC-F1 | P0 | Core | In progress | Spec disetujui | Plan 1 selesai dengan tes yang tertulis di plan. `docs/recon/spikes.md` memuat: S1 = durasi tick puncak BI-FAST (5.000 trx/2 menit/sisi, 5% duplikat, 2% tanpa pasangan) saat satu run harian besar berjalan bersamaan, dengan verdict approach A vs DuckDB; S3 = batas CEL; S7 = hasil per engine termasuk **Oracle Thin** (jalur kritis KSEI: Medallion ada di Oracle). Isolasi RLS: transaksi tanpa `withSpace` melihat nol baris; dua space dengan kode sama tidak saling memicu 409; anggota dicabut → request berikutnya 403. Worker di-SIGKILL di tengah job → job diambil ulang, efek tidak ganda. Cron dievaluasi di `Asia/Jakarta`. | Plan 1 |
