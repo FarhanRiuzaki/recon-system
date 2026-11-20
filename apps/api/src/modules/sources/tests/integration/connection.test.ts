@@ -242,13 +242,14 @@ describe("POST …/connection/columns (a SELECT)", () => {
 });
 
 describe("GET …/connection/columns", () => {
-  it("the table's columns with native types; an unknown table is 400; a bad name is 400 before the guard", async () => {
+  it("the table's columns with native types, unique and indexed; an unknown table is 400; a bad name is 400 before the guard", async () => {
+    const plain = { unique: false, indexed: false };
     const s = await made("db_watermark");
     await connect(s.id);
     const r = await columns(t.adm, s.id, "public.conn_txn");
     expect([r.status, await r.json()]).toEqual([200, { table: "public.conn_txn", columns: [
-      { name: "id", type: "bigint", nullable: false }, { name: "updated_at", type: "timestamp with time zone", nullable: false },
-      { name: "ref", type: "text", nullable: true }, { name: "amount", type: "numeric(18,2)", nullable: true }, { name: "note", type: "text", nullable: true },
+      { name: "id", type: "bigint", nullable: false, unique: true, indexed: true }, { name: "updated_at", type: "timestamp with time zone", nullable: false, ...plain },
+      { name: "ref", type: "text", nullable: true, ...plain }, { name: "amount", type: "numeric(18,2)", nullable: true, ...plain }, { name: "note", type: "text", nullable: true, ...plain },
     ] }]);
     const none = await columns(t.adm, s.id, "nope");
     expect([none.status, (await errOf(none)).message]).toEqual([400, "There is no table or view nope that this user can read."]);

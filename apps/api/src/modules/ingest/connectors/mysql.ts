@@ -11,7 +11,7 @@ import { batches } from "./index";
 export function mysqlDriver(c: DriverConfig): Driver {
   let conn: Promise<Connection> | undefined;
   const open = () => (conn ??= createConnection({
-    host: c.host, port: c.port, database: c.database, user: c.user, password: c.password,
+    host: c.host, port: c.port, database: c.database || undefined, user: c.user, password: c.password,
     connectTimeout: c.connectTimeoutSeconds * 1000, ssl: c.tls ? { rejectUnauthorized: true } : undefined,
     supportBigNumbers: true, bigNumberStrings: true, dateStrings: true,
   }).then(async (x) => {

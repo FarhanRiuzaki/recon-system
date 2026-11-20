@@ -94,21 +94,23 @@ describe("a SELECT can't lift the read-only session or the statement timeout", (
 });
 
 describe("introspect()", () => {
-  it("a table: its columns in order with their native type and nullability", async () => {
+  it("a table: its columns in order with their native type, nullability, unique and indexed", async () => {
+    const no = { unique: false, indexed: false };
     expect(await pg().introspect({ table: "kinds" })).toEqual([
-      { name: "at", type: "timestamp with time zone", nullable: false },
-      { name: "local_at", type: "timestamp(3) without time zone", nullable: true },
-      { name: "booked", type: "date", nullable: true },
-      { name: "n", type: "bigint", nullable: true },
-      { name: "amount", type: "numeric(18,2)", nullable: true },
-      { name: "ok", type: "boolean", nullable: true },
-      { name: "label", type: "text", nullable: true },
+      { name: "at", type: "timestamp with time zone", nullable: false, ...no },
+      { name: "local_at", type: "timestamp(3) without time zone", nullable: true, ...no },
+      { name: "booked", type: "date", nullable: true, ...no },
+      { name: "n", type: "bigint", nullable: true, ...no },
+      { name: "amount", type: "numeric(18,2)", nullable: true, ...no },
+      { name: "ok", type: "boolean", nullable: true, ...no },
+      { name: "label", type: "text", nullable: true, ...no },
     ]);
   });
 
   it("a SELECT: its result columns (nullability unknown); an unknown table or a bad name is a spec error", async () => {
     expect(await pg().introspect({ query: "select sid, qty, business_date from pos" })).toEqual([
-      { name: "sid", type: "text", nullable: null }, { name: "qty", type: "numeric", nullable: null }, { name: "business_date", type: "date", nullable: null },
+      { name: "sid", type: "text", nullable: null, unique: null, indexed: null }, { name: "qty", type: "numeric", nullable: null, unique: null, indexed: null },
+      { name: "business_date", type: "date", nullable: null, unique: null, indexed: null },
     ]);
     const none = await fails(pg().introspect({ table: "public.nope" }));
     expect([none.kind, none.message]).toEqual(["spec", "There is no table or view public.nope that this user can read."]);

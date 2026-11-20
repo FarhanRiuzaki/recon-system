@@ -13,14 +13,17 @@
 // - Every driver error becomes a ConnectorError with a fixed sentence (errors.ts); nothing here logs.
 import type { DbEngine } from "@starterkit/shared/sources";
 import type { Readable } from "node:stream";
-import { type Column, catalogSql, type Cursor, describeSql, type From, minusSeconds, pingSql, rowsSql } from "./dialect";
+import {
+  CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, minusSeconds, pingSql,
+  rowsSql, serverSql, tableCountSql, tablesSql,
+} from "./dialect";
 import { classify, deadlineError, specError } from "./errors";
 import { mssqlDriver } from "./mssql";
 import { mysqlDriver } from "./mysql";
 import { oracleDriver } from "./oracle";
 import { postgresDriver } from "./postgres";
 
-export { type Column, type From } from "./dialect";
+export { CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, DEFAULT_DATABASE, type From } from "./dialect";
 export { ConnectorError, type ConnectorErrorKind } from "./errors";
 
 /** The stored credential (sources.source_connections.secret_enc, decrypted). */
@@ -57,6 +60,14 @@ export type Connector = {
   pullSnapshot(query: string, businessDate: string, o: { columns: string[]; chunk: number }): AsyncGenerator<Row[]>;
   /** The first `limit` rows of `from`, no watermark predicate (preview). */
   sample(from: From, columns: string[], limit: number): Promise<Row[]>;
+  /** The server's version, the login and the database (Oracle: its name) the session is in. */
+  server(): Promise<{ version: string; user: string; database: string | null }>;
+  /** The databases this login can open (Oracle: the schemas it can read in), CATALOG_DATABASES_MAX at most. */
+  databases(): Promise<{ names: string[]; truncated: boolean }>;
+  /** One page (CATALOG_TABLES_PAGE) of the tables and views this login can SELECT, after `after`; `next` = the page after. */
+  tables(f: CatalogFilter & { after?: { schema: string; name: string } }): Promise<{ items: CatalogTable[]; next: { schema: string; name: string } | null }>;
+  /** How many tables and views `f` matches, counted up to `cap`. */
+  countTables(f: CatalogFilter, cap: number): Promise<number>;
   close(): Promise<void>;
 };
 
@@ -88,13 +99,14 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
       const b = catalogSql(d, from.table);
       const rows = await wrap(drv.rows(b.sql, b.params));
       if (!rows.length) throw specError(`There is no table or view ${from.table} that this user can read.`);
-      return rows.map((r) => ({ name: String(r.name), type: String(r.type), nullable: /^y/i.test(String(r.nullable)) }));
+      const yes = (v: unknown) => /^y/i.test(String(v));
+      return rows.map((r) => ({ name: String(r.name), type: String(r.type), nullable: yes(r.nullable), unique: yes(r.unique), indexed: yes(r.indexed) }));
     }
     const b = describeSql(d, from);
     const cols = await wrap(drv.describe(b.sql, b.params));
     const twice = cols.find((c, i) => cols.findIndex((x) => x.name === c.name) !== i);
     if (twice) throw specError(`The query returns column "${twice.name}" twice. Give each column its own name.`);
-    return cols;
+    return cols.map((c) => ({ ...c, unique: null, indexed: null }));
   }
 
   /** `names` as catalog columns, in that order; a name the source lacks is a spec error. */
@@ -147,6 +159,29 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
       const cols = pick(await introspect(from), columns, from);
       const b = rowsSql(d, { from, columns: cols, limit });
       return (await wrap(drv.rows(b.sql, b.params))).map((r) => text(r, cols));
+    },
+    async server() {
+      const [r] = await wrap(drv.rows(serverSql(d), []));
+      const str = (v: unknown) => (v == null ? "" : String(v));
+      return { version: str(r?.version), user: str(r?.user), database: r?.database == null ? null : String(r.database) };
+    },
+    async databases() {
+      const names = (await wrap(drv.rows(databasesSql(d), []))).map((r) => String(r.name));
+      return { names: names.slice(0, CATALOG_DATABASES_MAX), truncated: names.length > CATALOG_DATABASES_MAX };
+    },
+    async tables(f) {
+      const b = tablesSql(d, { ...f, limit: CATALOG_TABLES_PAGE + 1 });
+      const rows = (await wrap(drv.rows(b.sql, b.params))).map((r): CatalogTable => ({
+        schema: String(r.schema), name: String(r.name), kind: r.kind === "view" ? "view" : "table", columns: Number(r.columns),
+      }));
+      const items = rows.slice(0, CATALOG_TABLES_PAGE);
+      const last = items[items.length - 1];
+      return { items, next: rows.length > CATALOG_TABLES_PAGE && last ? { schema: last.schema, name: last.name } : null };
+    },
+    async countTables(f, cap) {
+      const b = tableCountSql(d, f, cap);
+      const [r] = await wrap(drv.rows(b.sql, b.params));
+      return Number(r?.n ?? 0);
     },
     close: () => drv.close().catch(() => {}),
   };

@@ -16,8 +16,12 @@ import { specError } from "./errors";
 export type Dialect = DbEngine;
 /** What decides a column's text form and how its watermark text is read back. */
 export type Family = "tstz" | "ts" | "date" | "int" | "num" | "bool" | "text";
-/** A source column: its name and native type as the engine spells them; `nullable` null when the engine doesn't say. */
-export type Column = { name: string; type: string; nullable: boolean | null };
+/**
+ * A source column: its name and native type as the engine spells them; `nullable` null when the engine doesn't say.
+ * From a table's catalog also `unique` (alone a primary key or unique key) and `indexed` (leads an index); a SELECT's
+ * columns leave both null.
+ */
+export type Column = { name: string; type: string; nullable: boolean | null; unique?: boolean | null; indexed?: boolean | null };
 /** A table (`schema.table` or `table`) or a custom SELECT; a snapshot SELECT takes `businessDate` for `:business_date`. */
 export type From = { table: string } | { query: string; businessDate?: string };
 /** Where a keyset pull resumes: after (watermark, id), from a watermark on (`>=`, the lookback start), or the start. */
@@ -155,27 +159,137 @@ function fromSql(d: Dialect, from: From, p: (v: string | null) => string): strin
   return `(${date === undefined ? q : q.replace(/(?<!:):business_date\b/g, () => dateParam(d, p(date)))})`;
 }
 
-/** The catalog query for a table's columns, in order: name, native type, nullable ('YES'/'Y' or not). */
+/**
+ * The catalog query for a table's columns, in order: name, native type, nullable ('YES'/'Y' or not), unique ('YES' when
+ * the column alone is a primary key or a unique key; a partial index doesn't count) and indexed ('YES' when it leads an
+ * index). Oracle reads unique from P/U constraints only (a unique index without a constraint is not seen).
+ */
 export function catalogSql(d: Dialect, table: string): Built {
   const { schema, name } = tableName(table);
   const { params, p } = binder(d);
   const s = p(schema), n = p(name);
   const as = (x: string) => quoteIdent(d, x);
+  const yes = (cond: string) => `CASE WHEN ${cond} THEN 'YES' ELSE 'NO' END`;
   const sql = {
-    postgres: `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS nullable `
+    postgres: `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS nullable, `
+      + `${yes("EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisunique AND i.indnkeyatts = 1 AND i.indkey[0] = a.attnum AND i.indpred IS NULL)")} AS "unique", `
+      + `${yes("EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indkey[0] = a.attnum)")} AS indexed `
       + `FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace `
       + `WHERE ns.nspname = coalesce(${s}, current_schema()) AND c.relname = ${n} AND c.relkind IN ('r', 'v', 'm', 'p', 'f') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
-    mysql: `SELECT COLUMN_NAME AS ${as("name")}, COLUMN_TYPE AS ${as("type")}, IS_NULLABLE AS ${as("nullable")} FROM information_schema.COLUMNS `
+    // COLUMN_KEY: PRI = in the primary key, UNI = alone a unique key, MUL = leads a non-unique (or multi-column) index
+    mysql: `SELECT COLUMN_NAME AS ${as("name")}, COLUMN_TYPE AS ${as("type")}, IS_NULLABLE AS ${as("nullable")}, `
+      + `${yes("COLUMN_KEY = 'UNI' OR (COLUMN_KEY = 'PRI' AND (SELECT COUNT(*) FROM information_schema.COLUMNS k WHERE k.TABLE_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_KEY = 'PRI') = 1)")} AS ${as("unique")}, `
+      + `${yes("COLUMN_KEY <> ''")} AS ${as("indexed")} FROM information_schema.COLUMNS c `
       + `WHERE TABLE_SCHEMA = COALESCE(${s}, DATABASE()) AND TABLE_NAME = ${n} ORDER BY ORDINAL_POSITION`,
     mssql: `SELECT COLUMN_NAME AS [name], CASE WHEN DATA_TYPE IN ('datetime2', 'datetimeoffset') THEN DATA_TYPE + '(' + CAST(DATETIME_PRECISION AS varchar(1)) + ')' `
       + `WHEN DATA_TYPE IN ('decimal', 'numeric') THEN DATA_TYPE + '(' + CAST(NUMERIC_PRECISION AS varchar(3)) + ',' + CAST(NUMERIC_SCALE AS varchar(3)) + ')' `
       + `WHEN CHARACTER_MAXIMUM_LENGTH = -1 THEN DATA_TYPE + '(max)' WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN DATA_TYPE + '(' + CAST(CHARACTER_MAXIMUM_LENGTH AS varchar(10)) + ')' `
-      + `ELSE DATA_TYPE END AS [type], IS_NULLABLE AS [nullable] FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = COALESCE(${s}, SCHEMA_NAME()) AND TABLE_NAME = ${n} ORDER BY ORDINAL_POSITION`,
-    oracle: `SELECT COLUMN_NAME AS "name", DATA_TYPE || CASE WHEN DATA_TYPE = 'NUMBER' AND DATA_PRECISION IS NOT NULL THEN '(' || DATA_PRECISION || ',' || DATA_SCALE || ')' END AS "type", `
-      + `NULLABLE AS "nullable" FROM ALL_TAB_COLUMNS WHERE OWNER = COALESCE(${s}, USER) AND TABLE_NAME = ${n} ORDER BY COLUMN_ID`,
+      + `ELSE DATA_TYPE END AS [type], IS_NULLABLE AS [nullable], `
+      + `${yes("EXISTS (SELECT 1 FROM sys.indexes i JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id WHERE i.object_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND i.is_unique = 1 AND i.has_filter = 0 AND ic.key_ordinal = 1 AND COL_NAME(ic.object_id, ic.column_id) = c.COLUMN_NAME AND (SELECT COUNT(*) FROM sys.index_columns k WHERE k.object_id = i.object_id AND k.index_id = i.index_id AND k.key_ordinal > 0) = 1)")} AS [unique], `
+      + `${yes("EXISTS (SELECT 1 FROM sys.index_columns ic WHERE ic.object_id = OBJECT_ID(QUOTENAME(c.TABLE_SCHEMA) + '.' + QUOTENAME(c.TABLE_NAME)) AND ic.key_ordinal = 1 AND COL_NAME(ic.object_id, ic.column_id) = c.COLUMN_NAME)")} AS [indexed] `
+      + `FROM INFORMATION_SCHEMA.COLUMNS c WHERE TABLE_SCHEMA = COALESCE(${s}, SCHEMA_NAME()) AND TABLE_NAME = ${n} ORDER BY ORDINAL_POSITION`,
+    oracle: `SELECT COLUMN_NAME AS "name", DATA_TYPE || CASE WHEN DATA_TYPE = 'NUMBER' AND DATA_PRECISION IS NOT NULL THEN '(' || DATA_PRECISION || ',' || DATA_SCALE || ')' END AS "type", NULLABLE AS "nullable", `
+      + `${yes("EXISTS (SELECT 1 FROM ALL_CONSTRAINTS k JOIN ALL_CONS_COLUMNS cc ON cc.OWNER = k.OWNER AND cc.CONSTRAINT_NAME = k.CONSTRAINT_NAME WHERE k.OWNER = c.OWNER AND k.TABLE_NAME = c.TABLE_NAME AND k.CONSTRAINT_TYPE IN ('P', 'U') AND cc.COLUMN_NAME = c.COLUMN_NAME AND (SELECT COUNT(*) FROM ALL_CONS_COLUMNS x WHERE x.OWNER = k.OWNER AND x.CONSTRAINT_NAME = k.CONSTRAINT_NAME) = 1)")} AS "unique", `
+      + `${yes("EXISTS (SELECT 1 FROM ALL_IND_COLUMNS ic WHERE ic.TABLE_OWNER = c.OWNER AND ic.TABLE_NAME = c.TABLE_NAME AND ic.COLUMN_NAME = c.COLUMN_NAME AND ic.COLUMN_POSITION = 1)")} AS "indexed" `
+      + `FROM ALL_TAB_COLUMNS c WHERE OWNER = COALESCE(${s}, USER) AND TABLE_NAME = ${n} ORDER BY COLUMN_ID`,
   }[d];
   return { sql, params };
 }
+
+// The source's catalog for the wizard's pickers (REC-F2a): databases, tables and views, the server's version. Fixed SQL
+// per dialect, every value bound, results capped; only what this login may open or SELECT.
+
+/** The database a test or a list connects to when none is typed (Oracle needs its service name: null). */
+export const DEFAULT_DATABASE: Record<Dialect, string | null> = { postgres: "postgres", mssql: "master", mysql: "", oracle: null };
+/** At most this many databases (Oracle: schemas) are listed; one more is read to tell that the list was cut. */
+export const CATALOG_DATABASES_MAX = 500;
+/** Tables per page of the table list. */
+export const CATALOG_TABLES_PAGE = 50;
+/** A table count stops here ("10,000+"). */
+export const CATALOG_COUNT_CAP = 10_000;
+/** A table or view in the list: its schema (MySQL: the database), name, kind and number of columns. */
+export type CatalogTable = { schema: string; name: string; kind: "table" | "view"; columns: number };
+export type CatalogFilter = { schema?: string; q?: string };
+
+/** The first `n` rows, in `d`'s spelling; SQL Server needs an ORDER BY for it, so one that orders nothing is added. */
+const firstRows = (d: Dialect, n: number, ordered: boolean) =>
+  (d === "mssql" ? `${ordered ? "" : " ORDER BY (SELECT NULL)"} OFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY` : d === "oracle" ? ` FETCH FIRST ${n} ROWS ONLY` : ` LIMIT ${n}`);
+/** Search text as a contains-pattern for LIKE … ESCAPE '!', lower-cased ('[' is special on SQL Server). */
+export const likeContains = (q: string) => `%${q.toLowerCase().replace(/[!%_[]/g, "!$&")}%`;
+
+/**
+ * The tables and views this login can SELECT, as `o(s, n, k)` plus the engine's key for the column count: PostgreSQL the
+ * current database's schemas (system ones left out, USAGE on the schema and SELECT on the table checked); MySQL the
+ * connected database (information_schema lists only what the login holds a privilege on); SQL Server the current
+ * database, HAS_PERMS_BY_NAME … SELECT; Oracle ALL_TABLES and ALL_VIEWS outside the Oracle-maintained schemas.
+ */
+const OBJECTS: Record<Dialect, string> = {
+  postgres: `SELECT c.oid AS id, ns.nspname AS s, c.relname AS n, CASE WHEN c.relkind IN ('v', 'm') THEN 'view' ELSE 'table' END AS k `
+    + `FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE c.relkind IN ('r', 'v', 'm', 'p', 'f') AND NOT c.relispartition `
+    + `AND ns.nspname <> 'information_schema' AND ns.nspname NOT LIKE 'pg!_%' ESCAPE '!' AND has_schema_privilege(ns.oid, 'USAGE') AND has_table_privilege(c.oid, 'SELECT')`,
+  mysql: "SELECT TABLE_SCHEMA AS s, TABLE_NAME AS n, CASE WHEN TABLE_TYPE = 'VIEW' THEN 'view' ELSE 'table' END AS k FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()",
+  mssql: "SELECT x.object_id AS id, sc.name AS s, x.name AS n, CASE WHEN x.type = 'V' THEN 'view' ELSE 'table' END AS k FROM sys.objects x JOIN sys.schemas sc ON sc.schema_id = x.schema_id "
+    + "WHERE x.type IN ('U', 'V') AND x.is_ms_shipped = 0 AND HAS_PERMS_BY_NAME(QUOTENAME(sc.name) + '.' + QUOTENAME(x.name), 'OBJECT', 'SELECT') = 1",
+  oracle: "SELECT u.s, u.n, u.k FROM (SELECT OWNER AS s, TABLE_NAME AS n, 'table' AS k FROM ALL_TABLES WHERE NESTED = 'NO' AND SECONDARY = 'N' AND DROPPED = 'NO' "
+    + "UNION ALL SELECT OWNER AS s, VIEW_NAME AS n, 'view' AS k FROM ALL_VIEWS) u WHERE u.s NOT IN (SELECT USERNAME FROM ALL_USERS WHERE ORACLE_MAINTAINED = 'Y')",
+};
+/** The column count of the object `o` names, per dialect. */
+const COLUMN_COUNT: Record<Dialect, string> = {
+  postgres: "(SELECT count(*)::int FROM pg_attribute a WHERE a.attrelid = o.id AND a.attnum > 0 AND NOT a.attisdropped)",
+  mysql: "(SELECT COUNT(*) FROM information_schema.COLUMNS c WHERE c.TABLE_SCHEMA = o.s AND c.TABLE_NAME = o.n)",
+  mssql: "(SELECT COUNT(*) FROM sys.columns c WHERE c.object_id = o.id)",
+  oracle: "(SELECT COUNT(*) FROM ALL_TAB_COLUMNS c WHERE c.OWNER = o.s AND c.TABLE_NAME = o.n)",
+};
+
+/** `FROM (objects) o WHERE …` for `f` (one schema, and/or `q` contained in the name or the schema, any case) and `more`. */
+function objectsWhere(d: Dialect, f: CatalogFilter, p: (v: string | null) => string, more: (() => string)[] = []): string {
+  const where: string[] = [];
+  if (f.schema !== undefined) where.push(`o.s = ${p(f.schema)}`);
+  if (f.q?.trim()) {
+    const like = likeContains(f.q.trim());
+    where.push(`(LOWER(o.n) LIKE ${p(like)} ESCAPE '!' OR LOWER(o.s) LIKE ${p(like)} ESCAPE '!')`);
+  }
+  where.push(...more.map((m) => m()));
+  return `FROM (${OBJECTS[d]}) o${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
+}
+
+/** One page of the tables and views (`limit` rows, ordered by schema and name), after (`after.schema`, `after.name`). */
+export function tablesSql(d: Dialect, o: CatalogFilter & { after?: { schema: string; name: string }; limit: number }): Built {
+  if (!Number.isSafeInteger(o.limit) || o.limit < 1) throw new Error("limit must be a positive integer");
+  const { params, p } = binder(d);
+  const as = (x: string) => quoteIdent(d, x);
+  const a = o.after;
+  // no row comparison outside PostgreSQL; parameters are bound in the order they appear
+  const keyset = !a ? [] : [() => (d === "postgres" ? `(o.s, o.n) > (${p(a.schema)}, ${p(a.name)})` : `(o.s > ${p(a.schema)} OR (o.s = ${p(a.schema)} AND o.n > ${p(a.name)}))`)];
+  const sql = `SELECT o.s AS ${as("schema")}, o.n AS ${as("name")}, o.k AS ${as("kind")}, ${COLUMN_COUNT[d]} AS ${as("columns")} ${objectsWhere(d, o, p, keyset)}`
+    + ` ORDER BY o.s, o.n${firstRows(d, o.limit, true)}`;
+  return { sql, params };
+}
+
+/** How many tables and views `f` matches, counted up to `cap` (a count of `cap` means "cap or more"). */
+export function tableCountSql(d: Dialect, f: CatalogFilter, cap: number): Built {
+  const { params, p } = binder(d);
+  return { sql: `SELECT COUNT(*) AS ${quoteIdent(d, "n")} FROM (SELECT 1 AS one ${objectsWhere(d, f, p)}${firstRows(d, cap, false)}) x`, params };
+}
+
+/** The databases this login can open (Oracle: the schemas it can read a table or view in), CATALOG_DATABASES_MAX + 1 at most. */
+export function databasesSql(d: Dialect): string {
+  const n = CATALOG_DATABASES_MAX + 1;
+  return {
+    postgres: `SELECT datname AS name FROM pg_database WHERE datallowconn AND NOT datistemplate AND has_database_privilege(datname, 'CONNECT') ORDER BY datname LIMIT ${n}`,
+    mysql: `SELECT SCHEMA_NAME AS \`name\` FROM information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys') ORDER BY SCHEMA_NAME LIMIT ${n}`,
+    mssql: `SELECT name AS [name] FROM sys.databases WHERE database_id > 4 AND state = 0 AND HAS_DBACCESS(name) = 1 ORDER BY name OFFSET 0 ROWS FETCH NEXT ${n} ROWS ONLY`,
+    oracle: `SELECT DISTINCT o.s AS "name" FROM (${OBJECTS.oracle}) o ORDER BY 1 FETCH FIRST ${n} ROWS ONLY`,
+  }[d];
+}
+
+/** The server's version, the login it signed in as and the database (Oracle: its name) the session is in. */
+export const serverSql = (d: Dialect): string => ({
+  postgres: `SELECT current_setting('server_version') AS version, current_user AS "user", current_database() AS database`,
+  mysql: "SELECT VERSION() AS `version`, SUBSTRING_INDEX(CURRENT_USER(), '@', 1) AS `user`, DATABASE() AS `database`",
+  mssql: "SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128)) AS [version], SUSER_SNAME() AS [user], DB_NAME() AS [database]",
+  oracle: `SELECT (SELECT MAX(VERSION) FROM PRODUCT_COMPONENT_VERSION WHERE PRODUCT LIKE 'Oracle%') AS "version", USER AS "user", SYS_CONTEXT('USERENV', 'DB_NAME') AS "database" FROM DUAL`,
+}[d]);
 
 /** A query with the shape of `from`'s result and no rows: its columns come from the driver's result metadata. */
 export function describeSql(d: Dialect, from: From): Built {
