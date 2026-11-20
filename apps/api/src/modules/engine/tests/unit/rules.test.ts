@@ -65,6 +65,7 @@ describe("freshness", () => {
     expect(staleAlert(interval, success, null, at("2026-11-02T10:04:30"))).toBe(true);
     expect(staleAlert(interval, success, null, at("2026-11-02T10:05:30"))).toBe(false);
     expect(staleAlert(interval, success, null, at("2026-11-02T11:04:30"))).toBe(true);
+    expect(staleAlert(interval, success, null, at("2026-11-02T11:05:30"))).toBe(false);
     expect(staleAlert(interval, success, "2026-11-02", at("2026-11-02T11:04:30"))).toBe(false);
   });
 

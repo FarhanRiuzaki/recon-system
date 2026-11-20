@@ -74,8 +74,8 @@ export function staleAlert(spec: Pick<ReconSpec, "close_at" | "schedule">, lastS
   const idle = spec.schedule.kind === "interval" ? todayIn(now) : lastDue(spec, now);
   if (lastClosed && lastClosed >= idle) return false;
   const interval = spec.schedule.kind === "interval" ? spec.schedule.every_minutes * 60_000 : DAY;
-  const over = now.getTime() - lastSuccess.getTime() - 2 * interval;
-  return over > 0 && over % 3_600_000 < 60_000;
+  const over = now.getTime() - lastSuccess.getTime() - 2 * interval, h = 3_600_000;
+  return over > 0 && (over < 60_000 || Math.floor(over / h) !== Math.floor((over - 60_000) / h));
 }
 
 /**

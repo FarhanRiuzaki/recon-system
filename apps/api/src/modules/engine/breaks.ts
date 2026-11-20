@@ -92,12 +92,14 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
 /**
  * Closed dates `lo`..`hi` of config `k.configId` again: their open items and unconfirmed suggestions (an item a close
  * skipped while another transaction held it, a record a later intake took in within carry over) become breaks, so a
- * closed date keeps none open. Only dates that are closed; their day counters stay as their close wrote them.
+ * closed date keeps none open. Only dates that are closed, and not while a run of the recon is under way (its intake
+ * may have added items its passes haven't seen); their day counters stay as their close wrote them.
  * Answers { open, suggested } it broke.
  */
 export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string }, lo: string, hi: string): Promise<{ open: number; suggested: number }> {
   return withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
     await configLock(tx, k.configId);
+    if (await runUnderWay(tx, k.spaceId, k.configId)) return { open: 0, suggested: 0 };
     const [r] = await tx.select({ lo: sql<string | null>`min(${reconDays.businessDate})::text`, hi: sql<string | null>`max(${reconDays.businessDate})::text` }).from(reconDays)
       .where(and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.status, "closed"),
         sql`${reconDays.businessDate} between ${lo}::date and ${hi}::date`));

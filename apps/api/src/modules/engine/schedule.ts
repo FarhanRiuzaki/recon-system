@@ -17,7 +17,7 @@ import { and, eq, inArray, max, min, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail } from "../../kernel/errors";
 import { log } from "../../kernel/log";
-import { sourceCursors, todayIn } from "../ingest";
+import { endOfDay, sourceCursors, todayIn } from "../ingest";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { closeDay, seenOn, sweepClosed } from "./breaks";
@@ -70,14 +70,17 @@ async function scheduled(on: Tx, now: Date): Promise<Due[]> {
   }, on);
 }
 
-/** A side's source of `spec` is complete past what the last run's intake of date `d` saw (or saw nothing): worth a run. */
+/**
+ * A side the last run's intake of date `d` saw incomplete is now complete through the date's end: worth a run. (A
+ * watermark cursor moves with every pull; a move within the date isn't.)
+ */
 async function moved(tx: InTx, spaceId: string, configId: string, spec: ReconSpec, d: string): Promise<boolean> {
-  const seen = await seenOn(tx, spaceId, configId, d);
+  const seen = await seenOn(tx, spaceId, configId, d), end = endOfDay(d);
   const now = await tx.select({ id: sourceCursors.sourceId, ct: sourceCursors.completeThrough }).from(sourceCursors)
     .where(inArray(sourceCursors.sourceId, spec.sides.map((s) => s.source_id)));
   return spec.sides.some((s) => {
     const ct = now.find((x) => x.id === s.source_id)?.ct, was = seen?.[s.key];
-    return !!ct && (!was || ct > new Date(was));
+    return (!was || new Date(was) < end) && !!ct && ct >= end;
   });
 }
 

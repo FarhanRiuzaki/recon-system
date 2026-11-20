@@ -40,7 +40,7 @@ import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql } from "./sql/runs";
-import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
+import { acceptSql, clearProposalsSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
 /** What a pass did over the run: groups it accepted, groups it suggested, items it broke as ambiguous. */
@@ -268,6 +268,8 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       const passed = await step(async (tx, r, counters) => {
         if (r.doneThrough && r.doneThrough >= d) return;
         for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
+        // a proposal whose proposed item a pass has paired since (this step's included) is cleared (DEC-047)
+        if (carry > 0) await one(tx, clearProposalsSql(c(tx)));
         // grace (spec §9 step 4): live runs only; a simulation replays dates, its breaks come from the classifier
         if (!simRunId) await one(tx, graceSql(c(tx), spec.grace_minutes, carry));
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);

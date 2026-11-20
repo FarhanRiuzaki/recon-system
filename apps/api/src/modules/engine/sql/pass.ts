@@ -286,19 +286,37 @@ export function tieSuggestSql(c: StepCtx, p: PassSpec): SQL {
 /**
  * 1:1, a pass that suggests (accept or on_ambiguous suggest), after its own pairs: the pairs it would suggest (each
  * the other's best and first in record order, as tieSuggestSql) where a member is a break (DEC-047). The break stays
- * a break; its proposed pair and this pass are written on it (proposed_item_id, proposed_pass), when they change. The
- * open member stays open for later passes and its own day close. Answers { n } breaks given a proposal.
+ * a break; its proposed pair and this pass are written on it (proposed_item_id, proposed_pass, version + 1), when they
+ * change and no earlier pass proposed one (an earlier pass's proposal stands). The open member stays open for later
+ * passes and its own day close. Answers { n } breaks given a proposal.
  */
 export function proposeSql(c: StepCtx, p: PassSpec): SQL {
   return sql`with ${candidatesSql(c, p)},
   ${RANKED},
   o as (select r2.*, row_number() over (partition by a_id order by ${order("b")}) as fa, row_number() over (partition by b_id order by ${order("a")}) as fb
     from r2 where dist = best_a and dist = best_b),
-  pr as (select a_id as id, a_bd as bd, b_id as other from o where fa = 1 and fb = 1 and a_lk and b_lk and a_st = 'break'
-    union all select b_id, b_bd, a_id from o where fa = 1 and fb = 1 and a_lk and b_lk and b_st = 'break'),
-  up as (update ${reconItems} i set proposed_item_id = pr.other, proposed_pass = ${p.no}::smallint
-    from pr where i.space_id = ${c.spaceId} and i.id = pr.id and i.business_date = pr.bd and i.status = 'break'
+  pr as (select a_id as id, a_v as v, a_bd as bd, b_id as other from o where fa = 1 and fb = 1 and a_lk and b_lk and a_st = 'break'
+    union all select b_id, b_v, b_bd, a_id from o where fa = 1 and fb = 1 and a_lk and b_lk and b_st = 'break'),
+  up as (update ${reconItems} i set proposed_item_id = pr.other, proposed_pass = ${p.no}::smallint, version = i.version + 1
+    from pr where i.space_id = ${c.spaceId} and i.id = pr.id and i.business_date = pr.bd and i.status = 'break' and i.version = pr.v
+      and (i.proposed_pass is null or i.proposed_pass >= ${p.no}::smallint)
       and (i.proposed_item_id is distinct from pr.other or i.proposed_pass is distinct from ${p.no}::smallint) returning 1)
+  select count(*)::int as n from up`;
+}
+
+/**
+ * Clears the proposals (proposeSql) of the window's breaks whose proposed item was paired since (matched, suggested
+ * or closed elsewhere): a stale pair is no one-click resolution. Breaks this statement can lock only (A1). Answers { n }.
+ */
+export function clearProposalsSql(c: StepCtx): SQL {
+  return sql`with x as (select b.id, b.business_date as bd from ${reconItems} b
+      where b.space_id = ${c.spaceId} and b.config_id = ${c.configId} and ${c.simRunId === null ? sql`b.sim_run_id is null` : sql`b.sim_run_id = ${c.simRunId}`}
+        and b.business_date between ${c.lo}::date and ${c.hi}::date and b.status = 'break' and b.proposed_item_id is not null
+        and exists (select 1 from ${reconItems} p where p.space_id = b.space_id and p.config_id = b.config_id and p.id = b.proposed_item_id
+          and p.status in ('matched', 'suggested', 'closed'))
+      for update of b skip locked),
+  up as (update ${reconItems} i set proposed_item_id = null, proposed_pass = null, version = i.version + 1
+    from x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd returning 1)
   select count(*)::int as n from up`;
 }
 
