@@ -33,8 +33,9 @@ function sourceDatabase(): URL {
     if (!n) await admin.unsafe('create database "' + process.env.SRC_NAME + '"');
     await admin.close();
     const db = new Bun.SQL(process.env.SRC_DB);
-    await db.unsafe(\`drop table if exists bifast_txn;
+    await db.unsafe(\`drop view if exists bifast_view; drop table if exists bifast_txn;
       create table bifast_txn (id bigint primary key, updated_at timestamptz not null, ref text not null, amount numeric(18,2) not null, note text);
+      create view bifast_view as select id, ref from bifast_txn;
       insert into bifast_txn values (1, '2026-11-02 01:00:00+00', 'BF001', 100.5, null), (2, '2026-11-02 02:00:00+00', 'BF002', 7, 'x');\`);
     await db.close();`;
   execFileSync("bun", ["-e", script], { env: { ...process.env, SRC_DB: src.href, SRC_NAME: src.pathname.slice(1) }, stdio: "inherit" });
@@ -148,7 +149,7 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await expect(page.getByRole("textbox", { name: "Comment", exact: true })).toHaveCount(0);
 });
 
-test("a PostgreSQL watermark source: a failed test, then a pass; a taken code; read the table, refuse nullable watermark columns, preview a pull on demand, submit", async ({ page, baseURL }) => {
+test("a PostgreSQL watermark source: a failed test, then a pass without a database; pick the database and the table from the lists; a taken code; the suggested watermark and id, nullable ones refused; preview a pull on demand, submit", async ({ page, baseURL }) => {
   const ids = await demoIds(baseURL);
   const src = sourceDatabase();
   await page.goto(`/spaces/${ids.fico}/sources/new?step=1`);
@@ -166,11 +167,32 @@ test("a PostgreSQL watermark source: a failed test, then a pass; a taken code; r
   await page.getByRole("button", { name: "Test connection" }).click();
   await expect(page.getByRole("status").filter({ hasText: "database" })).toHaveText("The database was not found (3D000). Check the database name.");
   await blockedWith(page, "Next: fields & mapping", "Test the connection first; step 2 reads the columns through it.");
-  await page.getByRole("textbox", { name: "Database", exact: true }).fill(src.pathname.slice(1));
+  // REC-F2a: no database typed, the test runs on `postgres` and says what it found; the database then is a list
+  await page.getByRole("textbox", { name: "Database", exact: true }).fill("");
   await page.getByRole("button", { name: "Test connection" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Connected." })).toHaveText("Connected.");
+  await expect(page.getByRole("status").filter({ hasText: "Connected to PostgreSQL" })).toHaveText(/^Connected to PostgreSQL [\d.]+ as .+\. \d+ databases\. Choose one to list its tables\.$/);
+  const database = page.getByRole("button", { name: /^Database: / });
+  await database.click();
+  await page.getByPlaceholder("Search databases").fill(src.pathname.slice(1));
+  await page.getByRole("option", { name: src.pathname.slice(1), exact: true }).click();
+  // a database chosen is tested at once: the sentence counts its tables, and Next counts the pass
+  await expect(page.getByRole("status").filter({ hasText: "Connected to PostgreSQL" })).toHaveText(new RegExp(`\\d+ databases; 2 tables in ${src.pathname.slice(1)}\\.$`));
+  await expect(database).toHaveAccessibleName(`Database: ${src.pathname.slice(1)}`);
 
-  await page.getByRole("textbox", { name: "Table", exact: true }).fill(SRC_TABLE);
+  // the table: the tables and views this login can SELECT, under their schema, each with its kind and column count
+  const table = page.getByRole("button", { name: /^Table: / });
+  await table.click();
+  await expect(page.getByRole("group", { name: "public" })).toBeVisible();
+  await expect(page.getByRole("option", { name: /^bifast_view/ })).toContainText("view · 2 columns");
+  // a server search, debounced: no match says so
+  await page.getByPlaceholder("Search tables").fill("nothing_like_it");
+  await expect(page.getByText('No table matches "nothing_like_it".')).toBeVisible();
+  await page.getByPlaceholder("Search tables").fill("txn");
+  const txn = page.getByRole("option", { name: /^bifast_txn/ });
+  await expect(txn).toContainText("table · 5 columns");
+  await txn.click();
+  await expect(table).toHaveAccessibleName(`Table: ${SRC_TABLE}`);
+  await expect(page.getByText("5 columns read.")).toBeVisible();
   await next(page, "Next: fields & mapping").click();
   const code = page.getByRole("textbox", { name: "Code", exact: true });
   await expect(code).toBeFocused();
@@ -178,12 +200,15 @@ test("a PostgreSQL watermark source: a failed test, then a pass; a taken code; r
   await code.fill(`bifast-${RUN}`);
   await next(page, "Next: fields & mapping").click();
 
-  // step 2: the columns read through the stored connection; the watermark picker refuses a column that can be empty
+  // step 2: the columns read through the stored connection; the watermark and id come suggested (NOT NULL; the id a
+  // primary key), and the picker still refuses a column that can be empty
   const wm = page.getByRole("combobox", { name: "Watermark column", exact: true });
+  await expect(wm).toHaveValue("updated_at");
+  await expect(page.getByText("Suggested: updated_at, a time that is never empty. Change it if rows can change without it.")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Id column", exact: true })).toHaveValue("id");
+  await expect(page.getByText("Suggested: id, unique and never empty.")).toBeVisible();
   await expect(wm.locator("option", { hasText: "note" })).toBeDisabled();
   await expect(wm.locator("option", { hasText: "note" })).toHaveText("note — This column can be empty; rows with no value would never be pulled.");
-  await wm.selectOption("updated_at");
-  await page.getByRole("combobox", { name: "Id column", exact: true }).selectOption("id");
 
   const columns = page.getByRole("table", { name: "Columns" });
   await expect(columns.locator("tbody tr")).toHaveCount(5);
