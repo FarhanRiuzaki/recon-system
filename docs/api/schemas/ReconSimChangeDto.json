@@ -66,13 +66,24 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "businessDate": {
+                    "type": "string"
                   }
                 },
                 "required": [
                   "side",
                   "recordId",
                   "extRef",
-                  "amountMinor"
+                  "amountMinor",
+                  "currency",
+                  "businessDate"
                 ],
                 "additionalProperties": false
               }
@@ -139,13 +150,24 @@
                       "string",
                       "null"
                     ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "businessDate": {
+                    "type": "string"
                   }
                 },
                 "required": [
                   "side",
                   "recordId",
                   "extRef",
-                  "amountMinor"
+                  "amountMinor",
+                  "currency",
+                  "businessDate"
                 ],
                 "additionalProperties": false
               }

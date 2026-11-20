@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunGroupMember",
+  "type": "object",
+  "properties": {
+    "side": {
+      "type": "string",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "recordId": {
+      "type": "string"
+    },
+    "extRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amountMinor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "businessDate": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "side",
+    "recordId",
+    "extRef",
+    "amountMinor",
+    "currency",
+    "businessDate"
+  ],
+  "additionalProperties": false
+}

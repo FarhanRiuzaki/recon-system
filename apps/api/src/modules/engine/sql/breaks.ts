@@ -15,10 +15,14 @@ import { candidatesSql, comparedAmount, groupsSql, type StepCtx } from "./pass";
 export const breakReason = (p: PassSpec): string =>
   p.blocking.length || p.predicates.some((q) => q.op === "eq" || q.op === "eq_normalized") ? "Duplicate" : "Ambiguous";
 
-/** Breaks the items of CTE `t` (id, v, bd). */
-const breakItems = (c: StepCtx, reason: string): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${reason}, version = i.version + 1
-    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.id)
-  select count(*)::int as items from up`;
+/**
+ * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`); answers the items, those of side A, and their
+ * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items").
+ */
+const breakItems = (c: StepCtx, p: PassSpec): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}, version = i.version + 1
+    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.record_id, i.business_date, i.side)
+  select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
+    and r.id = up.record_id and r.business_date = up.business_date) as refs from up`;
 
 /**
  * 1:1, once no pair is taken: every item still with a candidate is in a tie; all of them break, but for the items two
@@ -32,7 +36,7 @@ export function tieBreakSql(c: StepCtx, p: PassSpec): SQL {
   near as (select id from hop union select b_id from c where a_id in (select id from hop) union select a_id from c where b_id in (select id from hop)),
   t as (select a_id as id, a_v as v, a_bd as bd from c where a_id not in (select id from near)
     union select b_id, b_v, b_bd from c where b_id not in (select id from near)),
-  ${breakItems(c, breakReason(p))}`;
+  ${breakItems(c, p)}`;
 }
 
 /**
@@ -45,7 +49,7 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
     select 1 from cm x join cm y on y.m_id = x.m_id join grp g2 on g2.o_id = y.o_id where x.o_id = g.o_id and not g2.all_lk)),
   t as (select o_id as id, o_v as v, o_bd as bd from cm where o_id in (select o_id from bad)
     union select m_id, m_v, m_bd from cm where o_id in (select o_id from bad)),
-  ${breakItems(c, breakReason(p))}`;
+  ${breakItems(c, p)}`;
 }
 
 /** Why an item without a pair is a break (day close; the plan's "Alasan break saat tutup hari"). */

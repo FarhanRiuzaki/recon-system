@@ -75,7 +75,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const run = await runRecon(probe, { ...gate, mode: "manual", from: "2026-11-02", to: "2026-11-05" });
     console.log(`gate run 2–5 Nov: ${Math.round(performance.now() - t0)} ms`);
     firstRun = run.runId;
-    expect(run.counters).toEqual({
+    expect(run.counters).toMatchObject({
       intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 },
       passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
       open: { a: 24, b: 24 },
@@ -142,7 +142,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
   it("Focus 3: the same run again changes nothing (no group, no item moved)", async () => {
     const before = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const again = await runRecon(probe, { ...gate, mode: "rerun", from: "2026-11-02", to: "2026-11-05" });
-    expect(again.counters).toEqual({
+    expect(again.counters).toMatchObject({
       intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 },
       passes: { 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 }, 3: { matched: 0, suggested: 0, broken: 0 } },
       open: { a: 24, b: 24 },
@@ -156,7 +156,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const draft = Bun.randomUUIDv7();
     await db.insert(reconConfigVersions).values({ id: draft, configId: gate.configId, spaceId: A, version: 2, status: "draft", spec: gateSpec(...gateSides), specHash: "h2", makerId: U });
     const sim = await runRecon(probe, { ...gate, versionId: draft, mode: "simulation", from: "2026-11-02", to: "2026-11-05" });
-    expect(sim.counters.passes).toEqual({ 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } });
+    expect(sim.counters.passes).toMatchObject({ 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } });
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconItems).where(eq(reconItems.simRunId, sim.runId)))[0]!.n).toBe(2000);
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(live);
@@ -193,7 +193,7 @@ describe("cases on records written directly", () => {
         predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1000.00" } }, ccyEq] },
     ]));
     const run = await runRecon(probe, { ...r, mode: "manual", from: D });
-    expect(run.counters.passes).toEqual({ 1: { matched: 1, suggested: 1, broken: 0 } });
+    expect(run.counters.passes).toMatchObject({ 1: { matched: 1, suggested: 1, broken: 0 } });
     const groups = await groupsOf(r.configId);
     const auto = groups.find((g) => g.kind === "auto")!;
     expect([auto.refs, auto.amounts]).toEqual([["K1", "K1"], [1_000_500n, 1_000_400n]]);
@@ -216,7 +216,7 @@ describe("cases on records written directly", () => {
       .where(and(eq(reconItems.id, held!.id), eq(reconItems.status, "open"), eq(reconItems.version, held!.version))));
     try {
       const run = await runRecon(probe, { ...r, mode: "manual", from: D });
-      expect(run.counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+      expect(run.counters.passes).toMatchObject({ 1: { matched: 1, suggested: 0, broken: 0 } });
     } finally {
       await hold.commit();
     }
@@ -238,7 +238,7 @@ describe("cases on records written directly", () => {
     ];
     const r = await recon(A, spec(txn.sourceId, stl.sourceId, passes));
     const run = await runRecon(probe, { ...r, mode: "manual", from: D, to: D1 });
-    expect(run.counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+    expect(run.counters.passes).toMatchObject({ 1: { matched: 1, suggested: 0, broken: 0 } });
     const [g, ...more] = await groupsOf(r.configId);
     expect(more).toEqual([]);
     expect([g!.kind, g!.date, g!.refs.sort(), g!.sides.sort().join("")]).toEqual(["auto", D1, ["S1", "T1", "T2", "T3"], "aaab"]);
@@ -247,7 +247,7 @@ describe("cases on records written directly", () => {
     expect((await itemsOf(r.configId)).filter((i) => i.status === "open").map((i) => i.ref)).toEqual(["S2", "T4"]);
     // carry over 0: a settlement on D+1 never meets transactions of D
     const r0 = await recon(A, spec(txn.sourceId, stl.sourceId, passes, 0));
-    expect((await runRecon(probe, { ...r0, mode: "manual", from: D, to: D1 })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 } });
+    expect((await runRecon(probe, { ...r0, mode: "manual", from: D, to: D1 })).counters.passes).toMatchObject({ 1: { matched: 0, suggested: 0, broken: 0 } });
   });
 
   it("KSEI S10 (ksei-sample-data.md): one KSEI row and two Medallion rows of a SID break as Duplicate; S09 and S11 wait", async () => {
@@ -259,7 +259,7 @@ describe("cases on records written directly", () => {
       { no: 1, name: "SID", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "account_ref" }] },
     ], 0));
     const run = await runRecon(probe, { ...r, mode: "daily", from: D });
-    expect(run.counters).toEqual({ intake: { a: 10, b: 11 }, replaced: { a: 0, b: 0 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 1, b: 1 } });
+    expect(run.counters).toMatchObject({ intake: { a: 10, b: 11 }, replaced: { a: 0, b: 0 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 1, b: 1 } });
     const items = await itemsOf(r.configId);
     expect(items.filter((i) => i.status === "break").map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["M10", "Duplicate"], ["M10", "Duplicate"]]);
     expect(items.filter((i) => i.status === "open").map((i) => i.ref)).toEqual(["K9", "M11"]);
@@ -299,7 +299,7 @@ describe("cases on records written directly", () => {
     await put(sb, [1, 2].map(() => ({ ref: "Y", amount: 5n })));
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
     const run = await runRecon(probe, { ...r, mode: "manual", from: D });
-    expect(run.counters.passes).toEqual({ 1: { matched: 2, suggested: 0, broken: 5 } });
+    expect(run.counters.passes).toMatchObject({ 1: { matched: 2, suggested: 0, broken: 5 } });
     const groups = await groupsOf(r.configId);
     expect(groups.map((g) => [g.kind, g.accts.join("+")]).sort()).toEqual([["auto", "a-early+b-early"], ["auto", "a-late+b-late"]]);
     expect(groups[0]!.evidence).toMatchObject({ chosen: "duplicates paired in order: business date, event time, record id" });
@@ -318,7 +318,7 @@ describe("cases on records written directly", () => {
     const hold = await holdTx((tx) => tx.select({ id: reconItems.id }).from(reconItems).where(eq(reconItems.id, held.id)).for("update"));
     try {
       const run = await runRecon(probe, { ...r, mode: "daily", from: D });
-      expect(run.counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 } });
+      expect(run.counters.passes).toMatchObject({ 1: { matched: 0, suggested: 0, broken: 0 } });
     } finally {
       await hold.rollback();
     }
@@ -336,9 +336,9 @@ describe("cases on records written directly", () => {
       return { ...x, sides: [x.sides[0], { ...x.sides[1], amount_sign: "negate" }] };
     };
     const plain = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
-    expect((await runRecon(probe, { ...plain, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 } });
+    expect((await runRecon(probe, { ...plain, mode: "manual", from: D })).counters.passes).toMatchObject({ 1: { matched: 0, suggested: 0, broken: 0 } });
     const r = await recon(A, negated(exact()));
-    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toMatchObject({ 1: { matched: 1, suggested: 0, broken: 0 } });
     expect((await groupsOf(r.configId))[0]!.amounts).toEqual([-100n, 100n]);
 
     // a batch: two credits and a refund (debit) of side A against one settlement booked as a debit on side B
@@ -348,7 +348,7 @@ describe("cases on records written directly", () => {
     const batch = spec(ta.sourceId, tb.sourceId, [{ no: 1, name: "Batch", cardinality: "N:1", blocking: ["attrs.settlement_ref"], accept: "auto", on_ambiguous: "break",
       predicates: [{ op: "eq_sum", field: "amount_minor", tolerance: {} }, ccyEq] }]);
     const g = await recon(A, { ...batch, sides: [batch.sides[0], { ...batch.sides[1], amount_sign: "negate" }] });
-    expect((await runRecon(probe, { ...g, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+    expect((await runRecon(probe, { ...g, mode: "manual", from: D })).counters.passes).toMatchObject({ 1: { matched: 1, suggested: 0, broken: 0 } });
     const [grp] = await groupsOf(g.configId);
     expect(grp!.amounts.map(String).sort()).toEqual(["-300", "-50", "100", "250"]);
     expect(grp!.evidence).toMatchObject({ predicates: [{ op: "eq_sum", sum: 300, one: 300, delta: 0, members: 3 }, { op: "eq" }] });
@@ -374,7 +374,7 @@ describe("cases on records written directly", () => {
       { no: 1, name: "Norm", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq_normalized", field: "ext_ref" }] },
       { no: 2, name: "Contains", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "contains", field: "account_ref" }] },
     ]));
-    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 } });
+    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toMatchObject({ 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 } });
   });
 
   it("a pass that fails rolls back alone (intake stays: it commits first) and marks the run failed with a sentence", async () => {

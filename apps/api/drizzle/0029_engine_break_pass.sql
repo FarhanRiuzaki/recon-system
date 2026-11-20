@@ -1,0 +1,1 @@
+ALTER TABLE "recon_items" ADD COLUMN "break_pass" smallint;

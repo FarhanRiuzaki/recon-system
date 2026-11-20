@@ -138,7 +138,7 @@ describe("runs and simulations through the API", () => {
 
     await drain();
     const done = await getRun(r.configId, q.id);
-    expect([done.status, done.doneThrough, done.error, done.counters.passes]).toEqual(["succeeded", D, null, { 1: { matched: 2, suggested: 0, broken: 0 } }]);
+    expect([done.status, done.doneThrough, done.error, done.counters.passes]).toMatchObject(["succeeded", D, null, { 1: { matched: 2, suggested: 0, broken: 0 } }]);
     expect(done.counters.open).toEqual({ a: 1, b: 1 });
     const list = await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs`, { token: t.rv }));
     expect(list.items.map((x) => x.id)).toEqual([q.id]);
@@ -192,7 +192,7 @@ describe("runs and simulations through the API", () => {
     });
     await drain();
     const done = await getRun(r.configId, q.id);
-    expect([done.status, done.versionId, done.version, done.counters.passes]).toEqual(["succeeded", r.versionId, 1, { 1: { matched: 1, suggested: 0, broken: 0 } }]);
+    expect([done.status, done.versionId, done.version, done.counters.passes]).toMatchObject(["succeeded", r.versionId, 1, { 1: { matched: 1, suggested: 0, broken: 0 } }]);
     const groups = await db.select({ v: matchGroups.configVersionId }).from(matchGroups).where(eq(matchGroups.runId, q.id));
     expect(groups).toEqual([{ v: r.versionId }]);
   });
@@ -207,7 +207,7 @@ describe("runs and simulations through the API", () => {
     const straight = await json<ReconRunDto>(startRun(t.op, once.configId, { from: D, to: D1 }));
     await drain();
     const want = (await getRun(once.configId, straight.id)).counters;
-    expect(want.passes).toEqual({ 1: { matched: 4, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 2, broken: 0 } });
+    expect(want.passes).toMatchObject({ 1: { matched: 4, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 2, broken: 0 } });
 
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, passes));
     const q = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D1 }));
@@ -345,16 +345,52 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     await drain();
     const done = await getRun(gate.configId, q.id);
     expect([done.status, done.doneThrough]).toEqual(["succeeded", "2026-11-05"]);
-    expect(done.counters).toEqual({
-      intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 },
-      passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
-      open: { a: 24, b: 24 },
+    const side = (a: number, b = a) => ({ a, b });
+    const pass = (matched: number, suggested: number, broken: number, brokenRefs: number) => ({
+      matched, suggested, broken, brokenRefs, matchedItems: side(matched), suggestedItems: side(suggested), brokenItems: side(broken / 2),
     });
+    expect(done.counters).toEqual({
+      intake: side(1000), replaced: side(0),
+      passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) },
+      open: side(24),
+    });
+    // per side the funnel adds up: 1,000 = 937 matched + 15 duplicate + 48 left (24 suggested, 24 waiting)
+    const ps = Object.values(done.counters.passes);
+    for (const k of ["a", "b"] as const) {
+      const sum = (f: "matchedItems" | "suggestedItems" | "brokenItems") => ps.reduce((n, x) => n + x[f]![k], 0);
+      expect([sum("matchedItems"), sum("brokenItems"), sum("suggestedItems") + done.counters.open[k]]).toEqual([937, 15, 48]);
+    }
+
+    // the per-date strip (matched / suggested / waiting a · b / duplicate items), a group on its latest member's date
+    const days = (await getRun(gate.configId, q.id)).days!;
+    const strip = days.map((d) => {
+      const p = Object.values(d.passes);
+      const sum = (f: "matched" | "suggested" | "broken") => p.reduce((n, x) => n + x[f], 0);
+      return [d.date, sum("matched"), sum("suggested"), d.open.a, d.open.b, sum("broken")];
+    });
+    expect(strip).toEqual([
+      ["2026-11-02", 312, 5, 7, 8, 12],
+      ["2026-11-03", 313, 8, 8, 8, 9],
+      ["2026-11-04", 312, 7, 9, 8, 9],
+      ["2026-11-05", 0, 4, 0, 0, 0],
+    ]);
+    expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
+    expect((await call("GET", `${base(gate.configId)}/runs`, { token: t.rv }).then((r) => r.json()) as Page<ReconRunDto>).items[0]!.days).toBeNull();
+
     const total = async (q2: string) => (await items(gate.configId, q.id, q2)).total;
-    expect([await total("pass=1"), await total("pass=2"), await total("pass=3")]).toEqual([1874, 28, 20]);
+    // pass 1 = its 937 pairs and the 30 items it broke as Duplicate
+    expect([await total("pass=1"), await total("pass=2"), await total("pass=3")]).toEqual([1904, 28, 20]);
     expect([await total("status=break"), await total("status=suggested"), await total("status=open&side=a"), await total("status=open&side=b")]).toEqual([30, 48, 24, 24]);
     const dup = await items(gate.configId, q.id, "status=break&pageSize=100");
-    expect(new Set(dup.items.map((i) => i.breakReason))).toEqual(new Set(["Duplicate"]));
+    expect([new Set(dup.items.map((i) => i.breakReason)), new Set(dup.items.map((i) => i.breakPass)), new Set(dup.items.map((i) => i.extRef)).size])
+      .toEqual([new Set(["Duplicate"]), new Set([1]), 10]);
+    // the date filter counts as the strip does: 3 Nov = 313 pairs + 8 suggested (both sides) + 16 waiting + 9 duplicate
+    expect(await total("date=2026-11-03")).toBe(2 * 313 + 2 * 8 + 16 + 9);
+    expect([await total("date=2026-11-03&pass=1&status=matched"), await total("date=2026-11-05&status=suggested")]).toEqual([626, 8]);
+    // a pair is one row: the item's group has both sides' records
+    const [row] = (await items(gate.configId, q.id, "pass=2&side=a&pageSize=15")).items;
+    expect(row!.group!.members.map((m) => [m.side, m.extRef === row!.extRef, m.currency])).toEqual([["a", true, "IDR"], ["b", true, "IDR"]]);
+    expect(BigInt(row!.group!.members[1]!.amountMinor!) - BigInt(row!.group!.members[0]!.amountMinor!)).toBe(50000n);
   }, 60_000);
 
   it("a simulation of the same spec as a draft changes no pair and opens submit", async () => {
@@ -362,7 +398,7 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     const sim = await json<ReconRunDto>(simulate(t.mk, gate.configId, v2.id, { from: "2026-11-02", to: "2026-11-05" }));
     await drain();
     const done = await getRun(gate.configId, sim.id);
-    expect([done.status, done.changes, done.counters.passes]).toEqual([
+    expect([done.status, done.changes, done.counters.passes]).toMatchObject([
       "succeeded", { gained: 0, lost: 0, repaired: 0, kind: 0 },
       { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
     ]);

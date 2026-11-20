@@ -40,6 +40,18 @@
               "null"
             ]
           },
+          "breakPass": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "extRef": {
             "type": [
               "string",
@@ -83,14 +95,63 @@
                   "businessDate": {
                     "type": "string"
                   },
-                  "evidence": {}
+                  "evidence": {},
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "side": {
+                          "type": "string",
+                          "enum": [
+                            "a",
+                            "b"
+                          ]
+                        },
+                        "recordId": {
+                          "type": "string"
+                        },
+                        "extRef": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "amountMinor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "currency": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "businessDate": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "side",
+                        "recordId",
+                        "extRef",
+                        "amountMinor",
+                        "currency",
+                        "businessDate"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
                 },
                 "required": [
                   "id",
                   "passNo",
                   "kind",
                   "businessDate",
-                  "evidence"
+                  "evidence",
+                  "members"
                 ],
                 "additionalProperties": false
               },
@@ -107,6 +168,7 @@
           "status",
           "businessDate",
           "breakReason",
+          "breakPass",
           "extRef",
           "amountMinor",
           "currency",

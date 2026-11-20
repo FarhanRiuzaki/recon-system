@@ -69,7 +69,7 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
       const run = await runRecon(probe, { spaceId: A, configId, versionId, mode: "manual", from: D });
       console.log(`run ${n}/side: ${Math.round(performance.now() - t0)} ms`, JSON.stringify(run.counters.passes));
       const offs = Math.floor(n / 33);
-      expect(run.counters.passes).toEqual({ 1: { matched: n - offs, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: offs, broken: 0 } });
+      expect(run.counters.passes).toMatchObject({ 1: { matched: n - offs, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: offs, broken: 0 } });
     }, 600_000);
   }
 });

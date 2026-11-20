@@ -216,14 +216,33 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(realDate, "Not a 
 export const RunRangeBody = z.strictObject({ from: isoDate.optional(), to: isoDate.optional() });
 export type RunRangeBody = z.infer<typeof RunRangeBody>;
 
-/** What a pass did over a run: groups it matched, groups it suggested, items it broke as ambiguous (Duplicate). */
-export const PassCounters = z.object({ matched: z.number().int(), suggested: z.number().int(), broken: z.number().int() });
 const PerSide = z.object({ a: z.number().int(), b: z.number().int() });
+/**
+ * What a pass did over a run: groups it matched, groups it suggested, items it broke as ambiguous (Duplicate) and their
+ * distinct references; the items of each per side (a group pass pairs one item with n). A run before these fields
+ * has the first three only.
+ */
+export const PassCounters = z.object({
+  matched: z.number().int(), suggested: z.number().int(), broken: z.number().int(), brokenRefs: z.number().int().optional(),
+  matchedItems: PerSide.optional(), suggestedItems: PerSide.optional(), brokenItems: PerSide.optional(),
+});
 /** A run's counters: items taken in and closed (record replaced) per side, per pass by number, items still open per side. */
 export const RunCounters = z.object({ intake: PerSide, replaced: PerSide, passes: z.record(z.string(), PassCounters), open: PerSide });
 export type RunCounters = z.infer<typeof RunCounters>;
 /** How many pairs a simulation changes against the published version, per kind of change. */
 export const SimChangeCounts = z.object({ gained: z.number().int(), lost: z.number().int(), repaired: z.number().int(), kind: z.number().int() });
+/**
+ * A business date of a run as it stands now (the run's own items for a simulation, the live ones otherwise): per pass,
+ * groups matched and suggested on that date (a group counts on its latest member's date) and items broken there with
+ * their distinct references; items still open per side on their own date. Every date of the run, and a carry-over date
+ * before it when it has any.
+ */
+export const RunDay = z.object({
+  date: z.string(),
+  passes: z.record(z.string(), z.object({ matched: z.number().int(), suggested: z.number().int(), broken: z.number().int(), brokenRefs: z.number().int() })),
+  open: PerSide,
+});
+export type RunDay = z.infer<typeof RunDay>;
 
 /**
  * A run (GET …/runs/{runId}, and the answer of a run or simulation request, status `queued`). `version` = the recon
@@ -249,6 +268,8 @@ export const ReconRunDto = z.object({
   finishedAt: z.string().nullable(),
   baseline: z.object({ runId: z.string(), versionId: z.string(), version: z.number().int() }).nullable(),
   changes: SimChangeCounts.nullable(),
+  /** GET …/runs/{runId} only (a list answers null). */
+  days: z.array(RunDay).nullable(),
 });
 export type ReconRunDto = z.infer<typeof ReconRunDto>;
 
@@ -258,17 +279,32 @@ export const ReconRunListQuery = ListQuery.omit({ q: true }).extend({
 });
 export type ReconRunListQuery = z.infer<typeof ReconRunListQuery>;
 
-/** GET …/runs/{runId}/items: the run's items (its business dates, and the carry over before them), narrowed by pass, status and side. */
+/**
+ * GET …/runs/{runId}/items: the run's items (its business dates, and the carry over before them), narrowed by pass (a
+ * group of that pass, or broken by it), status, side and `date`: the date it counts on (its group's, else its own), as
+ * the run's `days`.
+ */
 export const ReconRunItemQuery = ListQuery.omit({ q: true }).extend({
   sort: sortParam(RECON_RUN_ITEM_SORTS),
   pass: z.coerce.number().int().min(1).max(PASSES_MAX).optional(),
   status: z.enum(ITEM_STATUSES).optional(),
   side: z.enum(["a", "b"]).optional(),
+  date: isoDate.optional(),
 });
 export type ReconRunItemQuery = z.infer<typeof ReconRunItemQuery>;
 
-/** A group as a run's screens show it: its pass, kind and evidence (per predicate passed and delta, how it was chosen). */
-export const RunGroupDto = z.object({ id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), businessDate: z.string(), evidence: z.unknown() });
+/** A member of a group: its side and record's reference, amount (minor units, signed, as text), currency and date. */
+export const RunGroupMember = z.object({
+  side: z.enum(["a", "b"]), recordId: z.string(), extRef: z.string().nullable(), amountMinor: z.string().nullable(), currency: z.string().nullable(), businessDate: z.string(),
+});
+export type RunGroupMember = z.infer<typeof RunGroupMember>;
+/**
+ * A group as a run's screens show it: its pass, kind, evidence (per predicate passed and delta, how it was chosen) and
+ * members, both sides (a pair is one row).
+ */
+export const RunGroupDto = z.object({
+  id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), businessDate: z.string(), evidence: z.unknown(), members: z.array(RunGroupMember),
+});
 /**
  * An item of a run: its record's reference, amount (minor units, signed as the record has it, as text) and currency,
  * and the group it is in now (null while open or broken).
@@ -280,6 +316,8 @@ export const ReconRunItemDto = z.object({
   status: z.enum(ITEM_STATUSES),
   businessDate: z.string(),
   breakReason: z.string().nullable(),
+  /** The pass that broke it (Duplicate / Ambiguous); null otherwise. */
+  breakPass: z.number().int().nullable(),
   extRef: z.string().nullable(),
   amountMinor: z.string().nullable(),
   currency: z.string().nullable(),
@@ -291,8 +329,7 @@ export type ReconRunItemDto = z.infer<typeof ReconRunItemDto>;
 export const ReconSimChangeQuery = ListQuery.omit({ q: true, sort: true }).extend({ change: z.enum(SIM_CHANGES).optional() });
 export type ReconSimChangeQuery = z.infer<typeof ReconSimChangeQuery>;
 
-const ChangeMember = z.object({ side: z.enum(["a", "b"]), recordId: z.string(), extRef: z.string().nullable(), amountMinor: z.string().nullable() });
-const ChangeGroup = z.object({ id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), members: z.array(ChangeMember) });
+const ChangeGroup = z.object({ id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), members: z.array(RunGroupMember) });
 /** A changed pair: the draft's group (null when lost) and the published version's (null when gained). */
 export const ReconSimChangeDto = z.object({
   id: z.string(),

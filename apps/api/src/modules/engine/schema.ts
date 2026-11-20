@@ -75,6 +75,8 @@ export const reconItems = pgTable("recon_items", {
   status: text("status").notNull().default("open"),
   businessDate: date("business_date").notNull(),
   breakReason: text("break_reason"),
+  /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break or none. */
+  breakPass: smallint("break_pass"),
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
