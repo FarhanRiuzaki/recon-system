@@ -37,8 +37,8 @@ import {
 
 const STEPS = ["Connection", "Fields & mapping", "Review & submit"] as const;
 const NEXT = ["Next: fields & mapping", "Next: review", "Submit for approval"] as const;
-const DESCRIPTION = [
-  "Set up where the data comes from. Recons in this space then read from this source.",
+const DESCRIPTION = (space: string) => [
+  `Recons in ${space} read from this source.`,
   "Check what was detected, fix types and formats, and say which columns the recon uses. The preview updates as you change things.",
   "Check the summary, then send the version for approval. A config checker other than you approves it before anything is ingested.",
 ] as const;
@@ -558,7 +558,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={title} description={DESCRIPTION[step]} trail={source ? [{ label: source.s.name, href: sourceHref(spaceId, source.s.id) }] : []} />
+      <PageHeader title={title} description={DESCRIPTION(spaceName)[step]} trail={source ? [{ label: source.s.name, href: sourceHref(spaceId, source.s.id) }] : []} />
       <Wizard title="Setup progress" steps={steps}>
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (blocked === null && !working) void next(); }} className="grid gap-section">
           <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>

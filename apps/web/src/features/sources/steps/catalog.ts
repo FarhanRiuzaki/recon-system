@@ -17,7 +17,7 @@ export const IDLE = { status: "idle" } as const;
 export const credKey = (c: Conn) => JSON.stringify([c.engine, c.host.trim(), c.port, c.user.trim(), c.password, c.tls]);
 
 export const STALE_NOTE = "The connection changed since the last test. Test it again to refresh this list.";
-export const DATABASE_NOTE = "Leave it empty to choose from a list after the test.";
+export const DATABASE_NOTE = "Leave it empty to choose from a list after Connect.";
 export const TYPED_NOTE = "As the source's catalog spells it, such as schema.table. Checked when the columns are read.";
 export const EMPTY_DATABASES = "This account can't open any database on this server. Ask IT to grant access.";
 export const goneNote = (name: string) => `${name} isn't in the list for this account any more.`;

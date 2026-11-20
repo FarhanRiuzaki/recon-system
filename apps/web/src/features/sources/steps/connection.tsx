@@ -210,18 +210,22 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
   const failing = !!p.tested && !p.tested.result.ok && p.tested.key === connKey(d) && !(p.listed && p.tested.result.field === "database");
   const folded = !changing && !failing && (p.connected !== null || (p.stored && !p.listed));
   const wasFolded = useRef(folded);
-  // connected: focus moves on to the first field of Data (rule 1, 7)
+  // connected: focus moves on to the first field of Data (rule 1, 7); the pickers' list loads after the connect, so
+  // its control is waited for a moment
+  const first = c.engine === "oracle" ? (p.catalog.names.status !== "idle" ? "src-schema" : ctl("input.table")) : !p.stored ? "src-database" : ctl("input.table");
   useEffect(() => {
     if (folded && !wasFolded.current && p.connected) {
-      requestAnimationFrame(() => {
-        for (const id of ["src-database", "src-schema", ctl("input.table"), ctl("input.query")]) {
-          const el = document.getElementById(id);
-          if (el) { el.focus(); return; }
-        }
-      });
+      let n = 0;
+      const t = setInterval(() => {
+        const el = document.getElementById(first);
+        if (el) el.focus();
+        if (el || ++n > 20) clearInterval(t);
+      }, 50);
+      wasFolded.current = folded;
+      return () => clearInterval(t);
     }
     wasFolded.current = folded;
-  }, [folded, p.connected]);
+  }, [folded, p.connected, first]);
   const oracle = c.engine === "oracle";
   const note = p.stored ? STORED : undefined;
   // before a connect, Database shows only once it has a value (a pasted string) or an error, then stays while typed in
@@ -278,11 +282,6 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
             <Input id="src-port" value={c.port} inputMode="numeric" className="font-mono" onChange={(e) => setConn({ port: e.target.value.replace(/\D/g, "") })} autoComplete="off" />
           </Field>
         </div>
-        {(oracle || (!p.listed && dbShown)) && (
-          <Field id="src-database" label={oracle ? "Service name" : "Database"} note={note ?? (oracle ? undefined : DATABASE_NOTE)} error={err("src-database")}>
-            <Input id="src-database" value={c.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
-          </Field>
-        )}
         {pasting ? (
           <Field id="src-conn-string" label="Connection string" error={pasting.error}>
             <Input id="src-conn-string" value={pasting.text} className="font-mono" autoComplete="off" spellCheck={false} placeholder="postgresql://user@host:5432/database"
@@ -297,6 +296,11 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
           }}>Paste a connection string</Button></span>
         )}
 
+        {(oracle || (!p.listed && dbShown)) && (
+          <Field id="src-database" label={oracle ? "Service name" : "Database"} note={note ?? (oracle ? undefined : DATABASE_NOTE)} error={err("src-database")}>
+            <Input id="src-database" value={c.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
+          </Field>
+        )}
         <h3 className="pt-2 text-title-3 text-fg">Sign in</h3>
         <div className="grid gap-4 md:grid-cols-2">
           <Field id="src-user" label="Username" error={err("src-user")} note={`Use a read-only account.${note ? ` ${note}` : ""}`}>
@@ -353,11 +357,11 @@ function Data(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
         <NamePicker id="src-schema" label="Schema" noun="schema" value={cat.schema} list={cat.names} names={names} stale={cat.stale} free={cat.free.database}
           onFree={(f) => cat.onFree("database", f)} onRetry={cat.onRetryNames} onChange={cat.onSchema} onPick={cat.onSchema} />
       ) : typed && (
-        <NamePicker id="src-database" label="Database" noun="database" value={d.conn.database} error={err("src-database")} note={DATABASE_NOTE}
+        <NamePicker id="src-database" label="Database" noun="database" value={d.conn.database} error={err("src-database")}
           list={cat.names} names={names} stale={cat.stale} free={cat.free.database} onFree={(f) => cat.onFree("database", f)} onRetry={cat.onRetryNames}
           onChange={(v) => set((x) => ({ ...x, conn: { ...x.conn, database: v } }))} onPick={cat.onPickDatabase} />
       )}
-      {i.kind === "db_watermark" && (d.from === "table" ? (
+      {i.kind === "db_watermark" && (oracle ? !!cat.schema.trim() || cat.names.status === "idle" : !typed || !!d.conn.database.trim()) && (d.from === "table" ? (
         <div className="grid gap-1">
           <TablePicker id={ctl("input.table")} label="Table" value={i.table ?? ""} error={err(ctl("input.table"))} note="table or schema.table, as the source's catalog spells it."
             engine={d.conn.engine} database={(oracle ? cat.schema : d.conn.database).trim() || "this database"}
