@@ -290,7 +290,7 @@ Config adalah dokumen JSON berversi (zod di `packages/shared`), di-hash; run sel
 ```
 config
   sides[]        key, source_id, filter (operator tertutup → SQL)
-  passes[]       no, cardinality 1:1|1:N|N:1, blocking[], predicates[], accept auto|suggest, min_score
+  passes[]       no, cardinality 1:1|1:N|N:1, blocking[], predicates[], accept auto|suggest (1:N|N:1: auto only in phase 1)
   grace_minutes, carry_over_days, close_at,
   schedule { kind: interval, every_minutes } | { kind: daily, at, business_date_offset }, ageing_buckets, thresholds
 ```

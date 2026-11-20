@@ -91,7 +91,7 @@ BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`, `amou
   RLS standar; source yang dipakai sisi boleh milik space lain lewat share (DEC-042).
 - `ReconSpec` (zod, §10): `sides: [SideSpec, SideSpec]` (tepat dua; `{ key: 'a'|'b', label, source_id, filter: Filter[] }`
   dengan operator tertutup), `passes: PassSpec[]` (`{ no, name, cardinality '1:1'|'1:N'|'N:1', blocking: FieldRef[],
-  predicates: Predicate[], accept 'auto'|'suggest', on_ambiguous 'break'|'suggest', min_score? }`), `measure?`,
+  predicates: Predicate[], accept 'auto'|'suggest', on_ambiguous 'break'|'suggest' }` (fase 1: pass 1:N/N:1 hanya auto/break; min_score dihapus)), `measure?`,
   `grace_minutes`, `carry_over_days`, `close_at`, `schedule` (`interval {every_minutes}` | `daily {at, business_date_offset}`).
   `FieldRef` = kolom core `records` atau `attrs.<nama simpan>` dari versi source terbit. Operator: `eq`, `eq_normalized`,
   `amount_abs_tol`, `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity`, `eq_sum` (hanya 1:N/N:1).
