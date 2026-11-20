@@ -57,8 +57,8 @@ export function suggest(engine: DbEngine, columns: readonly Column[], table: str
     : `No id suggested: ${short} has no primary key or unique column. Choose a column that is unique and never empty.`;
   return { column, id, idWhy };
 }
-export const watermarkNote = (name: string) => `Suggested: ${name}, a time that is never empty. Change it if rows can change without it.`;
-export const idNote = (name: string) => `Suggested: ${name}, unique and never empty.`;
+export const watermarkNote = (_name: string) => "Suggested";
+export const idNote = (_name: string) => "Suggested";
 
 /**
  * The fields whose column the table read last doesn't have (PO decision 4: kept and marked, never removed), and of

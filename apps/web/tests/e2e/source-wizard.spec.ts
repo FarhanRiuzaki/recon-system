@@ -204,11 +204,11 @@ test("a PostgreSQL watermark source: a failed test, then a pass without a databa
   // primary key), and the picker still refuses a column that can be empty
   const wm = page.getByRole("combobox", { name: "Watermark column", exact: true });
   await expect(wm).toHaveValue("updated_at");
-  await expect(page.getByText("Suggested: updated_at, a time that is never empty. Change it if rows can change without it.")).toBeVisible();
+  await expect(page.getByText("Suggested", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Id column", exact: true })).toHaveValue("id");
-  await expect(page.getByText("Suggested: id, unique and never empty.")).toBeVisible();
+  await expect(page.getByText("Suggested", { exact: true })).toHaveCount(2);
   await expect(wm.locator("option", { hasText: "note" })).toBeDisabled();
-  await expect(wm.locator("option", { hasText: "note" })).toHaveText("note — This column can be empty; rows with no value would never be pulled.");
+  await expect(wm.locator("option", { hasText: "note" })).toHaveText("note — can be empty");
 
   const columns = page.getByRole("table", { name: "Columns" });
   await expect(columns.locator("tbody tr")).toHaveCount(5);

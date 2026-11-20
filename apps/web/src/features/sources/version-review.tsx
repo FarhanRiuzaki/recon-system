@@ -132,8 +132,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
                 <TableBody>
                   {rows.map((r) => (
                     <TableRow key={r.key}>
-                      {/* a field, mapping or derived name is a machine value (mono); a setting's name is words */}
-                      <TableCell className={/^(field|mapping|attrs|derive):/.test(r.key) ? "font-mono text-mono text-fg" : "text-fg"}>{r.label}</TableCell>
+                      {/* a field or derived name is a machine value (mono); a setting's name is words */}
+                      <TableCell className={/^(field|attrs|derive):/.test(r.key) ? "font-mono text-mono text-fg" : "text-fg"}>{r.label}</TableCell>
                       {!isPublished && published && <TableCell className="whitespace-normal wrap-anywhere text-fg-2 md:min-w-56">{r.before ?? <span className="text-fg-3">Not there</span>}</TableCell>}
                       <TableCell className="whitespace-normal wrap-anywhere text-fg md:min-w-56">{r.after ?? <span className="text-fg-3">Removed</span>}</TableCell>
                     </TableRow>

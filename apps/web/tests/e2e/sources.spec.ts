@@ -44,7 +44,7 @@ test("file inbox (a, e): a resend is Rejected by its sha256, a file's version 2 
   await expect(page.getByRole("heading", { level: 1, name: "BI settlement file" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("listitem")).toHaveText(["Sources", /BI settlement file$/]);
   const files = page.getByRole("table", { name: "Files" });
-  await expect(files.getByRole("row").filter({ hasText: "Rejected" })).toContainText(/Same file already ingested\. Its sha256 \(9f2c…a71e\) matches the file from .+; nothing changed\./);
+  await expect(files.getByRole("row").filter({ hasText: "Rejected" })).toContainText(/Same content as the file from .+; nothing changed\./);
   const v2 = files.getByRole("row").filter({ hasText: "version 2 of" });
   await expect(v2).toContainText("2 new records, 10 already stored");
   await expect(v2.getByRole("cell").nth(3)).toHaveText(/\D2$/); // Records = what this file added (Figma 95:8429)

@@ -122,7 +122,7 @@ export function fieldText(f: FieldSpec): string {
 export type DiffRow = { key: string; label: string; before: string | null; after: string | null };
 /** The amount units as the wizard and the version diff name them. */
 export const UNIT_LABEL: Record<AmountUnit, string> = { major: "Currency units", minor: "Minor units" };
-const CORE = ["business_date", "amount_minor", "currency", "direction", "event_time", "ext_ref", "account_ref"] as const;
+const CORE = { business_date: "Business date", amount_minor: "Amount", currency: "Currency", direction: "Direction", event_time: "Event time", ext_ref: "Reference", account_ref: "Account" } as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
@@ -138,12 +138,12 @@ export function specDiff(before: SourceSpec | null, after: SourceSpec): DiffRow[
     const b = bf.get(name), a = af.get(name);
     push(`field:${name}`, name, b ? fieldText(b) : null, a ? fieldText(a) : null);
   }
-  for (const k of CORE) push(`mapping:${k}`, k, refText(before?.mapping[k]), refText(after.mapping[k]));
+  for (const k of Object.keys(CORE) as (keyof typeof CORE)[]) push(`mapping:${k}`, CORE[k], refText(before?.mapping[k]), refText(after.mapping[k]));
   const unit = (x: SourceSpec | null) => { const u = x ? amountUnit(x) : null; return u ? UNIT_LABEL[u] : null; };
   push("mapping:amount_unit", "Amount unit", unit(before), unit(after));
   push("currency", "Currency for every row", before?.currency ?? null, after.currency ?? null);
   const ba = before?.mapping.attrs ?? {}, aa = after.mapping.attrs;
-  for (const k of new Set([...Object.keys(aa), ...Object.keys(ba)])) push(`attrs:${k}`, `attrs.${k}`, refText(ba[k]), refText(aa[k]));
+  for (const k of new Set([...Object.keys(aa), ...Object.keys(ba)])) push(`attrs:${k}`, `Stored as ${k}`, refText(ba[k]), refText(aa[k]));
   const bd = before?.derive ?? {}, ad = after.derive;
   for (const k of new Set([...Object.keys(ad), ...Object.keys(bd)])) push(`derive:${k}`, k, bd[k] ?? null, ad[k] ?? null);
   push("key_fields", "Match key", before ? before.key_fields.join(", ") || "none" : null, after.key_fields.join(", ") || "none");

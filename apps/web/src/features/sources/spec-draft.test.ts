@@ -99,7 +99,7 @@ describe("specDiff", () => {
   });
   it("against no published version every part is new", () => {
     const rows = specDiff(null, spec());
-    expect(rows.find((r) => r.key === "mapping:business_date")).toEqual({ key: "mapping:business_date", label: "business_date", before: null, after: "the file name's date" });
+    expect(rows.find((r) => r.key === "mapping:business_date")).toEqual({ key: "mapping:business_date", label: "Business date", before: null, after: "the file name's date" });
     expect(rows.find((r) => r.key === "input:completion")?.after).toBe("Size unchanged for 60 s");
   });
 });

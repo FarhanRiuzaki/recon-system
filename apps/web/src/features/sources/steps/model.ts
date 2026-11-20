@@ -153,4 +153,4 @@ export function amountProblems(s: SourceSpec): { id: string; reason: string }[] 
 }
 
 /** The nullable reason of a watermark or id column option (ruling 4): rows with no value would never be pulled. */
-export const NULLABLE_REASON = "This column can be empty; rows with no value would never be pulled.";
+export const NULLABLE_REASON = "can be empty";

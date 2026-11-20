@@ -57,7 +57,7 @@ export const shortSha = (sha: string) => `${sha.slice(0, 4)}…${sha.slice(-4)}`
 /** A file's Result line (Figma 95:8429): what it added, or why it was rejected or failed. `first` = the file it repeats or follows. */
 export function fileResult(f: SourceFileDto, first: SourceFileDto | undefined): string {
   if (f.status === "rejected") {
-    return `Same file already ingested. Its sha256 (${shortSha(f.sha256)}) matches the file from ${first ? at(first.receivedAt) : "before"}; nothing changed.`;
+    return `Same content as the file from ${first ? at(first.receivedAt) : "before"}; nothing changed.`;
   }
   if (f.status === "failed") return `${f.reason ?? "The file couldn't be read."} Nothing of it was written.`;
   const parts = [at(f.receivedAt)];

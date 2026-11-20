@@ -117,10 +117,9 @@ numbers from examples.
 - The test's answer is the API's sentence, as is (`connectors/errors.ts`, `inbox.ts`): "Connected.", "Folder readable
   · 3 files match act*.txt", "The server did not answer within 8 s.", "The server refused the login (ORA-01017).
   Check the user and password." Never add "Nothing was saved": the connection is stored before it is tested.
-- Username hint: "Use an account that can only read. The app never writes here; a read-only account makes sure of it."
+- Username hint: "Use a read-only account."
   A stored credential field: "Stored. Enter a new value to replace it." (never the value).
-- A watermark or id column that allows NULL is offered disabled with "This column can be empty; rows with no value
-  would never be pulled."; SQL Server float and real: "SQL Server sends float and real in scientific notation (1.5E+2).
+- A watermark or id column that allows NULL is offered disabled with "can be empty" after its name; SQL Server float and real: "SQL Server sends float and real in scientific notation (1.5E+2).
   Keep it as text, or cast it to decimal in a custom SELECT."
 - A field the API refuses is named on the field: the API's "Check <field>: <reason>" shows its reason under that
   control.
@@ -146,7 +145,7 @@ numbers from examples.
   draft source {name}."
 - The connection panel's option reads "Connect timeout for scheduled pulls"; a test always waits 8 s at most.
 - A count of changes: "1 change", "3 changes".
-- Stored as: a checkbox "{column} is stored" and the name after "attrs.", the column's own name to start; a bad name:
+- Stored as: a checkbox "{column} is stored" and the stored name, the column's own name to start; a bad name:
   "Use a-z, 0-9 and _, starting with a letter, up to 63 characters."; a taken one: "Another column is stored as
   {name}. Use a different name." A sent-back Notice names the checker: "Sent back by {name}: {comment}". A database
   preview says "Quarantined rows don't stop the pull." ("… the file." for a file).

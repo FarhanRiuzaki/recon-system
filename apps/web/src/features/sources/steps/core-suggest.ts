@@ -33,8 +33,8 @@ export function suggestCore(fields: readonly FieldSpec[], mapping: SourceSpec["m
 }
 
 /** The note under a core field while its value is still the suggestion. */
-export const coreNote = (k: SuggestedCore, column: string) =>
-  `Suggested: ${column}${k === "business_date" ? ", a date column" : k === "amount_minor" ? ", a number column" : ""}.`;
+export const coreNote = (_k: SuggestedCore, _column: string) =>
+  "Suggested";
 
 export const UNIT_HINT: Record<AmountUnit, string> = { major: "rupiah, dollars · 1500 = 1,500.00", minor: "sen, cents · 1500 = 15.00" };
 
@@ -43,14 +43,14 @@ export const UNIT_HINT: Record<AmountUnit, string> = { major: "rupiah, dollars �
  * units; any other column suggests nothing (the user chooses). `note` is what the field says while it is still the value.
  */
 export function suggestUnit(f: FieldSpec | undefined): { unit: AmountUnit; note: string } | null {
-  if (f?.type === "decimal") return { unit: "major", note: `Suggested: currency units. ${f.name} is a decimal number.` };
+  if (f?.type === "decimal") return { unit: "major", note: "Suggested" };
   const end = f?.type === "integer" ? /_(minor|cents)$/i.exec(f.name)?.[1]?.toLowerCase() : undefined;
-  return end ? { unit: "minor", note: `Suggested: minor units. ${f!.name} is a whole number and its name ends in _${end}.` } : null;
+  return end ? { unit: "minor", note: "Suggested" } : null;
 }
 
 /**
  * The example under "Amount is in": per currency of the preview's rows, its first row's amount as the source wrote it
- * and what `unit` stores ("First IDR row: 2551779 is stored as IDR 25,517.79."), or why that row would be quarantined.
+ * and what `unit` stores ("107919 → IDR 1,079.19"), or why that row would be quarantined.
  */
 export function unitExamples(records: SourcePreviewDto["records"], unit: AmountUnit): string[] {
   const first = new Map<string, string>();
@@ -60,7 +60,7 @@ export function unitExamples(records: SourcePreviewDto["records"], unit: AmountU
     const m = /^(-?\d+)(?:\.(\d+))?$/.exec(text);
     if (exp === undefined || !m) return [];
     const x = toMinor(BigInt(m[1]! + (m[2] ?? "")), m[2]?.length ?? 0, unit, exp, code);
-    return [`First ${code} row: ${text} ${"v" in x ? `is stored as ${code} ${formatMinor(x.v, exp)}` : `can't be stored: ${x.why}`}.`];
+    return [`${text} → ${"v" in x ? `${code} ${formatMinor(x.v, exp)}` : `can't be stored: ${x.why}`}`];
   });
 }
 

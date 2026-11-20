@@ -18,14 +18,14 @@ import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
-const CORE: { key: Core; label: string; note: string }[] = [
-  { key: "business_date", label: "Business date", note: "The day each row counts for. Required." },
-  { key: "amount_minor", label: "Amount", note: "Each row's amount. Say below whether it is in currency units or minor units." },
+const CORE: { key: Core; label: string; note?: string }[] = [
+  { key: "business_date", label: "Business date" },
+  { key: "amount_minor", label: "Amount" },
   { key: "currency", label: "Currency", note: "ISO code or number, such as IDR or 360." },
-  { key: "direction", label: "Direction", note: "Debit or credit, as the source writes it." },
-  { key: "event_time", label: "Event time", note: "When it happened, if the source says." },
-  { key: "ext_ref", label: "Reference", note: "The source's own reference for the row." },
-  { key: "account_ref", label: "Account", note: "The account or holder the row belongs to." },
+  { key: "direction", label: "Direction" },
+  { key: "event_time", label: "Event time" },
+  { key: "ext_ref", label: "Reference" },
+  { key: "account_ref", label: "Account" },
 ];
 const refValue = (r: ValueRef | undefined) => (!r ? "" : "field" in r ? (r.field ? `f:${r.field}` : "") : r.cel === FILE_DATE.cel ? "c:file_date" : `x:${r.cel}`);
 const refOf = (v: string): ValueRef | undefined => (!v ? undefined : v.startsWith("f:") ? { field: v.slice(2) } : v === "c:file_date" ? FILE_DATE : { cel: v.slice(2) });
@@ -66,7 +66,7 @@ export type FieldsStepProps = {
   onTypedName: (field: string, name: string | undefined, clear: string[]) => void;
   /** Fields whose column the table read last lacks (kept, marked), and those of them still used (they block Next). */
   gone: { gone: string[]; used: string[] };
-  /** The watermark and id the table's columns suggested (REC-F2a), null before a table is read. */
+  /** The watermark and id the table's columns suggested, null before a table is read. */
   suggested: Suggestion | null;
   /** Core fields filled from the column names; the note shows while the value is still it. */
   coreHint: Partial<Record<SuggestedCore, string>>;
@@ -125,7 +125,7 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       )}
 
-      <Panel title="Core fields" description="What every recon needs from this source" bodyClassName="grid gap-4 md:grid-cols-2">
+      <Panel title="Core fields" bodyClassName="grid gap-4 md:grid-cols-2">
         {CORE.map((c) => {
           const id = ctl(`mapping.${c.key}`);
           const value = refValue(s.mapping[c.key]);
@@ -144,7 +144,7 @@ export function FieldsStep(p: FieldsStepProps) {
         })}
         {s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
         {!s.mapping.currency && (
-          <Field id={ctl("currency")} label="Currency for every row" required={!!s.mapping.amount_minor} note="This source has no currency column, so every amount is in this currency." error={err(ctl("currency"))}>
+          <Field id={ctl("currency")} label="Currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
             <Select className="w-full min-w-0" id={ctl("currency")} value={s.currency ?? ""} onChange={(e) => setSpec((x) => ({ ...x, currency: e.target.value || undefined }))}>
               <option value="">Pick a currency</option>
               {Object.keys(CURRENCY_EXPONENT).map((c) => <option key={c} value={c}>{c}</option>)}
@@ -162,7 +162,7 @@ export function FieldsStep(p: FieldsStepProps) {
 
       {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
 
-      <Panel flush title="Columns" description={`${s.fields.length} columns · type, format, empty allowed, match key and where each is stored`}>
+      <Panel flush title="Columns" description={`${s.fields.length} columns`}>
         {err(ctl("key_fields")) && <p role="alert" className="px-4 pt-3 text-body-sm text-down-ink">{err(ctl("key_fields"))}</p>}
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
@@ -264,7 +264,7 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
   const i = d.spec.input;
   if (i.kind !== "db_watermark") return null;
   const options = columns ?? d.spec.fields.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable }));
-  /** A suggestion said under its picker while the pick is still it; no id suggested says why (REC-F2a). */
+  /** A suggestion said under its picker while the pick is still it;. */
   const said = (key: "column" | "id_column"): string | null => {
     if (!suggested || d.from !== "table") return null;
     const s = key === "column" ? suggested.column : suggested.id;
@@ -340,7 +340,7 @@ function SampleInput(p: FieldsStepProps) {
   };
   return (
     <>
-      <Field id="src-sample" label="Sample" note="Paste the first lines of a file, or choose one. Up to 32 KB is read." error={p.err("src-sample")}>
+      <Field id="src-sample" label="Sample" note="Up to 32 KB is read." error={p.err("src-sample")}>
         <Textarea id="src-sample" value={p.sample} rows={6} className="font-mono" spellCheck={false} onChange={(e) => p.onSample(e.target.value)} />
       </Field>
       {p.sampleCut && <Notice>Only the first 32 KB of the file is previewed.</Notice>}
@@ -391,7 +391,7 @@ function PreviewPanel(p: FieldsStepProps) {
       <div className="grid gap-3 p-4">
         {p.d.spec.input.kind === "db_snapshot" && (
           <div className="max-w-xs">
-            <Field id="src-preview-date" label="Business date" note="The date the query runs for in the preview.">
+            <Field id="src-preview-date" label="Business date">
               <Input id="src-preview-date" type="date" value={p.businessDate} onChange={(e) => p.onBusinessDate(e.target.value)} />
             </Field>
           </div>
@@ -406,7 +406,7 @@ function PreviewPanel(p: FieldsStepProps) {
         <PreviewResult preview={p.preview} file={file} />
         {!r && !p.preview.error && !p.preview.pending && (
           <p className="text-body-sm text-fg-3">{p.onPreview
-            ? "Preview rows pulls up to 200 rows from the source with the columns on screen; nothing is stored."
+            ? "Preview rows pulls up to 200 rows from the source."
             : "The preview appears once the columns are read and the business date is mapped."}</p>
         )}
       </div>
@@ -430,7 +430,7 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
             <div className="scroll-quiet overflow-x-auto">
               <Table aria-label="Preview records">
                 <TableHeader><TableRow>
-                  <TableHead>Row</TableHead><TableHead>business_date</TableHead><TableHead>amount_minor</TableHead><TableHead>Match key</TableHead><TableHead>account_ref</TableHead><TableHead>attrs</TableHead>
+                  <TableHead>Row</TableHead><TableHead>Business date</TableHead><TableHead>Amount</TableHead><TableHead>Match key</TableHead><TableHead>Account</TableHead><TableHead>Stored columns</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
                   {r.records.slice(0, 10).map((x) => (
@@ -481,7 +481,7 @@ function AmountUnitField({ d, err, records, onUnit }: { d: Draft; err: FieldsSte
       {why && <p id={`${id}-error`} role="alert" className="text-body-sm text-down-ink">{why}</p>}
       <span className="text-caption text-fg-3">{(unit ? [unit] : AMOUNT_UNITS).map((u) => `${UNIT_LABEL[u]}: ${UNIT_HINT[u]}`).join(". ")}.</span>
       {note && <span className="text-caption text-fg-3">{note}</span>}
-      {examples.length > 0 && <p role="status" className="grid gap-1 text-body-sm text-fg-2">{examples.map((x) => <span key={x}>{x}</span>)}</p>}
+      {examples.length > 0 && <p role="status" className="text-body-sm text-fg-2">{examples.join(" · ")}</p>}
     </div>
   );
 }

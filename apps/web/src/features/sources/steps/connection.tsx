@@ -81,10 +81,10 @@ export function ConnectionStep(p: ConnectionStepProps) {
   return (
     <div className="grid gap-section">
       <Panel title="Source" bodyClassName="grid gap-4 md:grid-cols-2">
-        <Field id="src-name" label="Name" required={!created} note={created ? "Saved with the source." : "Shown in recons and in the Breaks list."} error={err("src-name")}>
+        <Field id="src-name" label="Name" required={!created} error={err("src-name")}>
           <Input id="src-name" value={d.name} readOnly={created} onChange={(e) => set((x) => ({ ...x, name: e.target.value }))} autoComplete="off" />
         </Field>
-        <Field id="src-code" label="Code" required={!created} note="Used in logs and exports. Can't be changed later." error={err("src-code")}>
+        <Field id="src-code" label="Code" required={!created} note="Can't be changed later." error={err("src-code")}>
           <Input id="src-code" value={d.code} readOnly={created} className="font-mono" onChange={(e) => set((x) => ({ ...x, code: e.target.value }))} autoComplete="off" spellCheck={false} />
         </Field>
       </Panel>
@@ -125,10 +125,10 @@ export function ConnectionStep(p: ConnectionStepProps) {
                 onChange={(v) => setConn({ database: v })} onPick={p.catalog.onPickDatabase} />
             )}
             <Field id="src-user" label="Username" error={err("src-user")}
-              note={`Use an account that can only read. The app never writes here; a read-only account makes sure of it.${p.stored ? ` ${STORED}` : ""}`}>
+              note={`Use a read-only account.${p.stored ? ` ${STORED}` : ""}`}>
               <Input id="src-user" value={d.conn.user} className="font-mono" onChange={(e) => setConn({ user: e.target.value })} autoComplete="off" spellCheck={false} />
             </Field>
-            <Field id="src-password" label="Password" note={p.stored ? STORED : "Stored encrypted. Never shown again after saving."} error={err("src-password")}>
+            <Field id="src-password" label="Password" note={p.stored ? STORED : undefined} error={err("src-password")}>
               <PasswordInput id="src-password" value={d.conn.password} onChange={(e) => setConn({ password: e.target.value })} autoComplete="off" />
             </Field>
             {d.conn.engine === "oracle" && p.catalog.names.status !== "idle" && (
@@ -151,11 +151,11 @@ export function ConnectionStep(p: ConnectionStepProps) {
           <Field id={ctl("input.path")} label="Folder" note="A folder inside the inbox folders this install allows, as a full path." error={err(ctl("input.path"))}>
             <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
-          <Field id={ctl("input.pattern")} label="File name pattern" note="Such as act*.txt. A date in the name (yyyyMMdd) is read as the business date." error={err(ctl("input.pattern"))}>
+          <Field id={ctl("input.pattern")} label="File name pattern" note="A yyyyMMdd date in the name is the business date." error={err(ctl("input.pattern"))}>
             <Input id={ctl("input.pattern")} value={i.pattern} className="font-mono" onChange={(e) => setInput({ pattern: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
           <Field id={ctl("input.completion")} label="File is complete when"
-            note="Each file is recognised by its content (sha256). The same content sent again is rejected; a new content under the same name is the next version of that name.">
+            note="The same content sent again is rejected; new content under the same name is the next version.">
             <Select className="w-full min-w-0" id={ctl("input.completion")} value={i.completion.kind} onChange={(e) => setInput({ completion: e.target.value === "marker_file" ? { kind: "marker_file" } : { kind: "stable_seconds", seconds: 60 } })}>
               <option value="stable_seconds">Its size stays the same for a while</option>
               <option value="marker_file">A .done file with the same name arrives</option>
@@ -237,7 +237,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
             free={p.catalog.free.table} onFree={(f) => p.catalog.onFree("table", f)} onRetry={p.catalog.onRetryTables} query={p.catalog.query} onQuery={p.catalog.onQuery}
             onChange={(v) => setInput({ table: v } as Partial<WatermarkInput>)} onPick={p.catalog.onPickTable} columns={p.catalog.columns} />
         ) : (
-          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed. Rows are read from it page by page, ordered by the watermark." error={err(ctl("input.query"))}>
+          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed." error={err(ctl("input.query"))}>
             <Textarea id={ctl("input.query")} value={w.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
           </Field>
         )}

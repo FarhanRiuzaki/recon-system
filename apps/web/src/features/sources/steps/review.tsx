@@ -18,7 +18,7 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   const i = s.input;
   const arrive = i.kind === "file_inbox"
     ? { check: "Files arrive", details: `${i.path} · ${i.pattern} · complete ${i.completion.kind === "stable_seconds" ? `after ${i.completion.seconds} s with no size change` : "when its .done file arrives"}` }
-    : i.kind === "db_snapshot" ? { check: "Snapshots are pulled", details: `${scheduleText(i.schedule)} · the query takes :business_date` }
+    : i.kind === "db_snapshot" ? { check: "Snapshots are pulled", details: `${scheduleText(i.schedule)} · the query takes the business date` }
       : { check: "Rows are pulled", details: `${i.table ? i.table : "a SELECT"} · after ${i.watermark.column}, then ${i.watermark.id_column}` };
   const bd = s.mapping.business_date;
   const quarantined = preview?.quarantine.map((q) => q.line) ?? [];
@@ -27,7 +27,7 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   return [
     { ...arrive, ready: true },
     ...table,
-    { check: "Core fields", ready: true, details: `business_date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
+    { check: "Core fields", ready: true, details: `Business date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
     s.key_fields.length
       ? { check: "Match key", ready: true, details: `${s.key_fields.join(" + ")}, never empty` }
       : { check: "Match key", ready: false, details: "No match key: rows are told apart by their whole content only." },

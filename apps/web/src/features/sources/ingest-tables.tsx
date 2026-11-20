@@ -27,7 +27,7 @@ const mono = (text: string) => <span className="font-mono text-mono">{text}</spa
 type Chip = { health: Health; label: string; description: string };
 const FILE_STATUS: Record<SourceFileDto["status"], Chip> = {
   ingested: { health: "healthy", label: "Ingested", description: "Read and stored; its quarantined rows are listed under Quarantine." },
-  rejected: { health: "stopped", label: "Rejected", description: "The same content (sha256) was ingested already; nothing changed." },
+  rejected: { health: "stopped", label: "Rejected", description: "The same content was ingested already; nothing changed." },
   failed: { health: "down", label: "Failed", description: "The file couldn't be read as declared; nothing of it was written." },
 };
 const SNAPSHOT_STATUS: Record<SourceSnapshotDto["status"], Chip> = {

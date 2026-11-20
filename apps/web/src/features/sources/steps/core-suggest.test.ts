@@ -36,8 +36,8 @@ const rec = (currency: string | null, amountText: string | null): Rec => ({
 
 describe("amount unit", () => {
   it("is suggested from the column: decimal → currency units, integer named *_minor or *_cents → minor units, else none", () => {
-    expect(suggestUnit(f("amount", "decimal", { scale: 2 }))).toEqual({ unit: "major", note: "Suggested: currency units. amount is a decimal number." });
-    expect(suggestUnit(f("amount_minor", "integer"))).toEqual({ unit: "minor", note: "Suggested: minor units. amount_minor is a whole number and its name ends in _minor." });
+    expect(suggestUnit(f("amount", "decimal", { scale: 2 }))).toEqual({ unit: "major", note: "Suggested" });
+    expect(suggestUnit(f("amount_minor", "integer"))).toEqual({ unit: "minor", note: "Suggested" });
     expect(suggestUnit(f("AMT_CENTS", "integer"))?.unit).toBe("minor");
     expect(suggestUnit(f("amount", "integer"))).toBeNull();
     expect(suggestUnit(f("amount_minor", "string"))).toBeNull();
@@ -62,14 +62,14 @@ describe("amount unit", () => {
   it("shows one example per currency of the sample, switching with the unit", () => {
     const rs = [rec("IDR", "2551779"), rec("IDR", "100"), rec("USD", "26230"), rec(null, "5"), rec("JPY", "1500")];
     expect(unitExamples(rs, "minor")).toEqual([
-      "First IDR row: 2551779 is stored as IDR 25,517.79.", "First USD row: 26230 is stored as USD 262.30.", "First JPY row: 1500 is stored as JPY 1,500.",
+      "2551779 → IDR 25,517.79", "26230 → USD 262.30", "1500 → JPY 1,500",
     ]);
     expect(unitExamples(rs, "major")).toEqual([
-      "First IDR row: 2551779 is stored as IDR 2,551,779.00.", "First USD row: 26230 is stored as USD 26,230.00.", "First JPY row: 1500 is stored as JPY 1,500.",
+      "2551779 → IDR 2,551,779.00", "26230 → USD 26,230.00", "1500 → JPY 1,500",
     ]);
     expect(unitExamples([rec("KWD", "1.234"), rec("JPY", "1500.5")], "major")).toEqual([
-      "First KWD row: 1.234 is stored as KWD 1.234.", "First JPY row: 1500.5 can't be stored: 1 decimal place; JPY allows 0.",
+      "1.234 → KWD 1.234", "1500.5 → can't be stored: 1 decimal place; JPY allows 0",
     ]);
-    expect(unitExamples([rec("IDR", "25517.79")], "minor")).toEqual(["First IDR row: 25517.79 can't be stored: 2 decimal places; minor units are whole numbers."]);
+    expect(unitExamples([rec("IDR", "25517.79")], "minor")).toEqual(["25517.79 → can't be stored: 2 decimal places; minor units are whole numbers"]);
   });
 });

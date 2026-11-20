@@ -26,7 +26,7 @@ describe("source text (display only: the API judged the health)", () => {
       versionOf: null, businessDate: "2026-11-02", rowsTotal: 12, rowsOk: 10, rowsNew: 10, rowsQuarantined: 2, receivedAt: "2026-11-02T23:11:00.000Z", ...o,
     });
     expect(shortSha(f({}).sha256)).toBe("9f2c…a71e");
-    expect(fileResult(f({ status: "rejected", versionOf: "f1" }), f({}))).toBe("Same file already ingested. Its sha256 (9f2c…a71e) matches the file from 3 Nov, 06:11 WIB; nothing changed.");
+    expect(fileResult(f({ status: "rejected", versionOf: "f1" }), f({}))).toBe("Same content as the file from 3 Nov, 06:11 WIB; nothing changed.");
     expect(fileResult(f({ version: 2, rowsOk: 12, rowsNew: 2, rowsQuarantined: 0, receivedAt: "2026-11-04T01:40:00.000Z" }), undefined))
       .toBe("4 Nov, 08:40 WIB · version 2 of act20261102.txt · 2 new records, 10 already stored");
     expect(fileResult(f({}), undefined)).toBe("3 Nov, 06:11 WIB · 2 rows quarantined");
