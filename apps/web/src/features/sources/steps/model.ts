@@ -12,6 +12,8 @@ export type Draft = {
   /** A watermark source reads a table or its own SELECT. */
   from: "table" | "query";
   spec: SourceSpec;
+  /** Core fields filled from the column names, by core field: the note shows while the value is still it. */
+  hint?: Partial<Record<"business_date" | "amount_minor" | "currency" | "ext_ref" | "account_ref", string>>;
 };
 /** The one error on screen: the control it belongs to and why. */
 export type FieldErr = { id: string; reason: string } | null;

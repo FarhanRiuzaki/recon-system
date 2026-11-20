@@ -22,6 +22,7 @@ import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
 import { attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
+import { suggestCore } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
@@ -169,6 +170,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [schema, setSchema] = useState("");
   const [picked, setPicked] = useState<{ reading: boolean; n: number | null }>({ reading: false, n: null });
   const [suggested, setSuggested] = useState<Suggestion | null>(null);
+  /** Empty core fields filled from the column names (what is set stays); `hint` is what the note says while it is still the value. */
+  const withCore = (x: Draft): Draft => {
+    const sug = suggestCore(x.spec.fields, x.spec.mapping);
+    return !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
+  };
   const tablesFor = useRef<string | null>(null);
   const tableSeq = useRef(0);
   const saved = useRef(source?.v.spec ? JSON.stringify(source.v.spec) : null);
@@ -375,7 +381,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         // a table read: fields its columns lack stay, marked (PO decision 4); a SELECT's columns replace them as before
         const fields = table ? [...merged, ...x.spec.fields.filter((f) => !merged.some((m) => m.name === f.name))] : merged;
         const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name));
-        return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((f) => [attrNameOf(f.name), { field: f.name }])) } } } };
+        return withCore({ ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((f) => [attrNameOf(f.name), { field: f.name }])) } } } });
       });
       return true;
     } catch (e) {
@@ -400,7 +406,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const fields = mergeFields(x.spec.fields, names.map((name) => ({ name, type: "string" as const, nullable: true, trim: true })));
       const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name)).map((f) => f.name);
       detect.current = new Set(fresh);
-      return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [attrNameOf(n), { field: n }])) } } } };
+      return withCore({ ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [attrNameOf(n), { field: n }])) } } } });
     });
   }
 
@@ -425,7 +431,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         const guess = new Map(result.columns.map((c) => [c.name, c]));
         const fresh = detect.current;
         detect.current = new Set();
-        setDraft((x) => ({ ...x, spec: { ...x.spec, fields: x.spec.fields.map((f) => {
+          setDraft((x) => withCore({ ...x, spec: { ...x.spec, fields: x.spec.fields.map((f) => {
           const g = fresh.has(f.name) ? guess.get(f.name) : undefined;
           if (!g || g.type === "string") return f;
           const places = Math.max(2, ...g.examples.map((e) => /[.,](\d+)$/.exec(e)?.[1]?.length ?? 0));
@@ -547,7 +553,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
               businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }}
               onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
-              gone={gone} suggested={suggested}
+              gone={gone} suggested={suggested} coreHint={d.hint ?? {}}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
           {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep}

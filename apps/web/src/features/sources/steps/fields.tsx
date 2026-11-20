@@ -13,13 +13,14 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
 import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL } from "../spec-draft";
+import { coreNote, type SuggestedCore } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
 const CORE: { key: Core; label: string; note: string }[] = [
   { key: "business_date", label: "Business date", note: "The day each row counts for. Required." },
-  { key: "amount_minor", label: "Amount", note: "An integer, or a decimal at 2 places: stored as whole minor units, so 100.5 and 100.50 are both 10050." },
+  { key: "amount_minor", label: "Amount", note: "An integer column is read as whole minor units as it is (50000 is 500.00). A decimal column needs 2 places and is stored as minor units, so 100.5 and 100.50 are both 10050." },
   { key: "currency", label: "Currency", note: "ISO code, such as IDR." },
   { key: "direction", label: "Direction", note: "Debit or credit, as the source writes it." },
   { key: "event_time", label: "Event time", note: "When it happened, if the source says." },
@@ -67,6 +68,8 @@ export type FieldsStepProps = {
   gone: { gone: string[]; used: string[] };
   /** The watermark and id the table's columns suggested (REC-F2a), null before a table is read. */
   suggested: Suggestion | null;
+  /** Core fields filled from the column names; the note shows while the value is still it. */
+  coreHint: Partial<Record<SuggestedCore, string>>;
 };
 
 /**
@@ -118,9 +121,10 @@ export function FieldsStep(p: FieldsStepProps) {
         {CORE.map((c) => {
           const id = ctl(`mapping.${c.key}`);
           const value = refValue(s.mapping[c.key]);
+          const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
           const extra = value.startsWith("x:") ? [value] : [];
           return (
-            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={c.note} error={err(id)}>
+            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)}>
               <Select className="w-full min-w-0" id={id} value={value} onChange={(e) => setCore(c.key, refOf(e.target.value))}>
                 <option value="">{c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}</option>
                 {c.key === "business_date" && file && <option value="c:file_date">From the file name</option>}
@@ -189,7 +193,7 @@ export function FieldsStep(p: FieldsStepProps) {
                                 return storeAs(x, f.name, storedNameProblem(want, f.name, x) ? `${want.slice(0, 58)}_${i + 1}` : want);
                               });
                             }} />
-                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
+                                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
                             <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
                               placeholder="Not stored" value={typedName ?? stored ?? ""} aria-invalid={!!nameWhy || undefined} aria-describedby={nameWhy ? `${nameId}-why` : undefined}
                               onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
