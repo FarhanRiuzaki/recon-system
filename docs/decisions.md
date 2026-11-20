@@ -472,3 +472,7 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 - **Perubahan batas**: dicatat di activity log. Approver ditentukan saat approve dengan aturan yang lebih ketat dari (batas saat request dikirim, batas saat approve): batas yang diturunkan berlaku juga untuk request yang menunggu, batas yang dinaikkan tidak melonggarkan request yang sudah dikirim.
 - **Approve Adjusted**: sama dengan write-off: `reviewer` bila nilai penyesuaian dalam batas, `space_admin` bila di atas batas; maker ≠ checker per user id.
 - **Konfirmasi non-destruktif**: `ConfirmActionDialog` mendapat varian tombol primary untuk aksi massal yang tidak destruktif (assign, resolve tanpa approval); dikerjakan di Plan 5.
+
+## DEC-044 — Database dan tabel source dipilih dari katalog server
+
+20 November 2026 — permintaan pemilik lewat Captain (berperan PO), dicatat po-recon. Setelah Test connection lulus, wizard source (baru dan edit) mengisi Database dan Table dari katalog server yang bisa dibaca akun itu, bukan teks bebas; Oracle tetap mengetik service name lalu memilih schema/tabel. Teks bebas tetap tersedia sebagai jalan keluar ("Type a name instead") untuk katalog yang dibatasi hak akses. Koneksi yang diubah setelah test menandai daftar usang tanpa menghapus pilihan. Query katalog mengikuti aturan konektor yang ada: allowlist per dialect, guard `source_admin`, limit/log test, tanpa kredensial ke browser. AC di backlog REC-F2a.
