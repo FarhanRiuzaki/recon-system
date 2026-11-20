@@ -271,3 +271,19 @@ Dari spec §14 dan temuan legacy KSEI. Jawaban dicatat di spec/decisions oleh co
 | REC-D3 | Komponen Segmented perlu varian lebar hug (mengikuti isi). | Designer | Tidak |
 | REC-D4 | Cek visual mode gelap dan 4 palet di Figma. | Designer | Tidak |
 | REC-D5 | Selesai: Approves chip is a neutral outline (bg-card + control-border); meaning is carried by the word. (Palet Burgundy: chip "Approves" tampil merah muda seperti tint error; token tidak diubah di kode.) | Designer | Tidak |
+
+### Register kasus masa depan (Captain/PO, 20 November 2026; tidak dikerjakan sekarang)
+
+Kasus yang akan datang beserta plan tujuan dan pemicunya. Yang sudah diputuskan di spec ditautkan, tidak diulang.
+
+| ID | Kasus | Tujuan | Pemicu | Status / tautan |
+| --- | --- | --- | --- | --- |
+| REC-FUT-1 | Reversal dikirim sebagai baris terpisah di sisi yang sama (asli + pembatal, ref sama, amount negatif) tanpa pasangan di sisi lain → dua break palsu. Butuh pass netting dalam satu sisi. | Fase 2 | Source pertama yang mengirim reversal sebagai baris baru, bukan sebagai status | Terbuka. Reversal sebagai status sudah ditangani source mutable (spec §8). |
+| REC-FUT-2 | Fee tetap (mis. biaya BI-FAST) yang selalu menghasilkan selisih sama: tidak ditutup dengan toleransi, tetapi dengan field turunan net amount di mapping source (CEL). | Panduan konfigurasi di docs Plan 3 | Config pertama dengan fee tetap | Terbuka (dokumentasi saja). |
+| REC-FUT-3 | Volume tak terduga (hari gajian, akhir bulan 3–5× normal): run interval tidak boleh terus tertinggal; target lag per config tampil di Today. | Plan 4 | Plan 4 dimulai | Terbuka. Lag per source sudah di AC REC-F4; target lag per config belum. |
+| REC-FUT-4 | Data terlambat datang setelah hari di-sign-off. | Plan 5 | — | **Sudah diputuskan** (spec §11b; AC REC-F5): hari beku tidak diubah, match dicatat di hari berjalan sebagai `AUTO_MATCHED_LATE_DATA` dengan tautan ke hari beku, sign-off tidak dibuka ulang; reopen manual butuh approval user lain. |
+| REC-FUT-5 | Rekening/nama nasabah (PII) di layar dan CSV: masking per role. | Sebelum data produksi pertama | Data produksi pertama | Terbuka = REC-Q6 (spec §14). |
+| REC-FUT-6 | Recon tiga sisi (switching vs core vs settlement). | Fase 2 | Config pertama yang butuh tiga sisi | Data siap: `match_group` sudah N sisi (spec §10); engine dan UI fase 2. |
+| REC-FUT-7 | Offboarding user yang masih memegang break. | Plan 5 | Plan 5 dimulai | Dikeluarkan dari space: dikeluarkan dari space → break jadi Unassigned dan request pending dibatalkan (spec §11b). **Diputuskan Captain (20 Nov)**: user yang dinonaktifkan di level aplikasi diperlakukan sama dengan dikeluarkan dari space: break jadi Unassigned (tercatat di activity), request approval pending yang dia buat dibatalkan; dikerjakan di Plan 5. |
+| REC-FUT-8 | Export audit satu hari penuh untuk pemeriksa (bulk extract). | Fase 2 | POJK/PADK mewajibkan (spike S5) | Terbuka = REC-Q10. |
+| REC-FUT-9 | Restore/DR: runbook pemulihan dan RPO/RTO yang disepakati IT. Catch-up idempoten setelah worker mati di tengah run sudah di desain (spec §9). | Sebelum go-live | Persiapan go-live | Terbuka. `docs/recon/deploy.md` belum punya bagian backup/restore atau RPO/RTO. |
