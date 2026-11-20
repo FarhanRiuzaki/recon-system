@@ -21,6 +21,7 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
   `apps/api/src/modules/spaces/tests/integration/rls.test.ts`; S5 adalah tugas compliance, bukan spike kode; S6 batal
   (DEC-037).
 - [`ksei-sample-data.md`](ksei-sample-data.md) — spesifikasi fixture sintetis KSEI ACT (prefiks TST, tanpa data nyata).
+- [`source-test-db.md`](source-test-db.md) — database PostgreSQL sintetis (`recon_source_test`, tabel source1/source2) untuk mencoba wizard Sources; daftar break.
 
 ## Bawaan dari Plan 1 untuk plan berikutnya
 
