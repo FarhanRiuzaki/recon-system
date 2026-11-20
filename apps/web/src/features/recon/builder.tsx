@@ -274,10 +274,11 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             <span className="text-caption text-fg-3">Matched {DASH} · suggested {DASH} · duplicate {DASH} · waiting {DASH} · match rate {DASH}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:flex-1">
+            {/* "Saved" itself is the header's "saved HH:mm" (ui-standard §1a); the bar shows only a save under way or refused */}
             {editable && (
-              <span role="status" className="flex items-center gap-1.5 text-caption text-fg-3">
+              <span role="status" className="flex items-center gap-1.5 text-caption text-fg-3 empty:hidden">
                 {failed ? <>Not saved<Button type="button" variant="link" size="sm" onClick={() => void save(true)}>Retry</Button></>
-                  : dirty || saving ? <><Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />Saving…</> : "Saved"}
+                  : dirty || saving ? <><Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />Saving…</> : null}
               </span>
             )}
             <BlockedButton variant="secondary" reason={SIMULATION_REASON}>Run simulation</BlockedButton>
