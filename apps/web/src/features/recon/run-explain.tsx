@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { amountText, differenceText, evidenceOf, rangeText } from "./run-model";
 import { conditionText, type Fields, pairText } from "./spec-model";
@@ -53,7 +52,6 @@ export default function RunExplain({ item, spec, fields, labels, onClose }: {
             </section>
           )}
         </div>
-        <DialogFooter><Button type="button" variant="secondary" onClick={onClose}>Close</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   );
