@@ -3,7 +3,7 @@
 import type { CSSProperties, KeyboardEvent, Ref } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { MenuIcon } from "@starterkit/ui/ui/icons";
+import { MenuIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { conditionText, type Fields, pairText } from "./spec-model";
 
@@ -13,7 +13,9 @@ export const DASH = "—";
 export const Connector = () => <div className="ml-5 border-l border-line py-2 pl-4 text-caption text-fg-3">Not simulated</div>;
 
 export type PassRowProps = {
-  id: string; pass: PassSpec; fields: Fields; selected: boolean; editable: boolean; last: boolean; onSelect: () => void; onKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  id: string; pass: PassSpec; fields: Fields; selected: boolean; editable: boolean; onSelect: () => void; onKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  /** The API's warnings about this pass (a currency without tolerance), shown under it. */
+  notes?: readonly string[];
 };
 /** What dnd-kit's useSortable adds to a row once the sortable list has loaded (sortable-passes.tsx). */
 export type SortableBits = {
@@ -21,10 +23,11 @@ export type SortableBits = {
 };
 
 /**
- * A pass of the run order: drag handle, the pass (select it; Alt+↑/↓ moves it), its outcome, the connector under it.
- * The same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
+ * A pass of the run order: drag handle, the pass (select it; Alt+↑/↓ moves it), its outcome, its warnings, and the
+ * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
+ * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
  */
-export function PassRow({ id, pass, fields, selected, editable, last, onSelect, onKey, sortable }: PassRowProps & { sortable?: SortableBits }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], onSelect, onKey, sortable }: PassRowProps & { sortable?: SortableBits }) {
   const dragging = !!sortable?.dragging;
   return (
     <li ref={sortable?.setNodeRef} style={sortable?.style}
@@ -58,7 +61,8 @@ export function PassRow({ id, pass, fields, selected, editable, last, onSelect, 
           <span>{DASH}</span>
         </div>
       </div>
-      {!last && <Connector />}
+      {notes.map((n) => <p key={n} className="flex items-start gap-1.5 pt-1.5 text-caption text-degraded-ink"><Icon icon={WarningIcon} className="mt-px size-3.5 shrink-0" />{n}</p>)}
+      <Connector />
     </li>
   );
 }

@@ -246,8 +246,29 @@ export function passesText(nos: readonly number[]): string {
 }
 const cap = (s: string) => s[0]!.toUpperCase() + s.slice(1);
 /** The red banner's sentence for currencyGaps (BUILDER-SPEC "Currency spec error"). */
-export const currencyGapText = (nos: readonly number[]) =>
-  `${cap(passesText(nos))} ${nos.length === 1 ? "compares" : "compare"} amounts in more than one currency without a currency condition. Add “currency equals currency” to ${nos.length === 1 ? "it" : "each pass"}.`;
+export const currencyGapText = (nos: readonly number[], fields: Fields) =>
+  `${cap(passesText(nos))} ${nos.length === 1 ? "compares" : "compare"} amounts in more than one currency without a currency condition. Add “${conditionText({ op: "eq", field: CURRENCY }, fields)}” to ${nos.length === 1 ? "it" : "each pass"}.`;
+
+/**
+ * What a daily recon's carry over leaves out, as the API words it (rules.ts, Captain's guardrail), checked as the
+ * spec changes rather than after a save: a pass whose date window is wider than carry over.
+ */
+export function carryOverGates(spec: ReconSpec): string[] {
+  if (spec.schedule.kind !== "daily") return [];
+  return spec.passes.flatMap((p) => {
+    const w = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
+    return w > spec.carry_over_days
+      ? [`Pass ${p.no} allows dates ${daysText(w)} apart, but carry over is ${daysText(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${daysText(w)}.`]
+      : [];
+  });
+}
+/** An API warning the builder shows elsewhere: a carry-over gate (checked live) or a pass's untolerated currency (under that pass). */
+export const isCarryOverWarning = (w: string) => /^Pass \d+ allows dates .+ Set carry over to \d+ days?\.$/.test(w);
+/** The pass an API tolerance warning concerns ("USD has no tolerance in pass 2; …" → 2), or null. */
+export function tolerancePass(w: string): number | null {
+  const m = /^[A-Z]{3} has no tolerance in pass (\d+);/.exec(w);
+  return m ? Number(m[1]) : null;
+}
 
 /** The carry over an API warning asks for ("… Set carry over to 1 day."), or null. */
 export function carryOverFix(warning: string): number | null {
@@ -284,11 +305,12 @@ export const daysText = (n: number) => plural(n, "day");
 export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : "Amount, per currency");
 
 /**
- * Why Submit for approval is off (BUILDER-SPEC order and copy), or null: unsaved edits first, then what the API would
+ * Why Submit for approval is off (BUILDER-SPEC order and copy), or null: changes not saved yet (autosave pending,
+ * running or failed) first, then what the API would
  * refuse: no pass, a currency gap, no simulation, a stale one.
  */
-export function submitReason(v: { simulatedHash: string | null; specHash: string }, s: { dirty: boolean; passes: number; gaps: readonly number[] }): string | null {
-  if (s.dirty) return "Save the draft, then submit.";
+export function submitReason(v: { simulatedHash: string | null; specHash: string }, s: { dirty: boolean; failed?: boolean; passes: number; gaps: readonly number[] }): string | null {
+  if (s.dirty) return s.failed ? "The draft isn't saved. Retry the save, then submit." : "Wait until the draft is saved.";
   if (!s.passes) return "Add at least one pass, then submit.";
   if (s.gaps.length) return `Add a currency condition to ${passesText(s.gaps)} first.`;
   if (v.simulatedHash === null) return "Run a simulation on this draft first.";

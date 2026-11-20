@@ -26,16 +26,19 @@ export function useSpaceRoles(spaceId: string) {
   return useQuery({ queryKey: key, queryFn: () => api<SpaceRowDto>(url) }).data?.roles ?? [];
 }
 
-/** The recon with its published version and open draft. A 404 is final. */
+/**
+ * The recon with its published version and open draft. A 404 is final. Read again when the tab comes back, so a draft
+ * saved meanwhile from another tab shows (the builder's notice).
+ */
 export function useRecon(spaceId: string, id: string) {
   const { key, url } = reconDetail(spaceId, id);
-  return useQuery({ queryKey: key, queryFn: () => api<ReconDto>(url), retry: retryUnlessNotFound });
+  return useQuery({ queryKey: key, queryFn: () => api<ReconDto>(url), retry: retryUnlessNotFound, refetchOnWindowFocus: true });
 }
 
 /** One version of a recon with the names of the people it names. A 404 is final. */
-export function useReconVersion(spaceId: string, id: string, versionId: string) {
+export function useReconVersion(spaceId: string, id: string, versionId: string, enabled = true) {
   const { key, url } = reconVersion(spaceId, id, versionId);
-  return useQuery({ queryKey: key, queryFn: () => api<ReconVersionDetailDto>(url), retry: retryUnlessNotFound });
+  return useQuery({ queryKey: key, queryFn: () => api<ReconVersionDetailDto>(url), retry: retryUnlessNotFound, enabled });
 }
 
 /** A side's source as this space sees it (its published version gives the fields a recon may name). */

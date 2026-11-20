@@ -20,7 +20,7 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addPass, carryOverFix, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
+  addCurrencyCondition, addPass, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
   type Place, placeOf, removePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -31,6 +31,11 @@ const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false }
 
 /** Why Run simulation is off until the engine's simulation route exists (controller's decision, BUILDER-SPEC). */
 export const SIMULATION_REASON = "Simulation isn't available yet.";
+/** How long after the last change the draft saves itself. */
+const SAVE_DELAY_MS = 800;
+/** "Pass 2, condition 1: …" for the status line: the place and the API's sentence. */
+const problemText = (p: Place) =>
+  `${p.pass !== undefined ? `Pass ${p.pass}${p.condition !== undefined ? `, condition ${p.condition + 1}` : p.key !== undefined ? `, matching key ${p.key + 1}` : ""}` : p.side !== undefined ? `Side ${p.side === 0 ? "A" : "B"}${p.filter !== undefined ? `, filter ${p.filter + 1}` : ""}` : p.setting}: ${p.text}`;
 const KIND: Record<SourceKind, string> = { file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot" };
 
 type Selected = { k: "pass"; key: string } | { k: "side"; i: 0 | 1 } | { k: "settings" };
@@ -95,15 +100,27 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const [sel, setSel] = useState<Selected>(() => (keys[0] ? { k: "pass", key: keys[0] } : { k: "side", i: 0 }));
   const [sheet, setSheet] = useState(false);
   const [problem, setProblem] = useState<Place | null>(null);
-  const [busy, setBusy] = useState<null | "save" | "submit">(null);
+  const [submitting, setSubmitting] = useState(false);
+  // autosave (Captain, builder round 2): the spec saves itself a moment after each change; `savedJson` = the spec as
+  // last accepted, `failedJson` = one the API refused (not sent again until it changes), `ourHash` = the hash of our
+  // last save, so a refetch with another hash means another tab or person saved meanwhile
+  const [savedJson, setSavedJson] = useState(() => JSON.stringify(version.spec));
+  const [failedJson, setFailedJson] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const inFlight = useRef(false);
+  const [ourHash, setOurHash] = useState(version.specHash);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
   const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
   const sourceSpecs: [SourceSpecLike | null, SourceSpecLike | null] = [specA, specB];
   const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
-  const dirty = JSON.stringify(spec) !== JSON.stringify(saved.spec);
-  const guard = useLeaveGuard(editable && dirty && busy === null);
+  const json = JSON.stringify(spec);
+  const dirty = json !== savedJson;
+  const failed = dirty && failedJson === json;
+  // the leave guard holds only while a change is waiting, saving or refused
+  const guard = useLeaveGuard(editable && dirty);
+  const conflict = editable && version.specHash !== ourHash;
   const gaps = currencyGaps(spec, sourceSpecs);
   // the drag order loads only where it can be used (a draft with two passes or more); the cmdk field list with the
   // first draft, so the inspector's first field picker doesn't wait on its chunk
@@ -141,38 +158,63 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     focusLater(`pass-${key}`);
   };
 
-  async function save() {
-    setBusy("save");
-    setProblem(null);
+  /** Sends the spec as it is now; `explicit` (Retry) also opens and focuses the place a refusal names. */
+  async function save(explicit = false) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const sent = spec, sentJson = JSON.stringify(sent);
+    setSaving(true);
     try {
-      const v = await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}`), { method: "PATCH", body: JSON.stringify({ spec }) });
+      const v = await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}`), { method: "PATCH", body: JSON.stringify({ spec: sent }) });
+      setOurHash(v.specHash);
       setSaved(v);
-      setSpec(v.spec);
+      setSavedJson(sentJson);
+      setFailedJson(null);
+      setProblem(null);
       qc.setQueryData(reconDetail(spaceId, recon.id).key, (r: ReconDto | undefined) => (r ? { ...r, draft: v } : r));
       void qc.invalidateQueries({ queryKey: RECON_KEY });
-      toast(`Saved Draft v${v.version}.`);
     } catch (e) {
       const place = placeOf(errorText(e));
       setProblem(place);
-      if (place.pass !== undefined && keys[place.pass - 1]) {
-        setSel({ k: "pass", key: keys[place.pass - 1]! });
-        const i = place.pass - 1;
-        focusLater(place.condition !== undefined ? `rp-${i}-cond-${place.condition}-a` : place.key !== undefined ? `rp-${i}-key-${place.key}-a` : `rp-${i}-name`);
-      } else if (place.side !== undefined) {
-        setSel({ k: "side", i: place.side });
-        focusLater(`rs-${place.side}-label`);
-      } else if (place.setting) {
-        setSel({ k: "settings" });
-        focusLater({ Grace: "rs-grace", "Carry over": "rs-carry", "Close time": "rs-close" }[place.setting] ?? "rs-at");
+      setFailedJson(sentJson);
+      if (explicit) {
+        if (place.pass !== undefined && keys[place.pass - 1]) {
+          setSel({ k: "pass", key: keys[place.pass - 1]! });
+          const i = place.pass - 1;
+          focusLater(place.condition !== undefined ? `rp-${i}-cond-${place.condition}-a` : place.key !== undefined ? `rp-${i}-key-${place.key}-a` : `rp-${i}-name`);
+        } else if (place.side !== undefined) {
+          setSel({ k: "side", i: place.side });
+          focusLater(`rs-${place.side}-label`);
+        } else if (place.setting) {
+          setSel({ k: "settings" });
+          focusLater({ Grace: "rs-grace", "Carry over": "rs-carry", "Close time": "rs-close" }[place.setting] ?? "rs-at");
+        }
+        if (onPhone() && (place.pass !== undefined || place.side !== undefined || place.setting)) setSheet(true);
       }
-      if (onPhone() && (place.pass !== undefined || place.side !== undefined || place.setting)) setSheet(true);
     } finally {
-      setBusy(null);
+      inFlight.current = false;
+      setSaving(false);
     }
   }
+  // a moment after the last change; never again for a spec the API refused until it changes
+  useEffect(() => {
+    if (!editable || !dirty || saving || failedJson === json) return;
+    const t = setTimeout(() => void save(), SAVE_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [json, savedJson, failedJson, saving, editable]); // eslint-disable-line react-hooks/exhaustive-deps -- save reads the spec of this render
+  /** Another tab or person saved this draft: take their version (our unsaved change, if any, is dropped). */
+  const takeTheirs = () => {
+    setOurHash(version.specHash);
+    setSpec(version.spec);
+    setSaved(version);
+    setSavedJson(JSON.stringify(version.spec));
+    setFailedJson(null);
+    setProblem(null);
+    setKeys(version.spec.passes.map(() => `p${keySeq.current++}`));
+  };
 
   async function submit() {
-    setBusy("submit");
+    setSubmitting(true);
     setSubmitError(null);
     try {
       setSaved(await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}/submit`), { method: "POST", body: "{}" }));
@@ -181,14 +223,16 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     } catch (e) {
       setSubmitError(errorText(e));
     } finally {
-      setBusy(null);
+      setSubmitting(false);
     }
   }
 
   const sim = simState(saved);
-  const blocked = !canEdit ? MAKER_REASON : submitReason(saved, { dirty, passes: spec.passes.length, gaps });
+  const blocked = !canEdit ? MAKER_REASON : submitReason(saved, { dirty, failed, passes: spec.passes.length, gaps });
   const placed = problem && (problem.pass !== undefined || problem.side !== undefined || problem.setting) ? problem : null;
-  const loose = problem && !placed ? problem.text : null;
+  const gates = carryOverGates(spec);
+  const notes = (no: number) => saved.warnings.filter((w) => tolerancePass(w) === no);
+  const pageWarnings = saved.warnings.filter((w) => !isCarryOverWarning(w) && tolerancePass(w) === null);
   const title = sel.k === "settings" ? "Settings" : sel.k === "side" ? `Side ${sel.i === 0 ? "A" : "B"}` : passIndex >= 0 ? `Pass ${passIndex + 1} of ${spec.passes.length}` : "Pass";
   const sourceOf = (i: 0 | 1) => (i === 0 ? sa.data : sb.data);
   const editor = sel.k === "settings"
@@ -208,10 +252,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             setSheet(false);
           }} />
         : null;
-  // read only while a save or submit is out, so nothing typed meanwhile is overwritten by the answer
-  const body = editor && <fieldset disabled={!editable || busy !== null} className="contents">{editor}</fieldset>;
+  // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)
+  const body = editor && <fieldset disabled={!editable || submitting} className="contents">{editor}</fieldset>;
   const rows: PassRowProps[] = spec.passes.map((p, i) => ({
-    id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], last: i === spec.passes.length - 1,
+    id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
   }));
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -231,16 +275,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           </div>
           <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:flex-1">
             {editable && (
-              <BlockedButton variant={dirty ? "default" : "secondary"} reason={dirty ? null : "No changes to save."} disabled={busy !== null} aria-busy={busy === "save" || undefined} onClick={() => void save()}>
-                {busy === "save" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save draft
-              </BlockedButton>
+              <span role="status" className="flex items-center gap-1.5 text-caption text-fg-3">
+                {failed ? <>Not saved<Button type="button" variant="link" size="sm" onClick={() => void save(true)}>Retry</Button></>
+                  : dirty || saving ? <><Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />Saving…</> : "Saved"}
+              </span>
             )}
             <BlockedButton variant="secondary" reason={SIMULATION_REASON}>Run simulation</BlockedButton>
-            <BlockedButton reason={blocked} disabled={busy !== null} aria-busy={busy === "submit" || undefined} onClick={() => void submit()}>
-              {busy === "submit" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Submit for approval
+            <BlockedButton reason={blocked} disabled={submitting} aria-busy={submitting || undefined} onClick={() => void submit()}>
+              {submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Submit for approval
             </BlockedButton>
           </div>
-          {(submitError || loose) && <p role="alert" className="basis-full text-body-sm text-down-ink">{submitError ?? loose}</p>}
+          {(submitError || (failed && problem)) && <p role="alert" className="basis-full text-body-sm text-down-ink">{submitError ?? `Not saved: ${placed ? problemText(placed) : problem!.text}`}</p>}
         </section>
       )}
 
@@ -254,11 +299,16 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         <Button type="button" variant="ghost" onClick={() => select({ k: "settings" })}>{editable ? "Edit settings" : "Show settings"}</Button>
       </section>
 
+      {conflict && (
+        <Banner tone="warn" action={<Button type="button" variant="secondary" size="sm" onClick={takeTheirs}>Load the saved draft</Button>}>
+          This draft was saved from another tab or by someone else. Your next change replaces that save.
+        </Banner>
+      )}
       {editable && gaps.length > 0 && (
         <Banner tone="error" action={<Button type="button" variant="secondary" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
-          onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps)}</Banner>
+          onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
       )}
-      {saved.warnings.map((w) => {
+      {[...gates, ...pageWarnings].map((w) => {
         const fix = editable ? carryOverFix(w) : null;
         return (
           <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days < fix
@@ -280,12 +330,11 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
                 : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} />)}</ol>
             ) : <p className="rounded-md border border-dashed border-line p-4 text-body-sm text-fg-2">No passes yet.</p>}
             {editable && (
-              <span className="pt-3">
+              <span className="pb-3">
                 <BlockedButton type="button" variant="secondary" reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
                   onClick={() => { const k = `p${keySeq.current++}`; change(addPass(spec, fields)); setKeys([...keys, k]); select({ k: "pass", key: k }); }}>Add pass</BlockedButton>
               </span>
             )}
-            <Connector />
             <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
               <div className="grid gap-1 border-l-2 border-line pl-3">
                 <span className="text-label text-fg-2">Waiting · during the day</span>
@@ -307,8 +356,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       {sheet && body && <InspectorSheet title={title} onClose={() => { setSheet(false); if (sel.k === "pass") focusLater(`pass-${sel.key}`); }}>{body}</InspectorSheet>}
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
-          onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={`Draft v${saved.version} keeps what was saved last.`}
-          impact={["Changes since the last save are discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
+          onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={failed ? `The last change wasn't saved: ${problem?.text ?? "the save failed"}` : `Draft v${saved.version} is still saving the last change.`}
+          impact={["Changes not saved yet are discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
       )}
     </div>
   );
