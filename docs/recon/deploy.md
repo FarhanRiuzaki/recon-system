@@ -87,7 +87,7 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   `RECON-ENIGNE/recon-preview` (a detached worktree of `feat/recon-phase1`), not the working checkout, so :3000 shows
   every **committed** change and never a half-saved one. A `post-commit` hook (in the repo's common hooks, active only on
   `feat/recon-phase1`) moves the preview to the new commit; Next Fast Refresh and `bun --watch` pick it up in seconds.
-  A changed `bun.lock` restarts app and worker (install on start). Sync log: `recon-preview/.superpowers/preview-sync.log`.
+  A changed `bun.lock` restarts app and worker (install on start). Sync log: `recon-preview/.superpowers/preview-sync.log`. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
   Start: `COMPOSE_PROJECT_NAME=recon-dev docker compose -f ../recon-preview/docker-compose.dev.yml up -d` (first start
   installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed
   gives that user the space Treasury as space admin, source admin and config maker. A source database on the host is
