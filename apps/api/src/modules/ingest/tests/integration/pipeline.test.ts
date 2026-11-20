@@ -415,6 +415,21 @@ describe("final review: integrity of what a run keeps", () => {
     expect([await allRecords(s), (await quarantined(s)).length]).toEqual([1, 1]);
   });
 
+  it("a file or snapshot keeps every quarantined line, the same text twice included, so rows_quarantined is the lines shown", async () => {
+    const k = await source(A, kseiSpec());
+    const bad = kseiLine(12).split("|").slice(0, 13).join("|"); // 13 columns
+    await put("act20261102.txt", `${kseiLine(1)}\n${bad}\n${bad}\n`);
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect((await quarantined(k)).map((q) => q.line)).toEqual([2, 3]);
+    expect((await filesOf(k))[0]).toMatchObject({ rowsQuarantined: 2 });
+    const m = await source(A, medallionSpec());
+    await medallion(D, [1]);
+    await src`insert into medallion (business_date, sid, sre) values (${D}::date, '', 'X1')`;
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active"); // pulled again: the new snapshot keeps its own line
+    expect((await quarantined(m)).length).toBe(2);
+  });
+
   it("an archived space ingests nothing: pulls, scans, files and snapshots skip", async () => {
     const k = await source(A, kseiSpec());
     await put("act20261102.txt", KSEI_FILE);

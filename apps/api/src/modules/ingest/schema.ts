@@ -147,8 +147,10 @@ export const records = pgTable("records", {
 
 /**
  * A line that could not become a record, with a reason per column (`_row` for the whole line); never fails its job.
- * Kept once per (origin, raw_hash = SHA-256 of the line's text, business_date): a pull reads the lookback again on every
- * run, and the same bad row would otherwise be quarantined again each time.
+ * A file's or snapshot's line is kept once per line (origin_id, line_no), so a file's rows_quarantined is the lines
+ * shown. A pulled line is kept once per raw_hash (SHA-256 of its text): a pull reads its lookback again on every run,
+ * and the same bad row would otherwise come back each minute. A pulled line has no business date (it counts on the
+ * day it arrived), so the pull key leaves business_date out.
  */
 export const quarantineRows = pgTable("quarantine_rows", {
   id: uuid("id").primaryKey(),
@@ -164,7 +166,8 @@ export const quarantineRows = pgTable("quarantine_rows", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("quarantine_rows_source_created").on(t.spaceId, t.sourceId, t.createdAt),
-  unique("quarantine_rows_dedup_key").on(t.spaceId, t.sourceId, t.origin, t.rawHash, t.businessDate).nullsNotDistinct(),
+  uniqueIndex("quarantine_rows_pull_key").on(t.spaceId, t.sourceId, t.rawHash).where(sql`${t.origin} = 'pull'`),
+  uniqueIndex("quarantine_rows_line_key").on(t.spaceId, t.sourceId, t.origin, t.originId, t.lineNo).where(sql`${t.origin} <> 'pull'`),
   foreignKey({ name: "quarantine_rows_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
   check("quarantine_rows_origin_check", sql`${t.origin} in ('file', 'pull', 'snapshot')`),
 ]);

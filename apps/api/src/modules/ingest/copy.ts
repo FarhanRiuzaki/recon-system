@@ -20,7 +20,7 @@ export const CHUNK = 1000;
 
 const chunks = <T>(rows: T[]): T[][] => Array.from({ length: Math.ceil(rows.length / CHUNK) }, (_, i) => rows.slice(i * CHUNK, (i + 1) * CHUNK));
 
-/** A quarantined line's dedup hash (quarantine_rows.raw_hash, drizzle/0017): SHA-256 of its text as UTF-8, in hex. */
+/** A quarantined line's hash (quarantine_rows.raw_hash, drizzle/0017; a pulled line's key, 0018): SHA-256 of its text as UTF-8, in hex. */
 export const rawHashOf = (text: string): string => new Bun.CryptoHasher("sha256").update(text).digest("hex");
 
 /** A batch needs months that raw_rows or records has no partition for yet; nothing was written for it. */
