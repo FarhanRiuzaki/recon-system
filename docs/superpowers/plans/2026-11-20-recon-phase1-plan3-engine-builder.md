@@ -71,6 +71,9 @@ BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`, `amou
   + 1 settlement D+1 → 1 grup. (Task 1, 2)
 - A4 Versi source vs config live: versi source yang menghapus/mengganti tipe field yang dipakai config terbit ditolak saat
   submit/approve dengan daftar config terdampak ("Field amount is used by 2 published recons: …"). Tes unit. (Task 1)
+- Tanda vs direction (audit source, celah 3): satu sumber kebenaran untuk `signed_amount` — bila `direction` dipetakan,
+  amount wajib ≥ 0 (negatif → karantina dengan alasan) dan tanda dari direction; bila tidak, tanda dari amount. Aturan di
+  ingest (`map.ts`) + save-time di sources; engine memakai satu fungsi `signedAmount`. Tes unit. (Task 1, 2)
 - Alasan break saat tutup hari (Task 6): item open dengan pasangan referensi di sisi lain mendapat alasan dari predikat yang
   gagal ("Currency differs", "Amount differs", "Date differs"); tanpa pasangan → "No counterpart".
 
