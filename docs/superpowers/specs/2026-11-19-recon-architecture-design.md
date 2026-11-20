@@ -247,7 +247,10 @@ Engine cukup menambah filter `business_date ≥ run_date − carry_over_days` pa
 
 **Tutup hari** (`recon_day`, berlaku untuk kedua jenis jadwal): pada `close_at` per config (untuk `daily` = segera
 setelah run harian), menunggu semua source `complete_through ≥ cut-off` (atau menandai hari "data tidak lengkap"),
-item `open` milik `business_date` itu jadi break, ageing dihitung, `recon_day → closed` siap sign-off.
+item `open` milik `business_date` itu jadi break, item `suggested` yang belum dikonfirmasi juga jadi break dengan alasan dari
+pass-nya ("Amount differs" / "Date differs") dan pasangan yang disarankan tetap tersimpan sebagai resolusi satu klik
+(DEC-046), ageing dihitung dari D0, `recon_day → closed` siap sign-off. Suggested tidak pernah jadi match tanpa keputusan
+operator dan dihitung open di match rate dan sign-off; hasil run menampilkan delta dan pass pengusulnya.
 
 **Antrean pg-boss (Claude)**
 

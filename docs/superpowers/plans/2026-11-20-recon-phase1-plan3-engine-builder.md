@@ -46,11 +46,13 @@ Keputusan urutan: DEC baru dari po-recon (engine + list dulu, kanvas menyusul; D
 3. **Run ulang idempoten**: run yang diulang / job yang di-retry tidak membuat grup dobel atau item yang hilang. (Task 2, 3)
 4. **Kebocoran antar space** termasuk source yang di-share (DEC-042): config space B membaca record source A yang di-share,
    tidak pernah record yang tidak di-share. (Task 1, 2)
+6. **Suggested yang menggantung saat tutup hari** (DEC-046): tutup hari mengubah 25 suggested menjadi break dengan alasan
+   pass-nya (pasangan tersimpan sebagai resolusi) dan 40 open menjadi break; suggested dihitung open di match rate. (Task 6)
 5. **Versi yang berubah di tengah**: run dipin ke versi; publish versi baru saat run berjalan tidak mengubah run itu. (Task 3)
 
 **Config gerbang** (dipakai tes integrasi dan cek app): sisi A = source1 (semua baris), sisi B = source2. Pass 1 exact
 1:1 auto: `ext_ref eq`, `amount_minor eq`, `business_date eq`, `currency eq`; `on_ambiguous = break`. Pass 2 1:1
-suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000`. Pass 3 1:1 suggest: blocking `ext_ref`,
+suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hanya untuk config gerbang; toleransi BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`,
 `amount_minor eq`, `date_window ±1 day`. Mapping source: `txn_ref`/`reference` → `ext_ref`, `amount_minor`/`amount` →
 `amount_minor`, `business_date`/`value_date` → `business_date`, `ccy`/`currency` → `currency`, `account_no`/`acct` →
 `account_ref`.
@@ -140,7 +142,9 @@ in review, Sent back, Edit version n, Activity satu kalimat per event); Delete d
 
 **Files:** `features/recons/run-*`, route `…/[configId]/runs/[runId]`.
 
-**Interfaces:** ringkasan run (versi, mode, waktu, counter per pass: matched / suggested / ambiguous→break / sisa open),
+**Interfaces:** ringkasan run (versi, mode, waktu, counter per pass: matched / suggested / ambiguous→break / sisa open;
+match rate menghitung suggested sebagai open), baris suggested menampilkan delta (selisih jumlah / hari) dan pass
+pengusul,
 tabel item server-paged per pass/status/sisi, detail grup dengan evidence per predikat (list view "Explain"; graf menyusul
 di Task 7). Bukti gerbang: config gerbang di app → angka per pass = kunci jawaban.
 
@@ -154,7 +158,8 @@ di Task 7). Bukti gerbang: config gerbang di app → angka per pass = kunci jawa
 lawannya `complete_through ≥ event_time + grace` → break; break yang kemudian dapat pasangan → `AUTO_MATCHED_LATE_DATA`
 hanya bila `carry_over_days > 0`; pool `business_date ≥ run_date − carry_over_days`; run harian per chunk; catch-up
 otomatis dari state; freshness alert (run sukses terakhir > 2× interval); grace/deadline config jadi input `sourceHealth`
-(bawaan Plan 2). `source_day_counts` tidak disentuh engine (engine tidak menulis `records`); rerun/purge di Plan 5 wajib
+(bawaan Plan 2). Tutup hari minimal (DEC-046): `open` → break, `suggested` belum dikonfirmasi → break dengan alasan pass
++ pasangan tersimpan; sign-off penuh di Plan 5. `source_day_counts` tidak disentuh engine (engine tidak menulis `records`); rerun/purge di Plan 5 wajib
 memakai `tally`/`recountDays` (bawaan README).
 
 - [ ] Tes integration: tick inkremental, grace, carry-over 0 (KSEI) vs 7, catch-up setelah worker mati, chunk harian. `bun run check`.
