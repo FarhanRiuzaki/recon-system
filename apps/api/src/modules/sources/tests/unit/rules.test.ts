@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SourceSpec, UpdateSourceVersionBody as UpdateBody } from "@starterkit/shared/contracts/sources";
-import { canStep, readsDifferently, specHash, specIssue } from "../../rules";
+import { canStep, defaultRefused, readsDifferently, shortVersion, specHash, specIssue, type TestFound, testSentence } from "../../rules";
 import { ksei } from "../spec";
 
 describe("specHash", () => {
@@ -95,5 +95,29 @@ describe("readsDifferently", () => {
     expect(readsDifferently({ ...i, pattern: "x*.txt" }, i)).toBe(true);
     expect(readsDifferently({ ...i, format: { ...i.format, header: true } }, i)).toBe(true);
     expect(readsDifferently(i, null)).toBe(true);
+  });
+});
+
+describe("testSentence (REC-F2a: what a passing test found)", () => {
+  const all: TestFound = { version: "16.4 (Debian 16.4-1.pgdg120+1)", user: "recon_ro", database: "recon_core", defaulted: false, databases: { n: 3, more: false }, tables: { n: 1284, more: false } };
+  it("names the engine, version, login, databases and the tables in the connected database, with grouping separators", () => {
+    expect(testSentence("postgres", all)).toBe("Connected to PostgreSQL 16.4 as recon_ro. 3 databases; 1,284 tables in recon_core.");
+    expect(testSentence("mssql", { ...all, version: "16.0.4135.4", databases: { n: 1, more: false }, tables: { n: 1, more: false } })).toBe("Connected to SQL Server 16.0.4135.4 as recon_ro. 1 database; 1 table in recon_core.");
+    expect(testSentence("mysql", { ...all, version: "8.0.36-0ubuntu0.22.04.1", databases: { n: 500, more: true }, tables: { n: 10_000, more: true } })).toBe("Connected to MySQL 8.0.36 as recon_ro. 500+ databases; 10,000+ tables in recon_core.");
+  });
+  it("on the default database: the databases and a prompt to choose; a stored connection's login is left out; unread numbers are left out", () => {
+    expect(testSentence("postgres", { ...all, defaulted: true, database: "postgres", tables: null })).toBe("Connected to PostgreSQL 16.4 as recon_ro. 3 databases. Choose one to list its tables.");
+    expect(testSentence("postgres", { ...all, user: null })).toBe("Connected to PostgreSQL 16.4. 3 databases; 1,284 tables in recon_core.");
+    expect(testSentence("postgres", { ...all, databases: null })).toBe("Connected to PostgreSQL 16.4 as recon_ro. 1,284 tables in recon_core.");
+    expect(testSentence("postgres", { ...all, databases: null, tables: null })).toBe("Connected to PostgreSQL 16.4 as recon_ro.");
+    expect(testSentence("postgres", { version: null, user: null, database: null, defaulted: false, databases: null, tables: null })).toBe("Connected to PostgreSQL.");
+  });
+  it("Oracle: its version as Oracle names it, the database name, the schemas it can read in", () => {
+    expect(testSentence("oracle", { ...all, version: "19.0.0.0.0", user: "RECON_RO", database: "BIFASTPRD", databases: { n: 4, more: false }, tables: null }))
+      .toBe("Connected to Oracle 19c (BIFASTPRD) as RECON_RO. 4 schemas with tables you can read.");
+    expect([shortVersion("oracle", "23.4.0.24.5"), shortVersion("oracle", "11.2.0.4.0"), shortVersion("postgres", "x")]).toEqual(["23ai", "11.2.0.4.0", ""]);
+  });
+  it("a refused default database names it, quotes the code and says what to do", () => {
+    expect(defaultRefused("postgres", "42501")).toBe("The database list couldn't be loaded: this account can't open the default database postgres (42501). Type the database name instead.");
   });
 });

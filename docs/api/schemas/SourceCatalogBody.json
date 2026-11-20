@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SourceCatalogBody",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "string",
+          "const": "databases"
+        },
+        "connection": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": [
+                "postgres",
+                "mysql",
+                "mssql",
+                "oracle"
+              ]
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "database": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "user": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "password": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "options": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "tls": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "connectTimeoutSeconds": {
+                  "default": 15,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 120
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "engine",
+            "host",
+            "port",
+            "database",
+            "user"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "list"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "string",
+          "const": "tables"
+        },
+        "connection": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": [
+                "postgres",
+                "mysql",
+                "mssql",
+                "oracle"
+              ]
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "database": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "user": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "password": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "options": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "tls": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "connectTimeoutSeconds": {
+                  "default": 15,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 120
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "engine",
+            "host",
+            "port",
+            "database",
+            "user"
+          ],
+          "additionalProperties": false
+        },
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "q": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "after": {
+          "type": "object",
+          "properties": {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "required": [
+            "schema",
+            "name"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "list"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "string",
+          "const": "columns"
+        },
+        "connection": {
+          "type": "object",
+          "properties": {
+            "engine": {
+              "type": "string",
+              "enum": [
+                "postgres",
+                "mysql",
+                "mssql",
+                "oracle"
+              ]
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "database": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "user": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "password": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "options": {
+              "default": {},
+              "type": "object",
+              "properties": {
+                "tls": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "connectTimeoutSeconds": {
+                  "default": 15,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 120
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "engine",
+            "host",
+            "port",
+            "database",
+            "user"
+          ],
+          "additionalProperties": false
+        },
+        "table": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_$#]{0,127}(\\.[A-Za-z_][A-Za-z0-9_$#]{0,127})?$"
+        }
+      },
+      "required": [
+        "list",
+        "table"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

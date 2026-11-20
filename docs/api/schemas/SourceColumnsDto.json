@@ -25,12 +25,26 @@
               "boolean",
               "null"
             ]
+          },
+          "unique": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "indexed": {
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [
           "name",
           "type",
-          "nullable"
+          "nullable",
+          "unique",
+          "indexed"
         ],
         "additionalProperties": false
       }

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CatalogTableDto",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "table",
+        "view"
+      ]
+    },
+    "columns": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "kind",
+    "columns"
+  ],
+  "additionalProperties": false
+}

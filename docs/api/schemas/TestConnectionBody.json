@@ -37,7 +37,6 @@
         },
         "database": {
           "type": "string",
-          "minLength": 1,
           "maxLength": 128
         },
         "user": {
@@ -47,7 +46,6 @@
         },
         "password": {
           "type": "string",
-          "minLength": 1,
           "maxLength": 1024
         },
         "options": {
@@ -73,8 +71,7 @@
         "host",
         "port",
         "database",
-        "user",
-        "password"
+        "user"
       ],
       "additionalProperties": false
     }

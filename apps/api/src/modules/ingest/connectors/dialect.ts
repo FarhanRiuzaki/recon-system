@@ -175,7 +175,8 @@ export function catalogSql(d: Dialect, table: string): Built {
       + `${yes("EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisunique AND i.indnkeyatts = 1 AND i.indkey[0] = a.attnum AND i.indpred IS NULL)")} AS "unique", `
       + `${yes("EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indkey[0] = a.attnum)")} AS indexed `
       + `FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace `
-      + `WHERE ns.nspname = coalesce(${s}, current_schema()) AND c.relname = ${n} AND c.relkind IN ('r', 'v', 'm', 'p', 'f') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
+      + `WHERE ns.nspname = coalesce(${s}, current_schema()) AND c.relname = ${n} AND c.relkind IN ('r', 'v', 'm', 'p', 'f') `
+      + `AND has_schema_privilege(ns.oid, 'USAGE') AND has_table_privilege(c.oid, 'SELECT') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum`,
     // COLUMN_KEY: PRI = in the primary key, UNI = alone a unique key, MUL = leads a non-unique (or multi-column) index
     mysql: `SELECT COLUMN_NAME AS ${as("name")}, COLUMN_TYPE AS ${as("type")}, IS_NULLABLE AS ${as("nullable")}, `
       + `${yes("COLUMN_KEY = 'UNI' OR (COLUMN_KEY = 'PRI' AND (SELECT COUNT(*) FROM information_schema.COLUMNS k WHERE k.TABLE_SCHEMA = c.TABLE_SCHEMA AND k.TABLE_NAME = c.TABLE_NAME AND k.COLUMN_KEY = 'PRI') = 1)")} AS ${as("unique")}, `

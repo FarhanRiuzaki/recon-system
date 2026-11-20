@@ -100,13 +100,14 @@ describe("serverSql: version, login and database for the test's sentence", () =>
 });
 
 describe("catalogSql: a table's columns with unique and indexed", () => {
-  it("PostgreSQL: unique = alone a key of a unique index without a predicate (primary keys are unique indexes); indexed = leads an index", () => {
+  it("PostgreSQL: only a table the login can SELECT (USAGE on its schema); unique = alone a key of a unique index without a predicate (primary keys are unique indexes); indexed = leads an index", () => {
     const b = catalogSql("postgres", "core.txn");
     expect(b.sql).toBe("SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS type, CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS nullable, "
       + `CASE WHEN EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indisunique AND i.indnkeyatts = 1 AND i.indkey[0] = a.attnum AND i.indpred IS NULL) THEN 'YES' ELSE 'NO' END AS "unique", `
       + "CASE WHEN EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid = c.oid AND i.indkey[0] = a.attnum) THEN 'YES' ELSE 'NO' END AS indexed "
       + "FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace ns ON ns.oid = c.relnamespace "
-      + "WHERE ns.nspname = coalesce($1, current_schema()) AND c.relname = $2 AND c.relkind IN ('r', 'v', 'm', 'p', 'f') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum");
+      + "WHERE ns.nspname = coalesce($1, current_schema()) AND c.relname = $2 AND c.relkind IN ('r', 'v', 'm', 'p', 'f') "
+      + "AND has_schema_privilege(ns.oid, 'USAGE') AND has_table_privilege(c.oid, 'SELECT') AND a.attnum > 0 AND NOT a.attisdropped ORDER BY a.attnum");
     expect(b.params).toEqual(["core", "txn"]);
   });
 

@@ -261,6 +261,8 @@ const NO_ACTIVITY: Record<string, string> = {
   "POST /v1/spaces/:spaceId/sources/:sourceId/connection/test": "connects to the source database (or reads the inbox folder) and answers whether it works; changes no record",
   "POST /v1/spaces/:spaceId/sources/connection-test": "tries a new source's typed folder or connection before the source exists; stores nothing",
   "POST /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "a read sent as POST for its body (a SELECT): the source database describes its result columns; stores nothing",
+  "POST /v1/spaces/:spaceId/sources/catalog": "a read sent as POST for its body (a typed credential): what a new source's connection can list; stores nothing",
+  "POST /v1/spaces/:spaceId/sources/:sourceId/connection/catalog": "a read sent as POST for its body (a typed credential, or none for the stored one): what the source database lists; stores nothing",
 };
 /** The sign-in controllers, by file: they answer before a session exists. A route elsewhere, even under /v1/auth, follows every rule. */
 const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controller.ts"];

@@ -51,7 +51,8 @@ describe("fieldTypeOf", () => {
 
 describe("fieldsOfColumns and mergeFields", () => {
   it("a column becomes a field as detected; empty allowed where the column allows NULL (unknown = allowed)", () => {
-    expect(fieldsOfColumns("postgres", [{ name: "id", type: "bigint", nullable: false }, { name: "amt", type: "numeric(18,2)", nullable: true }, { name: "x", type: "text", nullable: null }])).toEqual([
+    const k = { unique: null, indexed: null };
+    expect(fieldsOfColumns("postgres", [{ name: "id", type: "bigint", nullable: false, ...k }, { name: "amt", type: "numeric(18,2)", nullable: true, ...k }, { name: "x", type: "text", nullable: null, ...k }])).toEqual([
       { name: "id", type: "integer", nullable: false, trim: false },
       { name: "amt", type: "decimal", nullable: true, trim: false, format: { scale: 2 } },
       { name: "x", type: "string", nullable: true, trim: true },

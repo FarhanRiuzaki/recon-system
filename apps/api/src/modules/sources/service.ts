@@ -8,7 +8,7 @@ import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type {
   ConnectionTestDto, CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
-  SourceVersionRowDto, TestConnectionBody, UpdateSourceVersionBody,
+  SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
@@ -23,11 +23,12 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
-  type Connector, ConnectorError, connectorFor, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState, sourceStates, specCelError, within,
+  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState,
+  sourceStates, specCelError, within,
 } from "../ingest";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { canStep, readsDifferently, specHash, specIssue } from "./rules";
+import { canStep, defaultRefused, readsDifferently, specHash, specIssue, type TestFound, testSentence } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -368,41 +369,90 @@ async function storedConnection(tx: InTx, s: SourceRow): Promise<StoredConnectio
 }
 const noConnection = () => new ApiError("bad_request", "This source has no connection yet. Set it first.");
 
-/** A connector over the stored connection, with the interactive timeouts; called after the transaction that read it ended. */
-function interactiveConnector(c: StoredConnection): Connector {
-  return typedConnector(c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, c.options as { tls: boolean; connectTimeoutSeconds: number });
-}
-/** A connector over a credential as given, with the interactive timeouts (a test of typed values: nothing is stored). */
-function typedConnector(engine: DbEngine, secret: Secret, o: { tls: boolean; connectTimeoutSeconds: number }): Connector {
-  return connectorFor(engine, secret, { tls: o.tls, connectTimeoutSeconds: Math.min(o.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000 });
-}
+/** What a connector call runs over: the engine, the credential, the options; `typed` = values on screen, not the stored ones. */
+type Target = { engine: DbEngine; secret: Secret; options: { tls: boolean; connectTimeoutSeconds: number }; typed: boolean; defaulted: string | null };
+
+const storedTarget = (c: StoredConnection): Target =>
+  ({ engine: c.engine as DbEngine, secret: JSON.parse(decryptSecret(c.secretEnc)) as Secret, options: c.options as Target["options"], typed: false, defaulted: null });
+
 /**
- * Connects with `secret` and runs SELECT 1: ok, or the failure's fixed sentence and driver code. A test reaches any
- * host and port from inside the bank network, so each one logs who tried which engine, host and port and the result
- * kind; never the login, the password or the error's text.
+ * The connection a test or list runs over, as typed: an empty database is the engine's default (Oracle needs its service
+ * name); a password left out is the stored one only when engine, host, port, database and user all equal the stored
+ * connection (PO REC-F2a: the stored password never goes to other settings), else 400.
  */
-async function probe(ctx: Ctx, engine: DbEngine, secret: Secret, o: { tls: boolean; connectTimeoutSeconds: number }): Promise<ConnectionTestDto> {
+function typedTarget(c: TypedConnection, stored: StoredConnection | null): Target {
+  const fallback = c.database ? null : DEFAULT_DATABASE[c.engine];
+  if (fallback === null && !c.database) throw new ApiError("bad_request", "Enter the service name: Oracle can't list its services before signing in.");
+  const secret: Secret = { host: c.host, port: c.port, database: c.database || fallback!, user: c.user, password: c.password ?? "" };
+  if (!secret.password) {
+    const s = stored ? storedTarget(stored) : null;
+    const same = s && s.engine === c.engine && (["host", "port", "database", "user"] as const).every((k) => s.secret[k] === secret[k]);
+    if (!same) throw new ApiError("bad_request", stored ? "Type the password again to connect with the changed settings." : "Enter the password.");
+    secret.password = s.secret.password;
+  }
+  return { engine: c.engine, secret, options: c.options, typed: true, defaulted: c.database ? null : secret.database };
+}
+
+/** A connector over `t` with the interactive timeouts; called after the transaction that read a stored one ended. */
+function connectorOf(t: Target): Connector {
+  return connectorFor(t.engine, t.secret, { tls: t.options.tls, connectTimeoutSeconds: Math.min(t.options.connectTimeoutSeconds, INTERACTIVE_SECONDS), statementTimeoutMs: INTERACTIVE_SECONDS * 1000 });
+}
+/** A connector over the stored connection, with the interactive timeouts. */
+const interactiveConnector = (c: StoredConnection): Connector => connectorOf(storedTarget(c));
+
+/** A connector failure's sentence; on the engine's default database (nothing typed), a refusal of that database says so. */
+const failureText = (t: Target, e: ConnectorError) => (t.defaulted && (e.kind === "database" || e.kind === "query") ? defaultRefused(t.defaulted, e.code) : e.message);
+
+/**
+ * What a passing test can say about the server (REC-F2a): version and login, the databases (Oracle: schemas) and the
+ * tables in the connected database, each read while time is left before `until`; what isn't read in time is left out
+ * rather than failing the test. Never connects to another database to count.
+ */
+async function found(x: Connector, t: Target, until: number): Promise<TestFound> {
+  const f: TestFound = { version: null, user: null, database: null, defaulted: t.defaulted !== null, databases: null, tables: null };
+  const work = (async () => {
+    const s = await x.server();
+    Object.assign(f, { version: s.version || null, user: t.typed ? s.user || null : null, database: s.database || null });
+    const d = await x.databases();
+    f.databases = { n: d.names.length, more: d.truncated };
+    if (t.engine !== "oracle" && t.defaulted === null && f.database) {
+      const n = await x.countTables({}, CATALOG_COUNT_CAP + 1);
+      f.tables = { n: Math.min(n, CATALOG_COUNT_CAP), more: n > CATALOG_COUNT_CAP };
+    }
+  })().catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([work, new Promise<void>((r) => { timer = setTimeout(r, Math.max(0, until - Date.now())); })]);
+  clearTimeout(timer);
+  return { ...f };
+}
+
+/**
+ * Connects over `t` and runs SELECT 1, then says what it found: ok, or the failure's fixed sentence and driver code. A
+ * test reaches any host and port from inside the bank network, so each one logs who tried which engine, host and port
+ * and the result kind; never the login, the password or the error's text.
+ */
+async function probe(ctx: Ctx, t: Target): Promise<ConnectionTestDto> {
   let result = "error";
+  const until = Date.now() + (INTERACTIVE_SECONDS - 1) * 1000;
   try {
-    await within(typedConnector(engine, secret, o), INTERACTIVE_SECONDS, (x) => x.test());
+    const f = await within(connectorOf(t), INTERACTIVE_SECONDS, async (x) => { await x.test(); return found(x, t, until); });
     result = "ok";
-    return { ok: true, message: "Connected.", code: null };
+    return { ok: true, message: testSentence(t.engine, f), code: null };
   } catch (e) {
     if (!(e instanceof ConnectorError)) throw e;
     result = e.kind;
-    return { ok: false, message: e.message, code: e.code };
+    return { ok: false, message: failureText(t, e), code: e.code };
   } finally {
-    log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine, host: secret.host, port: secret.port, result }, "source connection test");
+    log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine: t.engine, host: t.secret.host, port: t.secret.port, result }, "source connection test");
   }
 }
-const typedProbe = (ctx: Ctx, c: SetConnectionBody) => probe(ctx, c.engine, { host: c.host, port: c.port, database: c.database, user: c.user, password: c.password }, c.options);
-const storedProbe = (ctx: Ctx, c: StoredConnection) =>
-  probe(ctx, c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, c.options as { tls: boolean; connectTimeoutSeconds: number });
 
 /** Connection and folder tests: 20 a minute per user across both test routes (shared in PostgreSQL by every API process). */
 const connectionTests = new RateLimiter("source-connection-test", 20, 60_000);
-async function limitTests(ctx: Ctx): Promise<void> {
-  const wait = await connectionTests.hit(ctx.user.id);
+/** Catalog lists and searches (REC-F2a): 60 a minute per user, apart from the tests, so searching never locks Test out. */
+const catalogLists = new RateLimiter("source-catalog", 60, 60_000);
+async function limited(l: RateLimiter, ctx: Ctx): Promise<void> {
+  const wait = await l.hit(ctx.user.id);
   if (wait !== null) throw tooManyAttempts(wait, retryText(wait));
 }
 /** `fn` over the stored connection; a connector failure is 400 with its fixed sentence. */
@@ -422,27 +472,28 @@ async function workingSpec(tx: InTx, s: SourceRow): Promise<SourceSpec | null> {
 }
 
 /**
- * POST …/connection/test: a database source connects with its stored credential and runs SELECT 1; a file inbox source
- * reads the folder in the body (else the spec being worked on's) inside INBOX_ROOTS and counts the files its pattern matches. A
- * failure answers ok false with one fixed sentence and the driver's code, never its text. Changes nothing. 429 past
- * 20 tests a minute per user (both test routes).
+ * POST …/connection/test: a database source connects with its stored credential (or the typed one, a password left out
+ * only for the stored settings unchanged) and runs SELECT 1; a file inbox source reads the folder in the body (else the
+ * spec being worked on's) inside INBOX_ROOTS and counts the files its pattern matches. A failure answers ok false with
+ * one fixed sentence and the driver's code, never its text. Changes nothing. 429 past 20 tests a minute per user (both
+ * test routes).
  */
 export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody): Promise<ConnectionTestDto> {
-  await limitTests(ctx);
+  await limited(connectionTests, ctx);
   const got = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests a connection: send no folder.");
     if (s.kind === "file_inbox" && b.connection) throw new ApiError("bad_request", "A file inbox source reads files, so it has no database connection.");
-    return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: b.connection ? null : await storedConnection(tx, s) };
+    return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: await storedConnection(tx, s) };
   });
   if ("spec" in got) {
     const input = b.path !== undefined ? { path: b.path, pattern: b.pattern! } : got.spec?.input.kind === "file_inbox" ? got.spec.input : null;
     if (!input) throw new ApiError("bad_request", "This source has no folder yet. Enter the folder and the pattern, then test.");
     return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
   }
-  if (b.connection) return typedProbe(ctx, b.connection);
+  if (b.connection) return probe(ctx, typedTarget(b.connection, got.conn));
   if (!got.conn) throw noConnection();
-  return storedProbe(ctx, got.conn);
+  return probe(ctx, storedTarget(got.conn));
 }
 
 /**
@@ -451,10 +502,55 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
  */
 export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<ConnectionTestDto> {
   // the space guard (source_admin) is the whole authorization: nothing of the space is read
-  await limitTests(ctx);
+  await limited(connectionTests, ctx);
   if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null };
-  return typedProbe(ctx, b.connection);
+  return probe(ctx, typedTarget(b.connection, null));
 }
+
+/**
+ * POST …/sources/catalog and POST …/{sourceId}/connection/catalog (REC-F2a): what the source database lists for this
+ * login, over the typed connection or the stored one: the databases it can open (Oracle: schemas), a page of the tables
+ * and views it can SELECT, or one table's columns. Allowlisted catalog SQL only (connectors/dialect.ts), within the
+ * interactive deadline; 429 past 60 lists a minute per user (apart from the tests); one log line per list, as a test's.
+ * A connector failure is 400 with its fixed sentence.
+ */
+export async function sourceCatalog(ctx: Ctx, id: string | null, b: SourceCatalogBody): Promise<SourceCatalogDto> {
+  await limited(catalogLists, ctx);
+  const stored = id === null ? null : await inSpace(ctx, async (tx, spaceId) => {
+    const s = await ownSource(tx, spaceId, id);
+    if (s.kind === "file_inbox") throw new ApiError("bad_request", "A file inbox source has no tables.");
+    return storedConnection(tx, s);
+  });
+  if (!b.connection && id === null) throw new ApiError("bad_request", "Send the connection to list what it can read.");
+  if (!b.connection && !stored) throw noConnection();
+  const t = b.connection ? typedTarget(b.connection, stored) : storedTarget(stored!);
+  if (b.list === "tables" && t.defaulted !== null) throw new ApiError("bad_request", "Choose the database first: tables are listed per database.");
+  let result = "error";
+  try {
+    const answer = await within(connectorOf(t), INTERACTIVE_SECONDS, async (x): Promise<SourceCatalogDto> => {
+      if (b.list === "databases") {
+        const d = await x.databases();
+        return { list: "databases", items: d.names, truncated: d.truncated };
+      }
+      if (b.list === "columns") return { list: "columns", table: b.table, columns: (await x.introspect({ table: b.table })).map(columnDto) };
+      const f = { ...(b.schema !== undefined ? { schema: b.schema } : {}), ...(b.q ? { q: b.q } : {}) };
+      const page = await x.tables({ ...f, ...(b.after ? { after: b.after } : {}) });
+      const n = await x.countTables(f, CATALOG_COUNT_CAP + 1);
+      return { list: "tables", items: page.items, total: Math.min(n, CATALOG_COUNT_CAP), totalCapped: n > CATALOG_COUNT_CAP, next: page.next };
+    });
+    result = "ok";
+    return answer;
+  } catch (e) {
+    if (!(e instanceof ConnectorError)) throw e;
+    result = e.kind;
+    throw new ApiError("bad_request", failureText(t, e));
+  } finally {
+    log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine: t.engine, host: t.secret.host, port: t.secret.port, list: b.list, result }, "source catalog list");
+  }
+}
+
+/** A connector column as the API answers it (unique and indexed null when the engine didn't say). */
+const columnDto = (c: Column) => ({ name: c.name, type: c.type, nullable: c.nullable, unique: c.unique ?? null, indexed: c.indexed ?? null });
 
 /** GET …/connection/columns: the columns of `table` in the source database's catalog (400 when it has no such table). */
 export async function sourceColumns(ctx: Ctx, id: string, table: string): Promise<SourceColumnsDto> {
@@ -464,7 +560,7 @@ export async function sourceColumns(ctx: Ctx, id: string, table: string): Promis
     return storedConnection(tx, s);
   });
   if (!conn) throw noConnection();
-  return { table, columns: await overConnection(conn, (c) => c.introspect({ table })) };
+  return { table, columns: (await overConnection(conn, (c) => c.introspect({ table }))).map(columnDto) };
 }
 
 /** Today in Asia/Jakarta as yyyy-mm-dd: a snapshot preview's business date when the body names none. */
@@ -478,7 +574,7 @@ export async function queryColumns(ctx: Ctx, id: string, b: QueryColumnsBody): P
     return storedConnection(tx, s);
   });
   if (!conn) throw noConnection();
-  return { table: null, columns: await overConnection(conn, (c) => c.introspect({ query: b.query, businessDate: b.businessDate ?? todayJakarta() })) };
+  return { table: null, columns: (await overConnection(conn, (c) => c.introspect({ query: b.query, businessDate: b.businessDate ?? todayJakarta() }))).map(columnDto) };
 }
 
 /**

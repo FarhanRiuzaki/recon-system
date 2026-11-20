@@ -193,18 +193,30 @@ export type SourceColumnsQuery = z.infer<typeof SourceColumnsQuery>;
 export const QueryColumnsBody = z.strictObject({ query, businessDate: isoDate.optional() });
 export type QueryColumnsBody = z.infer<typeof QueryColumnsBody>;
 
-/** A column of a source table: its native type as the engine names it; `nullable` null when the engine doesn't say (a SELECT's columns). */
-export const SourceColumnDto = z.object({ name: z.string(), type: z.string(), nullable: z.boolean().nullable() });
+/**
+ * A column of a source table: its native type as the engine names it; `nullable` null when the engine doesn't say (a
+ * SELECT's columns). `unique`: alone a primary or unique key; `indexed`: leads an index; both null for a SELECT's columns.
+ */
+export const SourceColumnDto = z.object({ name: z.string(), type: z.string(), nullable: z.boolean().nullable(), unique: z.boolean().nullable(), indexed: z.boolean().nullable() });
 /** `table` null = the columns of a SELECT. */
 export const SourceColumnsDto = z.object({ table: z.string().nullable(), columns: z.array(SourceColumnDto) });
 export type SourceColumnsDto = z.infer<typeof SourceColumnsDto>;
+
+/**
+ * A connection as typed for a test or a catalog list, never stored: as PUT …/connection, but `database` may be empty
+ * (PostgreSQL connects to `postgres`, SQL Server to `master`, MySQL to none; Oracle needs its service name) and, on an
+ * existing source, `password` may be left out only when engine, host, port, database and user equal the stored ones
+ * (else 400: the stored password never goes to other settings).
+ */
+export const TypedConnection = SetConnectionBody.extend({ database: z.string().trim().max(128), password: z.string().max(1024).optional() });
+export type TypedConnection = z.infer<typeof TypedConnection>;
 
 /**
  * POST …/connection/test: the values being typed, never stored. A file inbox source: the folder and pattern (both, or
  * neither: then those of the spec being worked on), inside INBOX_ROOTS. A database source: a whole `connection` to try,
  * or `{}` for the stored one.
  */
-export const TestConnectionBody = z.strictObject({ path: inboxPath.optional(), pattern: inboxPattern.optional(), connection: SetConnectionBody.optional() })
+export const TestConnectionBody = z.strictObject({ path: inboxPath.optional(), pattern: inboxPattern.optional(), connection: TypedConnection.optional() })
   .refine((b) => (b.path === undefined) === (b.pattern === undefined), { message: "Send the folder and the pattern together" })
   .refine((b) => !(b.connection && b.path !== undefined), { message: "Send a folder or a connection, not both" });
 export type TestConnectionBody = z.infer<typeof TestConnectionBody>;
@@ -212,9 +224,41 @@ export type TestConnectionBody = z.infer<typeof TestConnectionBody>;
 /** POST /api/spaces/{spaceId}/sources/connection-test: a new source's typed folder or connection, tried before it exists. */
 export const NewSourceTestBody = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("file_inbox"), path: inboxPath, pattern: inboxPattern }),
-  z.strictObject({ kind: z.enum(["db_watermark", "db_snapshot"]), connection: SetConnectionBody }),
+  z.strictObject({ kind: z.enum(["db_watermark", "db_snapshot"]), connection: TypedConnection }),
 ]);
 export type NewSourceTestBody = z.infer<typeof NewSourceTestBody>;
+
+const catalogName = z.string().min(1).max(128);
+/**
+ * POST …/sources/catalog (a new source: `connection` required) and POST …/{sourceId}/connection/catalog (`connection`
+ * typed, or left out for the stored one): what the source database lists for this login. `databases`: the databases it
+ * can open (Oracle: the schemas it can read in). `tables`: a page of the tables and views it can SELECT in the connected
+ * database (Oracle: in `schema`, else every schema), `q` contained in the name or the schema, after `after`. `columns`:
+ * one table's columns, as GET …/connection/columns.
+ */
+export const SourceCatalogBody = z.discriminatedUnion("list", [
+  z.strictObject({ list: z.literal("databases"), connection: TypedConnection.optional() }),
+  z.strictObject({
+    list: z.literal("tables"), connection: TypedConnection.optional(), schema: catalogName.optional(), q: z.string().max(128).optional(),
+    after: z.strictObject({ schema: catalogName, name: catalogName }).optional(),
+  }),
+  z.strictObject({ list: z.literal("columns"), connection: TypedConnection.optional(), table: z.string().regex(DB_TABLE_NAME) }),
+]);
+export type SourceCatalogBody = z.infer<typeof SourceCatalogBody>;
+
+/** A table or view in the catalog list: its schema (MySQL: the database), name, kind and number of columns. */
+export const CatalogTableDto = z.object({ schema: z.string(), name: z.string(), kind: z.enum(["table", "view"]), columns: z.number().int() });
+/**
+ * The answer to a catalog list, by `list`: database names (500 at most, `truncated` past that); a page of 50 tables
+ * (`total` counted up to 10,000, `totalCapped` past it; `next` = the `after` of the next page, null on the last); or a
+ * table's columns.
+ */
+export const SourceCatalogDto = z.discriminatedUnion("list", [
+  z.object({ list: z.literal("databases"), items: z.array(z.string()), truncated: z.boolean() }),
+  z.object({ list: z.literal("tables"), items: z.array(CatalogTableDto), total: z.number().int(), totalCapped: z.boolean(), next: z.object({ schema: z.string(), name: z.string() }).nullable() }),
+  z.object({ list: z.literal("columns"), table: z.string(), columns: z.array(SourceColumnDto) }),
+]);
+export type SourceCatalogDto = z.infer<typeof SourceCatalogDto>;
 
 /**
  * POST …/connection/test: whether the stored connection (or a file source's folder) works now. `message` is one fixed

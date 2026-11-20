@@ -7,15 +7,15 @@
 // 404 → rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import {
-  CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsQuery, SourceListQuery,
-  SourceVersionListQuery, TestConnectionBody, UpdateSourceVersionBody,
+  CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceCatalogBody, SourceColumnsQuery,
+  SourceListQuery, SourceVersionListQuery, TestConnectionBody, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
   approveVersion, createDraft, createSource, discardSource, previewVersion, queryColumns, refusedSpec, rejectVersion, setConnection, shareSource, sourceActivity, sourceColumns, sourceDetail,
-  sourcePage, submitVersion, testConnection, testNewSource, unshareSource, updateVersion, versionDetail, versionPage,
+  sourceCatalog, sourcePage, submitVersion, testConnection, testNewSource, unshareSource, updateVersion, versionDetail, versionPage,
 } from "./service";
 
 const MAKERS = ["source_admin", "config_maker"] as const;
@@ -33,6 +33,8 @@ export const sourcesController = () =>
     }, { guard: { space: ["source_admin"] } })
     /** A new source's typed folder or connection, tried before the source exists; nothing is stored. */
     .post("/v1/spaces/:spaceId/sources/connection-test", async (c) => testNewSource(c.ctx, await body(c, NewSourceTestBody)), { guard: { space: ["source_admin"] } })
+    /** What a new source's typed connection can read (databases, tables, a table's columns); nothing is stored. */
+    .post("/v1/spaces/:spaceId/sources/catalog", async (c) => sourceCatalog(c.ctx, null, await body(c, SourceCatalogBody)), { guard: { space: ["source_admin"] } })
     .get("/v1/spaces/:spaceId/sources/:sourceId", ({ ctx, params }) => sourceDetail(ctx, idParam(params.sourceId, "source")), { guard: { space: SPACE_ROLES } })
     /** A draft source never submitted nor shared, deleted with its connection and draft. */
     .delete("/v1/spaces/:spaceId/sources/:sourceId", async ({ ctx, params }) => {
@@ -47,6 +49,11 @@ export const sourcesController = () =>
     .post("/v1/spaces/:spaceId/sources/:sourceId/connection/test", async (c) => {
       const b = await body(c, TestConnectionBody);
       return testConnection(c.ctx, idParam(c.params.sourceId, "source"), b);
+    }, { guard: { space: ["source_admin"] } })
+    /** What the stored (or a typed) connection can read: databases, tables, a table's columns; changes nothing. */
+    .post("/v1/spaces/:spaceId/sources/:sourceId/connection/catalog", async (c) => {
+      const b = await body(c, SourceCatalogBody);
+      return sourceCatalog(c.ctx, idParam(c.params.sourceId, "source"), b);
     }, { guard: { space: ["source_admin"] } })
     /** The columns of one table of the source database. */
     .get("/v1/spaces/:spaceId/sources/:sourceId/connection/columns", ({ ctx, params, query }) =>
