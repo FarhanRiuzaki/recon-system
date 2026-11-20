@@ -484,3 +484,11 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 ## DEC-046 — Suggested saat tutup hari menjadi break
 
 20 November 2026 — core-recon atas rekomendasi po-recon, dikonfirmasi Captain (PO) untuk aturan suggested. Pass bertoleransi menghasilkan *suggested* yang tidak pernah menjadi match tanpa keputusan operator; selama belum diterima, item dihitung open di match rate dan sign-off, dan hasil run menampilkan delta (selisih jumlah / hari) serta pass pengusulnya. Saat tutup hari, suggested yang belum dikonfirmasi menjadi break dengan alasan dari pass-nya ("Amount differs" / "Date differs"); pasangan yang disarankan tetap tersimpan sebagai resolusi satu klik di break, ageing dari D0. Alternatif yang ditolak: memblok sign-off selama ada suggested (satu suggestion terlupa menahan seluruh hari). Menerima di dalam toleransi = manual match tanpa approval; di luar toleransi = force match dengan approval (REC-F5).
+
+## DEC-047 — Break lintas hari tetap kandidat dalam jendela carry-over
+
+21 November 2026 — keputusan Captain atas delegasi pemilik, dicatat po-recon. Break yang `business_date`-nya masih di dalam jendela `carry_over_days` (`business_date ≥ run_date − carry_over_days`) tetap menjadi kandidat untuk **semua** pass pada run berikutnya, bukan hanya item `open`. Hasilnya bergantung pada jenis pass yang menemukan pasangan:
+- **Pass `accept: auto`** (`PASS_ACCEPT`, `packages/shared/src/recon.ts:8`): break ditutup sebagai `AUTO_MATCHED_LATE_DATA` tanpa approval; bila hari break sudah sign-off, match dicatat di hari berjalan dengan tautan ke hari beku dan sign-off tidak dibuka ulang (spec §11b).
+- **Pass `accept: suggest`**: break tetap break; pasangan usulan dan pass pengusulnya dilampirkan, dan operator menerimanya dengan "Match pair" satu klik di halaman break (aturan toleransi/approval DEC-046 dan REC-F5 berlaku).
+
+`carry_over_days = 0` (KSEI) tidak berubah: break tidak pernah ikut pool hari berikutnya. Spec §9 langkah 3 ("pass berurutan atas item `open` saja") perlu disesuaikan dengan keputusan ini. Backlog REC-F3, REC-F5.
