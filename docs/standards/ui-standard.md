@@ -99,6 +99,10 @@ deviations are in `.superpowers/scratch/consistency/DEVIATIONS.md`.
 - **A destructive action is always in the ⋯ menu** ("More actions", last in the header; per row in a table), never a
   button of its own, never in a form footer. It opens a confirmation dialog that names the record and the impact; the
   confirm button repeats the action ("Delete draft source"). Destructive = deletes, deactivates, revokes, resets, retires.
+- Exception, an editor that saves itself (recon builder): removing a part of the draft (a pass, a condition) can be
+  undone, so it takes no dialog. A pass is removed from its ⋯ menu (with Move earlier / Move later); a condition by
+  the × at the end of its row (label "Remove condition {n}"). A toast confirms with Undo: "Removed pass {n}." · Undo,
+  "Removed condition {n}." · Undo; Undo restores only that item. The dialog stays for what can't be undone (Delete draft recon).
 - One surface level: section `Panel` → its items. No card inside a card, no tray inside a card (§0a).
 - States per region (§3): loading in the page's own shape, empty = fact + one next step, error = fact + Retry.
 
