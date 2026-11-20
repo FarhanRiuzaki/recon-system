@@ -211,7 +211,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     setBusy("submit");
     setSubmitError(null);
     try {
-      await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}/submit`), { method: "POST", body: "{}" });
+      setSaved(await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}/submit`), { method: "POST", body: "{}" }));
       toast(`Draft v${saved.version} of ${recon.name} sent for approval. A config checker approves or rejects it.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
     } catch (e) {
