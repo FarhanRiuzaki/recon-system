@@ -21,7 +21,7 @@
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
+import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
 import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
@@ -38,6 +38,7 @@ import { withSpace } from "../spaces";
 import { matchGroups, matchMembers, reconItems, reconRuns, reconSimChanges } from "./schema";
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
+import { graceSql } from "./sql/days";
 import { analyzeSql } from "./sql/runs";
 import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
@@ -73,6 +74,12 @@ export const RANGE_MAX_DAYS = RUN_RANGE_MAX_DAYS;
  * statement, if real duplicates run deeper.
  */
 const ROUNDS_MAX = 50;
+/**
+ * Records a side's intake takes in one transaction (Task 6 "run harian per chunk"). ponytail: only the intake is per
+ * chunk; the passes of a date stay one transaction (S1: 376 s for 3M a side on the worker pool); split them per key
+ * range if a date outgrows JOB_STATEMENT_TIMEOUT_MS.
+ */
+export const INTAKE_CHUNK = 50_000;
 
 const DAY = 86_400_000;
 const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
@@ -84,7 +91,7 @@ type Loaded = { spec: ReconSpec; sides: [SideRef, SideRef] };
  * The sides of `spec` as space `spaceId` reads their sources; refused when a side's source is not readable here or the
  * spec's check fails (every field on the sides' whitelists).
  */
-async function load(tx: InTx, spaceId: string, spec: ReconSpec): Promise<Loaded> {
+export async function load(tx: InTx, spaceId: string, spec: ReconSpec): Promise<Loaded> {
   const found = await readableSources(tx, spaceId, spec.sides.map((s) => s.source_id));
   const sides = spec.sides.map((s) => {
     const src = found.get(s.source_id);
@@ -189,7 +196,8 @@ export class RunAborted extends Error {}
  * draft's hash); a second delivery finds it over and returns null. `signal` aborted → RunAborted between steps. Any
  * other failure marks the run failed with the error's sentence (an ApiError's, else RUN_INTERNAL_ERROR) and throws it.
  */
-export async function execRun(on: Tx, spaceId: string, runId: string, o: { finish?: (tx: InTx) => Promise<void>; signal?: AbortSignal } = {}): Promise<RunSummary | null> {
+export async function execRun(on: Tx, spaceId: string, runId: string, o: { finish?: (tx: InTx) => Promise<void>; signal?: AbortSignal; chunk?: number } = {}): Promise<RunSummary | null> {
+  const chunk = o.chunk ?? INTAKE_CHUNK;
   const scope = { spaceIds: [spaceId], userId: null };
   const mine = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId));
   const [run] = await withSpace(scope, (tx) => tx.select().from(reconRuns).where(mine), on);
@@ -223,26 +231,35 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     for (let d = run.doneThrough ? addDays(run.doneThrough, 1) : run.dateFrom; d <= to; d = addDays(d, 1)) {
       if (o.signal?.aborted) throw new RunAborted();
       const lo = addDays(d, -carry), hi = d;
-      const c = (tx: InTx): StepCtx => ({ spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo, hi, current: currentRecord(tx)! });
+      const c = (tx: InTx): StepCtx => ({ spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo, hi, current: currentRecord(tx)!, late: carry > 0 });
       // planner statistics first (analyzeSql): records a source just took in, then each side's new items (side B's
       // intake checks side A's, and the passes read both)
       await analyze("records", lo, hi, 0);
       for (const s of [0, 1] as const) {
         const tag = `${d}:${sides[s].key}`;
-        const added = await step(async (tx, r, counters) => {
-          if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return 0;
-          counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
-          const n = (await one<{ n: number }>(tx, intakeSql(c(tx), s, spec.sides[s].filter))).n;
-          counters.intake[sides[s].key] += n;
-          await tx.update(reconRuns).set({ counters, intakeDone: tag }).where(mine);
-          return n;
-        });
-        if (added === "over") return null;
+        // per chunk of `chunk` records, a transaction each (a daily run's millions never sit in one statement); a chunk
+        // committed before a retry is skipped by the intake's own check, the marker comes with the last chunk
+        let added = 0;
+        for (let more = true; more;) {
+          const n = await step(async (tx, r, counters) => {
+            if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return null;
+            counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
+            const n = (await one<{ n: number }>(tx, intakeSql(c(tx), s, spec.sides[s].filter, chunk))).n;
+            counters.intake[sides[s].key] += n;
+            await tx.update(reconRuns).set({ counters, ...(n < chunk ? { intakeDone: tag } : {}) }).where(mine);
+            return n;
+          });
+          if (n === "over") return null;
+          added += n ?? 0;
+          more = n === chunk;
+        }
         if (added) await analyze("recon_items", lo, hi, added);
       }
       const passed = await step(async (tx, r, counters) => {
         if (r.doneThrough && r.doneThrough >= d) return;
         for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
+        // grace (spec §9 step 4): live runs only; a simulation replays dates, its breaks come from the classifier
+        if (!simRunId) await one(tx, graceSql(c(tx), spec.grace_minutes));
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);
       });
       if (passed === "over") return null;
@@ -268,6 +285,27 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     await failRun(on, spaceId, runId, e instanceof ApiError ? e.message : RUN_INTERNAL_ERROR);
     throw e;
   }
+}
+
+/**
+ * A draft simulation's projection of day close (Captain): its open items of the run's window (its dates and the carry
+ * over before them) counted per side, reason and date through classifyUnmatched, the classifier day close uses. Writes
+ * nothing; the simulation's job stores it with the run (counters.projection), so reads stay cheap.
+ */
+export async function projectDayClose(tx: InTx, run: RunRow): Promise<RunProjection> {
+  const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
+    .where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId)));
+  const from = addDays(run.dateFrom, -ReconSpec.parse(v!.spec).carry_over_days);
+  const misses = await classifyUnmatched(tx, { spaceId: run.spaceId, configId: run.configId, versionId: run.configVersionId, simRunId: run.id, from, to: run.dateTo });
+  const out: RunProjection = { a: {}, b: {}, days: [] };
+  for (const m of misses) {
+    out[m.side][m.reason] = (out[m.side][m.reason] ?? 0) + 1;
+    let day = out.days.find((d) => d.date === m.businessDate);
+    if (!day) out.days.push((day = { date: m.businessDate, a: {}, b: {} }));
+    day[m.side][m.reason] = (day[m.side][m.reason] ?? 0) + 1;
+  }
+  out.days.sort((x, y) => x.date.localeCompare(y.date));
+  return out;
 }
 
 /** An open item without a pair and why (nearMissSql): `pairItemId` = its near pair on the other side, if any. */
@@ -311,6 +349,12 @@ export async function runRecon(on: Tx, i: RunInput): Promise<RunSummary> {
 
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
+/** A run's counters as answered: the projection a simulation stores beside them is its own field. */
+const withoutProjection = (c: unknown): RunCounters => {
+  const { projection: _, ...rest } = c as RunCounters & { projection?: unknown };
+  return rest;
+};
+
 /** ReconRunDto of `rows`: version numbers, baselines and change counts in three queries for the whole page. */
 async function runDtos(tx: InTx, spaceId: string, rows: RunRow[]): Promise<ReconRunDto[]> {
   if (!rows.length) return [];
@@ -327,11 +371,12 @@ async function runDtos(tx: InTx, spaceId: string, rows: RunRow[]): Promise<Recon
     const n = (c: SimChange) => changed.find((x) => x.runId === r.id && x.change === c)?.n ?? 0;
     return {
       id: r.id, configId: r.configId, versionId: r.configVersionId, version: versions.get(r.configVersionId) ?? 0, specHash: r.specHash, mode: r.mode as RunMode, status: r.status as RunStatus,
-      from: r.dateFrom, to: r.dateTo, doneThrough: r.doneThrough, counters: r.counters as RunCounters, error: r.error,
+      from: r.dateFrom, to: r.dateTo, doneThrough: r.doneThrough, counters: withoutProjection(r.counters), error: r.error,
       startedAt: r.startedAt.toISOString(), finishedAt: iso(r.finishedAt),
       baseline: b ? { runId: b.id, versionId: b.versionId, version: versions.get(b.versionId) ?? 0 } : null,
       changes: isDraftSim && r.status === "succeeded" ? { gained: n("gained"), lost: n("lost"), repaired: n("repaired"), kind: n("kind") } : null,
       days: null,
+      projection: isDraftSim && r.status === "succeeded" ? ((r.counters as { projection?: RunProjection }).projection ?? null) : null,
     };
   });
 }

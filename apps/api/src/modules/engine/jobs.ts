@@ -20,7 +20,7 @@ import type { Ctx } from "../auth";
 import { draftToSimulate, markSimulated, reconConfigs, reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { reconRuns } from "./schema";
-import { createRun, execRun, failRun, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { createRun, execRun, failRun, projectDayClose, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -123,13 +123,16 @@ async function baselineOf(on: Tx, s: RunRow): Promise<string | null> {
 }
 
 /**
- * In the transaction that marks draft simulation `s` succeeded: its changes against `baseline`, the draft's simulated
- * hash, and retention. Retention (one simulation per version): the simulations of this version older than `s` are
+ * In the transaction that marks draft simulation `s` succeeded: its changes against `baseline`, its projection of day
+ * close (stored in its counters), the draft's simulated hash, and retention. Retention (one simulation per version): the simulations of this version older than `s` are
  * deleted, and with them (cascade) their published-version simulations, items, groups and changes; other versions keep
  * their latest. ponytail: one statement deletes them all; per chunk if simulations grow to S1 volume.
  */
 async function finishSimulation(tx: InTx, s: RunRow, baseline: string | null): Promise<void> {
   await tx.execute(changesSql(s.spaceId, s.id, baseline));
+  const projection = await projectDayClose(tx, s);
+  await tx.update(reconRuns).set({ counters: sql`${reconRuns.counters} || ${JSON.stringify({ projection })}::text::jsonb` })
+    .where(and(eq(reconRuns.spaceId, s.spaceId), eq(reconRuns.id, s.id)));
   await markSimulated(tx, s.spaceId, s.configVersionId, s.specHash!);
   await tx.delete(reconRuns).where(and(
     eq(reconRuns.spaceId, s.spaceId), eq(reconRuns.configId, s.configId), eq(reconRuns.configVersionId, s.configVersionId), eq(reconRuns.mode, "simulation"),

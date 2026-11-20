@@ -243,6 +243,17 @@ export const RunDay = z.object({
   open: PerSide,
 });
 export type RunDay = z.infer<typeof RunDay>;
+/** Waiting items per reason they would break with ("Currency differs", "Amount differs", "Date differs", "No counterpart"). */
+const ByReason = z.record(z.string(), z.number().int());
+/**
+ * A simulation's projection of day close (no break written): its waiting items per side by the reason day close would
+ * give them, with the classifier day close uses; per business date too.
+ */
+export const RunProjection = z.object({
+  a: ByReason, b: ByReason,
+  days: z.array(z.object({ date: z.string(), a: ByReason, b: ByReason })),
+});
+export type RunProjection = z.infer<typeof RunProjection>;
 
 /**
  * A run (GET …/runs/{runId}, and the answer of a run or simulation request, status `queued`). `version` = the recon
@@ -270,6 +281,8 @@ export const ReconRunDto = z.object({
   changes: SimChangeCounts.nullable(),
   /** GET …/runs/{runId} only (a list answers null). */
   days: z.array(RunDay).nullable(),
+  /** A draft's simulation that succeeded: what day close would do with its waiting items (null otherwise). */
+  projection: RunProjection.nullable(),
 });
 export type ReconRunDto = z.infer<typeof ReconRunDto>;
 

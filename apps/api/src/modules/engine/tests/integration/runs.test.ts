@@ -404,5 +404,12 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     ]);
     const v = await json<ReconVersionDto>(call("GET", `${base(gate.configId)}/versions/${v2.id}`, { token: t.mk }));
     expect(v.simulatedHash).toBe(v.specHash);
+    // day close as the simulation projects it (the classifier day close uses; nothing broken): 24 waiting per side
+    const atClose = { "Currency differs": 3, "Amount differs": 1, "No counterpart": 20 };
+    expect([done.projection?.a, done.projection?.b]).toEqual([atClose, atClose]);
+    const perDay = (k: "a" | "b") => done.projection!.days.reduce((n, d) => n + Object.values(d[k]).reduce((x, y) => x + y, 0), 0);
+    expect([perDay("a"), perDay("b"), done.counters.open]).toEqual([24, 24, { a: 24, b: 24 }]);
+    expect(Object.keys(done.counters)).not.toContain("projection");
+    expect((await items(gate.configId, sim.id, "status=break")).total).toBe(30); // only the Duplicates are broken
   }, 60_000);
 });
