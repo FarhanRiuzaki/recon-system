@@ -7,7 +7,6 @@ import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
-import { toast } from "@starterkit/ui/ui/toast";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -15,7 +14,7 @@ import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/share
 import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
   addCurrency, CURRENCIES, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
-  type Place, predicateOf, removeCurrency, renameCurrency, splitValues, startField, withCardinality, withFilterOp, withSide,
+  type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
 // The inspector (BUILDER-SPEC "Inspector"): the selected pass, a side or the settings. Every control writes the whole
@@ -53,7 +52,7 @@ function FieldPick({ id, label, i, pair, op, fields, onPick }: {
 }
 
 /** A tolerance per currency in major units: one row per currency; a currency without a row matches exactly. */
-function ToleranceRows({ id, value, onChange }: { id: string; value: Record<string, string>; onChange: (t: Record<string, string>) => void }) {
+function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: Record<string, string>; onChange: (t: Record<string, string>) => void; onRemoved?: (code: string, value: string) => void }) {
   const rows = Object.entries(value);
   const free = CURRENCIES.filter((c) => !Object.hasOwn(value, c));
   return (
@@ -65,7 +64,7 @@ function ToleranceRows({ id, value, onChange }: { id: string; value: Record<stri
           </Select>
           <Input id={`${id}-${code}`} aria-label={`${code} tolerance`} inputMode="decimal" value={v} className="min-w-0 flex-1 tabular" placeholder={(0).toFixed(currencyDecimals(code))}
             onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove the ${code} tolerance`} onClick={() => onChange(removeCurrency(value, code))}><Icon icon={CloseIcon} /></Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove the ${code} tolerance`} onClick={() => { onChange(removeCurrency(value, code)); onRemoved?.(code, v); }}><Icon icon={CloseIcon} /></Button>
         </div>
       ))}
       {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={() => onChange(addCurrency(value))}>Add currency</Button></span>}
@@ -74,9 +73,9 @@ function ToleranceRows({ id, value, onChange }: { id: string; value: Record<stri
 }
 
 /** The operator's own value: a tolerance, a percentage, a number of days or a similarity. */
-function OpValue({ id, q, onChange }: { id: string; q: Predicate; onChange: (q: Predicate) => void }) {
+function OpValue({ id, q, onChange, onToleranceRemoved }: { id: string; q: Predicate; onChange: (q: Predicate) => void; onToleranceRemoved?: (code: string, value: string) => void }) {
   switch (q.op) {
-    case "amount_abs_tol": case "eq_sum": return <ToleranceRows id={id} value={q.tolerance} onChange={(tolerance) => onChange({ ...q, tolerance })} />;
+    case "amount_abs_tol": case "eq_sum": return <ToleranceRows id={id} value={q.tolerance} onChange={(tolerance) => onChange({ ...q, tolerance })} onRemoved={onToleranceRemoved} />;
     case "amount_pct_tol": return <InputAffix id={id} aria-label="Percentage" inputMode="decimal" suffix="%" value={q.percent} onChange={(e) => onChange({ ...q, percent: e.target.value.trim() })} />;
     case "date_window": case "bday_window": return <NumberInput id={id} label={q.op === "date_window" ? "Days apart" : "Business days apart"} min={1} max={31} value={q.days} onValueChange={(d) => onChange({ ...q, days: d === "" ? 1 : d })} />;
     case "similarity": return <NumberInput id={id} label="Least similarity" min={0.1} max={1} step={0.05} value={q.min} onValueChange={(m) => onChange({ ...q, min: m === "" ? 0.8 : m })} />;
@@ -103,20 +102,20 @@ function PairRow({ children, error, onRemove, removeReason, removeLabel }: { chi
   );
 }
 
-/** Applies a removal and offers Undo, which restores what was there before (`back`). */
-function removed(message: string, apply: () => void, back: () => void) {
-  apply();
-  toast.undo(message, back);
-}
+/**
+ * A removal's Undo, run by the builder on the spec as it is then: `restore` puts the one removed item back into the
+ * current spec (the pass's current index `i`), or null when it can't go back.
+ */
+export type OnRemoved<A extends unknown[]> = (message: string, restore: (spec: ReconSpec, ...at: A) => ReconSpec | null) => void;
 
 /**
  * The selected pass (BUILDER-SPEC "Inspector"): name, cardinality, when found, the matching keys, the conditions (all
  * must pass), when several candidates fit, and its place in the run order. A group pass matches automatically or
  * raises breaks only in this release, so those two controls hold one choice there.
  */
-export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove }: {
+export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove, onRemoved }: {
   spec: ReconSpec; i: number; fields: Fields; place: Place | null;
-  onChange: (p: PassSpec) => void; onMove: (dir: -1 | 1) => void; onRemove: () => void;
+  onChange: (p: PassSpec) => void; onMove: (dir: -1 | 1) => void; onRemove: () => void; onRemoved: OnRemoved<[number]>;
 }) {
   const p = spec.passes[i]!;
   const n = spec.passes.length;
@@ -146,7 +145,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
         {p.blocking.map((f, j) => (
           <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
             removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
-            onRemove={() => removed(`Removed matching key ${j + 1}.`, () => onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }), () => onChange(p))}>
+            onRemove={() => { onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }); onRemoved(`Removed matching key ${j + 1}.`, (cur, at) => restoreKey(cur, at, f, j)); }}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`key-${j}-a`)} label={la} i={0} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
               <FieldPick id={id(`key-${j}-b`)} label={lb} i={1} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
@@ -162,7 +161,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
         {p.predicates.map((q, j) => (
           <PairRow key={j} error={place?.condition === j ? place.text : null} removeLabel={`Remove condition ${j + 1}`}
             removeReason={p.predicates.length === 1 ? "A pass needs at least one condition." : group && q.op === "eq_sum" && sums === 1 ? "A 1:N or N:1 pass needs one group sum condition." : null}
-            onRemove={() => removed(`Removed condition ${j + 1}.`, () => onChange({ ...p, predicates: p.predicates.filter((_, k) => k !== j) }), () => onChange(p))}>
+            onRemove={() => { onChange({ ...p, predicates: p.predicates.filter((_, k) => k !== j) }); onRemoved(`Removed condition ${j + 1}.`, (cur, at) => restoreCondition(cur, at, q, j)); }}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`cond-${j}-a`)} label={la} i={0} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
               <FieldPick id={id(`cond-${j}-b`)} label={lb} i={1} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
@@ -171,7 +170,8 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
               onChange={(e) => { const op = e.target.value as Operator; setPred(j, predicateOf(op, fieldFor(op, q.field, fields))); }}>
               {OPS.filter((o) => !o.group || group).map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
             </Select>
-            <OpValue id={id(`cond-${j}-value`)} q={q} onChange={(x) => setPred(j, x)} />
+            <OpValue id={id(`cond-${j}-value`)} q={q} onChange={(x) => setPred(j, x)}
+              onToleranceRemoved={(code, v) => onRemoved(`Removed the ${code} tolerance.`, (cur, at) => restoreTolerance(cur, at, j, code, v))} />
           </PairRow>
         ))}
         <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
@@ -195,8 +195,8 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
 }
 
 /** A side (BUILDER-SPEC "Side cards"): its label, the amount's sign and the filters that pick its records. */
-export function SideEditor({ spec, i, fields, sourceName, place, onChange }: {
-  spec: ReconSpec; i: 0 | 1; fields: Fields; sourceName: string; place: Place | null; onChange: (s: SideSpec) => void;
+export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRemoved }: {
+  spec: ReconSpec; i: 0 | 1; fields: Fields; sourceName: string; place: Place | null; onChange: (s: SideSpec) => void; onRemoved: OnRemoved<[]>;
 }) {
   const s = spec.sides[i];
   const own = fields[i];
@@ -221,7 +221,7 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange }: {
         <legend className="mb-2 text-label text-fg">Filters (records this side reads)</legend>
         {s.filter.map((f, j) => (
           <PairRow key={j} error={place?.filter === j ? place.text : null} removeLabel={`Remove filter ${j + 1}`} removeReason={null}
-            onRemove={() => removed(`Removed filter ${j + 1}.`, () => onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }), () => onChange(s))}>
+            onRemove={() => { onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }); onRemoved(`Removed filter ${j + 1}.`, (cur) => restoreFilter(cur, i, f, j)); }}>
             <div className="grid gap-2 sm:grid-cols-2">
               <Select aria-label={`Filter ${j + 1} field`} value={f.field} className="w-full font-mono" onChange={(e) => setFilter(j, { ...f, field: e.target.value })}>
                 {(refs.includes(f.field) ? refs : [f.field, ...refs]).map((r) => <option key={r} value={r}>{fieldName(r, own)}</option>)}

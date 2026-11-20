@@ -31,7 +31,9 @@ export const toast = Object.assign(
   {
     success: (...a: Parameters<Toast["success"]>): void => void sonner().then((t) => t.success(...a)),
     error: (...a: Parameters<Toast["error"]>): void => void sonner().then((t) => t.error(...a)),
-    undo: (message: string, onUndo: () => void, opts: { description?: string } = {}): void =>
+    /** `id` lets the caller take the toast back (`toast.dismiss`) once its Undo can no longer apply. */
+    undo: (message: string, onUndo: () => void, opts: { description?: string; id?: string } = {}): void =>
       void sonner().then((t) => t(message, { ...opts, duration: UNDO_MS, action: { label: "Undo", onClick: onUndo } })),
+    dismiss: (id: string): void => void sonner().then((t) => t.dismiss(id)),
   },
 );

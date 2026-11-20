@@ -181,3 +181,34 @@ describe("tolerance rows and filter values", () => {
     expect(withFilterOp(many, "is_null")).toEqual({ field: "attrs.channel", op: "is_null" });
   });
 });
+
+describe("undo of a removal: the removed item goes back into the current spec, edits made meanwhile stay", () => {
+  it("remove a condition, edit another pass, Undo: the edit and the condition are both there", async () => {
+    const { restoreCondition } = await import("./spec-model");
+    const start = base();
+    const q = start.passes[0]!.predicates[0]!;
+    const removedOne: ReconSpec = { ...start, passes: start.passes.map((p, i) => (i === 0 ? { ...p, predicates: p.predicates.slice(1) } : p)) };
+    const edited: ReconSpec = { ...removedOne, passes: removedOne.passes.map((p, i) => (i === 1 ? { ...p, name: "Edited meanwhile" } : p)) };
+    const undone = restoreCondition(edited, 0, q, 0)!;
+    expect(undone.passes[1]!.name).toBe("Edited meanwhile");
+    expect(undone.passes[0]!.predicates).toEqual(start.passes[0]!.predicates);
+  });
+  it("a row whose pass is gone can't go back; a pass goes back at its index, renumbered, with later edits kept", async () => {
+    const { restoreKey, restorePass } = await import("./spec-model");
+    const start = base();
+    expect(restoreKey(start, 9, start.passes[0]!.blocking[0] ?? { a: "ext_ref", b: "ext_ref" }, 0)).toBeNull();
+    const gone = movePass({ ...start, passes: start.passes.slice(1).map((p, i) => ({ ...p, no: i + 1 })) }, 0, 0);
+    const edited: ReconSpec = { ...gone, passes: gone.passes.map((p, i) => (i === 0 ? { ...p, name: "Kept" } : p)) };
+    const back = restorePass(edited, start.passes[0]!, 0);
+    expect(back.passes.map((p) => p.no)).toEqual([1, 2, 3]);
+    expect(back.passes[0]!.name).toBe(start.passes[0]!.name);
+    expect(back.passes[1]!.name).toBe("Kept");
+  });
+  it("a tolerance goes back on its condition only when that condition still takes tolerances and lacks the currency", async () => {
+    const { restoreTolerance } = await import("./spec-model");
+    const tol: ReconSpec = { ...base(), passes: base().passes.map((p, i) => (i === 0 ? { ...p, predicates: [predicateOf("amount_abs_tol", p.predicates[0]!.field)] } : p)) };
+    const back = restoreTolerance(tol, 0, 0, "USD", "0.50")!;
+    expect((back.passes[0]!.predicates[0] as { tolerance: Record<string, string> }).tolerance.USD).toBe("0.50");
+    expect(restoreTolerance(back, 0, 0, "USD", "1.00")).toBeNull();
+  });
+});

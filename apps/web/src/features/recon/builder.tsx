@@ -23,7 +23,7 @@ import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
   addCurrencyCondition, addPass, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
-  type Place, placeOf, removePass, scheduleText, submitReason,
+  insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
@@ -97,6 +97,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   // the browser; new passes count on from there
   const [keys, setKeys] = useState<string[]>(() => version.spec.passes.map((_, i) => `p${i}`));
   const keySeq = useRef(version.spec.passes.length);
+  // Undo of a removal (no confirmation in an editor that saves itself, ui-standard §1a) puts back only the removed item,
+  // into the spec as it is then, found by its pass's stable key; a row's toast goes when its pass is removed.
+  const keysNow = useRef(keys);
+  useEffect(() => { keysNow.current = keys; });
+  const undoSeq = useRef(0);
+  const rowToasts = useRef(new Map<string, string[]>());
   const [sel, setSel] = useState<Selected>(() => (keys[0] ? { k: "pass", key: keys[0] } : { k: "side", i: 0 }));
   const [sheet, setSheet] = useState(false);
   const [problem, setProblem] = useState<Place | null>(null);
@@ -139,6 +145,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
 
   const passIndex = sel.k === "pass" ? keys.indexOf(sel.key) : -1;
   const change = (next: ReconSpec) => { setSpec(next); setProblem(null); setSubmitError(null); };
+  /** The toast of a removal whose Undo applies `restore` to the current spec; `passKey` = the pass it belongs to. */
+  const offerUndo = (message: string, passKey: string | null, restore: (cur: ReconSpec, at: number) => ReconSpec | null) => {
+    const id = `recon-undo-${undoSeq.current++}`;
+    if (passKey) rowToasts.current.set(passKey, [...(rowToasts.current.get(passKey) ?? []), id]);
+    toast.undo(message, () => {
+      const at = passKey ? keysNow.current.indexOf(passKey) : -1;
+      if (passKey && at < 0) return;
+      setSpec((cur) => restore(cur, at) ?? cur);
+      setProblem(null);
+    }, { id });
+  };
   const focusLater = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(id)?.focus()));
   const onPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const select = (s: Selected) => {
@@ -275,20 +292,29 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     ? <SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} />
     : sel.k === "side"
       ? <SideEditor spec={spec} i={sel.i} fields={fields} sourceName={sourceOf(sel.i)?.name ?? "Loading…"} place={placed?.side === sel.i ? placed : null}
-        onChange={(s) => change({ ...spec, sides: sel.i === 0 ? [s, spec.sides[1]] : [spec.sides[0], s] })} />
+        onChange={(s) => change({ ...spec, sides: sel.i === 0 ? [s, spec.sides[1]] : [spec.sides[0], s] })}
+        onRemoved={(message, restore) => offerUndo(message, null, (cur) => restore(cur))} />
       : passIndex >= 0
         ? <PassEditor spec={spec} i={passIndex} fields={fields} place={placed?.pass === passIndex + 1 ? placed : null}
           onChange={(p) => change({ ...spec, passes: spec.passes.map((x, j) => (j === passIndex ? p : x)) })}
           onMove={(dir) => { move(passIndex, passIndex + dir); focusLater(`pass-${keys[passIndex]}`); }}
+          onRemoved={(message, restore) => offerUndo(message, keys[passIndex]!, restore)}
           onRemove={() => {
-            // no confirmation in an editor that saves itself (ui-standard §1a): the toast's Undo restores the pass
-            const before = spec, beforeKeys = keys, at = passIndex, name = spec.passes[passIndex]?.name ?? "";
+            const pass = spec.passes[passIndex]!, key = keys[passIndex]!, at = passIndex;
             const rest = keys.filter((_, j) => j !== passIndex);
             change(removePass(spec, passIndex));
             setKeys(rest);
             setSel(rest[0] ? { k: "pass", key: rest[Math.min(passIndex, rest.length - 1)]! } : { k: "side", i: 0 });
             setSheet(false);
-            toast.undo(`Removed pass ${at + 1}${name ? ` (${name})` : ""}.`, () => { change(before); setKeys(beforeKeys); setSel({ k: "pass", key: beforeKeys[at]! }); });
+            // its rows' Undo can't apply any more: their toasts go
+            for (const id of rowToasts.current.get(key) ?? []) toast.dismiss(id);
+            rowToasts.current.delete(key);
+            toast.undo(`Removed pass ${at + 1}${pass.name ? ` (${pass.name})` : ""}.`, () => {
+              setSpec((cur) => restorePass(cur, pass, at));
+              setKeys((cur) => insertAt(cur, at, key));
+              setSel({ k: "pass", key });
+              setProblem(null);
+            }, { id: `recon-undo-${undoSeq.current++}` });
           }} />
         : null;
   // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)

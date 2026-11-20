@@ -179,6 +179,36 @@ export function addPass(spec: ReconSpec, fields: Fields): ReconSpec {
 }
 export const removePass = (spec: ReconSpec, i: number): ReconSpec => ({ ...spec, passes: numbered(spec.passes.filter((_, j) => j !== i)) });
 
+/*
+ * Undo of a removal in the builder (an editor that saves itself, ui-standard §1a): the removed item goes back into the
+ * CURRENT spec at its former position, so whatever was edited during the toast's 8 s stays. A row whose pass is gone
+ * can't go back (null).
+ */
+export const insertAt = <T,>(list: readonly T[], at: number, x: T): T[] => [...list.slice(0, Math.min(at, list.length)), x, ...list.slice(Math.min(at, list.length))];
+/** Pass `pass` back at position `at` (renumbered). */
+export const restorePass = (spec: ReconSpec, pass: PassSpec, at: number): ReconSpec => ({ ...spec, passes: numbered(insertAt(spec.passes, at, pass)) });
+const withPass = (spec: ReconSpec, i: number, f: (p: PassSpec) => PassSpec | null): ReconSpec | null => {
+  const p = spec.passes[i];
+  const next = p ? f(p) : null;
+  return next ? { ...spec, passes: spec.passes.map((x, j) => (j === i ? next : x)) } : null;
+};
+/** A matching key back at `at` in the pass now at index `i`. */
+export const restoreKey = (spec: ReconSpec, i: number, key: FieldPair, at: number) => withPass(spec, i, (p) => ({ ...p, blocking: insertAt(p.blocking, at, key) }));
+/** A condition back at `at` in the pass now at index `i`. */
+export const restoreCondition = (spec: ReconSpec, i: number, q: Predicate, at: number) => withPass(spec, i, (p) => ({ ...p, predicates: insertAt(p.predicates, at, q) }));
+/** A currency's tolerance back on condition `j` of the pass now at index `i`, if that condition still takes tolerances and lacks it. */
+export const restoreTolerance = (spec: ReconSpec, i: number, j: number, code: string, value: string) => withPass(spec, i, (p) => {
+  const q = p.predicates[j];
+  if (!q || !("tolerance" in q) || Object.hasOwn(q.tolerance, code)) return null;
+  return { ...p, predicates: p.predicates.map((x, k) => (k === j ? { ...q, tolerance: { ...q.tolerance, [code]: value } } : x)) };
+});
+/** A filter back at `at` of side `side`. */
+export const restoreFilter = (spec: ReconSpec, side: 0 | 1, f: SideSpec["filter"][number], at: number): ReconSpec => {
+  const s = spec.sides[side];
+  const next = { ...s, filter: insertAt(s.filter, at, f) };
+  return { ...spec, sides: side === 0 ? [next, spec.sides[1]] : [spec.sides[0], next] };
+};
+
 /** `list` with the item at `from` moved to `to` (the order model of drag and Alt+↑/↓). */
 export function moved<T>(list: readonly T[], from: number, to: number): T[] {
   const out = [...list];
