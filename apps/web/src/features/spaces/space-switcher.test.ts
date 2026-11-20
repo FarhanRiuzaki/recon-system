@@ -10,7 +10,7 @@ describe("switchHref: where switching to another space goes", () => {
     expect(switchHref(`/spaces/${A}/members/`, B)).toBe(`/spaces/${B}/members`);
   });
   it("members when the page doesn't exist in a space, or the page is outside any space", () => {
-    expect(switchHref(`/spaces/${A}/recons/x`, B)).toBe(`/spaces/${B}/members`);
+    expect(switchHref(`/spaces/${A}/breaks/x`, B)).toBe(`/spaces/${B}/members`);
     expect(switchHref(`/spaces/${A}`, B)).toBe(`/spaces/${B}/members`);
     expect(switchHref("/users", B)).toBe(`/spaces/${B}/members`);
     expect(switchHref("/spaces", B)).toBe(`/spaces/${B}/members`);
