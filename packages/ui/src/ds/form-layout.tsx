@@ -37,6 +37,16 @@ export function FormActions({ children, sticky = true, className }: { children: 
   );
 }
 
+/**
+ * The footer of a form page (ui-standard §1a "Form"): the primary action (`Create user`, `Save user`, `Next: …`), then
+ * `Back` in a wizard, then `Cancel`, left-aligned under the form and sticky (FormActions). The order is fixed here, so
+ * no form puts them another way; a destructive action is never in a footer (it is in the header's ⋯ menu). An editor
+ * that saves itself has no footer.
+ */
+export function FormFooter({ primary, back, cancel, sticky, className }: { primary: ReactNode; back?: ReactNode; cancel?: ReactNode; sticky?: boolean; className?: string }) {
+  return <FormActions sticky={sticky} className={className}>{primary}{back}{cancel}</FormActions>;
+}
+
 export function Fieldset({ legend, description, children, ...props }: ComponentProps<"fieldset"> & { legend: string; description?: string }) {
   const id = useId();
   return <fieldset {...props} aria-describedby={description ? id : props["aria-describedby"]} className={cn("grid min-w-0 gap-3", props.className)}><legend className="mb-3 text-title-2">{legend}</legend>{description && <p id={id} className="text-body-sm text-fg-2">{description}</p>}{children}</fieldset>;

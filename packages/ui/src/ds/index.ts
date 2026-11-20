@@ -45,7 +45,7 @@ export { Wizard } from "./wizard";
 export { Radio, ChoiceCard, Switch, SettingsRow, Accordion, Slider } from "./form-options";
 export { Combobox, type ComboOption, filterOptions } from "./combobox";
 export { FileItem, FileUpload, ProgressBar, type FileItemProps, type UploadFn, type UploadItem, type UploadStatus } from "./file-upload";
-export { Fieldset, FormSection, FormActions, FormLayout, DatePicker, TimeInput } from "./form-layout";
+export { Fieldset, FormSection, FormActions, FormFooter, FormLayout, DatePicker, TimeInput } from "./form-layout";
 export { OtpInput } from "./otp-input";
 export { WizardReview, WizardCompletion, NotificationItem, ActivityItem, PlanCard, IntegrationCard, ApiKeyRow, BillingSummary } from "./saas-patterns";
 export { CheckboxGroup, RepeatableField, FilterRule } from "./form-groups";

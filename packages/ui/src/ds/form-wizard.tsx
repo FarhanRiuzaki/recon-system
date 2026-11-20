@@ -5,7 +5,7 @@ import { cn } from "../lib/cn";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { SpinnerIcon } from "../ui/icons";
-import { FormActions } from "./form-layout";
+import { FormFooter } from "./form-layout";
 import { StepMarker, type StepStatus } from "./step-indicator";
 
 export type WizardStep = {
@@ -103,13 +103,11 @@ export function FormWizard({ steps, check, onSubmit, submitLabel, error, label, 
             count against a field the user hasn't reached). */}
         <div key={s.id} className="grid max-w-xl gap-4">{s.content}</div>
         {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
-        <FormActions sticky={stickyActions} className="md:-mx-6 md:-mb-6 md:px-6">
-          {/* Back before Continue: the buttons map to the direction they move in. */}
-          {current > 0 && <Button type="button" variant="secondary" disabled={busy} onClick={() => go(current - 1)}>Back</Button>}
-          <Button type="submit" disabled={busy} aria-busy={busy || undefined}>
+        <FormFooter sticky={stickyActions} className="md:-mx-6 md:-mb-6 md:px-6"
+          primary={<Button type="submit" disabled={busy} aria-busy={busy || undefined}>
             {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{last ? submitLabel : "Continue"}
-          </Button>
-        </FormActions>
+          </Button>}
+          back={current > 0 && <Button type="button" variant="secondary" disabled={busy} onClick={() => go(current - 1)}>Back</Button>} />
       </div>
     </form>
   );
