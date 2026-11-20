@@ -103,7 +103,7 @@ describe("job kernel", () => {
     }
   }, 20_000);
 
-  it("a job whose worker dies is failed by its heartbeat, not its expiry (4 h on recon.heavy), picked up again and its effect written once", async () => {
+  it("a job whose worker dies is failed by its heartbeat, not its expiry (8 h on recon.heavy), picked up again and its effect written once", async () => {
     // Heartbeat 10 s (pg-boss's minimum) for the test; production queues carry QUEUE_OPTIONS (30 s). A job keeps the
     // heartbeat its queue had when it was sent, so the dying worker resetting the queue to QUEUE_OPTIONS doesn't matter.
     await ensureQueues({ ...QUEUE_OPTIONS, [QUEUES.reconHeavy]: { heartbeatSeconds: 10 } });
@@ -111,7 +111,7 @@ describe("job kernel", () => {
       const key = `die-${Bun.randomUUIDv7()}`;
       const id = await enqueue(QUEUES.reconHeavy, { key }, { key });
       expect(id).toBeString();
-      expect(await stateOf(QUEUES.reconHeavy, id!)).toMatchObject({ heartbeatSeconds: 10, expireInSeconds: 14_400 });
+      expect(await stateOf(QUEUES.reconHeavy, id!)).toMatchObject({ heartbeatSeconds: 10, expireInSeconds: 28_800 });
       const child = Bun.spawn(["bun", path.join(ROOT, "test/helpers/dying-worker.ts")], { cwd: ROOT, env: process.env, stdout: "pipe", stderr: "inherit" });
       let out = "";
       const reader = child.stdout.getReader();

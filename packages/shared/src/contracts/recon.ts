@@ -236,6 +236,8 @@ export const ReconRunDto = z.object({
   configId: z.string(),
   versionId: z.string(),
   version: z.number().int(),
+  /** The spec hash of the version as the run read it (a draft's simulation: as it was asked for). */
+  specHash: z.string().nullable(),
   mode: z.enum(RUN_MODES),
   status: z.enum(RUN_STATUSES),
   from: z.string(),

@@ -351,7 +351,7 @@ describe("cases on records written directly", () => {
     expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 } });
   });
 
-  it("a step that fails rolls back alone and marks the run failed with a sentence, never the query", async () => {
+  it("a pass that fails rolls back alone (intake stays: it commits first) and marks the run failed with a sentence", async () => {
     const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
     await put(sa, [{ ref: "W", attrs: { when: "not a date" } }]);
     await put(sb, [{ ref: "W", attrs: { when: "2026-11-02" } }]);
@@ -362,7 +362,10 @@ describe("cases on records written directly", () => {
     expect(e).toBeInstanceOf(Error);
     const [run] = await db.select().from(reconRuns).where(eq(reconRuns.configId, r.configId));
     expect([run!.status, run!.error, run!.finishedAt !== null]).toEqual(["failed", "The run stopped on an internal error. Run it again; if it fails again, tell your admin.", true]);
-    expect(await itemsOf(r.configId)).toEqual([]); // the step's intake rolled back with it
+    // the intake committed before the passes (statistics in between); the failed pass wrote nothing: no group, both open
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status])).toEqual([["a", "open"], ["b", "open"]]);
+    expect(await db.select().from(matchGroups).where(eq(matchGroups.configId, r.configId))).toEqual([]);
+    expect(run!.doneThrough).toBeNull();
   });
 
   it("refuses a range past 31 days or backwards, and marks a run that fails", async () => {

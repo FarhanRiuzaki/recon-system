@@ -139,8 +139,11 @@ pada laju ini. Upgrade path: COPY ke temp table saat Bun yang di-pin punya `writ
 Tanggal 2026-11-21. Run engine (`runRecon`/`execRun`, `apps/api/src/modules/engine/service.ts`) memasukkan item lalu
 menjalankan pass dalam satu transaksi per tanggal bisnis. Planner merencanakan intake sisi B (anti join ke item sisi A
 yang baru masuk) dan pass atas statistik partisi `recon_items` (dan `records`) yang belum mencatat baris baru itu:
-nested loop. Perbaikan: `recon_analyze_month_partitions` (`drizzle/0026_engine_runs_rls.sql`, security definer: ANALYZE
-butuh owner) dipanggil di dalam langkah, pada `records` sebelum intake dan pada `recon_items` setelah intake tiap sisi;
+nested loop. Perbaikan: `recon_analyze_month_partitions` (`drizzle/0026_engine_runs_rls.sql`, diperketat di 0028;
+security definer: ANALYZE butuh owner) dipanggil tiap tanggal, pada `records` sebelum intake dan pada `recon_items`
+setelah intake tiap sisi, masing-masing di transaksi pendek sendiri (intake tiap sisi juga commit sendiri, penanda
+`intake_done`; pass + `done_through` di transaksi berikutnya), jadi share-update-exclusive lock partisi hanya selama
+ANALYZE itu;
 ia meng-ANALYZE partisi bulan jendela itu bila perubahan sejak analyze terakhir (`n_mod_since_analyze` + baris yang baru
 ditulis transaksi ini) ≥ 1.000 dan > 10% `reltuples` (aturan autovacuum, dijalankan sekarang).
 
@@ -150,16 +153,17 @@ Mesin dan PostgreSQL sama dengan "rowsToday" di atas; `statement_timeout` pool t
 
 | Record per sisi | Sebelum | Sesudah (records belum di-analyze) | Sesudah (records di-analyze tes) |
 |---|---|---|---|
-| 5.000 | 17,2 s | 0,76 s | 0,49 s |
-| 20.000 | > 30 s (intake sisi B kena `statement_timeout`) | 1,96 s | 1,71 s |
+| 5.000 | 17,2 s | 0,76 s | 0,42 s |
+| 20.000 | > 30 s (intake sisi B kena `statement_timeout`) | 1,88 s | 1,77 s |
 
-Rincian 20.000 sesudah: intake sisi A 0,2 s, sisi B 0,3 s, ANALYZE 13–17 ms per panggilan, pass 1 (FIFO exact, 19.394
+Angka "sesudah" dari susunan akhir (ANALYZE di transaksi sendiri, fix round 1 Task 3); versi pertama dengan ANALYZE di
+dalam transaksi langkah memberi 0,76 / 1,96 s dan 0,49 / 1,71 s. Rincian 20.000 (versi pertama): intake sisi A 0,2 s, sisi B 0,3 s, ANALYZE 13–17 ms per panggilan, pass 1 (FIFO exact, 19.394
 grup) 1,2 s, pass 2 0,04–0,08 s. Sebelum, intake sisi B sendiri 24,8 s (versi antara yang hanya meng-ANALYZE setelah kedua
 sisi: 5,9 s total untuk 20.000). Kolom pertama sesudah: ANALYZE `records` tidak terpicu pada 5.000 karena statistik
 kumulatif belum mencatat insert tes (dikirim berkala), jadi angka itu juga yang terjadi bila run jalan sesaat setelah ingest.
 
-Batas: ANALYZE memegang share-update-exclusive lock partisi sampai langkah selesai, jadi dua config yang sama-sama memicu
-ANALYZE pada bulan yang sama menunggu satu sama lain (komentar `ponytail:` di `execRun`); belum diukur pada volume S1.
+Batas: belum diukur pada volume S1 (ANALYZE partisi besar mengambil sampel 30.000 baris; waktunya pada 90 juta baris per
+bulan tidak diketahui).
 
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
@@ -291,8 +295,9 @@ Batas dan angka yang belum diukur:
   (dihitung dari setelan, belum diukur di produksi; tes mengukur 10,7 s pada heartbeat 10 s dan supervise 1 s). Selama itu
   job tetap `active` dan tick berikutnya config itu antre di belakangnya; 90 s di bawah interval 2 menit dan di bawah alert
   freshness 2× interval.
-- `expireInSeconds` (Plan 3 Task 3, `QUEUE_OPTIONS`): `recon.tick` 600 s, `recon.daily` 3.600 s, `recon.heavy` 14.400 s
-  (31 tanggal × 376 s run harian S1 + sisa); `breaks.sla` masih bawaan 900 s.
+- `expireInSeconds` (Plan 3 Task 3, `QUEUE_OPTIONS`): `recon.tick` 600 s, `recon.daily` 3.600 s, `recon.heavy` 28.800 s
+  (simulasi = draft + versi terbit: 2 × 31 tanggal × 376 s run harian S1 ≈ 6,5 jam); handler menerima `signal` dan
+  engine berhenti di antara langkah saat job kedaluwarsa; `breaks.sla` masih bawaan 900 s.
 - Polling bawaan 2 s per slot: 14 slot per worker bila keenam queue punya handler (4+2+4+2+1+1), tiap slot satu query fetch tiap 2 s saat kosong; beban di
   PostgreSQL produksi tidak diukur. LISTEN/NOTIFY (`useListenNotify`) tidak dipakai.
 - Upgrade pg-boss ke versi dengan migrasi async (BAM, mis. `CREATE INDEX CONCURRENTLY`) dijalankan oleh `migrateJobs` saat

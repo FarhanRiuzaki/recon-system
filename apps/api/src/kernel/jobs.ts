@@ -2,7 +2,9 @@
 // pg-boss's schema is installed by db:migrate (migrateJobs, as the owner); here pg-boss runs with migrate: false, as the
 // app role, over a Bun SQL pool of its own.
 import { SQL } from "bun";
-import { fromBunSql, PgBoss, type ConstructorOptions, type QueueOptions } from "pg-boss";
+import { sql } from "drizzle-orm";
+import { fromBunSql, fromDrizzle, PgBoss, type ConstructorOptions, type QueueOptions } from "pg-boss";
+import type { InTx } from "./db";
 import { loadJobsConfig } from "./config";
 import { errorDetail } from "./errors";
 import { log } from "./log";
@@ -34,14 +36,15 @@ export const CONCURRENCY: Record<QueueName, number> = {
  * took 58 s end to end (docs/recon/spikes.md "S1 ingest (Plan 2)"), so 1800 s is 3× a 10M-line file at that rate.
  * ingest.pull is chunked per page and gets the same; a snapshot of a whole position per date may take longer.
  * The recon queues (spike S1, docs/recon/spikes.md): a daily run of 3M records per side took 376 s, so recon.daily (one
- * business date) gets 3600 s; recon.heavy runs a manual run or a simulation of up to 31 dates (a simulation runs the
- * published version over them too), 4 h ≈ 31 × 376 s + margin; recon.tick (p95 1.2 s, catch-up 1.85 s) 600 s.
+ * business date) gets 3600 s; recon.heavy runs a manual run or a simulation of up to 31 dates, and a simulation runs the
+ * published version over them too: 2 × 31 × 376 s ≈ 6.5 h, so 8 h; recon.tick (p95 1.2 s, catch-up 1.85 s) 600 s. A
+ * handler past its expiry is failed and its signal aborted (JobHandler `signal`): the engine stops between steps.
  */
 export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "ingest.pull": { heartbeatSeconds: 30, expireInSeconds: 1800 }, "ingest.file": { heartbeatSeconds: 30, expireInSeconds: 1800 },
   "ingest.snapshot": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "maintenance.partitions": { heartbeatSeconds: 30, expireInSeconds: 600 },
   "recon.tick": { heartbeatSeconds: 30, expireInSeconds: 600 },
-  "recon.daily": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "recon.heavy": { heartbeatSeconds: 30, expireInSeconds: 14_400 }, "breaks.sla": { heartbeatSeconds: 30 },
+  "recon.daily": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "recon.heavy": { heartbeatSeconds: 30, expireInSeconds: 28_800 }, "breaks.sla": { heartbeatSeconds: 30 },
 };
 
 /** The cron time zone of every schedule. */
@@ -53,7 +56,8 @@ export const JOB_TZ = "Asia/Jakarta";
  */
 const STOP_GRACE_MS = 25_000;
 
-export type JobHandler = (job: { id: string; data: unknown }) => Promise<void>;
+/** A job's handler; `signal` aborts when pg-boss gave the job up (expired, or the worker stops past its grace). */
+export type JobHandler = (job: { id: string; data: unknown; signal?: AbortSignal }) => Promise<void>;
 
 let pool: SQL | undefined;
 /**
@@ -110,11 +114,12 @@ async function syncQueues(b: PgBoss, options: Record<QueueName, QueueOptions>): 
 
 /**
  * Queues a job of `queue` under `key` (its config, source, file…), to start no sooner than `startAfter`; `id` = the
- * job's id when the caller keeps it (a recon run's id). Null when a job with that key is already queued: the two are
- * merged (one queued and one active per key, never two of either).
+ * job's id when the caller keeps it (a recon run's id); `tx` = the transaction to write the job in, so it commits (or
+ * not) with the caller's rows. Null when a job with that key is already queued: the two are merged (one queued and one
+ * active per key, never two of either).
  */
-export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date; id?: string }): Promise<string | null> {
-  return (await boss()).send(queue, data, { singletonKey: opts.key, startAfter: opts.startAfter, id: opts.id });
+export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date; id?: string; tx?: InTx }): Promise<string | null> {
+  return (await boss()).send(queue, data, { singletonKey: opts.key, startAfter: opts.startAfter, id: opts.id, ...(opts.tx ? { db: fromDrizzle(opts.tx, sql) } : {}) });
 }
 
 /**
@@ -156,7 +161,7 @@ export async function startWorker(handlers: Partial<Record<QueueName, JobHandler
   await b.start();
   for (const [queue, handle] of Object.entries(handlers) as [QueueName, JobHandler][]) {
     await b.work(queue, { localConcurrency: CONCURRENCY[queue], pollingIntervalSeconds: pollingSeconds }, async ([job]) => {
-      if (job) await handle({ id: job.id, data: job.data });
+      if (job) await handle({ id: job.id, data: job.data, signal: job.signal });
     });
   }
   running.add(b);

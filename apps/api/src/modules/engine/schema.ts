@@ -40,6 +40,11 @@ export const reconRuns = pgTable("recon_runs", {
   error: text("error"),
   specHash: text("spec_hash"),
   doneThrough: date("done_through"),
+  /**
+   * The last side intake committed, as "<business date>:<side>" ("2026-11-02:a" < "2026-11-02:b" < "2026-11-03:a" as
+   * text): a step's intake commits before its passes (statistics in between), and a second delivery skips it.
+   */
+  intakeDone: text("intake_done"),
   baselineOf: uuid("baseline_of"),
   /** The job that runs it (pg-boss id; null = run in process): a run whose job is over while it is not is failed (reaper). */
   jobId: uuid("job_id"),
@@ -48,6 +53,7 @@ export const reconRuns = pgTable("recon_runs", {
 }, (t) => [
   unique("recon_runs_space_id_id_key").on(t.spaceId, t.id),
   index("recon_runs_config_started").on(t.spaceId, t.configId, t.startedAt),
+  index("recon_runs_baseline").on(t.spaceId, t.baselineOf).where(sql`${t.baselineOf} is not null`),
   foreignKey({ name: "recon_runs_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   check("recon_runs_mode_check", sql`${t.mode} in ('manual', 'tick', 'daily', 'rerun', 'simulation')`),
   foreignKey({ name: "recon_runs_baseline_fkey", columns: [t.spaceId, t.baselineOf], foreignColumns: [t.spaceId, t.id] }).onDelete("cascade"),
@@ -78,6 +84,8 @@ export const reconItems = pgTable("recon_items", {
   // the pool of a pass: open items of a config's side in a business-date window, live or of one simulation
   index("recon_items_open").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'open'`),
   index("recon_items_config_date").on(t.spaceId, t.configId, t.businessDate),
+  // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
+  index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   foreignKey({ name: "recon_items_sim_run_fkey", columns: [t.spaceId, t.simRunId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   check("recon_items_side_check", sql`${t.side} in ('a', 'b')`),
@@ -108,6 +116,7 @@ export const matchGroups = pgTable("match_groups", {
   unique("match_groups_space_id_id_key").on(t.spaceId, t.id),
   index("match_groups_config_date").on(t.spaceId, t.configId, t.businessDate),
   index("match_groups_run").on(t.spaceId, t.runId, t.passNo),
+  index("match_groups_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "match_groups_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   foreignKey({ name: "match_groups_run_fkey", columns: [t.spaceId, t.runId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   foreignKey({ name: "match_groups_sim_run_fkey", columns: [t.spaceId, t.simRunId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),

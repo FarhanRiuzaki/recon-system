@@ -1,12 +1,12 @@
 // The engine (spec §8–§10): a run of one config version over business dates, set-based in PostgreSQL (spike S1). The
 // run row commits first (createRun: the API's request queues it, runRecon starts it at once); then execRun takes each
-// business date D of the range as one step, one transaction under withSpace scoped to the config's space (a source
-// shared to it is read through the records policies, DEC-042) and configLock: intake of both sides' records of
-// D − carry_over_days … D, fresh planner statistics when the intake was large (sql/runs.ts analyzeSql), the passes in
-// order over open items of that window only, then the run's counters and `done_through` = D (the step's marker). A
-// failed step rolls back alone and marks the run failed. A step run again finds nothing new: intake is once per
-// record, passes read open items only, so a rerun adds no group and loses no item (Review Focus 3); a job retried after
-// its worker died goes on after `done_through` with the counters the last step committed.
+// business date D of the range under withSpace scoped to the config's space (a source shared to it is read through the
+// records policies, DEC-042) and configLock: intake of each side's records of D − carry_over_days … D (a transaction per
+// side, marker `intake_done`), fresh planner statistics between (sql/runs.ts analyzeSql, short transactions of their
+// own), then the passes in order over open items of that window only with the run's counters and `done_through` = D
+// (the step's marker). A failed transaction rolls back alone and marks the run failed. A step run again finds nothing
+// new: intake is once per record, passes read open items only, so a rerun adds no group and loses no item (Review
+// Focus 3); a job retried, or delivered twice, goes on after the markers with the counters the run row holds.
 //
 // A run is pinned to its version (Focus 5): execRun reads the version the run row names, whatever is published since;
 // only createRun asks for the published one. A draft's simulation pins its spec hash too: a draft edited before the
@@ -155,57 +155,81 @@ export async function createRun(tx: InTx, i: NewRun): Promise<string> {
 /** The sentence of a run that failed on something other than an ApiError (the cause is in the log only). */
 export const RUN_INTERNAL_ERROR = "The run stopped on an internal error. Run it again; if it fails again, tell your admin.";
 
+type RunRow = typeof reconRuns.$inferSelect;
+
+/** Thrown between steps once the job's signal aborted (pg-boss gave the job up): the run stays running for the retry. */
+export class RunAborted extends Error {}
+
 /**
- * Runs run `runId` of space `spaceId` on `on` (the worker's workerDb, or the API's db in tests), from the business date
- * after `done_through` (a retried job goes on where its last step committed) to its end; a run already over is left
- * as it is (null). `finish` runs in the transaction that marks the run succeeded (a simulation's changes and its draft's
- * hash). A failure marks the run failed with the error's sentence (an ApiError's, else RUN_INTERNAL_ERROR) and throws it.
+ * Runs run `runId` of space `spaceId` on `on` (the worker's workerDb, or the API's db in tests) to its end; a run over
+ * already is left as it is (null). Each business date D: the records' statistics (own transaction), then per side its
+ * intake (own transaction, marker `intake_done`) and that side's new items' statistics (own transaction), then the
+ * passes (marker `done_through` = D). ANALYZE holds a partition's share-update-exclusive lock, so it never runs in a
+ * transaction that also does the work: other configs' steps on the same month don't wait behind ours.
+ *
+ * Every writing transaction takes configLock and the run row FOR UPDATE, and skips what its marker says is done, with
+ * the counters read there: a job delivered twice (a retry while the first is still alive) adds nothing twice. The last
+ * transaction marks the run succeeded only while it is running, then runs `finish` (a simulation's changes and its
+ * draft's hash); a second delivery finds it over and returns null. `signal` aborted → RunAborted between steps. Any
+ * other failure marks the run failed with the error's sentence (an ApiError's, else RUN_INTERNAL_ERROR) and throws it.
  */
-export async function execRun(on: Tx, spaceId: string, runId: string, finish?: (tx: InTx) => Promise<void>): Promise<RunSummary | null> {
+export async function execRun(on: Tx, spaceId: string, runId: string, o: { finish?: (tx: InTx) => Promise<void>; signal?: AbortSignal } = {}): Promise<RunSummary | null> {
   const scope = { spaceIds: [spaceId], userId: null };
   const mine = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId));
   const [run] = await withSpace(scope, (tx) => tx.select().from(reconRuns).where(mine), on);
   if (!run) throw new ApiError("not_found", "This run doesn't exist.");
   if (run.status === "succeeded" || run.status === "failed") return null;
   const configId = run.configId;
-  let counters = run.counters as RunCounters;
   try {
     const { spec, sides } = await withSpace(scope, async (tx) => {
       const [v] = await tx.select({ spec: reconConfigVersions.spec, specHash: reconConfigVersions.specHash }).from(reconConfigVersions)
         .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, run.configVersionId)));
       if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
       if (run.specHash && v.specHash !== run.specHash) throw new ApiError("invalid_state", "The draft changed after this simulation was asked for. Run the simulation again.");
-      if (run.status === "queued") await tx.update(reconRuns).set({ status: "running" }).where(mine);
+      if (run.status === "queued") await tx.update(reconRuns).set({ status: "running" }).where(and(mine, eq(reconRuns.status, "queued")));
       return load(tx, spaceId, ReconSpec.parse(v.spec));
     }, on);
-    if (!counters.passes) counters = emptyCounters(spec);
     const carry = spec.carry_over_days;
     const first = addDays(run.dateFrom, -carry), to = run.dateTo;
     const months = (Number(to.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(first.slice(5, 7)) + 1;
     await on.transaction((tx) => ensureMonthPartitions(tx, reconItems, new Date(`${first}T00:00:00Z`), months));
     const simRunId = run.mode === "simulation" ? runId : null;
+    /** `fn` with the config's lock and the run row locked, when the run is still running; "over" when it is not. */
+    const step = <T>(fn: (tx: InTx, r: RunRow, counters: RunCounters) => Promise<T>) => withSpace(scope, async (tx) => {
+      await configLock(tx, configId);
+      const [r] = await tx.select().from(reconRuns).where(mine).for("update");
+      if (r?.status !== "running") return "over" as const;
+      return fn(tx, r, (r.counters as RunCounters).passes ? (r.counters as RunCounters) : emptyCounters(spec));
+    }, on);
+    const analyze = (table: "records" | "recon_items", lo: string, hi: string, added: number) => on.transaction((tx) => one(tx, analyzeSql(table, lo, hi, added)));
     for (let d = run.doneThrough ? addDays(run.doneThrough, 1) : run.dateFrom; d <= to; d = addDays(d, 1)) {
-      await withSpace(scope, async (tx) => {
-        await configLock(tx, configId);
-        const c: StepCtx = {
-          spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo: addDays(d, -carry), hi: d, current: currentRecord(tx)!,
-        };
-        // planner statistics first (analyzeSql): records a source just took in, then each side's new items
-        // ponytail: ANALYZE holds the partition's share-update-exclusive lock to the step's end, so two configs that
-        // analyze one month wait for each other; analyze in a transaction of its own if that wait shows up.
-        await one(tx, analyzeSql("records", c.lo, c.hi, 0));
-        for (const s of [0, 1] as const) {
-          counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c, s))).n;
-          const n = (await one<{ n: number }>(tx, intakeSql(c, s, spec.sides[s].filter))).n;
+      if (o.signal?.aborted) throw new RunAborted();
+      const lo = addDays(d, -carry), hi = d;
+      const c = (tx: InTx): StepCtx => ({ spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo, hi, current: currentRecord(tx)! });
+      // planner statistics first (analyzeSql): records a source just took in, then each side's new items (side B's
+      // intake checks side A's, and the passes read both)
+      await analyze("records", lo, hi, 0);
+      for (const s of [0, 1] as const) {
+        const tag = `${d}:${sides[s].key}`;
+        const added = await step(async (tx, r, counters) => {
+          if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return 0;
+          counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
+          const n = (await one<{ n: number }>(tx, intakeSql(c(tx), s, spec.sides[s].filter))).n;
           counters.intake[sides[s].key] += n;
-          // side B's intake checks side A's new items, and the passes read both
-          await one(tx, analyzeSql("recon_items", c.lo, c.hi, n));
-        }
-        for (const p of spec.passes) await runPass(tx, c, p, counters.passes[String(p.no)]!);
+          await tx.update(reconRuns).set({ counters, intakeDone: tag }).where(mine);
+          return n;
+        });
+        if (added === "over") return null;
+        if (added) await analyze("recon_items", lo, hi, added);
+      }
+      const passed = await step(async (tx, r, counters) => {
+        if (r.doneThrough && r.doneThrough >= d) return;
+        for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);
-      }, on);
+      });
+      if (passed === "over") return null;
     }
-    await withSpace(scope, async (tx) => {
+    const counters = await step(async (tx, _r, counters) => {
       const open = await tx.select({ side: reconItems.side, n: count() }).from(reconItems).where(and(
         eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), eq(reconItems.status, "open"),
         simRunId ? eq(reconItems.simRunId, simRunId) : sql`${reconItems.simRunId} is null`,
@@ -213,16 +237,19 @@ export async function execRun(on: Tx, spaceId: string, runId: string, finish?: (
       )).groupBy(reconItems.side);
       counters.open = { a: 0, b: 0 };
       for (const r of open) counters.open[r.side as "a" | "b"] = r.n;
-      await finish?.(tx);
-      await tx.update(reconRuns).set({ counters, status: "succeeded", finishedAt: sql`now()` }).where(mine);
-    }, on);
+      // succeeded first (only while running, under the row lock), then what comes with it
+      await tx.update(reconRuns).set({ counters, status: "succeeded", finishedAt: sql`now()` }).where(and(mine, eq(reconRuns.status, "running")));
+      await o.finish?.(tx);
+      return counters;
+    });
+    return counters === "over" ? null : { runId, counters };
   } catch (e) {
+    if (e instanceof RunAborted) throw e;
     // a person reads `error`: an ApiError's sentence, never a query's text (Drizzle's message holds the SQL and its values)
     if (!(e instanceof ApiError)) log.error({ err: errorDetail(e), runId }, "recon run failed");
     await failRun(on, spaceId, runId, e instanceof ApiError ? e.message : RUN_INTERNAL_ERROR);
     throw e;
   }
-  return { runId, counters };
 }
 
 /** Marks run `runId` failed with `error` (a sentence for people) unless it is over already. */
@@ -244,7 +271,6 @@ export async function runRecon(on: Tx, i: RunInput): Promise<RunSummary> {
 // GET …/recons/:configId/runs*: any role of the space reads. A run of another config, or a published version's
 // simulation asked for through its draft's (baseline_of), is 404 here; the draft's run names it.
 
-type RunRow = typeof reconRuns.$inferSelect;
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
 /** ReconRunDto of `rows`: version numbers, baselines and change counts in three queries for the whole page. */
@@ -262,7 +288,7 @@ async function runDtos(tx: InTx, spaceId: string, rows: RunRow[]): Promise<Recon
     const isDraftSim = r.mode === "simulation" && !r.baselineOf;
     const n = (c: SimChange) => changed.find((x) => x.runId === r.id && x.change === c)?.n ?? 0;
     return {
-      id: r.id, configId: r.configId, versionId: r.configVersionId, version: versions.get(r.configVersionId) ?? 0, mode: r.mode as RunMode, status: r.status as RunStatus,
+      id: r.id, configId: r.configId, versionId: r.configVersionId, version: versions.get(r.configVersionId) ?? 0, specHash: r.specHash, mode: r.mode as RunMode, status: r.status as RunStatus,
       from: r.dateFrom, to: r.dateTo, doneThrough: r.doneThrough, counters: r.counters as RunCounters, error: r.error,
       startedAt: r.startedAt.toISOString(), finishedAt: iso(r.finishedAt),
       baseline: b ? { runId: b.id, versionId: b.versionId, version: versions.get(b.versionId) ?? 0 } : null,
@@ -286,6 +312,18 @@ async function runOfConfig(tx: InTx, spaceId: string, configId: string, runId: s
 /** The run as answered (also the answer of a run or simulation request). */
 export async function runRow(tx: InTx, spaceId: string, configId: string, runId: string): Promise<ReconRunDto> {
   return (await runDtos(tx, spaceId, [await runOfConfig(tx, spaceId, configId, runId)]))[0]!;
+}
+
+/**
+ * Version `versionId`'s spec and the spaces its sides' records live in (its own, and a sharing source's), so a records
+ * join uses their primary key (space_id, id, business_date).
+ */
+async function versionRead(tx: InTx, spaceId: string, versionId: string): Promise<{ spec: ReconSpec; recordSpaces: string[] }> {
+  const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, versionId)));
+  const spec = ReconSpec.parse(v!.spec);
+  const found = await readableSources(tx, spaceId, spec.sides.map((s) => s.source_id));
+  return { spec, recordSpaces: [...new Set([spaceId, ...[...found.values()].map((s) => s.spaceId)])] };
 }
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -318,12 +356,7 @@ export function runPage(ctx: Ctx, configId: string, q: ReconRunListQuery): Promi
 export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconRunItemQuery): Promise<Page<ReconRunItemDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
     const run = await runOfConfig(tx, spaceId, configId, runId);
-    const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
-      .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, run.configVersionId)));
-    const spec = ReconSpec.parse(v!.spec);
-    // the sides' sources' spaces, so the records join uses their primary key (space_id, id, business_date)
-    const found = await readableSources(tx, spaceId, spec.sides.map((s) => s.source_id));
-    const recordSpaces = [...new Set([spaceId, ...[...found.values()].map((s) => s.spaceId)])];
+    const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
     const where = and(
       eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId),
       run.mode === "simulation" ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId),
@@ -353,7 +386,7 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
 /** GET …/runs/:runId/changes: a draft simulation's changed pairs (empty for another run), by business date. */
 export function simChangePage(ctx: Ctx, configId: string, runId: string, q: ReconSimChangeQuery): Promise<Page<ReconSimChangeDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
-    await runOfConfig(tx, spaceId, configId, runId);
+    const run = await runOfConfig(tx, spaceId, configId, runId);
     const where = and(eq(reconSimChanges.spaceId, spaceId), eq(reconSimChanges.runId, runId), q.change ? eq(reconSimChanges.change, q.change) : undefined);
     const page = await pageQuery({
       rows: tx.select().from(reconSimChanges).where(where).$dynamic(),
@@ -362,10 +395,15 @@ export function simChangePage(ctx: Ctx, configId: string, runId: string, q: Reco
       query: q, map: (r) => r, on: tx,
     });
     const ids = page.items.flatMap((r) => [r.draftGroupId, r.publishedGroupId]).filter((x): x is string => !!x);
+    // the published version's sides may read other sources than the draft's: both versions' record spaces
+    const baseline = page.items.length ? (await tx.select({ v: reconRuns.configVersionId }).from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.baselineOf, run.id))))[0] : undefined;
+    const recordSpaces = [...new Set([
+      ...(await versionRead(tx, spaceId, run.configVersionId)).recordSpaces, ...(baseline ? (await versionRead(tx, spaceId, baseline.v)).recordSpaces : []),
+    ])];
     const rows = ids.length ? await tx.select({ g: matchGroups, side: matchMembers.side, recordId: reconItems.recordId, ref: records.extRef, amount: records.amountMinor })
       .from(matchGroups).innerJoin(matchMembers, and(eq(matchMembers.spaceId, matchGroups.spaceId), eq(matchMembers.groupId, matchGroups.id)))
       .innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId)))
-      .leftJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
+      .leftJoin(records, and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
       .where(and(eq(matchGroups.spaceId, spaceId), inArray(matchGroups.id, ids))).orderBy(asc(matchMembers.side), asc(reconItems.recordId)) : [];
     const groupOf = (id: string | null) => {
       const ms = rows.filter((r) => r.g.id === id);

@@ -23,6 +23,7 @@ import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { engineHandlers, runJob } from "../../jobs";
+import { RunAborted } from "../../service";
 import { matchGroups, reconItems, reconRuns } from "../../schema";
 import { ccyEq, D, D1, gateSource, gateSpec, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
 
@@ -52,6 +53,22 @@ async function drain(on: Tx = probe): Promise<void> {
       await b.complete(QUEUES.reconHeavy, j.id);
     }
   }
+}
+
+/**
+ * The app role's pool, its transactions counted from 1: `at(n)` "die" fails that one (from there on, the worker died:
+ * nothing more commits, its failure is not written either), "abort" aborts `ctl` and runs it.
+ */
+function proxied(at: (n: number) => "die" | "abort" | null, ctl?: AbortController): Tx {
+  let n = 0;
+  return new Proxy(probe, {
+    get: (target, key, recv) => key !== "transaction" ? Reflect.get(target, key, recv) : (...a: unknown[]) => {
+      const what = at(++n);
+      if (what === "die") return Promise.reject(new Error("worker died"));
+      if (what === "abort") ctl!.abort();
+      return (target.transaction as (...x: unknown[]) => unknown)(...a);
+    },
+  }) as unknown as Tx;
 }
 
 /** Two plain sources of A, published. */
@@ -135,6 +152,19 @@ describe("runs and simulations through the API", () => {
     await drain();
   });
 
+  it("two requests at once (a double click): exactly one run with its job, the other gets the sentence", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
+    const both = await Promise.all([startRun(t.op, r.configId), startRun(t.mk, r.configId)]);
+    expect(both.map((x) => x.status).sort()).toEqual([202, 409]);
+    expect(await message(both.find((x) => x.status === 409)!)).toBe("This recon is already running. Wait for that run to finish, then start another.");
+    const runs = await db.select({ id: reconRuns.id, status: reconRuns.status }).from(reconRuns).where(eq(reconRuns.configId, r.configId));
+    expect(runs.map((x) => x.status)).toEqual(["queued"]);
+    expect((await (await boss()).getJobById(QUEUES.reconHeavy, runs[0]!.id))?.state).toBe("created"); // committed with its row
+    await drain();
+    expect((await getRun(r.configId, runs[0]!.id)).status).toBe("succeeded");
+  });
+
   it("the reaper: a run whose job is over while the run is not is failed at the next request", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
@@ -181,14 +211,12 @@ describe("runs and simulations through the API", () => {
 
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, passes));
     const q = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D1 }));
-    // the worker dies at its 6th transaction: after the run's read, its load, the partitions and the step of D
-    let n = 0;
-    const dying = new Proxy(probe, {
-      get: (target, key, recv) => (key === "transaction" ? (...a: unknown[]) => (++n >= 6 ? Promise.reject(new Error("worker died")) : (target.transaction as (...x: unknown[]) => unknown)(...a)) : Reflect.get(target, key, recv)),
-    }) as unknown as Tx;
-    expect(await runJob(dying, { spaceId: A, runId: q.id }).catch((e: Error) => e.message)).toBe("worker died");
+    // transactions of a run: 1 the job's read, 2 the run's read, 3 its load, 4 partitions; per date: records' statistics,
+    // side A's intake, its statistics, side B's intake, its statistics, the passes (5–10 for D, 11–16 for D1).
+    // The worker dies at its 14th: D done, D1's side A taken in, side B not.
+    expect(await runJob(proxied((n) => (n >= 14 ? "die" : null)), { spaceId: A, runId: q.id }).catch((e: Error) => e.message)).toBe("worker died");
     const mid = await getRun(r.configId, q.id);
-    expect([mid.status, mid.doneThrough, mid.counters.intake]).toEqual(["running", D, { a: 3, b: 3 }]);
+    expect([mid.status, mid.doneThrough, mid.counters.intake]).toEqual(["running", D, { a: 6, b: 3 }]);
     await drain(); // pg-boss hands the job out again
     const done = await getRun(r.configId, q.id);
     expect([done.status, done.doneThrough, done.counters]).toEqual(["succeeded", D1, want]);
@@ -196,6 +224,40 @@ describe("runs and simulations through the API", () => {
     expect(await count(r.configId)).toBe(await count(once.configId));
     await runJob(probe, { spaceId: A, runId: q.id }); // a retry after it ended
     expect([(await getRun(r.configId, q.id)).counters, await count(r.configId)]).toEqual([want, 6]);
+
+    // pg-boss gives the job up (expiry) while D's passes run: the run stops before D1, running, for the retry
+    const r2 = await recon(A, spec(sa.sourceId, sb.sourceId, passes));
+    const q2 = await json<ReconRunDto>(startRun(t.op, r2.configId, { from: D, to: D1 }));
+    const expired = new AbortController();
+    const e = await runJob(proxied((n) => (n === 10 ? "abort" : null), expired), { spaceId: A, runId: q2.id }, expired.signal).catch((x: Error) => x);
+    expect(e).toBeInstanceOf(RunAborted);
+    const stopped = await getRun(r2.configId, q2.id);
+    expect([stopped.status, stopped.doneThrough, stopped.error]).toEqual(["running", D, null]);
+    await drain();
+    expect((await getRun(r2.configId, q2.id)).counters).toEqual(want);
+  });
+
+  it("Focus 3: a job delivered twice at once (two handlers on one simulation) gives one run's counters and changes", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "T1", amount: 100n }, { ref: "T2", amount: 200n }, { ref: "T3", amount: 300n }]);
+    await put(sb, [{ ref: "T1", amount: 100n }, { ref: "T2", amount: 201n }, { ref: "T3", amount: 300n }]);
+    const near = { no: 1, name: "Near", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest", predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1.00" } }, ccyEq] };
+    const outcome = async (twice: boolean) => {
+      const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
+      const v2 = await json<ReconVersionDto>(call("POST", `${base(r.configId)}/versions`, { token: t.mk }));
+      await call("PATCH", `${base(r.configId)}/versions/${v2.id}`, { token: t.mk, body: { spec: spec(sa.sourceId, sb.sourceId, [near]) } });
+      const sim = await json<ReconRunDto>(simulate(t.mk, r.configId, v2.id));
+      const data = { spaceId: A, runId: sim.id };
+      if (twice) await Promise.all([runJob(probe, data), runJob(probe, data)]);
+      await drain();
+      const done = await getRun(r.configId, sim.id);
+      const baselines = await db.select({ id: reconRuns.id }).from(reconRuns).where(eq(reconRuns.baselineOf, sim.id));
+      const groups = (await db.select({ n: sql<number>`count(*)::int` }).from(matchGroups).where(eq(matchGroups.configId, r.configId)))[0]!.n;
+      return [done.status, done.counters, done.changes, baselines.length, groups];
+    };
+    const once = await outcome(false);
+    expect(once).toEqual(["succeeded", expect.anything(), { gained: 1, lost: 0, repaired: 0, kind: 2 }, 1, 5]);
+    expect(await outcome(true)).toEqual(once);
   });
 
   it("a simulation: changes against the published version, submit opens and an edit closes it, the latest kept", async () => {
