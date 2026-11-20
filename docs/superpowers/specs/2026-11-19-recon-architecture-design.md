@@ -192,7 +192,7 @@ FK (mencegah kebocoran lewat error constraint, laporan riset §Space); ID `uuidv
 - Control total header/trailer file divalidasi sebelum data dipakai engine; file yang gagal diblok, bukan dijadikan break.
 
 **Measure opsional (core-recon)**: config mendeklarasikan `measure` = `{ field, unit, scale, tolerance }` atau tidak
-sama sekali. Recon transaksi: `amount_minor` (IDR, skala 2). Saldo efek (KSEI BAL, fase 2): `qty` desimal dipromosikan
+sama sekali. Recon transaksi: `amount_minor` dalam minor unit mata uangnya (skala per mata uang dari ISO 4217: IDR 2, USD 2, JPY 0, KWD 3; toleransi ditulis per mata uang dalam satuan mayor; tanpa konversi FX di fase 1, Plan 3 A2). Saldo efek (KSEI BAL, fase 2): `qty` desimal dipromosikan
 dari `attrs` ke kolom `numeric` terindeks (tidak lewat float). Rekening (KSEI ACT): tanpa measure, match hanya lewat kunci
 (SID). Invarian grup dan predikat amount/qty hanya aktif bila measure dideklarasikan.
 
