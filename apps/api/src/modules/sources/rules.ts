@@ -1,6 +1,6 @@
 import { fieldLabel, recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import type { ConnectionField, DbEngine } from "@starterkit/shared/sources";
-import { type ConnectorErrorKind, NO_TLS_CODES } from "../ingest/connectors/errors";
+import { type ConnectorErrorKind, NO_TLS_CODES } from "../ingest";
 import { specHash } from "../../kernel/versions";
 
 // The version rules every maker-checker module shares live in kernel/versions.ts (sources and recon).
