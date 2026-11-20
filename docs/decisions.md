@@ -487,7 +487,7 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 
 ## DEC-047 — Break lintas hari tetap kandidat dalam jendela carry-over
 
-21 November 2026 — keputusan Captain atas delegasi pemilik, dicatat po-recon. Break yang `business_date`-nya masih di dalam jendela `carry_over_days` (`business_date ≥ run_date − carry_over_days`) tetap menjadi kandidat untuk **semua** pass pada run berikutnya, bukan hanya item `open`. Hasilnya bergantung pada jenis pass yang menemukan pasangan:
+21 November 2026 — keputusan Captain atas delegasi pemilik, dicatat po-recon. Break yang `business_date`-nya masih di dalam jendela `carry_over_days` (`business_date ≥ run_date − carry_over_days`) tetap menjadi kandidat untuk **semua** pass pada run berikutnya, bukan hanya item `open`. **Batas pool** (Captain, 21 Nov): hanya break berasal "No counterpart" (`NEAR_MISS.none`, `apps/api/src/modules/engine/sql/breaks.ts:56`) yang masuk pool lintas hari. Duplicate, suggestion yang tidak dikonfirmasi (DEC-046) dan near-miss ("Currency differs", "Amount differs" di luar toleransi) tetap di luar, karena sudah punya pasangan atau keputusan sendiri. Hasilnya bergantung pada jenis pass yang menemukan pasangan:
 - **Pass `accept: auto`** (`PASS_ACCEPT`, `packages/shared/src/recon.ts:8`): break ditutup sebagai `AUTO_MATCHED_LATE_DATA` tanpa approval; bila hari break sudah sign-off, match dicatat di hari berjalan dengan tautan ke hari beku dan sign-off tidak dibuka ulang (spec §11b).
 - **Pass `accept: suggest`**: break tetap break; pasangan usulan dan pass pengusulnya dilampirkan, dan operator menerimanya dengan "Match pair" satu klik di halaman break (aturan toleransi/approval DEC-046 dan REC-F5 berlaku).
 
