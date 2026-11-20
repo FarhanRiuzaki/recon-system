@@ -105,7 +105,8 @@ suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hany
   intake `currentRecord` per sisi + filter → item `open` (unik per (config, record)); pass berurutan atas item `open`
   saja: exact FIFO (`ROW_NUMBER()` per kunci), toleransi (`CROSS JOIN LATERAL … LIMIT 1` + *mutual unique best*),
   1:N/N:1 group-by + `eq_sum`; ambiguous → `on_ambiguous`; tiap grup menyimpan evidence per predikat (lulus/gagal + delta,
-  alasan tie-break, versi config, run). Mode `simulation` menulis ke tabel bayangan atau ke run yang ditandai dan tidak
+  alasan tie-break, versi config, run). Tanggal bisnis sebuah grup = `business_date` terbaru di antara anggotanya (hari
+  kedua sisi sudah ada); item tanpa pasangan = tanggalnya sendiri — dipakai strip per tanggal dan tutup hari. Mode `simulation` menulis ke tabel bayangan atau ke run yang ditandai dan tidak
   mengubah item live (pilih satu, tulis alasan).
 - Kompilasi pass → SQL di `modules/engine/sql/pass.ts`, unit test SQL ter-pin per operator.
 
