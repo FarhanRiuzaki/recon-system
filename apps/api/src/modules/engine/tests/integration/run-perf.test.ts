@@ -6,7 +6,7 @@
 //   PERF_ANALYZE_RECORDS=1 …   the records analyzed before the run (as autovacuum would have, some time after ingest)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { truncateAll } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
@@ -14,8 +14,8 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { records } from "../../../ingest";
 import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { sources, sourceVersions } from "../../../sources";
-import { spaces } from "../../../spaces";
-import { runRecon } from "../../service";
+import { spaces, withSpace } from "../../../spaces";
+import { classifyUnmatched, runRecon } from "../../service";
 
 const A = Bun.randomUUIDv7();
 const D = "2026-11-02";
@@ -70,6 +70,16 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
       console.log(`run ${n}/side: ${Math.round(performance.now() - t0)} ms`, JSON.stringify(run.counters.passes));
       const offs = Math.floor(n / 33);
       expect(run.counters.passes).toMatchObject({ 1: { matched: n - offs, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: offs, broken: 0 } });
+      // the near-miss classifier at its worst: no pass, every item open with a counterpart (day close, projection)
+      const bare = Bun.randomUUIDv7(), bareV = Bun.randomUUIDv7();
+      const [v] = await db.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(eq(reconConfigVersions.id, versionId));
+      await db.insert(reconConfigs).values({ id: bare, spaceId: A, code: `r-${bare.slice(-12)}`, name: "R" });
+      await db.insert(reconConfigVersions).values({ id: bareV, configId: bare, spaceId: A, version: 1, status: "published", specHash: "h", makerId: A, spec: { ...(v!.spec as object), passes: [] } });
+      await runRecon(probe, { spaceId: A, configId: bare, versionId: bareV, mode: "manual", from: D });
+      const t1 = performance.now();
+      const misses = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { spaceId: A, configId: bare, versionId: bareV, simRunId: null, from: D, to: D }), probe);
+      console.log(`classifier ${n}/side open: ${Math.round(performance.now() - t1)} ms`);
+      expect(misses.length).toBe(2 * n);
     }, 600_000);
   }
 });

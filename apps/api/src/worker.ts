@@ -1,7 +1,7 @@
 // The worker process (spec §6, DEC-035): same image as the API, `bun src/worker.ts`. Runs the job handlers and the
 // cron on pg-boss; its only port is the probe (GET /healthz on API_HOST:WORKER_HEALTH_PORT).
 import { loadWorkerConfig } from "./kernel/config";
-import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, workerAlive } from "./kernel/jobs";
+import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "./kernel/jobs";
 import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
 import { engineHandlers } from "./modules/engine";
@@ -18,7 +18,8 @@ await scheduleEvery(QUEUES.maintenancePartitions, "daily", "10 0 * * *", {});
 await enqueue(QUEUES.maintenancePartitions, {}, { key: "start" });
 // The recon schedule's minute (engine schedule.ts dispatch): starts each due tick or daily run, from state, so a worker
 // that was down catches up on its first minute.
-await scheduleEvery(QUEUES.reconTick, "schedule", "* * * * *", { schedule: true });
+await scheduleEvery(QUEUES.reconSchedule, "schedule", "* * * * *", {});
+await unschedule(QUEUES.reconTick, "schedule"); // its first home (wt/task6 before review): a tick slot each minute
 // 200 while the queue loops are alive (fetched within 60 s or holding a job), else 503; anything else 404.
 const server = Bun.serve({
   hostname: API_HOST,

@@ -226,10 +226,14 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   change (`GET …/runs/{runId}/changes`: gained, lost, re-paired, auto ↔ suggested); when it succeeds on the draft as it
   still is, the draft's `simulatedHash` = its `specHash` (submit opens; an edit closes it again). Only the latest
   simulation of a version is kept, with its changes.
-- Scheduled runs (no route): the worker starts `tick` runs of an interval recon (queue `recon.tick`) and `daily` runs of a
-  daily one (`recon.daily`) through the same one-run-at-a-time check, from the day after the last closed business date
-  (a worker that was down catches up). A run's live items past grace break; after a date's close moment its open items
-  and unconfirmed suggestions become breaks (day close, `recon_days`). Those runs list in `GET …/runs` with their mode.
+- Scheduled runs (no route): a minute job (queue `recon.schedule`) starts `tick` runs of an interval recon (queue
+  `recon.tick`) and `daily` runs of a daily one (`recon.daily`) through the same one-run-at-a-time check, from the day
+  after the last closed business date (a worker that was down catches up); a recon whose last scheduled run failed waits
+  15 minutes (or its interval). A run's live items past grace break; after a date's close moment its open items and
+  unconfirmed suggestions become breaks (day close, `recon_days`), once the run's intake saw every side complete through
+  the date's end, or at close + grace marked incomplete. With carry over > 0 a break for want of a counterpart stays a
+  candidate of every pass of later runs (DEC-047): an automatic pass closes it as `AUTO_MATCHED_LATE_DATA`, a suggesting
+  pass leaves it a break with the pair proposed. Those runs list in `GET …/runs` with their mode.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
 

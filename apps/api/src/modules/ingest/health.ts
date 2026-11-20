@@ -13,7 +13,10 @@
 //   active snapshot stays; the failure shows on the detail). Its lag is shown, not judged: complete_through moves once
 //   a day.
 // - A paused source (its schema changed, spec §7 step 4) writes nothing: Down.
-// Grace and deadline belong to the recon configs (Plan 3); null = none set yet, and that rule is left out.
+// Grace and deadline: the stricter of the source's own (its spec's `health`) and those of the recons that read it
+// (sourceStates). A recon's deadline is the run time of a daily recon that runs a date at least a day later (offset ≥
+// 1): the morning check of yesterday's file or snapshot is exactly its need. A recon that needs the date's data during
+// the date (daily offset 0, interval) sets none. null = none set, and that rule is left out.
 import type { SourceHealthState, SourceKind, SourceStatus } from "@starterkit/shared/sources";
 import type { Calendar } from "./map";
 import { previousBusinessDay, todayIn } from "./rules";

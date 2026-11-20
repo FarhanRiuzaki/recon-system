@@ -15,6 +15,7 @@ export const QUEUES = {
   ingestFile: "ingest.file",
   ingestSnapshot: "ingest.snapshot",
   maintenancePartitions: "maintenance.partitions",
+  reconSchedule: "recon.schedule",
   reconTick: "recon.tick",
   reconDaily: "recon.daily",
   reconHeavy: "recon.heavy",
@@ -24,7 +25,7 @@ export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 /** Jobs of one queue a worker process runs at once, so EOD runs and reruns don't starve the 2-minute ticks. */
 export const CONCURRENCY: Record<QueueName, number> = {
-  "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
+  "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.schedule": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
 };
 
 /**
@@ -37,13 +38,14 @@ export const CONCURRENCY: Record<QueueName, number> = {
  * ingest.pull is chunked per page and gets the same; a snapshot of a whole position per date may take longer.
  * The recon queues (spike S1, docs/recon/spikes.md): a daily run of 3M records per side took 376 s, so recon.daily (one
  * business date) gets 3600 s; recon.heavy runs a manual run or a simulation of up to 31 dates, and a simulation runs the
- * published version over them too: 2 × 31 × 376 s ≈ 6.5 h, so 8 h; recon.tick (p95 1.2 s, catch-up 1.85 s) 600 s. A
+ * published version over them too: 2 × 31 × 376 s ≈ 6.5 h, so 8 h; recon.tick (p95 1.2 s, catch-up 1.85 s) 600 s;
+ * recon.schedule (the minute that starts the scheduled runs, a read of every config) 300 s, one at a time. A
  * handler past its expiry is failed and its signal aborted (JobHandler `signal`): the engine stops between steps.
  */
 export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "ingest.pull": { heartbeatSeconds: 30, expireInSeconds: 1800 }, "ingest.file": { heartbeatSeconds: 30, expireInSeconds: 1800 },
   "ingest.snapshot": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "maintenance.partitions": { heartbeatSeconds: 30, expireInSeconds: 600 },
-  "recon.tick": { heartbeatSeconds: 30, expireInSeconds: 600 },
+  "recon.schedule": { heartbeatSeconds: 30, expireInSeconds: 300 }, "recon.tick": { heartbeatSeconds: 30, expireInSeconds: 600 },
   "recon.daily": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "recon.heavy": { heartbeatSeconds: 30, expireInSeconds: 28_800 }, "breaks.sla": { heartbeatSeconds: 30 },
 };
 

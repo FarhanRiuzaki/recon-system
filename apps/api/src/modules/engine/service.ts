@@ -31,7 +31,7 @@ import { configLock } from "../../kernel/locks";
 import { one as countOne, pageQuery, sortSql } from "../../kernel/pagination";
 import { ensureMonthPartitions } from "../../kernel/partitions";
 import type { Ctx } from "../auth";
-import { currentRecord, records, todayIn } from "../ingest";
+import { currentRecord, records, sourceCursors, todayIn } from "../ingest";
 import { checkReconSpec, reconConfigs, reconConfigVersions } from "../recon";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
@@ -40,7 +40,7 @@ import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql } from "./sql/runs";
-import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
+import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
 /** What a pass did over the run: groups it accepted, groups it suggested, items it broke as ambiguous. */
@@ -65,6 +65,8 @@ export type RunInput = {
   from?: string; to?: string;
 };
 export type RunSummary = { runId: string; counters: RunCounters };
+/** recon_runs.seen: per business date and side, the source's complete_through the run's intake of that date saw. */
+export type Seen = Record<string, Partial<Record<"a" | "b", string | null>>>;
 
 /** The longest range one run covers (Plan 3 Task 3: a day by default, 31 at most). */
 export const RANGE_MAX_DAYS = RUN_RANGE_MAX_DAYS;
@@ -135,6 +137,8 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
   else for (let r = 0; r < ROUNDS_MAX && (await write(acceptSql(c, p), accepted)) > 0; r++);
   if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number }>(tx, tieBreakSql(c, p)));
   else for (let r = 0; r < ROUNDS_MAX && (await write(tieSuggestSql(c, p), "suggested")) > 0; r++);
+  // a break of the carry-over window this pass would suggest a pair for stays a break, with the pair proposed (DEC-047)
+  if (c.late && (p.accept === "suggest" || p.on_ambiguous === "suggest")) await one(tx, proposeSql(c, p));
 }
 
 /** `from`..`to` checked (dates, forwards, at most RANGE_MAX_DAYS); one left out takes the other, both = `today`. */
@@ -243,10 +247,16 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
         for (let more = true; more;) {
           const n = await step(async (tx, r, counters) => {
             if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return null;
+            // the source's complete_through before the intake reads (read committed: the intake sees at least that much);
+            // kept with the last chunk, which took every record its statement saw: day close judges on it (seen)
+            const [cur] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors)
+              .where(and(eq(sourceCursors.spaceId, sides[s].sourceSpaceId), eq(sourceCursors.sourceId, sides[s].sourceId)));
             counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
             const n = (await one<{ n: number }>(tx, intakeSql(c(tx), s, spec.sides[s].filter, chunk))).n;
             counters.intake[sides[s].key] += n;
-            await tx.update(reconRuns).set({ counters, ...(n < chunk ? { intakeDone: tag } : {}) }).where(mine);
+            const seen = (r.seen ?? {}) as Seen;
+            const last = n < chunk ? { intakeDone: tag, seen: { ...seen, [d]: { ...seen[d], [sides[s].key]: cur?.ct?.toISOString() ?? null } } } : {};
+            await tx.update(reconRuns).set({ counters, ...last }).where(mine);
             return n;
           });
           if (n === "over") return null;
@@ -259,7 +269,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
         if (r.doneThrough && r.doneThrough >= d) return;
         for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
         // grace (spec §9 step 4): live runs only; a simulation replays dates, its breaks come from the classifier
-        if (!simRunId) await one(tx, graceSql(c(tx), spec.grace_minutes));
+        if (!simRunId) await one(tx, graceSql(c(tx), spec.grace_minutes, carry));
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);
       });
       if (passed === "over") return null;
@@ -314,8 +324,9 @@ export type NearMiss = { itemId: string; side: "a" | "b"; businessDate: string; 
 /**
  * The near-miss classifier (sql/breaks.ts nearMissSql), the one rule for day close and simulation: every open item of
  * config `configId` with business date `from`..`to`, live (`simRunId` null) or of simulation `simRunId`, with its reason
- * and near pair, judged under version `versionId`'s sides (sources, sign convention) with counterparts from `from` −
- * carry_over_days to `to`. Reads only; on `tx`, a transaction scoped to the config's space (withSpace).
+ * and near pair, judged under version `versionId`'s sides (sources, sign convention), each item against counterparts of
+ * its own date or up to carry_over_days before it (as its date's close sees them). Reads only; on `tx`, a transaction
+ * scoped to the config's space (withSpace).
  */
 export async function classifyUnmatched(tx: InTx, i: { spaceId: string; configId: string; versionId: string; simRunId: string | null; from: string; to: string }): Promise<NearMiss[]> {
   const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
@@ -323,7 +334,7 @@ export async function classifyUnmatched(tx: InTx, i: { spaceId: string; configId
   if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
   const { spec, sides } = await load(tx, i.spaceId, ReconSpec.parse(v.spec));
   const rows = (await tx.execute(nearMissSql({
-    spaceId: i.spaceId, configId: i.configId, simRunId: i.simRunId, sides, current: currentRecord(tx)!, lo: addDays(i.from, -spec.carry_over_days), hi: i.to,
+    spaceId: i.spaceId, configId: i.configId, simRunId: i.simRunId, sides, current: currentRecord(tx)!, carry: spec.carry_over_days,
   }, i.from, i.to))) as unknown as { item_id: string; side: "a" | "b"; business_date: string; reason: NearMissReason; pair_item_id: string | null }[];
   return rows.map((r) => ({ itemId: r.item_id, side: r.side, businessDate: r.business_date, reason: r.reason, pairItemId: r.pair_item_id }));
 }

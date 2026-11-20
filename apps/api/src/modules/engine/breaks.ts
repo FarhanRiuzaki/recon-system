@@ -1,24 +1,31 @@
 // Day close (spec §9 "Tutup hari", DEC-043, DEC-046; minimal in phase 1, sign-off is Plan 5): once a business date's
-// close moment (rules.ts closeMoment) has passed, it waits for every side's source to be complete through the date's
-// end (source_cursors.complete_through); past close + grace_minutes it closes anyway, marked incomplete per side. Its
-// open items become breaks with the near-miss classifier's reason, its unconfirmed suggestions breaks with their pass's
-// reason and their pair kept (sql/days.ts closeDaySql). One transaction under configLock; a date closes once. The
-// engine never writes `records` or source_day_counts here either.
+// close moment (rules.ts closeMoment) has passed, it waits for every side's data to be complete through the date's
+// end; past close + grace_minutes it closes anyway, marked incomplete per side. "Complete" is judged on what the
+// latest successful run's intake of that date saw (recon_runs.seen), never on the cursor now: records that came
+// after that intake are not items yet, and closing on them would lose them (with carry over 0, for good). While a run
+// of the config is queued or running (between its intake and its passes) the date waits too. Its open items become
+// breaks with the near-miss classifier's reason, its unconfirmed suggestions breaks with their pass's reason and their
+// pair kept (sql/days.ts closeDaySql). One transaction under configLock, with the published version; a date closes
+// once. What a close skipped (an item held elsewhere) or a later intake added to a closed date is swept by the next
+// scheduled run (sweepClosed). The engine never writes `records` or source_day_counts here either.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { configLock } from "../../kernel/locks";
-import { currentRecord, endOfDay, sourceCursors } from "../ingest";
+import { currentRecord, endOfDay } from "../ingest";
 import { reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { closeMoment } from "./rules";
-import { reconDays } from "./schema";
-import { addDays, load } from "./service";
+import { reconDays, reconRuns } from "./schema";
+import { addDays, load, type Seen } from "./service";
 import { closeDaySql } from "./sql/days";
 
-/** What closeDay did: closed it now, it waits for data (closing), its close moment hasn't come, it was closed already. */
+/**
+ * What closeDay did: closed it now; it waits (closing: data not complete yet, or a run under way); its close moment
+ * hasn't come (or no version is published); it was closed already.
+ */
 export type DayClose = "closed" | "closing" | "not_due" | "already";
-/** A side whose source was not complete through the date's end when it closed. */
+/** A side whose data was not complete through the date's end when it closed: what its last intake of the date saw. */
 export type IncompleteSide = { side: "a" | "b"; sourceId: string; completeThrough: string | null };
 
 /** The latest closed business date of config `configId` on or after `since` (a run's default range), null when none. */
@@ -28,39 +35,77 @@ export async function lastClosedDay(tx: InTx, spaceId: string, configId: string,
   return r?.d ?? null;
 }
 
-/**
- * Closes business date `d` of config `configId` under version `versionId` (the published one) at `now`, on `on` (the
- * worker's pool). Live items only.
- */
-export async function closeDay(on: Tx, k: { spaceId: string; configId: string; versionId: string }, d: string, now = new Date()): Promise<DayClose> {
+/** What the latest successful live run of config `configId` that took in date `d` saw of each side (null: none did). */
+export async function seenOn(tx: InTx, spaceId: string, configId: string, d: string): Promise<Seen[string] | null> {
+  const [r] = await tx.select({ s: sql<Seen[string] | null>`${reconRuns.seen} -> ${d}::text` }).from(reconRuns)
+    .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId), eq(reconRuns.status, "succeeded"), ne(reconRuns.mode, "simulation"),
+      sql`${reconRuns.seen} -> ${d}::text is not null`))
+    .orderBy(desc(reconRuns.finishedAt)).limit(1);
+  return r?.s ?? null;
+}
+
+/** The published version of config `configId`: its id, spec and sides; null when none is published. */
+async function published(tx: InTx, spaceId: string, configId: string) {
+  const [v] = await tx.select({ id: reconConfigVersions.id, spec: reconConfigVersions.spec }).from(reconConfigVersions)
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
+  return v ? { id: v.id, ...(await load(tx, spaceId, ReconSpec.parse(v.spec))) } : null;
+}
+
+/** A live (not simulation) run of config `configId` is queued or running. */
+async function runUnderWay(tx: InTx, spaceId: string, configId: string): Promise<boolean> {
+  const [r] = await tx.select({ id: reconRuns.id }).from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId),
+    inArray(reconRuns.status, ["queued", "running"]), ne(reconRuns.mode, "simulation"))).limit(1);
+  return !!r;
+}
+
+/** Closes business date `d` of config `k.configId` at `now`, on `on` (the worker's pool), under its published version. */
+export async function closeDay(on: Tx, k: { spaceId: string; configId: string }, d: string, now = new Date()): Promise<DayClose> {
   return withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
     await configLock(tx, k.configId);
     const key = and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.businessDate, d));
     const [day] = await tx.select({ status: reconDays.status }).from(reconDays).where(key);
     if (day?.status === "closed") return "already";
-    const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
-      .where(and(eq(reconConfigVersions.spaceId, k.spaceId), eq(reconConfigVersions.id, k.versionId)));
-    const { spec, sides } = await load(tx, k.spaceId, ReconSpec.parse(v!.spec));
-    const at = closeMoment(spec, d);
+    const v = await published(tx, k.spaceId, k.configId);
+    if (!v) return "not_due";
+    const at = closeMoment(v.spec, d);
     if (now < at) return "not_due";
-    const end = endOfDay(d);
-    const cursors = await tx.select({ spaceId: sourceCursors.spaceId, sourceId: sourceCursors.sourceId, ct: sourceCursors.completeThrough }).from(sourceCursors)
-      .where(or(...sides.map((s) => and(eq(sourceCursors.spaceId, s.sourceSpaceId), eq(sourceCursors.sourceId, s.sourceId)))));
-    const incomplete = sides.flatMap((s): IncompleteSide[] => {
-      const ct = cursors.find((x) => x.spaceId === s.sourceSpaceId && x.sourceId === s.sourceId)?.ct ?? null;
-      return ct && ct >= end ? [] : [{ side: s.key, sourceId: s.sourceId, completeThrough: ct?.toISOString() ?? null }];
+    if (await runUnderWay(tx, k.spaceId, k.configId)) return "closing";
+    const end = endOfDay(d), seen = await seenOn(tx, k.spaceId, k.configId, d);
+    const incomplete = v.sides.flatMap((s): IncompleteSide[] => {
+      const ct = seen?.[s.key] ?? null;
+      return ct && new Date(ct) >= end ? [] : [{ side: s.key, sourceId: s.sourceId, completeThrough: ct }];
     });
-    if (incomplete.length && now.getTime() < at.getTime() + spec.grace_minutes * 60_000) {
+    if (incomplete.length && now.getTime() < at.getTime() + v.spec.grace_minutes * 60_000) {
       if (!day) await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, status: "closing" }).onConflictDoNothing();
       return "closing";
     }
-    const carry = spec.carry_over_days;
-    const [n] = (await tx.execute(closeDaySql({
-      spaceId: k.spaceId, configId: k.configId, simRunId: null, sides, current: currentRecord(tx)!, lo: addDays(d, -carry), hi: d,
-    }))) as unknown as { open: number; suggested: number }[];
+    const carry = v.spec.carry_over_days;
+    const [n] = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as
+      { open: number; suggested: number }[];
     const closed = { status: "closed", incomplete: incomplete.length ? incomplete : null, counters: n, closedAt: sql`now()` } as const;
     await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, ...closed })
       .onConflictDoUpdate({ target: [reconDays.spaceId, reconDays.configId, reconDays.businessDate], set: closed });
     return "closed";
+  }, on);
+}
+
+/**
+ * Closed dates `lo`..`hi` of config `k.configId` again: their open items and unconfirmed suggestions (an item a close
+ * skipped while another transaction held it, a record a later intake took in within carry over) become breaks, so a
+ * closed date keeps none open. Only dates that are closed; their day counters stay as their close wrote them.
+ * Answers { open, suggested } it broke.
+ */
+export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string }, lo: string, hi: string): Promise<{ open: number; suggested: number }> {
+  return withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
+    await configLock(tx, k.configId);
+    const [r] = await tx.select({ lo: sql<string | null>`min(${reconDays.businessDate})::text`, hi: sql<string | null>`max(${reconDays.businessDate})::text` }).from(reconDays)
+      .where(and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.status, "closed"),
+        sql`${reconDays.businessDate} between ${lo}::date and ${hi}::date`));
+    const v = r?.lo && r.hi ? await published(tx, k.spaceId, k.configId) : null;
+    if (!v || !r?.lo || !r.hi) return { open: 0, suggested: 0 };
+    // ponytail: a gap (a date never closed) between closed dates of the window would be swept too; closes run in order
+    const [n] = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: v.spec.carry_over_days }, r.lo, r.hi))) as unknown as
+      { open: number; suggested: number }[];
+    return n!;
   }, on);
 }

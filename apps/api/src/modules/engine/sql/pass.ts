@@ -44,9 +44,10 @@ export type StepCtx = {
   /** ingest's currentRecord over `records` (a record that counts now), built on the step's transaction. */
   current: SQL;
   /**
-   * Carry over > 0 (Task 6, DEC-043): the pool also holds the window's breaks for want of a counterpart (late_match), so
-   * a late counterpart pairs them; such a pair is accepted only automatically and closes the break as
-   * AUTO_MATCHED_LATE_DATA. With carry over 0 (KSEI) a break is never paired by later data.
+   * Carry over > 0 (DEC-047): the pool of every pass also holds the window's breaks for want of a counterpart
+   * (late_match). An automatic pass that pairs a
+   * break closes it as AUTO_MATCHED_LATE_DATA; a suggesting pass leaves it a break with the pair proposed (proposeSql).
+   * With carry over 0 (KSEI) a break never meets later data.
    */
   late: boolean;
 };
@@ -131,7 +132,10 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
   }
 }
 
-/** The statuses of the pool: open, and with `late` the breaks a late counterpart may close. */
+/**
+ * The statuses of the pool: open, and with `late` (carry over > 0) the window's breaks for want of a counterpart
+ * (late_match, DEC-047). A Duplicate or an unconfirmed suggestion's break keeps its own decision and stays out.
+ */
 const poolStatus = (c: StepCtx): SQL => (c.late ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match))` : sql`i.status = 'open'`);
 
 /** Side `s`'s pool items of the window, live or of the step's simulation (the `i` alias of recon_items). */
@@ -272,6 +276,25 @@ export function tieSuggestSql(c: StepCtx, p: PassSpec): SQL {
     from r2 where dist = best_a and dist = best_b),
   acc as materialized (select uuidv7() as gid, o.* from o where fa = 1 and fb = 1 and a_lk and b_lk),
   ${writePairs(c, p, "suggested", sql`${CHOSEN.tie}::text`)}`;
+}
+
+/**
+ * 1:1, a pass that suggests (accept or on_ambiguous suggest), after its own pairs: the pairs it would suggest (each
+ * the other's best and first in record order, as tieSuggestSql) where a member is a break (DEC-047). The break stays
+ * a break; its proposed pair and this pass are written on it (proposed_item_id, proposed_pass), when they change. The
+ * open member stays open for later passes and its own day close. Answers { n } breaks given a proposal.
+ */
+export function proposeSql(c: StepCtx, p: PassSpec): SQL {
+  return sql`with ${candidatesSql(c, p)},
+  ${RANKED},
+  o as (select r2.*, row_number() over (partition by a_id order by ${order("b")}) as fa, row_number() over (partition by b_id order by ${order("a")}) as fb
+    from r2 where dist = best_a and dist = best_b),
+  pr as (select a_id as id, a_bd as bd, b_id as other from o where fa = 1 and fb = 1 and a_lk and b_lk and a_st = 'break'
+    union all select b_id, b_bd, a_id from o where fa = 1 and fb = 1 and a_lk and b_lk and b_st = 'break'),
+  up as (update ${reconItems} i set proposed_item_id = pr.other, proposed_pass = ${p.no}::smallint
+    from pr where i.space_id = ${c.spaceId} and i.id = pr.id and i.business_date = pr.bd and i.status = 'break'
+      and (i.proposed_item_id is distinct from pr.other or i.proposed_pass is distinct from ${p.no}::smallint) returning 1)
+  select count(*)::int as n from up`;
 }
 
 /** A group pass's candidates by one-side item: `one` = the side of single items (N:1: B, 1:N: A). */

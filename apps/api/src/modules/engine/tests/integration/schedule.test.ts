@@ -20,12 +20,14 @@ import { reconHealthInputs, reconSourceUses } from "../../../recon";
 import { calendars } from "../../../sources";
 import { spaceMembers, spaces, withSpace } from "../../../spaces";
 import { users } from "../../../users";
-import { closeDay } from "../../breaks";
+import { holdTx } from "../../../../../test/helpers/db";
+import { reconConfigVersions } from "../../../recon";
+import { closeDay, sweepClosed } from "../../breaks";
 import { RUN_STOPPED } from "../../jobs";
 import { dispatch, runScheduled } from "../../schedule";
 import { reconDays, reconItems, reconRuns } from "../../schema";
-import { createRun, execRun, runRecon, type RunCounters } from "../../service";
-import { ccyEq, D, D1, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
+import { classifyUnmatched, createRun, execRun, runRecon, type RunCounters } from "../../service";
+import { ccyEq, D, D1, makeSource, plainSource, put, recon, spec, type Src, U } from "../fixtures";
 
 type Probe = Awaited<ReturnType<typeof appRoleDb>>;
 let probe: Probe, A: string;
@@ -58,7 +60,7 @@ async function drain(queue: "recon.tick" | "recon.daily", now: Date): Promise<st
   return ran;
 }
 const runOf = async (id: string) => (await db.select().from(reconRuns).where(eq(reconRuns.id, id)))[0]!;
-const itemsOf = (configId: string) => db.select({ side: reconItems.side, status: reconItems.status, reason: reconItems.breakReason, late: reconItems.lateMatch, resolution: reconItems.resolution, ref: records.extRef, date: reconItems.businessDate })
+const itemsOf = (configId: string) => db.select({ id: reconItems.id, breakPass: reconItems.breakPass, proposed: reconItems.proposedItemId, proposedPass: reconItems.proposedPass, side: reconItems.side, status: reconItems.status, reason: reconItems.breakReason, late: reconItems.lateMatch, resolution: reconItems.resolution, ref: records.extRef, date: reconItems.businessDate })
   .from(reconItems).innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
   .where(and(eq(reconItems.configId, configId), sql`${reconItems.simRunId} is null`)).orderBy(asc(records.extRef), asc(reconItems.side));
 
@@ -142,6 +144,7 @@ describe("the schedule", () => {
     await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: "2026-11-01", status: "closed", closedAt: new Date() });
     const stale = Bun.randomUUIDv7();
     await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "daily", from: "2026-11-02", status: "running", id: stale, jobId: Bun.randomUUIDv7() }), probe);
+    await db.update(reconRuns).set({ startedAt: at("2026-11-02T23:30:00") }).where(eq(reconRuns.id, stale)); // the test's clock
     const dates = ["2026-11-02", "2026-11-03", "2026-11-04"];
     for (const [i, d] of dates.entries()) {
       await put(sa, [{ ref: `P${i}`, amount: 10n, date: d }, { ref: `Q${i}`, amount: 20n, date: d }]);
@@ -171,9 +174,9 @@ describe("the schedule", () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1)); // closes right after its 23:30 run, grace 30
     await put(sa, [{ ref: "Z1", amount: 10n, date: D }]);
-    await runRecon(probe, { ...r, mode: "daily", from: D });
     await complete(sa, at("2026-12-01T00:00:00"));
     await complete(sb, at(`${D}T12:00:00`));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, at(`${D}T23:00:00`))).toBe("not_due");
     expect(await closeDay(probe, r, D, at(`${D}T23:45:00`))).toBe("closing");
     const day = () => db.select().from(reconDays).where(eq(reconDays.configId, r.configId));
@@ -182,6 +185,145 @@ describe("the schedule", () => {
     expect(await closeDay(probe, r, D, at(`${D1}T00:00:00`))).toBe("closed");
     expect((await day())[0]!.incomplete).toEqual([{ side: "b", sourceId: sb.sourceId, completeThrough: at(`${D}T12:00:00`).toISOString() }]);
     expect((await itemsOf(r.configId))[0]!.status).toBe("break");
+  }, 60_000);
+});
+
+describe("day close, review round 1", () => {
+  const tolerance = { no: 2, name: "Tolerance", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest",
+    predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1000.00" } }, ccyEq] };
+
+  it("C-1: records that arrive after a run's intake are never closed away (carry over 0); the schedule reruns once the source moved, not before", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0)); // daily at 23:30, offset 0, grace 30
+    await complete(sa, at(`${D}T12:00:00`));
+    await complete(sb, at(`${D}T12:00:00`));
+    await put(sa, [{ ref: "X1", amount: 10n, date: D }]);
+    await put(sb, [{ ref: "X1", amount: 10n, date: D }]);
+    const now = at(`${D}T23:40:00`);
+    const first = await dispatch(db, now);
+    await drain("recon.daily", now); // its close waits: the intake saw both sides complete only through 12:00
+    expect((await db.select({ s: reconDays.status }).from(reconDays).where(eq(reconDays.configId, r.configId))).map((x) => x.s)).toEqual(["closing"]);
+    expect((await runOf(first[0]!)).seen).toEqual({ [D]: { a: at(`${D}T12:00:00`).toISOString(), b: at(`${D}T12:00:00`).toISOString() } });
+    // nothing moved: no new run before close + grace
+    expect(await dispatch(db, at(`${D}T23:41:00`))).toEqual([]);
+    // a pull commits more of D and the cursor past D's end, after that intake: a close on the cursor now would lose X2
+    await put(sa, [{ ref: "X2", amount: 20n, date: D }]);
+    await complete(sa, at(`${D1}T01:00:00`));
+    await complete(sb, at(`${D1}T01:00:00`));
+    expect(await closeDay(probe, r, D, at(`${D}T23:42:00`))).toBe("closing");
+    const second = await dispatch(db, at(`${D}T23:42:00`));
+    expect(second.length).toBe(1);
+    await drain("recon.daily", at(`${D}T23:42:00`));
+    const day = (await db.select().from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!;
+    expect([day.status, day.incomplete]).toEqual(["closed", null]);
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status, i.reason])).toEqual([
+      ["X1", "a", "matched", null], ["X1", "b", "matched", null], ["X2", "a", "break", "No counterpart"],
+    ]);
+  }, 60_000);
+
+  it("C-1: a date waits while a run of the recon is queued or running", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "daily", from: D, status: "queued" }), probe);
+    expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closing");
+    await db.update(reconRuns).set({ status: "failed" }).where(eq(reconRuns.status, "queued"));
+    expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
+  }, 60_000);
+
+  it("I-1: a recon whose last scheduled run failed waits 15 minutes before the next", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    const id = await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "daily", from: D, status: "running" }), probe);
+    await db.update(reconRuns).set({ status: "failed", startedAt: at(`${D}T23:30:00`) }).where(eq(reconRuns.id, id));
+    expect(await dispatch(db, at(`${D}T23:40:00`))).toEqual([]);
+    expect((await dispatch(db, at(`${D}T23:45:00`))).length).toBe(1);
+  }, 60_000);
+
+  it("I-2: a pair across two dates gets the same reasons in a simulation's projection as in the live closes", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));
+    await put(sa, [{ ref: "P1", amount: 100n, date: D }]);
+    await put(sb, [{ ref: "P1", amount: 200n, date: D1 }]);
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    const after = at("2026-12-01T00:00:00");
+    for (const d of [D, D1]) {
+      await runRecon(probe, { ...r, mode: "daily", from: d });
+      expect(await closeDay(probe, r, d, after)).toBe("closed");
+    }
+    const live = (await itemsOf(r.configId)).map((i) => [i.side, i.date, i.reason ?? ""]);
+    expect(live).toEqual([["a", D, "No counterpart"], ["b", D1, "Amount differs"]]);
+    const draft = Bun.randomUUIDv7();
+    await db.insert(reconConfigVersions).values({ id: draft, configId: r.configId, spaceId: A, version: 2, status: "draft", spec: spec(sa.sourceId, sb.sourceId, [exact], 1), specHash: "h2", makerId: U });
+    const sim = await runRecon(probe, { ...r, versionId: draft, mode: "simulation", from: D, to: D1 });
+    const projected = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { ...r, versionId: draft, simRunId: sim.runId, from: D, to: D1 }), probe);
+    expect(projected.map((x) => [x.side, x.businessDate, x.reason])).toEqual(live);
+  }, 60_000);
+
+  it("DEC-047 (carry over 1, two dates): an exact pass closes a break as late data; a suggest pass leaves it a break with the pair proposed", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, tolerance], 1));
+    await put(sa, [{ ref: "E1", amount: 100n, date: D }, { ref: "S1", amount: 100n, date: D }]);
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
+    await put(sb, [{ ref: "E1", amount: 100n, date: D1 }, { ref: "S1", amount: 150n, date: D1 }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D1 });
+    const items = await itemsOf(r.configId);
+    const s1bItem = items.find((i) => i.ref === "S1" && i.side === "b")!;
+    expect(items.map((i) => [i.ref, i.side, i.status, i.resolution, i.proposedPass])).toEqual([
+      ["E1", "a", "matched", "AUTO_MATCHED_LATE_DATA", null], ["E1", "b", "matched", null, null],
+      ["S1", "a", "break", null, 2], ["S1", "b", "open", null, null],
+    ]);
+    expect(items.find((i) => i.ref === "S1" && i.side === "a")!.proposed).toBe(s1bItem.id);
+  }, 60_000);
+
+  it("two closes of one date at once: one closes it, the other finds it closed; counters once", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    await put(sa, [{ ref: "R1", amount: 10n, date: D }]);
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    const after = at("2026-12-01T00:00:00");
+    expect((await Promise.all([closeDay(probe, r, D, after), closeDay(probe, r, D, after)])).sort()).toEqual(["already", "closed"]);
+    expect((await db.select({ c: reconDays.counters }).from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!.c).toEqual({ open: 1, suggested: 0 });
+  }, 60_000);
+
+  it("M-6: an item an operator holds at close stays open, and the next sweep breaks it", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    await put(sa, [{ ref: "H1", amount: 10n, date: D }, { ref: "H2", amount: 20n, date: D }]);
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    const h1 = (await itemsOf(r.configId)).find((i) => i.ref === "H1")!;
+    const hold = await holdTx((tx) => tx.select({ id: reconItems.id }).from(reconItems).where(eq(reconItems.id, h1.id)).for("update"));
+    expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
+    await hold.rollback();
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status])).toEqual([["H1", "open"], ["H2", "break"]]);
+    expect(await sweepClosed(probe, r, D, D)).toEqual({ open: 1, suggested: 0 });
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status, i.reason])).toEqual([["H1", "break", "No counterpart"], ["H2", "break", "No counterpart"]]);
+  }, 60_000);
+
+  it("unconfirmed suggestions at close: a unique one is an Unconfirmed suggestion; a tie is a Duplicate with its pass", async () => {
+    const [sa, sb] = await sides();
+    const suggest = { no: 1, name: "Reference", cardinality: "1:1", blocking: [], accept: "suggest", on_ambiguous: "suggest", predicates: [{ op: "eq", field: "ext_ref" }, ccyEq] };
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [suggest], 0));
+    await put(sa, [{ ref: "U1", amount: 10n, date: D }, { ref: "T1", amount: 10n, date: D }]);
+    await put(sb, [{ ref: "U1", amount: 10n, date: D }, { ref: "T1", amount: 10n, date: D }, { ref: "T1", amount: 10n, date: D }]);
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status, i.reason, i.breakPass])).toEqual([
+      ["T1", "a", "break", "Duplicate", 1], ["T1", "b", "break", "Duplicate", 1], ["T1", "b", "break", "No counterpart", null],
+      ["U1", "a", "break", "Unconfirmed suggestion", null], ["U1", "b", "break", "Unconfirmed suggestion", null],
+    ]);
   }, 60_000);
 });
 

@@ -199,10 +199,8 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => ({
   [QUEUES.reconHeavy]: ({ data, signal }) => runJob(on, data as { spaceId: string; runId: string }, signal),
-  // the schedule's minute (data { schedule: true }) or a tick it started
-  [QUEUES.reconTick]: async ({ data, signal }) => {
-    if ((data as { schedule?: boolean }).schedule) await dispatch(on);
-    else await runScheduled(on, data as { spaceId: string; runId: string }, signal);
-  },
+  // the schedule's minute, and the runs it starts
+  [QUEUES.reconSchedule]: async () => { await dispatch(on); },
+  [QUEUES.reconTick]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
   [QUEUES.reconDaily]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
 });

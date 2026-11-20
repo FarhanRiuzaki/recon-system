@@ -56,14 +56,18 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
 export const NEAR_MISS = { currency: "Currency differs", amount: "Amount differs", date: "Date differs", none: "No counterpart" } as const;
 export type NearMissReason = (typeof NEAR_MISS)[keyof typeof NEAR_MISS];
 
-/** What the classifier reads: the config's items (live or a simulation's), its sides, the counterpart window. */
-export type ClassifyCtx = Pick<StepCtx, "spaceId" | "configId" | "simRunId" | "sides" | "current" | "lo" | "hi">;
+/**
+ * What the classifier reads: the config's items (live or a simulation's), its sides, and carry over: an item's
+ * counterparts are of its own date or up to `carry` days before it (what the pool of its own date's run held).
+ */
+export type ClassifyCtx = Pick<StepCtx, "spaceId" | "configId" | "simRunId" | "sides" | "current"> & { carry: number };
 
 /**
- * Side `s`'s items of `c` (live or the simulation's) with status in `statuses` and business date `from`..`to`, with
- * their record's reference, currency, compared amount (the side's sign convention, as the passes compare) and order fields.
+ * Side `s`'s items of `c` (live or the simulation's) with status in `statuses` and business date `from`..`to` (plus
+ * `only`: a condition on `i`), with their record's reference, currency, compared amount (the side's sign convention,
+ * as the passes compare) and order fields.
  */
-const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: string, to: string): SQL => {
+const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: SQL, to: string, only?: SQL): SQL => {
   const side = c.sides[s];
   return sql`select i.id, i.side, i.business_date as bd, ${records.extRef} as ref, ${records.currency} as ccy, ${comparedAmount(side)} as amt,
       ${records.eventTime} as et, ${records.id} as rid
@@ -71,29 +75,33 @@ const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: string, to: st
       and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current}
     where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status in (${statuses})
       and ${c.simRunId === null ? sql`i.sim_run_id is null` : sql`i.sim_run_id = ${c.simRunId}`}
-      and i.business_date between ${from}::date and ${to}::date`;
+      and i.business_date between ${from} and ${to}::date${only ? sql` and ${only}` : sql``}`;
 };
 
 /**
  * The near-miss classifier (one rule for day close and simulation, Captain): every open item of business dates
- * `from`..`to` with the reason it has no pair and, where there is one, its near pair. Reads only. The near pair is the
- * other side's unpaired item (open or break) of the window `c.lo`..`c.hi` with the same reference, the closest first:
- * same currency, then the smallest amount difference, then the nearest date, then record order. Its reason is the
- * first field that differs: currency, amount (compared amounts, each side's sign convention), business date. No item
- * with that reference on the other side, or one that differs in none of the three (it failed another predicate, or
- * an operator holds it) = "No counterpart" without a pair. Rows: item_id, side, business_date, reason, pair_item_id.
+ * `from`..`to` (and `only`, a condition on its `i`, for a few) with the reason it has no pair and, where there is one,
+ * its near pair. Reads only. The near pair is the other side's unpaired item (open or break) with the same reference,
+ * of the item's date or up to carry over days before it (so a simulation over several dates judges each item as its
+ * own date's close does), the closest first: same currency, then the smallest amount difference, then the nearest
+ * date, then record order. Its reason is the first field that differs: currency, amount (compared amounts, each side's
+ * sign convention), business date. No item with that reference on the other side, or one that differs in none of the
+ * three (it failed another predicate, or an operator holds it) = "No counterpart" without a pair. One hash join on the
+ * reference, no scan per item. Rows: item_id, side, business_date, reason, pair_item_id.
  */
-export function nearMissSql(c: ClassifyCtx, from: string, to: string): SQL {
+export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL): SQL {
   const open = sql`'open'`, unpaired = sql`'open', 'break'`;
-  return sql`with m as materialized (${sideItems(c, 0, open, from, to)} union all ${sideItems(c, 1, open, from, to)}),
-  o as materialized (${sideItems(c, 0, unpaired, c.lo, c.hi)} union all ${sideItems(c, 1, unpaired, c.lo, c.hi)}),
-  k as (select m.id, m.side, m.bd, p.id as pid, case
-      when p.id is null then null
-      when p.ccy is distinct from m.ccy then ${NEAR_MISS.currency}
-      when p.amt is distinct from m.amt then ${NEAR_MISS.amount}
-      when p.bd <> m.bd then ${NEAR_MISS.date} end as reason
-    from m left join lateral (select o.* from o where o.side <> m.side and o.ref = m.ref
-      order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid limit 1) p on true)
+  const lo = sql`(${from}::date - ${c.carry}::int)`;
+  return sql`with m as materialized (${sideItems(c, 0, open, sql`${from}::date`, to, only)} union all ${sideItems(c, 1, open, sql`${from}::date`, to, only)}),
+  o as materialized (${sideItems(c, 0, unpaired, lo, to)} union all ${sideItems(c, 1, unpaired, lo, to)}),
+  p as (select m.id, m.side, m.bd, o.id as pid, case
+      when o.id is null then null
+      when o.ccy is distinct from m.ccy then ${NEAR_MISS.currency}
+      when o.amt is distinct from m.amt then ${NEAR_MISS.amount}
+      when o.bd <> m.bd then ${NEAR_MISS.date} end as reason,
+      row_number() over (partition by m.id order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid) as rn
+    from m left join o on o.ref = m.ref and o.side <> m.side and o.bd between m.bd - ${c.carry}::int and m.bd),
+  k as (select * from p where rn = 1)
   select id as item_id, side, bd::text as business_date, coalesce(reason, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
   from k order by bd, side, id`;
 }

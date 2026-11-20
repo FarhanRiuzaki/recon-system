@@ -45,6 +45,12 @@ export const reconRuns = pgTable("recon_runs", {
    * text): a step's intake commits before its passes (statistics in between), and a second delivery skips it.
    */
   intakeDone: text("intake_done"),
+  /**
+   * Per business date and side, the source's complete_through read just before that side's intake of the date
+   * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close
+   * judges completeness on it, never on the cursor now (records that came after the intake are not items yet).
+   */
+  seen: jsonb("seen"),
   baselineOf: uuid("baseline_of"),
   /** The job that runs it (pg-boss id; null = run in process): a run whose job is over while it is not is failed (reaper). */
   jobId: uuid("job_id"),
@@ -78,12 +84,22 @@ export const reconItems = pgTable("recon_items", {
   /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break or none. */
   breakPass: smallint("break_pass"),
   /**
-   * A break for want of a counterpart (grace or day close, Task 6): a later run whose pool reaches its date (carry over
-   * > 0) may still pair it, and then closes it as AUTO_MATCHED_LATE_DATA (`resolution`). False for every other break.
+   * A break for want of a counterpart (grace or day close, Task 6): within carry over it stays a candidate of every
+   * pass of later runs (DEC-047). False for a break that carries its own decision: a pass's ambiguity (Duplicate) or
+   * an unconfirmed suggestion with its pair kept.
    */
   lateMatch: boolean("late_match").notNull().default(false),
-  /** How a break was resolved; the engine writes only AUTO_MATCHED_LATE_DATA (the rest is Plan 5's). */
+  /**
+   * How a break was resolved; the engine writes only AUTO_MATCHED_LATE_DATA (a break within carry over that an
+   * automatic pass paired, DEC-047); the rest is Plan 5's.
+   */
   resolution: text("resolution"),
+  /**
+   * A break within carry over that a suggesting pass of a later run paired (DEC-047): it stays a break, with the item
+   * proposed as its pair and that pass, for "Match pair" (Plan 5). Rewritten while the proposal changes.
+   */
+  proposedItemId: uuid("proposed_item_id"),
+  proposedPass: smallint("proposed_pass"),
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -93,7 +109,7 @@ export const reconItems = pgTable("recon_items", {
   // the pool of a pass: open items of a config's side in a business-date window, live or of one simulation
   index("recon_items_open").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'open'`),
   index("recon_items_config_date").on(t.spaceId, t.configId, t.businessDate),
-  // the breaks a late counterpart may still close, read by the pool beside the open items when carry over > 0
+  // the breaks for want of a counterpart in the carry-over window, read by every pass beside the open items (DEC-047)
   index("recon_items_late").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'break' and ${t.lateMatch}`),
   // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
   index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
