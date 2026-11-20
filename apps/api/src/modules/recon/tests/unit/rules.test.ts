@@ -124,6 +124,10 @@ describe("checkReconSpec", () => {
     expect(settle({}).errors).toEqual([]);
     expect(settle({ blocking: [] }).errors).toEqual(["Pass 4: A 1:N or N:1 pass groups records by a matching key. Add one, such as a settlement reference."]);
     expect(settle({ predicates: [{ op: "eq", field: "currency" }] }).errors).toEqual(["Pass 4: A 1:N or N:1 pass needs one group sum condition."]);
+    // phase 1: a group pass matches automatically or raises breaks, never suggests (Plan 3 Task 2 review, I4)
+    const only = ["Pass 4 groups several items; it can only match automatically or raise breaks in this release."];
+    expect(settle({ accept: "suggest" }).errors).toEqual(only);
+    expect(settle({ on_ambiguous: "suggest" }).errors).toEqual(only);
     // a group across days is held to carry over as a pair is
     const wide = settle({ predicates: [{ op: "eq_sum", field: "amount_minor" }, { op: "eq", field: "currency" }, { op: "date_window", field: "business_date", days: 2 }] });
     expect(wide.gates).toEqual(["Pass 4 allows dates 2 days apart, but carry over is 1 day: groups across days never meet in a daily run. Set carry over to 2 days."]);
@@ -169,6 +173,18 @@ describe("checkReconSpec", () => {
       ["account_ref", "amount_minor", "attrs.settlement_ref", "business_date", "currency", "ext_ref"],
       ["amount_minor", "business_date", "currency", "direction", "ext_ref"],
     ]);
+  });
+
+  it("a side reads its amount as it is or negated (amount_sign); negating needs an amount, which it then uses", () => {
+    expect(parse(gate(A, B)).sides.map((x) => x.amount_sign)).toEqual(["as_is", "as_is"]);
+    const g = gate(A, B);
+    g.sides[1] = { ...g.sides[1], amount_sign: "negate" } as never;
+    expect(check(g).errors).toEqual([]);
+    expect(usedFields(parse(g))[1]).toContain("amount_minor");
+    const noAmount = SourceSpec.parse({ ...sourceSpec(2), mapping: { ...sourceSpec(2).mapping, amount_minor: undefined } });
+    const n = check(g, [src(1), { spec: noAmount, currencies: [] }]);
+    expect(n.errors).toContain("Side B: Source 2 has no amount to negate. Map an amount in its source or read the sign as it is.");
+    expect(() => parse({ ...gate(A, B), passes: [{ ...gate(A, B).passes[0], min_score: 0.5 }] })).toThrow();
   });
 
   it("a filter on direction names debit or credit, as records store it", () => {

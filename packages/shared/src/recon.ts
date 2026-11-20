@@ -7,6 +7,8 @@ export const CARDINALITIES = ["1:1", "1:N", "N:1"] as const;
 export type Cardinality = (typeof CARDINALITIES)[number];
 export const PASS_ACCEPT = ["auto", "suggest"] as const;
 export const ON_AMBIGUOUS = ["break", "suggest"] as const;
+/** How a side's signed amount is read when amounts are compared: as it is, or negated (spec §8 measure). */
+export const AMOUNT_SIGNS = ["as_is", "negate"] as const;
 /** The match operators (spec §10, closed): each compiles to one SQL fragment in modules/engine/sql (Plan 3 Task 2). */
 export const OPERATORS = ["eq", "eq_normalized", "amount_abs_tol", "amount_pct_tol", "date_window", "bday_window", "contains", "similarity", "eq_sum"] as const;
 export type Operator = (typeof OPERATORS)[number];

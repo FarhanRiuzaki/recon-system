@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RECON_SORTS, RECON_VERSION_SORTS } from "../paging";
 import {
-  CARDINALITIES, CLOCK_TIME, FIELD_REF, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
+  AMOUNT_SIGNS, CARDINALITIES, CLOCK_TIME, FIELD_REF, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, toMinor, VERSION_STATUSES } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -57,12 +57,18 @@ export const Filter = z.union([
 ]);
 export type Filter = z.infer<typeof Filter>;
 
-/** A side: the records of one source (its own space's, or one shared to it), through its filters. */
+/**
+ * A side: the records of one source (its own space's, or one shared to it), through its filters. `amount_sign`: how
+ * the engine reads this side's signed amount when it compares amounts (`negate` when this side books the same money
+ * with the opposite sign, such as a debit on A against a credit on B); a match then means side A's sum equals side
+ * B's.
+ */
 export const SideSpec = z.strictObject({
   key: z.enum(["a", "b"]),
   label: z.string().trim().min(1).max(64),
   source_id: z.uuid(),
   filter: z.array(Filter).max(20).default([]),
+  amount_sign: z.enum(AMOUNT_SIGNS).default("as_is"),
 });
 export type SideSpec = z.infer<typeof SideSpec>;
 
@@ -70,8 +76,10 @@ export type SideSpec = z.infer<typeof SideSpec>;
  * A pass (spec §10): candidates found through `blocking` (side A's field equal to side B's), judged by every
  * predicate. A group pass compares the sum of its many side with its one side (`eq_sum`) per blocking key: N:1 = many
  * records of side A to one of side B, 1:N = one of side A to many of side B. A group pass without a date predicate
- * spans every open date within carry over (a settlement on D+1 meets its transactions of D). Only a mutual unique best
- * pair is accepted as `accept` says; any other candidate follows `on_ambiguous`.
+ * spans every open date within carry over (a settlement on D+1 meets its transactions of D); in this release it only
+ * matches automatically or raises breaks (checkReconSpec). A 1:1 pass accepts, as `accept` says, a mutual unique best
+ * pair, and for a pass of equalities only the duplicates of a key paired in order when both sides hold as many; any
+ * other candidate follows `on_ambiguous`.
  */
 export const PassSpec = z.strictObject({
   no: z.number().int().min(1).max(PASSES_MAX),
@@ -81,7 +89,6 @@ export const PassSpec = z.strictObject({
   predicates: z.array(Predicate).min(1).max(20),
   accept: z.enum(PASS_ACCEPT),
   on_ambiguous: z.enum(ON_AMBIGUOUS),
-  min_score: z.number().min(0).max(1).optional(),
 });
 export type PassSpec = z.infer<typeof PassSpec>;
 

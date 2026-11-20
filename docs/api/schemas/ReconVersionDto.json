@@ -132,13 +132,22 @@
                       }
                     ]
                   }
+                },
+                "amount_sign": {
+                  "default": "as_is",
+                  "type": "string",
+                  "enum": [
+                    "as_is",
+                    "negate"
+                  ]
                 }
               },
               "required": [
                 "key",
                 "label",
                 "source_id",
-                "filter"
+                "filter",
+                "amount_sign"
               ],
               "additionalProperties": false
             },
@@ -248,13 +257,22 @@
                       }
                     ]
                   }
+                },
+                "amount_sign": {
+                  "default": "as_is",
+                  "type": "string",
+                  "enum": [
+                    "as_is",
+                    "negate"
+                  ]
                 }
               },
               "required": [
                 "key",
                 "label",
                 "source_id",
-                "filter"
+                "filter",
+                "amount_sign"
               ],
               "additionalProperties": false
             }
@@ -747,11 +765,6 @@
                   "break",
                   "suggest"
                 ]
-              },
-              "min_score": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
               }
             },
             "required": [

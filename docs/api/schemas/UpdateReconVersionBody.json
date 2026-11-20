@@ -115,6 +115,14 @@
                       }
                     ]
                   }
+                },
+                "amount_sign": {
+                  "default": "as_is",
+                  "type": "string",
+                  "enum": [
+                    "as_is",
+                    "negate"
+                  ]
                 }
               },
               "required": [
@@ -230,6 +238,14 @@
                       }
                     ]
                   }
+                },
+                "amount_sign": {
+                  "default": "as_is",
+                  "type": "string",
+                  "enum": [
+                    "as_is",
+                    "negate"
+                  ]
                 }
               },
               "required": [
@@ -727,11 +743,6 @@
                   "break",
                   "suggest"
                 ]
-              },
-              "min_score": {
-                "type": "number",
-                "minimum": 0,
-                "maximum": 1
               }
             },
             "required": [

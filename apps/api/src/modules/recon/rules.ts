@@ -65,6 +65,7 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
   spec.sides.forEach((side, i) => {
     const place = placeOf(["sides", i]);
     if (!fields[i]) return at(place, `${sources[i]!.name ?? side.label} has no published version yet.`);
+    if (side.amount_sign === "negate" && !fields[i]!.has("amount_minor")) at(place, `${side.label} has no amount to negate. Map an amount in its source or read the sign as it is.`);
     side.filter.forEach((f, j) => {
       const r = fields[i]!.get(f.field);
       if (!r) return at(placeOf(["sides", i, "filter", j]), `${side.label} has no field ${fieldLabel(f.field)}.`);
@@ -109,6 +110,7 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
       if (q.op === "eq_sum" && p.cardinality === "1:1") at(place, "A group sum needs a 1:N or N:1 pass.");
     });
     if (p.cardinality !== "1:1") {
+      if (p.accept === "suggest" || p.on_ambiguous === "suggest") errors.push(`Pass ${p.no} groups several items; it can only match automatically or raise breaks in this release.`);
       if (!p.blocking.length) at(pass, "A 1:N or N:1 pass groups records by a matching key. Add one, such as a settlement reference.");
       if (p.predicates.filter((q) => q.op === "eq_sum").length !== 1) at(pass, "A 1:N or N:1 pass needs one group sum condition.");
     }
@@ -135,14 +137,15 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 
 /**
  * The fields each side's records must keep while the recon is published (Plan 3 A4), per side, sorted: the side's own
- * filters, its field of every matching key and condition, the measure, and direction when the side's source maps it
- * (the amount's sign comes from it).
+ * filters, its field of every matching key and condition, the measure, direction when the side's source maps it
+ * (the amount's sign comes from it), and the amount when the side negates it.
  */
 export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, boolean] = [false, false]): [string[], string[]] {
   const pairs = spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]);
   const of = (i: 0 | 1) => [...new Set([
     ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)),
     ...(spec.measure ? [spec.measure.field] : []), ...(directionMapped[i] ? ["direction"] : []),
+    ...(spec.sides[i].amount_sign === "negate" ? ["amount_minor"] : []),
   ])].sort();
   return [of(0), of(1)];
 }
