@@ -1,0 +1,717 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReconVersionDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "in_review",
+        "published",
+        "retired"
+      ]
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "sides": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "source_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "filter": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "eq",
+                              "ne"
+                            ]
+                          },
+                          "value": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "in",
+                              "not_in"
+                            ]
+                          },
+                          "values": {
+                            "minItems": 1,
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op",
+                          "values"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "is_null",
+                              "not_null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "source_id",
+                "filter"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64
+                },
+                "source_id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
+                "filter": {
+                  "default": [],
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "eq",
+                              "ne"
+                            ]
+                          },
+                          "value": {
+                            "type": "string",
+                            "maxLength": 200
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op",
+                          "value"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "in",
+                              "not_in"
+                            ]
+                          },
+                          "values": {
+                            "minItems": 1,
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "maxLength": 200
+                            }
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op",
+                          "values"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string",
+                            "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                          },
+                          "op": {
+                            "type": "string",
+                            "enum": [
+                              "is_null",
+                              "not_null"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "op"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "label",
+                "source_id",
+                "filter"
+              ],
+              "additionalProperties": false
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "passes": {
+          "default": [],
+          "maxItems": 20,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "no": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "cardinality": {
+                "type": "string",
+                "enum": [
+                  "1:1",
+                  "1:N",
+                  "N:1"
+                ]
+              },
+              "blocking": {
+                "default": [],
+                "maxItems": 5,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                }
+              },
+              "predicates": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "eq"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "eq_normalized"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "amount_abs_tol"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "tolerance": {
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "pattern": "^\\d{1,15}(\\.\\d{1,6})?$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "tolerance"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "amount_pct_tol"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "percent": {
+                          "type": "string",
+                          "pattern": "^(100(\\.0+)?|\\d{1,2}(\\.\\d{1,4})?)$"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "percent"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "date_window"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "days": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 31
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "days"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "bday_window"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "days": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 31
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "days"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "contains"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "similarity"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "min": {
+                          "type": "number",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "min"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "op": {
+                          "type": "string",
+                          "const": "eq_sum"
+                        },
+                        "field": {
+                          "type": "string",
+                          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+                        },
+                        "tolerance": {
+                          "default": {},
+                          "type": "object",
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "additionalProperties": {
+                            "type": "string",
+                            "pattern": "^\\d{1,15}(\\.\\d{1,6})?$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "op",
+                        "field",
+                        "tolerance"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "accept": {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "suggest"
+                ]
+              },
+              "on_ambiguous": {
+                "type": "string",
+                "enum": [
+                  "break",
+                  "suggest"
+                ]
+              },
+              "min_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "no",
+              "name",
+              "cardinality",
+              "blocking",
+              "predicates",
+              "accept",
+              "on_ambiguous"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "measure": {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+            }
+          },
+          "required": [
+            "field"
+          ],
+          "additionalProperties": false
+        },
+        "grace_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1440
+        },
+        "carry_over_days": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 31
+        },
+        "close_at": {
+          "type": "string",
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "schedule": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "interval"
+                },
+                "every_minutes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1440
+                }
+              },
+              "required": [
+                "kind",
+                "every_minutes"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "daily"
+                },
+                "at": {
+                  "type": "string",
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "business_date_offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 7
+                }
+              },
+              "required": [
+                "kind",
+                "at",
+                "business_date_offset"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "sides",
+        "passes",
+        "grace_minutes",
+        "carry_over_days",
+        "close_at",
+        "schedule"
+      ],
+      "additionalProperties": false
+    },
+    "specHash": {
+      "type": "string"
+    },
+    "makerId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "contributorIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "submitterId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "submittedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "checkerId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewComment": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "publishedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "simulatedHash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "status",
+    "spec",
+    "specHash",
+    "makerId",
+    "contributorIds",
+    "submitterId",
+    "submittedAt",
+    "checkerId",
+    "reviewComment",
+    "publishedAt",
+    "simulatedHash",
+    "warnings",
+    "createdAt",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}

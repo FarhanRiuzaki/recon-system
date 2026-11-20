@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Filter",
+  "anyOf": [
+    {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "ne"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 200
+        }
+      },
+      "required": [
+        "field",
+        "op",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "in",
+            "not_in"
+          ]
+        },
+        "values": {
+          "minItems": 1,
+          "maxItems": 100,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "required": [
+        "field",
+        "op",
+        "values"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "is_null",
+            "not_null"
+          ]
+        }
+      },
+      "required": [
+        "field",
+        "op"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

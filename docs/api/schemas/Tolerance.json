@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Tolerance",
+  "type": "object",
+  "propertyNames": {
+    "type": "string"
+  },
+  "additionalProperties": {
+    "type": "string",
+    "pattern": "^\\d{1,15}(\\.\\d{1,6})?$"
+  }
+}

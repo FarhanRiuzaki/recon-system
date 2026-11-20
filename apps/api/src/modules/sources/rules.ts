@@ -1,3 +1,4 @@
+import { fieldLabel, recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import type { DbEngine } from "@starterkit/shared/sources";
 import { specHash } from "../../kernel/versions";
 
@@ -54,3 +55,27 @@ export function testSentence(engine: DbEngine, f: TestFound): string {
  */
 export const defaultRefused = (database: string, code: string | null) =>
   `The database list couldn't be loaded: this account can't open the default database ${database}${code ? ` (${code})` : ""}. Type the database name instead.`;
+
+/**
+ * The record fields `next` drops or retypes against the published `before` (Plan 3 A4): gone, of another kind, or read
+ * from a source field whose declared type changed. `label` names it as the person editing the source knows it: the
+ * source field it was read from, else the field's own label.
+ */
+export function fieldChanges(before: SourceSpecLike, next: SourceSpecLike): { ref: string; label: string }[] {
+  const after = recordFields(next);
+  return [...recordFields(before)].filter(([ref, b]) => {
+    const a = after.get(ref);
+    return !a || a.kind !== b.kind || (b.fromType !== null && a.fromType !== null && a.fromType !== b.fromType);
+  }).map(([ref, b]) => ({ ref, label: b.from ?? fieldLabel(ref) }));
+}
+
+/** Why a source version can't go ahead: each field it drops or retypes and the published recons that read it. */
+export function usedBySentence(changes: { ref: string; label: string }[], used: Map<string, string[]>): string | null {
+  const byLabel = new Map<string, Set<string>>();
+  for (const c of changes) for (const n of used.get(c.ref) ?? []) byLabel.set(c.label, (byLabel.get(c.label) ?? new Set()).add(n));
+  const lines = [...byLabel].map(([label, names]) => {
+    const list = [...names].sort();
+    return `Field ${label} is used by ${list.length} published recon${list.length === 1 ? "" : "s"}: ${list.join(", ")}.`;
+  });
+  return lines.length ? lines.join(" ") : null;
+}

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReconRowDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "spaceId": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused"
+      ]
+    },
+    "publishedVersion": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "createdAt": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "spaceId",
+    "code",
+    "name",
+    "status",
+    "publishedVersion",
+    "createdAt"
+  ],
+  "additionalProperties": false
+}

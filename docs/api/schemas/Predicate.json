@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Predicate",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "eq"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        }
+      },
+      "required": [
+        "op",
+        "field"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "eq_normalized"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        }
+      },
+      "required": [
+        "op",
+        "field"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "amount_abs_tol"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "tolerance": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^\\d{1,15}(\\.\\d{1,6})?$"
+          }
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "tolerance"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "amount_pct_tol"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "percent": {
+          "type": "string",
+          "pattern": "^(100(\\.0+)?|\\d{1,2}(\\.\\d{1,4})?)$"
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "percent"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "date_window"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 31
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "days"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "bday_window"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 31
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "days"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "contains"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        }
+      },
+      "required": [
+        "op",
+        "field"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "similarity"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "min": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "min"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "op": {
+          "type": "string",
+          "const": "eq_sum"
+        },
+        "field": {
+          "type": "string",
+          "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+        },
+        "tolerance": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^\\d{1,15}(\\.\\d{1,6})?$"
+          }
+        }
+      },
+      "required": [
+        "op",
+        "field",
+        "tolerance"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

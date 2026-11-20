@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FieldRef",
+  "type": "string",
+  "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+}

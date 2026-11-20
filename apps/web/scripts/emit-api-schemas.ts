@@ -19,6 +19,7 @@ import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
+import * as recon from "@starterkit/shared/contracts/recon";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
 import * as users from "@starterkit/shared/contracts/users";
@@ -53,13 +54,15 @@ const COMPOSED = {
   SourceSnapshotPage: pageOf(sources.SourceSnapshotDto),
   QuarantinePage: pageOf(sources.QuarantineRowDto),
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
+  ReconPage: pageOf(recon.ReconRowDto),
+  ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [audit, auth, common, dashboard, me, projects, rbac, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [audit, auth, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -111,6 +114,13 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
   "source.discard": ["source", "`{ code, name, kind }`", "–"],
   "source.run": ["source", "–", "`{ businessDate }` (the snapshot date pulled again, or null for a pull or scan)"],
+  "recon.create": ["recon", "–", "`{ code, name, version, specHash }` (the recon and its draft version 1)"],
+  "recon.version_create": ["recon", "–", "`{ version, from }` (`from` = the published version copied)"],
+  "recon.version_update": ["recon", "`{ version, specHash }`", "`{ version, specHash }`"],
+  "recon.version_submit": ["recon", "–", "`{ version, specHash }`"],
+  "recon.version_approve": ["recon", "–", "`{ version, specHash, retired }` (`retired` = the version it replaced, or null)"],
+  "recon.version_reject": ["recon", "–", "`{ version, comment }`"],
+  "recon.discard": ["recon", "`{ code, name }`", "–"],
 };
 
 export const README = path.join(path.dirname(SCHEMA_DIR), "README.md");

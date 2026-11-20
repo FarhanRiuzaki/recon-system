@@ -58,6 +58,9 @@ export const ACTION_LABEL = {
   "source.version_update": "Source version edited", "source.version_submit": "Source version submitted", "source.version_approve": "Source version approved",
   "source.version_reject": "Source version rejected", "source.share": "Source shared", "source.unshare": "Source share removed", "source.discard": "Draft source deleted",
   "source.run": "Source pull started",
+  "recon.create": "Recon created", "recon.version_create": "Recon version drafted", "recon.version_update": "Recon version edited",
+  "recon.version_submit": "Recon version submitted", "recon.version_approve": "Recon version approved", "recon.version_reject": "Recon version rejected",
+  "recon.discard": "Draft recon deleted",
 } satisfies Record<string, string>;
 /** An action of the vocabulary (what the API records). */
 export type ActivityAction = keyof typeof ACTION_LABEL;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SourceSpec, UpdateSourceVersionBody as UpdateBody } from "@starterkit/shared/contracts/sources";
-import { canStep, defaultRefused, readsDifferently, shortVersion, specHash, specIssue, type TestFound, testSentence } from "../../rules";
+import { canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, type TestFound, testSentence, usedBySentence } from "../../rules";
 import { ksei } from "../spec";
 
 describe("specHash", () => {
@@ -119,5 +119,31 @@ describe("testSentence (REC-F2a: what a passing test found)", () => {
   });
   it("a refused default database names it, quotes the code and says what to do", () => {
     expect(defaultRefused("postgres", "42501")).toBe("The database list couldn't be loaded: this account can't open the default database postgres (42501). Type the database name instead.");
+  });
+});
+
+describe("fieldChanges and usedBySentence (Plan 3 A4)", () => {
+  /** KSEI ACT with an amount and a settlement reference, so a recon can read both. */
+  const sourceSpec = (_n: 1) => {
+    const k = ksei();
+    return {
+      ...k, currency: "IDR",
+      fields: [...k.fields, { name: "amount", type: "decimal" as const, nullable: false, trim: true }, { name: "settlement_ref", type: "string" as const, nullable: true, trim: true }],
+      mapping: { ...k.mapping, ext_ref: { field: "sid" }, amount_minor: { field: "amount", unit: "major" as const }, account_ref: { field: "sid" } as { field: string } | { cel: string }, attrs: { settlement_ref: { field: "settlement_ref" } } as Record<string, { field: string }> },
+    };
+  };
+  const before = SourceSpec.parse(sourceSpec(1));
+  it("a record field gone, of another kind or read from a retyped source field; nothing for the same spec", () => {
+    expect(fieldChanges(before, before)).toEqual([]);
+    const s = sourceSpec(1);
+    const next = SourceSpec.parse({ ...s, fields: s.fields.map((f) => (f.name === "amount" ? { ...f, type: "integer" } : f)),
+      mapping: { ...s.mapping, amount_minor: { field: "amount", unit: "minor" }, attrs: {}, account_ref: { cel: "row.sid" } } });
+    expect(fieldChanges(before, next)).toEqual([{ ref: "amount_minor", label: "amount" }, { ref: "attrs.settlement_ref", label: "settlement_ref" }]);
+  });
+  it("names each changed field once with the published recons that read it; none read it: null", () => {
+    const changes = [{ ref: "amount_minor", label: "amount" }, { ref: "ext_ref", label: "txn_ref" }];
+    expect(usedBySentence(changes, new Map([["amount_minor", ["BI-FAST debit", "BI-FAST credit"]]]))).toBe("Field amount is used by 2 published recons: BI-FAST credit, BI-FAST debit.");
+    expect(usedBySentence(changes, new Map([["amount_minor", ["X"]], ["ext_ref", ["X"]]]))).toBe("Field amount is used by 1 published recon: X. Field txn_ref is used by 1 published recon: X.");
+    expect(usedBySentence(changes, new Map())).toBeNull();
   });
 });

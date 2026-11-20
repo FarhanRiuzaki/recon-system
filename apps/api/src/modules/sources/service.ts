@@ -18,6 +18,7 @@ import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound, tooManyAttempts } from "../../kernel/errors";
 import { isCron } from "../../kernel/jobs";
+import { sourceFieldsLock } from "../../kernel/locks";
 import { log } from "../../kernel/log";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
@@ -26,9 +27,10 @@ import {
   CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
+import { reconsUsingFields } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { canStep, defaultRefused, readsDifferently, specHash, specIssue, type TestFound, testSentence } from "./rules";
+import { canStep, defaultRefused, fieldChanges, readsDifferently, specHash, specIssue, type TestFound, testSentence, usedBySentence } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -140,6 +142,19 @@ async function visibleSource(tx: InTx, spaceId: string, id: string): Promise<Sou
   if (!s) throw notFound("source");
   return s;
 }
+/**
+ * For a recon of `spaceId` (the recon module): each of `ids` the space may read, its own or shared to it (the same rule
+ * as the RLS policies, checked here too), with its owner space, name and published spec (null before the first publish).
+ * An id the space may not read is absent.
+ */
+export async function readableSources(tx: InTx, spaceId: string, ids: string[]): Promise<Map<string, { spaceId: string; name: string; spec: SourceSpec | null }>> {
+  if (!ids.length) return new Map();
+  const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
+  const rows = await tx.select({ id: sources.id, spaceId: sources.spaceId, name: sources.name, spec: sourceVersions.spec }).from(sources)
+    .leftJoin(sourceVersions, published).where(and(inArray(sources.id, ids), visibleIn(tx, spaceId)));
+  return new Map(rows.map((r) => [r.id, { spaceId: r.spaceId, name: r.name, spec: (r.spec ?? null) as SourceSpec | null }]));
+}
+
 /** The versions a space reads of `s`: all of its own; through a share, the published and retired ones (as RLS 0011). */
 const readable = (s: SourceRow, spaceId: string) => and(ofSource(s), s.spaceId === spaceId ? undefined : inArray(sourceVersions.status, ["published", "retired"]));
 /** The names of `ids` (one query); a deleted user has none. */
@@ -614,6 +629,22 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   return previewRows(spec, rows, cal);
 }
 
+/**
+ * 400 when version `v` drops or retypes a record field that a published recon reads from source `s` (Plan 3 A4), in
+ * this space or one the source is shared to, naming the field and those recons. Under the source's fields lock, so a
+ * recon published meanwhile is seen.
+ */
+async function keepsUsedFields(tx: InTx, s: SourceRow, v: VersionRow): Promise<void> {
+  if (v.spec === null) return;
+  await sourceFieldsLock(tx, s.id);
+  const [p] = await tx.select({ spec: sourceVersions.spec }).from(sourceVersions).where(and(ofSource(s), eq(sourceVersions.status, "published")));
+  if (!p?.spec) return;
+  const changes = fieldChanges(p.spec as SourceSpec, v.spec as SourceSpec);
+  if (!changes.length) return;
+  const why = usedBySentence(changes, await reconsUsingFields(tx, s.id, changes.map((c) => c.ref)));
+  if (why) throw new ApiError("bad_request", why);
+}
+
 /** Sends a draft with a spec to review; the caller becomes a contributor and its submitter. */
 export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
@@ -621,6 +652,7 @@ export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<
     const v = await versionOf(tx, s, versionId);
     if (!canStep("submit", v.status as VersionStatus)) throw wrongState("Only a draft can be submitted.");
     if (v.spec === null) throw new ApiError("bad_request", "This draft has no fields and mapping yet. Save them, then submit.");
+    await keepsUsedFields(tx, s, v);
     const [row] = await tx.update(sourceVersions).set({ status: "in_review", contributorIds: withCaller(ctx, v), submittedBy: ctx.user.id, submittedAt: NOW, updatedAt: NOW }).where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "source.version_submit", target: target(s), after: { version: v.version, specHash: v.specHash } });
     return versionDto(row);
@@ -646,6 +678,7 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
     const v = await versionOf(tx, s, versionId);
     notAContributor(ctx, v);
     if (!canStep("approve", v.status as VersionStatus)) throw wrongState("Only a version in review can be approved.");
+    await keepsUsedFields(tx, s, v);
     const [retired] = await tx.update(sourceVersions).set({ status: "retired", updatedAt: NOW })
       .where(and(ofSource(s), eq(sourceVersions.status, "published"))).returning({ version: sourceVersions.version, spec: sourceVersions.spec });
     const [row] = await tx.update(sourceVersions).set({ status: "published", checkerId: ctx.user.id, publishedAt: NOW, reviewComment: null, updatedAt: NOW })
