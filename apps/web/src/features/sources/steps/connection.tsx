@@ -258,19 +258,20 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
   // connected: focus moves on to the first field of Data (rule 1, 7); the pickers' list loads after the connect, so
   // its control is waited for a moment
   const first = c.engine === "oracle" ? (p.catalog.names.status !== "idle" ? "src-schema" : ctl("input.table")) : !p.stored ? "src-database" : ctl("input.table");
+  const isConnected = p.connected !== null;
   useEffect(() => {
-    if (folded && !wasFolded.current && p.connected) {
-      let n = 0;
-      const t = setInterval(() => {
-        const el = document.getElementById(first);
-        if (el) el.focus();
-        if (el || ++n > 20) clearInterval(t);
-      }, 50);
-      wasFolded.current = folded;
-      return () => clearInterval(t);
-    }
+    const start = folded && !wasFolded.current && isConnected;
     wasFolded.current = folded;
-  }, [folded, p.connected, first]);
+    if (!start) return;
+    // ponytail: polls up to 3 s for the picker's chunk; a slower load leaves focus where it was
+    let n = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(first);
+      if (el) el.focus();
+      if (el || ++n > 60) clearInterval(t);
+    }, 50);
+    return () => clearInterval(t);
+  }, [folded, isConnected, first]);
   const oracle = c.engine === "oracle";
   const note = p.stored ? STORED : undefined;
   // before a connect, Database shows only once it has a value (a pasted string) or an error, then stays while typed in
