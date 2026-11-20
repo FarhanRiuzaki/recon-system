@@ -8,17 +8,39 @@ import { type ReservedSQL, SQL } from "bun";
 import type { Column } from "./dialect";
 import type { Driver, DriverConfig } from "./index";
 
+// A connect that stalls is retried once on a fresh pool: through Docker Desktop's host.docker.internal the dev stack saw
+// 8006 ms and 5248 ms stalls on two concurrent tests ending together (api log 2026-11-21), while 300+ cold connects
+// run from the container took 6-43 ms. So each attempt gets 40 % of the connect budget (two attempts leave room for
+// the statements inside the caller's deadline) and only a connect timeout is retried, never a refusal or a login.
+const CONNECT_ATTEMPTS = 2;
+const ATTEMPT_SHARE = 0.4;
+
 export function postgresDriver(c: DriverConfig): Driver {
-  const sql = new SQL({
+  const attemptSeconds = Math.max(1, Math.floor(c.connectTimeoutSeconds * ATTEMPT_SHARE));
+  const open = () => new SQL({
     hostname: c.host, port: c.port, database: c.database, username: c.user, password: c.password, max: 1,
-    connectionTimeout: c.connectTimeoutSeconds,
+    connectionTimeout: attemptSeconds,
     tls: c.tls ? { rejectUnauthorized: true } : false,
     connection: { statement_timeout: c.statementTimeoutMs, default_transaction_read_only: "on", TimeZone: "UTC", application_name: "recon-connector" },
   });
+  let sql = open();
+  /** A connection from the pool; a connect timeout is retried on a fresh pool. */
+  async function reserve(): Promise<ReservedSQL> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await sql.reserve();
+      } catch (e) {
+        if ((e as { code?: unknown }).code !== "ERR_POSTGRES_CONNECTION_TIMEOUT" || attempt >= CONNECT_ATTEMPTS) throw e;
+        const stale = sql;
+        sql = open();
+        void stale.close({ timeout: 0 }).catch(() => {});
+      }
+    }
+  }
   const timeout = Math.trunc(c.statementTimeoutMs);
   /** `fn` on the reserved connection inside a read-only transaction with the statement timeout, rolled back after. */
   async function* readOnly<T>(fn: (conn: ReservedSQL) => AsyncGenerator<T>): AsyncGenerator<T> {
-    const conn = await sql.reserve();
+    const conn = await reserve();
     try {
       await conn.unsafe("BEGIN READ ONLY");
       await conn.unsafe(`SET LOCAL statement_timeout = ${timeout}`);

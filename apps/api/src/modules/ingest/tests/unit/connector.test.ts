@@ -42,3 +42,21 @@ describe("within", () => {
     expect(performance.now() - t0).toBeLessThan(700);
   });
 });
+
+describe("the PostgreSQL driver when a connect stalls", () => {
+  it("retries once on a fresh connection inside the connect budget, then reports a timeout", async () => {
+    let accepted = 0;
+    const srv = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open() { accepted++; }, data() {} } });
+    const { postgresDriver } = await import("../../connectors/postgres");
+    const drv = postgresDriver({ host: "127.0.0.1", port: srv.port, database: "d", user: "u", password: "p", tls: false, connectTimeoutSeconds: 5, statementTimeoutMs: 5000 });
+    const t0 = Date.now();
+    const got = await drv.rows("SELECT 1", []).catch((e) => e);
+    const ms = Date.now() - t0;
+    await drv.close();
+    srv.stop(true);
+    expect(got.code).toBe("ERR_POSTGRES_CONNECTION_TIMEOUT");
+    expect(accepted).toBe(2); // two attempts of 2 s (40 % of 5 s)
+    expect(ms).toBeGreaterThanOrEqual(3900);
+    expect(ms).toBeLessThan(5000);
+  }, 10000);
+});
