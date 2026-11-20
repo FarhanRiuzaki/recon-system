@@ -48,7 +48,7 @@ describe("TablePicker states (designer's SPEC)", () => {
     await mount(table({ list: { status: "ready", data: p }, page: p }));
     await open();
     expect(document.querySelector("[cmdk-empty]")!.textContent).toBe("This account can't read any tables in recon_core. Ask IT to grant SELECT.");
-    expect(document.querySelector("[cmdk-list]")!.textContent).toContain("Type a name instead");
+    expect(document.querySelector("[cmdk-root]")!.textContent).toContain("Type a name instead");
   });
 
   it("failed: the API's sentence after what failed, with Retry", async () => {
@@ -65,7 +65,7 @@ describe("TablePicker states (designer's SPEC)", () => {
     const p = page(50, 1284, true);
     await mount(table({ list: { status: "ready", data: p }, page: p }));
     await open();
-    expect(document.querySelector("[cmdk-list]")!.textContent).toContain("Showing 50 of 1,284 tables. Type to narrow the list.");
+    expect(document.querySelector("[cmdk-root]")!.textContent).toContain("Showing 50 of 1,284 tables. Type to narrow the list.");
     expect(document.querySelector('[aria-live="polite"]')!.textContent).toBe("50 of 1,284 tables shown");
     expect([...document.querySelectorAll("[cmdk-group-heading]")].map((x) => x.textContent)).toEqual(["recon_core"]);
   });

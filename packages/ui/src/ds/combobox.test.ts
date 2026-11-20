@@ -127,12 +127,12 @@ describe("CommandCombobox (server query mode, REC-F2a)", () => {
     expect(document.querySelectorAll('[data-slot="skeleton"]').length).toBe(6);
   });
 
-  it("options grouped under their heading, each with its second line; footer and live count inside the list", async () => {
+  it("options grouped under their heading, each with its second line; footer below the list, live count", async () => {
     const pick = vi.fn();
     await openWith({ options: TABLES, onValueChange: pick, footer: "Showing 3 of 1,284 tables. Type to narrow the list.", status: "3 of 1,284 tables shown" });
     expect([...document.querySelectorAll("[cmdk-group-heading]")].map((g) => g.textContent)).toEqual(["core", "ops"]);
     expect(options()).toEqual(["txtable · 18 columns", "tx_vview · 7 columns", "logtable · 3 columns"]);
-    expect(document.querySelector('[cmdk-list]')!.textContent).toContain("Showing 3 of 1,284 tables. Type to narrow the list.");
+    expect(document.querySelector('[cmdk-root]')!.textContent).toContain("Showing 3 of 1,284 tables. Type to narrow the list.");
     expect(document.querySelector('[aria-live="polite"]')!.textContent).toBe("3 of 1,284 tables shown");
     await act(async () => { (document.querySelectorAll('[role="option"]')[2] as HTMLElement).click(); });
     expect(pick).toHaveBeenCalledWith(["ops.log"]);

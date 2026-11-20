@@ -30,7 +30,7 @@ function grouped(options: readonly CommandOption[]): [string | null, CommandOpti
 
 /**
  * Searchable controlled selection; use query/onQuery for server options, never filter a server page locally. Server
- * mode extras: `loadingText` (three skeleton rows, the text for screen readers), `emptyText`, `footer` (inside the list,
+ * mode extras: `loadingText` (three skeleton rows, the text for screen readers), `emptyText`, `footer` (below the list,
  * after the options: a truncation line, a way out), `status` (a polite live line: "50 of 1,284 tables shown"),
  * `retryDisabled` (Retry waits, a rate limit), `phone="sheet"` (below 768 px the list is a bottom sheet with Cancel).
  */
@@ -78,8 +78,9 @@ export function CommandCombobox({
               <CommandEmpty>{emptyText ?? "No matching options."}</CommandEmpty>
               {grouped(options).map(([g, os]) => (g === null ? os.map(item) : <CommandGroup key={g} heading={g}>{os.map(item)}</CommandGroup>))}
             </>}
-          {!loading && footer && <div className="border-t border-line px-2 pt-2 pb-1 text-caption text-fg-2">{footer}</div>}
         </CommandList>
+        {/* below the list, not in it: on the phone sheet it stays at the bottom, as on desktop */}
+        {!loading && footer && <div className="shrink-0 border-t border-line px-2 pt-2 pb-1 text-caption text-fg-2">{footer}</div>}
         {status !== undefined && <p aria-live="polite" className="sr-only">{status}</p>}
       </Command>
     </PopoverContent>

@@ -193,8 +193,7 @@ export function FieldsStep(p: FieldsStepProps) {
                                 return storeAs(x, f.name, storedNameProblem(want, f.name, x) ? `${want.slice(0, 58)}_${i + 1}` : want);
                               });
                             }} />
-                                            <span aria-hidden="true" className="font-mono text-mono text-fg-3">attrs.</span>
-                            <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
+                                            <Input id={nameId} aria-label={`Stored name of ${f.name}`} className="min-w-40 font-mono" disabled={stored === null && typedName === undefined}
                               placeholder="Not stored" value={typedName ?? stored ?? ""} aria-invalid={!!nameWhy || undefined} aria-describedby={nameWhy ? `${nameId}-why` : undefined}
                               onChange={(e) => setName(e.target.value)} autoComplete="off" spellCheck={false} />
                           </span>

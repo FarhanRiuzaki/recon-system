@@ -175,6 +175,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const sug = suggestCore(x.spec.fields, x.spec.mapping);
     return !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
   };
+  /** A database source previews once after its columns are read, so Example isn't empty (one pull, not one per edit). */
+  const autoPreview = useRef(false);
   const tablesFor = useRef<string | null>(null);
   const tableSeq = useRef(0);
   const saved = useRef(source?.v.spec ? JSON.stringify(source.v.spec) : null);
@@ -376,6 +378,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       setColumns(r.columns);
       const engine = source?.s.connection?.engine ?? d.conn.engine;
       if (table) applySuggestion(r.columns, table, kindOf(table));
+      if (!file) autoPreview.current = true;
       set((x) => {
         const merged = mergeFields(x.spec.fields, fieldsOfColumns(engine, r.columns));
         // a table read: fields its columns lack stay, marked (PO decision 4); a SELECT's columns replace them as before
@@ -455,6 +458,13 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId]);
+
+  useEffect(() => {
+    if (step !== 1 || file || !autoPreview.current || !previewable || !ids) return;
+    autoPreview.current = false;
+    void runPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, file, previewable, ids, specKey]);
 
   /** Saves the spec when it changed since the last save; a refused field is shown and focused. */
   async function save(): Promise<boolean> {
