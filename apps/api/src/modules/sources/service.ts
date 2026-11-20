@@ -462,7 +462,7 @@ async function probe(ctx: Ctx, t: Target): Promise<ConnectionTestDto> {
     result = e.kind;
     if (t.defaulted && (e.kind === "database" || e.kind === "query")) return { ok: false, message: defaultRefused(t.defaulted, e.code), code: e.code, field: "database", version: null };
     const at = t.typed ? { engine: t.engine, host: t.secret.host, port: t.secret.port, user: t.secret.user, database: t.secret.database } : null;
-    return { ok: false, ...testFailure(e, at, Math.min(t.options.connectTimeoutSeconds, INTERACTIVE_SECONDS)), code: e.code, version: null };
+    return { ok: false, ...testFailure(e, at, e.seconds ?? Math.min(t.options.connectTimeoutSeconds, INTERACTIVE_SECONDS)), code: e.code, version: null };
   } finally {
     log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine: t.engine, host: t.secret.host, port: t.secret.port, result }, "source connection test");
   }

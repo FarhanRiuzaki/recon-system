@@ -48,7 +48,8 @@ const text = (kind: ConnectorErrorKind, code: string | null, seconds: number): s
 
 /** A failure of a source connector: `kind` decides the sentence, `code` is the driver's code (or null). */
 export class ConnectorError extends Error {
-  constructor(readonly kind: ConnectorErrorKind, readonly code: string | null, message: string) {
+  /** `seconds`: for a timeout, the time actually spent (all attempts); null = the connector's connect timeout. */
+  constructor(readonly kind: ConnectorErrorKind, readonly code: string | null, message: string, readonly seconds: number | null = null) {
     super(message);
     this.name = "ConnectorError";
   }
@@ -78,4 +79,8 @@ export function classify(e: unknown, t: { connectS: number; statementS: number }
 }
 
 /** The timeout of a whole operation (connect and statements together), with no driver code. */
-export const deadlineError = (seconds: number) => new ConnectorError("timeout", null, text("timeout", null, seconds));
+export const deadlineError = (seconds: number) => new ConnectorError("timeout", null, text("timeout", null, seconds), seconds);
+
+/** A connect that timed out (not a statement) after `seconds` spent in all. */
+export const isConnectTimeout = (e: ConnectorError) => e.kind === "timeout" && e.code !== null && !STATEMENT_TIMEOUTS.includes(e.code);
+export const connectTimeoutError = (code: string | null, seconds: number) => new ConnectorError("timeout", code, text("timeout", code, seconds), seconds);

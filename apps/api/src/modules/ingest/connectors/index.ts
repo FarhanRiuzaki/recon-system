@@ -17,7 +17,7 @@ import {
   CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, minusSeconds, pingSql,
   rowsSql, serverSql, tableCountSql, tablesSql,
 } from "./dialect";
-import { classify, deadlineError, specError } from "./errors";
+import { classify, type ConnectorError, connectTimeoutError, deadlineError, isConnectTimeout, specError } from "./errors";
 import { mssqlDriver } from "./mssql";
 import { mysqlDriver } from "./mysql";
 import { oracleDriver } from "./oracle";
@@ -85,7 +85,65 @@ export async function* batches(s: Readable, chunk: number): AsyncGenerator<Recor
 
 /** The connector of `engine`; nothing connects until the first call. Call close() when done. */
 export function connectorFor(engine: DbEngine, secret: Secret, options: ConnectorOptions): Connector {
-  return connectorOver(engine, DRIVERS[engine]({ ...secret, ...options }), { connectS: options.connectTimeoutSeconds, statementS: Math.ceil(options.statementTimeoutMs / 1000) });
+  const t = { connectS: options.connectTimeoutSeconds, statementS: Math.ceil(options.statementTimeoutMs / 1000) };
+  const perAttempt = { ...secret, ...options, connectTimeoutSeconds: Math.max(1, Math.floor(options.connectTimeoutSeconds * ATTEMPT_SHARE)) };
+  return connectorOver(engine, retryingConnect(() => DRIVERS[engine](perAttempt), t), t);
+}
+
+// A connect that stalls is retried once on a fresh driver: through Docker Desktop's host.docker.internal the dev stack saw
+// 8006 ms and 5248 ms stalls on two concurrent tests ending together (api log 2026-11-21), while 300+ cold connects
+// from the container took 6-43 ms. Each attempt gets 40 % of the connect timeout, so two leave room for the statements
+// inside the caller's deadline. Only a classified connect timeout, and only before the driver answered once.
+const ATTEMPTS = 2;
+const ATTEMPT_SHARE = 0.4;
+
+/** A driver that starts over once on a fresh one when the connect times out; its timeout error counts the time spent. */
+export function retryingConnect(make: () => Driver, t: { connectS: number; statementS: number }): Driver {
+  let drv = make();
+  let connected = false;
+  const started = Date.now();
+  let attempt = 1;
+  /** Whether `e` is a connect timeout to retry (swaps in a fresh driver), else the error to throw. */
+  function again(e: unknown): true | ConnectorError {
+    const c = classify(e, t);
+    if (connected || !isConnectTimeout(c)) return c;
+    if (attempt >= ATTEMPTS) return connectTimeoutError(c.code, Math.max(1, Math.round((Date.now() - started) / 1000)));
+    attempt++;
+    const stale = drv;
+    drv = make();
+    void stale.close().catch(() => {});
+    return true;
+  }
+  async function run<T>(f: (d: Driver) => Promise<T>): Promise<T> {
+    for (;;) {
+      try {
+        const r = await f(drv);
+        connected = true;
+        return r;
+      } catch (e) {
+        const r = again(e);
+        if (r !== true) throw r;
+      }
+    }
+  }
+  return {
+    rows: (q, p) => run((d) => d.rows(q, p)),
+    describe: (q, p) => run((d) => d.describe(q, p)),
+    async *stream(q, p, chunk) {
+      for (;;) {
+        let first = true;
+        try {
+          for await (const page of drv.stream(q, p, chunk)) { first = false; connected = true; yield page; }
+          return;
+        } catch (e) {
+          if (!first) throw e;
+          const r = again(e);
+          if (r !== true) throw r;
+        }
+      }
+    },
+    close: () => drv.close(),
+  };
 }
 
 /** The connector logic over any driver of dialect `d` (connectorFor's engine driver, or a test's fake). */

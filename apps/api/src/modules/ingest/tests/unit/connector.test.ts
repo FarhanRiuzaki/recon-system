@@ -1,7 +1,7 @@
 // The connector over a driver (connectors/index.ts) without a server: a keyset pull whose cursor does not move stops
 // with a clear error instead of looping, and `within` answers by its deadline even when close() hangs.
 import { describe, expect, it } from "bun:test";
-import { type Connector, connectorOver, type Driver, within } from "../../connectors";
+import { type Connector, connectorFor, connectorOver, type Driver, retryingConnect, within } from "../../connectors";
 import { ConnectorError } from "../../connectors/errors";
 
 const never = () => new Promise<never>(() => {});
@@ -43,20 +43,45 @@ describe("within", () => {
   });
 });
 
-describe("the PostgreSQL driver when a connect stalls", () => {
+describe("a PostgreSQL connector when a connect stalls", () => {
   it("retries once on a fresh connection inside the connect budget, then reports a timeout", async () => {
     let accepted = 0;
     const srv = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open() { accepted++; }, data() {} } });
-    const { postgresDriver } = await import("../../connectors/postgres");
-    const drv = postgresDriver({ host: "127.0.0.1", port: srv.port, database: "d", user: "u", password: "p", tls: false, connectTimeoutSeconds: 5, statementTimeoutMs: 5000 });
+    const c = connectorFor("postgres", { host: "127.0.0.1", port: srv.port, database: "d", user: "u", password: "p" }, { tls: false, connectTimeoutSeconds: 5, statementTimeoutMs: 5000 });
     const t0 = Date.now();
-    const got = await drv.rows("SELECT 1", []).catch((e) => e);
+    const got = await c.test().catch((e) => e);
     const ms = Date.now() - t0;
-    await drv.close();
+    await c.close();
     srv.stop(true);
-    expect(got.code).toBe("ERR_POSTGRES_CONNECTION_TIMEOUT");
+    expect([got.code, got.seconds]).toEqual(["ERR_POSTGRES_CONNECTION_TIMEOUT", 4]);
     expect(accepted).toBe(2); // two attempts of 2 s (40 % of 5 s)
     expect(ms).toBeGreaterThanOrEqual(3900);
     expect(ms).toBeLessThan(5000);
   }, 10000);
+});
+
+describe("retryingConnect over a fake non-PostgreSQL driver", () => {
+  const t = { connectS: 5, statementS: 5 };
+  const stall = (code: string, ms: number): Driver => ({
+    rows: () => new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error("x"), { code })), ms)),
+    describe: never, stream: async function* () {}, close: async () => {},
+  });
+  it("starts over once on a connect timeout and reports the time spent in all", async () => {
+    let made = 0;
+    const c = connectorOver("oracle", retryingConnect(() => (made++, stall("NJS-510", 1100)), t), t);
+    const got = await c.test().catch((e) => e);
+    expect([got.kind, got.code, got.seconds, made]).toEqual(["timeout", "NJS-510", 2, 2]);
+    expect(got.message).toBe("The server did not answer within 2 s.");
+  });
+  it("does not retry a refusal", async () => {
+    let made = 0;
+    const got = await retryingConnect(() => (made++, stall("ORA-12541", 0)), t).rows("x", []).catch((e) => e);
+    expect([got.kind, made]).toEqual(["host", 1]);
+  });
+  it("recovers when the second attempt answers", async () => {
+    let made = 0;
+    const ok: Driver = { rows: async () => [{ one: 1 }], describe: never, stream: async function* () {}, close: async () => {} };
+    const d = retryingConnect(() => (made++ ? ok : stall("ETIMEDOUT", 0)), t);
+    expect(await d.rows("x", [])).toEqual([{ one: 1 }]);
+  });
 });

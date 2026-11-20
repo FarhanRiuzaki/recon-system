@@ -113,7 +113,7 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   gives that user the space Treasury as space admin, source admin and config maker. A second user, `checker` / `Password123!`, is config
   checker in Treasury and approves source and recon versions superadmin makes (maker ≠ checker); it exists only on the
   dev stack (`LOCAL_CHECKER_PASSWORD`), never in a release build. A source database on the host is
-  `host.docker.internal`.
+  `host.docker.internal`; on Docker Desktop its first connect occasionally stalls for seconds (dev-environment issue, not the source): the connector retries a connect timeout once.
 - **Release check: `docker-compose.yml`** — production images; code changes need a rebuild:
   `docker compose --env-file .env.compose up -d --build` (port from `WEB_PORT`, project from `COMPOSE_PROJECT_NAME`).
 - Both stacks publish port 3000 when `WEB_PORT=3000`: run one at a time (`down` the other first; `down` keeps the data,
