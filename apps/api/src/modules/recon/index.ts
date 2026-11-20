@@ -3,5 +3,5 @@
 // version that drops one, Plan 3 A4), and a draft's simulation (the engine readies it and marks it simulated).
 export { reconController } from "./controller";
 export { checkReconSpec, usedFields } from "./rules";
-export { reconConfigs, reconConfigVersions } from "./schema";
-export { draftToSimulate, markSimulated, reconsUsingFields } from "./service";
+export { reconConfigs, reconConfigVersions, reconSourceUses } from "./schema";
+export { draftToSimulate, markSimulated, reconHealthInputs, reconsUsingFields } from "./service";

@@ -492,11 +492,17 @@ export type ReadSource = { id: string; spaceId: string; kind: SourceKind; status
 export type SourceState = Pick<SourceDto, "health" | "rowsToday" | "quarantinedToday" | "nextRunAt" | "drift">;
 const NO_STATE: SourceState = { health: null, rowsToday: null, quarantinedToday: null, nextRunAt: null, drift: null };
 
+/** Health inputs a source's recons set (recon's reconHealthInputs), by source id. */
+export type HealthInputs = Map<string, { graceMinutes: number | null; deadline: string | null }>;
+/** The stricter of two inputs: the smaller grace, the earlier deadline (HH:MM compares as text); null = not set. */
+const stricter = <T extends number | string>(a: T | null, b: T | null): T | null => (a === null ? b : b === null ? a : b < a ? b : a);
+
 /**
  * The state of each of `list` as space `viewer` sees it, by source id. A source without a published version has none.
- * `quarantinedToday` is null for a source shared to `viewer` (its quarantine stays with the owner, 0014 RLS).
+ * `quarantinedToday` is null for a source shared to `viewer` (its quarantine stays with the owner, 0014 RLS). Health is
+ * judged on the stricter of the source's own inputs (its spec's `health`) and those of the recons reading it (`recon`).
  */
-export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string, now = new Date()): Promise<Map<string, SourceState>> {
+export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string, now = new Date(), recon: HealthInputs = new Map()): Promise<Map<string, SourceState>> {
   const out = new Map(list.map((x) => [x.id, NO_STATE]));
   const pub = list.filter((x): x is ReadSource & { spec: SourceSpec } => x.spec !== null);
   if (!pub.length) return out;
@@ -515,7 +521,8 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
     const calendar = calOf.get(x.spec.calendar);
     if (!calendar) return [];
     const c = cursors.get(x.id);
-    const { graceMinutes = null, deadline = null } = x.spec.health ?? {};
+    const own = x.spec.health ?? {}, r = recon.get(x.id);
+    const graceMinutes = stricter(own.graceMinutes ?? null, r?.graceMinutes ?? null), deadline = stricter(own.deadline ?? null, r?.deadline ?? null);
     const h = sourceHealth({
       kind: x.kind, status: x.status, lastError: c?.lastError ?? null, completeThrough: c?.completeThrough ?? null, calendar,
       latestActiveDate: latest.get(x.id) ?? null, graceSeconds: graceMinutes === null ? null : graceMinutes * 60,
