@@ -25,3 +25,7 @@ export const SAVED_VIEW_SORTS = ["name", "createdAt"] as const;
 export const SOURCE_SORTS = ["name", "createdAt"] as const;
 /** GET /api/spaces/{spaceId}/sources/{sourceId}/versions (newest version first by default). */
 export const SOURCE_VERSION_SORTS = ["version", "updatedAt"] as const;
+/** GET /api/spaces/{spaceId}/recons. */
+export const RECON_SORTS = ["name", "createdAt"] as const;
+/** GET /api/spaces/{spaceId}/recons/{configId}/versions (newest version first by default). */
+export const RECON_VERSION_SORTS = ["version", "updatedAt"] as const;
