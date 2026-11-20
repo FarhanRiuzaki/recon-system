@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -93,14 +94,17 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const [shown, setShown] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
   const openExplain = (r: ReconRunItemDto, from: HTMLElement) => { opener.current = from; setShown(false); setExplain(r); };
-  // a run that ends while on screen: its items are read again (a running run's tab may be empty or partial)
+  // pending only when the dialog's code takes a while (no one-frame spinner); the button stays enabled and focused
+  const explainBusy = useDelayedFlag(!!explain && !shown);
+  // a run that ends while on screen: every items read of it (each tab, date and page) is read again
+  const qc = useQueryClient();
   const was = useRef(run?.status);
-  const refetchItems = t.query.refetch;
   useEffect(() => {
     const before = was.current;
     was.current = run?.status;
-    if (isLive({ status: before ?? "" }) && !isLive(run)) void refetchItems();
-  }, [run, refetchItems]);
+    if (!isLive({ status: before ?? "" }) || isLive(run)) return;
+    void qc.invalidateQueries({ predicate: (x) => x.queryKey[0] === def.key && String(x.queryKey[1]).startsWith(`${def.path}?`) });
+  }, [run, qc, def]);
   // a date the run doesn't have (an old link): no date filter
   const setTable = t.set;
   const strayDate = !!t.state.date && !!run?.days && !run.days.some((d) => d.date === t.state.date);
@@ -185,9 +189,9 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
         <DataTable label="Items" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           rowActions={items ? undefined : (r) => {
             if (!r.group) return null;
-            const busy = explain?.id === r.id && !shown;
+            const busy = explainBusy && explain?.id === r.id;
             return (
-              <Button type="button" variant="secondary" size="sm" aria-label={`Explain ${r.extRef ?? "this pair"}`} disabled={busy} aria-busy={busy || undefined}
+              <Button type="button" variant="secondary" size="sm" aria-label={`Explain ${r.extRef ?? "this pair"}`} aria-busy={busy || undefined}
                 onClick={(e) => openExplain(r, e.currentTarget)}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Explain</Button>
             );
           }}
