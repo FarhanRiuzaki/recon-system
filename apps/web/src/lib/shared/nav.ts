@@ -89,9 +89,10 @@ export function isActive(pathname: string, href: string, exact = false): boolean
  * caller holds a role in. Null: none. The entry pages redirect by it on the server, and the navigation links straight
  * to it once the switcher's list is in, so a client navigation never shows the redirect's empty page.
  */
-export function spaceEntry(page: SpacePage, spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null): string | null {
+export function spaceEntry(page: SpacePage, spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null, current: string | null = null): string | null {
   const pool = page === "members" ? spaces : spaces.filter((s) => s.roles.length);
-  const open = pool.find((s) => s.id === remembered) ?? pool[0];
+  // The space of the page being viewed wins: a link never leaves the space the user is working in.
+  const open = pool.find((s) => s.id === current) ?? pool.find((s) => s.id === remembered) ?? pool[0];
   return open ? `/spaces/${encodeURIComponent(open.id)}/${page}` : null;
 }
 

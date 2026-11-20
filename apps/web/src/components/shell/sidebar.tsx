@@ -43,10 +43,11 @@ export function useNavHref(): (href: string) => string {
   const { prefs } = usePrefs();
   const { key, url } = spaceOptions();
   const spaces = useQuery({ queryKey: key, queryFn: () => api<Page<SpaceRowDto>>(url) }).data?.items;
+  const current = /^\/spaces\/([^/]+)/.exec(usePathname())?.[1] ?? null;
   return useCallback((href) => {
     const page = NAV.find((n) => n.href === href)?.space;
-    return viewHref((page && spaces && spaceEntry(page, spaces, prefs.space)) || href, prefs);
-  }, [prefs, spaces]);
+    return viewHref((page && spaces && spaceEntry(page, spaces, prefs.space, current && decodeURIComponent(current))) || href, prefs);
+  }, [prefs, spaces, current]);
 }
 
 /**

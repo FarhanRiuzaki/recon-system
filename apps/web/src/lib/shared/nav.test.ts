@@ -116,6 +116,11 @@ describe("spaceEntry: where a space entry opens (the entry pages' redirect and t
     expect(spaceEntry("recons", [A, B, C], "c")).toBe("/spaces/c/recons");
     expect(spaceEntry("members", [B, A], "gone")).toBe("/spaces/b/members");
   });
+  it("the space of the page being viewed wins over the remembered one (Members from Treasury stays in Treasury)", () => {
+    expect(spaceEntry("members", [A, B, C], "b", "c")).toBe("/spaces/c/members");
+    expect(spaceEntry("sources", [A, B, C], "c", "a")).toBe("/spaces/a/sources");
+    expect(spaceEntry("sources", [A, B, C], "c", "b")).toBe("/spaces/c/sources"); // no role in b: falls back
+  });
   it("none: null (the entry page explains, or sends to /spaces)", () => {
     expect(spaceEntry("members", [], null)).toBeNull();
     expect(spaceEntry("sources", [B], null)).toBeNull();
