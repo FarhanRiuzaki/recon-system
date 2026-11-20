@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSpec, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, watermarkProblems } from "./model";
+import { amountProblems, buildSpec, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, watermarkProblems } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
 
@@ -34,5 +34,15 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
   });
   it("a watermark source picks its watermark and id columns in step 2", () => {
     expect(watermarkProblems(db()).map((p) => p.id)).toEqual(["src-input-watermark-column", "src-input-watermark-id_column"]);
+  });
+  it("Next asks for the amount's unit and a currency; the fixed currency is sent only without a currency column", () => {
+    const base = emptySpec("db_watermark");
+    const s = { ...base, mapping: { ...base.mapping, amount_minor: { field: "amt" } } };
+    expect(amountProblems(s).map((p) => p.id)).toEqual(["src-mapping-amount_minor-unit", "src-currency"]);
+    const ok = { ...s, currency: "IDR", mapping: { ...s.mapping, amount_minor: { field: "amt", unit: "minor" as const } } };
+    expect(amountProblems(ok)).toEqual([]);
+    expect(amountProblems(base)).toEqual([]);
+    expect(buildSpec(db({ spec: ok })).currency).toBe("IDR");
+    expect("currency" in buildSpec(db({ spec: { ...ok, mapping: { ...ok.mapping, currency: { field: "ccy" } } } }))).toBe(false);
   });
 });

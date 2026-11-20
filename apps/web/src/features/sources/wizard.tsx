@@ -22,11 +22,11 @@ import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
 import { attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
-import { suggestCore } from "./steps/core-suggest";
+import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
-  buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
+  amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
 } from "./steps/model";
 import { DiscardDialog } from "./discard-dialog";
@@ -173,7 +173,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   /** Empty core fields filled from the column names (what is set stays); `hint` is what the note says while it is still the value. */
   const withCore = (x: Draft): Draft => {
     const sug = suggestCore(x.spec.fields, x.spec.mapping);
-    return !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
+    const y = !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
+    return withUnit(y);
   };
   /** A database source previews once after its columns are read, so Example isn't empty (one pull, not one per edit). */
   const autoPreview = useRef(false);
@@ -496,6 +497,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     if (step === 1) {
       const p = mappingProblem(spec);
       if (p) { show([p]); return; }
+      if (!show(amountProblems(spec))) return;
       if (admin && !show(watermarkProblems(d))) return;
       const badNames = d.spec.fields.flatMap((f, i) => {
         const t = typedNames[f.name];

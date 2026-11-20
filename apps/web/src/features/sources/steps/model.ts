@@ -1,7 +1,7 @@
 // The source wizard's working state and the rules its steps share (no React): what the user has typed, how a spec is
 // built from it, which control an API error belongs to, and which values a connection test ran with.
 import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
-import { DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
+import { type AmountUnit, DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
 import { FILE_DATE } from "../spec-draft";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
@@ -14,6 +14,8 @@ export type Draft = {
   spec: SourceSpec;
   /** Core fields filled from the column names, by core field: the note shows while the value is still it. */
   hint?: Partial<Record<"business_date" | "amount_minor" | "currency" | "ext_ref" | "account_ref", string>>;
+  /** The amount unit suggested from the amount column, while it is still the value (a choice of the user clears it). */
+  unitHint?: { unit: AmountUnit; note: string };
 };
 /** The one error on screen: the control it belongs to and why. */
 export type FieldErr = { id: string; reason: string } | null;
@@ -57,7 +59,8 @@ export const connChanged = (c: Conn, from: Conn) => JSON.stringify(c) !== JSON.s
 export const connBody = (c: Conn) => ({ engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls } });
 
 /**
- * The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed.
+ * The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed,
+ * the fixed currency only without a currency column.
  * `drop` = fields whose column the table no longer has and that nothing uses (REC-F2a): kept on screen, not sent.
  */
 export function buildSpec(d: Draft, drop: readonly string[] = []): SourceSpec {
@@ -71,7 +74,9 @@ export function buildSpec(d: Draft, drop: readonly string[] = []): SourceSpec {
   }
   // a derived value still being typed (no name or no expression) is left out until it has both
   const derive = Object.fromEntries(Object.entries(s.derive).filter(([k, v]) => k.trim() && v.trim()));
-  return { ...s, mapping: { ...s.mapping, attrs }, derive, key_fields: s.key_fields.filter((k) => names.has(k)), input };
+  const out: SourceSpec = { ...s, mapping: { ...s.mapping, attrs }, derive, key_fields: s.key_fields.filter((k) => names.has(k)), input };
+  if (s.mapping.currency || !s.currency) delete out.currency; // a currency column wins over the fixed one
+  return out;
 }
 
 /** Why step 1 can't go on yet, per control, in screen order (shown after Test or Next is pressed). */
@@ -135,6 +140,16 @@ export function mappingProblem(s: SourceSpec): { id: string; reason: string } | 
   const b = s.mapping.business_date;
   if ("field" in b && !b.field) return { id: ctl("mapping.business_date"), reason: "Pick where the business date comes from." };
   return null;
+}
+
+/** Why the amount can't be saved yet (step 2's Next): its unit not chosen, or no currency for its rows. */
+export function amountProblems(s: SourceSpec): { id: string; reason: string }[] {
+  const a = s.mapping.amount_minor;
+  if (!a) return [];
+  return [
+    ...(a.unit ? [] : [{ id: ctl("mapping.amount_minor.unit"), reason: "Choose whether the amount is in currency units or minor units." }]),
+    ...(s.mapping.currency || s.currency ? [] : [{ id: ctl("currency"), reason: "Pick the currency of every row, or map the currency column." }]),
+  ];
 }
 
 /** The nullable reason of a watermark or id column option (ruling 4): rows with no value would never be pulled. */

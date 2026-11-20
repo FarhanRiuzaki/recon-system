@@ -2,7 +2,7 @@
 // field type a database column starts as, the field an API error names, and a version's changes against another.
 // The API checks every spec again (refines, CEL, kind, calendar); this only shapes what the user edits and reads.
 import type { FieldSpec, SourceColumnsDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { ATTR_NAME, type DbEngine, type FIELD_TYPES } from "@starterkit/shared/sources";
+import { amountUnit, type AmountUnit, ATTR_NAME, type DbEngine, type FIELD_TYPES } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 
 export type FieldType = (typeof FIELD_TYPES)[number];
@@ -100,7 +100,7 @@ export function mergeFields(kept: readonly FieldSpec[], next: readonly FieldSpec
  * path and the reason after it; null for an error that names no field.
  */
 export function fieldError(message: string): { path: string; reason: string } | null {
-  const m = /^Check (?:the expression at )?((?:fields|mapping|derive|key_fields|input|health|mutable|calendar)(?:\.[^:\s]+)*): ([\s\S]+)$/.exec(message);
+  const m = /^Check (?:the expression at )?((?:fields|mapping|derive|key_fields|input|health|mutable|calendar|currency)(?:\.[^:\s]+)*): ([\s\S]+)$/.exec(message);
   return m ? { path: m[1]!, reason: m[2]! } : null;
 }
 
@@ -120,6 +120,8 @@ export function fieldText(f: FieldSpec): string {
 }
 
 export type DiffRow = { key: string; label: string; before: string | null; after: string | null };
+/** The amount units as the wizard and the version diff name them. */
+export const UNIT_LABEL: Record<AmountUnit, string> = { major: "Currency units", minor: "Minor units" };
 const CORE = ["business_date", "amount_minor", "currency", "direction", "event_time", "ext_ref", "account_ref"] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -137,6 +139,9 @@ export function specDiff(before: SourceSpec | null, after: SourceSpec): DiffRow[
     push(`field:${name}`, name, b ? fieldText(b) : null, a ? fieldText(a) : null);
   }
   for (const k of CORE) push(`mapping:${k}`, k, refText(before?.mapping[k]), refText(after.mapping[k]));
+  const unit = (x: SourceSpec | null) => { const u = x ? amountUnit(x) : null; return u ? UNIT_LABEL[u] : null; };
+  push("mapping:amount_unit", "Amount unit", unit(before), unit(after));
+  push("currency", "Currency for every row", before?.currency ?? null, after.currency ?? null);
   const ba = before?.mapping.attrs ?? {}, aa = after.mapping.attrs;
   for (const k of new Set([...Object.keys(aa), ...Object.keys(ba)])) push(`attrs:${k}`, `attrs.${k}`, refText(ba[k]), refText(aa[k]));
   const bd = before?.derive ?? {}, ad = after.derive;

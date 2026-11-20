@@ -70,6 +70,7 @@ describe("fieldError", () => {
     expect(fieldError("Check mapping.amount_minor: The amount needs an integer.")).toEqual({ path: "mapping.amount_minor", reason: "The amount needs an integer." });
     expect(fieldError("Check the expression at derive.net: Can't parse it: x")).toEqual({ path: "derive.net", reason: "Can't parse it: x" });
     expect(fieldError("Check fields.3.format.timezone: Unknown time zone.")?.path).toBe("fields.3.format.timezone");
+    expect(fieldError("Check currency: Map the currency column, or set the currency of every row.")?.path).toBe("currency");
     expect(fieldError("There is no calendar x.")).toBeNull();
   });
 });
@@ -86,6 +87,15 @@ describe("specDiff", () => {
       { key: "key_fields", label: "Match key", before: "sid", after: "sid, on" },
     ]);
     expect(specDiff(spec(), spec())).toEqual([]);
+  });
+  it("an amount unit change and a fixed currency are rows of their own", () => {
+    const amt = { name: "amt", type: "integer" as const, nullable: true, trim: true };
+    const before = spec({ fields: [...spec().fields, amt], mapping: { ...spec().mapping, amount_minor: { field: "amt" } } }); // no unit: an integer is minor
+    const after = { ...before, currency: "IDR", mapping: { ...before.mapping, amount_minor: { field: "amt", unit: "major" as const } } };
+    expect(specDiff(before, after).filter((r) => r.key === "mapping:amount_unit" || r.key === "currency")).toEqual([
+      { key: "mapping:amount_unit", label: "Amount unit", before: "Minor units", after: "Currency units" },
+      { key: "currency", label: "Currency for every row", before: null, after: "IDR" },
+    ]);
   });
   it("against no published version every part is new", () => {
     const rows = specDiff(null, spec());

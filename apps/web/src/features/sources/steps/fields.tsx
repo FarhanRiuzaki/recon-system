@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useRef } from "react";
-import { Checkbox, Field, Notice, Panel, Switch } from "@starterkit/ui/ds";
+import { Checkbox, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -11,17 +11,17 @@ import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
-import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL } from "../spec-draft";
-import { coreNote, type SuggestedCore } from "./core-suggest";
+import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
+import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
+import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
 const CORE: { key: Core; label: string; note: string }[] = [
   { key: "business_date", label: "Business date", note: "The day each row counts for. Required." },
-  { key: "amount_minor", label: "Amount", note: "An integer column is read as whole minor units as it is (50000 is 500.00). A decimal column needs 2 places and is stored as minor units, so 100.5 and 100.50 are both 10050." },
-  { key: "currency", label: "Currency", note: "ISO code, such as IDR." },
+  { key: "amount_minor", label: "Amount", note: "Each row's amount. Say below whether it is in currency units or minor units." },
+  { key: "currency", label: "Currency", note: "ISO code or number, such as IDR or 360." },
   { key: "direction", label: "Direction", note: "Debit or credit, as the source writes it." },
   { key: "event_time", label: "Event time", note: "When it happened, if the source says." },
   { key: "ext_ref", label: "Reference", note: "The source's own reference for the row." },
@@ -81,14 +81,22 @@ export function FieldsStep(p: FieldsStepProps) {
   const { d, set, err } = p;
   const s = d.spec;
   const file = s.input.kind === "file_inbox";
-  const setSpec = (fn: (s: SourceSpec) => SourceSpec) => set((x) => ({ ...x, spec: fn(x.spec) }));
+  // every change re-reads the amount unit's suggestion (a column or its type changed); a unit the user chose stays
+  const setSpec = (fn: (s: SourceSpec) => SourceSpec) => set((x) => withUnit({ ...x, spec: fn(x.spec) }));
   const setField = (i: number, patch: Partial<FieldSpec>) => setSpec((x) => ({ ...x, fields: x.fields.map((f, j) => (j === i ? { ...f, ...patch } : f)) }));
   /** A new type with the format it starts with: a date as yyyy-MM-dd, a decimal at 2 places. */
   const setType = (i: number, type: FieldSpec["type"]) => setField(i, { type, format: type === "decimal" ? { scale: 2 } : type === "date" ? { date: "yyyy-MM-dd" } : undefined });
   const setFormat = (i: number, patch: NonNullable<FieldSpec["format"]>) => setSpec((x) => ({
     ...x, fields: x.fields.map((f, j) => (j === i ? { ...f, format: Object.fromEntries(Object.entries({ ...f.format, ...patch }).filter(([, v]) => v !== undefined && v !== "")) } : f)),
   }));
-  const setCore = (k: Core, r: ValueRef | undefined) => setSpec((x) => ({ ...x, mapping: { ...x.mapping, [k]: k === "business_date" ? (r ?? { field: "" }) : r } }));
+  const setCore = (k: Core, r: ValueRef | undefined) => setSpec((x) => {
+    const unit = k === "amount_minor" && r ? x.mapping.amount_minor?.unit : undefined;
+    return { ...x, mapping: { ...x.mapping, [k]: k === "business_date" ? (r ?? { field: "" }) : unit ? { ...r, unit } : r } };
+  });
+  const setUnit = (unit: AmountUnit) => set((x) => {
+    const a = x.spec.mapping.amount_minor;
+    return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
+  });
   const names = [...s.fields.map((f) => f.name), ...Object.keys(s.derive)];
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
 
@@ -134,6 +142,15 @@ export function FieldsStep(p: FieldsStepProps) {
             </Field>
           );
         })}
+        {s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
+        {!s.mapping.currency && (
+          <Field id={ctl("currency")} label="Currency for every row" required={!!s.mapping.amount_minor} note="This source has no currency column, so every amount is in this currency." error={err(ctl("currency"))}>
+            <Select className="w-full min-w-0" id={ctl("currency")} value={s.currency ?? ""} onChange={(e) => setSpec((x) => ({ ...x, currency: e.target.value || undefined }))}>
+              <option value="">Pick a currency</option>
+              {Object.keys(CURRENCY_EXPONENT).map((c) => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </Field>
+        )}
         {s.input.kind !== "db_snapshot" && (
           <span className="inline-flex items-center gap-2 md:col-span-2">
             <Switch id={ctl("mutable")} checked={s.mutable} onChange={(e) => setSpec((x) => ({ ...x, mutable: e.target.checked }))} aria-label="Rows can change after they arrive" />
@@ -444,6 +461,27 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/** "Amount is in": currency units or minor units, the suggestion while it is still the value, and what the sample's first row per currency is stored as. */
+function AmountUnitField({ d, err, records, onUnit }: { d: Draft; err: FieldsStepProps["err"]; records: NonNullable<Preview["result"]>["records"]; onUnit: (u: AmountUnit) => void }) {
+  const id = ctl("mapping.amount_minor.unit");
+  const unit = d.spec.mapping.amount_minor?.unit;
+  const why = err(id);
+  const note = unit && d.unitHint?.unit === unit ? d.unitHint.note : null;
+  const examples = unit ? unitExamples(records, unit) : [];
+  return (
+    <div className="grid min-w-0 content-start gap-2 md:col-span-2">
+      <span className="text-label text-fg">Amount is in<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
+      <div id={id} tabIndex={-1} className="w-fit rounded-ctl" aria-invalid={!!why || undefined} aria-describedby={why ? `${id}-error` : undefined}>
+        <Segmented label="Amount is in" value={unit ?? ("" as AmountUnit)} onChange={onUnit} options={AMOUNT_UNITS.map((u) => ({ value: u, label: UNIT_LABEL[u] }))} />
+      </div>
+      {why && <p id={`${id}-error`} role="alert" className="text-body-sm text-down-ink">{why}</p>}
+      <span className="text-caption text-fg-3">{(unit ? [unit] : AMOUNT_UNITS).map((u) => `${UNIT_LABEL[u]}: ${UNIT_HINT[u]}`).join(". ")}.</span>
+      {note && <span className="text-caption text-fg-3">{note}</span>}
+      {examples.length > 0 && <p role="status" className="grid gap-1 text-body-sm text-fg-2">{examples.map((x) => <span key={x}>{x}</span>)}</p>}
     </div>
   );
 }

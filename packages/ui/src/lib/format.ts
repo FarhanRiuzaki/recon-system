@@ -23,6 +23,12 @@ export function formatNumber(n: N): string {
   return n == null || !Number.isFinite(n) ? "–" : nf0.format(n);
 }
 
+/** Minor units of a currency with `exponent` decimals, grouped, from a bigint (never a float): (2551779n, 2) → "25,517.79". */
+export function formatMinor(minor: bigint, exponent: number): string {
+  const a = minor < 0n ? -minor : minor, p = 10n ** BigInt(exponent);
+  return (minor < 0n ? "-" : "") + nf0.format(a / p) + (exponent ? `.${(a % p).toString().padStart(exponent, "0")}` : "");
+}
+
 /** Ratio as a percentage, whole by default; `digits` keeps up to that many decimals (SLO objectives: "99.5%"). */
 export function formatPercent(ratio: N, digits = 0): string {
   if (ratio == null || !Number.isFinite(ratio)) return "–";

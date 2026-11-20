@@ -4,6 +4,7 @@ import { Panel, ReviewList, StatusChip } from "@starterkit/ui/ds";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 import { KIND_LABEL, scheduleText } from "../source-text";
+import { UNIT_LABEL } from "../spec-draft";
 import type { Draft } from "./model";
 
 type Check = { check: string; ready: boolean; details: string };
@@ -26,7 +27,7 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   return [
     { ...arrive, ready: true },
     ...table,
-    { check: "Core fields", ready: true, details: `business_date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}` : "no amount"}` },
+    { check: "Core fields", ready: true, details: `business_date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
     s.key_fields.length
       ? { check: "Match key", ready: true, details: `${s.key_fields.join(" + ")}, never empty` }
       : { check: "Match key", ready: false, details: "No match key: rows are told apart by their whole content only." },
