@@ -34,6 +34,10 @@ const LABELS = { name: "Name", code: "Code", a: "Side A", b: "Side B" };
 /** A code from a name, until the maker types their own: "BI-FAST credit" → "bi-fast-credit". */
 export const codeOf = (name: string) => name.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
 
+/** The source wizard (the sources feature's first step), and why only a source admin opens it. */
+const newSourceHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/sources/new?step=1`;
+const NEW_SOURCE_REASON = "Only a source admin of this space adds sources.";
+
 /** A source as a side picker lists it; a source without an approved version can't be a side yet. */
 const optionText = (s: SourceRowDto) =>
   `${s.name}${s.owner ? ` · shared from ${s.owner.name}` : ""}${s.publishedVersion === null ? " · no approved version yet" : ""}`;
@@ -41,12 +45,13 @@ const optionText = (s: SourceRowDto) =>
 /**
  * /spaces/[spaceId]/recons/new (README row Plan 3): a name, a code and the two sides' sources; the API makes the recon
  * and its Draft v1 together on this first save, then the builder opens over it. A role other than config maker gets
- * the reason.
+ * the reason. With no published source in the space there is nothing to pick: one sentence and New source instead.
  */
-export function NewRecon({ spaceId }: { spaceId: string }) {
+export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const maker = useSpaceRoles(spaceId).includes("config_maker");
+  const roles = useSpaceRoles(spaceId);
+  const maker = roles.includes("config_maker");
   const sources = useSourceOptions(spaceId);
   const f = useForm<Values>({ initial: { name: "", code: "", a: "", b: "" }, schema: SCHEMA, idPrefix: "rc" });
   const [codeTyped, setCodeTyped] = useState(false);
@@ -97,6 +102,16 @@ export function NewRecon({ spaceId }: { spaceId: string }) {
   return (
     <div className="grid gap-section">
       <PageHeader title="New recon" description="Name the recon and pick the source of each side. The passes and settings come next, in the draft." />
+      {sources.data && !items.some((x) => x.publishedVersion !== null) ? (
+        <Panel>
+          <div className="grid justify-items-center gap-3 py-8 text-center">
+            <p className="text-body text-fg">No published source in {spaceName} yet.</p>
+            {roles.includes("source_admin")
+              ? <Button asChild><Link href={newSourceHref(spaceId)}>New source</Link></Button>
+              : <BlockedButton reason={NEW_SOURCE_REASON}>New source</BlockedButton>}
+          </div>
+        </Panel>
+      ) : (
       <Panel bodyClassName="md:p-6">
         <form noValidate onSubmit={create} aria-label="New recon" className="grid max-w-xl gap-4">
           {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}
@@ -121,6 +136,7 @@ export function NewRecon({ spaceId }: { spaceId: string }) {
           </FormActions>
         </form>
       </Panel>
+      )}
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
           onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description="This recon isn't created yet."
