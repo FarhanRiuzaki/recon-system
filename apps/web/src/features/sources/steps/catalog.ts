@@ -16,7 +16,7 @@ export const IDLE = { status: "idle" } as const;
 /** The connection values a list was read with, apart from the database: a change of any makes the lists out of date. */
 export const credKey = (c: Conn) => JSON.stringify([c.engine, c.host.trim(), c.port, c.user.trim(), c.password, c.tls]);
 
-export const STALE_NOTE = "The connection changed since the last test. Test it again to refresh this list.";
+export const STALE_NOTE = "The connection changed. Connect again to refresh this list.";
 export const DATABASE_NOTE = "Leave it empty to choose from a list after Connect.";
 export const TYPED_NOTE = "As the source's catalog spells it, such as schema.table. Checked when the columns are read.";
 export const EMPTY_DATABASES = "This account can't open any database on this server. Ask IT to grant access.";

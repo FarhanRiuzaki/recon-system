@@ -113,9 +113,9 @@ export function ConnectionStep(p: ConnectionStepProps) {
       </Panel>
 
       <Panel title="Where the data comes from" bodyClassName="grid gap-3 md:grid-cols-2">
-        <ChoiceCard name="src-from" label="Database" checked={db} disabled={created && !db} onChange={() => setKind("db_watermark")}
+        <ChoiceCard inCard name="src-from" label="Database" checked={db} disabled={created && !db} onChange={() => setKind("db_watermark")}
           description="PostgreSQL, MySQL, SQL Server or Oracle." />
-        <ChoiceCard name="src-from" label="File inbox" checked={!db} disabled={created && db} onChange={() => setKind("file_inbox")}
+        <ChoiceCard inCard name="src-from" label="File inbox" checked={!db} disabled={created && db} onChange={() => setKind("file_inbox")}
           description="An SFTP or NFS folder; files are picked up by name." />
       </Panel>
 
@@ -378,7 +378,7 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
         <div className="contents" onSubmit={(e) => e.stopPropagation()}>
           <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setOffFor(null); }} auditFields={false} reasons={[]} impact={[]} destructive
             title={`Turn off TLS for ${offFor}?`} description="The password and the data travel unencrypted. This is recorded in the activity log."
-            actionLabel="Turn off TLS" cancelLabel="Keep TLS" onConfirm={async () => { tlsChosen.current = true; setConn({ tls: false }); setOffFor(null); }} />
+            actionLabel="Turn off TLS" cancelLabel="Keep TLS" alert onCloseAutoFocus={(e) => { e.preventDefault(); document.getElementById("src-tls")?.focus(); }} onConfirm={async () => { tlsChosen.current = true; setConn({ tls: false }); setOffFor(null); }} />
         </div>
       )}
     </Panel>
@@ -472,9 +472,9 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   return (
     <Panel title="How to pull" bodyClassName="grid gap-4" description={p.nextVersion ? `A change here makes version ${p.nextVersion}, approved by a config checker.` : undefined}>
       <div className="grid gap-3 md:grid-cols-2">
-        <ChoiceCard name="src-pull" label="New rows by watermark" checked={d.kind === "db_watermark"} disabled={created && d.kind !== "db_watermark"} onChange={() => p.setKind("db_watermark")}
+        <ChoiceCard inCard name="src-pull" label="New rows by watermark" checked={d.kind === "db_watermark"} disabled={created && d.kind !== "db_watermark"} onChange={() => p.setKind("db_watermark")}
           description="Rows added or changed since the last pull." />
-        <ChoiceCard name="src-pull" label="Whole snapshot per business date" checked={d.kind === "db_snapshot"} disabled={created && d.kind !== "db_snapshot"} onChange={() => p.setKind("db_snapshot")}
+        <ChoiceCard inCard name="src-pull" label="Whole snapshot per business date" checked={d.kind === "db_snapshot"} disabled={created && d.kind !== "db_snapshot"} onChange={() => p.setKind("db_snapshot")}
           description="The full position for one date." />
       </div>
       {body}

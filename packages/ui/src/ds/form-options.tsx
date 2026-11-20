@@ -24,8 +24,10 @@ export function RadioGroup({ legend, name, value, onValueChange, options, disabl
     {error && <p id={id} className="text-caption text-down-ink">{error}</p>}
   </fieldset>;
 }
-export function ChoiceCard(props: ComponentProps<typeof Radio>) {
-  return <div className="rounded-xl border border-line bg-tray p-tray"><Radio {...props} className={cn("rounded-lg border border-control-border bg-card p-4 has-checked:border-primary has-checked:bg-primary-soft has-focus-visible:ring-3 has-focus-visible:ring-primary-soft", props.className)} /></div>;
+/** A radio as a card; `inCard` = it already sits on a card (a Panel's body), so no tray of its own (one surface level). */
+export function ChoiceCard({ inCard, ...props }: ComponentProps<typeof Radio> & { inCard?: boolean }) {
+  const card = <Radio {...props} className={cn("rounded-lg border border-control-border bg-card p-4 has-checked:border-primary has-checked:bg-primary-soft has-focus-visible:ring-3 has-focus-visible:ring-primary-soft", props.className)} />;
+  return inCard ? card : <div className="rounded-xl border border-line bg-tray p-tray">{card}</div>;
 }
 export function Switch({ className, ...props }: Omit<ComponentProps<"input">, "type" | "role">) {
   return <label data-slot="switch" className={cn("relative inline-flex h-8 w-10 shrink-0 items-center justify-center pointer-coarse:size-11", className)}>

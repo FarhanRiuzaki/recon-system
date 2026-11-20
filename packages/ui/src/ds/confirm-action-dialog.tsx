@@ -14,6 +14,8 @@ type Props = {
   title: string; description: string; impact: string[]; reasons: readonly string[]; actionLabel: string;
   /** The label of the button that closes without acting ("Keep TLS"); Cancel by default. */
   cancelLabel?: string;
+  /** A dangerous confirmation that interrupts the task (WAI-ARIA alertdialog). */
+  alert?: boolean;
   destructive?: boolean; confirmText?: string;
   /** Set while the action can't run (obs-agent down): the action button is off and the reason is shown. */
   unavailableReason?: string;
@@ -81,7 +83,7 @@ export function ConfirmActionDialog(p: Props) {
       if (o) p.onOpenChange(true); else close();
     }}>
       {/* Capped at the viewport: header and footer stay put, the fields scroll (the T4c Open dialog is ~950 px tall). */}
-      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)]" onCloseAutoFocus={p.onCloseAutoFocus}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)]" onCloseAutoFocus={p.onCloseAutoFocus} role={p.alert ? "alertdialog" : undefined}>
         <form onSubmit={submit} noValidate className="flex min-h-0 flex-col">
           {/* 16 + 1 + 3 px keeps the 20 px gap of a dialog that fits; the rule shows only while the body is scrolled. */}
           <DialogHeader className="shrink-0 border-b border-transparent pb-4 transition-colors duration-(--dur-fast) data-scrolled:border-line" data-scrolled={scrolled || undefined}>

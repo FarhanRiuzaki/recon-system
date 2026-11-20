@@ -44,6 +44,8 @@ const DESCRIPTION = (space: string) => [
 ] as const;
 /** A catalog list's failure as its state: the API's sentence, and when Retry may run again after a 429. */
 const failed = (e: unknown) => ({ status: "error" as const, message: errorText(e), retryAt: e instanceof ApiError && e.retryAfter ? Date.now() + e.retryAfter * 1000 : null });
+/** Next after a pass whose values changed since (copy-guide, REC-F2b); before any pass it is off without a sentence. */
+const CHANGED = { db: "The connection changed since you connected. Connect again.", file: "The folder changed since the last check. Check it again." } as const;
 /** The table search waits this long after the last key (PO: no request per keystroke). */
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -541,7 +543,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   // step 1: Next opens once the connect (or folder check) of the values on screen passed and a table is picked, with no
   // sentence (docs/recon/ux-form-rules.md, exception to ui-standard §5b); step 2: a field whose column is gone
   const ready0 = !!tested?.result.ok && tested.key === connKey(d) && pullProblems(d, { replace }).length === 0;
-  const blocked = step === 0 ? (ready0 ? null : "") : step === 1 && gone.used.length ? goneBlocked(gone.used.length, tableNow) : null;
+  const relocked = !!tested?.result.ok && tested.key !== connKey(d);
+  const blocked = step === 0 ? (ready0 ? null : relocked ? CHANGED[file ? "file" : "db"] : "") : step === 1 && gone.used.length ? goneBlocked(gone.used.length, tableNow) : null;
   /** A draft source nobody submitted or shared (DELETE …/sources/{id} takes it): made here, or opened as such. */
   const deletable = !!ids && (!source || (source.s.publishedVersion === null && !source.v.submitterId && !source.s.shares.length));
   async function discard() {

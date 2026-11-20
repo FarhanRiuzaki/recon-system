@@ -100,7 +100,7 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText(/^Folder readable · 2 files match act\*\.txt · newest act2026110[23]\.txt$/);
   // a pass counts only for the values checked
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(`${folder}/`);
-  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
+  await blockedWith(page, "Next: fields & mapping", "The folder changed since the last check. Check it again.");
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   // the test stored nothing: the source is made at Next
   expect((await (await page.request.get(`/api/spaces/${ids.fico}/sources?q=ksei-act-${RUN}`)).json() as { total: number }).total).toBe(0);
