@@ -85,6 +85,20 @@ export const reads = {
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
+type SpecHolder = { spec?: { sides?: { source_id: string }[] }; draft?: SpecHolder | null; published?: SpecHolder | null };
+/**
+ * The sides' sources of a recon page (the recon, or one of its versions, at `url`): read once on the server to learn
+ * which sources the spec names, so the builder's field names render filled on the first paint.
+ */
+export async function reconSourceReads(spaceId: string, url: string): Promise<Read[]> {
+  const s = await getSession();
+  const path = v1Path(url);
+  if (!s.token || !path) return [];
+  const { data } = await backendJson<SpecHolder>(path, { token: s.token, req: { headers: await headers() } });
+  const sides = (data?.spec ?? data?.draft?.spec ?? data?.published?.spec)?.sides ?? [];
+  return [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
+}
+
 /**
  * Sends every read to the API (`/api/x` → `/v1/x`) with the session token, all at once, and puts each 200 answer under
  * its key in a dehydrated React Query cache. Anything else (403, 404, the API down) is left out: the browser then
