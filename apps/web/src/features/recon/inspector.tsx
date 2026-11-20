@@ -188,7 +188,12 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
       <div className="flex flex-wrap gap-2">
         <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, -1)} onClick={() => onMove(-1)}>Move earlier</BlockedButton>
         <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, 1)} onClick={() => onMove(1)}>Move later</BlockedButton>
-        <span className="ml-auto"><ActionMenu label={`Actions for pass ${i + 1}`} actions={[{ id: "remove", label: "Remove pass", destructive: true, onSelect: onRemove }]} /></span>
+        {/* The pass's ⋯ menu: the same moves as the buttons and Alt+↑/↓ (off with the reason at the ends), then Remove pass. */}
+        <span className="ml-auto"><ActionMenu label={`Actions for pass ${i + 1}`} actions={[
+          { id: "earlier", label: "Move earlier", disabled: !!moveReason(i, n, -1), hint: moveReason(i, n, -1) ?? undefined, onSelect: () => onMove(-1) },
+          { id: "later", label: "Move later", disabled: !!moveReason(i, n, 1), hint: moveReason(i, n, 1) ?? undefined, onSelect: () => onMove(1) },
+          { id: "remove", label: "Remove pass", destructive: true, onSelect: onRemove },
+        ]} /></span>
       </div>
     </div>
   );

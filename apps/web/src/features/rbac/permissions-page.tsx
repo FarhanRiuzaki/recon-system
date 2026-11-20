@@ -69,7 +69,7 @@ export function PermissionsPage() {
 
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
-      <PageHeader title="Permissions" description="Everything a role can allow. Roles decide who has each permission."
+      <PageHeader title="Permissions" description="Everything a role can allow, by module."
         actions={can("permission.create") ? <Button onClick={() => { setActions(""); setAdding(true); }}>Create permissions</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the permissions; showing the ones loaded before. {errorText(t.staleError)}</Notice>}

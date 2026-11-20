@@ -10,7 +10,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/toolt
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { DUR } from "@starterkit/ui/motion";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api } from "@/lib/client/api";
@@ -76,9 +77,17 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
     toggled.current = false;
     toggleRef.current?.focus();
   }, [collapsed]);
-  const toggle = (sidebar: "collapsed" | "expanded") => { toggled.current = true; update({ sidebar }); };
-  // Labels keep `hidden` in the rail (never animated out); on expand they fade in as the width opens.
-  const label = (cls: string) => (collapsed ? "hidden" : cn(cls, "animate-reveal-in"));
+  // Labels keep `hidden` in the rail (never animated out); they fade in once when the sidebar mounts and once on
+  // expand, as the width opens. The class goes after that: a label that turns visible again (the window crossing
+  // 1280 px, a full-page capture) would replay the fade from opacity 0 and look dimmed.
+  const [reveal, setReveal] = useState(true);
+  useEffect(() => {
+    if (!reveal) return;
+    const t = setTimeout(() => setReveal(false), DUR.slow * 1000);
+    return () => clearTimeout(t);
+  }, [reveal]);
+  const toggle = (sidebar: "collapsed" | "expanded") => { toggled.current = true; if (sidebar === "expanded") setReveal(true); update({ sidebar }); };
+  const label = (cls: string) => (collapsed ? "hidden" : cn(cls, reveal && "animate-reveal-in"));
   // The rail (below 1280 px, or collapsed): every control is a centred 36 px square; expanded, a full-width row.
   const square = collapsed ? "mx-auto size-9" : "max-xl:mx-auto max-xl:size-9";
   return (
