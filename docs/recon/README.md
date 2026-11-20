@@ -15,6 +15,30 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
 | 4 Live day + Today | §9, §11a | Plan 4 | 04 Live day & Today | `engine` | `engine` | REC-F4 | belum |
 | 5 Breaks + approvals + export | §11 | Plan 5 | 05 Breaks & approvals | `breaks`, `approvals` | `breaks`, `approvals` | REC-F5 | belum |
 
+## Status kerja (21 Nov 2026, catatan serah core-recon)
+
+- **Plan 2**: ditutup (REC-F2a disetujui Captain). Tambahan setelahnya: unit amount major/minor + normalisasi currency
+  (d877af1..8bd80a1), saran Core fields, copy tanpa istilah internal.
+- **Plan 3** (`docs/superpowers/plans/2026-11-20-recon-phase1-plan3-engine-builder.md`; ledger git-ignored
+  `.superpowers/sdd/2026-11-20-recon-phase1-plan3-engine-builder/progress.md`):
+  - Task 1 modul `recon` — selesai (e9c28ea..7d7a34f).
+  - Task 2 engine — selesai, kunci jawaban gerbang cocok per id (7d7a34f..8ea0d68).
+  - Task 3 run + simulasi lewat API/worker — berjalan (implementer; carry: ANALYZE setelah intake, pool worker, reaper,
+    satu run per config, retensi simulasi, diff, simulated_hash).
+  - Task 4 builder list (web) — fungsional di :3000 (79d33ef..bf548ee); putaran perbaikan review berjalan (key pass
+    hydration, operator→field, kunci grup, simpan saat edit, dnd-kit lazy, tes zod).
+  - Task 5 hasil per pass, Task 6 jadwal/grace/carry-over/catch-up, Task 7 spike kanvas — belum.
+- **REC-F2b** wizard source step 1 (urutan sebab-akibat, Connect primer, error per kolom, TLS CA bank) — berjalan;
+  v1.0.5 disetujui Captain dengan P1 password + 4 P2 (sudah diteruskan).
+- **Bug item 12** (komponen route lain menempel, mis. skeleton dashboard di atas wizard): investigasi berjalan; petunjuk
+  `apps/web/src/components/route-skeleton.tsx` holder `data-frozen-holder` dihapus hanya lewat `fade.finished`. Bila
+  mekanisme salin-DOM perlu dihapus, Captain yang memutuskan.
+- **Stack lokal**: :3000 = dev stack `recon-dev` dari worktree `recon-preview` (ikut setiap commit, deploy.md §8); login
+  `superadmin` / `Password123!`, checker `checker` / `Password123!`; DB uji sumber `recon_source_test` di
+  host.docker.internal:5432 (`recon_ro`). Migrasi dev DB sampai 0024; terapkan migrasi baru Task 3 setelah commit.
+- **Aturan pemilik**: tanpa E2E (tes terdampak + check), no AI slop di UI, tidak push/merge tanpa persetujuan, laporan
+  singkat ke Captain.
+
 ## Dokumen pendukung
 
 - [`spikes.md`](spikes.md) — hasil spike S1, S2, S3 dan S7 (angka, verdict, konsekuensi). S4 (RLS) dibuktikan oleh tes
