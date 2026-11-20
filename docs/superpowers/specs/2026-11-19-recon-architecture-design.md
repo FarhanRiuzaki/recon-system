@@ -175,8 +175,10 @@ FK (mencegah kebocoran lewat error constraint, laporan riset §Space); ID `uuidv
   `attrs` yang dipakai matching dipromosikan jadi kolom terindeks lewat versi source. Partisi sama dengan `raw_row`.
 - **Tanggal bisnis diatur per source (Claude)**: mapping source mendefinisikan `business_date` (field atau ekspresi CEL)
   plus timezone; default `date(event_time)` di `Asia/Jakarta`. Kalender hari kerja (untuk `bday_index`) dipilih per
-  source dari tabel kalender yang dikelola. Jadi recon 24/7, recon dengan cut-off settlement, dan recon hari kerja semua
-  diekspresikan lewat config, bukan kode.
+  source dari tabel kalender yang dikelola. Jadi recon 24/7 dan recon hari kerja diekspresikan lewat config, bukan kode.
+  Cut-off settlement selain tengah malam (mis. transaksi setelah 23:00 masuk hari berikutnya) belum bisa: CEL di mapping
+  hanya punya fungsi string/angka (`timestamp`/`duration` ditolak sejak spike S3), jadi butuh setting cut-off jam per
+  source di mapping `business_date` (REC-FUT-13), bukan fungsi waktu di CEL.
 - **Source immutable vs mutable (Claude)**: source mendeklarasikan `key_fields` (kunci natural yang stabil) dan
   `mutable: true|false`.
   - Immutable (default): dedup `UNIQUE (space_id, source_id, row_hash, business_date)`; baris sama yang ditarik ulang
