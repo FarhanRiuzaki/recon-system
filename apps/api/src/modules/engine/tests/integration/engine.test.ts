@@ -87,16 +87,17 @@ const gateSpec = (a: string, b: string) => ({
 const itemsOf = (configId: string) => db.select({ id: reconItems.id, side: reconItems.side, status: reconItems.status, reason: reconItems.breakReason, date: reconItems.businessDate, version: reconItems.version, ref: records.extRef })
   .from(reconItems).innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
   .where(and(eq(reconItems.configId, configId), sql`${reconItems.simRunId} is null`)).orderBy(asc(records.extRef), asc(reconItems.side), asc(reconItems.id));
-/** Every group of `configId` (of run `runId` when given) with its members' references, sides and amounts. */
+/** Every live group of `configId` (or of run `runId`) with its members' references, accounts, sides and amounts. */
 async function groupsOf(configId: string, runId?: string) {
-  const rows = await db.select({ id: matchGroups.id, pass: matchGroups.passNo, kind: matchGroups.kind, date: matchGroups.businessDate, evidence: matchGroups.evidence, side: matchMembers.side, ref: records.extRef, amount: matchMembers.signedAmount })
+  const rows = await db.select({ id: matchGroups.id, pass: matchGroups.passNo, kind: matchGroups.kind, date: matchGroups.businessDate, evidence: matchGroups.evidence, side: matchMembers.side, ref: records.extRef, acct: records.accountRef, amount: matchMembers.signedAmount })
     .from(matchGroups).innerJoin(matchMembers, eq(matchMembers.groupId, matchGroups.id)).innerJoin(reconItems, eq(reconItems.id, matchMembers.itemId))
     .innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
-    .where(and(eq(matchGroups.configId, configId), runId ? eq(matchGroups.runId, runId) : undefined)).orderBy(asc(matchGroups.id), asc(matchMembers.side));
-  const by = new Map<string, { pass: number; kind: string; date: string; evidence: unknown; refs: string[]; sides: string[]; amounts: (bigint | null)[] }>();
+    .where(and(eq(matchGroups.configId, configId), runId ? eq(matchGroups.runId, runId) : sql`${matchGroups.simRunId} is null`))
+    .orderBy(asc(matchGroups.id), asc(matchMembers.side), asc(records.accountRef));
+  const by = new Map<string, { pass: number; kind: string; date: string; evidence: unknown; refs: string[]; accts: string[]; sides: string[]; amounts: (bigint | null)[] }>();
   for (const r of rows) {
-    const g = by.get(r.id) ?? { pass: r.pass, kind: r.kind, date: r.date, evidence: r.evidence, refs: [], sides: [], amounts: [] };
-    g.refs.push(r.ref!); g.sides.push(r.side); g.amounts.push(r.amount);
+    const g = by.get(r.id) ?? { pass: r.pass, kind: r.kind, date: r.date, evidence: r.evidence, refs: [], accts: [], sides: [], amounts: [] };
+    g.refs.push(r.ref!); g.accts.push(r.acct ?? ""); g.sides.push(r.side); g.amounts.push(r.amount);
     by.set(r.id, g);
   }
   return [...by.values()];
@@ -127,7 +128,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     console.log(`gate run 2–5 Nov: ${Math.round(performance.now() - t0)} ms`);
     firstRun = run.runId;
     expect(run.counters).toEqual({
-      intake: { a: 1000, b: 1000 },
+      intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 },
       passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
       open: { a: 24, b: 24 },
     });
@@ -176,7 +177,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const before = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const again = await runRecon(probe, { ...gate, mode: "rerun", from: "2026-11-02", to: "2026-11-05" });
     expect(again.counters).toEqual({
-      intake: { a: 0, b: 0 },
+      intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 },
       passes: { 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 }, 3: { matched: 0, suggested: 0, broken: 0 } },
       open: { a: 24, b: 24 },
     });
@@ -192,7 +193,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     expect(sim.counters.passes).toEqual({ 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } });
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconItems).where(eq(reconItems.simRunId, sim.runId)))[0]!.n).toBe(2000);
-    expect([await itemsOf(gate.configId), (await groupsOf(gate.configId)).filter((g) => (g.evidence as { runId: string }).runId !== sim.runId)]).toEqual(live);
+    expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(live);
     // a draft never runs live
     const e = await runRecon(probe, { ...gate, versionId: draft, mode: "manual", from: "2026-11-02" }).catch((x: unknown) => x);
     expect((e as Error).message).toBe("Only the published version of a recon runs.");
@@ -206,21 +207,23 @@ const plainSource = (): SourceSpec => ({
     { name: "ref", type: "string", nullable: false, trim: true }, { name: "amount", type: "integer", nullable: true, trim: true },
     { name: "date", type: "date", nullable: false, trim: true }, { name: "ccy", type: "string", nullable: true, trim: true },
     { name: "acct", type: "string", nullable: true, trim: true }, { name: "sref", type: "string", nullable: true, trim: true },
+    { name: "dir", type: "string", nullable: true, trim: true }, { name: "et", type: "datetime", nullable: true, trim: true },
+    { name: "when", type: "date", nullable: true, trim: true },
   ],
   mapping: {
     ext_ref: { field: "ref" }, amount_minor: { field: "amount", unit: "minor" }, business_date: { field: "date" }, currency: { field: "ccy" },
-    account_ref: { field: "acct" }, attrs: { settlement_ref: { field: "sref" } },
+    account_ref: { field: "acct" }, direction: { field: "dir" }, event_time: { field: "et" }, attrs: { settlement_ref: { field: "sref" }, when: { field: "when" } },
   },
   derive: {}, key_fields: [], mutable: false, calendar: "id-default",
   input: { kind: "file_inbox", path: "/inbox/x", pattern: "*.csv", completion: { kind: "stable_seconds", seconds: 60 }, format: { kind: "delimited", delimiter: ",", quote: '"', header: true, encoding: "utf-8" } },
 } as SourceSpec);
-type Rec = { ref?: string; amount?: bigint; ccy?: string; date?: string; acct?: string; sref?: string };
+type Rec = { ref?: string; amount?: bigint; ccy?: string; date?: string; acct?: string; sref?: string; et?: string; dir?: string; attrs?: Record<string, string> };
 /** Writes records of `s` (as ingest would have: current, no snapshot); answers their ids in order. */
 async function put(s: Src, rows: Rec[]): Promise<string[]> {
   const vals = rows.map((r) => ({
     id: Bun.randomUUIDv7(), spaceId: s.spaceId, sourceId: s.sourceId, sourceVersionId: s.versionId, businessDate: r.date ?? D, bdayIndex: 0,
-    extRef: r.ref ?? null, accountRef: r.acct ?? null, amountMinor: r.amount ?? null, currency: r.ccy ?? "IDR",
-    attrs: r.sref ? { settlement_ref: r.sref } : {}, rowHash: Bun.randomUUIDv7(), originId: Bun.randomUUIDv7(),
+    extRef: r.ref ?? null, accountRef: r.acct ?? null, amountMinor: r.amount ?? null, currency: r.ccy ?? "IDR", direction: r.dir ?? null,
+    eventTime: r.et ? new Date(r.et) : null, attrs: { ...(r.sref ? { settlement_ref: r.sref } : {}), ...r.attrs }, rowHash: Bun.randomUUIDv7(), originId: Bun.randomUUIDv7(),
   }));
   await db.insert(records).values(vals);
   return vals.map((v) => v.id);
@@ -251,7 +254,7 @@ describe("cases on records written directly", () => {
     expect([auto.refs, auto.amounts]).toEqual([["K1", "K1"], [1_000_500n, 1_000_400n]]);
     const tie = groups.find((g) => g.kind === "suggested")!;
     expect([tie.refs, tie.amounts[0]]).toEqual([["K2", "K2"], 500_000n]);
-    expect(tie.evidence).toMatchObject({ chosen: "tie broken by earliest business date, then id" });
+    expect(tie.evidence).toMatchObject({ chosen: "tie broken by business date, event time, record id" });
     const open = (await itemsOf(r.configId)).filter((i) => i.status === "open");
     expect(open.map((i) => [i.ref, i.side])).toEqual([["K1", "a"], ["K2", "b"]]);
   });
@@ -311,7 +314,7 @@ describe("cases on records written directly", () => {
       { no: 1, name: "SID", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "account_ref" }] },
     ], 0));
     const run = await runRecon(probe, { ...r, mode: "daily", from: D });
-    expect(run.counters).toEqual({ intake: { a: 10, b: 11 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 1, b: 1 } });
+    expect(run.counters).toEqual({ intake: { a: 10, b: 11 }, replaced: { a: 0, b: 0 }, passes: { 1: { matched: 8, suggested: 0, broken: 3 } }, open: { a: 1, b: 1 } });
     const items = await itemsOf(r.configId);
     expect(items.filter((i) => i.status === "break").map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["M10", "Duplicate"], ["M10", "Duplicate"]]);
     expect(items.filter((i) => i.status === "open").map((i) => i.ref)).toEqual(["K9", "M11"]);
@@ -337,6 +340,110 @@ describe("cases on records written directly", () => {
     const other = await runRecon(probe, { ...ok, spaceId: A, mode: "manual", from: D }).catch((x: unknown) => x);
     expect((other as Error).message).toBe("This recon version doesn't exist.");
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconRuns).where(inArray(reconRuns.configId, [ok.configId, bad.configId])))[0]!.n).toBe(1);
+  });
+
+  const exact = (o: { accept?: string; on_ambiguous?: string } = {}) => [{ no: 1, name: "Exact", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break",
+    predicates: [{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, ccyEq], ...o }];
+
+  it("I1: duplicates of a key held as many times on both sides pair in record order (FIFO); 3:2 breaks as Duplicate", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    // record order = business date, event time, record id: A's second record is its first by event time
+    await put(sa, [{ ref: "X", amount: 100n, acct: "a-late", et: "2026-11-02T03:05:00Z" }, { ref: "X", amount: 100n, acct: "a-early", et: "2026-11-02T03:00:00Z" }]);
+    await put(sb, [{ ref: "X", amount: 100n, acct: "b-early", et: "2026-11-02T03:01:00Z" }, { ref: "X", amount: 100n, acct: "b-late", et: "2026-11-02T03:06:00Z" }]);
+    await put(sa, [1, 2, 3].map(() => ({ ref: "Y", amount: 5n })));
+    await put(sb, [1, 2].map(() => ({ ref: "Y", amount: 5n })));
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
+    const run = await runRecon(probe, { ...r, mode: "manual", from: D });
+    expect(run.counters.passes).toEqual({ 1: { matched: 2, suggested: 0, broken: 5 } });
+    const groups = await groupsOf(r.configId);
+    expect(groups.map((g) => [g.kind, g.accts.join("+")]).sort()).toEqual([["auto", "a-early+b-early"], ["auto", "a-late+b-late"]]);
+    expect(groups[0]!.evidence).toMatchObject({ chosen: "duplicates paired in order: business date, event time, record id" });
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "Y").map((i) => i.reason)).toEqual(Array(5).fill("Duplicate"));
+  });
+
+  it("I2: a competitor another transaction holds still competes: nothing of its key is matched or broken until it is free", async () => {
+    const [ksei, medallion] = [await source(A, plainSource()), await source(A, plainSource())];
+    const r = await recon(A, spec(ksei.sourceId, medallion.sourceId, [
+      { no: 1, name: "SID", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "account_ref" }] },
+    ], 0));
+    await put(medallion, [{ ref: "M10", acct: "SID10" }, { ref: "M10b", acct: "SID10" }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    await put(ksei, [{ ref: "K10", acct: "SID10" }]);
+    const held = (await itemsOf(r.configId)).find((i) => i.ref === "M10b")!;
+    const hold = await holdTx((tx) => tx.select({ id: reconItems.id }).from(reconItems).where(eq(reconItems.id, held.id)).for("update"));
+    try {
+      const run = await runRecon(probe, { ...r, mode: "daily", from: D });
+      expect(run.counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 } });
+    } finally {
+      await hold.rollback();
+    }
+    expect((await itemsOf(r.configId)).map((i) => i.status)).toEqual(["open", "open", "open"]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.reason])).toEqual([["K10", "Duplicate"], ["M10", "Duplicate"], ["M10b", "Duplicate"]]);
+  });
+
+  it("I3: a side that negates its amounts meets the other's opposite booking; a batch nets its refund; members keep their own sign", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    await put(sa, [{ ref: "S", amount: 100n, dir: "debit" }]);
+    await put(sb, [{ ref: "S", amount: 100n, dir: "credit" }]);
+    const negated = (passes: unknown[], carry = 1) => {
+      const x = spec(sa.sourceId, sb.sourceId, passes, carry);
+      return { ...x, sides: [x.sides[0], { ...x.sides[1], amount_sign: "negate" }] };
+    };
+    const plain = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
+    expect((await runRecon(probe, { ...plain, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 } });
+    const r = await recon(A, negated(exact()));
+    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+    expect((await groupsOf(r.configId))[0]!.amounts).toEqual([-100n, 100n]);
+
+    // a batch: two credits and a refund (debit) of side A against one settlement booked as a debit on side B
+    const [ta, tb] = [await source(A, plainSource()), await source(A, plainSource())];
+    await put(ta, [{ ref: "T1", amount: 100n, sref: "B1" }, { ref: "T2", amount: 250n, sref: "B1" }, { ref: "R1", amount: 50n, dir: "debit", sref: "B1" }]);
+    await put(tb, [{ ref: "STL", amount: 300n, dir: "debit", sref: "B1" }]);
+    const batch = spec(ta.sourceId, tb.sourceId, [{ no: 1, name: "Batch", cardinality: "N:1", blocking: ["attrs.settlement_ref"], accept: "auto", on_ambiguous: "break",
+      predicates: [{ op: "eq_sum", field: "amount_minor", tolerance: {} }, ccyEq] }]);
+    const g = await recon(A, { ...batch, sides: [batch.sides[0], { ...batch.sides[1], amount_sign: "negate" }] });
+    expect((await runRecon(probe, { ...g, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 1, suggested: 0, broken: 0 } });
+    const [grp] = await groupsOf(g.configId);
+    expect(grp!.amounts.map(String).sort()).toEqual(["-300", "-50", "100", "250"]);
+    expect(grp!.evidence).toMatchObject({ predicates: [{ op: "eq_sum", sum: 300, one: 300, delta: 0, members: 3 }, { op: "eq" }] });
+  });
+
+  it("I6: an open item whose record was replaced closes and stops counting; the new record is a new item", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    const [old] = await put(sa, [{ ref: "P", amount: 100n }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
+    await runRecon(probe, { ...r, mode: "manual", from: D });
+    const [fresh] = await put(sa, [{ ref: "P", amount: 120n }]);
+    await db.update(records).set({ supersededBy: fresh! }).where(eq(records.id, old!));
+    const run = await runRecon(probe, { ...r, mode: "manual", from: D });
+    expect(run.counters).toMatchObject({ intake: { a: 1, b: 0 }, replaced: { a: 1, b: 0 }, open: { a: 1, b: 0 } });
+    expect((await itemsOf(r.configId)).map((i) => [i.status, i.reason, i.version])).toEqual([["closed", "Source row replaced", 1], ["open", null, 0]]);
+  });
+
+  it("empty text never matches through eq_normalized or contains", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    await put(sa, [{ ref: " - ", acct: "x" }, { ref: "ABC", acct: "" }]);
+    await put(sb, [{ ref: "--", acct: "" }, { ref: "ZABCZ", acct: "y" }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [
+      { no: 1, name: "Norm", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq_normalized", field: "ext_ref" }] },
+      { no: 2, name: "Contains", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "contains", field: "account_ref" }] },
+    ]));
+    expect((await runRecon(probe, { ...r, mode: "manual", from: D })).counters.passes).toEqual({ 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 } });
+  });
+
+  it("a step that fails rolls back alone and marks the run failed with a sentence, never the query", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    await put(sa, [{ ref: "W", attrs: { when: "not a date" } }]);
+    await put(sb, [{ ref: "W", attrs: { when: "2026-11-02" } }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [
+      { no: 1, name: "When", cardinality: "1:1", blocking: ["ext_ref"], accept: "auto", on_ambiguous: "break", predicates: [{ op: "date_window", field: "attrs.when", days: 1 }] },
+    ]));
+    const e = await runRecon(probe, { ...r, mode: "manual", from: D }).catch((x: unknown) => x);
+    expect(e).toBeInstanceOf(Error);
+    const [run] = await db.select().from(reconRuns).where(eq(reconRuns.configId, r.configId));
+    expect([run!.status, run!.error, run!.finishedAt !== null]).toEqual(["failed", "The run stopped on an internal error. Run it again; if it fails again, tell your admin.", true]);
+    expect(await itemsOf(r.configId)).toEqual([]); // the step's intake rolled back with it
   });
 
   it("refuses a range past 31 days or backwards, and marks a run that fails", async () => {

@@ -6,9 +6,12 @@
 // alone and marks the run failed. A step run again finds nothing new: intake is once per record, passes read open
 // items only, so a rerun adds no group and loses no item (Review Focus 3).
 //
-// A pass's choice is in sql/pass.ts: mutual unique best first, repeated while it pairs (taking a pair can make another
+// A pass's choice is in sql/pass.ts: a pass of equalities only pairs per key in order when both sides hold as many
+// (one statement); another pass takes mutual unique best pairs, repeated while it pairs (taking a pair can make another
 // pair the unique best); then the ties go to on_ambiguous: break (sql/breaks.ts) or suggest. Suggested groups never
-// count as matched (DEC-046): their items stay `suggested`, outside later passes, counted open by match rate.
+// count as matched (DEC-046): their items stay `suggested`, outside later passes, counted open by match rate. Before
+// the passes, a step closes the window's open items whose record no longer counts (intake.ts closeReplacedSql), so the
+// open counters count current records only.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { recordFields } from "@starterkit/shared/recon";
 import { and, count, eq, sql, type SQL } from "drizzle-orm";
@@ -23,14 +26,19 @@ import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { reconItems, reconRuns, RUN_MODES } from "./schema";
 import { groupBreakSql, tieBreakSql } from "./sql/breaks";
-import { intakeSql } from "./sql/intake";
-import { acceptSql, groupAcceptSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
+import { closeReplacedSql, intakeSql } from "./sql/intake";
+import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type RunMode = (typeof RUN_MODES)[number];
 /** What a pass did over the run: groups it accepted, groups it suggested, items it broke as ambiguous. */
 export type PassCounters = { matched: number; suggested: number; broken: number };
-/** A run's counters: items taken in per side, per pass (by number), and items still open per side in the window after. */
-export type RunCounters = { intake: { a: number; b: number }; passes: Record<string, PassCounters>; open: { a: number; b: number } };
+/**
+ * A run's counters: items taken in per side, items closed because their record was replaced, per pass (by number), and
+ * items still open per side in the window after.
+ */
+export type RunCounters = {
+  intake: { a: number; b: number }; replaced: { a: number; b: number }; passes: Record<string, PassCounters>; open: { a: number; b: number };
+};
 export type RunInput = {
   spaceId: string; configId: string; versionId: string; mode: RunMode;
   /** Business dates (yyyy-mm-dd), at most RANGE_MAX_DAYS; both default to today in Asia/Jakarta. */
@@ -68,7 +76,7 @@ async function load(tx: InTx, i: RunInput): Promise<Loaded> {
   const sides = spec.sides.map((s) => {
     const src = found.get(s.source_id);
     if (!src?.spec) throw new ApiError("bad_request", `Side ${s.key.toUpperCase()}: this space can't read a published version of its source.`);
-    return { key: s.key, sourceSpaceId: src.spaceId, sourceId: s.source_id, fields: recordFields(src.spec), spec: src.spec };
+    return { key: s.key, sourceSpaceId: src.spaceId, sourceId: s.source_id, fields: recordFields(src.spec), negate: s.amount_sign === "negate", spec: src.spec };
   });
   const check = checkReconSpec(spec, [{ spec: sides[0]!.spec, currencies: [] }, { spec: sides[1]!.spec, currencies: [] }]);
   if (check.errors.length) throw new ApiError("bad_request", check.errors[0]!);
@@ -84,7 +92,7 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
   const bump = (kind: "auto" | "suggested", n: number) => { if (kind === "auto") out.matched += n; else out.suggested += n; };
   const write = async (q: SQL, kind: "auto" | "suggested", members: (g: number) => number = (g) => 2 * g) => {
     const r = await one<{ groups: number; items: number; members?: number }>(tx, q);
-    // every item read was locked by this statement, so each claim succeeds; anything else is a bug: roll the step back
+    // every item written was locked by this statement, so each claim succeeds; anything else is a bug: roll the step back
     if (r.items !== (r.members ?? members(r.groups))) throw new Error(`engine: pass ${p.no} claimed ${r.items} items for ${r.groups} groups`);
     bump(kind, r.groups);
     return r.groups;
@@ -96,9 +104,9 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
     // ponytail: a group pass with on_ambiguous suggest leaves its ambiguous items open (no subset sum, spec §10)
     return;
   }
-  // a pass of equalities only splits its candidates by key: taking one key's pair changes no other key, one round does
-  const rounds = p.predicates.every((q) => q.op === "eq" || q.op === "eq_normalized") ? 1 : ROUNDS_MAX;
-  for (let r = 0; r < rounds && (await write(acceptSql(c, p), accepted)) > 0; r++);
+  // a pass of equalities only splits its candidates by key: taking one key's pairs changes no other key, one statement does
+  if (equalitiesOnly(p)) await write(fifoSql(c, p), accepted);
+  else for (let r = 0; r < ROUNDS_MAX && (await write(acceptSql(c, p), accepted)) > 0; r++);
   if (p.on_ambiguous === "break") out.broken += (await one<{ items: number }>(tx, tieBreakSql(c, p))).items;
   else for (let r = 0; r < ROUNDS_MAX && (await write(tieSuggestSql(c, p), "suggested")) > 0; r++);
 }
@@ -122,7 +130,7 @@ export async function runRecon(on: Tx, i: RunInput): Promise<RunSummary> {
   }, on);
   const carry = spec.carry_over_days;
   const counters: RunCounters = {
-    intake: { a: 0, b: 0 }, passes: Object.fromEntries(spec.passes.map((p) => [String(p.no), { matched: 0, suggested: 0, broken: 0 }])), open: { a: 0, b: 0 },
+    intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 }, passes: Object.fromEntries(spec.passes.map((p) => [String(p.no), { matched: 0, suggested: 0, broken: 0 }])), open: { a: 0, b: 0 },
   };
   const simRunId = i.mode === "simulation" ? runId : null;
   try {
@@ -135,7 +143,10 @@ export async function runRecon(on: Tx, i: RunInput): Promise<RunSummary> {
         const c: StepCtx = {
           spaceId: i.spaceId, configId: i.configId, versionId: i.versionId, runId, simRunId, sides, lo: addDays(d, -carry), hi: d, current: currentRecord(tx)!,
         };
-        for (const s of [0, 1] as const) counters.intake[sides[s].key] += (await one<{ n: number }>(tx, intakeSql(c, s, spec.sides[s].filter))).n;
+        for (const s of [0, 1] as const) {
+          counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c, s))).n;
+          counters.intake[sides[s].key] += (await one<{ n: number }>(tx, intakeSql(c, s, spec.sides[s].filter))).n;
+        }
         for (const p of spec.passes) await runPass(tx, c, p, counters.passes[String(p.no)]!);
         await tx.update(reconRuns).set({ counters }).where(and(eq(reconRuns.spaceId, i.spaceId), eq(reconRuns.id, runId)));
       }, on);

@@ -8,8 +8,8 @@ import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { signedAmount } from "../../../ingest";
 import { breakReason, tieBreakSql } from "../../sql/breaks";
-import { filterSql, intakeSql } from "../../sql/intake";
-import { acceptSql, fieldSql, groupAcceptSql, minorTolerance, predicateSql, type SideRef, type StepCtx, tieSuggestSql } from "../../sql/pass";
+import { closeReplacedSql, filterSql, intakeSql } from "../../sql/intake";
+import { acceptSql, fieldSql, fifoSql, groupAcceptSql, minorTolerance, poolSql, predicateSql, type SideRef, type StepCtx, tieSuggestSql } from "../../sql/pass";
 
 const dialect = new PgDialect();
 const q = (x: SQL | undefined) => (x ? dialect.sqlToQuery(x) : undefined);
@@ -17,8 +17,8 @@ const text = (x: SQL) => dialect.sqlToQuery(x).sql.replace(/\s+/g, " ");
 const parts = (o: ReturnType<typeof predicateSql>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, q(v)?.sql]));
 const params = (o: ReturnType<typeof predicateSql>) => Object.values(o).flatMap((v) => q(v)!.params);
 
-const side = (key: "a" | "b"): SideRef => ({
-  key, sourceSpaceId: "00000000-0000-7000-8000-00000000000a", sourceId: "00000000-0000-7000-8000-00000000000b",
+const side = (key: "a" | "b", negate = false): SideRef => ({
+  key, negate, sourceSpaceId: "00000000-0000-7000-8000-00000000000a", sourceId: "00000000-0000-7000-8000-00000000000b",
   fields: new Map([
     ["ext_ref", { kind: "text", from: "ref", fromType: "string" }], ["amount_minor", { kind: "decimal", from: "amt", fromType: "integer" }],
     ["currency", { kind: "text", from: "ccy", fromType: "string" }], ["business_date", { kind: "date", from: "d", fromType: "date" }],
@@ -115,26 +115,41 @@ describe("side filters (values bound, cast to the field's kind)", () => {
 describe("statements", () => {
   const p2 = pass({ blocking: ["ext_ref"], predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1000.00" } }, { op: "eq", field: "currency" }] });
 
-  it("pools: open items of the window, live or one simulation's, locked skipping those held elsewhere", () => {
+  it("pools: every open item of the window, live or one simulation's; lk = locked by this statement, skipping those held elsewhere", () => {
     const s = text(acceptSql(ctx, p2));
     expect(s).toContain("i.status = 'open' and i.sim_run_id is null and i.business_date between $");
-    expect(s).toContain("for update of i skip locked");
+    expect(s).toContain("with l0 as materialized (select i.id, i.version as v from \"recon_items\" i where i.space_id = $1");
+    expect(s).toContain("for update skip locked), l1 as materialized");
+    expect(s).toContain("coalesce(l0.v, i.version) as v, l0.id is not null as lk, i.business_date as bd, \"records\".\"event_time\" as et, \"records\".\"id\" as rid");
+    expect(s).toContain("left join l0 on l0.id = i.id");
+    expect(s).not.toContain("for update of i");
     expect(s).toContain("from pa a join pb b on a.x0 = b.x0 and a.x2 = b.x2 where abs(b.x1 - a.x1) <=");
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
   });
 
   it("accept: mutual unique best only; the claim is guarded by state and version; the group dated at its later member", () => {
     const s = text(acceptSql(ctx, p2));
-    expect(s).toContain("where dist = best_a and dist = best_b and n_a = 1 and n_b = 1");
+    expect(s).toContain("where dist = best_a and dist = best_b and n_a = 1 and n_b = 1 and a_lk and b_lk");
     expect(s).toContain("count(*) filter (where dist = best_a) over (partition by a_id) as n_a");
     expect(s).toContain("i.status = 'open' and i.version = x.v returning i.id");
     expect(s).toContain("greatest(r.a_bd, r.b_bd)");
     expect(s).toContain("array[abs(b.x1 - a.x1)]::numeric[] as dist");
   });
 
-  it("ties: suggested by earliest date then id, or broken as Duplicate (Ambiguous without a key)", () => {
-    expect(text(tieSuggestSql(ctx, p2))).toContain("row_number() over (partition by a_id order by b_bd, b_id) as fa, row_number() over (partition by b_id order by a_bd, a_id) as fb");
-    expect(text(tieBreakSql(ctx, p2))).toContain("set status = 'break', break_reason = $");
+  it("equalities only: per key, as many on both sides → paired in record order, all of the key locked", () => {
+    const s = text(fifoSql(ctx, pass({ predicates: [{ op: "eq", field: "ext_ref" }] })));
+    expect(s).toContain("count(*) over (partition by b_id) as na, count(*) over (partition by a_id) as nb");
+    expect(s).toContain("row_number() over (partition by b_id order by a_bd, a_et, a_rid) as ra, row_number() over (partition by a_id order by b_bd, b_et, b_rid) as rb");
+    expect(s).toContain("where na = nb and ra = rb and all_a and all_b");
+  });
+
+  it("ties: suggested in record order (never the item id), or broken as Duplicate (Ambiguous without a key), leaving what nears a held item", () => {
+    expect(text(tieSuggestSql(ctx, p2))).toContain("row_number() over (partition by a_id order by b_bd, b_et, b_rid) as fa, row_number() over (partition by b_id order by a_bd, a_et, a_rid) as fb");
+    expect(text(tieSuggestSql(ctx, p2))).toContain("where fa = 1 and fb = 1 and a_lk and b_lk");
+    const b = text(tieBreakSql(ctx, p2));
+    expect(b).toContain("held as (select a_id as id from c where not a_lk union select b_id from c where not b_lk)");
+    expect(b).toContain("from c where a_id not in (select id from near)");
+    expect(b).toContain("set status = 'break', break_reason = $");
     expect(breakReason(p2)).toBe("Duplicate");
     expect(breakReason(pass({ predicates: [{ op: "date_window", field: "business_date", days: 1 }] }))).toBe("Ambiguous");
   });
@@ -144,7 +159,30 @@ describe("statements", () => {
     expect(s).toContain("cg as (select b_id as o_id");
     expect(s).toContain("count(*) over (partition by m_id) as m_n");
     expect(s).toContain("bool_and(m_n = 1) as uniq");
-    expect(s).toContain("where uniq and abs(s - o_s) <= coalesce(($");
+    expect(s).toContain("bool_and(m_lk) and o_lk as all_lk");
+    expect(s).toContain("where uniq and all_lk and abs(s - o_s) <= coalesce(($");
+    expect(s).toContain("select gid, $73::uuid, o_id, $74::text, o_own from acc union all select gid, $75::uuid, m_id, $76::text, m_own from ms");
+  });
+
+  it("amounts: a negating side compares the negated signed amount; members keep the record's own (own)", () => {
+    const p = pass({ predicates: [{ op: "eq", field: "amount_minor" }] });
+    const neg = text(poolSql({ ...ctx, sides: [side("a"), side("b", true)] }, p, 1));
+    expect(neg).toContain('end) as own, (-(case when upper(btrim("records"."direction"))');
+    expect(text(poolSql(ctx, p, 1))).not.toContain("(-(case");
+  });
+
+  it("empty text never matches: eq_normalized and contains columns are nullif(…, '')", () => {
+    const p = pass({ predicates: [{ op: "eq_normalized", field: "ext_ref" }, { op: "contains", field: "attrs.sid" }] });
+    const s = text(poolSql(ctx, p, 0));
+    expect(s).toContain(`nullif(regexp_replace(upper(btrim("records"."ext_ref")), '[^A-Z0-9]', '', 'g'), '') as x0`);
+    expect(s).toContain(`nullif(("records"."attrs" ->> $`);
+  });
+
+  it("replaced records: open items of the window whose record no longer counts close, locked skipping held ones", () => {
+    const s = text(closeReplacedSql(ctx, 0));
+    expect(s).toContain("and not exists (select 1 from \"records\" where");
+    expect(s).toContain("for update of i skip locked)");
+    expect(s).toContain("set status = 'closed', break_reason = $");
   });
 
   it("intake: current records of the side's source in the window without an item yet", () => {

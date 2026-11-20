@@ -14,8 +14,8 @@ import { reconConfigs } from "../recon/schema";
 // (config, record, business_date) is unique per record. match_groups and match_members stay plain until their volume
 // is measured (a group per two items).
 //
-// Simulation (spec §10) writes run-scoped rows: items with sim_run_id = its run, groups with that run_id. Live state is
-// sim_run_id null; every engine query names one or the other, so a simulation never reads or changes a live item, and
+// Simulation (spec §10) writes run-scoped rows: items and groups with sim_run_id = its run. Live state is sim_run_id
+// null; every engine query names one or the other, so a simulation never reads or changes a live item, and
 // deleting its run removes it all (cascade). Chosen over shadow tables: one schema, one compiled SQL, and the draft-vs-
 // published diff (Task 3) joins groups of two runs by record.
 
@@ -88,6 +88,8 @@ export const matchGroups = pgTable("match_groups", {
   configId: uuid("config_id").notNull(),
   configVersionId: uuid("config_version_id").notNull(),
   runId: uuid("run_id").notNull(),
+  /** The simulation the group belongs to (its run; null = live), as recon_items.sim_run_id. */
+  simRunId: uuid("sim_run_id"),
   passNo: smallint("pass_no").notNull(),
   kind: text("kind").notNull(),
   score: numeric("score"),
@@ -101,6 +103,7 @@ export const matchGroups = pgTable("match_groups", {
   index("match_groups_run").on(t.spaceId, t.runId, t.passNo),
   foreignKey({ name: "match_groups_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   foreignKey({ name: "match_groups_run_fkey", columns: [t.spaceId, t.runId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
+  foreignKey({ name: "match_groups_sim_run_fkey", columns: [t.spaceId, t.simRunId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   check("match_groups_kind_check", sql`${t.kind} in ('auto', 'suggested', 'manual', 'force')`),
 ]);
 

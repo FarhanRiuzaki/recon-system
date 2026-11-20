@@ -1,0 +1,2 @@
+ALTER TABLE "match_groups" ADD COLUMN "sim_run_id" uuid;--> statement-breakpoint
+ALTER TABLE "match_groups" ADD CONSTRAINT "match_groups_sim_run_fkey" FOREIGN KEY ("space_id","sim_run_id") REFERENCES "recon_runs"("space_id","id") ON DELETE cascade ON UPDATE no action;

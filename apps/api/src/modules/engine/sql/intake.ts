@@ -40,3 +40,25 @@ export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[]): SQL
     on conflict do nothing returning 1)
   select count(*)::int as n from ins`;
 }
+
+/**
+ * Closes side `s`'s open items of the window whose record no longer counts (a mutable source replaced the row, or its
+ * snapshot is no longer active): status closed, reason "Source row replaced", so they never wait or count as open.
+ * Only items this statement locks (A1). TODO(Task 6 / Plan 5): a matched or suggested group whose record was replaced
+ * is reversed (`reversed_by`, reason source_changed, spec §8) and its items reopened; not done here.
+ */
+export function closeReplacedSql(c: StepCtx, s: 0 | 1): SQL {
+  const side = c.sides[s];
+  return sql`with t as (select i.id, i.version as v, i.business_date as bd from ${reconItems} i
+      where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status = 'open'
+        and ${c.simRunId === null ? sql`i.sim_run_id is null` : sql`i.sim_run_id = ${c.simRunId}`}
+        and i.business_date between ${c.lo}::date and ${c.hi}::date
+        and not exists (select 1 from ${records} where ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
+          and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current})
+      for update of i skip locked),
+  up as (update ${reconItems} i set status = 'closed', break_reason = ${REPLACED}, version = i.version + 1
+      from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.id)
+  select count(*)::int as n from up`;
+}
+/** The reason an item closes when its record no longer counts. */
+export const REPLACED = "Source row replaced";
