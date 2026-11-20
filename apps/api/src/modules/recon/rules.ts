@@ -2,11 +2,14 @@
 // source versions, where in the builder a problem is (in the builder's words, never a spec path), and the fields a
 // published recon holds its sources to (Plan 3 A4). Sentences name fields as people do (fieldLabel), never by code.
 import type { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { type FieldKind, fieldLabel, type Operator, recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
+import { type FieldKind, fieldLabel, type FieldPair, type Operator, recordFields, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { specIssue } from "../../kernel/versions";
 
-/** A side's source as the check reads it: its published spec (null = none yet) and the currencies seen in its records. */
-export type SideSource = { spec: SourceSpecLike | null; currencies: readonly string[] };
+/**
+ * A side's source as the check reads it: its published spec (null = none yet), the currencies seen in its records and
+ * its name (for "<name> has no published version yet.").
+ */
+export type SideSource = { spec: SourceSpecLike | null; currencies: readonly string[]; name?: string };
 /**
  * `errors` refuse a save and a submit (each "<place>: …"); `gates` refuse a submit and come back as warnings on a save
  * (carry over shorter than a date window); `warnings` never block (a currency without tolerance).
@@ -43,6 +46,8 @@ const AMOUNT_OPS: ReadonlySet<Operator> = new Set(["amount_abs_tol", "amount_pct
 const VALUE: Record<FieldKind, [RegExp, string]> = {
   text: [/^/, ""], decimal: [/^-?\d+(\.\d+)?$/, "is not a number"], date: [/^\d{4}-\d{2}-\d{2}/, "is not a date (yyyy-mm-dd)"], boolean: [/^(true|false)$/, "is not true or false"],
 };
+/** Records store a mapped direction as debit or credit (ingest map.ts), so a filter on it names one of those. */
+const DIRECTION_VALUE: [RegExp, string] = [/^(debit|credit)$/, "is not a direction. Use debit or credit"];
 const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 /**
@@ -59,19 +64,20 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 
   spec.sides.forEach((side, i) => {
     const place = placeOf(["sides", i]);
-    if (!fields[i]) return at(place, `${side.label}'s source has no published version yet. Publish the source first.`);
+    if (!fields[i]) return at(place, `${sources[i]!.name ?? side.label} has no published version yet.`);
     side.filter.forEach((f, j) => {
       const r = fields[i]!.get(f.field);
       if (!r) return at(placeOf(["sides", i, "filter", j]), `${side.label} has no field ${fieldLabel(f.field)}.`);
-      const [ok, not] = VALUE[r.kind];
+      const [ok, not] = f.field === "direction" ? DIRECTION_VALUE : VALUE[r.kind];
       const bad = ("value" in f ? [f.value] : "values" in f ? f.values : []).find((v) => !ok.test(v));
       if (bad !== undefined) at(placeOf(["sides", i, "filter", j]), `${JSON.stringify(bad)} ${not}.`);
     });
   });
 
   /** The field's kind on each side (null: no source, or no such field, reported); `need` = what the operator takes. */
-  const onBoth = (place: string, ref: string, need?: [FieldKind, string]) => fields.map((fs, i) => {
+  const onBoth = (place: string, pair: FieldPair, need?: [FieldKind, string]) => fields.map((fs, i) => {
     if (!fs) return null;
+    const ref = sideRef(pair, i as 0 | 1);
     const r = fs.get(ref);
     if (!r) { at(place, `${label(i)} has no field ${fieldLabel(ref)}.`); return null; }
     if (need && r.kind !== need[0]) at(`${place}, ${label(i)}`, `${need[1]}; this side's field is ${r.kind}.`);
@@ -90,9 +96,9 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
     p.blocking.forEach((ref, j) => onBoth(placeOf(["passes", i, "blocking", j]), ref));
     p.predicates.forEach((q, j) => {
       const place = placeOf(["passes", i, "predicates", j]);
-      if (q.op === "bday_window" && q.field !== "business_date") return at(place, "Business days are counted on the business date. Compare the business date.");
+      if (q.op === "bday_window" && ([0, 1] as const).some((i) => sideRef(q.field, i) !== "business_date")) return at(place, "Business days are counted on the business date. Compare the business date.");
       const [ka, kb] = onBoth(place, q.field, NEEDS[q.op]);
-      if (!NEEDS[q.op] && ka && kb && ka !== kb) at(place, `${label(0)}'s ${fieldLabel(q.field)} is ${ka}; ${label(1)}'s is ${kb}.`);
+      if (!NEEDS[q.op] && ka && kb && ka !== kb) at(place, `${label(0)}'s ${fieldLabel(sideRef(q.field, 0))} is ${ka}; ${label(1)}'s ${fieldLabel(sideRef(q.field, 1))} is ${kb}.`);
       if (q.op === "eq_sum" && p.cardinality === "1:1") at(place, "A group sum needs a 1:N or N:1 pass.");
     });
     if (p.cardinality !== "1:1") {
@@ -100,8 +106,10 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
       if (p.predicates.filter((q) => q.op === "eq_sum").length !== 1) at(pass, "A 1:N or N:1 pass needs one group sum condition.");
     }
 
-    const amounts = p.predicates.some((q) => AMOUNT_OPS.has(q.op) || q.field === "amount_minor" || q.field === spec.measure?.field);
-    const currencyEq = p.blocking.includes("currency") || p.predicates.some((q) => q.op === "eq" && q.field === "currency");
+    const isAmount = (f: FieldPair) => ([0, 1] as const).some((i) => sideRef(f, i) === "amount_minor" || sideRef(f, i) === spec.measure?.field);
+    const isCurrency = (f: FieldPair) => ([0, 1] as const).every((i) => sideRef(f, i) === "currency");
+    const amounts = p.predicates.some((q) => AMOUNT_OPS.has(q.op) || isAmount(q.field)) || p.blocking.some(isAmount);
+    const currencyEq = p.blocking.some(isCurrency) || p.predicates.some((q) => q.op === "eq" && isCurrency(q.field));
     if (manyCurrencies && amounts && !currencyEq) errors.push(`Pass ${p.no} compares amounts but has no currency condition. Add one so amounts in different currencies never match.`);
 
     const untolerated = new Set<string>();
@@ -120,10 +128,14 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 
 /**
  * The fields each side's records must keep while the recon is published (Plan 3 A4), per side, sorted: the side's own
- * filters, and every matching key, condition and the measure (both sides read them).
+ * filters, its field of every matching key and condition, the measure, and direction when the side's source maps it
+ * (the amount's sign comes from it).
  */
-export function usedFields(spec: ReconSpec): [string[], string[]] {
-  const both = [...spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]), ...(spec.measure ? [spec.measure.field] : [])];
-  const of = (i: 0 | 1) => [...new Set([...spec.sides[i].filter.map((f) => f.field), ...both])].sort();
+export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, boolean] = [false, false]): [string[], string[]] {
+  const pairs = spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]);
+  const of = (i: 0 | 1) => [...new Set([
+    ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)),
+    ...(spec.measure ? [spec.measure.field] : []), ...(directionMapped[i] ? ["direction"] : []),
+  ])].sort();
   return [of(0), of(1)];
 }

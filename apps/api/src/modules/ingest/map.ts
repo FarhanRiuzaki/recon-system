@@ -15,8 +15,10 @@
 // the old reading: a decimal field's own scale is its minor unit.
 //
 // The amount's sign has one source (Plan 3): with direction mapped, the direction ("debit"/"credit", read from the
-// codes in directionOf) and the amount is never negative (a negative one, an empty or unknown direction next to an
-// amount is quarantined); without it, the amount's own sign. signedAmount gives the signed value the engine uses.
+// codes in directionOf; an empty or unknown one next to an amount is quarantined) and the amount is stored unsigned.
+// Direction from a column: a negative amount is quarantined. Direction from CEL (spec §7: often from the amount's own
+// sign): the amount's magnitude is stored, and a negative amount on a credit is quarantined. Without direction, the
+// amount keeps its own sign. signedAmount gives the signed value the engine uses.
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { amountUnit, CURRENCY_EXPONENT, currencyCode, DIRECTION_HINT, directionOf, toMinor } from "@starterkit/shared/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
@@ -233,7 +235,12 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
   }
   if (m.direction && amount_minor !== null && amount_minor < 0n) {
     const key = "field" in m.amount_minor! ? m.amount_minor.field : "amount_minor";
-    reasons[key] = `${key}: negative, but direction is mapped; the sign comes from direction (${JSON.stringify("field" in m.amount_minor! ? raw[key] ?? "" : String(amount_minor))})`;
+    const read = JSON.stringify("field" in m.amount_minor! ? raw[key] ?? "" : String(amount_minor));
+    // a direction read from a column carries the sign, so the amount must be unsigned; one a CEL expression computes
+    // (often from the amount's own sign) leaves the amount's magnitude, unless the sign says the opposite of it
+    if ("field" in m.direction) reasons[key] = `${key}: negative, but direction is mapped; the sign comes from direction (${read})`;
+    else if (direction === "credit") reasons[key] = `${key}: negative, but the row is a credit (${read})`;
+    else amount_minor = -amount_minor;
   }
   const ext_ref = str("ext_ref", m.ext_ref), account_ref = str("account_ref", m.account_ref);
   const attrs: CoreRecord["attrs"] = {};
@@ -253,6 +260,9 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
   };
 }
 
-/** The amount with its sign (Plan 3: the engine's one rule): negated for a debit, else as stored; null without an amount. */
+/**
+ * The amount with its sign (Plan 3: the engine's one rule): negated for a debit, else as stored; null without an
+ * amount. The direction is read through directionOf, so a raw code stored before directions were normalised counts too.
+ */
 export const signedAmount = (r: { amount_minor: bigint | null; direction: string | null }): bigint | null =>
-  r.amount_minor === null ? null : r.direction === "debit" ? -r.amount_minor : r.amount_minor;
+  r.amount_minor === null ? null : r.direction !== null && directionOf(r.direction) === "debit" ? -r.amount_minor : r.amount_minor;

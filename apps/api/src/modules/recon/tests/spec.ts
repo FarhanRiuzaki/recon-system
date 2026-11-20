@@ -44,15 +44,15 @@ export const gate = (a: string, b: string) => ({
   ] as [{ key: "a"; label: string; source_id: string; filter: unknown[] }, { key: "b"; label: string; source_id: string; filter: unknown[] }],
   passes: [
     {
-      no: 1, name: "Exact", cardinality: "1:1" as const, blocking: [] as string[], accept: "auto" as const, on_ambiguous: "break" as const,
+      no: 1, name: "Exact", cardinality: "1:1" as const, blocking: [] as (string | { a: string; b: string })[], accept: "auto" as const, on_ambiguous: "break" as const,
       predicates: [{ op: "eq" as const, field: "ext_ref" }, { op: "eq" as const, field: "amount_minor" }, { op: "eq" as const, field: "business_date" }, ccyEq],
     },
     {
-      no: 2, name: "Amount tolerance", cardinality: "1:1" as const, blocking: ["ext_ref", "business_date"] as string[], accept: "suggest" as const, on_ambiguous: "suggest" as const,
+      no: 2, name: "Amount tolerance", cardinality: "1:1" as const, blocking: ["ext_ref", "business_date"] as (string | { a: string; b: string })[], accept: "suggest" as const, on_ambiguous: "suggest" as const,
       predicates: [{ op: "amount_abs_tol" as const, field: "amount_minor", tolerance: { IDR: "1000.00" } }, ccyEq],
     },
     {
-      no: 3, name: "Date window", cardinality: "1:1" as const, blocking: ["ext_ref"] as string[], accept: "suggest" as const, on_ambiguous: "suggest" as const,
+      no: 3, name: "Date window", cardinality: "1:1" as const, blocking: ["ext_ref"] as (string | { a: string; b: string })[], accept: "suggest" as const, on_ambiguous: "suggest" as const,
       predicates: [{ op: "eq" as const, field: "amount_minor" }, { op: "date_window" as const, field: "business_date", days: 1 }, ccyEq],
     },
   ],

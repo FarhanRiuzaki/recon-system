@@ -311,6 +311,8 @@ export const SourceVersionDto = z.object({
   checkerId: z.string().nullable(),
   reviewComment: z.string().nullable(),
   publishedAt: z.string().nullable(),
+  /** What the spec means for its rows, never blocking a save ("Negative amounts are quarantined because direction comes from a column."). */
+  warnings: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

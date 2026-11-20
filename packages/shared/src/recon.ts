@@ -30,6 +30,11 @@ export const fieldLabel = (ref: string): string =>
 /** A field a config names: a core column of `records`, or `attrs.<stored name>` (ATTR_NAME). */
 export const FIELD_REF = /^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\.[a-z][a-z0-9_]{0,62})$/;
 
+/** A matching key or condition's field: the same field on both sides, or side A's and side B's. */
+export type FieldPair = string | { a: string; b: string };
+/** The field `f` names on side `i` (0 = A, 1 = B). */
+export const sideRef = (f: FieldPair, i: 0 | 1): string => (typeof f === "string" ? f : i === 0 ? f.a : f.b);
+
 /** A recon code: as a source code (2–64 of a-z, 0-9, "_" and "-"; sent in any case, stored lower case). */
 export const RECON_CODE = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 export const RECON_NAME_MAX = 100;

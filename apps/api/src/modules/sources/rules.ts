@@ -79,3 +79,12 @@ export function usedBySentence(changes: { ref: string; label: string }[], used: 
   });
   return lines.length ? lines.join(" ") : null;
 }
+
+/**
+ * What a spec means for its rows that a save doesn't refuse (Plan 3 sign rule, at save time): direction read from a
+ * column carries the sign, so a negative amount is quarantined (ingest map.ts); a CEL-derived direction says nothing.
+ */
+export function specWarnings(spec: SourceSpecLike & { mapping: { direction?: { field: string } | { cel: string } } } | null): string[] {
+  const d = spec?.mapping.direction;
+  return spec?.mapping.amount_minor && d && "field" in d ? ["Negative amounts are quarantined because direction comes from a column."] : [];
+}

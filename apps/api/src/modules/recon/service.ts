@@ -55,13 +55,13 @@ async function sideSources(tx: InTx, spaceId: string, spec: ReconSpec): Promise<
   const found = await readableSources(tx, spaceId, [...new Set(spec.sides.map((s) => s.source_id))]);
   const sides = await Promise.all(spec.sides.map(async (side): Promise<SideSource> => {
     const src = found.get(side.source_id);
-    if (!src?.spec) return { spec: null, currencies: [] };
-    if (!src.spec.mapping.currency) return { spec: src.spec, currencies: [] };
+    if (!src?.spec) return { spec: null, currencies: [], ...(src ? { name: src.name } : {}) };
+    if (!src.spec.mapping.currency) return { spec: src.spec, currencies: [], name: src.name };
     const recent = tx.select({ c: records.currency }).from(records)
       .where(and(eq(records.spaceId, src.spaceId), eq(records.sourceId, side.source_id), isNull(records.supersededBy)))
       .orderBy(desc(records.businessDate)).limit(CURRENCY_SAMPLE).as("recent");
     const seen = await tx.selectDistinct({ c: recent.c }).from(recent);
-    return { spec: src.spec, currencies: seen.map((r) => r.c).filter((c): c is string => !!c) };
+    return { spec: src.spec, currencies: seen.map((r) => r.c).filter((c): c is string => !!c), name: src.name };
   }));
   const missing = spec.sides.flatMap((s, i) => (found.has(s.source_id) ? [] : [i]));
   return { sides: sides as [SideSource, SideSource], missing, owners: spec.sides.map((s) => found.get(s.source_id)?.spaceId ?? null) };
@@ -76,7 +76,7 @@ async function checked(tx: InTx, spaceId: string, spec: ReconSpec) {
   if (missing.length) throw new ApiError("bad_request", `${placeOf(["sides", missing[0]!])}: Pick a source of this space or one shared to it.`);
   const r = checkReconSpec(spec, sides);
   if (r.errors.length) throw new ApiError("bad_request", r.errors[0]!);
-  return { ...r, owners, warnings: [...r.gates, ...r.warnings] };
+  return { ...r, owners, directionMapped: sides.map((x) => !!x.spec?.mapping.direction) as [boolean, boolean], warnings: [...r.gates, ...r.warnings] };
 }
 
 /** What the check says now about a stored spec, never refusing: a lost source, errors, gates, then warnings. */
@@ -251,14 +251,14 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
     if (!canStep("approve", v.status as VersionStatus)) throw wrongState("Only a version in review can be approved.");
     const spec = v.spec as ReconSpec;
     for (const sourceId of [...new Set(spec.sides.map((s) => s.source_id))].sort()) await sourceFieldsLock(tx, sourceId);
-    const { warnings, owners } = await checked(tx, spaceId, spec);
+    const { warnings, owners, directionMapped } = await checked(tx, spaceId, spec);
     const [retired] = await tx.update(reconConfigVersions).set({ status: "retired", updatedAt: NOW })
       .where(and(ofConfig(c), eq(reconConfigVersions.status, "published"))).returning({ version: reconConfigVersions.version });
     const [row] = await tx.update(reconConfigVersions).set({ status: "published", checkerId: ctx.user.id, publishedAt: NOW, reviewComment: null, updatedAt: NOW })
       .where(eq(reconConfigVersions.id, v.id)).returning() as [VersionRow];
     await tx.delete(reconSourceUses).where(and(eq(reconSourceUses.spaceId, spaceId), eq(reconSourceUses.configId, c.id)));
     const uses = new Map<string, typeof reconSourceUses.$inferInsert>();
-    usedFields(spec).forEach((fields, i) => {
+    usedFields(spec, directionMapped).forEach((fields, i) => {
       const sourceId = spec.sides[i]!.source_id;
       for (const field of fields) uses.set(`${sourceId} ${field}`, { spaceId, configId: c.id, sourceSpaceId: owners[i]!, sourceId, field, configName: c.name });
     });

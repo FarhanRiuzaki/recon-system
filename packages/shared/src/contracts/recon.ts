@@ -10,6 +10,8 @@ export { RECON_SORTS, RECON_VERSION_SORTS };
 
 /** A field of the records a side reads: a core column or `attrs.<stored name>` (checked against the source by checkReconSpec). */
 export const FieldRef = z.string().regex(FIELD_REF, "Pick a field of the source");
+/** A matching key or condition's field: one name for both sides, or each side's own (`{ a, b }`: side A's, side B's). */
+export const FieldPair = z.union([FieldRef, z.strictObject({ a: FieldRef, b: FieldRef })]);
 const text = z.string().max(200);
 
 /**
@@ -28,22 +30,22 @@ export const Tolerance = z.record(z.string(), z.string().regex(/^\d{1,15}(\.\d{1
   });
 
 const days = z.number().int().min(1).max(31);
-/** One predicate of a pass (spec §10, closed operators): it compares `field` of side a with the same field of side b. */
+/** One predicate of a pass (spec §10, closed operators): it compares side A's `field` with side B's (FieldPair). */
 export const Predicate = z.discriminatedUnion("op", [
-  z.strictObject({ op: z.literal("eq"), field: FieldRef }),
+  z.strictObject({ op: z.literal("eq"), field: FieldPair }),
   /** Equal after trim, upper case and removing everything but letters and digits. */
-  z.strictObject({ op: z.literal("eq_normalized"), field: FieldRef }),
-  z.strictObject({ op: z.literal("amount_abs_tol"), field: FieldRef, tolerance: Tolerance }),
+  z.strictObject({ op: z.literal("eq_normalized"), field: FieldPair }),
+  z.strictObject({ op: z.literal("amount_abs_tol"), field: FieldPair, tolerance: Tolerance }),
   /** Within `percent` (0–100, decimal text) of the larger amount. */
-  z.strictObject({ op: z.literal("amount_pct_tol"), field: FieldRef, percent: z.string().regex(/^(100(\.0+)?|\d{1,2}(\.\d{1,4})?)$/, "Write a percentage from 0 to 100") }),
-  z.strictObject({ op: z.literal("date_window"), field: FieldRef, days }),
-  z.strictObject({ op: z.literal("bday_window"), field: FieldRef, days }),
+  z.strictObject({ op: z.literal("amount_pct_tol"), field: FieldPair, percent: z.string().regex(/^(100(\.0+)?|\d{1,2}(\.\d{1,4})?)$/, "Write a percentage from 0 to 100") }),
+  z.strictObject({ op: z.literal("date_window"), field: FieldPair, days }),
+  z.strictObject({ op: z.literal("bday_window"), field: FieldPair, days }),
   /** Side a's text contains side b's. */
-  z.strictObject({ op: z.literal("contains"), field: FieldRef }),
+  z.strictObject({ op: z.literal("contains"), field: FieldPair }),
   /** pg_trgm similarity of at least `min` (0–1), within the pass's blocking only. */
-  z.strictObject({ op: z.literal("similarity"), field: FieldRef, min: z.number().gt(0).max(1) }),
+  z.strictObject({ op: z.literal("similarity"), field: FieldPair, min: z.number().gt(0).max(1) }),
   /** 1:N / N:1 only: the group's sum equals the single side's amount, within `tolerance` per currency (none = exact). */
-  z.strictObject({ op: z.literal("eq_sum"), field: FieldRef, tolerance: Tolerance.default({}) }),
+  z.strictObject({ op: z.literal("eq_sum"), field: FieldPair, tolerance: Tolerance.default({}) }),
 ]);
 export type Predicate = z.infer<typeof Predicate>;
 
@@ -65,15 +67,17 @@ export const SideSpec = z.strictObject({
 export type SideSpec = z.infer<typeof SideSpec>;
 
 /**
- * A pass (spec §10): candidates found through `blocking` (fields equal on both sides), judged by every predicate. 1:N /
- * N:1 groups the many side by the blocking keys and compares the sum (`eq_sum`). Only a mutual unique best pair is
- * accepted as `accept` says; any other candidate follows `on_ambiguous`.
+ * A pass (spec §10): candidates found through `blocking` (side A's field equal to side B's), judged by every
+ * predicate. A group pass compares the sum of its many side with its one side (`eq_sum`) per blocking key: N:1 = many
+ * records of side A to one of side B, 1:N = one of side A to many of side B. A group pass without a date predicate
+ * spans every open date within carry over (a settlement on D+1 meets its transactions of D). Only a mutual unique best
+ * pair is accepted as `accept` says; any other candidate follows `on_ambiguous`.
  */
 export const PassSpec = z.strictObject({
   no: z.number().int().min(1).max(PASSES_MAX),
   name: z.string().trim().min(1).max(64),
   cardinality: z.enum(CARDINALITIES),
-  blocking: z.array(FieldRef).max(5).default([]),
+  blocking: z.array(FieldPair).max(5).default([]),
   predicates: z.array(Predicate).min(1).max(20),
   accept: z.enum(PASS_ACCEPT),
   on_ambiguous: z.enum(ON_AMBIGUOUS),

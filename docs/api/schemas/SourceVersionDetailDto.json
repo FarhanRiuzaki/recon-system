@@ -705,6 +705,12 @@
         "null"
       ]
     },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "createdAt": {
       "type": "string"
     },
@@ -747,6 +753,7 @@
     "checkerId",
     "reviewComment",
     "publishedAt",
+    "warnings",
     "createdAt",
     "updatedAt",
     "people"

@@ -101,7 +101,8 @@ describe("checkReconSpec", () => {
   });
 
   it("a side whose source has no published version is an error", () => {
-    expect(check(gate(A, B), [src(1), { spec: null, currencies: [] }]).errors).toEqual(["Side B: Source 2's source has no published version yet. Publish the source first."]);
+    expect(check(gate(A, B), [src(1), { spec: null, currencies: [] }]).errors).toEqual(["Side B: Source 2 has no published version yet."]);
+    expect(check(gate(A, B), [src(1), { spec: null, currencies: [], name: "Core BI-FAST" }]).errors).toEqual(["Side B: Core BI-FAST has no published version yet."]);
   });
 
   it("passes are numbered 1, 2, 3 … in order", () => {
@@ -126,6 +127,14 @@ describe("checkReconSpec", () => {
     // a group across days is held to carry over as a pair is
     const wide = settle({ predicates: [{ op: "eq_sum", field: "amount_minor" }, { op: "eq", field: "currency" }, { op: "date_window", field: "business_date", days: 2 }] });
     expect(wide.gates).toEqual(["Pass 4 allows dates 2 days apart, but carry over is 1 day: groups across days never meet in a daily run. Set carry over to 2 days."]);
+    // each side names its own field: side A's settlement reference against side B's reference
+    expect(settle({ blocking: [{ a: "attrs.settlement_ref", b: "ext_ref" }] }).errors).toEqual([]);
+    expect(settle({ blocking: [{ a: "attrs.settlement_ref", b: "attrs.batch" }] }).errors).toEqual(["Pass 4, matching key 1: Source 2 has no field batch."]);
+    const mixed = settle({ predicates: [{ op: "eq_sum", field: { a: "amount_minor", b: "ext_ref" } }, { op: "eq", field: "currency" }] });
+    expect(mixed.errors).toEqual(["Pass 4, condition 1, Source 2: Amount is decimal; this side's field is text."]);
+    const kinds = gate(A, B);
+    kinds.passes[0]!.predicates[0] = { op: "eq", field: { a: "ext_ref", b: "business_date" } } as never;
+    expect(check(kinds).errors).toEqual(["Pass 1, condition 1: Source 1's reference is text; Source 2's business date is date."]);
   });
 
   it("an amount compared across sides that hold more than one currency needs currency eq; the pass is named (A2)", () => {
@@ -135,6 +144,11 @@ describe("checkReconSpec", () => {
     // currency in the blocking keys is the same check
     g.passes[1]!.blocking.push("currency");
     expect(check(g).errors).toEqual([]);
+    // an amount as a matching key compares amounts too
+    const k = gate(A, B);
+    k.passes[0]!.predicates = [{ op: "eq", field: "ext_ref" }];
+    k.passes[0]!.blocking = ["amount_minor"];
+    expect(check(k).errors).toEqual(["Pass 1 compares amounts but has no currency condition. Add one so amounts in different currencies never match."]);
     // two sides with one fixed currency each, the same: no currency eq needed
     const fixed = SourceSpec.parse({ ...sourceSpec(1), mapping: { ...sourceSpec(1).mapping, currency: undefined }, currency: "IDR" });
     const h = gate(A, B);
@@ -144,13 +158,23 @@ describe("checkReconSpec", () => {
     expect(check(h, [{ spec: fixed, currencies: [] }, { spec: usd, currencies: [] }]).errors).toEqual(["Pass 2 compares amounts but has no currency condition. Add one so amounts in different currencies never match."]);
   });
 
-  it("usedFields: every field a side's filters and the passes name, per side", () => {
+  it("usedFields: every field a side's filters and the passes name, per side, and direction where the side maps it", () => {
     const g = gate(A, B);
     g.sides[0].filter = [{ field: "account_ref", op: "not_null" }] as never;
-    expect(usedFields(parse(g))).toEqual([
-      ["account_ref", "amount_minor", "business_date", "currency", "ext_ref"],
-      ["amount_minor", "business_date", "currency", "ext_ref"],
+    g.passes[2]!.blocking = [{ a: "attrs.settlement_ref", b: "ext_ref" }] as never;
+    expect(usedFields(parse(g), [false, true])).toEqual([
+      ["account_ref", "amount_minor", "attrs.settlement_ref", "business_date", "currency", "ext_ref"],
+      ["amount_minor", "business_date", "currency", "direction", "ext_ref"],
     ]);
+  });
+
+  it("a filter on direction names debit or credit, as records store it", () => {
+    const withDirection = SourceSpec.parse({ ...sourceSpec(1), mapping: { ...sourceSpec(1).mapping, direction: { field: "settlement_ref" } } });
+    const g = gate(A, B);
+    g.sides[0].filter = [{ field: "direction", op: "in", values: ["debit", "D"] }] as never;
+    expect(check(g, [{ spec: withDirection, currencies: [] }, src(2)]).errors).toEqual(['Side A, filter 1: "D" is not a direction. Use debit or credit.']);
+    g.sides[0].filter = [{ field: "direction", op: "eq", value: "credit" }] as never;
+    expect(check(g, [{ spec: withDirection, currencies: [] }, src(2)]).errors).toEqual([]);
   });
 
   it("every sentence names fields and steps as the builder does: no spec path, code field or operator name", () => {

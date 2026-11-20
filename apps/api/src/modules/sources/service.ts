@@ -30,7 +30,7 @@ import {
 import { reconsUsingFields } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { canStep, defaultRefused, fieldChanges, readsDifferently, specHash, specIssue, type TestFound, testSentence, usedBySentence } from "./rules";
+import { canStep, defaultRefused, fieldChanges, readsDifferently, specHash, specIssue, specWarnings, type TestFound, testSentence, usedBySentence } from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -64,7 +64,7 @@ async function readModel(tx: InTx, list: { s: SourceRow; spec: unknown }[], spac
 const versionDto = (v: VersionRow): SourceVersionDto => ({
   id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as SourceSpec | null, specHash: v.specHash,
   makerId: v.makerId, contributorIds: v.contributorIds, submitterId: v.submittedBy, submittedAt: iso(v.submittedAt), checkerId: v.checkerId,
-  reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt),
+  reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt), warnings: specWarnings(v.spec as SourceSpec | null),
   createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
 });
 /** The connection's answerable columns: the credential (secret_enc) is never selected for an answer. */

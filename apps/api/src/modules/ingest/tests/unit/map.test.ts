@@ -236,12 +236,12 @@ describe("a database row's SQL NULL (connectors)", () => {
 });
 
 describe("the amount's sign: from direction when it is mapped, else from the amount (Plan 3)", () => {
-  const spec = (withDirection: boolean): SourceSpec => ({
+  const spec = (withDirection: boolean | "cel"): SourceSpec => ({
     fields: [
       { name: "amount", type: "decimal", nullable: false, trim: true, format: { scale: 2 } },
       { name: "dc", type: "string", nullable: true, trim: true },
     ],
-    mapping: { business_date: { cel: "'2026-11-02'" }, amount_minor: { field: "amount", unit: "major" }, ...(withDirection ? { direction: { field: "dc" } } : {}), attrs: {} },
+    mapping: { business_date: { cel: "'2026-11-02'" }, amount_minor: { field: "amount", unit: "major" }, ...(withDirection === "cel" ? { direction: { cel: "row.amount.startsWith('-') ? 'D' : row.dc" } } : withDirection ? { direction: { field: "dc" } } : {}), attrs: {} },
     currency: "IDR", derive: {}, key_fields: [], mutable: false, calendar: "id-default",
     input: { kind: "db_snapshot", query: "select 1 where :business_date is not null", schedule: "0 6 * * *" },
   });
@@ -256,6 +256,18 @@ describe("the amount's sign: from direction when it is mapped, else from the amo
     expect(map(spec(true), "-15.00", "D")).toEqual({ amount: 'amount: negative, but direction is mapped; the sign comes from direction ("-15.00")' });
     expect(map(spec(true), "15.00", "X")).toEqual({ dc: 'dc: "X" is not a debit or a credit (D, DR, DB, DEBIT, DEBET or C, CR, K, CREDIT, KREDIT)' });
     expect(map(spec(true), "15.00", null)).toEqual({ dc: "dc: is empty; the amount's sign comes from it" });
+  });
+  it("direction from CEL (from the amount's own sign): the magnitude is stored; a negative credit is quarantined", () => {
+    expect(map(spec("cel"), "-15.00", "C")).toEqual({ amount: 1500n, direction: "debit", signed: -1500n });
+    expect(map(spec("cel"), "15.00", "C")).toEqual({ amount: 1500n, direction: "credit", signed: 1500n });
+    expect(map(spec("cel"), "15.00", "D")).toEqual({ amount: 1500n, direction: "debit", signed: -1500n });
+    const plain = spec("cel");
+    plain.mapping.direction = { cel: "row.dc" };
+    expect(map(plain, "-15.00", "C")).toEqual({ amount: 'amount: negative, but the row is a credit ("-15.00")' });
+  });
+  it("signedAmount reads a raw code stored before directions were normalised", () => {
+    expect(signedAmount({ amount_minor: 1500n, direction: "DR" })).toBe(-1500n);
+    expect(signedAmount({ amount_minor: 1500n, direction: "C" })).toBe(1500n);
   });
   it("no direction: the amount carries its own sign", () => {
     expect(map(spec(false), "-15.00", "D")).toEqual({ amount: -1500n, direction: null, signed: -1500n });
