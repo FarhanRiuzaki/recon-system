@@ -22,7 +22,7 @@ RECON_RO_PASSWORD=<password recon_ro> SOURCE_TEST_ADMIN_PASSWORD=<password postg
 
 | Kolom | Nilai |
 |---|---|
-| Host | `localhost` |
+| Host | `localhost` saat app jalan langsung di mesin (dev server); `host.docker.internal` saat app jalan di Docker (`docker compose`, api dan worker memetakan `host.docker.internal:host-gateway`) |
 | Port | `5432` |
 | Database | `recon_source_test` |
 | User | `recon_ro` |
