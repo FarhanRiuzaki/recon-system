@@ -10,8 +10,8 @@ import type {
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
-import { amountUnit, SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
-import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
+import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
+import { amountUnit, type DbEngine, type SourceKind, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";

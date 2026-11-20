@@ -28,7 +28,7 @@ function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileNa
     out.ok++;
     const x = r.record;
     if (out.records.length < PREVIEW_LIST) out.records.push({
-      line: l.line, businessDate: x.business_date, bdayIndex: x.bday_index, amountMinor: x.amount_minor?.toString() ?? null, currency: x.currency,
+      line: l.line, businessDate: x.business_date, bdayIndex: x.bday_index, amountMinor: x.amount_minor?.toString() ?? null, amountText: x.amount_text, currency: x.currency,
       direction: x.direction, eventTime: x.event_time, extRef: x.ext_ref, accountRef: x.account_ref, attrs: x.attrs, naturalKey: x.natural_key, rowHash: x.row_hash,
     });
   }

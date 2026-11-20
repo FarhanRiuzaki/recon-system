@@ -13,10 +13,10 @@
 // spec's fixed `currency`; the amount is read in its unit (amountUnit: declared, else as before the unit existed) and
 // scaled per row by that currency's ISO 4217 exponent. A spec saved before both existed and mapping no currency keeps
 // the old reading: a decimal field's own scale is its minor unit.
-import { amountUnit, type FieldSpec, type SourceSpec, type ValueRef } from "@starterkit/shared/contracts/sources";
-import { CURRENCY_EXPONENT, currencyCode } from "@starterkit/shared/sources";
+import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+import { amountUnit, CURRENCY_EXPONENT, currencyCode, toMinor } from "@starterkit/shared/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
-import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, toMinor, type Value } from "./coerce";
+import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type Value } from "./coerce";
 
 export type Calendar = { bdayIndex(date: string): number };
 export type CalendarData = { weekend: number[]; holidays: string[] };
@@ -25,6 +25,8 @@ export type CoreRecord = {
   business_date: string;
   bday_index: number;
   amount_minor: bigint | null;
+  /** The amount as read, before its unit and currency scaled it, as plain decimal text ("25517.79"); for the preview. */
+  amount_text: string | null;
   currency: string | null;
   direction: string | null;
   event_time: string | null;
@@ -184,7 +186,7 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     currency = c === null ? null : currencyCode(c);
     if (c !== null && !currency) reasons[ccyKey] = `${ccyKey}: ${JSON.stringify(c)} is not a currency code`;
   }
-  let amount_minor: bigint | null = null;
+  let amount_minor: bigint | null = null, amount_text: string | null = null;
   if (m.amount_minor) {
     const ref = m.amount_minor;
     const key = "field" in ref ? ref.field : "amount_minor";
@@ -196,6 +198,7 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     else if (typeof r.v === "bigint") { n = r.v; scale = r.f?.type === "decimal" ? r.f.format?.scale ?? DEFAULT_SCALE : 0; }
     else if (typeof r.v === "string" && /^[+-]?\d+(\.\d+)?$/.test(r.v)) { const [i, f = ""] = r.v.split("."); n = BigInt(i! + f); scale = f.length; }
     else if (r.v !== null) no("not a number", r.v);
+    if (n !== null) amount_text = formatScaled(n, scale);
     if (n !== null && !reasons[ccyKey]) {
       const unit = amountUnit(spec)!;
       // a spec saved before currencies existed maps none: the field's own scale is its minor unit, as it was then
@@ -231,6 +234,6 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
   const sorted = Object.fromEntries(Object.entries(raw).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
   return {
     ok: true,
-    record: { business_date, bday_index: ctx.calendar.bdayIndex(business_date), amount_minor, currency, direction, event_time, ext_ref, account_ref, attrs, row_hash: sha256(JSON.stringify(sorted)), natural_key },
+    record: { business_date, bday_index: ctx.calendar.bdayIndex(business_date), amount_minor, amount_text, currency, direction, event_time, ext_ref, account_ref, attrs, row_hash: sha256(JSON.stringify(sorted)), natural_key },
   };
 }

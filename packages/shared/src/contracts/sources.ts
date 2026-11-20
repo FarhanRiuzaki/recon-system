@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
   AMOUNT_UNITS, ATTR_NAME, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
-  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES, type AmountUnit,
+  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -44,7 +44,7 @@ export type FieldSpec = z.infer<typeof FieldSpec>;
  * The amount and how the source writes it (spec §8): `major` = whole currency units (1500.00 IDR → 150000 minor,
  * scaled per row by the ISO 4217 exponent of the row's currency), `minor` = minor units as they are (150000).
  * Left out (specs saved before the unit existed): an integer field is minor, a decimal field or a CEL value as before
- * (amountUnit below) — the same amounts as then for IDR and USD.
+ * (amountUnit in ../sources) — the same amounts as then for IDR and USD.
  */
 const unit = z.enum(AMOUNT_UNITS).optional();
 export const AmountRef = z.union([z.strictObject({ field: name, unit }), z.strictObject({ cel, unit })]);
@@ -139,17 +139,6 @@ export const SourceSpec = z.strictObject({
   if (s.input.kind === "db_snapshot" && !/:business_date\b/.test(s.input.query)) issue("The snapshot query needs the :business_date parameter", ["input", "query"]);
 });
 export type SourceSpec = z.infer<typeof SourceSpec>;
-
-/**
- * The unit the amount is read in: the declared `unit`, else (a spec saved before it existed) minor for an integer
- * field or a CEL value, major for a decimal field — what ingest did then, so the stored answers stay the same.
- */
-export function amountUnit(spec: Pick<SourceSpec, "fields" | "mapping">): AmountUnit | null {
-  const a = spec.mapping.amount_minor;
-  if (!a) return null;
-  if (a.unit) return a.unit;
-  return "field" in a && spec.fields.find((f) => f.name === a.field)?.type === "decimal" ? "major" : "minor";
-}
 
 
 export const ConnectionOptions = z.strictObject({
@@ -417,12 +406,16 @@ export type SourceDto = z.infer<typeof SourceDto>;
 
 /** A guessed column of the sample: `format` = the date format it was read in (yyyyMMdd, yyyy-MM-dd) or null; `emptyPct` = share of empty cells, 0–100 with one decimal. */
 export const PreviewColumnDto = z.object({ name: z.string(), type: z.enum(FIELD_TYPES), format: z.string().nullable(), examples: z.array(z.string()), emptyPct: z.number() });
-/** A row as it would enter `record`: `amountMinor` is whole minor units as text (never a float). */
+/**
+ * A row as it would enter `record`: `amountMinor` is whole minor units as text (never a float); `amountText` the amount
+ * as read before its unit and currency scaled it, plain decimal text ("25517.79"), for the wizard's example.
+ */
 export const PreviewRecordDto = z.object({
   line: z.number().int(),
   businessDate: z.string(),
   bdayIndex: z.number().int(),
   amountMinor: z.string().nullable(),
+  amountText: z.string().nullable(),
   currency: z.string().nullable(),
   direction: z.string().nullable(),
   eventTime: z.string().nullable(),

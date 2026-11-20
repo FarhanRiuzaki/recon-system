@@ -180,7 +180,7 @@ describe("amount unit and currency (spec §8: minor unit of the row's currency, 
     const s = spec("decimal", "major");
     delete s.mapping.currency;
     s.currency = "JPY";
-    expect(toRecord({ amount: "1500" }, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 1500n, currency: "JPY" } });
+    expect(toRecord({ amount: "1500" }, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 1500n, amount_text: "1500.000", currency: "JPY" } });
   });
   it("from CEL: an int or decimal text in the declared unit", () => {
     const s = spec("integer", "major");

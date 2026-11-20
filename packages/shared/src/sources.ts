@@ -36,6 +36,35 @@ const CURRENCY_NUMERIC: Readonly<Record<string, string>> = {
   "360": "IDR", "840": "USD", "978": "EUR", "702": "SGD", "392": "JPY", "414": "KWD", "048": "BHD", "458": "MYR",
   "826": "GBP", "036": "AUD", "156": "CNY", "344": "HKD", "682": "SAR",
 };
+/**
+ * The unit a source's amount is read in: the declared `unit`, else (a spec saved before it existed) minor for an
+ * integer field or a CEL value, major for a decimal field — what ingest did then, so the stored answers stay the same.
+ */
+export function amountUnit(spec: {
+  fields: readonly { name: string; type: string }[];
+  mapping: { amount_minor?: ({ field: string } | { cel: string }) & { unit?: AmountUnit } };
+}): AmountUnit | null {
+  const a = spec.mapping.amount_minor;
+  if (!a) return null;
+  if (a.unit) return a.unit;
+  return "field" in a && spec.fields.find((f) => f.name === a.field)?.type === "decimal" ? "major" : "minor";
+}
+
+const places = (n: number) => `${n} decimal place${n === 1 ? "" : "s"}`;
+/**
+ * An amount `n` read at `scale` decimal places (25517.79 = 2551779n at 2; an integer at 0) to minor units (spec §8).
+ * `minor`: a whole number as it is. `major`: scaled to `exponent`, the ISO 4217 minor unit of the row's currency
+ * (`code` names it in the reason); more significant decimals than the currency has is refused, never rounded.
+ */
+export function toMinor(n: bigint, scale: number, unit: AmountUnit, exponent: number, code: string): { v: bigint } | { why: string } {
+  let used = scale;
+  for (let r = n; used > 0 && r % 10n === 0n; r /= 10n) used--;
+  if (n === 0n) used = 0;
+  if (unit === "minor") return used ? { why: `${places(used)}; minor units are whole numbers` } : { v: n / 10n ** BigInt(scale) };
+  if (used > exponent) return { why: `${places(used)}; ${code} allows ${exponent}` };
+  return { v: exponent >= scale ? n * 10n ** BigInt(exponent - scale) : n / 10n ** BigInt(scale - exponent) };
+}
+
 /** A currency as a source writes it (" idr ", "IDR", "360", "48") → its ISO alphabetic code, or null when unknown. */
 export function currencyCode(s: string): string | null {
   const t = s.trim().toUpperCase();

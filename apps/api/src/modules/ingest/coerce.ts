@@ -3,7 +3,6 @@
 // field's pattern (yyyy MM dd HH mm ss) and only real dates pass. A reason names the column, the problem and the value,
 // e.g. `amount: not a decimal ("12,3x")` or `sid is required`.
 import type { FieldSpec } from "@starterkit/shared/contracts/sources";
-import type { AmountUnit } from "@starterkit/shared/sources";
 
 /** decimal/integer → bigint (decimal in minor units of `scale`), boolean → boolean, date → "yyyy-mm-dd", datetime → ISO instant in UTC, string → string, empty and nullable → null. */
 export type Value = string | bigint | boolean | null;
@@ -118,22 +117,6 @@ function readDecimal(s: string, f: FieldSpec): { v: bigint } | { why: string } {
   if (frac.length > scale && /[1-9]/.test(frac.slice(scale))) return { why: `more than ${scale} decimal places` };
   const n = BigInt((int || "0") + frac.slice(0, scale).padEnd(scale, "0"));
   return { v: neg ? -n : n };
-}
-
-const places = (n: number) => `${n} decimal place${n === 1 ? "" : "s"}`;
-
-/**
- * An amount `n` read at `scale` decimal places (a decimal field's bigint; 0 for an integer) to minor units (spec §8).
- * `minor`: a whole number as it is. `major`: scaled to `exponent`, the ISO 4217 minor unit of the row's currency
- * (`code` names it in the reason); more significant decimals than the currency has is refused, never rounded.
- */
-export function toMinor(n: bigint, scale: number, unit: AmountUnit, exponent: number, code: string): { v: bigint } | { why: string } {
-  let used = scale;
-  for (let r = n; used > 0 && r % 10n === 0n; r /= 10n) used--;
-  if (n === 0n) used = 0;
-  if (unit === "minor") return used ? { why: `${places(used)}; minor units are whole numbers` } : { v: n / 10n ** BigInt(scale) };
-  if (used > exponent) return { why: `${places(used)}; ${code} allows ${exponent}` };
-  return { v: exponent >= scale ? n * 10n ** BigInt(exponent - scale) : n / 10n ** BigInt(scale - exponent) };
 }
 
 const BOOLS: Record<string, boolean> = { true: true, false: false, "1": true, "0": false, y: true, n: false, yes: true, no: false, t: true, f: false };

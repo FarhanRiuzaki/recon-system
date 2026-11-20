@@ -87,6 +87,12 @@
               "null"
             ]
           },
+          "amountText": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "currency": {
             "type": [
               "string",
@@ -145,6 +151,7 @@
           "businessDate",
           "bdayIndex",
           "amountMinor",
+          "amountText",
           "currency",
           "direction",
           "eventTime",
