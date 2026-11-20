@@ -62,8 +62,12 @@ describe("test()", () => {
   it("an unanswered connect is a timeout after the connect timeout", async () => {
     const t0 = performance.now();
     const e = await fails(pg({ host: "10.255.255.1" }, { connectTimeoutSeconds: 1 }).test());
-    expect([e.kind, e.message]).toEqual(["timeout", "The server did not answer within 1 s."]);
-    expect(performance.now() - t0).toBeLessThan(3000);
+    // two attempts of the connect timeout (retryingConnect): the sentence counts the seconds actually spent
+    expect(e.kind).toBe("timeout");
+    expect(e.message).toBe(`The server did not answer within ${e.seconds} s.`);
+    const spent = performance.now() - t0;
+    expect(e.seconds).toBe(Math.max(1, Math.round(spent / 1000)));
+    expect(spent).toBeLessThan(4000);
   });
 
   it("a statement past the statement timeout is a timeout (57014); the session is read-only", async () => {

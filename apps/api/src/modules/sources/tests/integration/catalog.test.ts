@@ -175,7 +175,8 @@ describe("catalog lists are logged and limited apart from the tests", () => {
   it("a host that never answers is a timeout within the 8 s deadline", async () => {
     const t0 = performance.now();
     const r = await fresh({ list: "databases", connection: { ...probeLogin(), host: "10.255.255.1", options: { connectTimeoutSeconds: 120 } } });
-    expect([r.status, (await errOf(r)).message]).toEqual([400, "The server did not answer within 8 s."]);
+    const m = /^The server did not answer within (\d+) s\.$/.exec((await errOf(r)).message); // seconds actually spent (two attempts)
+    expect([r.status, m !== null, Number(m?.[1]) >= 1 && Number(m?.[1]) <= 8]).toEqual([400, true, true]);
     expect(performance.now() - t0).toBeLessThan(9500);
   }, 15_000);
 });
