@@ -1,6 +1,6 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 // Internal Next API (also in packages/ui/src/motion/framer.tsx): recheck on every Next upgrade.
 import { LayoutRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { DUR, LOADING, useDelayedFlag, useHoldShape } from "@starterkit/ui/motio
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import { useAuth } from "@/lib/client/auth-context";
 import { scrubCopy } from "./frozen-copy";
+import { shapeOfPath } from "./route-shapes";
 import { DEFAULT_PAGE_SIZE, PAGE_SIZES } from "@starterkit/shared/paging";
 import type { PermissionName } from "@starterkit/shared/permissions";
 
@@ -154,7 +155,10 @@ function showCopy(previous: Previous): () => void {
   return () => { clearTimeout(cap); queueMicrotask(release); };
 }
 
-/** What a boundary shows for a page below its own folder: a title and one block, not the shape of a page it isn't. */
+/**
+ * What a boundary shows for a page below its own folder that `ROUTE_SHAPES` doesn't list: a title and one block, not
+ * the shape of a page it isn't. A listed page gets its own shape (route-shapes.ts).
+ */
 const NEUTRAL: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "panels", panels: [[12, 374]] }];
 
 /**
@@ -170,7 +174,8 @@ function useOwnPage(): boolean {
 }
 
 export function RouteSkeleton({ sections: own }: { sections: readonly Section[] }) {
-  const sections = useOwnPage() ? own : NEUTRAL;
+  const pathname = usePathname();
+  const sections = useOwnPage() ? own : (shapeOfPath(pathname) ?? NEUTRAL);
   const shown = useDelayedFlag(true);
   const hold = useHoldShape();
   const previous = usePreviousPage();

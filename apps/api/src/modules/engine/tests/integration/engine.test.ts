@@ -19,9 +19,9 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { ingestHandlers, records } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { calendars, sourceShares } from "../../../sources";
-import { spaces } from "../../../spaces";
 import { matchGroups, matchMembers, reconItems, reconRuns } from "../../schema";
-import { runRecon } from "../../service";
+import { classifyUnmatched, runRecon } from "../../service";
+import { spaces, withSpace } from "../../../spaces";
 import { ccyEq, D, D1, gateSource, gateSpec, makeSource, plainSource, put, range, recon, ref, spec, U } from "../fixtures";
 
 type Probe = Awaited<ReturnType<typeof appRoleDb>>;
@@ -121,6 +121,24 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     expect((await db.select({ status: reconRuns.status }).from(reconRuns).where(eq(reconRuns.id, run.runId)))[0]!.status).toBe("succeeded");
   }, 60_000);
 
+  it("the near-miss classifier: per side 3 currency differs, 1 amount differs, 20 without counterpart; reads only", async () => {
+    const before = await itemsOf(gate.configId);
+    const rows = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { ...gate, simRunId: null, from: "2026-11-02", to: "2026-11-05" }), probe);
+    const refOf = new Map(before.map((i) => [i.id, i.ref]));
+    const per = (side: string, reason: string) => rows.filter((r) => r.side === side && r.reason === reason).map((r) => refOf.get(r.itemId)).sort();
+    for (const [side, only] of [["a", range(976, 995)], ["b", range(996, 1015)]] as const) {
+      expect(per(side, "Currency differs")).toEqual(range(931, 933));
+      expect(per(side, "Amount differs")).toEqual([ref(950)]);
+      expect(per(side, "No counterpart")).toEqual(only);
+      expect(rows.filter((r) => r.side === side).length).toBe(24);
+    }
+    // a near pair is the same reference on the other side; no pair without a counterpart
+    expect(rows.every((r) => (r.reason === "No counterpart") === (r.pairItemId === null))).toBe(true);
+    expect(rows.filter((r) => r.pairItemId).every((r) => refOf.get(r.pairItemId!) === refOf.get(r.itemId) && before.find((i) => i.id === r.pairItemId)!.side !== r.side)).toBe(true);
+    expect(rows.find((r) => refOf.get(r.itemId) === ref(976))?.businessDate).toBe(before.find((i) => i.ref === ref(976))!.date);
+    expect(await itemsOf(gate.configId)).toEqual(before);
+  }, 60_000);
+
   it("Focus 3: the same run again changes nothing (no group, no item moved)", async () => {
     const before = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const again = await runRecon(probe, { ...gate, mode: "rerun", from: "2026-11-02", to: "2026-11-05" });
@@ -142,6 +160,14 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconItems).where(eq(reconItems.simRunId, sim.runId)))[0]!.n).toBe(2000);
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(live);
+    // the near-miss classifier gives the simulation's open items the same reasons and pairs as the live ones
+    const classify = (versionId: string, simRunId: string | null) => withSpace({ spaceIds: [A], userId: null },
+      (tx) => classifyUnmatched(tx, { ...gate, versionId, simRunId, from: "2026-11-02", to: "2026-11-05" }), probe);
+    const byRecord = async (rows: Awaited<ReturnType<typeof classify>>) => {
+      const rec = new Map((await db.select({ id: reconItems.id, rid: reconItems.recordId }).from(reconItems).where(eq(reconItems.configId, gate.configId))).map((x) => [x.id, x.rid]));
+      return rows.map((r) => [rec.get(r.itemId), r.side, r.businessDate, r.reason, r.pairItemId && rec.get(r.pairItemId)]).sort((x, y) => String(x[0]).localeCompare(String(y[0])));
+    };
+    expect(await byRecord(await classify(draft, sim.runId))).toEqual(await byRecord(await classify(gate.versionId, null)));
     // a draft never runs live
     const e = await runRecon(probe, { ...gate, versionId: draft, mode: "manual", from: "2026-11-02" }).catch((x: unknown) => x);
     expect((e as Error).message).toBe("Only the published version of a recon runs.");

@@ -36,7 +36,7 @@ import { checkReconSpec, reconConfigs, reconConfigVersions } from "../recon";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { matchGroups, matchMembers, reconItems, reconRuns, reconSimChanges } from "./schema";
-import { groupBreakSql, tieBreakSql } from "./sql/breaks";
+import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { analyzeSql } from "./sql/runs";
 import { acceptSql, equalitiesOnly, fifoSql, groupAcceptSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
@@ -250,6 +250,26 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     await failRun(on, spaceId, runId, e instanceof ApiError ? e.message : RUN_INTERNAL_ERROR);
     throw e;
   }
+}
+
+/** An open item without a pair and why (nearMissSql): `pairItemId` = its near pair on the other side, if any. */
+export type NearMiss = { itemId: string; side: "a" | "b"; businessDate: string; reason: NearMissReason; pairItemId: string | null };
+
+/**
+ * The near-miss classifier (sql/breaks.ts nearMissSql), the one rule for day close and simulation: every open item of
+ * config `configId` with business date `from`..`to`, live (`simRunId` null) or of simulation `simRunId`, with its reason
+ * and near pair, judged under version `versionId`'s sides (sources, sign convention) with counterparts from `from` −
+ * carry_over_days to `to`. Reads only; on `tx`, a transaction scoped to the config's space (withSpace).
+ */
+export async function classifyUnmatched(tx: InTx, i: { spaceId: string; configId: string; versionId: string; simRunId: string | null; from: string; to: string }): Promise<NearMiss[]> {
+  const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
+    .where(and(eq(reconConfigVersions.spaceId, i.spaceId), eq(reconConfigVersions.configId, i.configId), eq(reconConfigVersions.id, i.versionId)));
+  if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
+  const { spec, sides } = await load(tx, i.spaceId, ReconSpec.parse(v.spec));
+  const rows = (await tx.execute(nearMissSql({
+    spaceId: i.spaceId, configId: i.configId, simRunId: i.simRunId, sides, current: currentRecord(tx)!, lo: addDays(i.from, -spec.carry_over_days), hi: i.to,
+  }, i.from, i.to))) as unknown as { item_id: string; side: "a" | "b"; business_date: string; reason: NearMissReason; pair_item_id: string | null }[];
+  return rows.map((r) => ({ itemId: r.item_id, side: r.side, businessDate: r.business_date, reason: r.reason, pairItemId: r.pair_item_id }));
 }
 
 /** Marks run `runId` failed with `error` (a sentence for people) unless it is over already. */

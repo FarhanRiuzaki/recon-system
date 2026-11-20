@@ -49,7 +49,7 @@ export type StepCtx = {
 export const signedSql = (): SQL =>
   sql`(case when upper(btrim(${records.direction})) in (${sql.join(DEBIT_CODES.map((c) => sql`${c}`), sql`, `)}) then -${records.amountMinor} else ${records.amountMinor} end)`;
 /** The amount side `s` compares: its signed amount, negated for a side with amount_sign = negate. */
-const comparedAmount = (s: SideRef): SQL => (s.negate ? sql`(-${signedSql()})` : signedSql());
+export const comparedAmount = (s: SideRef): SQL => (s.negate ? sql`(-${signedSql()})` : signedSql());
 
 const CORE: Record<string, (s: SideRef) => SQL> = {
   ext_ref: () => sql`${records.extRef}`, account_ref: () => sql`${records.accountRef}`, currency: () => sql`${records.currency}`,

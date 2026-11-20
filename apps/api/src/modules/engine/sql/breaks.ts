@@ -4,8 +4,9 @@
 // transaction holds is left as it is, whole: breaking its other items would decide it without that item.
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
+import { records } from "../../ingest";
 import { reconItems } from "../schema";
-import { candidatesSql, groupsSql, type StepCtx } from "./pass";
+import { candidatesSql, comparedAmount, groupsSql, type StepCtx } from "./pass";
 
 /**
  * Why an ambiguous item broke: "Duplicate" when the pass finds candidates through a key (its matching keys or an
@@ -45,4 +46,50 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
   t as (select o_id as id, o_v as v, o_bd as bd from cm where o_id in (select o_id from bad)
     union select m_id, m_v, m_bd from cm where o_id in (select o_id from bad)),
   ${breakItems(c, breakReason(p))}`;
+}
+
+/** Why an item without a pair is a break (day close; the plan's "Alasan break saat tutup hari"). */
+export const NEAR_MISS = { currency: "Currency differs", amount: "Amount differs", date: "Date differs", none: "No counterpart" } as const;
+export type NearMissReason = (typeof NEAR_MISS)[keyof typeof NEAR_MISS];
+
+/** What the classifier reads: the config's items (live or a simulation's), its sides, the counterpart window. */
+export type ClassifyCtx = Pick<StepCtx, "spaceId" | "configId" | "simRunId" | "sides" | "current" | "lo" | "hi">;
+
+/**
+ * Side `s`'s items of `c` (live or the simulation's) with status in `statuses` and business date `from`..`to`, with
+ * their record's reference, currency, compared amount (the side's sign convention, as the passes compare) and order fields.
+ */
+const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: string, to: string): SQL => {
+  const side = c.sides[s];
+  return sql`select i.id, i.side, i.business_date as bd, ${records.extRef} as ref, ${records.currency} as ccy, ${comparedAmount(side)} as amt,
+      ${records.eventTime} as et, ${records.id} as rid
+    from ${reconItems} i join ${records} on ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
+      and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current}
+    where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status in (${statuses})
+      and ${c.simRunId === null ? sql`i.sim_run_id is null` : sql`i.sim_run_id = ${c.simRunId}`}
+      and i.business_date between ${from}::date and ${to}::date`;
+};
+
+/**
+ * The near-miss classifier (one rule for day close and simulation, Captain): every open item of business dates
+ * `from`..`to` with the reason it has no pair and, where there is one, its near pair. Reads only. The near pair is the
+ * other side's unpaired item (open or break) of the window `c.lo`..`c.hi` with the same reference, the closest first:
+ * same currency, then the smallest amount difference, then the nearest date, then record order. Its reason is the
+ * first field that differs: currency, amount (compared amounts, each side's sign convention), business date. No item
+ * with that reference on the other side, or one that differs in none of the three (it failed another predicate, or
+ * an operator holds it) = "No counterpart" without a pair. Rows: item_id, side, business_date, reason, pair_item_id.
+ */
+export function nearMissSql(c: ClassifyCtx, from: string, to: string): SQL {
+  const open = sql`'open'`, unpaired = sql`'open', 'break'`;
+  return sql`with m as materialized (${sideItems(c, 0, open, from, to)} union all ${sideItems(c, 1, open, from, to)}),
+  o as materialized (${sideItems(c, 0, unpaired, c.lo, c.hi)} union all ${sideItems(c, 1, unpaired, c.lo, c.hi)}),
+  k as (select m.id, m.side, m.bd, p.id as pid, case
+      when p.id is null then null
+      when p.ccy is distinct from m.ccy then ${NEAR_MISS.currency}
+      when p.amt is distinct from m.amt then ${NEAR_MISS.amount}
+      when p.bd <> m.bd then ${NEAR_MISS.date} end as reason
+    from m left join lateral (select o.* from o where o.side <> m.side and o.ref = m.ref
+      order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid limit 1) p on true)
+  select id as item_id, side, bd::text as business_date, coalesce(reason, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
+  from k order by bd, side, id`;
 }
