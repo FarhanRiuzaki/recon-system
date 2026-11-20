@@ -65,7 +65,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
           </Table>
         </div>
       </Panel>
-      <Panel title="Summary" description={`${d.name} · ${d.code} · version ${version}`}
+      <Panel title="Summary" description={`${d.name}${d.code.trim().toLowerCase() === d.name.trim().toLowerCase() ? "" : ` · ${d.code}`} · version ${version}`}
         footnote={`Any config checker in ${spaceName} who didn't work on this version approves it. Nothing is ingested until version ${version} is approved.`}>
         {/* Change opens the step that sets the answer; the connection step is a source admin's only */}
         <ReviewList onChange={onEdit} rows={[

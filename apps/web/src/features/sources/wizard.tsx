@@ -53,7 +53,7 @@ const step0 = (n: number | null, admin: boolean) => Math.min(2, Math.max(admin ?
 /** /spaces/[spaceId]/sources/new: a source admin's three steps; the source and its draft are made at the first test. */
 export function NewSourceWizard({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const roles = useSpaceRoles(spaceId);
-  const initial = useMemo<Draft>(() => ({ name: "", code: "", kind: "file_inbox", conn: EMPTY_CONN, from: "table", spec: emptySpec("file_inbox") }), []);
+  const initial = useMemo<Draft>(() => ({ name: "", code: "", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark") }), []);
   if (!roles.includes("source_admin")) return <Refused title="New source" reason={NEW_SOURCE_REASON} back={{ href: sourcesHref(spaceId), label: "Go to sources" }} />;
   // a new source always starts at step 1: nothing typed in a later step survives a reload
   return <SourceWizard spaceId={spaceId} spaceName={spaceName} initial={initial} start={0} admin source={null} />;

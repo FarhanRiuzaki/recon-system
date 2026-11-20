@@ -329,6 +329,8 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Throwaway e2e");
   await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`throwaway-${RUN}`);
+  // a new source opens on Database, the common case
+  await page.getByRole("radio", { name: /File inbox/ }).check();
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   await page.getByRole("button", { name: "Check folder" }).click();
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
