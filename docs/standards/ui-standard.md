@@ -167,7 +167,7 @@ it is drawn.
   tabular figures. First column = identity (28 px `Avatar` + name + secondary id), with a `min-w-*` on the column so
   auto layout never squeezes it. `Avatar seed={id}`: the tint follows the stable id, the initials the display name, so one user looks
   the same on every page. Status column uses `StatusChip`. Timestamps use
-  `RelativeTime` (absolute in tooltip; on touch a second line). Long values `Truncate` with title. On a phone the rows
+  `RelativeTime` (absolute in tooltip; on touch a second line). Long values wrap in their column, never cut (`TableCell`, also over a `Truncate` inside it; Captain, 21 Nov 2026); `Truncate` with title only outside tables. A `Notice` spins only for a running process (`tone="progress"`); a failure is `warn` (warning icon), a fact `info`. On a phone the rows
   are stacked cards: give every column a `mobile` role (`title` exactly once, `meta`, `hidden`, `lead` for the row
   checkbox); sorting becomes the "Sort by" select and the pagination compact (design-system §0 "Data surfaces"). Put
   module filters, including search, in `FilterLayout` with the applied count (the phone's "Filters" sheet).

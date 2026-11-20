@@ -419,8 +419,8 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
   const r = preview.result;
   return (
     <div aria-busy={preview.pending || undefined} className="grid gap-3">
-      {preview.pending && <p role="status" className="flex items-center gap-2 text-body-sm text-fg-2"><Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />Updating the preview</p>}
-      {preview.error && <Notice tone="warn" live>{preview.error}</Notice>}
+      {/* while a new preview runs, the last one's failure goes: a failure never stands beside a spinner */}
+      {preview.pending ? <Notice tone="progress" live>Updating the preview</Notice> : preview.error && <Notice tone="warn" live>{preview.error}</Notice>}
       {r && (
         <>
           <p role="status" className="text-body-sm text-fg">

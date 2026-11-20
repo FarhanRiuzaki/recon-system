@@ -119,3 +119,23 @@ describe("TickMeter compact (table cell)", () => {
     expect(out).toContain(">10 GB / 20 GB</span>");
   });
 });
+
+describe("Notice", () => {
+  it("only a running process spins: progress has the spinner; warn (a failure) the warning icon; info the info icon", async () => {
+    const { Notice, NOTICE_ICON } = await import("./notice");
+    const { InfoIcon, SpinnerIcon, WarningIcon } = await import("../ui/icons");
+    expect(NOTICE_ICON).toEqual({ info: InfoIcon, warn: WarningIcon, progress: SpinnerIcon });
+    expect(html(h(Notice, { tone: "progress", children: "Updating the preview" }))).toContain("animate-spin");
+    for (const tone of ["info", "warn"] as const) expect(html(h(Notice, { tone, children: "Pull failed" }))).not.toContain("animate-spin");
+  });
+});
+
+describe("TableCell", () => {
+  it("long text wraps in the column, also in a Truncate or truncate span inside it; nowrap stays possible per cell", async () => {
+    const { TableCell, CELL_WRAP } = await import("../ui/table");
+    const out = html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, null, "A long source name that wraps"))))).replaceAll("&amp;", "&");
+    for (const c of CELL_WRAP.split(" ")) expect(out).toContain(c);
+    expect(out).not.toContain("whitespace-nowrap");
+    expect(html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, { className: "whitespace-nowrap" }, "14:05")))))).toContain("whitespace-nowrap");
+  });
+});

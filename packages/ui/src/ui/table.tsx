@@ -55,8 +55,13 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return <th data-slot="table-head" className={cn("h-10 border-b border-line px-3 text-left align-middle text-label font-normal whitespace-nowrap text-fg-3", className)} {...props} />;
 }
+/**
+ * A body cell: long text wraps in the column instead of being cut (Captain, 21 Nov 2026), also inside a `Truncate` or
+ * a `truncate` span in the cell (its ellipsis is off here); a cell that must stay on one line passes `whitespace-nowrap`.
+ */
+export const CELL_WRAP = "whitespace-normal break-words [&_.truncate]:overflow-visible [&_.truncate]:whitespace-normal [&_.truncate]:break-words";
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
-  return <td data-slot="table-cell" className={cn("h-(--row-h) border-b border-line px-3 py-1.5 align-middle whitespace-nowrap", className)} {...props} />;
+  return <td data-slot="table-cell" className={cn("h-(--row-h) border-b border-line px-3 py-1.5 align-middle", CELL_WRAP, className)} {...props} />;
 }
 function TableCaption({ className, ...props }: React.ComponentProps<"caption">) {
   return <caption data-slot="table-caption" className={cn("mt-3 text-label font-normal text-fg-3", className)} {...props} />;
