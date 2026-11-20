@@ -10,6 +10,7 @@
     "db:migrate": "bun run --filter @starterkit/api db:migrate",
     "db:seed": "bun run --filter @starterkit/api db:seed",
     "db:seed:demo": "bun run --filter @starterkit/api db:seed:demo",
+    "db:seed:local": "bun run --filter @starterkit/api db:seed:local",
     "db:reset": "bun run --filter @starterkit/api db:reset",
     "build": "bun run --filter @starterkit/web build",
     "typecheck": "bun run --filter '*' typecheck",

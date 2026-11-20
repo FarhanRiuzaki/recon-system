@@ -4,6 +4,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import { seedDemo } from "../../src/db/seed/demo";
+import { LOCAL_ROLES, seedLocal } from "../../src/db/seed/local";
 import { seedSystem } from "../../src/db/seed/system";
 import { decryptSecret } from "../../src/kernel/crypto";
 import { and, asc, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
@@ -134,6 +135,27 @@ describe("seedSystem", () => {
     expect(r.stderr.toString()).toBe("");
     expect(r.exitCode).toBe(0);
     expect((await usersWithRoles()).map((u) => [u.username, u.roles])).toEqual([["owner", ["Superadmin"]]]);
+  });
+});
+
+describe("seedLocal", () => {
+  beforeEach(async () => { await truncateAll(); });
+
+  it("adds Treasury with the Superadmin as space admin, source admin and config maker, once however often it runs", async () => {
+    await seedSystem(db, OWNER);
+    await seedLocal(db, OWNER);
+    await seedLocal(db, OWNER);
+    const rows = await db.select({ code: spaces.code, role: spaceMembers.role, username: users.username }).from(spaceMembers)
+      .innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).innerJoin(users, eq(users.id, spaceMembers.userId)).orderBy(spaceMembers.role);
+    expect(rows).toEqual([...LOCAL_ROLES].sort().map((role) => ({ code: "treasury", role, username: "owner" })));
+    expect((await db.select({ n: count() }).from(spaces))[0]!.n).toBe(1);
+  });
+
+  it("refuses without SEED_SUPERADMIN_USERNAME or a user by that name", async () => {
+    const none = await seedLocal(db, {}).catch((e: Error) => e.message);
+    expect(none).toContain("SEED_SUPERADMIN_USERNAME");
+    const missing = await seedLocal(db, { SEED_SUPERADMIN_USERNAME: "nobody" }).catch((e: Error) => e.message);
+    expect(missing).toContain("names no user");
   });
 });
 

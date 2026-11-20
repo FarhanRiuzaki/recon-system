@@ -16,6 +16,7 @@
     "db:migrate": "bun src/db/migrate.ts",
     "db:seed": "bun src/db/seed/cli.ts system",
     "db:seed:demo": "bun src/db/seed/cli.ts demo",
+    "db:seed:local": "bun src/db/seed/cli.ts local",
     "db:reset": "bun src/db/seed/cli.ts reset"
   },
   "dependencies": {
