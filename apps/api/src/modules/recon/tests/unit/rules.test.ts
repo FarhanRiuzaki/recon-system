@@ -135,6 +135,9 @@ describe("checkReconSpec", () => {
     const kinds = gate(A, B);
     kinds.passes[0]!.predicates[0] = { op: "eq", field: { a: "ext_ref", b: "business_date" } } as never;
     expect(check(kinds).errors).toEqual(["Pass 1, condition 1: Source 1's reference is text; Source 2's business date is date."]);
+    const keys = gate(A, B);
+    keys.passes[1]!.blocking = [{ a: "ext_ref", b: "business_date" }];
+    expect(check(keys).errors).toEqual(["Pass 2, matching key 1: Source 1's reference is text; Source 2's business date is date."]);
   });
 
   it("an amount compared across sides that hold more than one currency needs currency eq; the pass is named (A2)", () => {

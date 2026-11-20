@@ -83,6 +83,9 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
     if (need && r.kind !== need[0]) at(`${place}, ${label(i)}`, `${need[1]}; this side's field is ${r.kind}.`);
     return r.kind;
   });
+  /** "<A>'s <field> is <kind>; <B>'s <field> is <kind>.": a matching key or an equality compares fields of one kind. */
+  const kindsDiffer = (f: FieldPair, ka: FieldKind, kb: FieldKind) =>
+    `${label(0)}'s ${fieldLabel(sideRef(f, 0))} is ${ka}; ${label(1)}'s ${fieldLabel(sideRef(f, 1))} is ${kb}.`;
   if (spec.measure) onBoth("Measure", spec.measure.field, ["decimal", "A measure is decimal"]);
 
   const sideCurrency = sources.map((s) => (s.spec ? { column: !!s.spec.mapping.currency, fixed: s.spec.currency ?? null } : null));
@@ -93,12 +96,16 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
   if (spec.passes.some((p, i) => p.no !== i + 1)) errors.push("Number the passes 1, 2, 3 … in order, with no gaps.");
   spec.passes.forEach((p, i) => {
     const pass = placeOf(["passes", i]);
-    p.blocking.forEach((ref, j) => onBoth(placeOf(["passes", i, "blocking", j]), ref));
+    p.blocking.forEach((f, j) => {
+      const place = placeOf(["passes", i, "blocking", j]);
+      const [ka, kb] = onBoth(place, f);
+      if (ka && kb && ka !== kb) at(place, kindsDiffer(f, ka, kb));
+    });
     p.predicates.forEach((q, j) => {
       const place = placeOf(["passes", i, "predicates", j]);
       if (q.op === "bday_window" && ([0, 1] as const).some((i) => sideRef(q.field, i) !== "business_date")) return at(place, "Business days are counted on the business date. Compare the business date.");
       const [ka, kb] = onBoth(place, q.field, NEEDS[q.op]);
-      if (!NEEDS[q.op] && ka && kb && ka !== kb) at(place, `${label(0)}'s ${fieldLabel(sideRef(q.field, 0))} is ${ka}; ${label(1)}'s ${fieldLabel(sideRef(q.field, 1))} is ${kb}.`);
+      if (!NEEDS[q.op] && ka && kb && ka !== kb) at(place, kindsDiffer(q.field, ka, kb));
       if (q.op === "eq_sum" && p.cardinality === "1:1") at(place, "A group sum needs a 1:N or N:1 pass.");
     });
     if (p.cardinality !== "1:1") {
