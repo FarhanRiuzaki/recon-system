@@ -37,10 +37,11 @@ Keputusan urutan: DEC baru dari po-recon (engine + list dulu, kanvas menyusul; D
 
 ## Review Focus
 
-1. **Kunci jawaban** (gerbang Plan 3): config gerbang (di bawah) atas source1 vs source2 → 940 grup 1:1 auto; 15
-   suggested (jumlah beda, pass 2); 10 suggested (tanggal beda, pass 3); 10 referensi Duplicate (`000966`..`000975`,
-   30 item) jadi break; 40 item tanpa pasangan (20 + 20) open. Id persis sama dengan tabel di `source-test-db.md`. Angka
-   beda = bug engine atau seed, dicari sampai jelas. (Task 2, 3)
+1. **Kunci jawaban** (gerbang Plan 3): config gerbang atas source1 vs source2, replay 2–5 Nov 2026 → angka dan id persis
+   tabel "Kunci jawaban config gerbang Plan 3" di `docs/recon/source-test-db.md`: 937 grup auto; 10 referensi Duplicate (30
+   item); 14 suggested pass 2; 10 suggested pass 3; 3 pasangan Currency differs dan 1 pasangan Amount differs di luar
+   toleransi (USD exact) tetap open; waiting 24 · 24; strip per tanggal 312/5 · 313/8 · 312/7 · 0/4. Angka beda = bug engine
+   atau seed, dicari sampai jelas. (Task 2, 3)
 2. **Tidak ada pasangan salah** pada pass toleransi dengan kandidat bersaing (S1 menemukan 1 pasangan salah tanpa mutual
    unique best). (Task 2)
 3. **Run ulang idempoten**: run yang diulang / job yang di-retry tidak membuat grup dobel atau item yang hilang. (Task 2, 3)
@@ -50,12 +51,28 @@ Keputusan urutan: DEC baru dari po-recon (engine + list dulu, kanvas menyusul; D
    pass-nya (pasangan tersimpan sebagai resolusi) dan 40 open menjadi break; suggested dihitung open di match rate. (Task 6)
 5. **Versi yang berubah di tengah**: run dipin ke versi; publish versi baru saat run berjalan tidak mengubah run itu. (Task 3)
 
-**Config gerbang** (dipakai tes integrasi dan cek app): sisi A = source1 (semua baris), sisi B = source2. Pass 1 exact
-1:1 auto: `ext_ref eq`, `amount_minor eq`, `business_date eq`, `currency eq`; `on_ambiguous = break`. Pass 2 1:1
-suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hanya untuk config gerbang; toleransi BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`,
-`amount_minor eq`, `date_window ±1 day`; `carry_over_days = 1` (Captain: angka gerbang = perilaku produksi; guardrail di Task 1). Mapping source: `txn_ref`/`reference` → `ext_ref`, `amount_minor`/`amount` →
-`amount_minor`, `business_date`/`value_date` → `business_date`, `ccy`/`currency` → `currency`, `account_no`/`acct` →
-`account_ref`.
+**Config gerbang** (dipakai tes integrasi dan cek app): sisi A = source1, sisi B = source2; setiap pass memakai `currency eq`.
+Pass 1 exact 1:1 auto: `ext_ref eq`, `amount_minor eq`, `business_date eq`; `on_ambiguous = break`. Pass 2 1:1 suggest:
+blocking `ext_ref` + `business_date`, `amount_abs_tol { IDR: 1000.00 }` (USD tanpa entri = exact; hanya config uji, toleransi
+BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`, `amount_minor eq`, `date_window ±1 day`.
+`carry_over_days = 1`. Mapping source: `txn_ref`/`reference` → `ext_ref`, `amount_minor`/`amount` → `amount_minor`,
+`business_date`/`value_date` → `business_date`, `ccy`/`currency` → `currency`, `account_no`/`acct` → `account_ref`.
+
+**Kasus ke depan yang masuk Plan 3 (Captain, A1–A4):**
+- A1 Engine vs aksi operator: setiap transisi item memakai guard state + versi (`UPDATE … WHERE status = 'open' AND
+  version = $v`); item yang sedang dipegang operator dilewati, run tetap sukses. Tes: item berubah state di transaksi lain
+  saat run → tidak disentuh. (Task 2)
+- A2 Multi-mata uang: skala per mata uang dari tabel ISO 4217 (bukan per config; IDR 2, USD 2, JPY 0, KWD 3); toleransi
+  per mata uang dalam satuan mayor (`amount_abs_tol: Record<currency, decimal>`; tanpa entri = exact + peringatan "USD has
+  no tolerance in pass 2; USD pairs must match exactly."); `checkReconSpec`: pass dengan predikat amount tanpa `currency eq`
+  pada config yang sisinya punya > 1 mata uang = error. Tanpa konversi FX di fase 1 (non-goal). (Task 1, 2)
+- A3 Settlement T+1: pass N:1 `eq_sum` mengelompokkan lewat blocking batch key (mis. `attrs.settlement_ref`) melintasi
+  business date dalam jendela carry-over; guardrail carry-over juga berlaku untuk grup. Tes integration kecil: 3 transaksi D
+  + 1 settlement D+1 → 1 grup. (Task 1, 2)
+- A4 Versi source vs config live: versi source yang menghapus/mengganti tipe field yang dipakai config terbit ditolak saat
+  submit/approve dengan daftar config terdampak ("Field amount is used by 2 published recons: …"). Tes unit. (Task 1)
+- Alasan break saat tutup hari (Task 6): item open dengan pasangan referensi di sisi lain mendapat alasan dari predikat yang
+  gagal ("Currency differs", "Amount differs", "Date differs"); tanpa pasangan → "No counterpart".
 
 ---
 

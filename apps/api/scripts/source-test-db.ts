@@ -73,7 +73,8 @@ const TABLES = `
   SELECT id, 'TSTREF' || lpad(k::text, 6, '0'),
          date '2026-11-02' + (k % 3) + CASE WHEN kind = 'date' THEN 1 ELSE 0 END,
          100000 + (k * 7919) % 5000000 + CASE WHEN kind = 'amount' THEN 50000 ELSE 0 END,
-         CASE WHEN k % 10 = 0 THEN 'USD' ELSE 'IDR' END,
+         -- TSTREF000931..933: the same reference and amount in another currency on this side ("Currency differs").
+         CASE WHEN k BETWEEN 931 AND 933 THEN 'USD' WHEN k % 10 = 0 THEN 'USD' ELSE 'IDR' END,
          'TSTACC' || lpad((k % 50)::text, 4, '0'),
          CASE WHEN k % 5 = 0 THEN 'TSTNOTE ' || k ELSE NULL END,
          timestamptz '2026-11-17 08:00+00' + (id / 3) * interval '19 minutes'
