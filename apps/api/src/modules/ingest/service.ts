@@ -41,7 +41,7 @@ import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
 import { type Baseline, completeThroughOf, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, nextRunOf, previousBusinessDay, todayIn } from "./rules";
-import { quarantineRows, rawRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
+import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
 export type Scope = { spaceId: string; sourceId: string };
@@ -132,6 +132,20 @@ type Origin = {
 type Counts = { total: number; ok: number; added: number; quarantined: number };
 const newCounts = (): Counts => ({ total: 0, ok: 0, added: 0, quarantined: 0 });
 
+type CountKind = "records" | "quarantined";
+/** Business date → how many, from a list of dates (each `sign`). */
+function byDate(dates: Iterable<string>, sign = 1, into = new Map<string, number>()): Map<string, number> {
+  for (const d of dates) into.set(d, (into.get(d) ?? 0) + sign);
+  return into;
+}
+/** Adds `by` (business date → n) to the `kind` day counters of `s` (schema.ts sourceDayCounts); `set` replaces them. */
+async function tally(tx: InTx, s: Scope, kind: CountKind, by: Map<string, number>, set = false): Promise<void> {
+  const rows = [...by].filter(([, n]) => set || n !== 0).map(([businessDate, n]) => ({ ...s, businessDate, kind, n }));
+  if (!rows.length) return;
+  const c = sourceDayCounts;
+  await tx.insert(c).values(rows).onConflictDoUpdate({ target: [c.spaceId, c.sourceId, c.businessDate, c.kind], set: { n: set ? sql`excluded.n` : sql`${c.n} + excluded.n` } });
+}
+
 /** Maps `lines` and writes them (rows, records, quarantine) in `tx`; mutable sources supersede what changed. */
 async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[], counts: Counts): Promise<void> {
   const raw: (typeof rawRows.$inferInsert)[] = [], recs: (typeof records.$inferInsert)[] = [], quarantine: (typeof quarantineRows.$inferInsert)[] = [];
@@ -160,19 +174,25 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
       snapshotId: o.snapshotId, originId: o.originId,
     });
   }
-  const added = await insertBatch(tx, raw, recs, quarantine);
+  const { added, quarantined } = await insertBatch(tx, raw, recs, quarantine);
+  // a pulled line has no business date of its own: it counts on the day it arrived (as the read model always did)
+  await tally(tx, s, "quarantined", byDate(quarantined.map((q) => q.businessDate ?? todayIn(q.createdAt))));
   counts.total += lines.length;
   counts.ok += recs.length;
   counts.quarantined += quarantine.length;
   counts.added += added.length;
   // a snapshot is replaced whole per date (a mutable snapshot source is refused at save): its loading rows never
-  // supersede the active snapshot's, so a failed pull can't leave the date empty
-  if (l.spec.mutable && !o.snapshotId && added.length) {
+  // supersede the active snapshot's, so a failed pull can't leave the date empty; they count once it is active
+  if (o.snapshotId) return;
+  const current = byDate(added.map((a) => a.businessDate));
+  if (l.spec.mutable && added.length) {
     const latest = new Map<string, string>(); // the newest record per key (UUIDv7 ids sort by creation)
     for (const a of added) if (a.naturalKey !== null && (latest.get(a.naturalKey) ?? "") < a.id) latest.set(a.naturalKey, a.id);
     const replaced = await supersede(tx, s.spaceId, s.sourceId, [...latest].map(([key, id]) => ({ key, id })));
-    if (replaced.length) await ingestHooks.onRecordChanged(tx, replaced);
+    byDate(replaced.map((r) => r.businessDate), -1, current);
+    if (replaced.length) await ingestHooks.onRecordChanged(tx, replaced.map((r) => r.id));
   }
+  await tally(tx, s, "records", current);
 }
 
 /**
@@ -305,6 +325,8 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
       }
       await tx.update(sourceSnapshots).set({ status: "superseded" }).where(and(ofDate, eq(sourceSnapshots.status, "active")));
       await tx.update(sourceSnapshots).set({ status: "active", rows: counts.added, finishedAt: NOW }).where(eq(sourceSnapshots.id, id));
+      // the date's records are this snapshot's alone now (a snapshot source has no others): set, not add
+      await tally(tx, s, "records", new Map([[businessDate, counts.added]]), true);
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, endOfDay(businessDate));
       return false;
     });
@@ -502,16 +524,12 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
     return [{ x, c, health: { ...h, lastError: c?.lastError ?? null, graceMinutes, deadline } }];
   });
   if (!judged.length) return out;
-  const rows = new Map((await tx.select({ id: records.sourceId, n: count() }).from(records).where(and(
-    or(...judged.map((j) => and(eq(records.spaceId, j.x.spaceId), eq(records.sourceId, j.x.id), eq(records.businessDate, j.health.businessDate)))),
-    currentRecord(tx),
-  )).groupBy(records.sourceId)).map((r) => [r.id, r.n]));
-  const own = judged.filter((j) => j.x.spaceId === viewer);
-  // a pulled line has no business date of its own: it counts on the day it was quarantined
-  const lineDate = sql`coalesce(${quarantineRows.businessDate}, (${quarantineRows.createdAt} at time zone ${DEFAULT_TIMEZONE})::date)`;
-  const quarantined = new Map(own.length ? (await tx.select({ id: quarantineRows.sourceId, n: count() }).from(quarantineRows).where(
-    or(...own.map((j) => and(eq(quarantineRows.spaceId, j.x.spaceId), eq(quarantineRows.sourceId, j.x.id), sql`${lineDate} = ${j.health.businessDate}::date`))),
-  ).groupBy(quarantineRows.sourceId)).map((r) => [r.id, r.n]) : []);
+  // the day counters (schema.ts sourceDayCounts); a shared source's quarantined counter is not readable here (0019 RLS)
+  const c = sourceDayCounts;
+  const counted = await tx.select({ id: c.sourceId, kind: c.kind, n: c.n }).from(c)
+    .where(or(...judged.map((j) => and(eq(c.spaceId, j.x.spaceId), eq(c.sourceId, j.x.id), eq(c.businessDate, j.health.businessDate)))));
+  const rows = new Map(counted.filter((r) => r.kind === "records").map((r) => [r.id, r.n]));
+  const quarantined = new Map(counted.filter((r) => r.kind === "quarantined").map((r) => [r.id, r.n]));
   for (const { x, c, health } of judged) {
     const cron = x.spec.input.kind === "db_snapshot" ? x.spec.input.schedule : EVERY_MINUTE;
     out.set(x.id, {
@@ -523,6 +541,22 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
     });
   }
   return out;
+}
+
+/**
+ * Rebuilds the day counters of space `spaceId` from its rows, as count(*) would give them: for rows written without
+ * the pipeline (the demo seed, tests). Ingest keeps them itself (tally).
+ */
+export async function recountDays(tx: InTx, spaceId: string): Promise<void> {
+  const c = sourceDayCounts;
+  await tx.delete(c).where(eq(c.spaceId, spaceId));
+  await tx.insert(c).select(tx.select({
+    spaceId: records.spaceId, sourceId: records.sourceId, businessDate: records.businessDate, kind: sql<string>`'records'`.as("kind"), n: count().as("n"),
+  }).from(records).where(and(eq(records.spaceId, spaceId), currentRecord(tx))).groupBy(records.spaceId, records.sourceId, records.businessDate));
+  const lineDate = sql<string>`coalesce(${quarantineRows.businessDate}, (${quarantineRows.createdAt} at time zone ${DEFAULT_TIMEZONE})::date)`;
+  await tx.insert(c).select(tx.select({
+    spaceId: quarantineRows.spaceId, sourceId: quarantineRows.sourceId, businessDate: lineDate.as("business_date"), kind: sql<string>`'quarantined'`.as("kind"), n: count().as("n"),
+  }).from(quarantineRows).where(eq(quarantineRows.spaceId, spaceId)).groupBy(sql`1`, sql`2`, sql`3`)); // by position: the zone is a bound parameter, twice it would be two expressions
 }
 
 // ------------------------------------------------------------------------------------------------ routes

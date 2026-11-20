@@ -9,7 +9,7 @@ import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SQL } from "bun";
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { and, asc, count, eq, isNotNull } from "drizzle-orm";
+import { and, asc, count, eq, isNotNull, sql } from "drizzle-orm";
 import { DEFAULTS, synthPair } from "../../../../../scripts/spikes/synth";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { dropPartitions, partitionsOf, truncateAll, xmins } from "../../../../../test/helpers/db";
@@ -19,7 +19,7 @@ import { db } from "../../../../kernel/db";
 import { calendars, sourceConnections, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { type Connector, ConnectorError, type Row, type Secret } from "../../connectors";
-import { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
+import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourceSnapshots } from "../../schema";
 import { currentRecord, ensureIngestPartitions, ingestFile, ingestHooks, type InboxFile, pullSource, scanSource, snapshotSource } from "../../service";
 import { KSEI_FILE, ksei } from "../unit/fixtures";
 
@@ -59,6 +59,25 @@ const quarantined = (s: Src) => db.select({ line: quarantineRows.lineNo, reasons
 const filesOf = (s: Src) => db.select().from(sourceFiles).where(eq(sourceFiles.sourceId, s.sourceId)).orderBy(asc(sourceFiles.receivedAt), asc(sourceFiles.id));
 const statusOf = async (s: Src) => (await db.select({ status: sources.status }).from(sources).where(eq(sources.id, s.sourceId)))[0]!.status;
 const cursorOf = async (s: Src) => (await db.select().from(sourceCursors).where(eq(sourceCursors.sourceId, s.sourceId)))[0];
+
+/**
+ * The oracle of the day counters the pipeline keeps (sourceDayCounts): count(*) of `s`'s current records per business
+ * date and of its quarantined lines per date (a pulled line on the Asia/Jakarta day it arrived), as the read model
+ * counted before. Zero counters (a date whose records were all replaced) are left out of both.
+ */
+async function expectCounters(s: Src) {
+  const lineDate = sql<string>`coalesce(${quarantineRows.businessDate}, (${quarantineRows.createdAt} at time zone 'Asia/Jakarta')::date)::text`;
+  const oracle = await db.transaction(async (tx) => [
+    ...(await tx.select({ date: records.businessDate, n: count() }).from(records).where(and(eq(records.sourceId, s.sourceId), currentRecord(tx))).groupBy(records.businessDate))
+      .map((r) => `records ${r.date} ${r.n}`),
+    ...(await tx.select({ date: lineDate, n: count() }).from(quarantineRows).where(eq(quarantineRows.sourceId, s.sourceId)).groupBy(sql`1`))
+      .map((r) => `quarantined ${r.date} ${r.n}`),
+  ].sort());
+  const kept = (await db.select().from(sourceDayCounts).where(eq(sourceDayCounts.sourceId, s.sourceId))).filter((c) => c.n !== 0)
+    .map((c) => `${c.kind} ${c.businessDate} ${c.n}`).sort();
+  expect(kept).toEqual(oracle);
+  return kept;
+}
 
 /** Writes `name` in the inbox folder; `at` = its modification time (a resend is a new arrival). */
 async function put(name: string, text: string, at = new Date()) {
@@ -144,6 +163,8 @@ describe("KSEI ACT, day D and D+1 (ksei-sample-data.md)", () => {
     expect([await current(k, D), await current(k, D1), await current(m, D), await current(m, D1)]).toEqual([10, 9, 11, 9]);
     const c = await cursorOf(k);
     expect(c?.completeThrough?.toISOString()).toBe("2026-11-03T17:00:00.000Z"); // the end of D+1 in Asia/Jakarta
+    expect(await expectCounters(k)).toEqual([`quarantined ${D} 2`, `records ${D} 10`, `records ${D1} 9`]);
+    expect(await expectCounters(m)).toEqual([`records ${D} 11`, `records ${D1} 9`]);
   });
 });
 
@@ -201,6 +222,7 @@ describe("Review Focus 2: a snapshot that fails halfway", () => {
     expect(await snapshotSource(scope(m), D, probe)).toBe("active");
     expect((await snaps()).map((s) => s.status)).toEqual(["superseded", "failed", "active"]);
     expect(await current(m, D)).toBe(10);
+    expect(await expectCounters(m)).toEqual([`records ${D} 10`]); // the failed snapshot's 10 loaded rows never counted
   });
 
   it("a query that answers no rows never replaces a date that has data; with no active one, an empty snapshot activates", async () => {
@@ -284,6 +306,7 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     const ms = String(fresh.length - 1).padStart(3, "0"); // the newest row: microsecond text from the source, as written
     expect(c).toMatchObject({ lastError: null, watermark: `2026-11-19T01:00:05.${ms}000Z` });
     expect(c!.completeThrough!.toISOString()).toBe(`2026-11-19T00:58:05.${ms}Z`); // watermark − lookback
+    expect((await expectCounters(s)).reduce((n, x) => n + Number(x.split(" ")[2]), 0)).toBe(rows);
   });
 
   it("a page the connector sends twice before it gives up (\"did not move\") is stored once; the source pauses with the reason", async () => {
@@ -404,6 +427,7 @@ describe("final review: integrity of what a run keeps", () => {
     expect(await current(m, D)).toBe(3);
     expect((await cursorOf(m))?.lastError).toBe(`Snapshot ${D}: Every row of the pull was quarantined; the active snapshot was kept.`);
     expect((await quarantined(m)).length).toBe(2); // the lines stay for the owner to see
+    expect(await expectCounters(m)).toEqual([`quarantined ${D} 2`, `records ${D} 3`]);
   });
 
   it("a bad row read again through the lookback is quarantined once", async () => {
@@ -413,6 +437,7 @@ describe("final review: integrity of what a run keeps", () => {
     expect(await pullSource(scope(s), probe)).toBe("pulled");
     expect(await pullSource(scope(s), probe)).toBe("pulled"); // the lookback reads both rows again
     expect([await allRecords(s), (await quarantined(s)).length]).toEqual([1, 1]);
+    expect(await expectCounters(s)).toHaveLength(2); // one record (its event date), one line (the day it arrived)
   });
 
   it("a file or snapshot keeps every quarantined line, the same text twice included, so rows_quarantined is the lines shown", async () => {
@@ -428,6 +453,8 @@ describe("final review: integrity of what a run keeps", () => {
     expect(await snapshotSource(scope(m), D, probe)).toBe("active");
     expect(await snapshotSource(scope(m), D, probe)).toBe("active"); // pulled again: the new snapshot keeps its own line
     expect((await quarantined(m)).length).toBe(2);
+    expect(await expectCounters(k)).toEqual([`quarantined ${D} 2`, `records ${D} 1`]);
+    expect(await expectCounters(m)).toEqual([`quarantined ${D} 2`, `records ${D} 1`]);
   });
 
   it("an archived space ingests nothing: pulls, scans, files and snapshots skip", async () => {
@@ -493,6 +520,7 @@ describe("a mutable source", () => {
     expect(r1[1]!.by).toBeNull();
     expect(changed).toEqual([[old!.id]]);
     expect(await current(s)).toBe(2);
+    expect(await expectCounters(s)).toEqual(["records 2026-11-19 2"]); // R1's replaced record no longer counts
   });
 });
 

@@ -171,3 +171,26 @@ export const quarantineRows = pgTable("quarantine_rows", {
   foreignKey({ name: "quarantine_rows_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
   check("quarantine_rows_origin_check", sql`${t.origin} in ('file', 'pull', 'snapshot')`),
 ]);
+
+/**
+ * Records today and quarantined today as counters (the sources list read a count(*) over the day's records: 4.7 s for
+ * a page of 15 sources of 1M records each, past the 5 s statement timeout): per source, business date and `kind`
+ * (`records` = its current records, `quarantined` = its quarantined lines, a pulled line on the Asia/Jakarta date it
+ * arrived), written only by the ingest transaction that changes what it counts (service.ts `tally`):
+ * - a file or a pull adds the records it added, by date; a mutable source's supersede subtracts those it replaced;
+ * - a snapshot's records count only while it is active, and a snapshot source has no other records, so the
+ *   transaction that makes a snapshot active sets the date's count to that snapshot's records (nothing to subtract);
+ * - a quarantined line adds when it is inserted, whatever becomes of its snapshot (as quarantine_rows counts it).
+ * A space a source is shared to reads its `records` counters only (drizzle/0019); quarantine stays the owner's.
+ */
+export const sourceDayCounts = pgTable("source_day_counts", {
+  spaceId: uuid("space_id").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  businessDate: date("business_date").notNull(),
+  kind: text("kind").notNull(),
+  n: integer("n").notNull(),
+}, (t) => [
+  primaryKey({ name: "source_day_counts_pkey", columns: [t.spaceId, t.sourceId, t.businessDate, t.kind] }),
+  foreignKey({ name: "source_day_counts_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
+  check("source_day_counts_kind_check", sql`${t.kind} in ('records', 'quarantined')`),
+]);

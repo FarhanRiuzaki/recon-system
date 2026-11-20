@@ -1,6 +1,6 @@
-// rowsToday latency (sourceStates: one count(*) over the day's current records, RLS on) as the app role, on PERF_ROWS
-// records (default 1M) of one business date per source; docs/recon/spikes.md "rowsToday". Off unless asked: it seeds
-// millions of rows into the test database (minutes) and truncates it.
+// rowsToday latency (sourceStates, RLS on) as the app role, on PERF_ROWS records (default 1M) of one business date per
+// source; docs/recon/spikes.md "rowsToday". The rows are written by SQL, so their day counters come from recountDays.
+// Off unless asked: it seeds millions of rows into the test database (minutes) and truncates it.
 //   PERF_ROWS_TODAY=1 bun test src/modules/ingest/tests/integration/rows-today-perf.test.ts      two sources of 1M, 13 empty
 //   PERF_ROWS_TODAY=1 PERF_ALL=1 bun test …                                                        all 15 sources of 1M
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
@@ -13,7 +13,7 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { calendars, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { records, sourceSnapshots } from "../../schema";
-import { type ReadSource, sourceStates } from "../../service";
+import { type ReadSource, recountDays, sourceStates } from "../../service";
 import { ksei } from "../unit/fixtures";
 
 const A = Bun.randomUUIDv7();
@@ -62,7 +62,7 @@ beforeAll(async () => {
   await mk("file_inbox", N);
   await mk("db_snapshot", N);
   for (let i = 0; i < 13; i++) await mk("file_inbox", process.env.PERF_ALL ? N : 0);
-  await db.transaction(async (tx) => { await tx.execute(sql`set local statement_timeout = 0`); await tx.execute(sql`analyze records`); });
+  await db.transaction(async (tx) => { await tx.execute(sql`set local statement_timeout = 0`); await tx.execute(sql`analyze records`); await recountDays(tx, A); });
   console.log("seeded ms", Math.round(performance.now() - t));
   probe = await appRoleDb();
 }, 600_000);
@@ -71,7 +71,7 @@ afterAll(async () => { await probe?.$client.close(); await truncateAll(); });
 it("measures the detail (one source) and a list page (15)", async () => {
   const rest = process.env.PERF_ALL ? `${N} records each` : "no records";
   await time(`detail: file source, ${N} records`, [list[0]!]);
-  await time(`detail: snapshot source, ${N} records (EXISTS per row)`, [list[1]!]);
+  await time(`detail: snapshot source, ${N} records`, [list[1]!]);
   await time(`list page: 15 sources, two of ${N} records, 13 of ${rest}`, list);
   await time(`list page: the 13 sources of ${rest}`, list.slice(2));
   expect([...(await withSpace({ spaceIds: [A], userId: null }, (tx) => sourceStates(tx, [list[0]!], A, NOW), probe)).values()][0]!.rowsToday).toBe(N);

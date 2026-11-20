@@ -9,7 +9,7 @@ import { db, type InTx } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { sourceShares, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
-import { quarantineRows, rawRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
+import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourceSnapshots } from "../../schema";
 
 const A = Bun.randomUUIDv7(), B = Bun.randomUUIDv7(), C = Bun.randomUUIDv7();
 const SRC = Bun.randomUUIDv7(), V1 = Bun.randomUUIDv7(), FILE = Bun.randomUUIDv7(), SNAP = Bun.randomUUIDv7();
@@ -28,6 +28,7 @@ const seen = (spaceIds: string[]) => as(spaceIds, async (tx) => ({
   snapshots: (await tx.select({ id: sourceSnapshots.id }).from(sourceSnapshots)).length,
   files: (await tx.select({ id: sourceFiles.id }).from(sourceFiles)).length,
   quarantine: (await tx.select({ id: quarantineRows.id }).from(quarantineRows)).length,
+  counts: (await tx.select({ kind: sourceDayCounts.kind }).from(sourceDayCounts)).map((c) => c.kind).sort().join(","),
 }));
 
 beforeEach(async () => {
@@ -46,13 +47,14 @@ beforeEach(async () => {
   await db.insert(rawRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, origin: "file", originId: FILE, lineNo: 1, payload: { sid: "S1" }, rowHash: "h1", businessDate: DAY });
   await db.insert(records).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, sourceVersionId: V1, businessDate: DAY, bdayIndex: 1, attrs: {}, rowHash: "h1", originId: FILE });
   await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, origin: "file", originId: FILE, lineNo: 2, raw: "x", rawHash: "hx", reasons: {} });
+  await db.insert(sourceDayCounts).values([{ spaceId: A, sourceId: SRC, businessDate: DAY, kind: "records", n: 1 }, { spaceId: A, sourceId: SRC, businessDate: DAY, kind: "quarantined", n: 1 }]);
 });
 
 describe("ingest tables under row level security", () => {
-  it("the owner space sees everything; the space it is shared to all but the quarantine; another space nothing", async () => {
-    expect(await seen([A])).toEqual({ records: 1, raw: 1, cursors: 1, snapshots: 1, files: 1, quarantine: 1 });
-    expect(await seen([B])).toEqual({ records: 1, raw: 1, cursors: 1, snapshots: 1, files: 1, quarantine: 0 });
-    expect(await seen([C])).toEqual({ records: 0, raw: 0, cursors: 0, snapshots: 0, files: 0, quarantine: 0 });
+  it("the owner space sees everything; the space it is shared to all but the quarantine (lines and count); another space nothing", async () => {
+    expect(await seen([A])).toEqual({ records: 1, raw: 1, cursors: 1, snapshots: 1, files: 1, quarantine: 1, counts: "quarantined,records" });
+    expect(await seen([B])).toEqual({ records: 1, raw: 1, cursors: 1, snapshots: 1, files: 1, quarantine: 0, counts: "records" });
+    expect(await seen([C])).toEqual({ records: 0, raw: 0, cursors: 0, snapshots: 0, files: 0, quarantine: 0, counts: "" });
   });
 
   it("the space it is shared to can't change any of it: updates touch no row, inserts fail the policy", async () => {
@@ -61,8 +63,9 @@ describe("ingest tables under row level security", () => {
       snapshots: (await tx.update(sourceSnapshots).set({ status: "failed" }).where(eq(sourceSnapshots.id, SNAP)).returning()).length,
       cursors: (await tx.delete(sourceCursors).returning()).length,
       files: (await tx.delete(sourceFiles).returning()).length,
+      counts: (await tx.update(sourceDayCounts).set({ n: 99 }).returning()).length,
     }));
-    expect(changed).toEqual({ records: 0, snapshots: 0, cursors: 0, files: 0 });
+    expect(changed).toEqual({ records: 0, snapshots: 0, cursors: 0, files: 0, counts: 0 });
     const e = await as([B], (tx) => tx.insert(records).values({
       id: Bun.randomUUIDv7(), spaceId: A, sourceId: SRC, sourceVersionId: V1, businessDate: DAY, bdayIndex: 1, attrs: {}, rowHash: "h2", originId: FILE,
     })).catch((x: unknown) => x);
@@ -71,6 +74,6 @@ describe("ingest tables under row level security", () => {
 
   it("ending the share hides it all again", async () => {
     await db.delete(sourceShares);
-    expect(await seen([B])).toEqual({ records: 0, raw: 0, cursors: 0, snapshots: 0, files: 0, quarantine: 0 });
+    expect(await seen([B])).toEqual({ records: 0, raw: 0, cursors: 0, snapshots: 0, files: 0, quarantine: 0, counts: "" });
   });
 });

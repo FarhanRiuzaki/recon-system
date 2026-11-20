@@ -57,31 +57,38 @@ export async function makePartitions(on: Tx, months: string[]): Promise<void> {
   log.warn({ months }, "partitions made during ingest: maintenance.partitions had not made them");
 }
 
+export type Added = { id: string; naturalKey: string | null; businessDate: string };
+export type Quarantined = { businessDate: string | null; createdAt: Date };
+
 /**
  * Writes one batch: raw rows, records and quarantined lines once per dedup key (a row or line already stored is
- * dropped). Answers the records it added.
+ * dropped). Answers the records and quarantined lines it added (the day counters count those).
  */
 export async function insertBatch(
   tx: InTx, raw: (typeof rawRows.$inferInsert)[], recs: (typeof records.$inferInsert)[], quarantine: (typeof quarantineRows.$inferInsert)[],
-): Promise<{ id: string; naturalKey: string | null }[]> {
+): Promise<{ added: Added[]; quarantined: Quarantined[] }> {
   await checkMonths(tx, recs.map((r) => r.businessDate));
   for (const c of chunks(raw)) await tx.insert(rawRows).values(c).onConflictDoNothing();
-  const added: { id: string; naturalKey: string | null }[] = [];
-  for (const c of chunks(recs)) added.push(...await tx.insert(records).values(c).onConflictDoNothing().returning({ id: records.id, naturalKey: records.naturalKey }));
-  for (const c of chunks(quarantine)) await tx.insert(quarantineRows).values(c).onConflictDoNothing();
-  return added;
+  const added: Added[] = [], quarantined: Quarantined[] = [];
+  for (const c of chunks(recs)) {
+    added.push(...await tx.insert(records).values(c).onConflictDoNothing().returning({ id: records.id, naturalKey: records.naturalKey, businessDate: records.businessDate }));
+  }
+  for (const c of chunks(quarantine)) {
+    quarantined.push(...await tx.insert(quarantineRows).values(c).onConflictDoNothing().returning({ businessDate: quarantineRows.businessDate, createdAt: quarantineRows.createdAt }));
+  }
+  return { added, quarantined };
 }
 
 /**
  * Mutable sources: each `latest` record replaces the current records of its natural key (superseded_by = it). Answers
- * the ids replaced.
+ * the records replaced, with their business dates.
  */
-export async function supersede(tx: InTx, spaceId: string, sourceId: string, latest: { key: string; id: string }[]): Promise<string[]> {
+export async function supersede(tx: InTx, spaceId: string, sourceId: string, latest: { key: string; id: string }[]): Promise<{ id: string; businessDate: string }[]> {
   if (!latest.length) return [];
   const rows = (await tx.execute(sql`update ${records} set superseded_by = v.id
     from jsonb_to_recordset(${JSON.stringify(latest)}::text::jsonb) as v(key text, id uuid)
     where ${records.spaceId} = ${spaceId} and ${records.sourceId} = ${sourceId} and ${records.naturalKey} = v.key
       and ${records.supersededBy} is null and ${records.id} <> v.id
-    returning ${records.id} as id`)) as unknown as { id: string }[];
-  return rows.map((r) => r.id);
+    returning ${records.id} as id, ${records.businessDate}::text as business_date`)) as unknown as { id: string; business_date: string }[];
+  return rows.map((r) => ({ id: r.id, businessDate: r.business_date }));
 }

@@ -15,7 +15,7 @@ import { users } from "../../../users";
 import { makeCalendar } from "../../map";
 import { previousBusinessDay, todayIn } from "../../rules";
 import { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
-import { ingestHooks } from "../../service";
+import { ingestHooks, recountDays } from "../../service";
 import { idDefault, ksei } from "../unit/fixtures";
 
 const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
@@ -155,6 +155,7 @@ describe("the sources list and detail read model", () => {
     });
     await db.insert(records).values([record(FILE_SRC, D(), 1), record(FILE_SRC, D(), 2), record(FILE_SRC, "2026-11-02", 3)]);
     await db.insert(quarantineRows).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, origin: "file", originId: fileId, lineNo: 3, raw: "x", rawHash: "hx", reasons: {}, businessDate: D() });
+    await db.transaction((tx) => recountDays(tx, A)); // rows written here, not by the pipeline
   });
 
   it("a quarantined line names the file it came in, with the file's version; a line of an unknown origin names none", async () => {

@@ -136,7 +136,7 @@ pada laju ini. Upgrade path: COPY ke temp table saat Bun yang di-pin punya `writ
 
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
-Tanggal 2026-11-20. `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
+Tanggal 2026-11-20. Semula `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
 adalah satu `count(*)` per source atas record tanggal bisnis hari itu yang masih berlaku (`currentRecord`: belum
 di-supersede, dan bila dari snapshot, snapshot-nya aktif: satu `EXISTS` per baris), di bawah RLS. Diukur sebagai role app
 (`appRoleDb`, `withSpace`), median 7 panggilan, lewat tes yang mati kecuali diminta:
@@ -152,11 +152,24 @@ Max, 36 GB; PostgreSQL 18.6 lokal (:5434, `shared_buffers` 128 MB, `work_mem` 4 
 | Daftar 15 source, masing-masing 1 juta (`PERF_ALL`) | 15 juta | 4.741 ms | 4.734–6.921 ms |
 | Daftar 13 source, masing-masing 1 juta (`PERF_ALL`) | 13 juta | 4.098 ms | 3.993–4.217 ms |
 
-Per source sekitar 320–390 ms, di bawah ambang 500 ms per source yang diputuskan, jadi belum ada tabel penghitung; count
-tetap dipakai. Batasnya: biaya naik linear dengan jumlah record hari itu di halaman, dan satu halaman 15 source × 1 juta
-mendekati dan kadang melewati `statement_timeout` 5 s pool API (maks 6,9 s), yang berarti daftar itu menjawab 500.
-Upgrade path: tabel penghitung per (space_id, source_id, business_date) yang diisi di transaksi ingest, count ini sebagai
-oracle tesnya. Angka di atas dari laptop pengembang, bukan perangkat keras produksi.
+Biaya naik linear dengan jumlah record hari itu di halaman: satu halaman 15 source × 1 juta melewati `statement_timeout`
+5 s pool API (median 4,7 s, maks 6,9 s), jadi daftar itu menjawab 500. Keputusan controller: penghitung, bukan count.
+
+Sesudahnya: tabel `source_day_counts` (per space, source, tanggal bisnis, `records` / `quarantined`; `drizzle/0019`),
+diisi di transaksi ingest yang mengubah yang dihitungnya (`tally` di `service.ts`; cara menjaga supersede snapshot dan
+mutable dijelaskan di `ingest/schema.ts`). Daftar dan detail membacanya; count(*) tinggal sebagai oracle tes
+(`pipeline.test.ts` `expectCounters`, setelah KSEI dua hari, BI-FAST, snapshot gagal lalu supersede, source mutable).
+Diukur ulang dengan tes yang sama (`PERF_ALL=1`, 15 source × 1 juta, median 7 panggilan):
+
+| Kasus | Record hari itu | Median | Min–maks |
+|---|---|---|---|
+| Detail, source file | 1 juta | 3 ms | 2–26 ms |
+| Detail, source snapshot | 1 juta | 2 ms | 1–2 ms |
+| Daftar 15 source, masing-masing 1 juta | 15 juta | 3 ms | 3–4 ms |
+| Daftar 13 source, masing-masing 1 juta | 13 juta | 2 ms | 2–3 ms |
+
+Biayanya pindah ke ingest: satu upsert per tanggal per batch (1.000 baris) dan satu per aktivasi snapshot; tidak
+diukur terpisah dari angka S1 ingest. Angka di atas dari laptop pengembang, bukan perangkat keras produksi.
 
 ## S7: driver DB sumber di Bun
 

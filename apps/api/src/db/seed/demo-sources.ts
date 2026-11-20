@@ -9,7 +9,7 @@ import type { SourceKind } from "@starterkit/shared/sources";
 import { encryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
 import { ensureMonthPartitions } from "../../kernel/partitions";
-import { makeCalendar, previousBusinessDay, quarantineRows, rawHashOf, records, sourceCursors, sourceFiles, sourceSnapshots, todayIn } from "../../modules/ingest";
+import { makeCalendar, previousBusinessDay, quarantineRows, rawHashOf, recountDays, records, sourceCursors, sourceFiles, sourceSnapshots, todayIn } from "../../modules/ingest";
 import { sourceConnections, sourceShares, sources, sourceVersions } from "../../modules/sources";
 import { withSpace } from "../../modules/spaces";
 
@@ -188,5 +188,6 @@ export async function seedDemoSources(db: Tx, o: { treasury: string; ctop: strin
     ]);
     for (let i = 0; i < recs.length; i += 500) await tx.insert(records).values(recs.slice(i, i + 500));
     await tx.insert(quarantineRows).values(quarantine);
+    await recountDays(tx, T); // rows written here, not by the pipeline: their day counters from them
   }, db);
 }

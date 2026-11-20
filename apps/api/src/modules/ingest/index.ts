@@ -14,4 +14,4 @@ export { type ColumnProfile, profile } from "./profile";
 export { previewRows, previewSample } from "./preview";
 export { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
 export { previousBusinessDay, todayIn } from "./rules";
-export { currentRecord, ingestHandlers, ingestHooks, scheduleSource, type SourceState, sourceStates } from "./service";
+export { currentRecord, ingestHandlers, ingestHooks, recountDays, scheduleSource, type SourceState, sourceStates } from "./service";

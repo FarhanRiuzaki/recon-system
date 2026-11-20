@@ -201,6 +201,7 @@ const EXTRA_READ_POLICIES: Record<string, string> = {
   "source_cursors.source_cursors_shared": "complete_through of a shared source: the grace of a recon reading it and its health",
   "source_snapshots.source_snapshots_shared": "which snapshot of a shared source is active for a date: its records count only then",
   "source_files.source_files_shared": "which files of a shared source are ingested for a date: its health in the space it is shared to",
+  "source_day_counts.source_day_counts_shared": "a shared source's records today (kind 'records' only; its quarantined count stays the owner's), shown in the shared space's sources list",
 };
 
 /**
