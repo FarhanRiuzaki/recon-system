@@ -26,6 +26,26 @@ export type PassRowProps = {
   /** The shown simulation: this pass's outcome, the connector under it, dimmed while out of date or running. */
   sim?: { outcome: Outcome[]; connector: string | null; dim: boolean };
 };
+/** A pass as text: its number and name, cardinality, when found, the matching keys and every condition. */
+export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
+  return (
+    <>
+      <span className="flex items-center gap-2">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-fg text-caption text-bg tabular">{pass.no}</span>
+        <span className="min-w-0 truncate text-label text-fg">{pass.name}</span>
+      </span>
+      <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
+        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.cardinality}</span>
+        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Auto-accept" : "Suggest"}</span>
+        {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</span>}
+      </span>
+      <span className="grid gap-0.5 font-mono text-mono text-fg-2 wrap-anywhere">
+        {pass.predicates.map((q, j) => <span key={j}>{conditionText(q, fields)}</span>)}
+      </span>
+    </>
+  );
+}
+
 /** What dnd-kit's useSortable adds to a row once the sortable list has loaded (sortable-passes.tsx). */
 export type SortableBits = {
   setNodeRef: Ref<HTMLLIElement>; setActivatorNodeRef: Ref<HTMLButtonElement>; handle: Record<string, unknown>; style?: CSSProperties; dragging: boolean;
@@ -51,18 +71,7 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
           )}
           <button id={`pass-${id}`} type="button" aria-pressed={selected} onClick={onSelect} onKeyDown={onKey}
             className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <span className="flex items-center gap-2">
-              <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-fg text-caption text-bg tabular">{pass.no}</span>
-              <span className="min-w-0 truncate text-label text-fg">{pass.name}</span>
-            </span>
-            <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
-              <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.cardinality}</span>
-              <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Auto-accept" : "Suggest"}</span>
-              {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</span>}
-            </span>
-            <span className="grid gap-0.5 font-mono text-mono text-fg-2 wrap-anywhere">
-              {pass.predicates.map((q, j) => <span key={j}>{conditionText(q, fields)}</span>)}
-            </span>
+            <PassBody pass={pass} fields={fields} />
           </button>
         </div>
         <div className={cn("grid content-start gap-3 rounded-md border border-dashed border-line p-3 text-caption text-fg-3", sim?.dim && "opacity-60")}>

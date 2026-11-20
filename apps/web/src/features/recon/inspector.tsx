@@ -2,11 +2,12 @@
 
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
-import { BlockedButton, Field, InputAffix, NumberInput, Segmented } from "@starterkit/ui/ds";
+import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { FailedIcon } from "@starterkit/ui/ui/icons";
+import { CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
+import { toast } from "@starterkit/ui/ui/toast";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -64,7 +65,7 @@ function ToleranceRows({ id, value, onChange }: { id: string; value: Record<stri
           </Select>
           <Input id={`${id}-${code}`} aria-label={`${code} tolerance`} inputMode="decimal" value={v} className="min-w-0 flex-1 tabular" placeholder={(0).toFixed(currencyDecimals(code))}
             onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeCurrency(value, code))}>Remove</Button>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove the ${code} tolerance`} onClick={() => onChange(removeCurrency(value, code))}><Icon icon={CloseIcon} /></Button>
         </div>
       ))}
       {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={() => onChange(addCurrency(value))}>Add currency</Button></span>}
@@ -86,14 +87,26 @@ function OpValue({ id, q, onChange }: { id: string; q: Predicate; onChange: (q: 
 const pairLabels = (spec: ReconSpec) => [spec.sides[0].label, spec.sides[1].label] as const;
 
 /** A row of the inspector: the two sides' fields, then what compares them. */
+/**
+ * One row of keys, conditions or filters, with × at its end. The draft saves itself, so a removal asks nothing: it
+ * runs at once and the toast's Undo puts the row back (ui-standard §1a: an autosaving editor's exception).
+ */
 function PairRow({ children, error, onRemove, removeReason, removeLabel }: { children: ReactNode; error?: string | null; onRemove: () => void; removeReason: string | null; removeLabel: string }) {
   return (
     <div className="grid gap-2 border-b border-line pb-3 last:border-b-0">
-      {children}
+      <div className="flex items-start gap-1">
+        <div className="grid min-w-0 flex-1 gap-2">{children}</div>
+        <BlockedButton type="button" variant="ghost" size="icon-sm" aria-label={removeLabel} reason={removeReason} onClick={onRemove}><Icon icon={CloseIcon} /></BlockedButton>
+      </div>
       <PlaceError text={error} />
-      <span><BlockedButton type="button" variant="ghost" size="sm" reason={removeReason} onClick={onRemove}>{removeLabel}</BlockedButton></span>
     </div>
   );
+}
+
+/** Applies a removal and offers Undo, which restores what was there before (`back`). */
+function removed(message: string, apply: () => void, back: () => void) {
+  apply();
+  toast.undo(message, back);
 }
 
 /**
@@ -131,9 +144,9 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
       <fieldset className="grid gap-3">
         <legend className="mb-2 text-label text-fg">Find candidates by</legend>
         {p.blocking.map((f, j) => (
-          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel="Remove matching key"
+          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
             removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
-            onRemove={() => onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) })}>
+            onRemove={() => removed(`Removed matching key ${j + 1}.`, () => onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }), () => onChange(p))}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`key-${j}-a`)} label={la} i={0} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
               <FieldPick id={id(`key-${j}-b`)} label={lb} i={1} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
@@ -147,9 +160,9 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
       <fieldset className="grid gap-3">
         <legend className="mb-2 text-label text-fg">Conditions (all must pass)</legend>
         {p.predicates.map((q, j) => (
-          <PairRow key={j} error={place?.condition === j ? place.text : null} removeLabel="Remove condition"
+          <PairRow key={j} error={place?.condition === j ? place.text : null} removeLabel={`Remove condition ${j + 1}`}
             removeReason={p.predicates.length === 1 ? "A pass needs at least one condition." : group && q.op === "eq_sum" && sums === 1 ? "A 1:N or N:1 pass needs one group sum condition." : null}
-            onRemove={() => onChange({ ...p, predicates: p.predicates.filter((_, k) => k !== j) })}>
+            onRemove={() => removed(`Removed condition ${j + 1}.`, () => onChange({ ...p, predicates: p.predicates.filter((_, k) => k !== j) }), () => onChange(p))}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`cond-${j}-a`)} label={la} i={0} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
               <FieldPick id={id(`cond-${j}-b`)} label={lb} i={1} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
@@ -175,7 +188,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
       <div className="flex flex-wrap gap-2">
         <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, -1)} onClick={() => onMove(-1)}>Move earlier</BlockedButton>
         <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, 1)} onClick={() => onMove(1)}>Move later</BlockedButton>
-        <Button type="button" variant="ghost" className="ml-auto text-down-ink" onClick={onRemove}>Remove pass</Button>
+        <span className="ml-auto"><ActionMenu label={`Actions for pass ${i + 1}`} actions={[{ id: "remove", label: "Remove pass", destructive: true, onSelect: onRemove }]} /></span>
       </div>
     </div>
   );
@@ -207,8 +220,8 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange }: {
       <fieldset className="grid gap-3">
         <legend className="mb-2 text-label text-fg">Filters (records this side reads)</legend>
         {s.filter.map((f, j) => (
-          <PairRow key={j} error={place?.filter === j ? place.text : null} removeLabel="Remove filter" removeReason={null}
-            onRemove={() => onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) })}>
+          <PairRow key={j} error={place?.filter === j ? place.text : null} removeLabel={`Remove filter ${j + 1}`} removeReason={null}
+            onRemove={() => removed(`Removed filter ${j + 1}.`, () => onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }), () => onChange(s))}>
             <div className="grid gap-2 sm:grid-cols-2">
               <Select aria-label={`Filter ${j + 1} field`} value={f.field} className="w-full font-mono" onChange={(e) => setFilter(j, { ...f, field: e.target.value })}>
                 {(refs.includes(f.field) ? refs : [f.field, ...refs]).map((r) => <option key={r} value={r}>{fieldName(r, own)}</option>)}

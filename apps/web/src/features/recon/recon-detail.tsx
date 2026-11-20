@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@starterkit/ui/ui/button";
-import { ActionMenu, Failure, Notice, Panel, RouteTabs, StatusChip } from "@starterkit/ui/ds";
+import { Failure, Notice, Panel, RouteTabs, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
@@ -18,7 +18,7 @@ import { api, isNotFound } from "@/lib/client/api";
 import { RECON_KEY } from "@/lib/shared/queries";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { Builder, type SaveState } from "./builder";
-import { DiscardDialog } from "./discard-dialog";
+import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
 import { RECON_SHAPE } from "./shapes";
@@ -58,7 +58,6 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const q = useRecon(spaceId, id);
   const roles = useSpaceRoles(spaceId);
   const start = useStartVersion(spaceId, id);
-  const [discarding, setDiscarding] = useState(false);
   const [save, setSave] = useState<SaveState | null>(null);
   const router = useRouter();
   const qc = useQueryClient();
@@ -75,9 +74,16 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const maker = roles.includes("config_maker");
   const st = reconStatus(r);
   const edit = editAction(r, spaceId, maker, { busy: start.isPending, run: () => start.mutate() });
-  // Delete draft recon sits in the overflow menu, not as a red button on every draft (FINDINGS P2-8)
-  const menu = discardable(r, roles)
-    ? <ActionMenu label="More actions" actions={[{ id: "delete", label: "Delete draft recon", destructive: true, onSelect: () => setDiscarding(true) }]} /> : undefined;
+  // Delete draft recon: an item of the header's ⋯ menu with its confirmation (ui-standard §1a)
+  const more: HeaderAction[] = [
+    ...(edit ? [edit] : []),
+    ...(discardable(r, roles) ? [{ label: "Delete draft recon", destructive: true as const, confirm: discardConfirm(r.name, async () => {
+      await api(reconApi(spaceId, id), { method: "DELETE" });
+      toast(`Deleted the draft recon ${r.name}.`);
+      await qc.invalidateQueries({ queryKey: RECON_KEY });
+      router.push(reconsHref(spaceId));
+    }) }] : []),
+  ];
   const makerId = r.draft?.makerId ?? null;
   const by = makerId && makerId !== user.id ? (dq.data?.people.find((p) => p.id === makerId)?.name ?? null) : null;
   const tabHref = (t: ReconTab) => (t === "overview" ? reconHref(spaceId, id) : `${reconHref(spaceId, id)}?tab=${t}`);
@@ -87,13 +93,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   return (
     <div className="grid gap-section">
       <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by, editable ? save?.status : undefined)}
-        actions={editable && save?.status === "failed" ? <><Button type="button" variant="secondary" onClick={save.retry}>Retry</Button>{menu}</> : menu} more={edit ? [edit] : undefined} />
-      {discarding && <DiscardDialog name={r.name} onClose={() => setDiscarding(false)} onConfirm={async () => {
-        await api(reconApi(spaceId, id), { method: "DELETE" });
-        toast(`Deleted the draft recon ${r.name}.`);
-        await qc.invalidateQueries({ queryKey: RECON_KEY });
-        router.push(reconsHref(spaceId));
-      }} />}
+        actions={editable && save?.status === "failed" ? <Button type="button" variant="secondary" onClick={save.retry}>Retry</Button> : undefined} more={more.length ? more : undefined} />
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
       </RouteTabs>

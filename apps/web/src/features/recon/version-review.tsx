@@ -2,27 +2,23 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { type ChangeEvent, useState } from "react";
-import { BlockedButton, Failure, Field, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
+import { BlockedButton, Failure, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
-import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
 import type { ReconVersionDetailDto } from "@starterkit/shared/contracts/recon";
-import { REVIEW_COMMENT_MAX } from "@starterkit/shared/sources";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import { VersionDecision, VersionLayout } from "@/components/version-layout";
 import { useAuth } from "@/lib/client/auth-context";
-import { api, errorText, isNotFound } from "@/lib/client/api";
+import { api, isNotFound } from "@/lib/client/api";
 import { RECON_KEY } from "@/lib/shared/queries";
 import { reconVersionChip } from "@/lib/shared/recon-status";
-import { Builder } from "./builder";
 import { at, reviewReason } from "./recon-text";
 import { RECON_VERSION_SHAPE } from "./shapes";
+import { SpecView } from "./spec-view";
 import { MAKER_REASON, reconApi, reconHref, reconsHref, useRecon, useReconVersion, useSpaceRoles } from "./use-recons";
 
 const nameOf = (v: ReconVersionDetailDto, id: string | null) => (id ? (v.people.find((p) => p.id === id)?.name ?? "a removed user") : null);
@@ -42,8 +38,8 @@ function lineOf(v: ReconVersionDetailDto, published: number | null): string {
 }
 
 /**
- * A recon version (Plan 2 Task 7 pattern): its sides, passes and settings read only; the decision panel only while it
- * is in review, with Approve and Reject as BlockedButtons saying who may act (maker ≠ checker); a sent-back draft
+ * A recon version (ui-standard §1a "Version", VersionLayout): the decision first under the header while it is in
+ * review, then its settings, sides and passes as text (SpecView: no inspector, no disabled inputs); with Approve and Reject as BlockedButtons saying who may act (maker ≠ checker); a sent-back draft
  * shows the comment and "Edit version n". The API's 409 self_approval / invalid_state shows beside the buttons.
  */
 export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string; id: string; versionId: string }) {
@@ -52,10 +48,6 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const roles = useSpaceRoles(spaceId);
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [comment, setComment] = useState("");
-  const [commentError, setCommentError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const skeleton = useDelayedFlag((!rq.data || !vq.data) && !rq.error && !vq.error);
 
   const list = { href: reconsHref(spaceId), label: "Recons" };
@@ -77,64 +69,22 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
     ? <Button asChild><Link href={reconHref(spaceId, id)}>Edit version {v.version}</Link></Button>
     : <BlockedButton reason={MAKER_REASON}>Edit version {v.version}</BlockedButton>);
 
-  async function decide(act: "approve" | "reject") {
-    setError(null);
-    if (act === "reject" && !comment.trim()) {
-      setCommentError("Enter a comment to reject: say what the maker should change.");
-      requestAnimationFrame(() => document.getElementById("rv-comment")?.focus());
-      return;
-    }
-    setCommentError(null);
-    setBusy(act);
-    try {
-      await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment: comment.trim() } : {}) });
-      toast(act === "approve" ? `Version ${v!.version} of ${r!.name} approved. It runs from its next schedule.` : `Version ${v!.version} of ${r!.name} sent back to its maker with your comment.`);
-      setComment("");
-      await qc.invalidateQueries({ queryKey: RECON_KEY });
-      requestAnimationFrame(() => document.querySelector<HTMLElement>("main h1")?.focus());
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(null);
-    }
+  async function decide(act: "approve" | "reject", comment: string) {
+    await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
+    toast(act === "approve" ? `Version ${v!.version} of ${r!.name} approved. It runs from its next schedule.` : `Version ${v!.version} of ${r!.name} sent back to its maker with your comment.`);
+    await qc.invalidateQueries({ queryKey: RECON_KEY });
   }
 
   return (
-    <div className="grid gap-section">
-      <PageHeader title={`${r.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
-        description={lineOf(v, published)} trail={[{ label: r.name, href: reconHref(spaceId, id) }]} actions={edit || undefined} />
-      {v.status === "draft" && v.reviewComment && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
-
-      <Builder key={v.id} spaceId={spaceId} recon={r} version={v} editable={false} canEdit={false} bar={false} />
-
-      {v.status === "in_review" && approveWhy && (
-        <Panel title="Your decision" bodyClassName="grid gap-3">
-          <p className="text-body-sm text-fg-2">{[v.submitterId, v.makerId, ...v.contributorIds].includes(user.id) ? "A config checker other than you approves or rejects this version." : "A config checker of this space approves or rejects this version."}</p>
-          <span><BlockedButton reason={approveWhy}>Approve version {v.version}</BlockedButton></span>
-        </Panel>
+    <VersionLayout
+      header={<PageHeader title={`${r.name} · version ${v.version}`} crumb={`Version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
+        description={lineOf(v, published)} trail={[{ label: r.name, href: reconHref(spaceId, id) }]} actions={edit || undefined} />}
+      notice={v.status === "draft" && v.reviewComment && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
+      decision={v.status === "in_review" && (
+        <VersionDecision id="rv-comment" version={v.version} mine={[v.submitterId, v.makerId, ...v.contributorIds].includes(user.id)}
+          approveWhy={approveWhy} rejectWhy={rejectWhy} onDecide={decide}
+          effect={`Approving publishes version ${v.version}${published ? ` and retires version ${published}` : ""}. Runs use it from the next schedule.`} />
       )}
-      {v.status === "in_review" && !approveWhy && (
-        <Panel title="Your decision" bodyClassName="grid gap-4">
-          <div className="max-w-xl">
-            <Field id="rv-comment" label="Comment" note="Required to reject. The maker sees it with the version." error={commentError}>
-              <Textarea id="rv-comment" value={comment} limit={REVIEW_COMMENT_MAX} countValue={comment.trim()} rows={4} placeholder="What you checked"
-                onChange={(e: ChangeEvent<HTMLTextAreaElement>) => { setComment(e.target.value); if (commentError && e.target.value.trim()) setCommentError(null); }} />
-            </Field>
-          </div>
-          <div className="flex flex-wrap items-start gap-3">
-            <BlockedButton reason={approveWhy} disabled={busy !== null} aria-busy={busy === "approve" || undefined} onClick={() => void decide("approve")}>
-              {busy === "approve" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Approve version {v.version}
-            </BlockedButton>
-            <BlockedButton variant="secondary" reason={rejectWhy} disabled={busy !== null} aria-busy={busy === "reject" || undefined} onClick={() => void decide("reject")}>
-              {busy === "reject" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Reject
-            </BlockedButton>
-            <p className="max-w-[72ch] text-caption text-fg-3">
-              Approving publishes version {v.version}{published ? ` and retires version ${published}` : ""}. Runs use it from the next schedule.
-            </p>
-          </div>
-          {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
-        </Panel>
-      )}
-    </div>
+      settings={<SpecView spaceId={spaceId} spec={v.spec} />} />
   );
 }

@@ -53,10 +53,7 @@ const NO_SCREEN: Record<string, string> = {
   "/spaces": "an entry: redirects to a space's members; with no space at all, the shell's \"No space yet\" card (Figma Shell · No space yet)",
 };
 /** Pages not on the anatomy yet, with the reason; a stale entry fails. */
-const PENDING: Record<string, string> = {
-  "/spaces/[spaceId]/recons/[configId]": "recon detail: header ⋯ moves to PageHeader with the recon version page, after the run results work lands (Captain's order, 21 Nov 2026)",
-  "/spaces/[spaceId]/recons/[configId]/versions/[versionId]": "recon version: VersionLayout after the run results work lands (Captain's order, 21 Nov 2026)",
-};
+const PENDING: Record<string, string> = {};
 /** A form page (ui-standard §1a "Form"): create, edit, a wizard, the profile. An autosaving editor is not a page of its own. */
 const isForm = (route: string) => /\/(new|edit)$/.test(route) || route === "/me";
 const isVersion = (route: string) => /\/versions\/\[\w+\]$/.test(route);
@@ -92,7 +89,6 @@ const formActionsViolations = (fs: F[]) => fs.filter(({ r, src }) => r.startsWit
 const DESTRUCTIVE_BUTTON_ALLOWED: Record<string, string> = {
   [`${WEB}features/users/users-page.tsx`]: "the bulk bar's Deactivate and Delete act on the selection and confirm with the count (ui-standard §4 Select all)",
   [`${WEB}features/me/security-panel.tsx`]: "Turn off two-factor authentication: the off switch of the user's own setting, inside its panel; it confirms",
-  [`${WEB}features/recon/inspector.tsx`]: "Remove (a condition, a pass): an edit of the recon draft in the builder, not an action on a record",
 };
 const DESTRUCTIVE_LABEL = />\s*(?:\{[^{}]*\}\s*)*(?:Delete|Deactivate|Revoke|Reset|Retire|Remove|End session|Turn off|Disconnect)\b[^<]*<\/(?:Button|BlockedButton)>/;
 const destructiveButtons = (fs: F[]) => fs.filter(({ r, src }) => r.startsWith(`${WEB}features/`) && !r.startsWith(`${WEB}features/ds/`) && DESTRUCTIVE_LABEL.test(strip(src))).map(({ r }) => r);

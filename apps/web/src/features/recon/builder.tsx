@@ -281,11 +281,14 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           onChange={(p) => change({ ...spec, passes: spec.passes.map((x, j) => (j === passIndex ? p : x)) })}
           onMove={(dir) => { move(passIndex, passIndex + dir); focusLater(`pass-${keys[passIndex]}`); }}
           onRemove={() => {
+            // no confirmation in an editor that saves itself (ui-standard §1a): the toast's Undo restores the pass
+            const before = spec, beforeKeys = keys, at = passIndex, name = spec.passes[passIndex]?.name ?? "";
             const rest = keys.filter((_, j) => j !== passIndex);
             change(removePass(spec, passIndex));
             setKeys(rest);
             setSel(rest[0] ? { k: "pass", key: rest[Math.min(passIndex, rest.length - 1)]! } : { k: "side", i: 0 });
             setSheet(false);
+            toast.undo(`Removed pass ${at + 1}${name ? ` (${name})` : ""}.`, () => { change(before); setKeys(beforeKeys); setSel({ k: "pass", key: beforeKeys[at]! }); });
           }} />
         : null;
   // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)
