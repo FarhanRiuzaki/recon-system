@@ -91,10 +91,13 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`ksei-act-${RUN}`);
   await page.getByRole("radio", { name: /File inbox/ }).check();
+  // REC-F2b: the folder first (Enter checks it), then its pattern; leaving the pattern checks again
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
+  await page.getByRole("textbox", { name: "Folder", exact: true }).press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText(/^Folder readable · 3 files · newest /);
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
-  await page.getByRole("button", { name: "Check folder" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText("Folder readable · 2 files match act*.txt");
+  await page.getByRole("textbox", { name: "File name pattern", exact: true }).press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText(/^Folder readable · 2 files match act\*\.txt · newest act2026110[23]\.txt$/);
   // a pass counts only for the values checked
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(`${folder}/`);
   await expect(next(page, "Next: fields & mapping")).toBeDisabled();
@@ -327,8 +330,10 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`throwaway-${RUN}`);
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
-  await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
   await page.getByRole("button", { name: "Check folder" }).click();
+  await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
+  await page.getByRole("textbox", { name: "File name pattern", exact: true }).press("Enter");
+  await expect(next(page, "Next: fields & mapping")).toBeEnabled();
   await next(page, "Next: fields & mapping").click();
   await expect(page).toHaveURL(/step=2$/);
   await page.getByRole("button", { name: "Delete draft source", exact: true }).click();

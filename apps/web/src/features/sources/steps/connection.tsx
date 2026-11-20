@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Field, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -125,47 +125,7 @@ export function ConnectionStep(p: ConnectionStepProps) {
           {p.listed && <Data {...p} err={err} setInput={setInput} />}
           {p.listed && <Pull {...p} err={err} setInput={setInput} setKind={setKind} />}
         </>
-      ) : i.kind === "file_inbox" && (
-        <Panel title="File inbox" bodyClassName="grid gap-4 md:grid-cols-2">
-          <Field id={ctl("input.path")} label="Folder" note="A folder inside the inbox folders this install allows, as a full path." error={err(ctl("input.path"))}>
-            <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
-          </Field>
-          <Field id={ctl("input.pattern")} label="File name pattern" note="A yyyyMMdd date in the name is the business date." error={err(ctl("input.pattern"))}>
-            <Input id={ctl("input.pattern")} value={i.pattern} className="font-mono" onChange={(e) => setInput({ pattern: e.target.value })} autoComplete="off" spellCheck={false} />
-          </Field>
-          <Field id={ctl("input.completion")} label="File is complete when"
-            note="The same content sent again is rejected; new content under the same name is the next version.">
-            <Select className="w-full min-w-0" id={ctl("input.completion")} value={i.completion.kind} onChange={(e) => setInput({ completion: e.target.value === "marker_file" ? { kind: "marker_file" } : { kind: "stable_seconds", seconds: 60 } })}>
-              <option value="stable_seconds">Its size stays the same for a while</option>
-              <option value="marker_file">A .done file with the same name arrives</option>
-            </Select>
-          </Field>
-          {i.completion.kind === "stable_seconds" && (
-            <Field id={ctl("input.completion.seconds")} label="Seconds without a change" error={err(ctl("input.completion.seconds"))}>
-              <Input id={ctl("input.completion.seconds")} inputMode="numeric" value={String(i.completion.seconds)}
-                onChange={(e) => setInput({ completion: { kind: "stable_seconds", seconds: Math.max(1, Math.min(86_400, Number(e.target.value.replace(/\D/g, "")) || 1)) } })} />
-            </Field>
-          )}
-          <Field id={ctl("input.format.delimiter")} label="Delimiter" error={err(ctl("input.format.delimiter"))}>
-            <Select className="w-full min-w-0" id={ctl("input.format.delimiter")} value={i.format.delimiter} onChange={(e) => setInput({ format: { ...i.format, delimiter: e.target.value } })}>
-              {DELIMITERS.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
-            </Select>
-          </Field>
-          <Field id={ctl("input.format.encoding")} label="Encoding">
-            <Select className="w-full min-w-0" id={ctl("input.format.encoding")} value={i.format.encoding} onChange={(e) => setInput({ format: { ...i.format, encoding: e.target.value as (typeof FILE_ENCODINGS)[number] } })}>
-              {FILE_ENCODINGS.map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)}
-            </Select>
-          </Field>
-          <span className="inline-flex items-center gap-2 md:col-span-2">
-            <Switch id={ctl("input.format.header")} checked={i.format.header} onChange={(e) => setInput({ format: { ...i.format, header: e.target.checked } })} aria-label="First row is a header" />
-            <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
-          </span>
-          <div className="grid gap-3 md:col-span-2">
-            <span><ActionButton testing={p.testing} onTest={p.onTest} label="Check folder" busy="Checking…" /></span>
-            {p.tested?.result.ok && p.tested.key === connKey(d) && <Notice live>{p.tested.result.message}</Notice>}
-          </div>
-        </Panel>
-      )}
+      ) : i.kind === "file_inbox" && <Folder {...p} err={err} setInput={setInput} />}
     </div>
   );
 }
@@ -186,6 +146,91 @@ const enterRuns = (run: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
   e.preventDefault();
   run();
 };
+
+/**
+ * A file inbox's folder (Figma 02 v1.0.5, 06): Folder → Check folder (the stage's action, also on Enter) → its answer;
+ * then the pattern and format, completion and encoding under a closed Advanced. A pattern typed after the check is
+ * checked again when the field is left, so Next counts it.
+ */
+function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void }) {
+  const { d, err, setInput } = p;
+  const i = d.spec.input;
+  const passed = !!p.tested?.result.ok && p.tested.key === connKey(d);
+  const want = p.created || !!p.tested?.result.ok;
+  const [seen, setSeen] = useState(want);
+  if (want && !seen) setSeen(true);
+  if (i.kind !== "file_inbox") return null;
+  const check = () => p.onTest();
+  const completion = i.completion.kind === "marker_file" ? "Complete when a .done file arrives" : `Complete after ${formatNumber(i.completion.seconds)} s without a change`;
+  return (
+    <Panel title="Folder" bodyClassName="grid gap-4">
+      <div className="grid gap-4" onKeyDown={enterRuns(check)}>
+        <Field id={ctl("input.path")} label="Folder" error={err(ctl("input.path"))}>
+          <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
+        </Field>
+        <div className="grid gap-2">
+          <span><ActionButton testing={p.testing} onTest={check} label="Check folder" busy="Checking…" /></span>
+          {passed && <p role="status" className="text-body text-fg">{p.tested!.result.message}</p>}
+        </div>
+        {seen && (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field id={ctl("input.pattern")} label="File name pattern" error={err(ctl("input.pattern"))}>
+              <Input id={ctl("input.pattern")} value={i.pattern} className="font-mono" onChange={(e) => setInput({ pattern: e.target.value })} autoComplete="off" spellCheck={false}
+                onBlur={() => { if (i.path.trim() && i.pattern.trim() && !passed && !p.testing) check(); }} />
+            </Field>
+            <Field id={ctl("input.format.delimiter")} label="Delimiter" error={err(ctl("input.format.delimiter"))}>
+              <Select className="w-full min-w-0" id={ctl("input.format.delimiter")} value={i.format.delimiter} onChange={(e) => setInput({ format: { ...i.format, delimiter: e.target.value } })}>
+                {DELIMITERS.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
+              </Select>
+            </Field>
+          </div>
+        )}
+      </div>
+      {seen && (
+        <>
+          <span className="inline-flex items-center gap-2">
+            <Switch id={ctl("input.format.header")} checked={i.format.header} onChange={(e) => setInput({ format: { ...i.format, header: e.target.checked } })} aria-label="First row is a header" />
+            <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
+          </span>
+          <Advanced summary={`${completion} · ${i.format.encoding.toUpperCase()}`} open={!!err(ctl("input.completion.seconds"))}>
+            <Field id={ctl("input.completion")} label="File is complete when"
+              note="The same content sent again is rejected; new content under the same name is the next version.">
+              <Select className="w-full min-w-0" id={ctl("input.completion")} value={i.completion.kind} onChange={(e) => setInput({ completion: e.target.value === "marker_file" ? { kind: "marker_file" } : { kind: "stable_seconds", seconds: 60 } })}>
+                <option value="stable_seconds">Its size stays the same for a while</option>
+                <option value="marker_file">A .done file with the same name arrives</option>
+              </Select>
+            </Field>
+            {i.completion.kind === "stable_seconds" && (
+              <Field id={ctl("input.completion.seconds")} label="Seconds without a change" error={err(ctl("input.completion.seconds"))}>
+                <Input id={ctl("input.completion.seconds")} inputMode="numeric" value={String(i.completion.seconds)}
+                  onChange={(e) => setInput({ completion: { kind: "stable_seconds", seconds: Math.max(1, Math.min(86_400, Number(e.target.value.replace(/\D/g, "")) || 1)) } })} />
+              </Field>
+            )}
+            <Field id={ctl("input.format.encoding")} label="Encoding">
+              <Select className="w-full min-w-0" id={ctl("input.format.encoding")} value={i.format.encoding} onChange={(e) => setInput({ format: { ...i.format, encoding: e.target.value as (typeof FILE_ENCODINGS)[number] } })}>
+                {FILE_ENCODINGS.map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)}
+              </Select>
+            </Field>
+          </Advanced>
+        </>
+      )}
+    </Panel>
+  );
+}
+
+/** Settings rarely changed, closed, with what they are now beside the title (rule 4); opened when one holds an error. */
+function Advanced({ summary, open, children }: { summary: string; open?: boolean; children: ReactNode }) {
+  return (
+    <details className="group" open={open || undefined}>
+      <summary className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-x-2 rounded-sm text-body text-fg outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <span aria-hidden="true" className="inline-block transition-transform duration-(--dur-fast) group-open:rotate-90">›</span>
+        <span className="font-medium">Advanced</span>
+        <span className="text-caption text-fg-3">{summary}</span>
+      </summary>
+      <div className="grid gap-4 pt-3 md:grid-cols-2">{children}</div>
+    </details>
+  );
+}
 
 /**
  * Server and Sign in (Figma 02 v1.0.5, 01/03/04/05): engine, host and port (Oracle: service name), a pasted connection
@@ -411,23 +456,16 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   } else if (i.kind === "db_watermark") {
     const w = i as WatermarkInput;
     body = (
-      <details className="group">
-        <summary className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-x-2 rounded-sm text-body text-fg outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
-          <span aria-hidden="true" className="inline-block transition-transform duration-(--dur-fast) group-open:rotate-90">›</span>
-          <span className="font-medium">Advanced</span>
-          <span className="text-caption text-fg-3">Look back {formatNumber(w.lookback_seconds)} s · {formatNumber(w.chunk)} rows per page</span>
-        </summary>
-        <div className="grid gap-4 pt-3 md:grid-cols-2">
-          <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
-            <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
-              onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, Number(e.target.value.replace(/\D/g, "")) || 0) } as Partial<WatermarkInput>)} />
-          </Field>
-          <Field id={ctl("input.chunk")} label="Rows per page">
-            <Input id={ctl("input.chunk")} inputMode="numeric" value={String(w.chunk)}
-              onChange={(e) => setInput({ chunk: Math.max(1, Math.min(100_000, Number(e.target.value.replace(/\D/g, "")) || 1)) } as Partial<WatermarkInput>)} />
-          </Field>
-        </div>
-      </details>
+      <Advanced summary={`Look back ${formatNumber(w.lookback_seconds)} s · ${formatNumber(w.chunk)} rows per page`}>
+        <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
+          <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
+            onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, Number(e.target.value.replace(/\D/g, "")) || 0) } as Partial<WatermarkInput>)} />
+        </Field>
+        <Field id={ctl("input.chunk")} label="Rows per page">
+          <Input id={ctl("input.chunk")} inputMode="numeric" value={String(w.chunk)}
+            onChange={(e) => setInput({ chunk: Math.max(1, Math.min(100_000, Number(e.target.value.replace(/\D/g, "")) || 1)) } as Partial<WatermarkInput>)} />
+        </Field>
+      </Advanced>
     );
   }
   return (

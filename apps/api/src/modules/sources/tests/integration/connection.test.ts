@@ -118,7 +118,7 @@ describe("POST …/connection/test (file inbox)", () => {
     expect([none.status, (await errOf(none)).message]).toEqual([400, "This source has no folder yet. Enter the folder and the pattern, then test."]);
     const k = ksei();
     const v = await draftWith(s.id, { ...k, input: { ...k.input, path: path.join(root, "ksei") } });
-    expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt", code: null, field: null, version: null });
+    expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt · newest act20261104.txt", code: null, field: null, version: null });
     const r = await call("PATCH", `${base()}/${s.id}/versions/${v.id}`, { token: t.adm, body: { spec: { ...k, input: { ...k.input, path: "/etc" } } } });
     expect(r.status).toBe(200);
     const out = await test_(t.adm, s.id);
@@ -132,11 +132,11 @@ describe("POST …/connection/test (file inbox, the folder being typed)", () => 
     mkdirSync(path.join(root, "typed"), { recursive: true });
     for (const f of ["act20261102.txt", "act20261103.txt", "x.pdf"]) writeFileSync(path.join(root, "typed", f), "x");
     const s = await made("file_inbox");
-    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 2 files match act*.txt", code: null, field: null, version: null });
+    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 2 files match act*.txt · newest act20261103.txt", code: null, field: null, version: null });
     // the typed folder wins over the draft's
     const k = ksei();
     await draftWith(s.id, { ...k, input: { ...k.input, path: "/nowhere" } });
-    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "*.pdf" }))).toMatchObject({ ok: true, message: "Folder readable · 1 file matches *.pdf" });
+    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "*.pdf" }))).toMatchObject({ ok: true, message: "Folder readable · 1 file matches *.pdf · newest x.pdf" });
     const missing = await json(test_(t.adm, s.id, { path: path.join(root, "absent"), pattern: "*.txt" }));
     expect(missing).toEqual({ ok: false, message: "The folder can't be read (ENOENT). Check that it exists and that this server may read it.", code: null, field: null, version: null });
     // outside the roots: as written, through a dot segment, and through a link inside a root that leads out
@@ -184,7 +184,7 @@ describe("typed values are tested without being stored (fix round 1)", () => {
     mkdirSync(path.join(root, "fresh"), { recursive: true });
     writeFileSync(path.join(root, "fresh", "act20261102.txt"), "x");
     const tryNew = (token: string, body: unknown) => call("POST", `${base()}/connection-test`, { token, body });
-    expect(await json(tryNew(t.adm, { kind: "file_inbox", path: path.join(root, "fresh"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 1 file matches act*.txt", code: null, field: null, version: null });
+    expect(await json(tryNew(t.adm, { kind: "file_inbox", path: path.join(root, "fresh"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 1 file matches act*.txt · newest act20261102.txt", code: null, field: null, version: null });
     const out = await tryNew(t.adm, { kind: "file_inbox", path: "/etc", pattern: "*" });
     expect([out.status, (await errOf(out)).message]).toEqual([400, "Check input.path: Use a folder inside the inbox folders this install allows."]);
     expect(await json(tryNew(t.adm, { kind: "db_snapshot", connection: { engine: "postgres", ...secret } }))).toMatchObject({ ok: true, code: null });

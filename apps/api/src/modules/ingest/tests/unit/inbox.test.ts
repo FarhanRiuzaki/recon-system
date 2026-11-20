@@ -1,7 +1,7 @@
 // The file inbox check behind the connection test (inbox.ts): the folder must sit inside an allowed root, also after
 // symlinks are followed; the answer counts the regular files the pattern matches.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiError } from "../../../../kernel/errors";
@@ -28,9 +28,14 @@ const refused = async (p: Promise<unknown>) => {
 };
 
 describe("inboxProbe", () => {
-  it("counts the regular files the pattern matches (no folders, no links)", async () => {
-    expect(await inboxProbe([root], path.join(root, "ksei"), "act*.txt")).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt" });
-    expect(await inboxProbe([root], path.join(root, "ksei"), "bal*.txt")).toEqual({ ok: true, message: "Folder readable · 1 file matches bal*.txt" });
+  it("counts the regular files the pattern matches (no folders, no links) and names the newest by modification time", async () => {
+    const day = (d: number) => new Date(Date.UTC(2026, 10, d));
+    for (const [f, d] of [["act20261102.txt", 5], ["act20261103.txt", 3], ["act20261104.txt", 4], ["bal20261102.txt", 2], ["act.done", 1]] as const) utimesSync(path.join(root, "ksei", f), day(d), day(d));
+    expect(await inboxProbe([root], path.join(root, "ksei"), "act*.txt")).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt · newest act20261102.txt" });
+    expect(await inboxProbe([root], path.join(root, "ksei"), "bal*.txt")).toEqual({ ok: true, message: "Folder readable · 1 file matches bal*.txt · newest bal20261102.txt" });
+    expect(await inboxProbe([root], path.join(root, "ksei"), "*.pdf")).toEqual({ ok: true, message: "Folder readable · 0 files match *.pdf" });
+    // checked before the pattern is typed (REC-F2b): every file
+    expect(await inboxProbe([root], path.join(root, "ksei"), "*")).toEqual({ ok: true, message: "Folder readable · 5 files · newest act20261102.txt" });
   });
 
   it("a folder outside every root is 400, also through a symlink or a dot segment; so is a pattern with a slash", async () => {

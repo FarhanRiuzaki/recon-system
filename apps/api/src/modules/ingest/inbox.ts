@@ -28,19 +28,24 @@ async function folder(roots: string[], dir: string): Promise<string> {
   return real;
 }
 
-/** 400 for a folder outside `roots` or a pattern with a path in it ("Check input.path: …"); otherwise whether the folder reads, and the count. */
+/** 400 for a folder outside `roots` or a pattern with a path in it ("Check input.path: …"); otherwise whether the folder reads, how many files match and the newest by modification time. */
 export async function inboxProbe(roots: string[], dir: string, pattern: string): Promise<{ ok: boolean; message: string }> {
   // named like a spec field (the wizard shows it on the Folder or Pattern field)
   if (/[/\\]/.test(pattern)) throw new ApiError("bad_request", "Check input.pattern: The file pattern matches file names only: no folders in it.");
   let real: string;
   try { real = await folder(roots, dir); } catch (e) { if (e instanceof ApiError) throw new ApiError("bad_request", `Check input.path: ${e.message}`); return failed(e); }
-  let names: string[];
+  let files: { name: string; at: number }[];
   try {
     const glob = new Bun.Glob(pattern);
-    names = (await readdir(real, { withFileTypes: true })).filter((e) => e.isFile() && glob.match(e.name)).map((e) => e.name);
+    const names = (await readdir(real, { withFileTypes: true })).filter((e) => e.isFile() && glob.match(e.name)).map((e) => e.name);
+    // ponytail: one stat per matching file for "newest"; an inbox holds days of files, not millions
+    files = await Promise.all(names.map(async (name) => ({ name, at: (await stat(path.join(real, name))).mtimeMs })));
   } catch (e) { return failed(e); }
-  const n = names.length;
-  return { ok: true, message: `Folder readable · ${n} ${n === 1 ? "file matches" : "files match"} ${pattern}` };
+  const n = files.length;
+  const newest = files.reduce<{ name: string; at: number } | null>((a, f) => (!a || f.at > a.at || (f.at === a.at && f.name > a.name) ? f : a), null);
+  // "*" = the folder checked before its pattern is typed (REC-F2b)
+  const count = pattern === "*" ? `${n} ${n === 1 ? "file" : "files"}` : `${n} ${n === 1 ? "file matches" : "files match"} ${pattern}`;
+  return { ok: true, message: `Folder readable · ${count}${newest ? ` · newest ${newest.name}` : ""}` };
 }
 
 export type InboxEntry = { name: string; path: string; size: number; modifiedAt: number };
