@@ -4,7 +4,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import { seedDemo } from "../../src/db/seed/demo";
-import { LOCAL_ROLES, seedLocal } from "../../src/db/seed/local";
+import { CHECKER_USERNAME, LOCAL_ROLES, seedLocal } from "../../src/db/seed/local";
 import { seedSystem } from "../../src/db/seed/system";
 import { decryptSecret } from "../../src/kernel/crypto";
 import { and, asc, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
@@ -149,6 +149,20 @@ describe("seedLocal", () => {
       .innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).innerJoin(users, eq(users.id, spaceMembers.userId)).orderBy(spaceMembers.role);
     expect(rows).toEqual([...LOCAL_ROLES].sort().map((role) => ({ code: "treasury", role, username: "owner" })));
     expect((await db.select({ n: count() }).from(spaces))[0]!.n).toBe(1);
+  });
+
+  it("adds the checker only with LOCAL_CHECKER_PASSWORD, once, as config checker in Treasury who can sign in", async () => {
+    await seedSystem(db, OWNER);
+    await seedLocal(db, OWNER);
+    expect((await db.select().from(users).where(eq(users.username, CHECKER_USERNAME))).length).toBe(0);
+    const env = { ...OWNER, LOCAL_CHECKER_PASSWORD: "Checker-Password-1!" };
+    await seedLocal(db, env);
+    await seedLocal(db, env);
+    const rows = await db.select({ role: spaceMembers.role, code: spaces.code }).from(spaceMembers).innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId))
+      .innerJoin(users, eq(users.id, spaceMembers.userId)).where(eq(users.username, CHECKER_USERNAME));
+    expect(rows).toEqual([{ role: "config_checker", code: "treasury" }]);
+    const signed = await signIn(CHECKER_USERNAME, "Checker-Password-1!").then(() => true, () => false);
+    expect(signed).toBe(true);
   });
 
   it("refuses without SEED_SUPERADMIN_USERNAME or a user by that name", async () => {

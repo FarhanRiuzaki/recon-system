@@ -36,7 +36,9 @@ tanpa itu (pengecualian: `space_members`, dibaca guard sebelum scope space ada).
 Partisi bulanan (`<tabel>_YYYY_MM`) dibuat saat jalan oleh `recon_ensure_month_partitions`, function `SECURITY DEFINER`
 milik owner: role aplikasi tidak bisa membuat tabel, dan PostgreSQL hanya mengizinkan owner menambah partisi. Jangan
 memberi `CREATE` pada schema ke role aplikasi. `EXECUTE` function itu dicabut dari `PUBLIC` (0009) dan hanya diberikan
-ke `APP_DB_ROLE` oleh `db:migrate` (§3): jalankan migrate dengan `APP_DB_ROLE` terisi.
+ke `APP_DB_ROLE` oleh `db:migrate` (§3): jalankan migrate dengan `APP_DB_ROLE` terisi. Begitu juga
+`recon_analyze_month_partitions` (0026): engine me-refresh statistik partisi `recon_items` setelah intake besar (ANALYZE
+butuh owner).
 
 ## 3. pg-boss
 
@@ -96,7 +98,7 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   (folder di luar `INBOX_ROOTS` dijawab "outside"), worker untuk scan dan ingest file.
 - `DATA_ENCRYPTION_KEY` yang sama: API mengenkripsi koneksi source yang disimpan, worker mendekripsinya untuk pull.
 - `APP_DB_ROLE` terisi saat `db:migrate` (§2, §3): tanpa itu role aplikasi tidak mendapat hak pada pg-boss dan
-  `recon_ensure_month_partitions`.
+  `recon_ensure_month_partitions` / `recon_analyze_month_partitions`.
 
 ## 8. Local stacks: dev (hot reload) vs release check
 
@@ -107,7 +109,9 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   A changed `bun.lock` restarts app and worker (install on start). Sync log: `recon-preview/.superpowers/preview-sync.log`. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
   Start: `COMPOSE_PROJECT_NAME=recon-dev docker compose -f ../recon-preview/docker-compose.dev.yml up -d` (first start
   installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed
-  gives that user the space Treasury as space admin, source admin and config maker. A source database on the host is
+  gives that user the space Treasury as space admin, source admin and config maker. A second user, `checker` / `Password123!`, is config
+  checker in Treasury and approves source and recon versions superadmin makes (maker ≠ checker); it exists only on the
+  dev stack (`LOCAL_CHECKER_PASSWORD`), never in a release build. A source database on the host is
   `host.docker.internal`.
 - **Release check: `docker-compose.yml`** — production images; code changes need a rebuild:
   `docker compose --env-file .env.compose up -d --build` (port from `WEB_PORT`, project from `COMPOSE_PROJECT_NAME`).

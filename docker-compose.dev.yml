@@ -60,6 +60,8 @@ services:
       INBOX_ROOTS: /app/inbox
       # The user who gets the local space Treasury (db:seed:local): the demo seed's superadmin.
       LOCAL_ADMIN_USERNAME: superadmin
+      # A second user, `checker` (same demo password), config checker in Treasury: approves what superadmin makes.
+      LOCAL_CHECKER_PASSWORD: Password123!
     # A source database on the host (e.g. the local test DB, docs/recon/source-test-db.md) is host.docker.internal.
     extra_hosts:
       - "host.docker.internal:host-gateway"
