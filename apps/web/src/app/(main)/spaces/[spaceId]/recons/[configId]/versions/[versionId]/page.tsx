@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ReconVersionReview } from "@/features/recon/version-review";
 import { guardedTitle, openSpace, requirePagePermission } from "@/lib/server/page-guard";
 import { Prefetch, reads, reconSourceReads } from "@/lib/server/prefetch";
-import { reconVersion } from "@/lib/shared/queries";
 
 type Params = Promise<{ spaceId: string; configId: string; versionId: string }>;
 
@@ -18,7 +17,7 @@ export default async function Page({ params }: { params: Params }) {
   const { spaceId, configId, versionId } = await params;
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
-  const sources = await reconSourceReads(spaceId, reconVersion(spaceId, configId, versionId).url);
+  const sources = await reconSourceReads(spaceId, configId, versionId);
   return (
     <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), reads.reconVersion(spaceId, configId, versionId), ...sources]}>
       <ReconVersionReview spaceId={spaceId} id={configId} versionId={versionId} />

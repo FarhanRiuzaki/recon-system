@@ -85,18 +85,20 @@ export const reads = {
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
-type SpecHolder = { spec?: { sides?: { source_id: string }[] }; draft?: SpecHolder | null; published?: SpecHolder | null };
+type SpecHolder = { id?: string; spec?: { sides?: { source_id: string }[] }; draft?: SpecHolder | null; published?: SpecHolder | null };
 /**
- * The sides' sources of a recon page (the recon, or one of its versions, at `url`): read once on the server to learn
- * which sources the spec names, so the builder's field names render filled on the first paint.
+ * What a recon page shows beside the recon (the recon, or its version `versionId`): read once on the server to learn
+ * which sources the spec names, so the builder's field names render filled on the first paint; on the recon's own
+ * page also its open draft with the names of the people it names (the maker beside "Draft vN").
  */
-export async function reconSourceReads(spaceId: string, url: string): Promise<Read[]> {
+export async function reconSourceReads(spaceId: string, configId: string, versionId?: string): Promise<Read[]> {
   const s = await getSession();
-  const path = v1Path(url);
+  const path = v1Path(versionId ? reconVersion(spaceId, configId, versionId).url : reconDetail(spaceId, configId).url);
   if (!s.token || !path) return [];
   const { data } = await backendJson<SpecHolder>(path, { token: s.token, req: { headers: await headers() } });
   const sides = (data?.spec ?? data?.draft?.spec ?? data?.published?.spec)?.sides ?? [];
-  return [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
+  const draft = !versionId && data?.draft?.id ? [reads.reconVersion(spaceId, configId, data.draft.id)] : [];
+  return [...[...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id)), ...draft];
 }
 
 /**
