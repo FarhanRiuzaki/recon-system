@@ -107,7 +107,15 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   `RECON-ENIGNE/recon-preview` (a detached worktree of `feat/recon-phase1`), not the working checkout, so :3000 shows
   every **committed** change and never a half-saved one. A `post-commit` hook (in the repo's common hooks, active only on
   `feat/recon-phase1`) moves the preview to the new commit; Next Fast Refresh and `bun --watch` pick it up in seconds.
-  A changed `bun.lock` restarts app and worker (install on start). Sync log: `recon-preview/.superpowers/preview-sync.log`. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
+  The hook only moves the preview when the commit passes a gate (in the background, never blocking the commit): `tsc` of
+  `apps/api` and `apps/web` on exactly that commit, in a separate check worktree `RECON-ENIGNE/recon-check`; then, after the
+  reload, `GET /login` = 200 and `POST /api/auth/login` without credentials = 4xx (the API answers). A failed gate keeps
+  or puts the preview back at the last healthy commit (`recon-preview/.superpowers/last-good`), so :3000 is never broken by
+  a bad commit. A changed `bun.lock` restarts app and worker (install on start). Sync log, one line per outcome:
+  `recon-preview/.superpowers/preview-sync.log`.
+- **One working tree per implementer**: each implementer works in its own git worktree on a small branch from
+  `feat/recon-phase1`; the integrator merges it into `feat/recon-phase1` after its affected tests pass. Two agents never
+  share a working tree or an index. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
   Start: `COMPOSE_PROJECT_NAME=recon-dev docker compose -f ../recon-preview/docker-compose.dev.yml up -d` (first start
   installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed
   gives that user the space Treasury as space admin, source admin and config maker. A second user, `checker` / `Password123!`, is config
