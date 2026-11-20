@@ -84,9 +84,9 @@ export const reconItems = pgTable("recon_items", {
   /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break or none. */
   breakPass: smallint("break_pass"),
   /**
-   * A break for want of a counterpart (grace or day close, Task 6): within carry over it stays a candidate of every
-   * pass of later runs (DEC-047). False for a break that carries its own decision: a pass's ambiguity (Duplicate) or
-   * an unconfirmed suggestion with its pair kept.
+   * A "No counterpart" break (grace or day close, Task 6): within carry over it stays a candidate of every pass of later
+   * runs (DEC-047, Captain: only this reason). False for every other break: a near miss (currency, amount or date
+   * differs), a pass's ambiguity (Duplicate), an unconfirmed suggestion with its pair kept.
    */
   lateMatch: boolean("late_match").notNull().default(false),
   /**

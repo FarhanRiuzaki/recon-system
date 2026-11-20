@@ -44,8 +44,8 @@ export type StepCtx = {
   /** ingest's currentRecord over `records` (a record that counts now), built on the step's transaction. */
   current: SQL;
   /**
-   * Carry over > 0 (DEC-047): the pool of every pass also holds the window's breaks for want of a counterpart
-   * (late_match). An automatic pass that pairs a
+   * Carry over > 0 (DEC-047): the pool of every pass also holds the window's "No counterpart" breaks (late_match and
+   * that reason). An automatic pass that pairs a
    * break closes it as AUTO_MATCHED_LATE_DATA; a suggesting pass leaves it a break with the pair proposed (proposeSql).
    * With carry over 0 (KSEI) a break never meets later data.
    */
@@ -133,10 +133,15 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
 }
 
 /**
- * The statuses of the pool: open, and with `late` (carry over > 0) the window's breaks for want of a counterpart
- * (late_match, DEC-047). A Duplicate or an unconfirmed suggestion's break keeps its own decision and stays out.
+ * The statuses of the pool: open, and with `late` (carry over > 0) the window's "No counterpart" breaks (late_match
+ * and that reason: DEC-047, Captain). A near miss (currency, amount or date
+ * differs), a Duplicate or an unconfirmed suggestion's break keeps its own decision and stays out.
  */
-const poolStatus = (c: StepCtx): SQL => (c.late ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match))` : sql`i.status = 'open'`);
+const poolStatus = (c: StepCtx): SQL => (c.late
+  ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}))`
+  : sql`i.status = 'open'`);
+/** The one break reason that rejoins the pool across days (breaks.ts NEAR_MISS.none; not imported: breaks.ts imports this file). */
+const NO_COUNTERPART = "No counterpart";
 
 /** Side `s`'s pool items of the window, live or of the step's simulation (the `i` alias of recon_items). */
 const openItems = (c: StepCtx, s: 0 | 1): SQL => sql`i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${c.sides[s].key} and ${poolStatus(c)}

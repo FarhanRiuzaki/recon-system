@@ -263,22 +263,34 @@ describe("day close, review round 1", () => {
     expect(projected.map((x) => [x.side, x.businessDate, x.reason])).toEqual(live);
   }, 60_000);
 
-  it("DEC-047 (carry over 1, two dates): an exact pass closes a break as late data; a suggest pass leaves it a break with the pair proposed", async () => {
+  it("DEC-047 (carry over 1, two dates): an exact pass closes a No counterpart break as late data; a suggest pass leaves it a break with the pair proposed; Duplicate and Currency differs breaks stay out", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, tolerance], 1));
-    await put(sa, [{ ref: "E1", amount: 100n, date: D }, { ref: "S1", amount: 100n, date: D }]);
+    await put(sa, [{ ref: "E1", amount: 100n, date: D }, { ref: "S1", amount: 100n, date: D }, { ref: "DU", amount: 50n, date: D }, { ref: "DU", amount: 50n, date: D },
+      { ref: "CU", amount: 70n, date: D }]);
+    await put(sb, [{ ref: "DU", amount: 50n, date: D }, { ref: "CU", amount: 70n, ccy: "USD", date: D }]);
     await complete(sa, at("2026-12-01T00:00:00"));
     await complete(sb, at("2026-12-01T00:00:00"));
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
-    await put(sb, [{ ref: "E1", amount: 100n, date: D1 }, { ref: "S1", amount: 150n, date: D1 }]);
+    const before = (await itemsOf(r.configId)).filter((i) => i.ref === "DU" || i.ref === "CU");
+    expect(before.map((i) => [i.ref, i.side, i.reason, i.late])).toEqual([
+      ["CU", "a", "Currency differs", false], ["CU", "b", "Currency differs", false],
+      ["DU", "a", "Duplicate", false], ["DU", "a", "Duplicate", false], ["DU", "b", "Duplicate", false],
+    ]);
+    // D1: counterparts for all of them: E1 exact, S1 within tolerance, a second DU on B (2:2), CU in IDR
+    await put(sb, [{ ref: "E1", amount: 100n, date: D1 }, { ref: "S1", amount: 150n, date: D1 }, { ref: "DU", amount: 50n, date: D1 }, { ref: "CU", amount: 70n, date: D1 }]);
     await runRecon(probe, { ...r, mode: "daily", from: D1 });
     const items = await itemsOf(r.configId);
     const s1bItem = items.find((i) => i.ref === "S1" && i.side === "b")!;
-    expect(items.map((i) => [i.ref, i.side, i.status, i.resolution, i.proposedPass])).toEqual([
+    expect(items.filter((i) => i.ref === "E1" || i.ref === "S1").map((i) => [i.ref, i.side, i.status, i.resolution, i.proposedPass])).toEqual([
       ["E1", "a", "matched", "AUTO_MATCHED_LATE_DATA", null], ["E1", "b", "matched", null, null],
       ["S1", "a", "break", null, 2], ["S1", "b", "open", null, null],
     ]);
+    // the Duplicate and the Currency differs breaks are untouched: no match, no proposal; D1's new items wait open
+    const old = items.filter((i) => (i.ref === "DU" || i.ref === "CU") && i.date === D);
+    expect(old.map((i) => [i.ref, i.side, i.status, i.reason, i.resolution, i.proposed])).toEqual(before.map((i) => [i.ref, i.side, "break", i.reason, null, null]));
+    expect(items.filter((i) => (i.ref === "DU" || i.ref === "CU") && i.date === D1).map((i) => [i.ref, i.side, i.status])).toEqual([["CU", "b", "open"], ["DU", "b", "open"]]);
     expect(items.find((i) => i.ref === "S1" && i.side === "a")!.proposed).toBe(s1bItem.id);
   }, 60_000);
 

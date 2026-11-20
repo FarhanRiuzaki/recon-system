@@ -7,7 +7,7 @@ import { DEBIT_CODES } from "@starterkit/shared/sources";
 import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { signedAmount } from "../../../ingest";
-import { breakReason, tieBreakSql } from "../../sql/breaks";
+import { breakReason, NEAR_MISS, tieBreakSql } from "../../sql/breaks";
 import { closeReplacedSql, filterSql, intakeSql } from "../../sql/intake";
 import { acceptSql, fieldSql, fifoSql, groupAcceptSql, minorTolerance, poolSql, predicateSql, type SideRef, type StepCtx, tieSuggestSql } from "../../sql/pass";
 
@@ -126,7 +126,10 @@ describe("statements", () => {
     expect(s).toContain("from pa a join pb b on a.x0 = b.x0 and a.x2 = b.x2 where abs(b.x1 - a.x1) <=");
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
     // carry over > 0: the breaks a late counterpart may close join the pool (Task 6)
-    expect(text(acceptSql({ ...ctx, late: true }, p2))).toContain("and (i.status = 'open' or (i.status = 'break' and i.late_match)) and i.sim_run_id is null");
+    const late = acceptSql({ ...ctx, late: true }, p2);
+    expect(text(late)).toContain("and (i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = $");
+    // only "No counterpart" breaks rejoin across days (DEC-047, Captain): the bound reason is the classifier's
+    expect(dialect.sqlToQuery(late).params).toContain(NEAR_MISS.none);
   });
 
   it("accept: mutual unique best only; the claim is guarded by state and version; the group dated at its later member", () => {

@@ -4,7 +4,7 @@
 import { type SQL, sql } from "drizzle-orm";
 import { records, sourceCursors } from "../../ingest";
 import { matchGroups, matchMembers, reconItems } from "../schema";
-import { type ClassifyCtx, nearMissSql } from "./breaks";
+import { type ClassifyCtx, NEAR_MISS, nearMissSql } from "./breaks";
 import { CHOSEN, type StepCtx } from "./pass";
 
 /**
@@ -28,7 +28,8 @@ const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, la
 /**
  * Grace (spec §9 step 4): each open item of the window whose record's event time plus `graceMinutes` is at or before
  * the other side's source complete_through: that source has delivered past the item's time with room to spare, and no
- * counterpart came. It breaks with its near-miss reason, a break a late counterpart may still close (late_match). An
+ * counterpart came. It breaks with its near-miss reason; a "No counterpart" break may still meet a late counterpart
+ * (late_match, DEC-047), a near miss (currency, amount, date differs) keeps its pair for a person. An
  * item without an event time (a file or snapshot source) waits for day close. Answers { n }.
  */
 export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
@@ -46,13 +47,13 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
     where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and ${live(c, "i")} and i.business_date between ${c.lo}::date and ${c.hi}::date
       and i.status = 'open' and i.id in (select id from due) for update skip locked),
   k as (${nearMissSql({ ...c, carry }, c.lo, c.hi, sql`i.id in (select id from lk)`)}),
-  ${breakLocked(c, sql`lk join k on k.item_id = lk.id`, sql`k.reason`, sql`true`)}
+  ${breakLocked(c, sql`lk join k on k.item_id = lk.id`, sql`k.reason`, sql`k.reason = ${NEAR_MISS.none}`)}
   select count(*)::int as n from up`;
 }
 
 /**
  * Day close (DEC-046, minimal in phase 1): in the window `lo`..`hi` (the closing date and the carry over before it; or
- * closed dates again, for what a close skipped), every open item breaks with its near-miss reason (late_match: a late counterpart may still close it when carry
+ * closed dates again, for what a close skipped), every open item breaks with its near-miss reason (late_match only for "No counterpart": a late counterpart may still close it when carry
  * over > 0), and every item of an unconfirmed suggestion dated there breaks with its pass's reason, its suggested group
  * kept as the pair to accept in one click (not late_match: a person decides it); a tie suggestion breaks as Duplicate
  * with its pass in break_pass, like a pass's own ambiguity breaks. Answers { open, suggested }.
@@ -72,7 +73,7 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
     where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and ${live(c, "i")} and i.business_date between ${lo}::date and ${hi}::date
       and (i.status = 'open' or (i.status = 'suggested' and i.id in (select id from sg))) for update skip locked),
   k as (${nearMissSql(c, lo, hi, sql`i.id in (select id from lk)`)}),
-  ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open'`,
+  ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
     sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
   select count(*) filter (where st = 'open')::int as open, count(*) filter (where st = 'suggested')::int as suggested from up`;
 }

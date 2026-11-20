@@ -188,10 +188,11 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
       .where(and(eq(reconItems.configId, gate.configId), sql`${reconItems.simRunId} is null`));
     expect(items.filter((i) => i.status === "open" || i.status === "suggested").length).toBe(0);
     const by = (reason: string, late: boolean) => items.filter((i) => i.status === "break" && i.reason === reason && i.late === late).map((i) => `${i.side}${i.ref!.slice(-4)}`).sort();
-    expect(by("Amount differs", false).length).toBe(28); // pass 2, 14 pairs
+    expect(by("Amount differs", false).filter((x) => !x.endsWith("0950")).length).toBe(28); // pass 2, 14 pairs
     expect(by("Date differs", false).length).toBe(20); // pass 3, 10 pairs
-    expect(by("Currency differs", true)).toEqual(["a0931", "a0932", "a0933", "b0931", "b0932", "b0933"]);
-    expect(by("Amount differs", true)).toEqual(["a0950", "b0950"]);
+    // a near miss keeps its pair for a person; only "No counterpart" rejoins the pool across days (DEC-047)
+    expect(by("Currency differs", false)).toEqual(["a0931", "a0932", "a0933", "b0931", "b0932", "b0933"]);
+    expect(by("Amount differs", false).filter((x) => x.endsWith("0950"))).toEqual(["a0950", "b0950"]);
     expect(by("No counterpart", true).length).toBe(40);
     expect(by("Duplicate", false).length).toBe(30); // the run's own breaks, untouched
     // the suggested pairs stay as the resolution to accept in one click

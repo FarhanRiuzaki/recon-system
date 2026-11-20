@@ -231,7 +231,7 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   after the last closed business date (a worker that was down catches up); a recon whose last scheduled run failed waits
   15 minutes (or its interval). A run's live items past grace break; after a date's close moment its open items and
   unconfirmed suggestions become breaks (day close, `recon_days`), once the run's intake saw every side complete through
-  the date's end, or at close + grace marked incomplete. With carry over > 0 a break for want of a counterpart stays a
+  the date's end, or at close + grace marked incomplete. With carry over > 0 a "No counterpart" break (no other reason) stays a
   candidate of every pass of later runs (DEC-047): an automatic pass closes it as `AUTO_MATCHED_LATE_DATA`, a suggesting
   pass leaves it a break with the pair proposed. Those runs list in `GET …/runs` with their mode.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
