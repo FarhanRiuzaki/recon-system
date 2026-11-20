@@ -33,7 +33,7 @@ export function ActivityPage() {
   const search = useSearchParams();
   return (<ActivityEntryLoader entry={entry}>{(entryNotice, pendingEntry) =>
     <AuditTable<ActivityDto, ActivityFilters> title="Activity log" noun="activity entries" icon={LogIcon} table={ACTIVITY_TABLE}
-      description="Changes to users, roles, permissions, profiles and projects: who made them, to which record, and when."
+      description="Changes to users, roles, permissions, profiles and projects."
       columns={COLUMNS} rowLabel={(r) => `${actionLabel(r.action)}, ${r.target.label}`}
       emptyHint="Entries appear here when someone changes a user, role, permission, profile or project."
       filterFields={[{ key: "action", label: "Action", multiple: true, format: actionLabel }]}

@@ -34,7 +34,7 @@ export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName
   return (
     <div className="grid gap-section">
       <PageHeader title="Sources" actions={add}
-        description="Each source is stored once and read by every recon in this space. Source admins set up connections; field mapping can be finished by a source admin or a config maker. Every new version needs approval." />
+        description="The sources the recons of this space read." />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the sources; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

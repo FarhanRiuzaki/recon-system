@@ -78,7 +78,7 @@ export function MembersPage({ id }: { id: string }) {
   return (
     <div className="grid gap-section" onPointerDown={manage ? preloadDialogs : undefined} onFocus={manage ? preloadDialogs : undefined}>
       <PageHeader title="Members"
-        description={`People who can work in the ${name} space and what each of them may do. A person can hold several roles.`}
+        description={`People in the ${name} space and their roles.`}
         actions={manage ? <Button onClick={() => open({ kind: "add" })}>Add member</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the members; showing the ones loaded before. {errorText(t.staleError)}</Notice>}

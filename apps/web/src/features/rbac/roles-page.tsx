@@ -68,7 +68,7 @@ export function RolesPage() {
 
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
-      <PageHeader title="Roles" description="Each role is a set of permissions. A user gets the permissions of every role they have."
+      <PageHeader title="Roles" description="Sets of permissions given to users."
         actions={can("role.create") ? <Button onClick={() => { setName(""); setCreating(true); }}>Create role</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the roles; showing the ones loaded before. {errorText(t.staleError)}</Notice>}

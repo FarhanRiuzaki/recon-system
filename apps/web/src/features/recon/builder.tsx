@@ -369,7 +369,6 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             <div className="grid gap-3 md:grid-cols-2">
               {([0, 1] as const).map((i) => <SideCard key={i} i={i} spec={spec} source={sourceOf(i)} fields={fields} selected={sel.k === "side" && sel.i === i} onSelect={() => select({ k: "side", i })} />)}
             </div>
-            <p className="pt-2 text-caption text-fg-3">Two sides per recon in this release.</p>
             {placed?.side !== undefined && <div className="pt-2"><PlaceError text={`Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}`} /></div>}
             <Connector text={counters ? connectorText(counters, spec, 0) : undefined} dim={sim.dim} />
             {spec.passes.length ? (

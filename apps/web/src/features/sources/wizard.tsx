@@ -16,6 +16,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import type { TrailCrumb } from "@/lib/client/crumb-trail";
 import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
@@ -76,14 +77,15 @@ export function EditSourceWizard({ spaceId, spaceName, id, step }: { spaceId: st
   const s = q.data;
   if (!s || skeleton) return <LoadingShape sections={WIZARD_SHAPE} shown={skeleton} />;
   const back = { href: sourceHref(spaceId, id), label: `Go to ${s.name}` };
+  const trail = [{ label: s.name, href: sourceHref(spaceId, id) }];
   const admin = roles.includes("source_admin");
-  if (s.owner) return <Refused title={`Edit ${s.name}`} reason={`${s.owner.name} owns this source; only its source admins and config makers change it.`} back={back} />;
-  if (!admin && !roles.includes("config_maker")) return <Refused title={`Edit ${s.name}`} reason={EDIT_REASON} back={back} />;
+  if (s.owner) return <Refused title="Edit source" trail={trail} reason={`${s.owner.name} owns this source; only its source admins and config makers change it.`} back={back} />;
+  if (!admin && !roles.includes("config_maker")) return <Refused title="Edit source" trail={trail} reason={EDIT_REASON} back={back} />;
   const v = s.draft;
   if (!v) {
     return (
       <div className="grid gap-section">
-        <PageHeader title={`Edit ${s.name}`} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} />
+        <PageHeader title="Edit source" trail={trail} />
         <Panel>
           <EmptyState icon={DeniedIcon} title="No draft version yet" description={`Changes go into a new version made from version ${s.publishedVersion ?? 1}. It is approved by a config checker before it applies.`}
             action={<Button type="button" onClick={() => start.mutate()} disabled={start.isPending} aria-busy={start.isPending || undefined}>
@@ -94,7 +96,7 @@ export function EditSourceWizard({ spaceId, spaceName, id, step }: { spaceId: st
     );
   }
   if (v.status === "in_review") {
-    return <Refused title={`Edit ${s.name}`} back={{ href: versionHref(spaceId, id, v.id), label: `Open version ${v.version}` }}
+    return <Refused title="Edit source" trail={trail} back={{ href: versionHref(spaceId, id, v.id), label: `Open version ${v.version}` }}
       reason={`Version ${v.version} is waiting for approval, so it can't change now. A rejected version comes back as a draft.`} />;
   }
   return <SourceWizard key={v.id} spaceId={spaceId} spaceName={spaceName} source={{ s, v }} admin={admin} start={step0(step, admin)} initial={draftOf(s, v)} />;
@@ -110,10 +112,10 @@ function draftOf(s: SourceDto, v: SourceVersionDto): Draft {
   };
 }
 
-function Refused({ title, reason, back }: { title: string; reason: string; back: { href: string; label: string } }) {
+function Refused({ title, reason, back, trail }: { title: string; reason: string; back: { href: string; label: string }; trail?: TrailCrumb[] }) {
   return (
     <div className="grid gap-section">
-      <PageHeader title={title} />
+      <PageHeader title={title} trail={trail} />
       <Panel><EmptyState icon={DeniedIcon} title="This can't be changed here" description={reason} action={<Button asChild variant="secondary"><Link href={back.href}>{back.label}</Link></Button>} /></Panel>
     </div>
   );

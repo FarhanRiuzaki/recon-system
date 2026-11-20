@@ -33,7 +33,7 @@ export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName:
   return (
     <div className="grid gap-section">
       <PageHeader title="Recons" actions={add}
-        description="Each recon matches the records of two sources pass by pass. A config maker builds it; a config checker approves every version before it runs." />
+        description="The recons of this space, each matching the records of two sources." />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the recons; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
