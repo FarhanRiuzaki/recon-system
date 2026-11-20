@@ -13,8 +13,8 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  CURRENCIES, currencyDecimals, FILTER_OPS, type FilterOp, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS, type Place,
-  predicateOf, startField, withCardinality, withSide,
+  addCurrency, CURRENCIES, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  type Place, predicateOf, removeCurrency, renameCurrency, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
 // The inspector (BUILDER-SPEC "Inspector"): the selected pass, a side or the settings. Every control writes the whole
@@ -55,20 +55,19 @@ function FieldPick({ id, label, i, pair, op, fields, onPick }: {
 function ToleranceRows({ id, value, onChange }: { id: string; value: Record<string, string>; onChange: (t: Record<string, string>) => void }) {
   const rows = Object.entries(value);
   const free = CURRENCIES.filter((c) => !Object.hasOwn(value, c));
-  const rename = (from: string, to: string) => onChange(Object.fromEntries(rows.map(([c, v]) => (c === from ? [to, v] : [c, v]))));
   return (
     <div className="grid gap-2">
       {rows.map(([code, v]) => (
         <div key={code} className="flex items-center gap-2">
-          <Select aria-label="Currency" value={code} onChange={(e) => rename(code, e.target.value)} className="w-24">
+          <Select aria-label="Currency" value={code} onChange={(e) => onChange(renameCurrency(value, code, e.target.value))} className="w-24">
             {[code, ...free].map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Input id={`${id}-${code}`} aria-label={`${code} tolerance`} inputMode="decimal" value={v} className="min-w-0 flex-1 tabular" placeholder={(0).toFixed(currencyDecimals(code))}
             onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
-          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(Object.fromEntries(rows.filter(([c]) => c !== code)))}>Remove</Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(removeCurrency(value, code))}>Remove</Button>
         </div>
       ))}
-      {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={() => onChange({ ...value, [free[0]!]: "" })}>Add currency</Button></span>}
+      {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={() => onChange(addCurrency(value))}>Add currency</Button></span>}
     </div>
   );
 }
@@ -156,7 +155,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove 
               <FieldPick id={id(`cond-${j}-b`)} label={lb} i={1} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
             </div>
             <Select id={id(`cond-${j}-op`)} aria-label={`Condition ${j + 1} operator`} value={q.op} className="w-full"
-              onChange={(e) => setPred(j, predicateOf(e.target.value as Operator, q.field))}>
+              onChange={(e) => { const op = e.target.value as Operator; setPred(j, predicateOf(op, fieldFor(op, q.field, fields))); }}>
               {OPS.filter((o) => !o.group || group).map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
             </Select>
             <OpValue id={id(`cond-${j}-value`)} q={q} onChange={(x) => setPred(j, x)} />
@@ -191,12 +190,6 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange }: {
   const id = (x: string) => `rs-${i}-${x}`;
   const refs = fieldRefs(own);
   const setFilter = (j: number, f: SideSpec["filter"][number]) => onChange({ ...s, filter: s.filter.map((x, k) => (k === j ? f : x)) });
-  const withOp = (f: SideSpec["filter"][number], op: FilterOp): SideSpec["filter"][number] => {
-    const first = "value" in f ? f.value : "values" in f ? f.values[0] ?? "" : "";
-    if (op === "in" || op === "not_in") return { field: f.field, op, values: [first] };
-    if (op === "eq" || op === "ne") return { field: f.field, op, value: first };
-    return { field: f.field, op };
-  };
   return (
     <div className="grid gap-5">
       {place && place.filter === undefined && <PlaceError text={place.text} />}
@@ -220,13 +213,14 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange }: {
               <Select aria-label={`Filter ${j + 1} field`} value={f.field} className="w-full font-mono" onChange={(e) => setFilter(j, { ...f, field: e.target.value })}>
                 {(refs.includes(f.field) ? refs : [f.field, ...refs]).map((r) => <option key={r} value={r}>{fieldName(r, own)}</option>)}
               </Select>
-              <Select aria-label={`Filter ${j + 1} operator`} value={f.op} className="w-full" onChange={(e) => setFilter(j, withOp(f, e.target.value as FilterOp))}>
+              <Select aria-label={`Filter ${j + 1} operator`} value={f.op} className="w-full" onChange={(e) => setFilter(j, withFilterOp(f, e.target.value as FilterOp))}>
                 {FILTER_OPS.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
               </Select>
             </div>
             {"value" in f && <Input aria-label={`Filter ${j + 1} value`} value={f.value} maxLength={200} onChange={(e) => setFilter(j, { ...f, value: e.target.value })} />}
-            {"values" in f && <Input aria-label={`Filter ${j + 1} values, separated by commas`} value={f.values.join(", ")}
-              onChange={(e) => setFilter(j, { ...f, values: e.target.value.split(",").map((v) => v.trim()) })} />}
+            {/* typed freely; the list is read on leaving the field, so a trailing comma can be typed */}
+            {"values" in f && <Input key={f.values.join(",")} aria-label={`Filter ${j + 1} values, separated by commas`} defaultValue={f.values.join(", ")}
+              onBlur={(e) => setFilter(j, { ...f, values: splitValues(e.target.value) })} />}
           </PairRow>
         ))}
         <span><BlockedButton type="button" variant="ghost" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}

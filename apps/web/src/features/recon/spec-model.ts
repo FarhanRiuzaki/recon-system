@@ -120,6 +120,45 @@ export function startField(fields: Fields): FieldPair {
   return shared ?? withSide(a[0] ?? "ext_ref", 1, b[0] ?? a[0] ?? "ext_ref");
 }
 
+/** The kind an operator compares (eq and matching keys: any kind, the same on both sides). */
+const opKind = (op: Operator): FieldKind | null => (op === "bday_window" ? "date" : NEEDS[op]?.[0] ?? null);
+/**
+ * The field a condition keeps when its operator changes to `op`: the same one when both sides' fields fit, else the
+ * operator's natural field: the amount for an amount operator, the business date for a date or business-day window,
+ * the reference (or the first text field both sides have) for text matching.
+ */
+export function fieldFor(op: Operator, pair: FieldPair, fields: Fields): FieldPair {
+  const fits = ([0, 1] as const).every((i) => {
+    const k = kindOf(pair, i, fields);
+    return k === null || fieldReason(op, k, sideRef(pair, i), i === 1 ? kindOf(pair, 0, fields) : null) === null;
+  });
+  if (fits) return pair;
+  const need = opKind(op);
+  if (need === "decimal") return AMOUNT;
+  if (need === "date") return "business_date";
+  const text = fieldRefs(fields[0]).find((r) => fields[0]?.get(r)?.kind === "text" && fields[1]?.get(r)?.kind === "text");
+  return text ?? startField(fields);
+}
+
+/** A tolerance with currency `from` renamed `to`, its value and place kept. */
+export const renameCurrency = (t: Record<string, string>, from: string, to: string) => Object.fromEntries(Object.entries(t).map(([c, v]) => [c === from ? to : c, v]));
+/** A tolerance with a row for the first currency it doesn't name yet (empty value), or as it is when it names all. */
+export function addCurrency(t: Record<string, string>): Record<string, string> {
+  const free = CURRENCIES.find((c) => !Object.hasOwn(t, c));
+  return free ? { ...t, [free]: "" } : t;
+}
+export const removeCurrency = (t: Record<string, string>, code: string) => Object.fromEntries(Object.entries(t).filter(([c]) => c !== code));
+
+/** Comma-separated filter values as a list, without empty entries ("a, b,, c ," → a, b, c). */
+export const splitValues = (text: string) => text.split(",").map((v) => v.trim()).filter(Boolean);
+/** A side filter with operator `op`, keeping its field and (the first of) its values. */
+export function withFilterOp(f: SideSpec["filter"][number], op: FilterOp): SideSpec["filter"][number] {
+  const first = "value" in f ? f.value : "values" in f ? f.values[0] ?? "" : "";
+  if (op === "in" || op === "not_in") return { field: f.field, op, values: "values" in f ? f.values : [first] };
+  if (op === "eq" || op === "ne") return { field: f.field, op, value: first };
+  return { field: f.field, op };
+}
+
 /** Passes renumbered 1, 2, 3 … in their order (the API refuses gaps). */
 const numbered = (passes: readonly PassSpec[]): PassSpec[] => passes.map((p, i) => ({ ...p, no: i + 1 }));
 
@@ -150,8 +189,9 @@ export function moveReason(i: number, n: number, dir: -1 | 1): string | null {
 }
 
 /**
- * `pass` as cardinality `c`. A group pass (1:N, N:1) matches or raises breaks only in this release and sums its many
- * side: auto-accept, break, and one sum condition on the amount (added when missing). Back to 1:1, its sums go (a
+ * `pass` as cardinality `c`. A group pass (1:N, N:1) matches or raises breaks only in this release, groups by a
+ * matching key and sums its many side: auto-accept, break, a matching key and one sum condition on the amount (each
+ * added when missing). Back to 1:1, its sums go (a
  * condition stays, so the pass keeps at least one).
  */
 export function withCardinality(pass: PassSpec, c: Cardinality, fields: Fields): PassSpec {
@@ -160,7 +200,10 @@ export function withCardinality(pass: PassSpec, c: Cardinality, fields: Fields):
     return { ...pass, cardinality: c, predicates: kept.length ? kept : [predicateOf("eq", startField(fields))] };
   }
   const sums = pass.predicates.some((q) => q.op === "eq_sum");
-  return { ...pass, cardinality: c, accept: "auto", on_ambiguous: "break", predicates: sums ? pass.predicates : [...pass.predicates, predicateOf("eq_sum", AMOUNT)] };
+  return {
+    ...pass, cardinality: c, accept: "auto", on_ambiguous: "break", blocking: pass.blocking.length ? pass.blocking : [startField(fields)],
+    predicates: sums ? pass.predicates : [...pass.predicates, predicateOf("eq_sum", AMOUNT)],
+  };
 }
 export const isGroup = (p: Pick<PassSpec, "cardinality">) => p.cardinality !== "1:1";
 

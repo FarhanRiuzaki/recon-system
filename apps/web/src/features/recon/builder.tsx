@@ -1,18 +1,16 @@
 "use client";
 
-import { closestCenter, DndContext, type DragEndEvent, KeyboardSensor, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { type KeyboardEvent, type ReactNode, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BlockedButton, Panel, StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { FailedIcon, MenuIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
-import type { PassSpec, ReconDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import type { SourceKind } from "@starterkit/shared/sources";
@@ -22,9 +20,11 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addPass, carryOverFix, conditionText, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
-  pairText, type Place, placeOf, removePass, scheduleText, submitReason,
+  addCurrencyCondition, addPass, carryOverFix, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
+  type Place, placeOf, removePass, scheduleText, submitReason,
 } from "./spec-model";
+import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
+import type { SortablePasses as SortableList } from "./sortable-passes";
 import { MAKER_REASON, reconApi, useSideSource } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
@@ -32,12 +32,8 @@ const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false }
 /** Why Run simulation is off until the engine's simulation route exists (controller's decision, BUILDER-SPEC). */
 export const SIMULATION_REASON = "Simulation isn't available yet.";
 const KIND: Record<SourceKind, string> = { file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot" };
-const DASH = "—";
 
 type Selected = { k: "pass"; key: string } | { k: "side"; i: 0 | 1 } | { k: "settings" };
-/** A new pass's stable key (the list keeps a pass's DOM and focus while it moves). */
-let nextKey = 0;
-const newKey = () => `p${++nextKey}`;
 
 /** The simulation's state of a draft (BUILDER-SPEC "Simulation bar"). */
 function simState(v: ReconVersionDto) {
@@ -55,51 +51,6 @@ function Banner({ tone, children, action }: { tone: "warn" | "error"; children: 
       <p className="min-w-0 flex-1 basis-64">{children}</p>
       {action}
     </div>
-  );
-}
-
-/** "In / Left / Unmatched" between the items once a simulation ran; until then every connector says so. */
-const Connector = () => <div className="ml-5 border-l border-line py-2 pl-4 text-caption text-fg-3">Not simulated</div>;
-
-/** A pass of the run order: drag handle, the pass (select it; Alt+↑/↓ moves it), its outcome. */
-function PassItem({ id, pass, fields, selected, editable, last, onSelect, onKey }: {
-  id: string; pass: PassSpec; fields: Fields; selected: boolean; editable: boolean; last: boolean; onSelect: () => void; onKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
-}) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform: t, isDragging } = useSortable({ id, disabled: !editable });
-  return (
-    <li ref={setNodeRef} style={t ? { transform: `translate3d(${Math.round(t.x)}px, ${Math.round(t.y)}px, 0)` } : undefined}
-      className={cn(isDragging ? "relative z-10" : "motion-safe:transition-transform motion-safe:duration-(--dur-enter)")}>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
-      <div className={cn("flex min-w-0 items-start gap-1 rounded-md border bg-card p-3", selected ? "border-fg shadow-sm" : "border-line", isDragging && "shadow-overlay")}>
-        {editable && (
-          <button ref={setActivatorNodeRef} type="button" {...attributes} {...listeners} aria-label={`Drag pass ${pass.no}`}
-            className="mt-0.5 inline-flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-fg-3 hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary">
-            <Icon icon={MenuIcon} />
-          </button>
-        )}
-        <button id={`pass-${id}`} type="button" aria-pressed={selected} onClick={onSelect} onKeyDown={onKey}
-          className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-          <span className="flex items-center gap-2">
-            <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-fg text-caption text-bg tabular">{pass.no}</span>
-            <span className="min-w-0 truncate text-label text-fg">{pass.name}</span>
-          </span>
-          <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
-            <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.cardinality}</span>
-            <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Auto-accept" : "Suggest"}</span>
-            {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</span>}
-          </span>
-          <span className="grid gap-0.5 font-mono text-mono text-fg-2 wrap-anywhere">
-            {pass.predicates.map((q, j) => <span key={j}>{conditionText(q, fields)}</span>)}
-          </span>
-        </button>
-      </div>
-      <div className="grid content-start gap-1 rounded-md border border-dashed border-line p-3 text-caption text-fg-3">
-        <span className="text-label text-fg-2">{pass.accept === "auto" ? "Matched" : "Suggested"}</span>
-        <span>{DASH}</span>
-      </div>
-      </div>
-      {!last && <Connector />}
-    </li>
   );
 }
 
@@ -137,7 +88,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const qc = useQueryClient();
   const [spec, setSpec] = useState<ReconSpec>(version.spec);
   const [saved, setSaved] = useState<ReconVersionDto>(version);
-  const [keys, setKeys] = useState<string[]>(() => version.spec.passes.map(newKey));
+  // a pass's stable key (its DOM and focus stay while it moves): p0, p1 … as loaded, the same on the server and in
+  // the browser; new passes count on from there
+  const [keys, setKeys] = useState<string[]>(() => version.spec.passes.map((_, i) => `p${i}`));
+  const keySeq = useRef(version.spec.passes.length);
   const [sel, setSel] = useState<Selected>(() => (keys[0] ? { k: "pass", key: keys[0] } : { k: "side", i: 0 }));
   const [sheet, setSheet] = useState(false);
   const [problem, setProblem] = useState<Place | null>(null);
@@ -151,7 +105,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const dirty = JSON.stringify(spec) !== JSON.stringify(saved.spec);
   const guard = useLeaveGuard(editable && dirty && busy === null);
   const gaps = currencyGaps(spec, sourceSpecs);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
+  // the drag order loads only where it can be used (a draft with two passes or more); the cmdk field list with the
+  // first draft, so the inspector's first field picker doesn't wait on its chunk
+  const [Sortable, setSortable] = useState<typeof SortableList | null>(null);
+  const sortable = editable && spec.passes.length > 1;
+  useEffect(() => {
+    if (!sortable || Sortable) return;
+    let on = true;
+    void import("./sortable-passes").then((m) => { if (on) setSortable(() => m.SortablePasses); });
+    return () => { on = false; };
+  }, [sortable, Sortable]);
+  useEffect(() => { if (editable) void import("@starterkit/ui/ds/combobox-command"); }, [editable]);
   const inspectorRef = useRef<HTMLDivElement>(null);
 
   const passIndex = sel.k === "pass" ? keys.indexOf(sel.key) : -1;
@@ -163,11 +127,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     if (onPhone()) setSheet(true);
     else requestAnimationFrame(() => { const h = inspectorRef.current?.querySelector<HTMLElement>("h2"); h?.setAttribute("tabindex", "-1"); h?.focus(); });
   };
-  const move = (from: number, to: number) => {
+  /** Moves a pass; `announce` for Alt+↑/↓ and Move earlier/later (a drop is announced by dnd-kit). */
+  const move = (from: number, to: number, announce = true) => {
     if (to < 0 || to >= keys.length || from === to) return;
     change(movePass(spec, from, to));
     setKeys(moved(keys, from, to));
-    setSaid(`Moved to pass ${to + 1}`);
+    if (announce) setSaid(`Moved to pass ${to + 1}`);
   };
   const onPassKey = (i: number, key: string) => (e: KeyboardEvent<HTMLButtonElement>) => {
     if (!editable || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
@@ -175,7 +140,6 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     move(i, i + (e.key === "ArrowUp" ? -1 : 1));
     focusLater(`pass-${key}`);
   };
-  const onDragEnd = ({ active, over }: DragEndEvent) => { if (over) move(keys.indexOf(String(active.id)), keys.indexOf(String(over.id))); };
 
   async function save() {
     setBusy("save");
@@ -244,7 +208,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             setSheet(false);
           }} />
         : null;
-  const body = editor && <fieldset disabled={!editable} className="contents">{editor}</fieldset>;
+  // read only while a save or submit is out, so nothing typed meanwhile is overwritten by the answer
+  const body = editor && <fieldset disabled={!editable || busy !== null} className="contents">{editor}</fieldset>;
+  const rows: PassRowProps[] = spec.passes.map((p, i) => ({
+    id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], last: i === spec.passes.length - 1,
+    onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
+  }));
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
     document.getElementById(`pass-${sel.key}`)?.focus();
@@ -307,29 +276,13 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             {placed?.side !== undefined && <div className="pt-2"><PlaceError text={`Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}`} /></div>}
             <Connector />
             {spec.passes.length ? (
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} accessibility={{
-                screenReaderInstructions: { draggable: "To move a pass, press Space or Enter, move it with the arrow keys, then press Space or Enter to drop it, or Escape to cancel." },
-                announcements: {
-                  onDragStart: ({ active }) => `Picked up pass ${keys.indexOf(String(active.id)) + 1}.`,
-                  onDragOver: ({ over }) => (over ? `Over position ${keys.indexOf(String(over.id)) + 1}.` : undefined),
-                  onDragEnd: ({ over }) => (over ? `Moved to pass ${keys.indexOf(String(over.id)) + 1}` : "Dropped where it was."),
-                  onDragCancel: () => "Move cancelled.",
-                },
-              }}>
-                <SortableContext items={keys} strategy={verticalListSortingStrategy}>
-                  <ol aria-label="Passes in run order" className="grid">
-                    {spec.passes.map((p, i) => (
-                      <PassItem key={keys[i]} id={keys[i]!} pass={p} fields={fields} editable={editable} selected={sel.k === "pass" && sel.key === keys[i]}
-                        last={i === spec.passes.length - 1} onSelect={() => select({ k: "pass", key: keys[i]! })} onKey={onPassKey(i, keys[i]!)} />
-                    ))}
-                  </ol>
-                </SortableContext>
-              </DndContext>
+              Sortable && sortable ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
+                : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} />)}</ol>
             ) : <p className="rounded-md border border-dashed border-line p-4 text-body-sm text-fg-2">No passes yet.</p>}
             {editable && (
               <span className="pt-3">
                 <BlockedButton type="button" variant="secondary" reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
-                  onClick={() => { const k = newKey(); change(addPass(spec, fields)); setKeys([...keys, k]); select({ k: "pass", key: k }); }}>Add pass</BlockedButton>
+                  onClick={() => { const k = `p${keySeq.current++}`; change(addPass(spec, fields)); setKeys([...keys, k]); select({ k: "pass", key: k }); }}>Add pass</BlockedButton>
               </span>
             )}
             <Connector />

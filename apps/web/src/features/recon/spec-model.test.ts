@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { ReconSpec } from "@starterkit/shared/contracts/recon";
+import { ReconSpec } from "@starterkit/shared/contracts/recon";
+import { OPERATORS } from "@starterkit/shared/recon";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
-  addCurrencyCondition, addPass, carryOverFix, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldName, fieldReason, type Fields, movePass, moveReason,
-  pairText, passesText, placeOf, submitReason, withCardinality, withSide,
+  addCurrency, addCurrencyCondition, addPass, carryOverFix, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldFor, fieldName, fieldReason, type Fields, kindOf,
+  movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
 // the Plan 3 gate config's sources: source1 (txn_ref, amount_minor, business_date, ccy) and source2 (reference, amount, value_date, currency)
@@ -99,5 +100,59 @@ describe("checks before a save", () => {
     expect(submitReason(v, ok)).toBe("Run a simulation on this draft first.");
     expect(submitReason({ simulatedHash: "old", specHash: "h" }, ok)).toBe("The draft changed since the last simulation. Run it again.");
     expect(submitReason({ simulatedHash: "h", specHash: "h" }, ok)).toBeNull();
+  });
+});
+
+describe("every spec the builder makes passes the contract", () => {
+  const ok = (spec: ReconSpec) => { const r = ReconSpec.safeParse(spec); expect(r.success, JSON.stringify(r.error?.issues)).toBe(true); };
+  it("a new recon, added passes, group passes, every operator, the currency fix", () => {
+    const empty = defaultSpec({ id: "0b9e3a52-6f1d-4c5e-9a1b-2c3d4e5f6a7b", name: "source1" }, { id: "1c0f4b63-7a2e-4d6f-8b2c-3d4e5f6a7b8c", name: "source2" });
+    ok(empty);
+    const s = addPass(addPass(empty, fields), fields);
+    ok(s);
+    for (const c of ["1:N", "N:1"] as const) ok({ ...s, passes: [withCardinality(s.passes[0]!, c, fields), s.passes[1]!] });
+    const first = s.passes[0]!;
+    for (const op of OPERATORS) {
+      const pass = op === "eq_sum" ? withCardinality(first, "N:1", fields) : first;
+      ok({ ...s, passes: [{ ...pass, predicates: [...pass.predicates, predicateOf(op, fieldFor(op, first.predicates[0]!.field, fields))] }, s.passes[1]!] });
+    }
+    ok(addCurrencyCondition(s, [1, 2]));
+  });
+  it("a group pass has a matching key and one sum (the API's rules), and keeps a key it had", () => {
+    const g = withCardinality(base().passes[0]!, "1:N", fields);
+    expect(g.blocking).toEqual(["ext_ref"]);
+    expect(g.predicates.filter((q) => q.op === "eq_sum")).toHaveLength(1);
+    expect(withCardinality({ ...base().passes[0]!, blocking: ["attrs.channel"] }, "N:1", fields).blocking).toEqual(["attrs.channel"]);
+  });
+  it("an operator's field fits its kind: a text field moves to the amount or the business date; a fitting one stays", () => {
+    const kinds = (op: Parameters<typeof fieldFor>[0]) => { const f = fieldFor(op, "ext_ref", fields); return [f, kindOf(f, 0, fields), kindOf(f, 1, fields)]; };
+    expect(kinds("amount_abs_tol")).toEqual(["amount_minor", "decimal", "decimal"]);
+    expect(kinds("amount_pct_tol")).toEqual(["amount_minor", "decimal", "decimal"]);
+    expect(kinds("eq_sum")).toEqual(["amount_minor", "decimal", "decimal"]);
+    expect(kinds("date_window")).toEqual(["business_date", "date", "date"]);
+    expect(kinds("bday_window")).toEqual(["business_date", "date", "date"]);
+    expect(kinds("eq_normalized")).toEqual(["ext_ref", "text", "text"]);
+    expect(fieldFor("contains", "amount_minor", fields)).toBe("ext_ref");
+    expect(fieldFor("date_window", "business_date", fields)).toBe("business_date");
+    expect(fieldFor("eq", "amount_minor", fields)).toBe("amount_minor");
+  });
+});
+
+describe("tolerance rows and filter values", () => {
+  it("a row per currency: add the first one not named, rename in place, remove", () => {
+    const t = addCurrency({});
+    expect(t).toEqual({ IDR: "" });
+    expect(Object.keys(addCurrency({ IDR: "1000.00" }))).toEqual(["IDR", "USD"]);
+    expect(Object.entries(renameCurrency({ IDR: "1.00", USD: "2.00" }, "IDR", "JPY"))).toEqual([["JPY", "1.00"], ["USD", "2.00"]]);
+    expect(removeCurrency({ IDR: "1.00", USD: "2.00" }, "IDR")).toEqual({ USD: "2.00" });
+  });
+  it("in / not_in round-trip: comma text without empty entries, the values kept across a switch", () => {
+    expect(splitValues("bifast, rtgs,, skn ,")).toEqual(["bifast", "rtgs", "skn"]);
+    const inF = withFilterOp({ field: "attrs.channel", op: "eq", value: "bifast" }, "in");
+    expect(inF).toEqual({ field: "attrs.channel", op: "in", values: ["bifast"] });
+    const many = { field: "attrs.channel", op: "in" as const, values: splitValues("bifast, rtgs") };
+    expect(withFilterOp(many, "not_in")).toEqual({ field: "attrs.channel", op: "not_in", values: ["bifast", "rtgs"] });
+    expect(withFilterOp(many, "eq")).toEqual({ field: "attrs.channel", op: "eq", value: "bifast" });
+    expect(withFilterOp(many, "is_null")).toEqual({ field: "attrs.channel", op: "is_null" });
   });
 });
