@@ -31,7 +31,7 @@ import { EDIT_USER_SHAPE } from "./shapes";
 
 const CHECK = "size-4 cursor-pointer accent-primary";
 
-const CREATE = { title: "Create user", description: "Add an account and choose how it signs in." };
+const CREATE = { title: "New user", description: "Add an account and choose how it signs in." };
 const EDIT = { title: "Edit user", description: "Change name, sign-in names, roles or status." };
 
 

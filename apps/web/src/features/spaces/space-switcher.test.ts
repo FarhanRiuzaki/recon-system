@@ -26,4 +26,8 @@ describe("currentSpace: the space the switcher shows", () => {
     expect(currentSpace(items, "/users", "0199f0a0-0000-7000-8000-0000000000ff")?.id).toBe(A);
     expect(currentSpace([], "/users", A)).toBeUndefined();
   });
+  it("with nothing remembered, the first space the caller holds a role in, not one they only view", () => {
+    expect(currentSpace([{ id: A, roles: [] }, { id: B, roles: ["config_maker"] }], "/users", null)?.id).toBe(B);
+    expect(currentSpace([{ id: A, roles: [] }, { id: B, roles: [] }], "/users", null)?.id).toBe(A);
+  });
 });

@@ -554,7 +554,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     await qc.invalidateQueries({ queryKey: SOURCES_KEY });
     router.push(sourcesHref(spaceId));
   }
-  const title = source ? `Edit ${source.s.name}` : "New source";
+  const title = source ? "Edit source" : "New source";
   const steps = STEPS.map((label, i) => ({ id: label, label, status: (i === step ? "current" : i < step || (i === 0 && !admin) ? "done" : "todo") as "current" | "done" | "todo" }));
   const working = busy !== null;
 

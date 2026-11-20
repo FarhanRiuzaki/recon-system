@@ -18,7 +18,8 @@ export function MySessionsPage() {
   const [ending, setEnding] = useState<SessionDto | null>(null);
   return (
     <div className="grid gap-section">
-      <PageHeader title="Sessions" description="Where you're signed in. End any session you don't recognize." actions={<MeNav />} />
+      <PageHeader title="Sessions" description="Where you're signed in. End any session you don't recognize." />
+      <MeNav />
       <SessionsTable table={MY_SESSIONS} title="My sessions" description="Where you're signed in" current="This session"
         emptyHint="Your sessions appear here after you sign in."
         action={(r) => r.current

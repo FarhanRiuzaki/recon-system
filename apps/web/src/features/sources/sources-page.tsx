@@ -21,7 +21,7 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 /**
  * A space's sources (Figma 17:5543 / 31:8132): its own and those shared to it, each with the health the API judged for
  * the business date in progress (page.tsx has checked the viewer holds a role in the space and prefetched the first
- * page). New source opens the wizard for a source admin; anyone else gets the reason.
+ * page). Create source opens the wizard for a source admin; anyone else gets the reason.
  */
 export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const def = useMemo(() => SOURCES(spaceId), [spaceId]);
@@ -29,8 +29,8 @@ export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName
   const t = useTableQuery<SourceRowDto, { q: string }>(def);
   const admin = useSpaceRoles(spaceId).includes("source_admin");
   const add = admin
-    ? <Button asChild><Link href={newSourceHref(spaceId)}>New source</Link></Button>
-    : <BlockedButton reason={NEW_SOURCE_REASON}>New source</BlockedButton>;
+    ? <Button asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
+    : <BlockedButton reason={NEW_SOURCE_REASON}>Create source</BlockedButton>;
   return (
     <div className="grid gap-section">
       <PageHeader title="Sources" actions={add}

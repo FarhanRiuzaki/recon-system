@@ -4,6 +4,6 @@ import type { Section } from "@/components/route-skeleton";
 // kept apart so a loading.tsx never pulls a screen's code into the route's first load.
 
 /** Loading shape of /me (its loading.tsx uses the same list), section heights at the 1440 px reference width. */
-export const PROFILE_SHAPE: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "panels", panels: [[12, 373]] }];
+export const PROFILE_SHAPE: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "bar", h: 28 }, { kind: "panels", panels: [[12, 373]] }];
 /** Loading shape of /me/security (its loading.tsx uses the same list), section heights at the 1440 px reference width. */
-export const SECURITY_SHAPE: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "panels", panels: [[6, 541], [6, 541]] }];
+export const SECURITY_SHAPE: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "bar", h: 28 }, { kind: "panels", panels: [[6, 541], [6, 541]] }];

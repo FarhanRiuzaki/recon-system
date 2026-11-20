@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
@@ -38,10 +38,13 @@ export function switchHref(path: string, id: string): string {
   return spaceHref(id, SPACE_PAGES.includes(page as SpacePage) ? (page as SpacePage) : "members");
 }
 
-/** The space the switcher shows: the one in the URL, else the remembered one, else the first (name A–Z). */
-export function currentSpace<S extends { id: string }>(items: readonly S[], path: string, remembered: string | null): S | undefined {
+/**
+ * The space the switcher shows: the one in the URL, else the one last used (remembered), else the first the caller
+ * holds a role in, else the first (name A–Z). Outside a space it never falls on a space the caller merely views.
+ */
+export function currentSpace<S extends { id: string; roles?: readonly string[] }>(items: readonly S[], path: string, remembered: string | null): S | undefined {
   const inUrl = spaceOf(path);
-  return items.find((s) => s.id === inUrl) ?? items.find((s) => s.id === remembered) ?? items[0];
+  return items.find((s) => s.id === inUrl) ?? items.find((s) => s.id === remembered) ?? items.find((s) => s.roles?.length) ?? items[0];
 }
 
 export const rolesText = (s: SpaceRowDto) => s.roles.map((r) => ROLE_LABEL[r]).join(", ") || "Not a member";
@@ -73,6 +76,10 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
   const [tip, setTip] = useState(false);
   const [used, setUsed] = useState(false);
   const loading = useDelayedFlag(q.isPending);
+  // The space opened last is the one the switcher shows outside a space (and where the space entries go).
+  const inUrl = spaceOf(path);
+  const known = !!inUrl && !!q.data?.items.some((s) => s.id === inUrl);
+  useEffect(() => { if (known && inUrl !== prefs.space) update({ space: inUrl! }); }, [known, inUrl, prefs.space, update]);
   const compact = !drawer && prefs.sidebar === "collapsed";
   // Visible only where the full switcher fits: the drawer, or the expanded sidebar from 1280 px.
   const wide = drawer ? "grid" : compact ? "hidden" : "hidden xl:grid";

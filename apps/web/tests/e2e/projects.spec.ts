@@ -10,7 +10,7 @@ test("projects: create, edit, delete", async ({ page }) => {
   await page.goto("/projects");
   await heading(page, "Projects");
   await page.getByRole("link", { name: "Create project" }).click();
-  await heading(page, "Create project");
+  await heading(page, "New project");
 
   await page.getByRole("button", { name: "Create project" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "There is a problem" })).toBeVisible();

@@ -112,7 +112,8 @@ export function ConnectionStep(p: ConnectionStepProps) {
         )}
       </Panel>
 
-      <Panel title="Where the data comes from" bodyClassName="grid gap-3 md:grid-cols-2">
+      {/* The two choices are the cards themselves, straight on the tray: one surface level (ui-standard §1a). */}
+      <Panel cards title="Where the data comes from" bodyClassName="grid gap-tray md:grid-cols-2">
         <ChoiceCard inCard name="src-from" label="Database" checked={db} disabled={created && !db} onChange={() => setKind("db_watermark")}
           description="PostgreSQL, MySQL, SQL Server or Oracle." />
         <ChoiceCard inCard name="src-from" label="File inbox" checked={!db} disabled={created && db} onChange={() => setKind("file_inbox")}

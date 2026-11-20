@@ -211,8 +211,8 @@ for (const width of [834, 1440, 1920]) for (const theme of ["light", "dark"] as 
     await expect(panel).toBeVisible();
     expect((await panel.boundingBox())!.y).toBeGreaterThanOrEqual((await header.boundingBox())!.y + (await header.boundingBox())!.height);
     await page.screenshot({ path: path.join(SCRATCH, `permissions-rail-open-${width}-${theme}.png`), animations: "disabled" });
-    await header.getByRole("button", { name: "Add permissions", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Add permissions", exact: true })).toBeVisible();
+    await header.getByRole("button", { name: "Create permissions", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Create permissions", exact: true })).toBeVisible();
     await expect(panel).toBeHidden();
     await page.keyboard.press("Escape");
   });

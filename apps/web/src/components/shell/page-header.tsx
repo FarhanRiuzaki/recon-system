@@ -71,10 +71,12 @@ function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: 
  * (secondary actions) follow them as buttons from 768 px and fold into a "More actions" menu below, both in the server
  * HTML and switched by CSS. A destructive `more` action is in that menu at every width and opens its confirmation.
  */
-export function PageHeader({ title, status, actions, more, description, trail = [] }: {
-  title: string; status?: ReactNode; actions?: ReactNode; more?: HeaderAction[]; description?: string; trail?: TrailCrumb[];
+export function PageHeader({ title, crumb, status, actions, more, description, trail = [] }: {
+  title: string;
+  /** The breadcrumb's last crumb when it differs from the title (a version page: "Version 2" under "{name} · version 2"). */
+  crumb?: string; status?: ReactNode; actions?: ReactNode; more?: HeaderAction[]; description?: string; trail?: TrailCrumb[];
 }) {
-  usePublishTrail(usePathname(), [...trail, { label: title }]);
+  usePublishTrail(usePathname(), [...trail, { label: crumb ?? title }]);
   const extra = more?.length ? more : null;
   const [asking, setAsking] = useState<Extract<HeaderAction, { destructive: true }> | null>(null);
   return (

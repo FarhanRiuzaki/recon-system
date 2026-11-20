@@ -70,7 +70,7 @@ export function PermissionsPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Permissions" description="Everything a role can allow. Roles decide who has each permission."
-        actions={can("permission.create") ? <Button onClick={() => { setActions(""); setAdding(true); }}>Add permissions</Button> : undefined} />
+        actions={can("permission.create") ? <Button onClick={() => { setActions(""); setAdding(true); }}>Create permissions</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the permissions; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
@@ -92,10 +92,10 @@ export function PermissionsPage() {
       </FilterLayout>
       </FilterSurface>
       {adding && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setAdding(false); }} auditFields={false} reasons={[]} title="Add permissions"
+        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setAdding(false); }} auditFields={false} reasons={[]} title="Create permissions"
           description="Each name is the module and an action, for example audit.export."
           impact={["The new names appear in this list, and Superadmin holds them at once.", "Give them to other roles on each role's page: each one gets its own column in the matrix."]}
-          actionLabel="Add permissions" onConfirm={add}
+          actionLabel="Create permissions" onConfirm={add}
           lead={<>
             <Field id="perm-module" label="Module" required>
               <Select id="perm-module" value={module} onChange={(e) => setModule(e.target.value)}>

@@ -79,7 +79,7 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   for (const f of ["act20261102.txt", "act20261103.txt", "summary.pdf"]) writeFileSync(path.join(folder, f), KSEI);
 
   await page.goto(`/spaces/${ids.fico}/sources`);
-  await page.getByRole("link", { name: "New source", exact: true }).click();
+  await page.getByRole("link", { name: "Create source", exact: true }).click();
   await expect(page).toHaveURL(/\/sources\/new\?step=1$/);
   await expect(page.getByRole("heading", { level: 1, name: "New source" })).toBeVisible();
   // REC-F2b: Next is off with no sentence until the folder is checked
@@ -303,7 +303,7 @@ test("the source's Versions and Activity tabs: server-paged, state chips, every 
   // Edit source opens the wizard over a new draft
   await page.getByRole("button", { name: "Edit source", exact: true }).click();
   await expect(page).toHaveURL(/\/versions\/new\?step=2$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Edit BI-FAST core e2e" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Edit source" })).toBeVisible();
   // a saved draft reads its table's columns again through the stored connection
   await page.getByRole("button", { name: "Read the columns again", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "columns read" })).toHaveText("5 columns read: id, updated_at, ref, amount, note.");
@@ -319,7 +319,7 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await page.goto(`/spaces/${ids.fico}/sources/${fileSource}/versions/${fileVersion}`);
   await page.getByRole("link", { name: "Edit version 1", exact: true }).click();
   await expect(page).toHaveURL(/\/versions\/new\?step=1$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Edit KSEI ACT e2e" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Edit source" })).toBeVisible();
   // it was submitted once, so it has a history: no Delete draft source
   await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
 

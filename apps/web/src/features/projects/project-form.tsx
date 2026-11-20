@@ -25,7 +25,7 @@ import { PROJECT_DESCRIPTION_MAX, PROJECT_NAME_MAX, type ProjectStatus } from "@
 import { PROJECT_FORM_SHAPE } from "./shapes";
 import { projectPage, PROJECTS_KEY, projectUrl, useProjectDetail } from "./use-projects";
 
-const CREATE = { title: "Create project", description: "Name the project and say what it is for." };
+const CREATE = { title: "New project", description: "Name the project and say what it is for." };
 const EDIT = { title: "Edit project", description: "Change the name, description or status." };
 
 type Values = { name: string; description: string; status: ProjectStatus };

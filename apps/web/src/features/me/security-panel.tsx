@@ -38,7 +38,7 @@ export function SecurityPage({ providers }: { providers: Record<ConnectionProvid
   const q = useMe();
   // No flash: the loading shape appears after 150 ms and then stays at least 300 ms (it holds its place hidden before).
   const skeleton = useDelayedFlag(!q.data && !q.error);
-  const header = <PageHeader title="Security" description="Password, two-factor authentication and connected accounts." actions={<MeNav />} />;
+  const header = <><PageHeader title="Security" description="Password, two-factor authentication and connected accounts." /><MeNav /></>;
   if (q.error && !q.data) return <div className="grid gap-section">{header}<Panel><Failure title="Couldn't load your security settings" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   const u = q.data;
   if (!u || skeleton) return <LoadingShape sections={SECURITY_SHAPE} shown={skeleton} />;

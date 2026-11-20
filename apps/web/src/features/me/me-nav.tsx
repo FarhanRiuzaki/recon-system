@@ -10,7 +10,7 @@ const TABS = [
   { href: "/me/sessions", label: "Sessions" },
 ] as const;
 
-/** Links between the three own-account screens (the account menu has the same three). */
+/** Tabs of the three own-account screens, directly under the header (ui-standard §1: detail pages add Tabs under the header; the account menu has the same three). */
 export function MeNav() {
   const path = usePathname();
   return (

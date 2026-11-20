@@ -123,7 +123,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
 
   return (
     <VersionLayout
-      header={<PageHeader title={`${s.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
+      header={<PageHeader title={`${s.name} · version ${v.version}`} crumb={`Version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
         description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} actions={edit || undefined} />}
       notice={sentBack && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
       // a decision is for a version in review only (Figma 98:9211); anyone who may not decide sees why (98:9467)

@@ -20,7 +20,7 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 
 /**
  * A space's recons, server-paged (page.tsx has checked the viewer holds a role in the space and prefetched the first
- * page). New recon opens the create form for a config maker; anyone else gets the reason.
+ * page). Create recon opens the create form for a config maker; anyone else gets the reason.
  */
 export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const def = useMemo(() => RECONS(spaceId), [spaceId]);
@@ -28,8 +28,8 @@ export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName:
   const t = useTableQuery<ReconRowDto, { q: string }>(def);
   const maker = useSpaceRoles(spaceId).includes("config_maker");
   const add = maker
-    ? <Button asChild><Link href={newReconHref(spaceId)}>New recon</Link></Button>
-    : <BlockedButton reason={NEW_RECON_REASON}>New recon</BlockedButton>;
+    ? <Button asChild><Link href={newReconHref(spaceId)}>Create recon</Link></Button>
+    : <BlockedButton reason={NEW_RECON_REASON}>Create recon</BlockedButton>;
   return (
     <div className="grid gap-section">
       <PageHeader title="Recons" actions={add}

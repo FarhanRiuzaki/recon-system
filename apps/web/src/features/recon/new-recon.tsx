@@ -45,7 +45,7 @@ const optionText = (s: SourceRowDto) =>
 /**
  * /spaces/[spaceId]/recons/new (README row Plan 3): a name, a code and the two sides' sources; the API makes the recon
  * and its Draft v1 (with pass 1 ready to edit) together on this first save, then the builder opens over it. A role other than config maker gets
- * the reason. With no published source in the space there is nothing to pick: one sentence and New source instead.
+ * the reason. With no published source in the space there is nothing to pick: one sentence and Create source instead.
  */
 export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const router = useRouter();
@@ -115,8 +115,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
           <div className="grid justify-items-center gap-3 py-8 text-center">
             <p className="text-body text-fg">No published source in {spaceName} yet.</p>
             {roles.includes("source_admin")
-              ? <Button asChild><Link href={newSourceHref(spaceId)}>New source</Link></Button>
-              : <BlockedButton reason={NEW_SOURCE_REASON}>New source</BlockedButton>}
+              ? <Button asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
+              : <BlockedButton reason={NEW_SOURCE_REASON}>Create source</BlockedButton>}
           </div>
         </Panel>
       ) : (

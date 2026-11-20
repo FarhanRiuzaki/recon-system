@@ -75,7 +75,7 @@ test.describe("new user form", () => {
 
   test("an inactive new user can't get an invitation: the option is off, with the reason", async ({ page }) => {
     await page.goto("/users/new");
-    await heading(page, "Create user");
+    await heading(page, "New user");
     const invite = page.getByRole("radio", { name: "Invite by email" });
     await invite.check();
     await page.getByRole("checkbox", { name: "Active" }).uncheck();

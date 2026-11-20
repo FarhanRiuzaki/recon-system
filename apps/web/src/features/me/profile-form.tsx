@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Failure, Field, FormFooter, FormSection, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
+import { BlockedButton, Failure, Field, FormFooter, FormSection, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
 import { rules } from "@starterkit/ui/lib/validate";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -29,7 +29,7 @@ export function ProfilePage() {
   const q = useMe();
   // No flash: the loading shape appears after 150 ms and then stays at least 300 ms (it holds its place hidden before).
   const skeleton = useDelayedFlag(!q.data && !q.error);
-  const header = <PageHeader title="Profile" description="Your name and email." actions={<MeNav />} />;
+  const header = <><PageHeader title="Profile" description="Your name and email." /><MeNav /></>;
   if (q.error && !q.data) return <div className="grid gap-section">{header}<Panel><Failure title="Couldn't load your profile" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!q.data || skeleton) return <LoadingShape sections={PROFILE_SHAPE} shown={skeleton} />;
   return (
@@ -98,8 +98,8 @@ function Form({ user }: { user: MeDto }) {
       </FormSection>
       {error && <p role="alert" className="mb-4 text-body-sm text-down-ink">{error}</p>}
       <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
-        primary={<Button type="submit" disabled={busy || !dirty} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save profile</Button>}
-        cancel={!dirty && <span className="text-caption text-fg-3">Change a field to save.</span>} />
+        primary={<BlockedButton type="submit" reason={dirty ? null : "Change a field to save."} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save profile</BlockedButton>}
+        cancel={<Button type="button" variant="ghost" disabled={busy} onClick={() => { f.reset(); setCurrentPassword(""); setPwError(false); setError(null); }}>Cancel</Button>} />
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
           description="Your profile changes aren't saved." impact={["What you typed is discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
