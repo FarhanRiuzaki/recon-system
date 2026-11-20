@@ -1,7 +1,7 @@
 "use client";
 
 import { FilterChip } from "./badges";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
@@ -49,6 +49,7 @@ export function CommandCombobox({
   const setOpen = (o: boolean) => { setOpenState(o); onOpenChange?.(o); };
   const selected = value.map((v) => { const o = options.find((x) => x.value === v); return o?.chosen ?? o?.label ?? v; }).join(", ");
   const sheet = phone === "sheet";
+  const search = useRef<HTMLInputElement>(null);
   const item = (o: CommandOption) => (
     <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} className={o.description ? "h-auto min-h-9 py-1.5 max-md:min-h-11" : sheet ? "max-md:min-h-11" : undefined}
       onSelect={() => { onValueChange(multiple ? value.includes(o.value) ? value.filter((v) => v !== o.value) : [...value, o.value] : [o.value]); if (!multiple) setOpen(false); }}>
@@ -63,10 +64,13 @@ export function CommandCombobox({
     <PopoverTrigger asChild><Button id={id} type="button" variant="secondary" disabled={disabled} aria-label={`${label}: ${selected || "Choose"}`} aria-describedby={describedBy} className="w-full min-w-0 justify-start border-control-border font-normal">
       <Icon icon={SearchIcon} /><span className={selected ? "flex-1 truncate text-left" : "flex-1 truncate text-left text-fg-3"}>{selected || placeholder || "Search…"}</span><Icon data-slot="disclosure-icon" icon={ChevronDownIcon} />
     </Button></PopoverTrigger>
-    <PopoverContent aria-label={label} align="start" className={sheet ? "p-0 md:w-(--radix-popover-trigger-width) md:min-w-80" : "p-0"} data-phone={sheet ? "sheet" : undefined}>
-      <Command shouldFilter={!onQuery} label={label} className={sheet ? "max-md:h-full" : undefined}>
+    {/* open on the search field, also as a phone sheet (whose first control is Cancel), so typing reaches it */}
+    <PopoverContent aria-label={label} align="start" onOpenAutoFocus={(e) => { e.preventDefault(); search.current?.focus(); }} className={sheet ? "p-0 md:w-(--radix-popover-trigger-width) md:min-w-80" : "p-0"} data-phone={sheet ? "sheet" : undefined}>
+      {/* Enter picks the highlighted option only from the search field; on a button (Cancel, a footer action) it presses that button */}
+      <Command shouldFilter={!onQuery} label={label} className={sheet ? "max-md:h-full" : undefined}
+        onKeyDown={(e) => { if (e.key === "Enter" && e.target !== search.current) { e.preventDefault(); if (e.target instanceof HTMLButtonElement) e.target.click(); } }}>
         {sheet && <div className="flex items-center justify-between border-b border-line px-4 py-2 md:hidden"><span className="text-label text-fg">{label}</span><Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button></div>}
-        <CommandInput aria-label={`Search ${label}`} value={query} onValueChange={onQuery} placeholder={searchPlaceholder ?? "Search…"} />
+        <CommandInput ref={search} aria-label={`Search ${label}`} value={query} onValueChange={onQuery} placeholder={searchPlaceholder ?? "Search…"} />
         <CommandList aria-label={label} className={sheet ? "max-md:max-h-none max-md:flex-1" : undefined}>
           {loading ? <div className="grid gap-1 p-1"><p role="status" className="sr-only">{loadingText ?? "Searching…"}</p>
             {[0, 1, 2].map((i) => <div key={i} aria-hidden="true" className="grid gap-1.5 px-2 py-2"><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-1/3" /></div>)}</div>

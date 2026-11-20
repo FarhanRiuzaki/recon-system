@@ -150,6 +150,18 @@ describe("CommandCombobox (server query mode, REC-F2a)", () => {
     expect(button.disabled).toBe(true);
   });
 
+  it("opens on the search field, also as a phone sheet; Enter elsewhere (Cancel) picks nothing", async () => {
+    const pick = vi.fn();
+    await openWith({ options: TABLES, onValueChange: pick });
+    const searchField = document.querySelector<HTMLInputElement>("[cmdk-input]")!;
+    expect(document.activeElement).toBe(searchField);
+    const cancel = [...document.querySelectorAll("button")].find((b) => b.textContent === "Cancel")!;
+    cancel.focus();
+    await act(async () => { cancel.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })); });
+    expect(pick).not.toHaveBeenCalled();
+    expect(document.querySelector("[cmdk-list]")).toBeNull(); // Enter on Cancel closed the sheet
+  });
+
   it("a value not among the options (picked before, gone after a retest) still shows on the trigger; disabled can't open", async () => {
     const trigger = await openWith({ value: ["core.gone"], disabled: true });
     expect(trigger.getAttribute("aria-label")).toBe("Table: core.gone");
