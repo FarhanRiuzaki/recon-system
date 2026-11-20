@@ -9,7 +9,8 @@ import { Input } from "./input";
 
 /**
  * A password field with a "Show password" toggle (masked by default) and a Caps Lock note while it is on. The field
- * is masked again when its form submits, so the browser offers to save the password. Paste and password managers
+ * is masked again when its form submits, so the browser offers to save the password, and when it is marked invalid
+ * (a rejected password stays masked while it is retyped). Paste and password managers
  * work as on a plain password input (WCAG 3.3.8).
  */
 export function PasswordInput({ className, ref: outer, onKeyDown, onKeyUp, onBlur, ...props }: Omit<ComponentProps<"input">, "type">) {
@@ -24,6 +25,9 @@ export function PasswordInput({ className, ref: outer, onKeyDown, onKeyUp, onBlu
     form.addEventListener("submit", mask, true);
     return () => form.removeEventListener("submit", mask, true);
   }, []);
+  const invalid = !!props["aria-invalid"] && props["aria-invalid"] !== "false";
+  const [wasInvalid, setWasInvalid] = useState(invalid);
+  if (invalid !== wasInvalid) { setWasInvalid(invalid); if (invalid) setShown(false); }
   const readCaps = (e: KeyboardEvent<HTMLInputElement>) => setCaps(e.getModifierState("CapsLock"));
   const describedBy = [props["aria-describedby"], caps ? capsId : null].filter(Boolean).join(" ") || undefined;
   return (

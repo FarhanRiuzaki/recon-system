@@ -50,7 +50,7 @@ describe("out of date (stale) after a connection change", () => {
   it("engine, host, port, user, password or TLS change the key; the database does not (it is picked from the list)", () => {
     const c = { ...EMPTY_CONN, host: "db", user: "ro", password: "x" };
     expect(credKey({ ...c, database: "other" })).toBe(credKey(c));
-    for (const over of [{ host: "db2" }, { port: "5433" }, { user: "ro2" }, { password: "y" }, { tls: true }, { engine: "mysql" as const }]) expect(credKey({ ...c, ...over })).not.toBe(credKey(c));
+    for (const over of [{ host: "db2" }, { port: "5433" }, { user: "ro2" }, { password: "y" }, { tls: false }, { engine: "mysql" as const }]) expect(credKey({ ...c, ...over })).not.toBe(credKey(c));
   });
 });
 

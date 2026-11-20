@@ -1,7 +1,7 @@
 // The source wizard's working state and the rules its steps share (no React): what the user has typed, how a spec is
 // built from it, which control an API error belongs to, and which values a connection test ran with.
 import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
-import { type AmountUnit, DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
+import { type AmountUnit, type ConnectionField, DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
 import { FILE_DATE } from "../spec-draft";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
@@ -23,7 +23,21 @@ export type Tested = { result: ConnectionTestDto; key: string };
 export type Preview = { result: SourcePreviewDto | null; error: string | null; pending: boolean };
 
 export const DEFAULT_PORT: Record<DbEngine, string> = { postgres: "5432", mysql: "3306", mssql: "1433", oracle: "1521" };
-export const EMPTY_CONN: Conn = { engine: "postgres", host: "", port: DEFAULT_PORT.postgres, database: "", user: "", password: "", tls: false };
+/** A new connection starts with TLS on (REC-F2b: secure default); typing a local host turns it off until the user chooses. */
+export const EMPTY_CONN: Conn = { engine: "postgres", host: "", port: DEFAULT_PORT.postgres, database: "", user: "", password: "", tls: true };
+/** The control a failed test's `field` points at (REC-F2b). */
+export const FIELD_CONTROL: Record<ConnectionField, string> = {
+  host: "src-host", port: "src-port", username: "src-user", password: "src-password", database: "src-database", tls: "src-tls",
+};
+
+/** The code a name suggests: "Catalog check" → catalog-check (lowercase, accents dropped, other runs → "-", 64 at most). */
+export function codeOf(name: string): string {
+  return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9_]+/g, "-").replace(/^[-_]+/, "").slice(0, 64).replace(/-+$/, "");
+}
+/** A name typed: the code follows it while the code is still the one the old name suggested (Edit makes it the user's). */
+export const withName = (d: Draft, name: string): Draft => ({ ...d, name, code: d.code === codeOf(d.name) ? codeOf(name) : d.code });
+/** The engine chosen: its default port, unless the user changed the port. */
+export const withEngine = (c: Conn, engine: Conn["engine"]): Conn => ({ ...c, engine, port: c.port === DEFAULT_PORT[c.engine] || !c.port ? DEFAULT_PORT[engine] : c.port });
 
 /** The id of the control that edits spec path `path` ("mapping.amount_minor" → "src-mapping-amount_minor"). */
 export const ctl = (path: string) => `src-${path.replace(/[^A-Za-z0-9_-]/g, "-")}`;
@@ -90,7 +104,7 @@ export function connectionProblems(d: Draft, o: { created: boolean; replace: boo
   const i = d.spec.input;
   if (i.kind === "file_inbox") {
     need(i.path.trim().startsWith("/"), ctl("input.path"), "Enter the folder as a full path, starting with /.");
-    need(!!i.pattern.trim() && !/[/\\]/.test(i.pattern), ctl("input.pattern"), "Enter a file name pattern without folders, such as act*.txt.");
+    need(!/[/\\]/.test(i.pattern), ctl("input.pattern"), "Enter a file name pattern without folders, such as act*.txt.");
     return out;
   }
   const c = d.conn;
@@ -113,6 +127,7 @@ export function pullProblems(d: Draft, o: { replace: boolean } = { replace: fals
   const i = d.spec.input;
   const out: { id: string; reason: string }[] = [];
   if (d.kind !== "file_inbox" && o.replace && !d.conn.database.trim()) out.push({ id: "src-database", reason: "Choose the database, or type its name." });
+  if (i.kind === "file_inbox" && !i.pattern.trim()) out.push({ id: ctl("input.pattern"), reason: "Enter a file name pattern, such as act*.txt." });
   if (i.kind === "db_snapshot") {
     if (!/:business_date\b/.test(i.query)) out.push({ id: ctl("input.query"), reason: "Write the SELECT with the :business_date parameter." });
     if (!i.schedule.trim()) out.push({ id: ctl("input.schedule"), reason: "Enter when it runs, as a cron expression." });

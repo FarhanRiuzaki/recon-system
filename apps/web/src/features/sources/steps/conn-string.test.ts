@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { parseConnString } from "./conn-string";
 
 describe("parseConnString (REC-F2b)", () => {

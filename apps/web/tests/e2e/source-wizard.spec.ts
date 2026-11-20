@@ -82,18 +82,22 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await page.getByRole("link", { name: "New source", exact: true }).click();
   await expect(page).toHaveURL(/\/sources\/new\?step=1$/);
   await expect(page.getByRole("heading", { level: 1, name: "New source" })).toBeVisible();
-  await blockedWith(page, "Next: fields & mapping", "Test the folder first; files are picked up from it.");
+  // REC-F2b: Next is off with no sentence until the folder is checked
+  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
 
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("KSEI ACT e2e");
+  // the code follows the name until Edit
+  await expect(page.getByText("Code: ksei-act-e2e")).toBeVisible();
+  await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`ksei-act-${RUN}`);
   await page.getByRole("radio", { name: /File inbox/ }).check();
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
-  await page.getByRole("button", { name: "Test the folder" }).click();
+  await page.getByRole("button", { name: "Check folder" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText("Folder readable · 2 files match act*.txt");
-  // a pass counts only for the values tested
+  // a pass counts only for the values checked
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(`${folder}/`);
-  await blockedWith(page, "Next: fields & mapping", "The folder changed since the last test. Test it again.");
+  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   // the test stored nothing: the source is made at Next
   expect((await (await page.request.get(`/api/spaces/${ids.fico}/sources?q=ksei-act-${RUN}`)).json() as { total: number }).total).toBe(0);
@@ -155,28 +159,30 @@ test("a PostgreSQL watermark source: a failed test, then a pass without a databa
   await page.goto(`/spaces/${ids.fico}/sources/new?step=1`);
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("BI-FAST core e2e");
   // the file source's code: taken, which shows on Code at Next, before anything is made
+  await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`ksei-act-${RUN}`);
   await page.getByRole("radio", { name: /^Database/ }).check();
-  await page.getByRole("textbox", { name: "Host", exact: true }).fill(src.hostname);
-  await page.getByRole("textbox", { name: "Port", exact: true }).fill(src.port || "5432");
-  // a database that isn't there: the API's sentence with the driver's code, and Next stays blocked
-  await page.getByRole("textbox", { name: "Database", exact: true }).fill("recon_no_such_db");
-  await page.getByRole("textbox", { name: "Username", exact: true }).fill(decodeURIComponent(src.username));
-  // the local cluster trusts its users, so any password passes; the API still needs one
+  // REC-F2b: a pasted connection string fills the fields (never sent); a database that isn't there is said on Database
+  await page.getByRole("button", { name: "Paste a connection string", exact: true }).click();
+  await page.getByRole("textbox", { name: "Connection string", exact: true }).fill(`postgresql://${src.username}@${src.hostname}:${src.port || "5432"}/recon_no_such_db`);
+  await page.getByRole("textbox", { name: "Connection string", exact: true }).press("Enter");
+  await expect(page.getByRole("textbox", { name: "Host", exact: true })).toHaveValue(src.hostname);
+  await expect(page.getByRole("textbox", { name: "Username", exact: true })).toHaveValue(decodeURIComponent(src.username));
+  // the local cluster trusts its users, so any password passes; the API still needs one. Enter in a field connects
   await page.getByLabel("Password", { exact: true }).fill(decodeURIComponent(src.password) || "trusted-cluster");
-  await page.getByRole("button", { name: "Test connection" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "database" })).toHaveText("The database was not found (3D000). Check the database name.");
-  await blockedWith(page, "Next: fields & mapping", "Test the connection first; step 2 reads the columns through it.");
-  // REC-F2a: no database typed, the test runs on `postgres` and says what it found; the database then is a list
+  await page.getByLabel("Password", { exact: true }).press("Enter");
+  await expect(page.getByText("Database recon_no_such_db wasn't found. Check the name.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Database", exact: true })).toBeFocused();
+  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
+  // REC-F2a: no database typed, the connect runs on `postgres`; Server folds into one line and Database is a list
   await page.getByRole("textbox", { name: "Database", exact: true }).fill("");
-  await page.getByRole("button", { name: "Test connection" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Connected to PostgreSQL" })).toHaveText(/^Connected to PostgreSQL [\d.]+ as .+\. \d+ databases\. Choose one to list its tables\.$/);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^PostgreSQL [\d.]+ · / })).toContainText(`${decodeURIComponent(src.username)}@${src.hostname}:${src.port || "5432"} · TLS`);
   const database = page.getByRole("button", { name: /^Database: / });
   await database.click();
   await page.getByPlaceholder("Search databases").fill(src.pathname.slice(1));
   await page.getByRole("option", { name: src.pathname.slice(1), exact: true }).click();
-  // a database chosen is tested at once: the sentence counts its tables, and Next counts the pass
-  await expect(page.getByRole("status").filter({ hasText: "Connected to PostgreSQL" })).toHaveText(new RegExp(`\\d+ databases; 2 tables in ${src.pathname.slice(1)}\\.$`));
+  // a database chosen is connected at once, so its tables list and Next counts the pass
   await expect(database).toHaveAccessibleName(`Database: ${src.pathname.slice(1)}`);
 
   // the table: the tables and views this login can SELECT, under their schema, each with its kind and column count
@@ -318,10 +324,11 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   const folder = path.join(INBOX, "ksei");
   await page.goto(`/spaces/${ids.fico}/sources/new?step=1`);
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("Throwaway e2e");
+  await page.getByRole("button", { name: "Edit code", exact: true }).click();
   await page.getByRole("textbox", { name: "Code", exact: true }).fill(`throwaway-${RUN}`);
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
-  await page.getByRole("button", { name: "Test the folder" }).click();
+  await page.getByRole("button", { name: "Check folder" }).click();
   await next(page, "Next: fields & mapping").click();
   await expect(page).toHaveURL(/step=2$/);
   await page.getByRole("button", { name: "Delete draft source", exact: true }).click();

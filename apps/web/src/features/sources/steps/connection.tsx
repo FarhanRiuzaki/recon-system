@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { ChoiceCard, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
-import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
+import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -11,10 +11,12 @@ import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { DB_ENGINES, FILE_ENCODINGS, type SourceKind } from "@starterkit/shared/sources";
+import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, type SourceKind } from "@starterkit/shared/sources";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
-import { emptySpec, type Conn, ctl, DEFAULT_PORT, type Draft, type Tested } from "./model";
+import { parseConnString } from "./conn-string";
+import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, withEngine, withName } from "./model";
 import { NamePicker, TablePicker } from "./pickers";
 
 const ENGINE_LABEL = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" } as const;
@@ -51,103 +53,80 @@ export type ConnectionStepProps = {
   set: (fn: (d: Draft) => Draft) => void;
   /** The source exists already: name, code and kind are fixed (no route changes them). */
   created: boolean;
-  /** A connection is stored: the credential fields may stay empty to test it as it is. */
+  /** A connection is stored and the form still shows it as it is: the credential fields may stay empty. */
   stored: boolean;
   err: (id: string) => string | undefined;
   tested: Tested | null;
   testing: boolean;
   onTest: () => void;
+  /**
+   * A test passed over the connection on screen (its lists belong to it): the server's short version, else null.
+   * `listed` = some test passed since the form opened (the Data stage shows, marked stale when the connection changed).
+   */
+  connected: { version: string | null } | null;
+  listed: boolean;
   catalog: CatalogProps;
   /** Editing a published source: the version a change of how rows are read makes; null otherwise. */
   nextVersion: number | null;
 };
-/** Under the test's panel title until the source exists (designer's copy). */
-const SAVED_AT_NEXT = "Next unlocks once the test passes; the source is saved at Next";
+
+/** A rejected or untested connection string: one sentence, one step. */
+const UNREADABLE = "This connection string can't be read. Use postgresql://, mysql://, sqlserver:// or oracle://.";
 
 /**
- * Step 1, Connection (Figma 20:5937 file inbox, 21:6049 database, 97:9270 / 101:9658 a failed test): the source's name,
- * where its data comes from, the connection or folder and how it is pulled. A source admin's step; Test connection
- * checks exactly the values on screen, without storing them; the wizard's Next counts the pass only while they stay the
- * same, and makes the source (or replaces its connection) only then.
+ * Step 1, Connection (REC-F2b, Figma 02 v1.0.5; rules in docs/recon/ux-form-rules.md): Source → where the data comes
+ * from → Server (engine, host and port, then Sign in) → Connect → Data (database, table) → How to pull. A stage shows
+ * once the one before it is done; the connected server folds into one line with Change. Connect checks exactly the
+ * values on screen, storing nothing; the wizard's Next makes the source (or replaces its connection) only then.
  */
 export function ConnectionStep(p: ConnectionStepProps) {
-  const { d, set, created, err } = p;
+  const { d, set, created } = p;
   const i = d.spec.input;
   const setInput = (patch: Partial<SourceSpec["input"]>) => set((x) => ({ ...x, spec: { ...x.spec, input: { ...x.spec.input, ...patch } as SourceSpec["input"] } }));
-  const setConn = (patch: Partial<Conn>) => set((x) => ({ ...x, conn: { ...x.conn, ...patch } }));
   const setKind = (kind: SourceKind) => set((x) => (x.kind === kind ? x : { ...x, kind, spec: emptySpec(kind) }));
   const db = d.kind !== "file_inbox";
+  // a failed test's sentence sits on the field it names while the values it ran with stay on screen (else under Connect)
+  const failed = p.tested && !p.tested.result.ok && p.tested.key === connKey(d) ? p.tested.result : null;
+  const failedOn = failed ? (failed.field ? FIELD_CONTROL[failed.field] : db ? "src-connect" : ctl("input.path")) : null;
+  const err = (id: string) => p.err(id) ?? (failedOn === id ? failed!.message : undefined);
+  const [codeOpen, setCodeOpen] = useState(false);
 
   return (
     <div className="grid gap-section">
-      <Panel title="Source" bodyClassName="grid gap-4 md:grid-cols-2">
+      <Panel title="Source" bodyClassName="grid gap-2">
         <Field id="src-name" label="Name" required={!created} error={err("src-name")}>
-          <Input id="src-name" value={d.name} readOnly={created} onChange={(e) => set((x) => ({ ...x, name: e.target.value }))} autoComplete="off" />
+          <Input id="src-name" value={d.name} readOnly={created} onChange={(e) => { const v = e.target.value; set((x) => withName(x, v)); }} autoComplete="off" />
         </Field>
-        <Field id="src-code" label="Code" required={!created} note="Can't be changed later." error={err("src-code")}>
-          <Input id="src-code" value={d.code} readOnly={created} className="font-mono" onChange={(e) => set((x) => ({ ...x, code: e.target.value }))} autoComplete="off" spellCheck={false} />
-        </Field>
+        {!created && (codeOpen || err("src-code")) ? (
+          <Field id="src-code" label="Code" required note="Can't be changed later." error={err("src-code")}>
+            <Input id="src-code" value={d.code} className="font-mono" onChange={(e) => { const v = e.target.value; set((x) => ({ ...x, code: v })); }} autoComplete="off" spellCheck={false} />
+          </Field>
+        ) : (
+          <p className="flex flex-wrap items-center gap-1 text-caption text-fg-3">
+            <span>Code: <span className="font-mono">{d.code || "–"}</span></span>
+            {!created && <><span aria-hidden="true">·</span><Button type="button" variant="link" size="sm" className="text-caption" onClick={() => {
+              setCodeOpen(true);
+              requestAnimationFrame(() => document.getElementById("src-code")?.focus());
+            }}>Edit<span className="sr-only"> code</span></Button></>}
+          </p>
+        )}
       </Panel>
 
       <Panel title="Where the data comes from" bodyClassName="grid gap-3 md:grid-cols-2">
         <ChoiceCard name="src-from" label="Database" checked={db} disabled={created && !db} onChange={() => setKind("db_watermark")}
-          description="PostgreSQL, MySQL, SQL Server or Oracle. Pulled on a schedule, by watermark or as a snapshot per business date." />
+          description="PostgreSQL, MySQL, SQL Server or Oracle." />
         <ChoiceCard name="src-from" label="File inbox" checked={!db} disabled={created && db} onChange={() => setKind("file_inbox")}
-          description="Files land in an SFTP or NFS folder and are picked up by file name." />
+          description="An SFTP or NFS folder; files are picked up by name." />
       </Panel>
 
       {db ? (
-        <Panel title="Connection" bodyClassName="grid gap-4"
-          description={created ? "Only source admins see and change this · Changes here apply at once for source admins; no new version." : `Only source admins see and change this · ${SAVED_AT_NEXT}`}>
-          <div className="grid gap-4 md:grid-cols-3">
-            <Field id="src-engine" label="Engine">
-              <Select className="w-full min-w-0" id="src-engine" value={d.conn.engine} onChange={(e) => {
-                const engine = e.target.value as Conn["engine"];
-                setConn({ engine, port: d.conn.port === DEFAULT_PORT[d.conn.engine] ? DEFAULT_PORT[engine] : d.conn.port });
-              }}>
-                {DB_ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
-              </Select>
-            </Field>
-            <Field id="src-host" label="Host" note={p.stored ? STORED : undefined} error={err("src-host")}>
-              <Input id="src-host" value={d.conn.host} className="font-mono" onChange={(e) => setConn({ host: e.target.value })} autoComplete="off" spellCheck={false} />
-            </Field>
-            <Field id="src-port" label="Port" error={err("src-port")}>
-              <Input id="src-port" value={d.conn.port} inputMode="numeric" className="font-mono" onChange={(e) => setConn({ port: e.target.value.replace(/\D/g, "") })} autoComplete="off" />
-            </Field>
-            {d.conn.engine === "oracle" ? (
-              <Field id="src-database" label="Service name" note={p.stored ? STORED : undefined} error={err("src-database")}>
-                <Input id="src-database" value={d.conn.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
-              </Field>
-            ) : (
-              <NamePicker id="src-database" label="Database" noun="database" value={d.conn.database} error={err("src-database")} note={p.stored ? STORED : DATABASE_NOTE}
-                list={p.catalog.names} names={p.catalog.names.status === "ready" ? p.catalog.names.data : null} stale={p.catalog.stale}
-                free={p.catalog.free.database} onFree={(f) => p.catalog.onFree("database", f)} onRetry={p.catalog.onRetryNames}
-                onChange={(v) => setConn({ database: v })} onPick={p.catalog.onPickDatabase} />
-            )}
-            <Field id="src-user" label="Username" error={err("src-user")}
-              note={`Use a read-only account.${p.stored ? ` ${STORED}` : ""}`}>
-              <Input id="src-user" value={d.conn.user} className="font-mono" onChange={(e) => setConn({ user: e.target.value })} autoComplete="off" spellCheck={false} />
-            </Field>
-            <Field id="src-password" label="Password" note={p.stored ? STORED : undefined} error={err("src-password")}>
-              <PasswordInput id="src-password" value={d.conn.password} onChange={(e) => setConn({ password: e.target.value })} autoComplete="off" />
-            </Field>
-            {d.conn.engine === "oracle" && p.catalog.names.status !== "idle" && (
-              <NamePicker id="src-schema" label="Schema" noun="schema" value={p.catalog.schema} list={p.catalog.names} names={p.catalog.names.status === "ready" ? p.catalog.names.data : null}
-                stale={p.catalog.stale} free={p.catalog.free.database} onFree={(f) => p.catalog.onFree("database", f)} onRetry={p.catalog.onRetryNames}
-                onChange={p.catalog.onSchema} onPick={p.catalog.onSchema} />
-            )}
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="inline-flex items-center gap-2">
-              <Switch id="src-tls" checked={d.conn.tls} onChange={(e) => setConn({ tls: e.target.checked })} aria-label="Encrypt the connection (TLS)" />
-              <label htmlFor="src-tls" className="text-body text-fg">Encrypt the connection (TLS)</label>
-            </span>
-            <TestButton {...p} label="Test connection" />
-          </div>
-          <TestResult tested={p.tested} />
-        </Panel>
+        <>
+          <Server {...p} err={err} failed={failedOn === "src-connect" ? failed!.message : null} />
+          {p.listed && <Data {...p} err={err} setInput={setInput} />}
+          {p.listed && <Pull {...p} err={err} setInput={setInput} setKind={setKind} />}
+        </>
       ) : i.kind === "file_inbox" && (
-        <Panel title="File inbox" description={created ? undefined : SAVED_AT_NEXT} bodyClassName="grid gap-4 md:grid-cols-2">
+        <Panel title="File inbox" bodyClassName="grid gap-4 md:grid-cols-2">
           <Field id={ctl("input.path")} label="Folder" note="A folder inside the inbox folders this install allows, as a full path." error={err(ctl("input.path"))}>
             <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
@@ -182,35 +161,235 @@ export function ConnectionStep(p: ConnectionStepProps) {
             <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
           </span>
           <div className="grid gap-3 md:col-span-2">
-            <span><TestButton {...p} label="Test the folder" /></span>
-            <TestResult tested={p.tested} />
+            <span><ActionButton testing={p.testing} onTest={p.onTest} label="Check folder" busy="Checking…" /></span>
+            {p.tested?.result.ok && p.tested.key === connKey(d) && <Notice live>{p.tested.result.message}</Notice>}
           </div>
         </Panel>
       )}
-
-      {db && <Pull {...p} setInput={setInput} setKind={setKind} />}
     </div>
   );
 }
 
-function TestButton({ testing, onTest, label }: ConnectionStepProps & { label: string }) {
+/** The stage's primary action: "Connect", "Connecting…" with a spinner while it runs; the fields stay editable. */
+function ActionButton({ testing, onTest, label, busy }: { testing: boolean; onTest: () => void; label: string; busy: string }) {
   return (
-    <Button type="button" variant="secondary" onClick={onTest} disabled={testing} aria-busy={testing || undefined}>
-      {testing && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{label}
+    <Button id="src-connect-button" type="button" className="w-full md:w-48" onClick={() => { if (!testing) onTest(); }} aria-disabled={testing || undefined} aria-busy={testing || undefined}>
+      {testing && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{testing ? busy : label}
     </Button>
   );
 }
 
-/** The test's answer under the button (97:9589): the API's sentence, announced; a failure in the warning tone. */
-function TestResult({ tested }: { tested: Tested | null }) {
-  if (!tested) return null;
-  return <Notice tone={tested.result.ok ? "info" : "warn"} live>{tested.result.message}</Notice>;
+/** Enter in a field of the stage runs its action (rule 10); never the wizard's Next. */
+const enterRuns = (run: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
+  const t = e.target as HTMLElement;
+  if (e.key !== "Enter" || t.tagName !== "INPUT" || (t as HTMLInputElement).type === "checkbox") return;
+  e.preventDefault();
+  run();
+};
+
+/**
+ * Server and Sign in (Figma 02 v1.0.5, 01/03/04/05): engine, host and port (Oracle: service name), a pasted connection
+ * string, username and password, TLS, then Connect. Once connected (or opened on a stored connection), one line with
+ * Change.
+ */
+function Server(p: ConnectionStepProps & { failed: string | null }) {
+  const { d, set, err, created } = p;
+  const c = d.conn;
+  const [changing, setChanging] = useState(false);
+  const [pasting, setPasting] = useState<{ text: string; error: string | null } | null>(null);
+  const [offFor, setOffFor] = useState<string | null>(null);
+  // TLS follows the host (off only for this machine) until the user sets it; a stored connection's TLS is the user's
+  const tlsChosen = useRef(created);
+  const setConn = (patch: Partial<Conn>) => set((x) => {
+    const next = { ...x.conn, ...patch };
+    if (patch.host !== undefined && !tlsChosen.current) next.tls = !isLocalHost(next.host);
+    return { ...x, conn: next };
+  });
+  const connect = () => { setChanging(false); p.onTest(); };
+  // a failure on screen opens the form, but a database refused after a connect (shown on Data's picker)
+  const failing = !!p.tested && !p.tested.result.ok && p.tested.key === connKey(d) && !(p.listed && p.tested.result.field === "database");
+  const folded = !changing && !failing && (p.connected !== null || (p.stored && !p.listed));
+  const wasFolded = useRef(folded);
+  // connected: focus moves on to the first field of Data (rule 1, 7)
+  useEffect(() => {
+    if (folded && !wasFolded.current && p.connected) {
+      requestAnimationFrame(() => {
+        for (const id of ["src-database", "src-schema", ctl("input.table"), ctl("input.query")]) {
+          const el = document.getElementById(id);
+          if (el) { el.focus(); return; }
+        }
+      });
+    }
+    wasFolded.current = folded;
+  }, [folded, p.connected]);
+  const oracle = c.engine === "oracle";
+  const note = p.stored ? STORED : undefined;
+  // before a connect, Database shows only once it has a value (a pasted string) or an error, then stays while typed in
+  const wantDb = !!c.database || !!err("src-database");
+  const [dbShown, setDbShown] = useState(wantDb);
+  if (wantDb && !dbShown) setDbShown(true);
+
+  function paste(text: string) {
+    const parsed = parseConnString(text);
+    if (!parsed) { setPasting({ text, error: UNREADABLE }); return; }
+    const { password, ...rest } = parsed;
+    setConn({ ...rest, ...(password ? { password } : {}) });
+    setPasting(null);
+    requestAnimationFrame(() => document.getElementById(password ? "src-connect-button" : "src-password")?.focus());
+  }
+
+  if (folded) {
+    const who = c.host.trim() ? `${c.user.trim() ? `${c.user.trim()}@` : ""}${c.host.trim()}:${c.port}` : "Stored sign-in";
+    const summary = [`${ENGINE_LABEL[c.engine]}${p.connected?.version ? ` ${p.connected.version}` : ""}`, who, `TLS ${c.tls ? "on" : "off"}`].join(" · ");
+    return (
+      <Panel title="Server" bodyClassName="grid gap-4">
+        <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-fg">
+          <span className="min-w-0 break-words">{summary}</span>
+          <Button type="button" variant="link" size="sm" onClick={() => {
+            setChanging(true);
+            requestAnimationFrame(() => document.getElementById("src-host")?.focus());
+          }}>Change<span className="sr-only"> server</span></Button>
+        </p>
+        {!p.connected && <span><ActionButton testing={p.testing} onTest={connect} label="Connect" busy="Connecting…" /></span>}
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title="Server" bodyClassName="grid gap-4" description={created ? "Changes here apply at once; no new version." : undefined}>
+      <div className="grid gap-4" onKeyDown={enterRuns(connect)}>
+        <div className="grid gap-2">
+          <span className="text-label text-fg" id="src-engine-label">Engine</span>
+          <div className="max-md:hidden">
+            <Segmented label="Engine" value={c.engine} onChange={(engine) => set((x) => ({ ...x, conn: withEngine(x.conn, engine) }))}
+              options={DB_ENGINES.map((e) => ({ value: e, label: ENGINE_LABEL[e] }))} />
+          </div>
+          {/* phone: four engines don't fit one row of a segmented control; a select, never 3 + 1 (Captain, v1.0.5 P2) */}
+          <Select className="w-full min-w-0 md:hidden" aria-labelledby="src-engine-label" value={c.engine}
+            onChange={(e) => { const engine = e.target.value as Conn["engine"]; set((x) => ({ ...x, conn: withEngine(x.conn, engine) })); }}>
+            {DB_ENGINES.map((e) => <option key={e} value={e}>{ENGINE_LABEL[e]}</option>)}
+          </Select>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-4 md:grid-cols-[minmax(0,1fr)_9rem]">
+          <Field id="src-host" label="Host" note={note} error={err("src-host")}>
+            <Input id="src-host" value={c.host} className="font-mono" onChange={(e) => setConn({ host: e.target.value })} autoComplete="off" spellCheck={false} />
+          </Field>
+          <Field id="src-port" label="Port" error={err("src-port")}>
+            <Input id="src-port" value={c.port} inputMode="numeric" className="font-mono" onChange={(e) => setConn({ port: e.target.value.replace(/\D/g, "") })} autoComplete="off" />
+          </Field>
+        </div>
+        {(oracle || (!p.listed && dbShown)) && (
+          <Field id="src-database" label={oracle ? "Service name" : "Database"} note={note ?? (oracle ? undefined : DATABASE_NOTE)} error={err("src-database")}>
+            <Input id="src-database" value={c.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
+          </Field>
+        )}
+        {pasting ? (
+          <Field id="src-conn-string" label="Connection string" error={pasting.error}>
+            <Input id="src-conn-string" value={pasting.text} className="font-mono" autoComplete="off" spellCheck={false} placeholder="postgresql://user@host:5432/database"
+              onChange={(e) => setPasting({ text: e.target.value, error: null })} onPaste={(e) => { e.preventDefault(); paste(e.clipboardData.getData("text")); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); paste(pasting.text); } if (e.key === "Escape") setPasting(null); }}
+              onBlur={() => { if (pasting.text.trim()) paste(pasting.text); else setPasting(null); }} />
+          </Field>
+        ) : (
+          <span><Button type="button" variant="link" size="sm" className="text-caption" onClick={() => {
+            setPasting({ text: "", error: null });
+            requestAnimationFrame(() => document.getElementById("src-conn-string")?.focus());
+          }}>Paste a connection string</Button></span>
+        )}
+
+        <h3 className="pt-2 text-title-3 text-fg">Sign in</h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field id="src-user" label="Username" error={err("src-user")} note={`Use a read-only account.${note ? ` ${note}` : ""}`}>
+            <Input id="src-user" value={c.user} className="font-mono" onChange={(e) => setConn({ user: e.target.value })} autoComplete="off" spellCheck={false} />
+          </Field>
+          <Field id="src-password" label="Password" note={note} error={err("src-password")}>
+            <PasswordInput id="src-password" value={c.password} onChange={(e) => setConn({ password: e.target.value })} autoComplete="off" />
+          </Field>
+        </div>
+        <div className="grid gap-2">
+          <span className="inline-flex items-center gap-2">
+            <Switch id="src-tls" checked={c.tls} aria-label="Encrypt the connection (TLS)" aria-invalid={err("src-tls") ? true : undefined}
+              aria-describedby={err("src-tls") ? "src-tls-error" : undefined} onChange={(e) => {
+                if (!e.target.checked && !isLocalHost(c.host)) { setOffFor(c.host.trim() || "this host"); return; }
+                tlsChosen.current = true;
+                setConn({ tls: e.target.checked });
+              }} />
+            <label htmlFor="src-tls" className="text-body text-fg">Encrypt the connection (TLS)</label>
+          </span>
+          {err("src-tls") && <p id="src-tls-error" className="text-body-sm text-down-ink">{err("src-tls")}</p>}
+        </div>
+      </div>
+      <div className="grid gap-2">
+        <span><ActionButton testing={p.testing} onTest={connect} label="Connect" busy="Connecting…" /></span>
+        {p.failed && <p id="src-connect" role="alert" tabIndex={-1} className="text-body-sm text-down-ink outline-none">{p.failed}</p>}
+      </div>
+      {offFor && (
+        // the dialog's own form must not submit the wizard's (React events bubble through the portal)
+        <div className="contents" onSubmit={(e) => e.stopPropagation()}>
+          <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setOffFor(null); }} auditFields={false} reasons={[]} impact={[]} destructive
+            title={`Turn off TLS for ${offFor}?`} description="The password and the data travel unencrypted. This is recorded in the activity log."
+            actionLabel="Turn off TLS" cancelLabel="Keep TLS" onConfirm={async () => { tlsChosen.current = true; setConn({ tls: false }); setOffFor(null); }} />
+        </div>
+      )}
+    </Panel>
+  );
 }
 
-/** How a database source is pulled: by watermark from a table or a SELECT, or a snapshot per business date. Its watermark and id columns are picked in step 2, once the columns are read. */
-function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void; setKind: (k: SourceKind) => void }) {
-  const { d, set, err, created, setInput } = p;
+/**
+ * Data (Figma 02 v1.0.5, 02): after a connect, the database (Oracle: schema) the login can open, then the table, or a
+ * SELECT instead. A stored connection left as it is keeps its database, so only the table is asked.
+ */
+function Data(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void }) {
+  const { d, set, err, setInput } = p;
   const i = d.spec.input;
+  const oracle = d.conn.engine === "oracle";
+  const cat = p.catalog;
+  const names = cat.names.status === "ready" ? cat.names.data : null;
+  const typed = !p.stored;
+  if (!(oracle ? cat.names.status !== "idle" : typed) && i.kind !== "db_watermark") return null;
+  return (
+    <Panel title="Data" bodyClassName="grid gap-4">
+      {oracle ? cat.names.status !== "idle" && (
+        <NamePicker id="src-schema" label="Schema" noun="schema" value={cat.schema} list={cat.names} names={names} stale={cat.stale} free={cat.free.database}
+          onFree={(f) => cat.onFree("database", f)} onRetry={cat.onRetryNames} onChange={cat.onSchema} onPick={cat.onSchema} />
+      ) : typed && (
+        <NamePicker id="src-database" label="Database" noun="database" value={d.conn.database} error={err("src-database")} note={DATABASE_NOTE}
+          list={cat.names} names={names} stale={cat.stale} free={cat.free.database} onFree={(f) => cat.onFree("database", f)} onRetry={cat.onRetryNames}
+          onChange={(v) => set((x) => ({ ...x, conn: { ...x.conn, database: v } }))} onPick={cat.onPickDatabase} />
+      )}
+      {i.kind === "db_watermark" && (d.from === "table" ? (
+        <div className="grid gap-1">
+          <TablePicker id={ctl("input.table")} label="Table" value={i.table ?? ""} error={err(ctl("input.table"))} note="table or schema.table, as the source's catalog spells it."
+            engine={d.conn.engine} database={(oracle ? cat.schema : d.conn.database).trim() || "this database"}
+            list={cat.tables} page={cat.tables.status === "ready" ? cat.tables.data : null} stale={cat.stale || cat.tablesStale}
+            free={cat.free.table} onFree={(f) => cat.onFree("table", f)} onRetry={cat.onRetryTables} query={cat.query} onQuery={cat.onQuery}
+            onChange={(v) => setInput({ table: v } as Partial<WatermarkInput>)} onPick={cat.onPickTable} columns={cat.columns} />
+          <span><Button type="button" variant="link" size="sm" onClick={() => set((x) => ({ ...x, from: "query" }))}>Write a SELECT instead</Button></span>
+        </div>
+      ) : (
+        <div className="grid gap-1">
+          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed." error={err(ctl("input.query"))}>
+            <Textarea id={ctl("input.query")} value={i.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
+          </Field>
+          <span><Button type="button" variant="link" size="sm" onClick={() => set((x) => ({ ...x, from: "table" }))}>Choose a table instead</Button></span>
+        </div>
+      ))}
+    </Panel>
+  );
+}
+
+/**
+ * How a database source is pulled (Figma 02 v1.0.5, 02): shown once a table is picked (or a SELECT is written, or a
+ * snapshot chosen), then kept. New rows by watermark (look back and rows per page under a closed Advanced) or a whole
+ * snapshot per business date (its SELECT and schedule). The watermark and id columns are picked in step 2.
+ */
+function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void; setKind: (k: SourceKind) => void }) {
+  const { d, err, created, setInput } = p;
+  const i = d.spec.input;
+  const want = created || i.kind === "db_snapshot" || (i.kind === "db_watermark" && (d.from === "query" || !!(i.table ?? "").trim()));
+  const [seen, setSeen] = useState(want);
+  if (want && !seen) setSeen(true);
+  if (!seen) return null;
   let body: ReactNode = null;
   if (i.kind === "db_snapshot") {
     body = (
@@ -228,20 +407,13 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   } else if (i.kind === "db_watermark") {
     const w = i as WatermarkInput;
     body = (
-      <>
-        <Segmented label="Read from" value={d.from} onChange={(from) => set((x) => ({ ...x, from }))} options={[{ value: "table", label: "A table" }, { value: "query", label: "A SELECT" }]} />
-        {d.from === "table" ? (
-          <TablePicker id={ctl("input.table")} label="Table" value={w.table ?? ""} error={err(ctl("input.table"))} note="table or schema.table, as the source's catalog spells it."
-            engine={d.conn.engine} database={(d.conn.engine === "oracle" ? p.catalog.schema : d.conn.database).trim() || "this database"}
-            list={p.catalog.tables} page={p.catalog.tables.status === "ready" ? p.catalog.tables.data : null} stale={p.catalog.stale || p.catalog.tablesStale}
-            free={p.catalog.free.table} onFree={(f) => p.catalog.onFree("table", f)} onRetry={p.catalog.onRetryTables} query={p.catalog.query} onQuery={p.catalog.onQuery}
-            onChange={(v) => setInput({ table: v } as Partial<WatermarkInput>)} onPick={p.catalog.onPickTable} columns={p.catalog.columns} />
-        ) : (
-          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed." error={err(ctl("input.query"))}>
-            <Textarea id={ctl("input.query")} value={w.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
-          </Field>
-        )}
-        <div className="grid gap-4 md:grid-cols-2">
+      <details className="group">
+        <summary className="flex min-h-8 cursor-pointer list-none flex-wrap items-center gap-x-2 rounded-sm text-body text-fg outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+          <span aria-hidden="true" className="inline-block transition-transform duration-(--dur-fast) group-open:rotate-90">›</span>
+          <span className="font-medium">Advanced</span>
+          <span className="text-caption text-fg-3">Look back {formatNumber(w.lookback_seconds)} s · {formatNumber(w.chunk)} rows per page</span>
+        </summary>
+        <div className="grid gap-4 pt-3 md:grid-cols-2">
           <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
             <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
               onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, Number(e.target.value.replace(/\D/g, "")) || 0) } as Partial<WatermarkInput>)} />
@@ -251,16 +423,16 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
               onChange={(e) => setInput({ chunk: Math.max(1, Math.min(100_000, Number(e.target.value.replace(/\D/g, "")) || 1)) } as Partial<WatermarkInput>)} />
           </Field>
         </div>
-      </>
+      </details>
     );
   }
   return (
     <Panel title="How to pull" bodyClassName="grid gap-4" description={p.nextVersion ? `A change here makes version ${p.nextVersion}, approved by a config checker.` : undefined}>
       <div className="grid gap-3 md:grid-cols-2">
         <ChoiceCard name="src-pull" label="New rows by watermark" checked={d.kind === "db_watermark"} disabled={created && d.kind !== "db_watermark"} onChange={() => p.setKind("db_watermark")}
-          description="Pulls rows added or changed since the last pull, every minute. For transactions." />
+          description="Rows added or changed since the last pull." />
         <ChoiceCard name="src-pull" label="Whole snapshot per business date" checked={d.kind === "db_snapshot"} disabled={created && d.kind !== "db_snapshot"} onChange={() => p.setKind("db_snapshot")}
-          description="Pulls the full position for one date on a schedule. For accounts and balances." />
+          description="The full position for one date." />
       </div>
       {body}
     </Panel>

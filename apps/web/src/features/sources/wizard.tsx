@@ -26,7 +26,7 @@ import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
-  amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
+  amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
 } from "./steps/model";
 import { DiscardDialog } from "./discard-dialog";
@@ -47,9 +47,6 @@ const failed = (e: unknown) => ({ status: "error" as const, message: errorText(e
 /** The table search waits this long after the last key (PO: no request per keystroke). */
 const SEARCH_DEBOUNCE_MS = 250;
 
-/** Ruling 1: Next needs a passing test of exactly the values on screen. */
-const UNTESTED = { db: "Test the connection first; step 2 reads the columns through it.", file: "Test the folder first; files are picked up from it." } as const;
-const CHANGED = { db: "The connection changed since the last test. Test it again.", file: "The folder changed since the last test. Test it again." } as const;
 
 const step0 = (n: number | null, admin: boolean) => Math.min(2, Math.max(admin ? 0 : 1, (n ?? (admin ? 1 : 2)) - 1));
 
@@ -151,6 +148,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     setTypedNames((t) => { const { [field]: _drop, ...rest } = t; return name === undefined ? rest : { ...rest, [field]: name }; });
   };
   const [tested, setTested] = useState<Tested | null>(null);
+  /** The server's short version from the last passing connect (the folded Server line). */
+  const [version, setVersion] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit">(null);
   const [columns, setColumns] = useState<Column[] | null>(null);
   const [sample, setSample] = useState({ text: "", cut: false });
@@ -229,12 +228,23 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     try {
       const key = connKey(x);
       const i = x.spec.input;
-      const typed = i.kind === "file_inbox" ? { path: i.path.trim(), pattern: i.pattern.trim() } : typedConn ? { connection: connBody(x.conn) } : {};
+      // a folder is checked before its pattern is typed: every file then counts
+      const typed = i.kind === "file_inbox" ? { path: i.path.trim(), pattern: i.pattern.trim() || "*" } : typedConn ? { connection: connBody(x.conn) } : {};
       const result = ids
         ? await api<ConnectionTestDto>(sourceApi(spaceId, ids.sourceId, "/connection/test"), { method: "POST", body: JSON.stringify(typed) })
         : await api<ConnectionTestDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/connection-test`, { method: "POST", body: JSON.stringify({ kind: x.kind, ...typed }) });
       setTested({ result, key });
+      if (!result.ok) {
+        // the sentence sits on the field it names (REC-F2b); a rejected password is selected, ready to retype
+        const id = result.field ? FIELD_CONTROL[result.field] : x.kind === "file_inbox" ? ctl("input.path") : "src-connect";
+        requestAnimationFrame(() => {
+          const el = document.getElementById(id);
+          el?.focus();
+          if (result.field === "password" && el instanceof HTMLInputElement) el.select();
+        });
+      }
       if (result.ok && x.kind !== "file_inbox") {
+        setVersion(result.version);
         const cred = credKey(x.conn);
         const again = listed?.cred === cred && names.status === "ready";
         setListed({ cred, database: x.conn.database.trim() });
@@ -528,8 +538,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   }
 
   const tableNow = d.spec.input.kind === "db_watermark" ? (d.spec.input.table ?? "") : "";
-  const blocked = step === 0 ? (!tested || !tested.result.ok ? UNTESTED[file ? "file" : "db"] : tested.key !== connKey(d) ? CHANGED[file ? "file" : "db"] : null)
-    : step === 1 && gone.used.length ? goneBlocked(gone.used.length, tableNow) : null;
+  // step 1: Next opens once the connect (or folder check) of the values on screen passed and a table is picked, with no
+  // sentence (docs/recon/ux-form-rules.md, exception to ui-standard §5b); step 2: a field whose column is gone
+  const ready0 = !!tested?.result.ok && tested.key === connKey(d) && pullProblems(d, { replace }).length === 0;
+  const blocked = step === 0 ? (ready0 ? null : "") : step === 1 && gone.used.length ? goneBlocked(gone.used.length, tableNow) : null;
   /** A draft source nobody submitted or shared (DELETE …/sources/{id} takes it): made here, or opened as such. */
   const deletable = !!ids && (!source || (source.s.publishedVersion === null && !source.v.submitterId && !source.s.shares.length));
   async function discard() {
@@ -548,10 +560,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     <div className="grid gap-section">
       <PageHeader title={title} description={DESCRIPTION[step]} trail={source ? [{ label: source.s.name, href: sourceHref(spaceId, source.s.id) }] : []} />
       <Wizard title="Setup progress" steps={steps}>
-        <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (!blocked && !working) void next(); }} className="grid gap-section">
+        <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (blocked === null && !working) void next(); }} className="grid gap-section">
           <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>
           {step === 0 && (
             <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
+              connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}
               nextVersion={source?.s.publishedVersion != null && ids ? ids.version : null}
               catalog={{
                 names, tables, stale: listsStale, tablesStale, free, onFree: (k, f) => setFree((x) => ({ ...x, [k]: f })), query: tableQuery, onQuery: setTableQuery,
@@ -575,7 +588,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             {deletable && admin && <Button type="button" variant="ghost" className="mr-auto text-down-ink" disabled={working} onClick={() => setDiscarding(true)}>Delete draft source</Button>}
             <Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)}>Cancel</Link></Button>
             {step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
-            <BlockedButton type="submit" reason={blocked} disabled={working && !blocked} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
+            <BlockedButton type="submit" reason={blocked || null} variant={blocked === null ? "default" : "secondary"} disabled={(working && blocked === null) || blocked === ""} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
               {(busy === "next" || busy === "submit" || (step === 0 && busy === "columns")) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{NEXT[step]}
             </BlockedButton>
           </FormActions>

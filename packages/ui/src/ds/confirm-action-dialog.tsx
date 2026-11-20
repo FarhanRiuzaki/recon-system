@@ -12,6 +12,8 @@ import { type ActionInput, validateActionInput, validateConfirmText } from "../l
 type Props = {
   open: boolean; onOpenChange: (v: boolean) => void;
   title: string; description: string; impact: string[]; reasons: readonly string[]; actionLabel: string;
+  /** The label of the button that closes without acting ("Keep TLS"); Cancel by default. */
+  cancelLabel?: string;
   destructive?: boolean; confirmText?: string;
   /** Set while the action can't run (obs-agent down): the action button is off and the reason is shown. */
   unavailableReason?: string;
@@ -130,7 +132,7 @@ export function ConfirmActionDialog(p: Props) {
           <DialogFooter className="shrink-0">
             {canDetach
               ? <Button type="button" variant="ghost" onClick={detach}>Close</Button>
-              : <Button type="button" variant="ghost" onClick={close} disabled={busy}>Cancel</Button>}
+              : <Button type="button" variant="ghost" onClick={close} disabled={busy}>{p.cancelLabel ?? "Cancel"}</Button>}
             <Button type="submit" variant={p.destructive ? "destructive" : "default"} aria-busy={busy || undefined} disabled={busy || !!p.unavailableReason || !p.onConfirm}>
               {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{p.actionLabel}
             </Button>
