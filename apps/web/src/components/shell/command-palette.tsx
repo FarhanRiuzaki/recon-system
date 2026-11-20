@@ -6,10 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
 import { pagesFor } from "@/lib/shared/nav";
-import { viewHref } from "@/lib/shared/prefs";
 import { isHelpKey, matchSequence } from "@/lib/shared/shortcuts";
 import { leaveHeld } from "@/lib/client/use-leave-guard";
-import { useNoSpace } from "./sidebar";
+import { useNavHref, useNoSpace } from "./sidebar";
 
 export const OPEN_PALETTE = "sk:open-palette";
 export const OPEN_SHORTCUTS = "sk:open-shortcuts";
@@ -29,6 +28,7 @@ const ShortcutsDialog = dynamic(() => import("./shortcuts-dialog").then((m) => m
 export function CommandPalette() {
   const { perms } = useAuth();
   const { prefs } = usePrefs();
+  const navHref = useNavHref();
   const noSpace = useNoSpace();
   const [open, setOpen] = useState(false);
   const [used, setUsed] = useState(false);
@@ -48,7 +48,7 @@ export function CommandPalette() {
       const seq = matchSequence(prev.current, e.key, Date.now());
       prev.current = { key: e.key, at: Date.now() };
       const hit = seq && items.find((n) => n.shortcut === seq);
-      if (hit) { e.preventDefault(); const to = viewHref(hit.href, prefs); if (!leaveHeld(to)) router.push(to); }
+      if (hit) { e.preventDefault(); const to = navHref(hit.href); if (!leaveHeld(to)) router.push(to); }
     };
     window.addEventListener(OPEN_PALETTE, onOpen);
     window.addEventListener(OPEN_SHORTCUTS, onHelp);
@@ -56,7 +56,7 @@ export function CommandPalette() {
     return () => {
       window.removeEventListener(OPEN_PALETTE, onOpen); window.removeEventListener(OPEN_SHORTCUTS, onHelp); window.removeEventListener("keydown", onKey);
     };
-  }, [router, perms, prefs, noSpace]);
+  }, [router, perms, prefs, noSpace, navHref]);
 
   return (
     <>

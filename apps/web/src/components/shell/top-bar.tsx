@@ -9,13 +9,12 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/client/auth-context";
 import { useTrail } from "@/lib/client/crumb-trail";
-import { usePrefs } from "@/lib/client/prefs-context";
 import { type Crumb, crumbs, isSubPage } from "@/lib/shared/nav";
-import { viewHref } from "@/lib/shared/prefs";
 import { refreshScope } from "@/lib/shared/time-controls";
 import { openPalette } from "./command-palette";
 import { MobileNav } from "./mobile-nav";
 import { NavGlyph } from "./nav-icon";
+import { useNavHref } from "./sidebar";
 
 const SEARCH = "Search pages";
 
@@ -24,7 +23,7 @@ const SEARCH = "Search pages";
 export function TopBar({ mark, wordmark, space }: { mark: ReactNode; wordmark: ReactNode; space?: ReactNode }) {
   const path = usePathname();
   const { perms } = useAuth();
-  const { prefs } = usePrefs();
+  const navHref = useNavHref();
   const list = crumbs(path, perms);
   const sub = isSubPage(path);
   const trail = useTrail(path);
@@ -46,7 +45,7 @@ export function TopBar({ mark, wordmark, space }: { mark: ReactNode; wordmark: R
                 {c.icon && <NavGlyph icon={c.icon} className="size-4 shrink-0 text-fg-3" />}
                 {last
                   ? <span aria-current="page" className="truncate font-medium text-fg">{c.label}</span>
-                  : c.href ? <Link href={i === 0 ? viewHref(c.href, prefs) : c.href} className="truncate rounded-xs hover:text-fg">{c.label}</Link> : <span className="truncate">{c.label}</span>}
+                  : c.href ? <Link href={i === 0 ? navHref(c.href) : c.href} className="truncate rounded-xs hover:text-fg">{c.label}</Link> : <span className="truncate">{c.label}</span>}
               </li>
             );
           })}

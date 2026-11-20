@@ -4,10 +4,10 @@ import { redirect } from "next/navigation";
 import type { Page as Paged } from "@starterkit/shared/contracts/common";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { NoSpace } from "@/features/spaces/no-space";
-import { spaceHref } from "@/features/spaces/use-spaces";
 import { backendJson, v1Path } from "@/lib/server/backend";
 import { guardedTitle, requirePagePermission } from "@/lib/server/page-guard";
 import { getSession } from "@/lib/server/session";
+import { spaceEntry } from "@/lib/shared/nav";
 import { PREFS_COOKIE, parsePrefs, viewHref } from "@/lib/shared/prefs";
 import { spaceOptions } from "@/lib/shared/queries";
 
@@ -23,7 +23,7 @@ export default async function Page() {
   const { status, data } = await backendJson<Paged<SpaceRowDto>>(v1Path(spaceOptions().url)!, { token, req: { headers: await headers() } });
   if (status !== 200 || !data) throw new Error(`GET /v1/spaces answered ${status}`);
   const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);
-  const open = data.items.find((s) => s.id === prefs.space) ?? data.items[0];
-  if (open) redirect(viewHref(spaceHref(open.id, "members"), prefs)); // with the members view last left (any space)
+  const to = spaceEntry("members", data.items, prefs.space);
+  if (to) redirect(viewHref(to, prefs)); // with the members view last left (any space)
   return <NoSpace />;
 }

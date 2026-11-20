@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, type NavItem } from "./nav";
+import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, spaceEntry, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
@@ -105,6 +105,20 @@ describe("space group", () => {
     expect(s?.items.map((i) => [i.label, i.href, i.soon])).toEqual([["Members", "/spaces", undefined]]);
     expect(isActive("/spaces", "/spaces")).toBe(true);
     expect(isActive("/spaces/5b0c1f2e-0000-4000-8000-000000000000/members", "/spaces")).toBe(true);
+  });
+});
+
+describe("spaceEntry: where a space entry opens (the entry pages' redirect and the navigation's link)", () => {
+  const A = { id: "a", roles: ["operator"] }, B = { id: "b", roles: [] }, C = { id: "c", roles: ["reviewer"] };
+  it("the remembered space while it is listed, else the first; Sources and Recons only where the caller holds a role", () => {
+    expect(spaceEntry("members", [A, B, C], "b")).toBe("/spaces/b/members");
+    expect(spaceEntry("sources", [A, B, C], "b")).toBe("/spaces/a/sources");
+    expect(spaceEntry("recons", [A, B, C], "c")).toBe("/spaces/c/recons");
+    expect(spaceEntry("members", [B, A], "gone")).toBe("/spaces/b/members");
+  });
+  it("none: null (the entry page explains, or sends to /spaces)", () => {
+    expect(spaceEntry("members", [], null)).toBeNull();
+    expect(spaceEntry("sources", [B], null)).toBeNull();
   });
 });
 

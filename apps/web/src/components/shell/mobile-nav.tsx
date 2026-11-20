@@ -8,13 +8,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useAuth } from "@/lib/client/auth-context";
-import { usePrefs } from "@/lib/client/prefs-context";
 import { activeChild, navFor, onItem } from "@/lib/shared/nav";
-import { viewHref } from "@/lib/shared/prefs";
 import { NavGlyph } from "./nav-icon";
 import { AccountMenu } from "./account-menu";
 import { SoonCaption, SoonItem } from "./soon-item";
-import { useNoSpace } from "./sidebar";
+import { useNavHref, useNoSpace } from "./sidebar";
 
 const ICON_BUTTON = "inline-grid size-8 shrink-0 cursor-pointer place-items-center rounded-md text-fg-2 hover:bg-tray hover:text-fg";
 
@@ -29,7 +27,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
   const path = usePathname();
   const sp = useSearchParams();
   const { perms } = useAuth();
-  const { prefs } = usePrefs();
+  const navHref = useNavHref();
   const noSpace = useNoSpace();
   return (
     <Drawer closeOn={path}>
@@ -58,7 +56,7 @@ export function MobileNav({ wordmark, space }: { wordmark: ReactNode; space?: Re
                 return (
                   <div key={n.href} className="grid gap-0.5">
                   <DrawerClose asChild>
-                    <Link href={viewHref(n.href, prefs)} aria-current={active && !child ? "page" : undefined}
+                    <Link href={navHref(n.href)} aria-current={active && !child ? "page" : undefined}
                       className={cn("relative flex h-11 items-center gap-3 rounded-md border px-2.5 text-body text-fg-2",
                         active && !child ? "border-line bg-raised text-fg" : active ? "border-transparent text-fg" : "border-transparent hover:bg-tray hover:text-fg")}>
                       <NavGlyph icon={n.icon} className="size-4 shrink-0" />

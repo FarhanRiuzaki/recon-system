@@ -3,10 +3,10 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Page as Paged } from "@starterkit/shared/contracts/common";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
-import { spaceHref } from "@/features/spaces/use-spaces";
 import { backendJson, v1Path } from "@/lib/server/backend";
 import { guardedTitle, requirePagePermission } from "@/lib/server/page-guard";
 import { getSession } from "@/lib/server/session";
+import { spaceEntry } from "@/lib/shared/nav";
 import { PREFS_COOKIE, parsePrefs, viewHref } from "@/lib/shared/prefs";
 import { spaceOptions } from "@/lib/shared/queries";
 
@@ -23,7 +23,6 @@ export default async function Page() {
   const { status, data } = await backendJson<Paged<SpaceRowDto>>(v1Path(spaceOptions().url)!, { token, req: { headers: await headers() } });
   if (status !== 200 || !data) throw new Error(`GET /v1/spaces answered ${status}`);
   const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);
-  const mine = data.items.filter((s) => s.roles.length);
-  const open = mine.find((s) => s.id === prefs.space) ?? mine[0];
-  redirect(open ? viewHref(spaceHref(open.id, "sources"), prefs) : "/spaces");
+  const to = spaceEntry("sources", data.items, prefs.space);
+  redirect(to ? viewHref(to, prefs) : "/spaces");
 }

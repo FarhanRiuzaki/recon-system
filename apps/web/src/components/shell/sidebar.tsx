@@ -10,12 +10,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/toolt
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import type { Page } from "@starterkit/shared/contracts/common";
+import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { activeChild, navFor, onItem } from "@/lib/shared/nav";
+import { activeChild, NAV, navFor, onItem, spaceEntry } from "@/lib/shared/nav";
 import { spaceOptions } from "@/lib/shared/queries";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
@@ -34,6 +35,21 @@ export function useNoSpace(): boolean {
 }
 
 /**
+ * Where a navigation link goes: `viewHref` (the view last left there), and for a space entry (/spaces, /sources,
+ * /recons) straight to the space page its entry would redirect to (`spaceEntry`, from the same list), so a click
+ * never stops on the redirect's empty page. The entry itself while the list is unknown.
+ */
+export function useNavHref(): (href: string) => string {
+  const { prefs } = usePrefs();
+  const { key, url } = spaceOptions();
+  const spaces = useQuery({ queryKey: key, queryFn: () => api<Page<SpaceRowDto>>(url) }).data?.items;
+  return useCallback((href) => {
+    const page = NAV.find((n) => n.href === href)?.space;
+    return viewHref((page && spaces && spaceEntry(page, spaces, prefs.space)) || href, prefs);
+  }, [prefs, spaces]);
+}
+
+/**
  * Sidebar. 248 px from 1280 px (`xl`), collapsible to the 64 px icon rail (preference per viewer, kept in a cookie);
  * 768–1279 px it is always the rail, so the page never scrolls sideways; below 768 px it is not shown and the same
  * sections open from the top bar's menu button (MobileNav, a drawer). Sections come from
@@ -48,6 +64,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
   const sp = useSearchParams();
   const { perms } = useAuth();
   const { prefs, update } = usePrefs();
+  const navHref = useNavHref();
   const sections = navFor(perms, useNoSpace());
   const collapsed = prefs.sidebar === "collapsed";
   // The toggle swaps between two buttons, so the pressed one unmounts; hand keyboard focus to its counterpart.
@@ -99,7 +116,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
                   <TooltipTrigger asChild>
                     {/* aria-label: the text label is hidden in the rail; the link keeps its name. */}
                     {/* With a child view open (expanded sidebar), the child carries the highlight and the item just reads fg. */}
-                    <Link href={viewHref(n.href, prefs)} aria-label={n.label} aria-current={active && !(child && !collapsed) ? "page" : undefined}
+                    <Link href={navHref(n.href)} aria-label={n.label} aria-current={active && !(child && !collapsed) ? "page" : undefined}
                       className={cn("relative flex h-9 items-center justify-center gap-2.5 rounded-md border px-2.5 text-body text-fg-2 transition-colors duration-(--dur-fast)",
                         square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm",
                         !!n.children?.length && "hidden xl:flex",

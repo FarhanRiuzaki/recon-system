@@ -83,6 +83,18 @@ export function isActive(pathname: string, href: string, exact = false): boolean
   return href === "/" || exact ? p === href : p === href || p.startsWith(`${href}/`);
 }
 
+/**
+ * The space page a space entry (/spaces, /sources, /recons) opens: the remembered space (prefs `space`) while it is in
+ * the list, else the first (the list is name A–Z); Sources and Recons are a space's data, so for them only spaces the
+ * caller holds a role in. Null: none. The entry pages redirect by it on the server, and the navigation links straight
+ * to it once the switcher's list is in, so a client navigation never shows the redirect's empty page.
+ */
+export function spaceEntry(page: SpacePage, spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null): string | null {
+  const pool = page === "members" ? spaces : spaces.filter((s) => s.roles.length);
+  const open = pool.find((s) => s.id === remembered) ?? pool[0];
+  return open ? `/spaces/${encodeURIComponent(open.id)}/${page}` : null;
+}
+
 /** Whether the path is on nav item `n`'s page: its href or below; a space page only its own entry and /spaces/<id>/<space>[/…]. */
 export function onItem(pathname: string, n: Pick<NavItem, "href" | "space">): boolean {
   if (!n.space) return isActive(pathname, n.href);
