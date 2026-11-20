@@ -80,3 +80,16 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
 - `DATA_ENCRYPTION_KEY` yang sama: API mengenkripsi koneksi source yang disimpan, worker mendekripsinya untuk pull.
 - `APP_DB_ROLE` terisi saat `db:migrate` (§2, §3): tanpa itu role aplikasi tidak mendapat hak pada pg-boss dan
   `recon_ensure_month_partitions`.
+
+## 8. Local stacks: dev (hot reload) vs release check
+
+- **Daily work: `docker-compose.dev.yml`** — the checkout is mounted, so a saved change shows at once on
+  http://localhost:3000 (Next Fast Refresh, `bun --watch` for the API and the worker); no rebuild.
+  `COMPOSE_PROJECT_NAME=recon-dev docker compose -f docker-compose.dev.yml up -d` (first start installs inside the
+  container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed gives that user the
+  space Treasury as space admin, source admin and config maker. A source database on the host is `host.docker.internal`.
+  The app runs whatever is saved in the checkout, so a half-written change can stop the API until it is completed.
+- **Release check: `docker-compose.yml`** — production images; code changes need a rebuild:
+  `docker compose --env-file .env.compose up -d --build` (port from `WEB_PORT`, project from `COMPOSE_PROJECT_NAME`).
+- Both stacks publish port 3000 when `WEB_PORT=3000`: run one at a time (`down` the other first; `down` keeps the data,
+  `down -v` drops it).

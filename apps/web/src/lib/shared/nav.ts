@@ -6,11 +6,15 @@ export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activit
 export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
-/** One caption for a group's `soon` items: "Today, Breaks and Approvals arrive in a later release."; null when it has none. */
+/**
+ * One caption for a group's `soon` items: "Today, Breaks and Approvals arrive in a later release."; one item says only
+ * SOON_REASON (its label is beside it); null when it has none.
+ */
 export function soonCaption(items: readonly NavItem[]): string | null {
   const l = items.filter((n) => n.soon).map((n) => n.label);
   if (!l.length) return null;
-  return `${l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l.at(-1)}` : l[0]} ${l.length > 1 ? "arrive" : "arrives"} in a later release.`;
+  if (l.length === 1) return SOON_REASON;
+  return `${l.slice(0, -1).join(", ")} and ${l.at(-1)} arrive in a later release.`;
 }
 /**
  * `shortcut` is "" for an item without one; `perm` null = every signed-in user. `children`, listed under the item in

@@ -21,5 +21,6 @@ bun install --frozen-lockfile
 bun run db:migrate
 bun run db:seed
 bun run db:seed:demo
+bun run db:seed:local
 # As in production, the servers never see the owner's URL: they connect as the app role of DATABASE_URL.
 exec env -u MIGRATION_DATABASE_URL -u TEST_DATABASE_URL bun run dev

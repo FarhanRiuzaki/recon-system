@@ -10,7 +10,7 @@
 # The database has a volume of its own: data stays across `down` and `up` (dropped by `down -v`).
 # Rebuild only when the base image changes (Bun or Node version), never for code or dependencies: a changed bun.lock
 # is installed on the next `restart app`. Not for production: that is docker-compose.yml.
-name: starterkit-dev
+name: ${COMPOSE_PROJECT_NAME:-starterkit-dev}
 
 services:
   postgres:
@@ -36,7 +36,7 @@ services:
       dockerfile_inline: |
         FROM node:24-slim
         COPY --from=oven/bun:1.4.3 /usr/local/bin/bun /usr/local/bin/bun
-    image: starterkit-dev:local
+    image: ${COMPOSE_PROJECT_NAME:-starterkit-dev}:local
     working_dir: /app
     command: ["sh", "scripts/docker-dev.sh"]
     # Explicit values win over the mounted apps/api/.env and apps/web/.env.local (Bun and Next keep what is set).
@@ -49,11 +49,20 @@ services:
       DATABASE_URL: postgresql://starterkit_app:starterkit_app@postgres:5432/starterkit
       MIGRATION_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/starterkit
       TEST_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/starterkit_test
+      # db:migrate grants this role DML on pg-boss's schema and EXECUTE on the partition function (the worker needs both).
+      APP_DB_ROLE: starterkit_app
       API_BASE_URL: http://127.0.0.1:4000
       APP_URL: http://localhost:3000
       MAIL_TRANSPORT: log
       OAUTH_MOCK: "true"
       LDAP_MOCK: "true"
+      # File inbox folders the source wizard may test (./inbox on the host, gitignored).
+      INBOX_ROOTS: /app/inbox
+      # The user who gets the local space Treasury (db:seed:local): the demo seed's superadmin.
+      LOCAL_ADMIN_USERNAME: superadmin
+    # A source database on the host (e.g. the local test DB, docs/recon/source-test-db.md) is host.docker.internal.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "3000:3000"
     volumes:
@@ -68,6 +77,30 @@ services:
       - state:/state
     depends_on:
       postgres: { condition: service_healthy }
+
+  # The job worker (pg-boss: ingest pulls, file scans, recon runs) on the same mounted source, restarted by `bun --watch`
+  # on a change. It waits for the app container's migrations (it restarts until the queues exist) and reads the same
+  # generated secrets from the state volume.
+  worker:
+    image: ${COMPOSE_PROJECT_NAME:-starterkit-dev}:local
+    working_dir: /app/apps/api
+    command: ["sh", "-c", "set -a; . /state/dev.env; set +a; exec bun --watch src/worker.ts"]
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://starterkit_app:starterkit_app@postgres:5432/starterkit
+      INBOX_ROOTS: /app/inbox
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - api_node_modules:/app/apps/api/node_modules
+      - shared_node_modules:/app/packages/shared/node_modules
+      - ui_node_modules:/app/packages/ui/node_modules
+      - state:/state
+    depends_on:
+      app: { condition: service_started }
+    restart: unless-stopped
 
 volumes:
   pgdata:
