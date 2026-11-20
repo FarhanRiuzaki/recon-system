@@ -438,6 +438,13 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 128
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "enum": [
+                                    "major",
+                                    "minor"
+                                  ]
                                 }
                               },
                               "required": [
@@ -452,6 +459,13 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 2000
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "enum": [
+                                    "major",
+                                    "minor"
+                                  ]
                                 }
                               },
                               "required": [
@@ -725,6 +739,9 @@
                     },
                     "mutable": {
                       "type": "boolean"
+                    },
+                    "currency": {
+                      "type": "string"
                     },
                     "calendar": {
                       "type": "string",
@@ -1158,6 +1175,13 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 128
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "enum": [
+                                    "major",
+                                    "minor"
+                                  ]
                                 }
                               },
                               "required": [
@@ -1172,6 +1196,13 @@
                                   "type": "string",
                                   "minLength": 1,
                                   "maxLength": 2000
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "enum": [
+                                    "major",
+                                    "minor"
+                                  ]
                                 }
                               },
                               "required": [
@@ -1445,6 +1476,9 @@
                     },
                     "mutable": {
                       "type": "boolean"
+                    },
+                    "currency": {
+                      "type": "string"
                     },
                     "calendar": {
                       "type": "string",

@@ -272,7 +272,7 @@ describe("preview of a database source", () => {
   it("a watermark source pulls a sample (watermark predicate omitted) through the mapping: NULL is null, not \"\"", async () => {
     const s = await made("db_watermark");
     await connect(s.id);
-    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default",
+    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default", currency: "IDR",
       input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 60, chunk: 1000 } });
     const p = await json<SourcePreviewDto>(preview(s.id, v.id));
     expect(p).toMatchObject({ lines: 3, ok: 2, quarantined: 1 });
@@ -301,7 +301,7 @@ describe("preview of a database source", () => {
   it("a connection that fails answers 400 with its class message", async () => {
     const s = await made("db_watermark");
     await connect(s.id, { database: "recon_no_such_db" });
-    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: [], mutable: false, calendar: "id-default",
+    const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: [], mutable: false, calendar: "id-default", currency: "IDR",
       input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } });
     const r = await preview(s.id, v.id);
     expect([r.status, (await errOf(r)).message]).toEqual([400, "The database was not found (3D000). Check the database name."]);

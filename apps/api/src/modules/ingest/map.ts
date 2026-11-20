@@ -8,9 +8,15 @@
 // null when the source declares no key fields); a row with an empty or NULL key field is quarantined, so two such rows
 // never share a key. A database row's SQL NULL arrives as null, never "" (connectors/): typed it is null like an empty
 // cell, but the hash keeps null, so the hash never mistakes NULL for "".
-import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+//
+// Amount and currency (spec §8): the currency (" idr ", "360" → IDR; unknown → quarantined) comes from its column or the
+// spec's fixed `currency`; the amount is read in its unit (amountUnit: declared, else as before the unit existed) and
+// scaled per row by that currency's ISO 4217 exponent. A spec saved before both existed and mapping no currency keeps
+// the old reading: a decimal field's own scale is its minor unit.
+import { amountUnit, type FieldSpec, type SourceSpec, type ValueRef } from "@starterkit/shared/contracts/sources";
+import { CURRENCY_EXPONENT, currencyCode } from "@starterkit/shared/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
-import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type Value } from "./coerce";
+import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, toMinor, type Value } from "./coerce";
 
 export type Calendar = { bdayIndex(date: string): number };
 export type CalendarData = { weekend: number[]; holidays: string[] };
@@ -171,14 +177,37 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     else fail("business_date", r.v === null || r.v === "" ? "is empty" : `not a date (${JSON.stringify(String(r.v))})`);
   }
 
+  let currency: string | null = spec.currency ?? null;
+  const ccyKey = m.currency && "field" in m.currency ? m.currency.field : "currency";
+  if (m.currency) {
+    const c = str("currency", m.currency);
+    currency = c === null ? null : currencyCode(c);
+    if (c !== null && !currency) reasons[ccyKey] = `${ccyKey}: ${JSON.stringify(c)} is not a currency code`;
+  }
   let amount_minor: bigint | null = null;
   if (m.amount_minor) {
-    const r = resolve("amount_minor", m.amount_minor);
-    if (typeof r === "string") reasons.amount_minor = r;
-    else if (typeof r.v === "bigint") amount_minor = r.v; // a decimal field is at scale 2 (checked when the spec is saved)
-    else if (typeof r.v === "string" && /^[+-]?\d+$/.test(r.v)) amount_minor = BigInt(r.v);
-    else if (r.v !== null) fail("amount_minor", `not whole minor units (${JSON.stringify(String(r.v))})`);
-    if (amount_minor !== null && (amount_minor > INT64_MAX || amount_minor < -INT64_MAX - 1n)) { fail("amount_minor", "out of range for a bigint column"); amount_minor = null; }
+    const ref = m.amount_minor;
+    const key = "field" in ref ? ref.field : "amount_minor";
+    const r = resolve("amount_minor", ref);
+    const no = (why: string, v: unknown) => { reasons[key] = `${key}: ${why} (${JSON.stringify("field" in ref ? raw[key] ?? "" : String(v))})`; };
+    // the amount as a bigint at `scale` places: a decimal field's value, an integer, or a CEL int or decimal text
+    let n: bigint | null = null, scale = 0;
+    if (typeof r === "string") reasons[key] = r;
+    else if (typeof r.v === "bigint") { n = r.v; scale = r.f?.type === "decimal" ? r.f.format?.scale ?? DEFAULT_SCALE : 0; }
+    else if (typeof r.v === "string" && /^[+-]?\d+(\.\d+)?$/.test(r.v)) { const [i, f = ""] = r.v.split("."); n = BigInt(i! + f); scale = f.length; }
+    else if (r.v !== null) no("not a number", r.v);
+    if (n !== null && !reasons[ccyKey]) {
+      const unit = amountUnit(spec)!;
+      // a spec saved before currencies existed maps none: the field's own scale is its minor unit, as it was then
+      const legacy = !m.currency && spec.currency === undefined;
+      if (unit === "major" && !currency && !legacy) no("no currency on this row to scale it by", n);
+      else {
+        const x = toMinor(n, scale, unit, currency ? CURRENCY_EXPONENT[currency]! : scale, currency ?? "");
+        if ("why" in x) no(x.why, typeof r === "string" ? n : r.v);
+        else if (x.v > INT64_MAX || x.v < -INT64_MAX - 1n) no("out of range for a bigint column", n);
+        else amount_minor = x.v;
+      }
+    }
   }
   let event_time: string | null = null;
   if (m.event_time) {
@@ -187,7 +216,7 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     else if (typeof r.v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(r.v) && !Number.isNaN(Date.parse(r.v))) event_time = new Date(r.v).toISOString();
     else if (r.v !== null) fail("event_time", `not a date-time (${JSON.stringify(String(r.v))})`);
   }
-  const currency = str("currency", m.currency), direction = str("direction", m.direction);
+  const direction = str("direction", m.direction);
   const ext_ref = str("ext_ref", m.ext_ref), account_ref = str("account_ref", m.account_ref);
   const attrs: CoreRecord["attrs"] = {};
   for (const [k, ref] of Object.entries(m.attrs)) {

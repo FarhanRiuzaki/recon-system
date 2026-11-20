@@ -20,6 +20,28 @@ export const SOURCE_HEALTH = ["healthy", "degraded", "down"] as const;
 export type SourceHealthState = (typeof SOURCE_HEALTH)[number];
 export const FIELD_TYPES = ["string", "integer", "decimal", "date", "datetime", "boolean"] as const;
 export const FILE_ENCODINGS = ["utf-8", "latin1", "windows-1252", "utf-16le"] as const;
+/** How a source writes its amount: whole currency units (1500.00) or minor units such as cents (150000). */
+export const AMOUNT_UNITS = ["major", "minor"] as const;
+export type AmountUnit = (typeof AMOUNT_UNITS)[number];
+
+/**
+ * ISO 4217 minor-unit exponent of the currencies the product knows (spec §8: amount_minor is in the minor unit of its
+ * currency). ponytail: a short built-in table, not the whole ISO list; a currency outside it is quarantined, add it here.
+ */
+export const CURRENCY_EXPONENT: Readonly<Record<string, number>> = {
+  IDR: 2, USD: 2, EUR: 2, SGD: 2, JPY: 0, KWD: 3, BHD: 3, MYR: 2, GBP: 2, AUD: 2, CNY: 2, HKD: 2, SAR: 2,
+};
+/** ISO 4217 numeric code → alphabetic code, for the currencies of CURRENCY_EXPONENT. */
+const CURRENCY_NUMERIC: Readonly<Record<string, string>> = {
+  "360": "IDR", "840": "USD", "978": "EUR", "702": "SGD", "392": "JPY", "414": "KWD", "048": "BHD", "458": "MYR",
+  "826": "GBP", "036": "AUD", "156": "CNY", "344": "HKD", "682": "SAR",
+};
+/** A currency as a source writes it (" idr ", "IDR", "360", "48") → its ISO alphabetic code, or null when unknown. */
+export function currencyCode(s: string): string | null {
+  const t = s.trim().toUpperCase();
+  const code = /^\d{1,3}$/.test(t) ? CURRENCY_NUMERIC[t.padStart(3, "0")] : t;
+  return code !== undefined && Object.hasOwn(CURRENCY_EXPONENT, code) ? code : null;
+}
 
 /** A source code: 2–64 of a-z, 0-9, "_" and "-", starting with a letter or digit (sent in any case, stored lower case). */
 export const SOURCE_CODE = /^[a-z0-9][a-z0-9_-]{1,63}$/;

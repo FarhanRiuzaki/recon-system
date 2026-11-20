@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  ATTR_NAME, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
-  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
+  AMOUNT_UNITS, ATTR_NAME, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES, type AmountUnit,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -40,9 +40,19 @@ export const FieldSpec = z.strictObject({
 });
 export type FieldSpec = z.infer<typeof FieldSpec>;
 
+/**
+ * The amount and how the source writes it (spec §8): `major` = whole currency units (1500.00 IDR → 150000 minor,
+ * scaled per row by the ISO 4217 exponent of the row's currency), `minor` = minor units as they are (150000).
+ * Left out (specs saved before the unit existed): an integer field is minor, a decimal field or a CEL value as before
+ * (amountUnit below) — the same amounts as then for IDR and USD.
+ */
+const unit = z.enum(AMOUNT_UNITS).optional();
+export const AmountRef = z.union([z.strictObject({ field: name, unit }), z.strictObject({ cel, unit })]);
+export type AmountRef = z.infer<typeof AmountRef>;
+
 /** Fields to the core record (spec §8); every core value but business_date is optional; the rest go to attrs. */
 const Mapping = z.strictObject({
-  amount_minor: ValueRef.optional(),
+  amount_minor: AmountRef.optional(),
   currency: ValueRef.optional(),
   direction: ValueRef.optional(),
   event_time: ValueRef.optional(),
@@ -90,6 +100,8 @@ export const SourceSpec = z.strictObject({
   derive: z.record(name, cel).default({}),
   key_fields: z.array(name).max(20),
   mutable: z.boolean(),
+  /** The currency of every row when the source has no currency column (ISO code; required then if it maps an amount). */
+  currency: z.string().refine((c) => currencyCode(c) === c, "Use an ISO currency code the product knows, such as IDR").optional(),
   calendar: z.string().trim().min(1).max(64),
   input: z.discriminatedUnion("kind", [DbWatermarkInput, DbSnapshotInput, FileInboxInput]),
   /**
@@ -109,8 +121,10 @@ export const SourceSpec = z.strictObject({
   const amount = s.mapping.amount_minor;
   if (amount && "field" in amount) {
     const f = s.fields.find((x) => x.name === amount.field);
-    if (f && !(f.type === "integer" || (f.type === "decimal" && (f.format?.scale ?? 2) === 2))) issue(`The amount needs an integer, or a decimal at scale 2; "${f.name}" is ${f.type}${f.type === "decimal" ? ` at scale ${f.format?.scale ?? 2}` : ""}`, ["mapping", "amount_minor"]);
+    if (f && f.type !== "integer" && f.type !== "decimal") issue(`The amount needs an integer or a decimal column; "${f.name}" is ${f.type}`, ["mapping", "amount_minor"]);
   }
+  if (amount && !s.mapping.currency && s.currency === undefined) issue("Map the currency column, or set the currency of every row", ["currency"]);
+  if (s.mapping.currency && s.currency !== undefined) issue("This source has a currency column; leave the currency of every row empty", ["currency"]);
   const known = (n: string) => fields.has(n) || Object.hasOwn(s.derive, n);
   const { attrs, ...core } = s.mapping;
   const refs: [PropertyKey[], ValueRef | undefined][] = [
@@ -125,6 +139,17 @@ export const SourceSpec = z.strictObject({
   if (s.input.kind === "db_snapshot" && !/:business_date\b/.test(s.input.query)) issue("The snapshot query needs the :business_date parameter", ["input", "query"]);
 });
 export type SourceSpec = z.infer<typeof SourceSpec>;
+
+/**
+ * The unit the amount is read in: the declared `unit`, else (a spec saved before it existed) minor for an integer
+ * field or a CEL value, major for a decimal field — what ingest did then, so the stored answers stay the same.
+ */
+export function amountUnit(spec: Pick<SourceSpec, "fields" | "mapping">): AmountUnit | null {
+  const a = spec.mapping.amount_minor;
+  if (!a) return null;
+  if (a.unit) return a.unit;
+  return "field" in a && spec.fields.find((f) => f.name === a.field)?.type === "decimal" ? "major" : "minor";
+}
 
 
 export const ConnectionOptions = z.strictObject({

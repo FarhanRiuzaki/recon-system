@@ -25,8 +25,9 @@ const FIELDS = [
   { name: "amount", type: "decimal", format: { scale: 2 }, nullable: false, trim: true },
   { name: "value_date", type: "date", format: { date: "yyyyMMdd" }, nullable: false, trim: true },
 ];
-const base = { fields: FIELDS, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default" };
-const mapping = { business_date: { field: "value_date" }, amount_minor: { field: "amount" }, ext_ref: { field: "ref" }, attrs: {} };
+// every demo source writes rupiah in whole units (amount 1500.00 = IDR 1,500.00 = 150000 minor)
+const base = { fields: FIELDS, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default", currency: "IDR" };
+const mapping = { business_date: { field: "value_date" }, amount_minor: { field: "amount", unit: "major" }, ext_ref: { field: "ref" }, attrs: {} };
 const fileSpec = (folder: string, pattern: string) => SourceSpec.parse({
   ...base, mapping, input: {
     kind: "file_inbox", path: `/inbox/treasury/${folder}`, pattern, completion: { kind: "stable_seconds", seconds: 60 },

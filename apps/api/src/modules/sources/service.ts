@@ -10,7 +10,7 @@ import type {
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
-import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
+import { amountUnit, SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus, VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
@@ -636,7 +636,8 @@ function notAContributor(ctx: Ctx, v: VersionRow): void {
 }
 
 /**
- * Publishes a version in review; the published one before it retires. The source becomes active again (a source paused
+ * Publishes a version in review; the published one before it retires (`amountUnit` in the entry when the amount's
+ * unit changed: the records already stored keep theirs, the new unit reads the rows that arrive from now on). The source becomes active again (a source paused
  * because its columns changed is fixed by a new version, spec §7 step 4) and its pull is scheduled with the new spec.
  */
 export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise<SourceVersionDto> {
@@ -646,12 +647,15 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
     notAContributor(ctx, v);
     if (!canStep("approve", v.status as VersionStatus)) throw wrongState("Only a version in review can be approved.");
     const [retired] = await tx.update(sourceVersions).set({ status: "retired", updatedAt: NOW })
-      .where(and(ofSource(s), eq(sourceVersions.status, "published"))).returning({ version: sourceVersions.version });
+      .where(and(ofSource(s), eq(sourceVersions.status, "published"))).returning({ version: sourceVersions.version, spec: sourceVersions.spec });
     const [row] = await tx.update(sourceVersions).set({ status: "published", checkerId: ctx.user.id, publishedAt: NOW, reviewComment: null, updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
     if (s.status !== "active") await tx.update(sources).set({ status: "active", updatedAt: NOW }).where(eq(sources.id, s.id));
     await scheduleSource({ spaceId, sourceId: s.id }, row.spec as SourceSpec);
-    await recordActivity(tx, ctx, { action: "source.version_approve", target: target(s), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null } });
+    // records keep the amount they were stored with (each names its source version); a new unit reads later rows only
+    const unit = { before: retired?.spec ? amountUnit(retired.spec as SourceSpec) : null, after: amountUnit(row.spec as SourceSpec) };
+    const unitChanged = retired?.spec && unit.before !== unit.after ? { amountUnit: unit } : {};
+    await recordActivity(tx, ctx, { action: "source.version_approve", target: target(s), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null, ...unitChanged } });
     return versionDto(row);
   });
 }

@@ -273,7 +273,7 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `source.version_create` | Source version drafted | source | – | `{ version, from }` (`from` = the published version copied, or null) |
 | `source.version_update` | Source version edited | source | `{ version, specHash }` | `{ version, specHash }` |
 | `source.version_submit` | Source version submitted | source | – | `{ version, specHash }` |
-| `source.version_approve` | Source version approved | source | – | `{ version, specHash, retired }` (`retired` = the version it replaced, or null) |
+| `source.version_approve` | Source version approved | source | – | `{ version, specHash, retired, amountUnit? }` (`retired` = the version it replaced, or null; `amountUnit` = `{ before, after }` (`major`/`minor`) when the amount's unit changed) |
 | `source.version_reject` | Source version rejected | source | – | `{ version, comment }` |
 | `source.share` | Source shared | source | – | `{ space: { id, code, name } }` |
 | `source.unshare` | Source share removed | source | `{ space: { id, code, name } }` | – |

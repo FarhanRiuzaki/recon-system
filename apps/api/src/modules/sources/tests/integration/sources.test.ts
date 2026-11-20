@@ -475,7 +475,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     expect((await patch(t.mk, s.id, v.id, withDerive({ sid_ok: 're_match(row.sid, "alnum")' }))).status).toBe(200);
   });
 
-  it("saving rejects an unknown time zone and an amount_minor that is not decimal/integer at scale 2", async () => {
+  it("saving rejects an unknown time zone, an amount that is not a number column, and an amount without a currency", async () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     await adminSetsReading(v.id, ksei());
@@ -483,11 +483,22 @@ describe("CEL on save and the preview (Task 3)", () => {
     const zone = { ...k, fields: [...k.fields, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "Mars/Olympus" } }] };
     const tz = await patch(t.mk, s.id, v.id, zone);
     expect([tz.status, await msg(tz)]).toEqual([400, "Check fields.14.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta."]);
-    const fields = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 4 } }, { name: "txt", type: "string", nullable: true, trim: true }];
-    for (const [name, why] of [["amt", '"amt" is decimal at scale 4'], ["txt", '"txt" is string']] as const) {
-      const r = await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: name } } });
-      expect([r.status, await msg(r)]).toEqual([400, `Check mapping.amount_minor: The amount needs an integer, or a decimal at scale 2; ${why}.`]);
+    const fields = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 3 } }, { name: "txt", type: "string", nullable: true, trim: true }];
+    const txt = await patch(t.mk, s.id, v.id, { ...k, fields, currency: "IDR", mapping: { ...k.mapping, amount_minor: { field: "txt", unit: "major" } } });
+    expect([txt.status, await msg(txt)]).toEqual([400, 'Check mapping.amount_minor: The amount needs an integer or a decimal column; "txt" is string.']);
+    const bare = await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: "amt", unit: "major" } } });
+    expect([bare.status, await msg(bare)]).toEqual([400, "Check currency: Map the currency column, or set the currency of every row."]);
+    const both = await patch(t.mk, s.id, v.id, { ...k, fields, currency: "IDR", mapping: { ...k.mapping, currency: { field: "txt" }, amount_minor: { field: "amt", unit: "major" } } });
+    expect([both.status, await msg(both)]).toEqual([400, "Check currency: This source has a currency column; leave the currency of every row empty."]);
+    for (const c of ["RPH", "idr"]) {
+      const r = await patch(t.mk, s.id, v.id, { ...k, fields, currency: c, mapping: { ...k.mapping, amount_minor: { field: "amt", unit: "major" } } });
+      expect([r.status, await msg(r)]).toEqual([400, "Check currency: Use an ISO currency code the product knows, such as IDR."]);
     }
+    const unit = await patch(t.mk, s.id, v.id, { ...k, fields, currency: "KWD", mapping: { ...k.mapping, amount_minor: { field: "amt", unit: "cents" } } });
+    expect(unit.status).toBe(400);
+    // a decimal at any scale (KWD has 3), in either unit, with a fixed currency or a currency column
+    expect((await patch(t.mk, s.id, v.id, { ...k, fields, currency: "KWD", mapping: { ...k.mapping, amount_minor: { field: "amt", unit: "major" } } })).status).toBe(200);
+    expect((await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, currency: { field: "txt" }, amount_minor: { field: "amt", unit: "minor" } } })).status).toBe(200);
     // every refine names its field, the same shape as a CEL error; a plain type miss stays the fixed sentence
     const quote = await patch(t.adm, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } });
     expect(await msg(quote)).toBe("Check input.format.quote: The quote character can't be the delimiter.");
@@ -495,7 +506,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, health: { deadline: "9:00" } }))).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, mutable: "yes" }))).toBe("A request parameter has an unsupported value.");
     const ok = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "UTC" } }];
-    expect((await patch(t.mk, s.id, v.id, { ...k, fields: ok, mapping: { ...k.mapping, amount_minor: { field: "amt" } } })).status).toBe(200);
+    expect((await patch(t.mk, s.id, v.id, { ...k, fields: ok, currency: "IDR", mapping: { ...k.mapping, amount_minor: { field: "amt" } } })).status).toBe(200);
   });
 
   it("previews a KSEI file: 10 records and 2 quarantined lines with a reason per column", async () => {
@@ -632,6 +643,24 @@ describe("versions and activity reads (Task 7)", () => {
     // the platform admin has no data access
     expect((await list(t.sa, s.id)).status).toBe(403);
     expect((await one(t.sa, s.id, v.id)).status).toBe(403);
+  });
+
+  it("a version that changes the amount unit says so in its approve entry (stored records keep theirs)", async () => {
+    const withAmount = (unit: "major" | "minor") => ({ ...ksei(), fields: [...ksei().fields, { name: "amt", type: "integer", nullable: true, trim: true }], currency: "IDR",
+      mapping: { ...ksei().mapping, amount_minor: { field: "amt", unit } } });
+    const s = await made();
+    const publish = async (spec: unknown) => {
+      const v = await json<SourceVersionDto>(draft(t.mk, s.id));
+      if (!v.spec) await adminSetsReading(v.id, ksei());
+      expect((await patch(t.mk, s.id, v.id, spec)).status).toBe(200);
+      expect((await step(t.mk, s.id, v.id, "submit")).status).toBe(200);
+      expect((await step(t.ck, s.id, v.id, "approve")).status).toBe(200);
+    };
+    await publish(withAmount("minor"));
+    await publish(withAmount("major"));
+    await publish({ ...withAmount("major"), key_fields: ["sid", "sre"] });
+    const approved = (await acts()).filter((e) => e.action === "source.version_approve").map((e) => (e.after as { amountUnit?: unknown }).amountUnit ?? null);
+    expect(approved).toEqual([null, { before: "minor", after: "major" }, null]);
   });
 
   it("a space the source is shared to reads its published and retired versions only, never a draft or one in review", async () => {

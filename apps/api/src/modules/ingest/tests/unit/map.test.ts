@@ -119,8 +119,75 @@ describe("zones and amounts", () => {
     const s = spec();
     s.fields[0]!.format = { timezone: "UTC" };
     expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "92233720368547758.07" }, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 9223372036854775807n } });
-    expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "92233720368547758.08" }, s, ctx)).toMatchObject({ ok: false, reasons: { amount_minor: expect.stringContaining("out of range") } });
+    expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "92233720368547758.08" }, s, ctx)).toMatchObject({ ok: false, reasons: { amt: expect.stringContaining("out of range") } });
     expect(toRecord({ ts: "2026-11-02T08:30:00Z", amt: "99999999999999999999999" }, s, ctx)).toMatchObject({ ok: false });
+  });
+});
+
+describe("amount unit and currency (spec §8: minor unit of the row's currency, ISO 4217)", () => {
+  const spec = (type: "decimal" | "integer", unit?: "major" | "minor", scale = 3): SourceSpec => ({
+    fields: [
+      { name: "amount", type, nullable: false, trim: true, ...(type === "decimal" ? { format: { scale } } : {}) },
+      { name: "ccy", type: "string", nullable: true, trim: true },
+    ],
+    mapping: { business_date: { cel: "'2026-11-02'" }, amount_minor: { field: "amount", ...(unit ? { unit } : {}) }, currency: { field: "ccy" }, attrs: {} },
+    derive: {}, key_fields: [], mutable: false, calendar: "id-default",
+    input: { kind: "db_snapshot", query: "select 1 where :business_date is not null", schedule: "0 6 * * *" },
+  });
+  const amount = (s: SourceSpec, amount: string, ccy: string | null) => {
+    const r = toRecord({ amount, ccy }, s, ctx);
+    return r.ok ? r.record.amount_minor : r.reasons;
+  };
+  it("major: scaled by the row's currency (IDR 2, USD 2, JPY 0, KWD 3)", () => {
+    const s = spec("decimal", "major");
+    expect(amount(s, "1500", "IDR")).toBe(150000n);
+    expect(amount(s, "1500.5", "USD")).toBe(150050n);
+    expect(amount(s, "1500", "JPY")).toBe(1500n);
+    expect(amount(s, "1500.000", "JPY")).toBe(1500n);
+    expect(amount(s, "1.234", "KWD")).toBe(1234n);
+    expect(amount(spec("integer", "major"), "1500", "IDR")).toBe(150000n); // whole rupiah in an integer column
+    expect(amount(spec("integer", "major"), "1500", "JPY")).toBe(1500n);
+  });
+  it("major: more decimals than the currency has is quarantined, never rounded", () => {
+    const s = spec("decimal", "major");
+    expect(amount(s, "1500.125", "IDR")).toEqual({ amount: 'amount: 3 decimal places; IDR allows 2 ("1500.125")' });
+    expect(amount(s, "1500.5", "JPY")).toEqual({ amount: 'amount: 1 decimal place; JPY allows 0 ("1500.5")' });
+    expect(amount(s, "1500", null)).toEqual({ amount: 'amount: no currency on this row to scale it by ("1500")' });
+  });
+  it("minor: a whole number as it is; a fraction is quarantined", () => {
+    expect(amount(spec("integer", "minor"), "150000", "IDR")).toBe(150000n);
+    expect(amount(spec("integer", "minor"), "1500", "JPY")).toBe(1500n);
+    expect(amount(spec("integer", "minor"), "1234", "KWD")).toBe(1234n);
+    expect(amount(spec("decimal", "minor"), "150000.00", "USD")).toBe(150000n);
+    expect(amount(spec("decimal", "minor"), "150000.50", "USD")).toEqual({ amount: 'amount: 1 decimal place; minor units are whole numbers ("150000.50")' });
+  });
+  it("no unit (saved before it existed): an integer is minor, a decimal major — the same as then for IDR and USD", () => {
+    expect(amount(spec("integer"), "2551779", "IDR")).toBe(2551779n);
+    expect(amount(spec("decimal", undefined, 2), "25517.79", "USD")).toBe(2551779n);
+    expect(amount(spec("decimal", undefined, 2), "1500", "JPY")).toBe(1500n); // was 150000: 100× too much
+    const old = spec("decimal", undefined, 2);
+    delete old.mapping.currency; // and no currency at all: the field's scale is the minor unit, as it was
+    expect(toRecord({ amount: "100.5" }, old, ctx)).toMatchObject({ ok: true, record: { amount_minor: 10050n, currency: null } });
+  });
+  it("currency: case, spaces and ISO numeric codes are normalised; an unknown one is quarantined", () => {
+    const s = spec("integer", "minor");
+    const ccy = (c: string) => { const r = toRecord({ amount: "1", ccy: c }, s, ctx); return r.ok ? r.record.currency : r.reasons; };
+    expect([ccy("idr"), ccy(" IDR "), ccy("360"), ccy("392"), ccy("048"), ccy("48")]).toEqual(["IDR", "IDR", "IDR", "JPY", "BHD", "BHD"]);
+    expect(ccy("RPH")).toEqual({ ccy: 'ccy: "RPH" is not a currency code' });
+    expect(ccy("999")).toEqual({ ccy: 'ccy: "999" is not a currency code' });
+  });
+  it("a fixed currency fills every row and scales its amount", () => {
+    const s = spec("decimal", "major");
+    delete s.mapping.currency;
+    s.currency = "JPY";
+    expect(toRecord({ amount: "1500" }, s, ctx)).toMatchObject({ ok: true, record: { amount_minor: 1500n, currency: "JPY" } });
+  });
+  it("from CEL: an int or decimal text in the declared unit", () => {
+    const s = spec("integer", "major");
+    s.mapping.amount_minor = { cel: "'12.5'", unit: "major" };
+    expect(amount(s, "0", "USD")).toBe(1250n);
+    s.mapping.amount_minor = { cel: "'12.5'", unit: "minor" };
+    expect(amount(s, "0", "USD")).toEqual({ amount_minor: 'amount_minor: 1 decimal place; minor units are whole numbers ("12.5")' });
   });
 });
 

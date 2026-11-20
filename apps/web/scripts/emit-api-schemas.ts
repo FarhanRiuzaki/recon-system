@@ -105,7 +105,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.version_create": ["source", "–", "`{ version, from }` (`from` = the published version copied, or null)"],
   "source.version_update": ["source", "`{ version, specHash }`", "`{ version, specHash }`"],
   "source.version_submit": ["source", "–", "`{ version, specHash }`"],
-  "source.version_approve": ["source", "–", "`{ version, specHash, retired }` (`retired` = the version it replaced, or null)"],
+  "source.version_approve": ["source", "–", "`{ version, specHash, retired, amountUnit? }` (`retired` = the version it replaced, or null; `amountUnit` = `{ before, after }` (`major`/`minor`) when the amount's unit changed)"],
   "source.version_reject": ["source", "–", "`{ version, comment }`"],
   "source.share": ["source", "–", "`{ space: { id, code, name } }`"],
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
