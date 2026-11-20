@@ -75,8 +75,9 @@ internal bank dipasang IT sekali per instalasi, tidak pernah diunggah user per k
    `/run/secrets/bank-ca.pem`.
 2. Set `NODE_EXTRA_CA_CERTS=/run/secrets/bank-ca.pem` di service `api` dan `worker`. Satu variabel ini dipakai semua
    driver karena semuanya jalan di atas TLS runtime Bun: PostgreSQL (Bun.SQL), MySQL (`mysql2`), SQL Server (`mssql`/tedious)
-   dan Oracle (`oracledb` Thin, koneksi `tcps://`). Belum dicoba terhadap server TLS dengan CA bank; cek pertama di
-   lingkungan bank = Connect di wizard source dengan TLS on.
+   dan Oracle (`oracledb` Thin, koneksi `tcps://`). Dicoba untuk PostgreSQL (Bun.SQL) terhadap server TLS dengan CA sementara
+   (`ingest/tests/integration/tls.test.ts`): tanpa variabel → gagal, dengan variabel → Connect berhasil. MySQL, SQL Server dan
+   Oracle belum dicoba; cek pertama di lingkungan bank = Connect di wizard source dengan TLS on.
 3. Restart API dan worker: bundle hanya dibaca saat proses mulai.
 
 Bila sertifikat tetap tidak dipercaya, wizard menampilkan di toggle TLS: "The server's certificate isn't trusted by this
