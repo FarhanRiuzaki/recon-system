@@ -11,7 +11,7 @@ import type {
 } from "@starterkit/shared/contracts/recon";
 import type { ReconStatus } from "@starterkit/shared/recon";
 import type { VersionStatus } from "@starterkit/shared/sources";
-import { and, desc, eq, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, max, min, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { sourceFieldsLock } from "../../kernel/locks";
@@ -280,9 +280,10 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
       .where(eq(reconConfigVersions.id, v.id)).returning() as [VersionRow];
     await tx.delete(reconSourceUses).where(and(eq(reconSourceUses.spaceId, spaceId), eq(reconSourceUses.configId, c.id)));
     const uses = new Map<string, typeof reconSourceUses.$inferInsert>();
+    const health = { graceMinutes: spec.grace_minutes || null, deadline: spec.schedule.kind === "daily" ? spec.schedule.at : spec.close_at };
     usedFields(spec, directionMapped).forEach((fields, i) => {
       const sourceId = spec.sides[i]!.source_id;
-      for (const field of fields) uses.set(`${sourceId} ${field}`, { spaceId, configId: c.id, sourceSpaceId: owners[i]!, sourceId, field, configName: c.name });
+      for (const field of fields) uses.set(`${sourceId} ${field}`, { spaceId, configId: c.id, sourceSpaceId: owners[i]!, sourceId, field, configName: c.name, ...health });
     });
     if (uses.size) await tx.insert(reconSourceUses).values([...uses.values()]);
     await recordActivity(tx, ctx, { action: "recon.version_approve", target: target(c), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null } });
@@ -380,4 +381,16 @@ export async function reconsUsingFields(tx: InTx, sourceId: string, fields: stri
   const out = new Map<string, string[]>();
   for (const r of rows) out.set(r.field, [...(out.get(r.field) ?? []), r.name].sort());
   return out;
+}
+
+/**
+ * The health inputs the published recons that read sources `sourceIds` set (Plan 2 carry-over): per source the
+ * smallest grace and the earliest daily deadline (HH:MM) among them, the strictest. Only the configs `tx` can read
+ * (its space's own, and every config of a source the space owns).
+ */
+export async function reconHealthInputs(tx: InTx, sourceIds: string[]): Promise<Map<string, { graceMinutes: number | null; deadline: string | null }>> {
+  if (!sourceIds.length) return new Map();
+  const rows = await tx.select({ id: reconSourceUses.sourceId, grace: min(reconSourceUses.graceMinutes), deadline: min(reconSourceUses.deadline) }).from(reconSourceUses)
+    .where(inArray(reconSourceUses.sourceId, sourceIds)).groupBy(reconSourceUses.sourceId);
+  return new Map(rows.map((r) => [r.id, { graceMinutes: r.grace, deadline: r.deadline }]));
 }

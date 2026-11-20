@@ -19,7 +19,8 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { ingestHandlers, records } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { calendars, sourceShares } from "../../../sources";
-import { matchGroups, matchMembers, reconItems, reconRuns } from "../../schema";
+import { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "../../schema";
+import { closeDay } from "../../breaks";
 import { classifyUnmatched, runRecon } from "../../service";
 import { spaces, withSpace } from "../../../spaces";
 import { ccyEq, D, D1, gateSource, gateSpec, makeSource, plainSource, put, range, recon, ref, spec, U } from "../fixtures";
@@ -171,6 +172,32 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     // a draft never runs live
     const e = await runRecon(probe, { ...gate, versionId: draft, mode: "manual", from: "2026-11-02" }).catch((x: unknown) => x);
     expect((e as Error).message).toBe("Only the published version of a recon runs.");
+  }, 60_000);
+  it("Focus 6: day close turns 24 suggested pairs into breaks with their pass's reason (pairs kept) and 48 open items into breaks with the classifier's", async () => {
+    const after = new Date("2026-12-31T00:00:00+07:00"); // past every close moment and its grace
+    const closed = [];
+    for (const d of ["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]) closed.push(await closeDay(probe, gate, d, after));
+    expect(closed).toEqual(["closed", "closed", "closed", "closed"]);
+    expect(await closeDay(probe, gate, "2026-11-05", after)).toBe("already");
+    const days = await db.select().from(reconDays).where(eq(reconDays.configId, gate.configId)).orderBy(asc(reconDays.businessDate));
+    expect(days.map((d) => d.status)).toEqual(["closed", "closed", "closed", "closed"]);
+    const sum = (k: "open" | "suggested") => days.reduce((n, d) => n + (d.counters as Record<string, number>)[k]!, 0);
+    expect([sum("open"), sum("suggested")]).toEqual([48, 48]);
+    const items = await db.select({ status: reconItems.status, reason: reconItems.breakReason, late: reconItems.lateMatch, ref: records.extRef, side: reconItems.side })
+      .from(reconItems).innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
+      .where(and(eq(reconItems.configId, gate.configId), sql`${reconItems.simRunId} is null`));
+    expect(items.filter((i) => i.status === "open" || i.status === "suggested").length).toBe(0);
+    const by = (reason: string, late: boolean) => items.filter((i) => i.status === "break" && i.reason === reason && i.late === late).map((i) => `${i.side}${i.ref!.slice(-4)}`).sort();
+    expect(by("Amount differs", false).length).toBe(28); // pass 2, 14 pairs
+    expect(by("Date differs", false).length).toBe(20); // pass 3, 10 pairs
+    expect(by("Currency differs", true)).toEqual(["a0931", "a0932", "a0933", "b0931", "b0932", "b0933"]);
+    expect(by("Amount differs", true)).toEqual(["a0950", "b0950"]);
+    expect(by("No counterpart", true).length).toBe(40);
+    expect(by("Duplicate", false).length).toBe(30); // the run's own breaks, untouched
+    // the suggested pairs stay as the resolution to accept in one click
+    const kept = await db.select({ n: sql<number>`count(*)::int` }).from(matchGroups)
+      .where(and(eq(matchGroups.configId, gate.configId), sql`${matchGroups.simRunId} is null`, eq(matchGroups.kind, "suggested"), sql`${matchGroups.reversedBy} is null`));
+    expect(kept[0]!.n).toBe(24);
   }, 60_000);
 });
 

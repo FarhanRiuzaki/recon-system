@@ -120,18 +120,24 @@ describe("statements", () => {
     expect(s).toContain("i.status = 'open' and i.sim_run_id is null and i.business_date between $");
     expect(s).toContain("with l0 as materialized (select i.id, i.version as v from \"recon_items\" i where i.space_id = $1");
     expect(s).toContain("for update skip locked), l1 as materialized");
-    expect(s).toContain("coalesce(l0.v, i.version) as v, l0.id is not null as lk, i.business_date as bd, \"records\".\"event_time\" as et, \"records\".\"id\" as rid");
+    expect(s).toContain("coalesce(l0.v, i.version) as v, l0.id is not null as lk, i.status as st, i.business_date as bd, \"records\".\"event_time\" as et, \"records\".\"id\" as rid");
     expect(s).toContain("left join l0 on l0.id = i.id");
     expect(s).not.toContain("for update of i");
     expect(s).toContain("from pa a join pb b on a.x0 = b.x0 and a.x2 = b.x2 where abs(b.x1 - a.x1) <=");
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
+    // carry over > 0: the breaks a late counterpart may close join the pool (Task 6)
+    expect(text(acceptSql({ ...ctx, late: true }, p2))).toContain("and (i.status = 'open' or (i.status = 'break' and i.late_match)) and i.sim_run_id is null");
   });
 
   it("accept: mutual unique best only; the claim is guarded by state and version; the group dated at its later member", () => {
     const s = text(acceptSql(ctx, p2));
     expect(s).toContain("where dist = best_a and dist = best_b and n_a = 1 and n_b = 1 and a_lk and b_lk");
     expect(s).toContain("count(*) filter (where dist = best_a) over (partition by a_id) as n_a");
-    expect(s).toContain("i.status = 'open' and i.version = x.v returning i.id");
+    expect(s).toContain("i.status = x.st and i.version = x.v returning i.id");
+    expect(s).toContain("resolution = case when x.st = 'break' then $");
+    // a suggestion takes open items only; an automatic match may close a break as late data
+    expect(s).toContain("ok as (select * from acc where a_st = 'open' and b_st = 'open')");
+    expect(text(acceptSql(ctx, { ...p2, accept: "auto" }))).toContain("ok as (select * from acc)");
     expect(s).toContain("greatest(r.a_bd, r.b_bd)");
     expect(s).toContain("array[abs(b.x1 - a.x1)]::numeric[] as dist");
   });
@@ -161,7 +167,7 @@ describe("statements", () => {
     expect(s).toContain("bool_and(m_n = 1) as uniq");
     expect(s).toContain("bool_and(m_lk) and o_lk as all_lk");
     expect(s).toContain("where uniq and all_lk and abs(s - o_s) <= coalesce(($");
-    expect(s).toContain("select gid, $73::uuid, o_id, $74::text, o_own from acc union all select gid, $75::uuid, m_id, $76::text, m_own from ms");
+    expect(s).toContain("select gid, $74::uuid, o_id, $75::text, o_own from acc union all select gid, $76::uuid, m_id, $77::text, m_own from ms");
   });
 
   it("amounts: a negating side compares the negated signed amount; members keep the record's own (own)", () => {

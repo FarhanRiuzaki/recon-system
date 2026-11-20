@@ -27,7 +27,7 @@ import {
   CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
-import { reconsUsingFields } from "../recon";
+import { reconHealthInputs, reconsUsingFields } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
 import {
@@ -59,7 +59,7 @@ const omitInputs = ({ graceMinutes: _g, deadline: _d, ...h }: NonNullable<Source
 async function readModel(tx: InTx, list: { s: SourceRow; spec: unknown }[], spaceId: string) {
   const states = await sourceStates(tx, list.map(({ s, spec }) => ({
     id: s.id, spaceId: s.spaceId, kind: s.kind as SourceKind, status: s.status as SourceStatus, spec: (spec ?? null) as SourceSpec | null,
-  })), spaceId);
+  })), spaceId, new Date(), await reconHealthInputs(tx, list.map(({ s }) => s.id)));
   const owners = await spaceNames(tx, list.filter(({ s }) => s.spaceId !== spaceId).map(({ s }) => s.spaceId));
   return { states, owners };
 }

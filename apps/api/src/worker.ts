@@ -16,6 +16,9 @@ const stopWorker = await startWorker(HANDLERS);
 // Partitions daily at 00:10 Asia/Jakarta, and once now: a fresh install has none, and ingest makes one only as a fallback.
 await scheduleEvery(QUEUES.maintenancePartitions, "daily", "10 0 * * *", {});
 await enqueue(QUEUES.maintenancePartitions, {}, { key: "start" });
+// The recon schedule's minute (engine schedule.ts dispatch): starts each due tick or daily run, from state, so a worker
+// that was down catches up on its first minute.
+await scheduleEvery(QUEUES.reconTick, "schedule", "* * * * *", { schedule: true });
 // 200 while the queue loops are alive (fetched within 60 s or holding a job), else 503; anything else 404.
 const server = Bun.serve({
   hostname: API_HOST,

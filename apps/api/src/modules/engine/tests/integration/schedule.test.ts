@@ -1,0 +1,232 @@
+// The schedule, grace, carry over, catch-up and day close (Plan 3 Task 6): the minute's dispatch (on the test's own pool:
+// it writes pg-boss jobs, which the test database's app role may not) and the tick / daily jobs as the app role
+// (appRoleDb, as the worker's workerDb), run by hand at a chosen `now`, on records written directly.
+// - an interval recon's ticks take only what is new; an item past grace breaks, and a late counterpart closes that
+//   break as AUTO_MATCHED_LATE_DATA (carry over 1);
+// - carry over 0 (KSEI) never pairs a closed day's break with the next day's data; carry over 7 does;
+// - a daily recon whose worker was down: the stale run is failed, one run covers every date since the last closed one,
+//   each closes; a day whose data isn't complete waits until close + grace, then closes marked incomplete;
+// - intake per chunk; the default range of a manual run (the last closed day); sourceHealth's inputs from the recons.
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import type { ReconRunDto } from "@starterkit/shared/contracts/recon";
+import { and, asc, eq, sql } from "drizzle-orm";
+import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { appRoleDb } from "../../../../../test/helpers/app-role";
+import { db } from "../../../../kernel/db";
+import { boss } from "../../../../kernel/jobs";
+import { ensureMonthPartitions } from "../../../../kernel/partitions";
+import { records, sourceCursors, sourceStates } from "../../../ingest";
+import { reconHealthInputs, reconSourceUses } from "../../../recon";
+import { calendars } from "../../../sources";
+import { spaceMembers, spaces, withSpace } from "../../../spaces";
+import { users } from "../../../users";
+import { closeDay } from "../../breaks";
+import { RUN_STOPPED } from "../../jobs";
+import { dispatch, runScheduled } from "../../schedule";
+import { reconDays, reconItems, reconRuns } from "../../schema";
+import { createRun, execRun, runRecon, type RunCounters } from "../../service";
+import { ccyEq, D, D1, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
+
+type Probe = Awaited<ReturnType<typeof appRoleDb>>;
+let probe: Probe, A: string;
+
+const at = (s: string) => new Date(`${s}+07:00`);
+const exact = { no: 1, name: "Exact", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, ccyEq] };
+const sides = async () => [await makeSource(A, plainSource()), await makeSource(A, plainSource())] as [Src, Src];
+const interval = (a: string, b: string, carry = 1) => ({ ...spec(a, b, [exact], carry), schedule: { kind: "interval", every_minutes: 2 } });
+/** Source `s` complete through `t` (its cursor, as ingest writes it). */
+const complete = (s: Src, t: Date) => db.insert(sourceCursors).values({ spaceId: s.spaceId, sourceId: s.sourceId, completeThrough: t })
+  .onConflictDoUpdate({ target: [sourceCursors.spaceId, sourceCursors.sourceId], set: { completeThrough: t } });
+
+/**
+ * Runs the queued jobs of `queue` as the worker would, at `now` (its closes judged then), completes each, and dates
+ * the runs they started at `now` (the schedule reads started_at: the test's clock, not the database's).
+ */
+async function drain(queue: "recon.tick" | "recon.daily", now: Date): Promise<string[]> {
+  const b = await boss(), ran: string[] = [];
+  for (;;) {
+    const jobs = await b.fetch(queue, { batchSize: 10 });
+    if (!jobs.length) break;
+    for (const j of jobs) {
+      const data = j.data as { spaceId: string; runId: string };
+      await runScheduled(probe, data, undefined, () => now);
+      await b.complete(queue, j.id);
+      await db.update(reconRuns).set({ startedAt: now }).where(eq(reconRuns.id, data.runId));
+      ran.push(data.runId);
+    }
+  }
+  return ran;
+}
+const runOf = async (id: string) => (await db.select().from(reconRuns).where(eq(reconRuns.id, id)))[0]!;
+const itemsOf = (configId: string) => db.select({ side: reconItems.side, status: reconItems.status, reason: reconItems.breakReason, late: reconItems.lateMatch, resolution: reconItems.resolution, ref: records.extRef, date: reconItems.businessDate })
+  .from(reconItems).innerJoin(records, and(eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
+  .where(and(eq(reconItems.configId, configId), sql`${reconItems.simRunId} is null`)).orderBy(asc(records.extRef), asc(reconItems.side));
+
+beforeAll(async () => {
+  probe = await appRoleDb();
+  await resetData();
+  await db.delete(spaces);
+  await db.insert(calendars).values({ id: Bun.randomUUIDv7(), code: "id-default", name: "Default", weekend: [6, 7], holidays: [] }).onConflictDoNothing();
+  await db.transaction((tx) => ensureMonthPartitions(tx, records, new Date(`${D}T00:00:00Z`), 2));
+}, 60_000);
+beforeEach(async () => {
+  // the schedule reads every active space: the earlier tests' spaces are archived, each test has its own
+  await db.update(spaces).set({ status: "archived" });
+  A = Bun.randomUUIDv7();
+  await db.insert(spaces).values({ id: A, code: `s${A.slice(-8)}`, name: "Treasury" });
+  await (await boss()).deleteAllJobs();
+});
+afterAll(async () => {
+  await probe.$client.close();
+});
+
+describe("the schedule", () => {
+  it("interval: each tick takes only what is new; past grace an item breaks; a late counterpart closes the break (carry over 1)", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, interval(sa.sourceId, sb.sourceId));
+    await put(sa, [{ ref: "K1", amount: 100n, et: `${D}T10:00:00+07:00` }, { ref: "K2", amount: 200n, et: `${D}T10:00:00+07:00` }]);
+    await put(sb, [{ ref: "K1", amount: 100n, et: `${D}T10:00:00+07:00` }]);
+    await complete(sa, at(`${D}T10:20:00`));
+    await complete(sb, at(`${D}T10:20:00`));
+
+    const first = await dispatch(db, at(`${D}T10:21:00`));
+    expect(first.length).toBe(1);
+    expect(await drain("recon.tick", at(`${D}T10:21:00`))).toEqual(first);
+    const run1 = await runOf(first[0]!);
+    expect([run1.mode, run1.status, run1.dateFrom, run1.dateTo]).toEqual(["tick", "succeeded", D, D]);
+    expect((run1.counters as RunCounters).intake).toEqual({ a: 2, b: 1 });
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status])).toEqual([["K1", "a", "matched"], ["K1", "b", "matched"], ["K2", "a", "open"]]);
+    // a minute later: not due (every 2 minutes)
+    expect(await dispatch(db, at(`${D}T10:22:00`))).toEqual([]);
+
+    // side B delivered past K2's time + 30 minutes of grace, without K2: it breaks; K3 is new and waits
+    await put(sb, [{ ref: "K3", amount: 300n, et: `${D}T10:25:00+07:00` }]);
+    await complete(sb, at(`${D}T10:31:00`));
+    const second = await dispatch(db, at(`${D}T10:24:00`));
+    await drain("recon.tick", at(`${D}T10:24:00`));
+    expect((((await runOf(second[0]!)).counters) as RunCounters).intake).toEqual({ a: 0, b: 1 });
+    const k2 = (await itemsOf(r.configId)).find((i) => i.ref === "K2")!;
+    expect([k2.status, k2.reason, k2.late]).toEqual(["break", "No counterpart", true]);
+    expect((await itemsOf(r.configId)).find((i) => i.ref === "K3")!.status).toBe("open");
+
+    // K2 arrives late on side B: the next tick pairs it with the break, closed as late data
+    await put(sb, [{ ref: "K2", amount: 200n, et: `${D}T10:40:00+07:00` }]);
+    const third = await dispatch(db, at(`${D}T10:27:00`));
+    await drain("recon.tick", at(`${D}T10:27:00`));
+    expect(((await runOf(third[0]!)).counters as RunCounters).passes["1"]!.matched).toBe(1);
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "K2").map((i) => [i.side, i.status, i.resolution])).toEqual([
+      ["a", "matched", "AUTO_MATCHED_LATE_DATA"], ["b", "matched", null],
+    ]);
+  }, 60_000);
+
+  it("carry over 0 (KSEI) never pairs a closed day's break with the next day's data; carry over 7 does", async () => {
+    const [sa, sb] = await sides();
+    const k0 = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    const k7 = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 7));
+    await put(sa, [{ ref: "K9", amount: 900n, date: D }]);
+    const after = at("2026-12-31T00:00:00");
+    for (const r of [k0, k7]) {
+      await runRecon(probe, { ...r, mode: "daily", from: D });
+      expect(await closeDay(probe, r, D, after)).toBe("closed");
+      expect((await itemsOf(r.configId)).map((i) => [i.status, i.reason, i.late])).toEqual([["break", "No counterpart", true]]);
+    }
+    await put(sb, [{ ref: "K9", amount: 900n, date: D1 }]);
+    for (const r of [k0, k7]) await runRecon(probe, { ...r, mode: "daily", from: D1 });
+    expect((await itemsOf(k0.configId)).map((i) => [i.side, i.status])).toEqual([["a", "break"], ["b", "open"]]);
+    expect((await itemsOf(k7.configId)).map((i) => [i.side, i.status, i.resolution])).toEqual([["a", "matched", "AUTO_MATCHED_LATE_DATA"], ["b", "matched", null]]);
+  }, 60_000);
+
+  it("catch-up: a daily recon whose worker was down fails the stale run, runs every date since the last closed one and closes each", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1)); // daily at 23:30, offset 0, grace 30
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: "2026-11-01", status: "closed", closedAt: new Date() });
+    const stale = Bun.randomUUIDv7();
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "daily", from: "2026-11-02", status: "running", id: stale, jobId: Bun.randomUUIDv7() }), probe);
+    const dates = ["2026-11-02", "2026-11-03", "2026-11-04"];
+    for (const [i, d] of dates.entries()) {
+      await put(sa, [{ ref: `P${i}`, amount: 10n, date: d }, { ref: `Q${i}`, amount: 20n, date: d }]);
+      await put(sb, [{ ref: `P${i}`, amount: 10n, date: d }]);
+    }
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at("2026-12-01T00:00:00"));
+
+    const now = at("2026-11-04T23:45:00");
+    const started = await dispatch(db, now);
+    expect(started.length).toBe(1);
+    expect([(await runOf(stale)).status, (await runOf(stale)).error]).toEqual(["failed", RUN_STOPPED]);
+    await drain("recon.daily", now);
+    const run = await runOf(started[0]!);
+    expect([run.mode, run.status, run.dateFrom, run.dateTo]).toEqual(["daily", "succeeded", "2026-11-02", "2026-11-04"]);
+    const days = await db.select({ d: reconDays.businessDate, s: reconDays.status, incomplete: reconDays.incomplete, counters: reconDays.counters }).from(reconDays)
+      .where(eq(reconDays.configId, r.configId)).orderBy(asc(reconDays.businessDate));
+    expect(days.map((x) => [x.d, x.s])).toEqual([["2026-11-01", "closed"], ...dates.map((d) => [d, "closed"])]);
+    expect(days.slice(1).map((x) => [x.incomplete, x.counters])).toEqual(dates.map(() => [null, { open: 1, suggested: 0 }]));
+    expect((await itemsOf(r.configId)).filter((i) => i.status === "break").map((i) => i.ref)).toEqual(["Q0", "Q1", "Q2"]);
+    // nothing left to do until the next date's run time
+    expect(await dispatch(db, now)).toEqual([]);
+    expect((await dispatch(db, at("2026-11-05T23:30:00"))).length).toBe(1);
+  }, 60_000);
+
+  it("a day whose data isn't complete waits until close + grace, then closes marked incomplete", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1)); // closes right after its 23:30 run, grace 30
+    await put(sa, [{ ref: "Z1", amount: 10n, date: D }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    await complete(sa, at("2026-12-01T00:00:00"));
+    await complete(sb, at(`${D}T12:00:00`));
+    expect(await closeDay(probe, r, D, at(`${D}T23:00:00`))).toBe("not_due");
+    expect(await closeDay(probe, r, D, at(`${D}T23:45:00`))).toBe("closing");
+    const day = () => db.select().from(reconDays).where(eq(reconDays.configId, r.configId));
+    expect((await day()).map((x) => x.status)).toEqual(["closing"]);
+    expect((await itemsOf(r.configId))[0]!.status).toBe("open");
+    expect(await closeDay(probe, r, D, at(`${D1}T00:00:00`))).toBe("closed");
+    expect((await day())[0]!.incomplete).toEqual([{ side: "b", sourceId: sb.sourceId, completeThrough: at(`${D}T12:00:00`).toISOString() }]);
+    expect((await itemsOf(r.configId))[0]!.status).toBe("break");
+  }, 60_000);
+});
+
+describe("run details", () => {
+  it("intake per chunk takes every record once (5 and 4 records, chunks of 2)", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));
+    await put(sa, [1, 2, 3, 4, 5].map((k) => ({ ref: `C${k}`, amount: BigInt(k) })));
+    await put(sb, [1, 2, 3, 4].map((k) => ({ ref: `C${k}`, amount: BigInt(k) })));
+    const id = await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "manual", from: D, status: "running" }), probe);
+    const out = await execRun(probe, A, id, { chunk: 2 });
+    expect(out!.counters.intake).toEqual({ a: 5, b: 4 });
+    expect(out!.counters.passes["1"]!.matched).toBe(4);
+    expect((await runOf(id)).intakeDone).toBe(`${D}:b`);
+  }, 60_000);
+
+  it("a manual run without dates takes the last closed day within 30 days, else today", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));
+    const op = (await db.select({ id: users.id }).from(users).where(eq(users.username, "apple")))[0]!.id;
+    await db.insert(spaceMembers).values({ spaceId: A, userId: op, role: "operator" });
+    const token = await signIn("apple");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+    const first = await call("POST", `/v1/spaces/${A}/recons/${r.configId}/runs`, { token, body: {} });
+    expect(first.status).toBe(202);
+    const dto = (await first.json()) as ReconRunDto;
+    expect([dto.from, dto.to]).toEqual([today, today]);
+    // that run over (its job too), so the next request may start one
+    await db.update(reconRuns).set({ status: "succeeded" }).where(eq(reconRuns.id, dto.id));
+    await (await boss()).deleteAllJobs();
+    const closed = new Date(Date.parse(`${today}T00:00:00Z`) - 3 * 86_400_000).toISOString().slice(0, 10);
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: closed, status: "closed" });
+    const second = (await (await call("POST", `/v1/spaces/${A}/recons/${r.configId}/runs`, { token, body: {} })).json()) as ReconRunDto;
+    expect([second.from, second.to]).toEqual([closed, closed]);
+  }, 60_000);
+
+  it("source health is judged on the stricter of the source's inputs and its recons' (grace, daily deadline)", async () => {
+    const [sa] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sa.sourceId, [exact], 1));
+    const list = [{ id: sa.sourceId, spaceId: A, kind: "file_inbox" as const, status: "active" as const, spec: plainSource() }];
+    const now = at("2026-11-03T10:00:00"); // the 2nd's file is due; none came
+    const judge = () => withSpace({ spaceIds: [A], userId: null }, async (tx) => (await sourceStates(tx, list, A, now, await reconHealthInputs(tx, [sa.sourceId]))).get(sa.sourceId)!.health!, probe);
+    expect((await judge()).state).toBe("degraded"); // no deadline anywhere
+    await db.insert(reconSourceUses).values({ spaceId: A, configId: r.configId, sourceSpaceId: A, sourceId: sa.sourceId, field: "ext_ref", configName: "R", graceMinutes: 30, deadline: "09:00" });
+    const h = await judge();
+    expect([h.state, h.deadline, h.graceMinutes]).toEqual(["down", "09:00", 30]);
+  }, 60_000);
+});

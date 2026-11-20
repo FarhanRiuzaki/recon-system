@@ -16,5 +16,5 @@ export { type ParsedLine, parseDelimited, parseText } from "./parse";
 export { type ColumnProfile, profile } from "./profile";
 export { previewRows, previewSample } from "./preview";
 export { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "./schema";
-export { previousBusinessDay, todayIn } from "./rules";
-export { currentRecord, ingestHandlers, ingestHooks, recountDays, scheduleSource, type SourceState, sourceStates } from "./service";
+export { deadlineOn, endOfDay, previousBusinessDay, todayIn } from "./rules";
+export { currentRecord, type HealthInputs, ingestHandlers, ingestHooks, recountDays, scheduleSource, type SourceState, sourceStates } from "./service";
