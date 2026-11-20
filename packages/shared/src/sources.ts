@@ -79,6 +79,8 @@ export function currencyCode(s: string): string | null {
 const DIRECTION_CODES: Readonly<Record<string, "credit" | "debit">> = {
   D: "debit", DR: "debit", DB: "debit", DEBIT: "debit", DEBET: "debit", C: "credit", CR: "credit", K: "credit", CREDIT: "credit", KREDIT: "credit",
 };
+/** The codes directionOf reads as a debit (upper case): the engine's SQL negates an amount with one (signedAmount's rule). */
+export const DEBIT_CODES: readonly string[] = Object.keys(DIRECTION_CODES).filter((c) => DIRECTION_CODES[c] === "debit");
 export const DIRECTION_HINT = "D, DR, DB, DEBIT, DEBET or C, CR, K, CREDIT, KREDIT";
 /** A direction as a source writes it → "debit" or "credit", or null when it is neither. */
 export const directionOf = (s: string): "credit" | "debit" | null => DIRECTION_CODES[s.trim().toUpperCase()] ?? null;
