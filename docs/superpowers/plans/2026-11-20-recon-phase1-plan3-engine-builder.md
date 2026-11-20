@@ -53,7 +53,7 @@ Keputusan urutan: DEC baru dari po-recon (engine + list dulu, kanvas menyusul; D
 **Config gerbang** (dipakai tes integrasi dan cek app): sisi A = source1 (semua baris), sisi B = source2. Pass 1 exact
 1:1 auto: `ext_ref eq`, `amount_minor eq`, `business_date eq`, `currency eq`; `on_ambiguous = break`. Pass 2 1:1
 suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hanya untuk config gerbang; toleransi BI-FAST nyata = data tim, REC-Q7). Pass 3 1:1 suggest: blocking `ext_ref`,
-`amount_minor eq`, `date_window ±1 day`. Mapping source: `txn_ref`/`reference` → `ext_ref`, `amount_minor`/`amount` →
+`amount_minor eq`, `date_window ±1 day`; `carry_over_days = 1` (Captain: angka gerbang = perilaku produksi; guardrail di Task 1). Mapping source: `txn_ref`/`reference` → `ext_ref`, `amount_minor`/`amount` →
 `amount_minor`, `business_date`/`value_date` → `business_date`, `ccy`/`currency` → `currency`, `account_no`/`acct` →
 `account_ref`.
 
@@ -75,6 +75,9 @@ suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hany
   `grace_minutes`, `carry_over_days`, `close_at`, `schedule` (`interval {every_minutes}` | `daily {at, business_date_offset}`).
   `FieldRef` = kolom core `records` atau `attrs.<nama simpan>` dari versi source terbit. Operator: `eq`, `eq_normalized`,
   `amount_abs_tol`, `amount_pct_tol`, `date_window`, `bday_window`, `contains`, `similarity`, `eq_sum` (hanya 1:N/N:1).
+- Guardrail carry-over vs toleransi tanggal (Captain): pass dengan `date_window`/`bday_window` > `carry_over_days` pada jadwal
+  harian → issue di API (submit diblokir; save mengembalikan warning) "Pass 3 allows dates 1 day apart, but carry over is 0
+  days: pairs across days never meet in a daily run. Set carry over to 1 day."; tes unit.
 - `checkReconSpec(spec, sourceVersions)` di `rules.ts`: tipe field cocok per operator ("Amount is decimal; this side's field
   is text."), `eq_sum` hanya di pass 1:N/N:1, nomor pass urut tanpa lubang, error dengan path field (pola Plan 2 Task 7).
 - Route di `/v1/spaces/:spaceId/recons` (pola sources): list (`pageQuery … on: tx`), create (simpan pertama = config +
@@ -143,7 +146,10 @@ in review, Sent back, Edit version n, Activity satu kalimat per event); Delete d
 
 **Files:** `features/recons/run-*`, route `…/[configId]/runs/[runId]`.
 
-**Interfaces:** ringkasan run (versi, mode, waktu, counter per pass: matched / suggested / ambiguous→break / sisa open;
+**Interfaces:** strip ringkas per business date di atas tab (angka matched/suggested/waiting per tanggal, berfungsi sebagai
+filter) + kolom Business date di tabel — bukan grup per tanggal di tabel berpaginasi (Captain). Duplicate adalah outcome
+tersendiri (bukan matched): funnel per sisi bisa dijumlah (1,000 = 940 matched + 15 duplicate + 45 lanjut). Ringkasan run
+(versi, mode, waktu, counter per pass: matched / suggested / ambiguous→break / sisa open;
 match rate menghitung suggested sebagai open), baris suggested menampilkan delta (selisih jumlah / hari) dan pass
 pengusul,
 tabel item server-paged per pass/status/sisi, detail grup dengan evidence per predikat (list view "Explain"; graf menyusul
