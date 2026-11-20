@@ -2,7 +2,8 @@ import { signInHref } from "@starterkit/ui/lib/safe-path";
 import type { ApiErrorBody } from "@starterkit/shared/contracts/common";
 
 export class ApiError extends Error {
-  constructor(readonly status: number, readonly code: string, message: string) {
+  /** `retryAfter`: the seconds a 429 asks to wait (its Retry-After), else null. */
+  constructor(readonly status: number, readonly code: string, message: string, readonly retryAfter: number | null = null) {
     super(message);
     this.name = "ApiError";
   }
@@ -53,5 +54,6 @@ export async function apiFailure(res: Response, path: string): Promise<ApiError>
   if (res.status === 401 && !OWN_401.test(path) && typeof window !== "undefined") {
     window.location.assign(signInHref(window.location.pathname + window.location.search));
   }
-  return new ApiError(res.status, body.error?.code ?? "error", body.error?.message ?? `HTTP ${res.status}`);
+  const wait = Number(res.headers.get("retry-after"));
+  return new ApiError(res.status, body.error?.code ?? "error", body.error?.message ?? `HTTP ${res.status}`, Number.isFinite(wait) && wait > 0 ? wait : null);
 }

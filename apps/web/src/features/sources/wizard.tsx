@@ -11,7 +11,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { DeniedIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
-import type { ConnectionTestDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { ConnectionTestDto, SourceCatalogDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -21,10 +21,11 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
 import { attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
+import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { ConnectionStep } from "./steps/connection";
 import { FieldsStep } from "./steps/fields";
 import {
-  buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
+  buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
 } from "./steps/model";
 import { DiscardDialog } from "./discard-dialog";
@@ -40,6 +41,11 @@ const DESCRIPTION = [
   "Check what was detected, fix types and formats, and say which columns the recon uses. The preview updates as you change things.",
   "Check the summary, then send the version for approval. A config checker other than you approves it before anything is ingested.",
 ] as const;
+/** A catalog list's failure as its state: the API's sentence, and when Retry may run again after a 429. */
+const failed = (e: unknown) => ({ status: "error" as const, message: errorText(e), retryAt: e instanceof ApiError && e.retryAfter ? Date.now() + e.retryAfter * 1000 : null });
+/** The table search waits this long after the last key (PO: no request per keystroke). */
+const SEARCH_DEBOUNCE_MS = 250;
+
 /** Ruling 1: Next needs a passing test of exactly the values on screen. */
 const UNTESTED = { db: "Test the connection first; step 2 reads the columns through it.", file: "Test the folder first; files are picked up from it." } as const;
 const CHANGED = { db: "The connection changed since the last test. Test it again.", file: "The folder changed since the last test. Test it again." } as const;
@@ -115,6 +121,12 @@ function Refused({ title, reason, back }: { title: string; reason: string; back:
 
 type Ids = { sourceId: string; versionId: string; version: number } | null;
 
+/** The published version's table of a watermark source (step 3 says a change of it), else null. */
+const publishedTableOf = (s: SourceDto | null) => {
+  const i = s?.published?.spec?.input;
+  return i?.kind === "db_watermark" ? (i.table ?? null) : null;
+};
+
 function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   spaceId: string; spaceName: string; initial: Draft; start: number; admin: boolean; source: { s: SourceDto; v: SourceVersionDto } | null;
 }) {
@@ -147,6 +159,18 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [fieldErr, setFieldErr] = useState<FieldErr>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // the pickers (REC-F2a): what the source database lists for the login, read after a passing test
+  const [names, setNames] = useState<ListState<{ items: string[]; truncated: boolean }>>(IDLE);
+  const [tables, setTables] = useState<ListState<TablesPage>>(IDLE);
+  /** The credential (apart from the database) and the database of the last passing test: the lists belong to them. */
+  const [listed, setListed] = useState<{ cred: string; database: string } | null>(null);
+  const [free, setFree] = useState({ database: false, table: false });
+  const [tableQuery, setTableQuery] = useState("");
+  const [schema, setSchema] = useState("");
+  const [picked, setPicked] = useState<{ reading: boolean; n: number | null }>({ reading: false, n: null });
+  const [suggested, setSuggested] = useState<Suggestion | null>(null);
+  const tablesFor = useRef<string | null>(null);
+  const tableSeq = useRef(0);
   const saved = useRef(source?.v.spec ? JSON.stringify(source.v.spec) : null);
   const detect = useRef<Set<string>>(new Set());
   const heading = useRef<HTMLHeadingElement>(null);
@@ -187,25 +211,119 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
    * Tests exactly the values on screen, storing nothing (fix round 1, I1): a new source's through the space's test
    * route, an existing one's typed connection (or `{}` for the stored one) and folder through its own.
    */
-  async function test() {
+  async function test(x: Draft = d) {
     setFormError(null);
     setFieldErr(null);
-    if (!show(connectionProblems(d, { created: !!ids, replace }))) return;
+    const typedConn = !ids || !stored || connChanged(x.conn, base);
+    if (!show(connectionProblems(x, { created: !!ids, replace: typedConn }))) return;
     setBusy("test");
     try {
-      const key = connKey(d);
-      const i = d.spec.input;
-      const typed = i.kind === "file_inbox" ? { path: i.path.trim(), pattern: i.pattern.trim() } : replace ? { connection: connBody(d.conn) } : {};
+      const key = connKey(x);
+      const i = x.spec.input;
+      const typed = i.kind === "file_inbox" ? { path: i.path.trim(), pattern: i.pattern.trim() } : typedConn ? { connection: connBody(x.conn) } : {};
       const result = ids
         ? await api<ConnectionTestDto>(sourceApi(spaceId, ids.sourceId, "/connection/test"), { method: "POST", body: JSON.stringify(typed) })
-        : await api<ConnectionTestDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/connection-test`, { method: "POST", body: JSON.stringify({ kind: d.kind, ...typed }) });
+        : await api<ConnectionTestDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/connection-test`, { method: "POST", body: JSON.stringify({ kind: x.kind, ...typed }) });
       setTested({ result, key });
+      if (result.ok && x.kind !== "file_inbox") {
+        const cred = credKey(x.conn);
+        const again = listed?.cred === cred && names.status === "ready";
+        setListed({ cred, database: x.conn.database.trim() });
+        // the databases (Oracle: schemas) of a typed connection; a stored one keeps its database unless retyped whole
+        if (!again && (typedConn || x.conn.engine === "oracle")) void loadNames(x);
+      }
     } catch (e) {
       fail(e, true, file ? "src-input-path" : "src-host");
     } finally {
       setBusy(null);
     }
   }
+
+  /** A catalog list over the connection on screen: typed values, or (an existing source, nothing retyped) the stored one. */
+  function catalog<T extends SourceCatalogDto>(body: Record<string, unknown>, x: Draft = d): Promise<T> {
+    const typedConn = !ids || !stored || connChanged(x.conn, base);
+    const url = ids ? sourceApi(spaceId, ids.sourceId, "/connection/catalog") : `/api/spaces/${encodeURIComponent(spaceId)}/sources/catalog`;
+    return api<T>(url, { method: "POST", body: JSON.stringify({ ...body, ...(typedConn ? { connection: connBody(x.conn) } : {}) }) });
+  }
+  async function loadNames(x: Draft = d) {
+    setNames({ status: "loading" });
+    try {
+      const r = await catalog<Extract<SourceCatalogDto, { list: "databases" }>>({ list: "databases" }, x);
+      setNames({ status: "ready", data: { items: r.items, truncated: r.truncated } });
+    } catch (e) {
+      setNames(failed(e));
+    }
+  }
+  /** A page of tables for `q`; the latest search wins, and rows on screen stay until it answers. */
+  async function loadTables(q: string) {
+    const n = ++tableSeq.current;
+    setTables((t) => (t.status === "ready" ? t : { status: "loading" }));
+    try {
+      const r = await catalog<TablesPage>({ list: "tables", ...(q.trim() ? { q: q.trim() } : {}), ...(d.conn.engine === "oracle" && schema ? { schema } : {}) });
+      if (n === tableSeq.current) setTables({ status: "ready", data: r });
+    } catch (e) {
+      if (n === tableSeq.current) setTables(failed(e));
+    }
+  }
+  /** The watermark and id the columns suggest, set unless the user chose their own (a choice the table still has). */
+  function applySuggestion(cols: Column[], table: string, kind: CatalogTable["kind"] | null) {
+    const s = suggest(d.conn.engine, cols, table, kind);
+    const prev = suggested;
+    setSuggested(s);
+    setDraft((x) => {
+      const i = x.spec.input;
+      if (i.kind !== "db_watermark") return x;
+      const keep = (cur: string, was: string | null | undefined, next: string | null) => (cur && cur !== was && cols.some((c) => c.name === cur) ? cur : next ?? cur);
+      return { ...x, spec: { ...x.spec, input: { ...i, watermark: { column: keep(i.watermark.column, prev?.column, s.column), id_column: keep(i.watermark.id_column, prev?.id, s.id) } } } };
+    });
+  }
+  const kindOf = (table: string): CatalogTable["kind"] | null =>
+    (tables.status === "ready" ? tables.data.items.find((t) => tableValue(d.conn.engine, t) === table)?.kind ?? null : null);
+  /** A table chosen from the list: its columns are read at once (PO step 5) and suggest the watermark and id. */
+  async function pickTable(table: string) {
+    set((x) => (x.spec.input.kind === "db_watermark" ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, table } } } : x));
+    setFieldErr(null);
+    setPicked({ reading: true, n: null });
+    try {
+      const r = await catalog<Extract<SourceCatalogDto, { list: "columns" }>>({ list: "columns", table });
+      setColumns(r.columns);
+      applySuggestion(r.columns, table, kindOf(table));
+      setPicked({ reading: false, n: r.columns.length });
+    } catch (e) {
+      setPicked({ reading: false, n: null });
+      setFieldErr({ id: ctl("input.table"), reason: errorText(e) });
+    }
+  }
+  /** A database chosen from the list: tested at once with it, so its tables list and Next counts the pass. */
+  function pickDatabase(database: string) {
+    const x = { ...d, conn: { ...d.conn, database } };
+    set(() => x);
+    void test(x);
+  }
+
+  const credNow = credKey(d.conn);
+  const listsStale = !!listed && listed.cred !== credNow;
+  const tablesStale = !!listed && !listsStale && (!stored || connChanged(d.conn, base)) && d.conn.database.trim() !== listed.database;
+  const wantTables = !file && d.kind === "db_watermark" && d.from === "table" && !!listed && !listsStale && !tablesStale
+    && (d.conn.engine === "oracle" || !!listed.database || (stored && !connChanged(d.conn, base)));
+  const tablesKey = wantTables ? JSON.stringify([listed, schema]) : null;
+  // the table list follows the last passing test (and Oracle's schema); a search waits for the typing to stop
+  useEffect(() => {
+    if (!tablesKey || tablesFor.current === tablesKey) return;
+    tablesFor.current = tablesKey;
+    setTableQuery("");
+    setTables(IDLE);
+    void loadTables("");
+    // loadTables reads the draft of this render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tablesKey]);
+  const searched = useRef("");
+  useEffect(() => {
+    if (!tablesKey || tableQuery === searched.current) return;
+    const t = setTimeout(() => { searched.current = tableQuery; void loadTables(tableQuery); }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tableQuery, tablesKey]);
 
   /**
    * After a pass (Next on step 1): a new source, its connection and first draft in one call (a taken code shows on the
@@ -251,8 +369,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         : await api<SourceColumnsDto>(sourceApi(spaceId, at.sourceId, "/connection/columns"), { method: "POST", body: JSON.stringify({ query, ...(businessDate ? { businessDate } : {}) }) });
       setColumns(r.columns);
       const engine = source?.s.connection?.engine ?? d.conn.engine;
+      if (table) applySuggestion(r.columns, table, kindOf(table));
       set((x) => {
-        const fields = mergeFields(x.spec.fields, fieldsOfColumns(engine, r.columns));
+        const merged = mergeFields(x.spec.fields, fieldsOfColumns(engine, r.columns));
+        // a table read: fields its columns lack stay, marked (PO decision 4); a SELECT's columns replace them as before
+        const fields = table ? [...merged, ...x.spec.fields.filter((f) => !merged.some((m) => m.name === f.name))] : merged;
         const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name));
         return { ...x, spec: { ...x.spec, fields, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((f) => [attrNameOf(f.name), { field: f.name }])) } } } };
       });
@@ -284,7 +405,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   }
 
   // the live preview (ruling 2): the spec on screen, unsaved, a moment after the last change
-  const spec = useMemo(() => buildSpec(d), [d]);
+  const gone = useMemo(() => (d.from === "table" && d.kind === "db_watermark" ? goneFields(d.spec, columns) : { gone: [], used: [] }), [d, columns]);
+  const spec = useMemo(() => buildSpec(d, gone.gone.filter((n) => !gone.used.includes(n))), [d, gone]);
   const specKey = JSON.stringify(spec);
   const previewable = !mappingProblem(spec) && (!file || !!sample.text.trim());
   const seq = useRef(0);
@@ -346,7 +468,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     setFormError(null);
     setFieldErr(null);
     if (step === 0) {
-      if (!show(pullProblems(d))) return;
+      if (!show(pullProblems(d, { replace }))) return;
       setBusy("next");
       const at = await commitConnection();
       setBusy(null);
@@ -387,7 +509,9 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     }
   }
 
-  const blocked = step === 0 ? (!tested || !tested.result.ok ? UNTESTED[file ? "file" : "db"] : tested.key !== connKey(d) ? CHANGED[file ? "file" : "db"] : null) : null;
+  const tableNow = d.spec.input.kind === "db_watermark" ? (d.spec.input.table ?? "") : "";
+  const blocked = step === 0 ? (!tested || !tested.result.ok ? UNTESTED[file ? "file" : "db"] : tested.key !== connKey(d) ? CHANGED[file ? "file" : "db"] : null)
+    : step === 1 && gone.used.length ? goneBlocked(gone.used.length, tableNow) : null;
   /** A draft source nobody submitted or shared (DELETE …/sources/{id} takes it): made here, or opened as such. */
   const deletable = !!ids && (!source || (source.s.publishedVersion === null && !source.v.submitterId && !source.s.shares.length));
   async function discard() {
@@ -409,7 +533,13 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (!blocked && !working) void next(); }} className="grid gap-section">
           <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>
           {step === 0 && (
-            <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()} />
+            <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
+              nextVersion={source?.s.publishedVersion != null && ids ? ids.version : null}
+              catalog={{
+                names, tables, stale: listsStale, tablesStale, free, onFree: (k, f) => setFree((x) => ({ ...x, [k]: f })), query: tableQuery, onQuery: setTableQuery,
+                schema, onSchema: setSchema, onPickDatabase: pickDatabase, onPickTable: (t) => void pickTable(t), onRetryNames: () => void loadNames(), onRetryTables: () => void loadTables(tableQuery),
+                columns: picked,
+              }} />
           )}
           {step === 1 && (
             <FieldsStep d={d} set={set} err={err} engine={file ? null : (source?.s.connection?.engine ?? d.conn.engine)} native={native} canRead={admin && !!ids}
@@ -417,9 +547,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
               businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }}
               onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
+              gone={gone} suggested={suggested}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
-          {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep} />}
+          {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep}
+            publishedTable={publishedTableOf(source?.s ?? null)} />}
           {formError && <p role="alert" className="text-body-sm text-down-ink">{formError}</p>}
           <FormActions className="justify-end">
             {deletable && admin && <Button type="button" variant="ghost" className="mr-auto text-down-ink" disabled={working} onClick={() => setDiscarding(true)}>Delete draft source</Button>}

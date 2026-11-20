@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, watermarkProblems } from "./model";
+import { buildSpec, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, watermarkProblems } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
 
@@ -11,10 +11,20 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
     expect(connChanged({ ...EMPTY_CONN, port: "6543" }, EMPTY_CONN)).toBe(true);
     expect(connChanged({ ...EMPTY_CONN, engine: "mysql" }, EMPTY_CONN)).toBe(true);
   });
-  it("a replaced connection needs every field; the stored one tested as it is needs none", () => {
+  it("a replaced connection needs every field but the database (Oracle's service name is needed); the stored one tested as it is needs none", () => {
     const tlsOnly = db({ conn: { ...EMPTY_CONN, tls: true } });
-    expect(connectionProblems(tlsOnly, { created: true, replace: true }).map((p) => p.id)).toEqual(["src-host", "src-database", "src-user", "src-password"]);
+    const problems = connectionProblems(tlsOnly, { created: true, replace: true });
+    expect(problems.map((p) => p.id)).toEqual(["src-host", "src-user", "src-password"]);
+    expect(problems[2]!.reason).toBe("Enter the password again: the connection changed.");
+    expect(connectionProblems(db({ conn: { ...EMPTY_CONN, engine: "oracle", tls: true } }), { created: false, replace: true }).map((p) => p.id)).toEqual(["src-host", "src-database", "src-user", "src-password"]);
     expect(connectionProblems(db(), { created: true, replace: false })).toEqual([]);
+  });
+  it("Next stores a connection only with its database; buildSpec leaves out the fields it is told to drop", () => {
+    const d = db({ conn: { ...EMPTY_CONN, host: "h", user: "u", password: "p" } });
+    expect(pullProblems(d, { replace: true }).map((p) => p.reason)).toContain("Choose the database, or type its name.");
+    expect(pullProblems(d, { replace: false }).map((p) => p.id)).not.toContain("src-database");
+    const withFields = { ...d, spec: { ...d.spec, fields: [{ name: "a", type: "string" as const, nullable: true, trim: true }, { name: "gone", type: "string" as const, nullable: true, trim: true }] } };
+    expect(buildSpec(withFields, ["gone"]).fields.map((f) => f.name)).toEqual(["a"]);
   });
   it("a test counts for the values it ran with: the folder and pattern of a file source, the whole connection of a database one", () => {
     const f = { ...db(), kind: "file_inbox" as const, spec: emptySpec("file_inbox") };

@@ -54,9 +54,12 @@ export const connChanged = (c: Conn, from: Conn) => JSON.stringify(c) !== JSON.s
 /** The typed connection as the API takes it (PUT …/connection, a typed test, the create body). */
 export const connBody = (c: Conn) => ({ engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls } });
 
-/** The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed. */
-export function buildSpec(d: Draft): SourceSpec {
-  const s = d.spec;
+/**
+ * The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed.
+ * `drop` = fields whose column the table no longer has and that nothing uses (REC-F2a): kept on screen, not sent.
+ */
+export function buildSpec(d: Draft, drop: readonly string[] = []): SourceSpec {
+  const s = { ...d.spec, fields: d.spec.fields.filter((f) => !drop.includes(f.name)) };
   const names = new Set([...s.fields.map((f) => f.name), ...Object.keys(s.derive)]);
   const attrs = Object.fromEntries(Object.entries(s.mapping.attrs).filter(([, r]) => !("field" in r) || names.has(r.field)));
   let input = s.input;
@@ -87,17 +90,22 @@ export function connectionProblems(d: Draft, o: { created: boolean; replace: boo
   if (o.replace) {
     need(!!c.host.trim(), "src-host", "Enter the host.");
     need(/^\d{1,5}$/.test(c.port) && +c.port >= 1 && +c.port <= 65535, "src-port", "Enter a port from 1 to 65535.");
-    need(!!c.database.trim(), "src-database", "Enter the database or service name.");
+    // a database may stay empty for the test (the engine's default; the list then offers them), Oracle's service name not
+    need(c.engine !== "oracle" || !!c.database.trim(), "src-database", "Enter the service name.");
     need(!!c.user.trim(), "src-user", "Enter the username.");
-    need(!!c.password, "src-password", o.created ? "Enter the password too: a new connection replaces the stored one whole." : "Enter the password.");
+    need(!!c.password, "src-password", o.created ? "Enter the password again: the connection changed." : "Enter the password.");
   }
   return out;
 }
 
-/** Why step 1's pull settings aren't complete (checked on Next, after the test passed); the watermark is step 2's. */
-export function pullProblems(d: Draft): { id: string; reason: string }[] {
+/**
+ * Why step 1 can't go on yet once the test passed (checked on Next): a connection to store needs its database, the pull
+ * its query or table; the watermark is step 2's.
+ */
+export function pullProblems(d: Draft, o: { replace: boolean } = { replace: false }): { id: string; reason: string }[] {
   const i = d.spec.input;
   const out: { id: string; reason: string }[] = [];
+  if (d.kind !== "file_inbox" && o.replace && !d.conn.database.trim()) out.push({ id: "src-database", reason: "Choose the database, or type its name." });
   if (i.kind === "db_snapshot") {
     if (!/:business_date\b/.test(i.query)) out.push({ id: ctl("input.query"), reason: "Write the SELECT with the :business_date parameter." });
     if (!i.schedule.trim()) out.push({ id: ctl("input.schedule"), reason: "Enter when it runs, as a cron expression." });

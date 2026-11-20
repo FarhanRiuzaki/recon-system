@@ -13,13 +13,38 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { DB_ENGINES, FILE_ENCODINGS, type SourceKind } from "@starterkit/shared/sources";
 import { scheduleText } from "../source-text";
+import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { emptySpec, type Conn, ctl, DEFAULT_PORT, type Draft, type Tested } from "./model";
+import { NamePicker, TablePicker } from "./pickers";
 
 const ENGINE_LABEL = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" } as const;
 const STORED = "Stored. Enter a new value to replace it.";
 const DELIMITERS = [["|", "Pipe |"], [",", "Comma ,"], [";", "Semicolon ;"], ["\t", "Tab"]] as const;
 
 type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
+
+/** The pickers' lists and actions (REC-F2a), kept by the wizard. */
+export type CatalogProps = {
+  /** Databases (Oracle: schemas) the login can open, read after a passing test. */
+  names: ListState<{ items: string[]; truncated: boolean }>;
+  tables: ListState<TablesPage>;
+  /** The connection changed since the lists were read (engine, host, port, user, password, TLS). */
+  stale: boolean;
+  /** The database changed since the table list was read. */
+  tablesStale: boolean;
+  free: { database: boolean; table: boolean };
+  onFree: (k: "database" | "table", free: boolean) => void;
+  query: string;
+  onQuery: (q: string) => void;
+  /** Oracle: the schema the table list is narrowed to. */
+  schema: string;
+  onSchema: (v: string) => void;
+  onPickDatabase: (v: string) => void;
+  onPickTable: (v: string) => void;
+  onRetryNames: () => void;
+  onRetryTables: () => void;
+  columns: { reading: boolean; n: number | null };
+};
 
 export type ConnectionStepProps = {
   d: Draft;
@@ -32,6 +57,9 @@ export type ConnectionStepProps = {
   tested: Tested | null;
   testing: boolean;
   onTest: () => void;
+  catalog: CatalogProps;
+  /** Editing a published source: the version a change of how rows are read makes; null otherwise. */
+  nextVersion: number | null;
 };
 /** Under the test's panel title until the source exists (designer's copy). */
 const SAVED_AT_NEXT = "Next unlocks once the test passes; the source is saved at Next";
@@ -69,7 +97,8 @@ export function ConnectionStep(p: ConnectionStepProps) {
       </Panel>
 
       {db ? (
-        <Panel title="Connection" description={created ? "Only source admins see and change this" : `Only source admins see and change this · ${SAVED_AT_NEXT}`} bodyClassName="grid gap-4">
+        <Panel title="Connection" bodyClassName="grid gap-4"
+          description={created ? "Only source admins see and change this · Changes here apply at once for source admins; no new version." : `Only source admins see and change this · ${SAVED_AT_NEXT}`}>
           <div className="grid gap-4 md:grid-cols-3">
             <Field id="src-engine" label="Engine">
               <Select className="w-full min-w-0" id="src-engine" value={d.conn.engine} onChange={(e) => {
@@ -85,9 +114,16 @@ export function ConnectionStep(p: ConnectionStepProps) {
             <Field id="src-port" label="Port" error={err("src-port")}>
               <Input id="src-port" value={d.conn.port} inputMode="numeric" className="font-mono" onChange={(e) => setConn({ port: e.target.value.replace(/\D/g, "") })} autoComplete="off" />
             </Field>
-            <Field id="src-database" label={d.conn.engine === "oracle" ? "Service name" : "Database"} note={p.stored ? STORED : undefined} error={err("src-database")}>
-              <Input id="src-database" value={d.conn.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
-            </Field>
+            {d.conn.engine === "oracle" ? (
+              <Field id="src-database" label="Service name" note={p.stored ? STORED : undefined} error={err("src-database")}>
+                <Input id="src-database" value={d.conn.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
+              </Field>
+            ) : (
+              <NamePicker id="src-database" label="Database" noun="database" value={d.conn.database} error={err("src-database")} note={p.stored ? STORED : DATABASE_NOTE}
+                list={p.catalog.names} names={p.catalog.names.status === "ready" ? p.catalog.names.data : null} stale={p.catalog.stale}
+                free={p.catalog.free.database} onFree={(f) => p.catalog.onFree("database", f)} onRetry={p.catalog.onRetryNames}
+                onChange={(v) => setConn({ database: v })} onPick={p.catalog.onPickDatabase} />
+            )}
             <Field id="src-user" label="Username" error={err("src-user")}
               note={`Use an account that can only read. The app never writes here; a read-only account makes sure of it.${p.stored ? ` ${STORED}` : ""}`}>
               <Input id="src-user" value={d.conn.user} className="font-mono" onChange={(e) => setConn({ user: e.target.value })} autoComplete="off" spellCheck={false} />
@@ -95,6 +131,11 @@ export function ConnectionStep(p: ConnectionStepProps) {
             <Field id="src-password" label="Password" note={p.stored ? STORED : "Stored encrypted. Never shown again after saving."} error={err("src-password")}>
               <PasswordInput id="src-password" value={d.conn.password} onChange={(e) => setConn({ password: e.target.value })} autoComplete="off" />
             </Field>
+            {d.conn.engine === "oracle" && p.catalog.names.status !== "idle" && (
+              <NamePicker id="src-schema" label="Schema" noun="schema" value={p.catalog.schema} list={p.catalog.names} names={p.catalog.names.status === "ready" ? p.catalog.names.data : null}
+                stale={p.catalog.stale} free={p.catalog.free.database} onFree={(f) => p.catalog.onFree("database", f)} onRetry={p.catalog.onRetryNames}
+                onChange={p.catalog.onSchema} onPick={p.catalog.onSchema} />
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <span className="inline-flex items-center gap-2">
@@ -190,9 +231,11 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
       <>
         <Segmented label="Read from" value={d.from} onChange={(from) => set((x) => ({ ...x, from }))} options={[{ value: "table", label: "A table" }, { value: "query", label: "A SELECT" }]} />
         {d.from === "table" ? (
-          <Field id={ctl("input.table")} label="Table" note="table or schema.table, as the source's catalog spells it." error={err(ctl("input.table"))}>
-            <Input id={ctl("input.table")} value={w.table ?? ""} className="font-mono" onChange={(e) => setInput({ table: e.target.value } as Partial<WatermarkInput>)} autoComplete="off" spellCheck={false} />
-          </Field>
+          <TablePicker id={ctl("input.table")} label="Table" value={w.table ?? ""} error={err(ctl("input.table"))} note="table or schema.table, as the source's catalog spells it."
+            engine={d.conn.engine} database={(d.conn.engine === "oracle" ? p.catalog.schema : d.conn.database).trim() || "this database"}
+            list={p.catalog.tables} page={p.catalog.tables.status === "ready" ? p.catalog.tables.data : null} stale={p.catalog.stale || p.catalog.tablesStale}
+            free={p.catalog.free.table} onFree={(f) => p.catalog.onFree("table", f)} onRetry={p.catalog.onRetryTables} query={p.catalog.query} onQuery={p.catalog.onQuery}
+            onChange={(v) => setInput({ table: v } as Partial<WatermarkInput>)} onPick={p.catalog.onPickTable} columns={p.catalog.columns} />
         ) : (
           <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed. Rows are read from it page by page, ordered by the watermark." error={err(ctl("input.query"))}>
             <Textarea id={ctl("input.query")} value={w.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
@@ -212,7 +255,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
     );
   }
   return (
-    <Panel title="How to pull" bodyClassName="grid gap-4">
+    <Panel title="How to pull" bodyClassName="grid gap-4" description={p.nextVersion ? `A change here makes version ${p.nextVersion}, approved by a config checker.` : undefined}>
       <div className="grid gap-3 md:grid-cols-2">
         <ChoiceCard name="src-pull" label="New rows by watermark" checked={d.kind === "db_watermark"} disabled={created && d.kind !== "db_watermark"} onChange={() => p.setKind("db_watermark")}
           description="Pulls rows added or changed since the last pull, every minute. For transactions." />

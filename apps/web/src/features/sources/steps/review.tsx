@@ -13,7 +13,7 @@ type Check = { check: string; ready: boolean; details: string };
  * sees it too (Build notes 02 "Decisions I took"); what would block (no business date, a type the API refuses) stops
  * the wizard on step 2 already.
  */
-export function readiness(s: SourceSpec, preview: SourcePreviewDto | null): Check[] {
+export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publishedTable: string | null = null): Check[] {
   const i = s.input;
   const arrive = i.kind === "file_inbox"
     ? { check: "Files arrive", details: `${i.path} · ${i.pattern} · complete ${i.completion.kind === "stable_seconds" ? `after ${i.completion.seconds} s with no size change` : "when its .done file arrives"}` }
@@ -21,8 +21,11 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null): Chec
       : { check: "Rows are pulled", details: `${i.table ? i.table : "a SELECT"} · after ${i.watermark.column}, then ${i.watermark.id_column}` };
   const bd = s.mapping.business_date;
   const quarantined = preview?.quarantine.map((q) => q.line) ?? [];
+  // a new table is a new version (PO decision 3): the change is said here as on the version page
+  const table = i.kind === "db_watermark" && i.table && publishedTable && publishedTable !== i.table ? [{ check: "Table", ready: true, details: `${publishedTable} → ${i.table}` }] : [];
   return [
     { ...arrive, ready: true },
+    ...table,
     { check: "Core fields", ready: true, details: `business_date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}` : "no amount"}` },
     s.key_fields.length
       ? { check: "Match key", ready: true, details: `${s.key_fields.join(" + ")}, never empty` }
@@ -35,8 +38,10 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null): Chec
   ];
 }
 
-export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect }: {
+export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect, publishedTable = null }: {
   d: Draft; version: number; spaceName: string; preview: SourcePreviewDto | null; onEdit: (step: number) => void; canConnect: boolean;
+  /** The published version's table, to say a change of it. */
+  publishedTable?: string | null;
 }) {
   const s = d.spec;
   const i = s.input;
@@ -48,7 +53,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect 
           <Table aria-label="Ready to submit">
             <TableHeader><TableRow><TableHead>Check</TableHead><TableHead>Result</TableHead><TableHead>Details</TableHead></TableRow></TableHeader>
             <TableBody>
-              {readiness(s, preview).map((c) => (
+              {readiness(s, preview, publishedTable).map((c) => (
                 <TableRow key={c.check}>
                   <TableCell className="text-fg">{c.check}</TableCell>
                   <TableCell><StatusChip health={c.ready ? "healthy" : "degraded"} label={c.ready ? "Ready" : "Check"} /></TableCell>

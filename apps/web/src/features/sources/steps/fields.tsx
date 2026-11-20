@@ -13,6 +13,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
 import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL } from "../spec-draft";
+import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
@@ -62,6 +63,10 @@ export type FieldsStepProps = {
   typedNames: Record<string, string>;
   /** A stored name as typed (undefined = none typed); `clear` = the controls whose earlier error the change ends. */
   onTypedName: (field: string, name: string | undefined, clear: string[]) => void;
+  /** Fields whose column the table read last lacks (kept, marked), and those of them still used (they block Next). */
+  gone: { gone: string[]; used: string[] };
+  /** The watermark and id the table's columns suggested (REC-F2a), null before a table is read. */
+  suggested: Suggestion | null;
 };
 
 /**
@@ -166,7 +171,12 @@ export function FieldsStep(p: FieldsStepProps) {
                   };
                   return (
                     <TableRow key={f.name}>
-                      <TableCell className="font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label">{f.name}</TableCell>
+                      <TableCell className="font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label">
+                        {f.name}
+                        {p.gone.gone.includes(f.name) && s.input.kind === "db_watermark" && (
+                          <span className={`block max-w-56 whitespace-normal font-sans text-caption ${p.gone.used.includes(f.name) ? "text-down-ink" : "text-fg-3"}`}>{goneRowNote(s.input.table ?? "")}</span>
+                        )}
+                      </TableCell>
                       <TableCell className="max-xl:order-last max-xl:col-span-2">
                         <Cap>Stored as</Cap>
                         <span className="grid gap-1">
@@ -230,11 +240,20 @@ function Cap({ children, inline }: { children: string; inline?: boolean }) {
  * How new rows are found (ruling 4): the watermark and id columns, from the columns read. A column that can be empty is
  * offered disabled with the reason; a SELECT can't say, so a warning says it. A source admin's: anyone else sees it.
  */
-function WatermarkPanel({ d, set, err, columns, canChangeReading }: FieldsStepProps) {
+function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: FieldsStepProps) {
   const i = d.spec.input;
   if (i.kind !== "db_watermark") return null;
   const options = columns ?? d.spec.fields.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable }));
-  const pick = (key: "column" | "id_column", label: string, note: string) => (
+  /** A suggestion said under its picker while the pick is still it; no id suggested says why (REC-F2a). */
+  const said = (key: "column" | "id_column"): string | null => {
+    if (!suggested || d.from !== "table") return null;
+    const s = key === "column" ? suggested.column : suggested.id;
+    if (s && i.watermark[key] === s) return key === "column" ? watermarkNote(s) : idNote(s);
+    return key === "id_column" && !s && !i.watermark.id_column ? suggested.idWhy : null;
+  };
+  const pick = (key: "column" | "id_column", label: string, plain: string) => {
+    const note = said(key) ?? plain;
+    return (
     <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))}>
       <Select id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" value={i.watermark[key]} disabled={!canChangeReading}
         onChange={(e) => set((x) => (x.spec.input.kind === "db_watermark"
@@ -246,7 +265,8 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading }: FieldsStepPr
         })}
       </Select>
     </Field>
-  );
+    );
+  };
   return (
     <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table ?? "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
       {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>}

@@ -17,6 +17,8 @@ export type CommandOption = {
   group?: string;
   /** The label in the mono face (a machine name). */
   mono?: boolean;
+  /** What the trigger shows once chosen, when the label alone is not enough ("core.tx" for "tx" under core). */
+  chosen?: string;
 };
 
 /** `options` in groups by `group`, each where its first option is; ungrouped options under the null heading. */
@@ -45,7 +47,7 @@ export function CommandCombobox({
   const [openState, setOpenState] = useState(false);
   const open = openProp ?? openState;
   const setOpen = (o: boolean) => { setOpenState(o); onOpenChange?.(o); };
-  const selected = value.map((v) => options.find((o) => o.value === v)?.label ?? v).join(", ");
+  const selected = value.map((v) => { const o = options.find((x) => x.value === v); return o?.chosen ?? o?.label ?? v; }).join(", ");
   const sheet = phone === "sheet";
   const item = (o: CommandOption) => (
     <CommandItem key={o.value} value={o.value} keywords={[o.label]} disabled={o.disabled} className={o.description ? "h-auto min-h-9 py-1.5 max-md:min-h-11" : sheet ? "max-md:min-h-11" : undefined}
