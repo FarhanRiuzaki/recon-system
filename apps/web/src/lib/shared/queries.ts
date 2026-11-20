@@ -7,8 +7,9 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
+import { ITEM_STATUSES, PASSES_MAX } from "@starterkit/shared/recon";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
 
@@ -139,6 +140,28 @@ export const reconActivity = (spaceId: string, id: string): TableDef<NoFilters> 
 export const reconVersion = (spaceId: string, id: string, versionId: string) => ({
   key: [...RECON_KEY, "version", spaceId, id, versionId] as const,
   url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+});
+/** Runs of a recon belong to the engine module. */
+export const ENGINE_KEY = ["engine"] as const;
+const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;
+/** A draft's simulations, newest first: the first row is the one the builder shows. */
+export const draftSimulations = (spaceId: string, id: string, versionId: string) => ({
+  key: [...ENGINE_KEY, "simulations", spaceId, id, versionId] as const,
+  url: `${runsPath(spaceId, id)}?${new URLSearchParams({ mode: "simulation", versionId })}`,
+});
+/** One run of a recon (polled while it is queued or running). */
+export const reconRun = (spaceId: string, id: string, runId: string) => ({
+  key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,
+});
+export type RunItemFilters = { pass: string; status: string; side: string };
+const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
+  sorts: RECON_RUN_ITEM_SORTS, defaultSort: "businessDate",
+  filters: { pass: oneOf(["", ...Array.from({ length: PASSES_MAX }, (_, i) => String(i + 1))], ""), status: oneOf(["", ...ITEM_STATUSES], ""), side: oneOf(["", "a", "b"], "") },
+};
+/** A run's items: a pass tab (`pass`), a status tab (`status`), one side; no tab chosen = the first pass. */
+export const reconRunItems = (spaceId: string, id: string, runId: string): TableDef<RunItemFilters> => ({
+  key: ENGINE_KEY[0], path: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}/items`, spec: RUN_ITEMS_SPEC,
+  params: (f) => (f.pass || f.status ? f : { ...f, pass: "1" }),
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
 export const sideSourceOptions = (spaceId: string) => ({ key: [...SOURCES_KEY, "options", spaceId] as const, url: `${sourcesPath(spaceId)}?pageSize=100` });

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@starterkit/ui/ui/button";
 import { ActionMenu, Failure, Notice, Panel, RouteTabs, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -16,7 +17,7 @@ import { useAuth } from "@/lib/client/auth-context";
 import { api, isNotFound } from "@/lib/client/api";
 import { RECON_KEY } from "@/lib/shared/queries";
 import { reconStatus } from "@/lib/shared/recon-status";
-import { Builder } from "./builder";
+import { Builder, type SaveState } from "./builder";
 import { DiscardDialog } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
@@ -29,11 +30,15 @@ const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", versions: "V
 export const discardable = (r: ReconDto, roles: readonly string[]) =>
   (roles.includes("config_maker") || roles.includes("space_admin")) && r.publishedVersion === null && !!r.draft && !r.draft.submitterId && !r.draft.reviewComment;
 
-/** The line under the title: the open draft (by whom, when someone else made it) and what is live meanwhile (BUILDER-SPEC "PageHeader"). */
-function lineOf(r: ReconDto, by: string | null): string {
+/**
+ * The line under the title: the open draft (by whom, when someone else made it) and what is live meanwhile
+ * (BUILDER-SPEC "PageHeader"); the draft's autosave lives here only (ui-standard §1a): saved at, Saving…, Not saved.
+ */
+function lineOf(r: ReconDto, by: string | null, save: SaveState["status"] = "saved"): string {
   const live = r.published ? `live v${r.published.version}${r.published.publishedAt ? ` since ${at(r.published.publishedAt)}` : ""}` : "no live version";
   if (!r.draft) return r.published ? `Version ${r.published.version} · ${live}` : live;
-  const what = r.draft.status === "in_review" ? `Version ${r.draft.version} in review` : `Draft v${r.draft.version} · saved ${at(r.draft.updatedAt)}`;
+  const saved = save === "saving" ? "Saving…" : save === "failed" ? "Not saved" : `saved ${at(r.draft.updatedAt)}`;
+  const what = r.draft.status === "in_review" ? `Version ${r.draft.version} in review` : `Draft v${r.draft.version} · ${saved}`;
   if (by) return `${what} · by ${by} · ${live}`;
   return `${what} · ${live}`;
 }
@@ -54,6 +59,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const roles = useSpaceRoles(spaceId);
   const start = useStartVersion(spaceId, id);
   const [discarding, setDiscarding] = useState(false);
+  const [save, setSave] = useState<SaveState | null>(null);
   const router = useRouter();
   const qc = useQueryClient();
   const skeleton = useDelayedFlag(!q.data && !q.error);
@@ -80,7 +86,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by)} actions={menu} more={edit ? [edit] : undefined} />
+      <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by, editable ? save?.status : undefined)}
+        actions={editable && save?.status === "failed" ? <><Button type="button" variant="secondary" onClick={save.retry}>Retry</Button>{menu}</> : menu} more={edit ? [edit] : undefined} />
       {discarding && <DiscardDialog name={r.name} onClose={() => setDiscarding(false)} onConfirm={async () => {
         await api(reconApi(spaceId, id), { method: "DELETE" });
         toast(`Deleted the draft recon ${r.name}.`);
@@ -96,7 +103,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this recon; showing the last loaded draft.</Notice>}
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
-            {shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} />}
+            {shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
           </>
         )}
     </div>

@@ -1,16 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReconDto, ReconVersionDetailDto, ReconVersionDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconRunDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { RECON_KEY, reconDetail, reconVersion, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { draftSimulations, RECON_KEY, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { isLive } from "./run-model";
 
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
 export const newReconHref = (spaceId: string) => `${reconsHref(spaceId)}/new`;
 export const reconHref = (spaceId: string, id: string) => `${reconsHref(spaceId)}/${encodeURIComponent(id)}`;
+export const reconRunHref = (spaceId: string, id: string, runId: string) => `${reconHref(spaceId, id)}/runs/${encodeURIComponent(runId)}`;
 export const reconVersionHref = (spaceId: string, id: string, versionId: string) => `${reconHref(spaceId, id)}/versions/${encodeURIComponent(versionId)}`;
 /** The API path of the space's recons, or of `rest` under recon `id`. */
 export const reconApi = (spaceId: string, id?: string, rest = "") =>
@@ -69,4 +72,53 @@ export function useStartVersion(spaceId: string, id: string) {
     },
     onError: (e) => toast.error(errorText(e)),
   });
+}
+
+/** How often a queued or running run is read again. */
+const POLL_MS = 1500;
+
+/**
+ * One run of a recon: read again every 1.5 s while the worker has it (queued, running), then left alone. `initial` =
+ * the run as a list already gave it (no request after hydration for a run that is over).
+ */
+export function useRun(spaceId: string, id: string, runId: string | null, initial?: ReconRunDto) {
+  const { key, url } = reconRun(spaceId, id, runId ?? "");
+  return useQuery({
+    queryKey: key, queryFn: () => api<ReconRunDto>(url), enabled: !!runId, retry: retryUnlessNotFound,
+    initialData: initial?.id === runId ? initial : undefined, staleTime: (q) => (isLive(q.state.data) ? 0 : Infinity),
+    refetchInterval: (q) => (isLive(q.state.data) ? POLL_MS : false),
+  });
+}
+
+/**
+ * A draft's simulation (BUILDER-SPEC "Simulation bar"): its latest run, polled until it is over, the latest one that
+ * succeeded (its numbers stay on screen while the next runs), and `start` (POST …/simulate over a business date
+ * range). When a run ends, the recon is read again (the draft's simulated state) and `onOver` runs.
+ */
+export function useSimulation(spaceId: string, id: string, versionId: string, enabled: boolean) {
+  const qc = useQueryClient();
+  const list = draftSimulations(spaceId, id, versionId);
+  const runs = useQuery({ queryKey: list.key, queryFn: () => api<Page<ReconRunDto>>(list.url), enabled });
+  const latest = runs.data?.items[0];
+  const [startedId, setStartedId] = useState<string | null>(null);
+  const runId = startedId ?? latest?.id ?? null;
+  const run = useRun(spaceId, id, runId, latest).data ?? null;
+  const [shown, setShown] = useState<ReconRunDto | null>(() => runs.data?.items.find((r) => r.status === "succeeded") ?? null);
+  if (run?.status === "succeeded" && run !== shown) setShown(run);
+  // a run that ends while on screen: read the recon again (simulatedHash) and the list (the next visit's first row)
+  const was = useRef(run?.status);
+  useEffect(() => {
+    const before = was.current;
+    was.current = run?.status;
+    if (!isLive({ status: before ?? "" }) || isLive(run)) return;
+    void qc.invalidateQueries({ queryKey: reconDetail(spaceId, id).key });
+    void qc.invalidateQueries({ queryKey: list.key });
+  }, [run, qc, spaceId, id, list.key]);
+  const start = async (range: RunRangeBody) => {
+    const r = await api<ReconRunDto>(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/simulate`), { method: "POST", body: JSON.stringify(range) });
+    qc.setQueryData(reconRun(spaceId, id, r.id).key, r);
+    setStartedId(r.id);
+    return r;
+  };
+  return { run, shown, start };
 }

@@ -8,14 +8,14 @@ import { Hydrate } from "@/lib/client/hydrate";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
-import { ReconActivityQuery, ReconListQuery, ReconVersionListQuery } from "@starterkit/shared/contracts/recon";
+import { ReconActivityQuery, ReconListQuery, ReconRunItemQuery, ReconVersionListQuery } from "@starterkit/shared/contracts/recon";
 import { IngestListQuery, SourceListQuery, SourceVersionListQuery } from "@starterkit/shared/contracts/sources";
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  reconActivity, reconDetail, RECONS, reconVersion, reconVersions, sideSourceOptions,
+  draftSimulations, reconActivity, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
   sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
@@ -82,6 +82,9 @@ export const reads = {
   reconVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(reconVersions(spaceId, id), sp, ReconVersionListQuery),
   reconActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(reconActivity(spaceId, id), sp, ReconActivityQuery),
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
+  draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
+  reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
+  reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams) => table(reconRunItems(spaceId, id, runId), sp, ReconRunItemQuery),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
@@ -97,7 +100,8 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
   if (!s.token || !path) return [];
   const { data } = await backendJson<SpecHolder>(path, { token: s.token, req: { headers: await headers() } });
   const sides = (data?.spec ?? data?.draft?.spec ?? data?.published?.spec)?.sides ?? [];
-  const draft = !versionId && data?.draft?.id ? [reads.reconVersion(spaceId, configId, data.draft.id)] : [];
+  // the open draft: its people, and its latest simulation for the simulation bar
+  const draft = !versionId && data?.draft?.id ? [reads.reconVersion(spaceId, configId, data.draft.id), reads.draftSimulations(spaceId, configId, data.draft.id)] : [];
   return [...[...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id)), ...draft];
 }
 

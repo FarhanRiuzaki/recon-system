@@ -9,13 +9,22 @@ import { conditionText, type Fields, pairText } from "./spec-model";
 
 export const DASH = "—";
 
-/** "In / Left / Unmatched" between the items once a simulation ran; until then every connector says so. */
-export const Connector = () => <div className="ml-5 border-l border-line py-2 pl-4 text-caption text-fg-3">Not simulated</div>;
+/**
+ * "In / Left / Unmatched" between the items once a simulation ran (`text`; null = a count the run can't split per side,
+ * an empty line); until then (`text` undefined) every connector says so.
+ */
+export const Connector = ({ text, dim }: { text?: string | null; dim?: boolean }) => (
+  <div className={cn("ml-5 border-l border-line py-2 pl-4 text-caption text-fg-3 tabular", dim && "opacity-60")}>{text === undefined ? "Not simulated" : (text ?? "\u00a0")}</div>
+);
+/** What a pass did in the shown simulation (run-model passOutcome); undefined = not simulated. */
+export type Outcome = { tag: string; tone: "neutral" | "warn"; count: string; note: string };
 
 export type PassRowProps = {
   id: string; pass: PassSpec; fields: Fields; selected: boolean; editable: boolean; onSelect: () => void; onKey: (e: KeyboardEvent<HTMLButtonElement>) => void;
   /** The API's warnings about this pass (a currency without tolerance), shown under it. */
   notes?: readonly string[];
+  /** The shown simulation: this pass's outcome, the connector under it, dimmed while out of date or running. */
+  sim?: { outcome: Outcome[]; connector: string | null; dim: boolean };
 };
 /** What dnd-kit's useSortable adds to a row once the sortable list has loaded (sortable-passes.tsx). */
 export type SortableBits = {
@@ -27,7 +36,7 @@ export type SortableBits = {
  * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
  * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], onSelect, onKey, sortable }: PassRowProps & { sortable?: SortableBits }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, sortable }: PassRowProps & { sortable?: SortableBits }) {
   const dragging = !!sortable?.dragging;
   return (
     <li ref={sortable?.setNodeRef} style={sortable?.style}
@@ -56,13 +65,20 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], onSe
             </span>
           </button>
         </div>
-        <div className="grid content-start gap-1 rounded-md border border-dashed border-line p-3 text-caption text-fg-3">
-          <span className="text-label text-fg-2">{pass.accept === "auto" ? "Matched" : "Suggested"}</span>
-          <span>{DASH}</span>
+        <div className={cn("grid content-start gap-3 rounded-md border border-dashed border-line p-3 text-caption text-fg-3", sim?.dim && "opacity-60")}>
+          {sim?.outcome.length ? sim.outcome.map((o) => (
+            <span key={o.tag} className="grid gap-0.5">
+              <span className={cn("justify-self-start rounded-sm px-1.5 py-0.5 text-label", o.tone === "warn" ? "bg-degraded-soft text-degraded-ink" : "bg-tray text-fg-2")}>{o.tag}</span>
+              <span className="text-body-sm text-fg tabular">{o.count}</span>
+              {o.note && <span>{o.note}</span>}
+            </span>
+          )) : (
+            <span className="grid gap-1"><span className="text-label text-fg-2">{pass.accept === "auto" ? "Matched" : "Suggested"}</span><span>{DASH}</span></span>
+          )}
         </div>
       </div>
       {notes.map((n) => <p key={n} className="flex items-start gap-1.5 pt-1.5 text-caption text-degraded-ink"><Icon icon={WarningIcon} className="mt-px size-3.5 shrink-0" />{n}</p>)}
-      <Connector />
+      <Connector text={sim ? sim.connector : undefined} dim={sim?.dim} />
     </li>
   );
 }

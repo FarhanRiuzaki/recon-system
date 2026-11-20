@@ -2,14 +2,16 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BlockedButton, Panel, StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
-import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
+import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
+import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
@@ -25,12 +27,14 @@ import {
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
-import { MAKER_REASON, reconApi, useSideSource } from "./use-recons";
+import { ReplayRange } from "./replay-range";
+import { connectorText, countLine, defaultReplay, isLive, passOutcome, RUNNING_REASON, runTotals, simView } from "./run-model";
+import { MAKER_REASON, reconApi, reconRunHref, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
-/** Why Run simulation is off until the engine's simulation route exists (controller's decision, BUILDER-SPEC). */
-export const SIMULATION_REASON = "Simulation isn't available yet.";
+/** The draft's autosave as the page header says it (ui-standard §1a: save status lives only in the header line). */
+export type SaveState = { status: "saved" | "saving" | "failed"; retry: () => void };
 /** How long after the last change the draft saves itself. */
 const SAVE_DELAY_MS = 800;
 /** "Pass 2, condition 1: …" for the status line: the place and the API's sentence. */
@@ -39,13 +43,6 @@ const problemText = (p: Place) =>
 const KIND: Record<SourceKind, string> = { file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot" };
 
 type Selected = { k: "pass"; key: string } | { k: "side"; i: 0 | 1 } | { k: "settings" };
-
-/** The simulation's state of a draft (BUILDER-SPEC "Simulation bar"). */
-function simState(v: ReconVersionDto) {
-  if (v.simulatedHash === null) return { chip: { health: "unknown", label: "Not simulated" } as const, line: `Draft v${v.version} · not simulated yet` };
-  if (v.simulatedHash !== v.specHash) return { chip: { health: "degraded", label: "Out of date" } as const, line: "The draft changed after the last simulation" };
-  return { chip: { health: "healthy", label: "Simulated" } as const, line: `Draft v${v.version} · simulated` };
-}
 
 /** A warning or error under the settings strip, with its one-click fix (BUILDER-SPEC "States"). */
 function Banner({ tone, children, action }: { tone: "warn" | "error"; children: ReactNode; action?: ReactNode }) {
@@ -87,8 +84,10 @@ function SideCard({ i, spec, source, fields, selected, onSelect }: {
  * simulation bar, as on a version's page). Save sends the
  * whole spec (PATCH …/versions/{id}); the API's refusal lands on the place it names, its warnings above the passes.
  */
-export function Builder({ spaceId, recon, version, editable, canEdit, bar = true }: {
+export function Builder({ spaceId, recon, version, editable, canEdit, bar = true, onSaveState }: {
   spaceId: string; recon: ReconDto; version: ReconVersionDto; editable: boolean; canEdit: boolean; bar?: boolean;
+  /** The autosave's state, for the page header's line (Saved / Saving… / Not saved with Retry). */
+  onSaveState?: (s: SaveState) => void;
 }) {
   const qc = useQueryClient();
   const [spec, setSpec] = useState<ReconSpec>(version.spec);
@@ -108,6 +107,9 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const [failedJson, setFailedJson] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const inFlight = useRef(false);
+  // the save under way (Run simulation waits for it) and the spec as the API last accepted it, read after an await
+  const savePromise = useRef<Promise<boolean>>(Promise.resolve(true));
+  const lastSaved = useRef(savedJson);
   const [ourHash, setOurHash] = useState(version.specHash);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [said, setSaid] = useState("");
@@ -158,10 +160,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     focusLater(`pass-${key}`);
   };
 
-  /** Sends the spec as it is now; `explicit` (Retry) also opens and focuses the place a refusal names. */
-  async function save(explicit = false) {
-    if (inFlight.current) return;
+  /**
+   * Sends the spec as it is now; `explicit` (Retry) also opens and focuses the place a refusal names. Answers whether
+   * the API took it; while a save is under way, that save's answer.
+   */
+  function save(explicit = false): Promise<boolean> {
+    if (inFlight.current) return savePromise.current;
     inFlight.current = true;
+    savePromise.current = send(explicit).finally(() => { inFlight.current = false; setSaving(false); });
+    return savePromise.current;
+  }
+  async function send(explicit: boolean): Promise<boolean> {
     const sent = spec, sentJson = JSON.stringify(sent);
     setSaving(true);
     try {
@@ -169,10 +178,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setOurHash(v.specHash);
       setSaved(v);
       setSavedJson(sentJson);
+      lastSaved.current = sentJson;
       setFailedJson(null);
       setProblem(null);
       qc.setQueryData(reconDetail(spaceId, recon.id).key, (r: ReconDto | undefined) => (r ? { ...r, draft: v } : r));
       void qc.invalidateQueries({ queryKey: RECON_KEY });
+      return true;
     } catch (e) {
       const place = placeOf(errorText(e));
       setProblem(place);
@@ -191,10 +202,13 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         }
         if (onPhone() && (place.pass !== undefined || place.side !== undefined || place.setting)) setSheet(true);
       }
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
+      return false;
     }
+  }
+  /** The spec of this render, saved: waits for a save under way, then sends what it didn't include. */
+  async function flush(): Promise<boolean> {
+    if (inFlight.current && !(await savePromise.current)) return false;
+    return lastSaved.current === json ? true : save();
   }
   // a moment after the last change; never again for a spec the API refused until it changes
   useEffect(() => {
@@ -208,6 +222,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     setSpec(version.spec);
     setSaved(version);
     setSavedJson(JSON.stringify(version.spec));
+    lastSaved.current = JSON.stringify(version.spec);
     setFailedJson(null);
     setProblem(null);
     setKeys(version.spec.passes.map(() => `p${keySeq.current++}`));
@@ -227,8 +242,34 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     }
   }
 
-  const sim = simState(saved);
-  const blocked = !canEdit ? MAKER_REASON : submitReason(saved, { dirty, failed, passes: spec.passes.length, gaps });
+  const simOn = bar && saved.status === "draft";
+  const simulation = useSimulation(spaceId, recon.id, saved.id, simOn);
+  const live = isLive(simulation.run);
+  const [range, setRange] = useState<DateRange>(() => simulation.run ? { from: simulation.run.from, to: simulation.run.to } : defaultReplay());
+  const [starting, setStarting] = useState(false);
+  // a simulation that ended marks the draft simulated (the recon is read again): take its simulatedHash for the same spec
+  if (version.id === saved.id && version.specHash === saved.specHash && version.simulatedHash !== saved.simulatedHash) setSaved({ ...saved, simulatedHash: version.simulatedHash });
+  const sim = simView(saved, simulation.run, simulation.shown, dirty);
+  const totals = sim.counts ? runTotals(sim.counts.counters, spec) : null;
+  async function simulate() {
+    setStarting(true);
+    try {
+      // the API simulates the saved draft: the last change first
+      if (!(await flush())) return;
+      await simulation.start(range);
+    } catch (e) {
+      toast.error(errorText(e));
+    } finally {
+      setStarting(false);
+    }
+  }
+  const blocked = !canEdit ? MAKER_REASON : !dirty && (live || starting) ? RUNNING_REASON : submitReason(saved, { dirty, failed, passes: spec.passes.length, gaps });
+  const simBlocked = !canEdit ? MAKER_REASON : failed ? "The draft isn't saved. Retry the save, then run the simulation." : null;
+  // the header's save line: a stable Retry that saves the spec of the latest render
+  const retry = useRef(() => {});
+  useEffect(() => { retry.current = () => void save(true); });
+  const saveStatus = failed ? "failed" : dirty || saving ? "saving" : "saved";
+  useEffect(() => { if (editable) onSaveState?.({ status: saveStatus, retry: () => retry.current() }); }, [saveStatus, editable, onSaveState]);
   const placed = problem && (problem.pass !== undefined || problem.side !== undefined || problem.setting) ? problem : null;
   const gates = carryOverGates(spec);
   const notes = (no: number) => saved.warnings.filter((w) => tolerancePass(w) === no);
@@ -254,8 +295,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         : null;
   // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)
   const body = editor && <fieldset disabled={!editable || submitting} className="contents">{editor}</fieldset>;
+  const counters = simOn ? sim.counts?.counters : undefined;
   const rows: PassRowProps[] = spec.passes.map((p, i) => ({
     id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
+    sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
   }));
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -266,27 +309,28 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   return (
     <div className="grid gap-section">
       <p aria-live="polite" className="sr-only">{said}</p>
-      {bar && saved.status === "draft" && (
+      <span role="status" className="sr-only">{editable && failed ? "Not saved" : ""}</span>
+      {failed && problem && <p role="alert" className="text-body-sm text-down-ink">{placed ? problemText(placed) : problem.text}</p>}
+      {simOn && (
         <section aria-label="Simulation" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line bg-card p-4 shadow-xs">
           <StatusChip health={sim.chip.health} label={sim.chip.label} />
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
+          <div role="status" className="grid min-w-0 flex-1 basis-64 gap-0.5">
             <span className="text-body-sm text-fg">{sim.line}</span>
-            <span className="text-caption text-fg-3">Matched {DASH} · suggested {DASH} · duplicate {DASH} · waiting {DASH} · match rate {DASH}</span>
+            <span className={cn("text-caption text-fg-3 tabular", sim.dim && "opacity-60")}>
+              {totals ? countLine(totals) : `Matched ${DASH} · suggested ${DASH} · duplicate ${DASH} · waiting ${DASH} · match rate ${DASH}`}
+              {simulation.shown && <> · <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Show results</Link></>}
+            </span>
           </div>
-          <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:flex-1">
-            {/* "Saved" itself is the header's "saved HH:mm" (ui-standard §1a); the bar shows only a save under way or refused */}
-            {editable && (
-              <span role="status" className="flex items-center gap-1.5 text-caption text-fg-3 empty:hidden">
-                {failed ? <>Not saved<Button type="button" variant="link" size="sm" onClick={() => void save(true)}>Retry</Button></>
-                  : dirty || saving ? <><Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />Saving…</> : null}
-              </span>
-            )}
-            <BlockedButton variant="secondary" reason={SIMULATION_REASON}>Run simulation</BlockedButton>
+          <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:w-full">
+            {editable && <ReplayRange value={range} onChange={setRange} disabled={live || starting} />}
+            <BlockedButton variant="secondary" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
+              {(live || starting) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Run simulation
+            </BlockedButton>
             <BlockedButton reason={blocked} disabled={submitting} aria-busy={submitting || undefined} onClick={() => void submit()}>
               {submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Submit for approval
             </BlockedButton>
           </div>
-          {(submitError || (failed && problem)) && <p role="alert" className="basis-full text-body-sm text-down-ink">{submitError ?? `Not saved: ${placed ? problemText(placed) : problem!.text}`}</p>}
+          {submitError && <p role="alert" className="basis-full text-body-sm text-down-ink">{submitError}</p>}
         </section>
       )}
 
@@ -325,7 +369,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             </div>
             <p className="pt-2 text-caption text-fg-3">Two sides per recon in this release.</p>
             {placed?.side !== undefined && <div className="pt-2"><PlaceError text={`Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}`} /></div>}
-            <Connector />
+            <Connector text={counters ? connectorText(counters, spec, 0) : undefined} dim={sim.dim} />
             {spec.passes.length ? (
               Sortable && sortable ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
                 : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} />)}</ol>
@@ -338,7 +382,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             )}
             <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
               <div className="grid gap-1 border-l-2 border-line pl-3">
-                <span className="text-label text-fg-2">Waiting · during the day</span>
+                <span className="text-label text-fg-2">Waiting · during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
                 <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over {daysText(spec.carry_over_days)}</span>
               </div>
               <div className="grid gap-1 border-l-2 border-line pl-3">

@@ -1,0 +1,96 @@
+import { describe, expect, it } from "vitest";
+import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
+import { amountText, connectorText, countLine, differenceText, passOutcome, rangeText, replayEnd, runTotals, simView } from "./run-model";
+
+// The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
+const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
+  ({ no, name: `Pass ${no}`, cardinality: "1:1", blocking, predicates: [{ op: "eq", field: "currency" }], accept, on_ambiguous: "break" }) as PassSpec;
+const spec = {
+  sides: [{ key: "a", label: "source1" }, { key: "b", label: "source2" }],
+  passes: [pass(1, "auto"), pass(2, "suggest"), pass(3, "suggest")],
+} as unknown as ReconSpec;
+const gate = {
+  intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 }, open: { a: 24, b: 24 },
+  passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
+};
+const run = { status: "succeeded" as const, from: "2026-11-02", to: "2026-11-05", counters: gate, error: null, finishedAt: "2026-11-21T07:22:00Z", specHash: "h1" };
+
+describe("run-model", () => {
+  it("writes business date ranges as the design does", () => {
+    expect(rangeText("2026-11-02", "2026-11-05")).toBe("2–5 Nov 2026");
+    expect(rangeText("2026-11-20", "2026-11-20")).toBe("20 Nov 2026");
+    expect(rangeText("2026-10-30", "2026-11-02")).toBe("30 Oct – 2 Nov 2026");
+    expect(rangeText("2026-12-30", "2027-01-02")).toBe("30 Dec 2026 – 2 Jan 2027");
+  });
+
+  it("ends a replay after 31 dates or today, whichever is first", () => {
+    expect(replayEnd("2026-10-01", "2026-11-21")).toBe("2026-10-31");
+    expect(replayEnd("2026-11-10", "2026-11-21")).toBe("2026-11-21");
+  });
+
+  it("totals the gate run as the answer key: 937 matched, 24 suggested, 30 duplicate, 24 · 24 waiting, 93.7%", () => {
+    const t = runTotals(gate, spec);
+    expect(t).toMatchObject({ matched: 937, suggested: 24, duplicate: 30, ambiguous: 0, waiting: { a: 24, b: 24 }, items: 2000 });
+    expect(countLine(t)).toBe("937 matched · 24 suggested (open) · 30 duplicate · 24 · 24 waiting · match rate 93.7%");
+  });
+
+  it("has no match rate when an N:1 pass matched (side A items per group unknown)", () => {
+    const n1 = { ...spec, passes: [{ ...pass(1, "auto"), cardinality: "N:1" }] } as ReconSpec;
+    expect(runTotals(gate, n1).rate).toBeNull();
+  });
+
+  it("says In and Unmatched per side, and no Left after a pass that broke items (no split by side yet)", () => {
+    expect(connectorText(gate, spec, 0)).toBe("In: 1,000 source1 · 1,000 source2");
+    expect(connectorText(gate, spec, 1)).toBeNull();
+    expect(connectorText(gate, spec, 3)).toBe("Unmatched: 24 source1 · 24 source2");
+    const clean = { ...gate, passes: { ...gate.passes, 1: { matched: 937, suggested: 0, broken: 0 } } };
+    expect(connectorText(clean, spec, 2)).toBe("Left: 49 source1 · 49 source2");
+  });
+
+  it("with per-side counts: the funnel adds up per side after the duplicates, the duplicate names its references", () => {
+    const side = (n: number) => ({ a: n, b: n });
+    const full = { ...gate, passes: {
+      1: { matched: 937, suggested: 0, broken: 30, brokenRefs: 10, matchedItems: side(937), suggestedItems: side(0), brokenItems: side(15) },
+      2: { matched: 0, suggested: 14, broken: 0, brokenRefs: 0, matchedItems: side(0), suggestedItems: side(14), brokenItems: side(0) },
+      3: { matched: 0, suggested: 10, broken: 0, brokenRefs: 0, matchedItems: side(0), suggestedItems: side(10), brokenItems: side(0) },
+    } };
+    expect(connectorText(full, spec, 1)).toBe("Left: 48 source1 · 48 source2  (1,000 = 937 matched + 15 duplicate + 48 left, per side)");
+    expect(connectorText(full, spec, 2)).toBe("Left: 34 source1 · 34 source2");
+    expect(passOutcome(full, spec, spec.passes[0]!)[1]).toMatchObject({ tag: "Duplicate", count: "10 refs · 30 items" });
+    expect(runTotals(full, spec)).toMatchObject({ duplicateRefs: 10, rate: 0.937 });
+  });
+
+  it("gives each pass its outcomes; Duplicate is its own, never inside Matched", () => {
+    expect(passOutcome(gate, spec, spec.passes[0]!)).toEqual([
+      { tag: "Matched", tone: "neutral", count: "937 pairs", note: "93.7% of source1 items in" },
+      { tag: "Duplicate", tone: "warn", count: "30 items", note: "need review" },
+    ]);
+    expect(passOutcome(gate, spec, spec.passes[1]!)).toEqual([{ tag: "Suggested", tone: "neutral", count: "14 pairs", note: "open until accepted" }]);
+    expect(passOutcome(gate, { ...spec, passes: [pass(1, "auto", [])] } as ReconSpec, { ...pass(1, "auto", []), predicates: [{ op: "date_window", field: "business_date", days: 1 }] } as PassSpec)[1]?.tag).toBe("Ambiguous");
+  });
+
+  it("states the simulation bar: not simulated, running, simulated, out of date, stopped", () => {
+    const v = { version: 1, specHash: "h1", simulatedHash: "h1" };
+    expect(simView({ ...v, simulatedHash: null }, null, null, false).chip.label).toBe("Not simulated");
+    expect(simView({ ...v, simulatedHash: null }, null, null, false).line).toBe("Draft v1 · not simulated yet");
+    const s = simView(v, run, run, false);
+    expect(s.chip.label).toBe("Simulated");
+    expect(s.line).toBe("Draft v1 · 2–5 Nov 2026 · 2,000 items · 14:22 WIB");
+    expect(simView(v, { ...run, status: "running" as const }, run, false)).toMatchObject({ chip: { label: "Running" }, dim: true, counts: run });
+    expect(simView(v, run, run, true)).toMatchObject({ chip: { label: "Out of date" }, line: "The draft changed after the last simulation", dim: true });
+    expect(simView({ ...v, specHash: "h2" }, run, run, false).chip.label).toBe("Out of date");
+    const failed = simView(v, { ...run, status: "failed" as const, error: "The run stopped before it finished. Run it again." }, null, false);
+    expect(failed).toMatchObject({ chip: { label: "Not simulated" }, line: "The simulation stopped: the run stopped before it finished. Run it again.", counts: null });
+  });
+
+  it("reads a group's difference from its evidence (side B − side A) in the currency's units", () => {
+    const amount = { predicates: [{ op: "eq", field: "ext_ref", passed: true, delta: null }, { op: "amount_abs_tol", field: "amount_minor", passed: true, delta: 50000 }] };
+    expect(differenceText(amount, "IDR")).toBe("Amount +500.00");
+    expect(differenceText({ predicates: [{ op: "date_window", field: "business_date", passed: true, delta: 1 }] }, "IDR")).toBe("Date +1 day");
+    expect(differenceText({ predicates: [{ op: "date_window", field: "business_date", passed: true, delta: 0 }] }, "IDR")).toBe("");
+    expect(differenceText(null, "IDR")).toBe("");
+    expect(amountText("2551779", "IDR")).toBe("25,517.79");
+    expect(amountText("-500", "JPY")).toBe("-500");
+    expect(amountText(null, "IDR")).toBe("—");
+  });
+});
