@@ -28,8 +28,9 @@ import {
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
+import { saveQueue } from "./save-queue";
 import { connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
-import { MAKER_REASON, reconApi, reconRunHref, useSideSource, useSimulation } from "./use-recons";
+import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
@@ -106,10 +107,9 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const [savedJson, setSavedJson] = useState(() => JSON.stringify(version.spec));
   const [failedJson, setFailedJson] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const inFlight = useRef(false);
+  // saves in order; Run simulation flushes it so it simulates the spec on screen (save-queue.ts)
+  const [queue] = useState(() => saveQueue(JSON.stringify(version.spec)));
   // the save under way (Run simulation waits for it) and the spec as the API last accepted it, read after an await
-  const savePromise = useRef<Promise<boolean>>(Promise.resolve(true));
-  const lastSaved = useRef(savedJson);
   const [ourHash, setOurHash] = useState(version.specHash);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [said, setSaid] = useState("");
@@ -165,10 +165,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
    * the API took it; while a save is under way, that save's answer.
    */
   function save(explicit = false): Promise<boolean> {
-    if (inFlight.current) return savePromise.current;
-    inFlight.current = true;
-    savePromise.current = send(explicit).finally(() => { inFlight.current = false; setSaving(false); });
-    return savePromise.current;
+    return queue.save(json, () => send(explicit).finally(() => setSaving(false)));
   }
   async function send(explicit: boolean): Promise<boolean> {
     const sent = spec, sentJson = JSON.stringify(sent);
@@ -178,7 +175,6 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setOurHash(v.specHash);
       setSaved(v);
       setSavedJson(sentJson);
-      lastSaved.current = sentJson;
       setFailedJson(null);
       setProblem(null);
       qc.setQueryData(reconDetail(spaceId, recon.id).key, (r: ReconDto | undefined) => (r ? { ...r, draft: v } : r));
@@ -207,8 +203,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   }
   /** The spec of this render, saved: waits for a save under way, then sends what it didn't include. */
   async function flush(): Promise<boolean> {
-    if (inFlight.current && !(await savePromise.current)) return false;
-    return lastSaved.current === json ? true : save();
+    return queue.flush(json, () => send(false).finally(() => setSaving(false)));
   }
   // a moment after the last change; never again for a spec the API refused until it changes
   useEffect(() => {
@@ -222,7 +217,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     setSpec(version.spec);
     setSaved(version);
     setSavedJson(JSON.stringify(version.spec));
-    lastSaved.current = JSON.stringify(version.spec);
+    queue.reset(JSON.stringify(version.spec));
     setFailedJson(null);
     setProblem(null);
     setKeys(version.spec.passes.map(() => `p${keySeq.current++}`));
@@ -317,8 +312,9 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       {simOn && (
         <section aria-label="Simulation" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line bg-card p-4 shadow-xs">
           <StatusChip health={sim.chip.health} label={sim.chip.label} />
-          <div role="status" className="grid min-w-0 flex-1 basis-64 gap-0.5">
-            <span className="text-body-sm text-fg">{sim.line}</span>
+          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
+            {/* the live region is the state line only: the counts change with every poll */}
+            <span role="status" className="text-body-sm text-fg">{sim.line}{simulation.stalled ? ` · ${STALL_TEXT}` : ""}</span>
             <span className={cn("text-caption text-fg-3 tabular", sim.dim && "opacity-60")}>
               {totals ? countLine(totals) : `Matched ${DASH} · suggested ${DASH} · duplicate ${DASH} · waiting ${DASH} · match rate ${DASH}`}
               {simulation.shown && <> · <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Show results</Link></>}
@@ -390,7 +386,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
               </div>
               <div className="grid gap-1 border-l-2 border-line pl-3">
                 <span className="text-label text-fg-2">Break · at day close</span>
-                <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
               </div>
               {currency && (
                 <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>

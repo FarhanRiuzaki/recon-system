@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber, formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
-import { NetworkIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { NetworkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { BRAND } from "@starterkit/shared/brand";
 import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunGroupMember } from "@starterkit/shared/contracts/recon";
 import { recordFields } from "@starterkit/shared/recon";
@@ -20,10 +21,10 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakLabel, countLine, dayTotals, differenceText, isLive, projectionText, rangeText, runTotals } from "./run-model";
+import { amountText, breakLabel, countLine, dayTotals, differenceText, isLive, projectionText, rangeText, runTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
-import { reconHref, reconRunHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
+import { reconHref, reconRunHref, reconsHref, STALL_TEXT, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
 
 const RunExplain = dynamic(() => import("./run-explain"), { ssr: false });
 
@@ -48,20 +49,21 @@ function passLabel(p: PassSpec, x: { matched: number; suggested: number; broken:
 }
 
 /** The summary card: the run's state, its facts, its counts and what day close would do with what waits. */
-function RunSummary({ run, spec, version }: { run: ReconRunDto; spec: ReconSpec; version: number }) {
+function RunSummary({ run, spec, labels, stalled }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled: boolean }) {
   const t = runTotals(run.counters, spec);
   const live = isLive(run);
-  const chip = live ? { health: "unknown" as const, label: "Running" } : run.status === "failed" ? { health: "down" as const, label: "Stopped" }
+  const chip = live ? { health: "unknown" as const, label: "Running" } : run.status === "failed" ? STOPPED_CHIP
     : { health: "healthy" as const, label: run.mode === "simulation" ? "Simulated" : "Done" };
-  const what = run.mode === "simulation" ? `Draft v${version}` : `Version ${version}`;
+  const what = run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`;
   const at = run.finishedAt ? ` · ${formatTime(Date.parse(run.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
-  const day = run.projection ? projectionText(run.projection) : "";
+  const day = run.projection ? projectionText(run.projection, labels) : "";
   return (
     <section aria-label="Run" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-card p-4 shadow-xs">
       <StatusChip health={chip.health} label={chip.label} />
-      <div role="status" className="grid min-w-0 flex-1 basis-64 gap-0.5">
-        <span className="text-body-sm text-fg">
-          {run.status === "failed" ? `The run stopped: ${run.error ?? "it ended before it finished."}` : `${what} · ${rangeText(run.from, run.to)} · ${formatNumber(t.items)} items${at}`}
+      <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
+        {/* the live region is the state line only: the counts change with every poll */}
+        <span role="status" className="text-body-sm text-fg">
+          {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${formatNumber(t.items)} items${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
         </span>
         {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{countLine(t)}</span>}
         {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
@@ -86,7 +88,23 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
   const def = useMemo(() => reconRunItems(spaceId, id, runId, spec?.passes ?? []), [spaceId, id, runId, spec]);
   const t = useTableQuery<ReconRunItemDto, RunItemFilters>(def, !!spec);
+  // Explain: the row asked for (its button pending until the dialog's code has loaded) and the button to return to
   const [explain, setExplain] = useState<ReconRunItemDto | null>(null);
+  const [shown, setShown] = useState(false);
+  const opener = useRef<HTMLElement | null>(null);
+  const openExplain = (r: ReconRunItemDto, from: HTMLElement) => { opener.current = from; setShown(false); setExplain(r); };
+  // a run that ends while on screen: its items are read again (a running run's tab may be empty or partial)
+  const was = useRef(run?.status);
+  const refetchItems = t.query.refetch;
+  useEffect(() => {
+    const before = was.current;
+    was.current = run?.status;
+    if (isLive({ status: before ?? "" }) && !isLive(run)) void refetchItems();
+  }, [run, refetchItems]);
+  // a date the run doesn't have (an old link): no date filter
+  const setTable = t.set;
+  const strayDate = !!t.state.date && !!run?.days && !run.days.some((d) => d.date === t.state.date);
+  useEffect(() => { if (strayDate) setTable({ date: "" }, { history: "replace" }); }, [strayDate, setTable]);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
   const columns = useColumns(t.state, labels);
@@ -126,7 +144,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   return (
     <div className="grid gap-section">
       <PageHeader title={title} trail={trail} description={`${recon.name} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
-      <RunSummary run={run} spec={spec} version={run.version} />
+      <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={NetworkIcon} title="Results per pass" count={t.count}
         description={run.mode === "simulation" ? "Not stored: after a real run the same pairs wait in Breaks" : undefined}
@@ -165,12 +183,20 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           </div>
         </div>
         <DataTable label="Items" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
-          rowActions={items ? undefined : (r) => r.group ? <Button type="button" variant="secondary" size="sm" onClick={() => setExplain(r)}>Explain</Button> : null}
+          rowActions={items ? undefined : (r) => {
+            if (!r.group) return null;
+            const busy = explain?.id === r.id && !shown;
+            return (
+              <Button type="button" variant="secondary" size="sm" aria-label={`Explain ${r.extRef ?? "this pair"}`} disabled={busy} aria-busy={busy || undefined}
+                onClick={(e) => openExplain(r, e.currentTarget)}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Explain</Button>
+            );
+          }}
           error={t.loadError ? { title: "Couldn't load the items", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={{ icon: NetworkIcon, title: isLive(run) ? "Nothing here yet" : "No items here",
-            description: isLive(run) ? "Items appear as the run works through its dates." : "Pick another pass, outcome or date to see its items." }} />
+            description: isLive(run) ? "Items appear here once the run is over." : "Pick another pass, outcome or date to see its items." }} />
       </Panel>
-      {explain?.group && <RunExplain item={explain} spec={spec} fields={fields} labels={labels} onClose={() => setExplain(null)} />}
+      {explain?.group && <RunExplain item={explain} spec={spec} fields={fields} labels={labels} onShown={() => setShown(true)}
+        returnFocus={() => opener.current?.isConnected && opener.current.focus()} onClose={() => setExplain(null)} />}
     </div>
   );
 }

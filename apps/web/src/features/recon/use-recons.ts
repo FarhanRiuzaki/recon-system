@@ -77,17 +77,28 @@ export function useStartVersion(spaceId: string, id: string) {
 /** How often a queued or running run is read again. */
 const POLL_MS = 1500;
 
+/** Failed reads in a row of a run being polled before the screen says it can't reach the server. */
+const STALL_AFTER = 3;
+/** What a screen says while the polls of a running run keep failing (it goes on polling). */
+export const STALL_TEXT = "Can't reach the server. Retrying.";
+
 /**
  * One run of a recon: read again every 1.5 s while the worker has it (queued, running), then left alone. `initial` =
- * the run as a list already gave it (no request after hydration for a run that is over).
+ * the run as a list already gave it (no request after hydration for a run that is over). `stalled` = the last
+ * STALL_AFTER reads of a running run failed.
  */
 export function useRun(spaceId: string, id: string, runId: string | null, initial?: ReconRunDto) {
   const { key, url } = reconRun(spaceId, id, runId ?? "");
-  return useQuery({
+  const q = useQuery({
     queryKey: key, queryFn: () => api<ReconRunDto>(url), enabled: !!runId, retry: retryUnlessNotFound,
-    initialData: initial?.id === runId ? initial : undefined, staleTime: (q) => (isLive(q.state.data) ? 0 : Infinity),
-    refetchInterval: (q) => (isLive(q.state.data) ? POLL_MS : false),
+    initialData: initial?.id === runId ? initial : undefined, staleTime: (x) => (isLive(x.state.data) ? 0 : Infinity),
+    refetchInterval: (x) => (isLive(x.state.data) ? POLL_MS : false),
   });
+  // errors since the last good read: the error count when data last arrived, kept per data update
+  const [base, setBase] = useState({ at: q.dataUpdatedAt, errors: q.errorUpdateCount });
+  if (base.at !== q.dataUpdatedAt) setBase({ at: q.dataUpdatedAt, errors: q.errorUpdateCount });
+  const stalled = isLive(q.data) && q.isRefetchError && q.errorUpdateCount - base.errors >= STALL_AFTER;
+  return { ...q, stalled };
 }
 
 /**
@@ -102,7 +113,8 @@ export function useSimulation(spaceId: string, id: string, versionId: string, en
   const latest = runs.data?.items[0];
   const [startedId, setStartedId] = useState<string | null>(null);
   const runId = startedId ?? latest?.id ?? null;
-  const run = useRun(spaceId, id, runId, latest).data ?? null;
+  const rq = useRun(spaceId, id, runId, latest);
+  const run = rq.data ?? null;
   const [shown, setShown] = useState<ReconRunDto | null>(() => runs.data?.items.find((r) => r.status === "succeeded") ?? null);
   if (run?.status === "succeeded" && run !== shown) setShown(run);
   // a run that ends while on screen: read the recon again (simulatedHash) and the list (the next visit's first row)
@@ -120,5 +132,5 @@ export function useSimulation(spaceId: string, id: string, versionId: string, en
     setStartedId(r.id);
     return r;
   };
-  return { run, shown, start };
+  return { run, shown, start, stalled: rq.stalled };
 }

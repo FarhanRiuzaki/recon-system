@@ -7,7 +7,7 @@ import type { PassSpec, ReconRunDto, ReconSpec, RunDay } from "@starterkit/share
 import { RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
-type Run = Pick<ReconRunDto, "status" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
+type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
 type Version = { version: number; specHash: string; simulatedHash: string | null };
 
 /** A run the worker hasn't finished: the screen polls it. */
@@ -75,7 +75,12 @@ export function countLine(t: ReturnType<typeof runTotals>): string {
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-export type SimView = { chip: { health: "healthy" | "degraded" | "unknown"; label: string }; line: string; counts: Run | null; dim: boolean };
+export type SimView = { chip: { health: "healthy" | "degraded" | "unknown" | "down"; label: string }; line: string; counts: Run | null; dim: boolean };
+/** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
+export const STOPPED_CHIP = { health: "down" as const, label: "Stopped" };
+export function stoppedLine(r: { mode: string; error: string | null }): string {
+  return `The ${r.mode === "simulation" ? "simulation" : "run"} stopped: ${lowerFirst(r.error ?? "it ended before it finished. Run it again.")}`;
+}
 /**
  * The simulation bar of a draft (BUILDER-SPEC chips and lines): `run` = its latest simulation, `shown` = its latest one
  * that succeeded (its numbers stay, dimmed, while the next one runs or once the draft changed), `dirty` = edits not
@@ -85,7 +90,7 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   const draft = `Draft v${v.version}`;
   if (run && isLive(run)) return { chip: { health: "unknown", label: "Running" }, line: `${draft} · ${rangeText(run.from, run.to)}`, counts: shown, dim: true };
   if (run?.status === "failed") {
-    return { chip: { health: "unknown", label: "Not simulated" }, line: `The simulation stopped: ${lowerFirst(run.error ?? "the run stopped before it finished. Run it again.")}`, counts: null, dim: false };
+    return { chip: STOPPED_CHIP, line: stoppedLine(run), counts: null, dim: false };
   }
   if (v.simulatedHash === null || !shown) return { chip: { health: "unknown", label: "Not simulated" }, line: `${draft} · not simulated yet`, counts: null, dim: false };
   if (dirty || v.simulatedHash !== v.specHash || shown.specHash !== v.specHash) {
@@ -214,17 +219,28 @@ export const CURRENCY_DIFFERS = "Currency differs";
 const REASON_TEXT: readonly (readonly [string, string])[] = [
   ["Currency differs", "currency differs"], ["Amount differs", "amount outside tolerance"], ["Date differs", "date differs"], ["No counterpart", "no counterpart"],
 ];
-/** "3", or "3 · 2" (side A · side B) when the sides differ. */
-const perSide = (a: number, b: number) => (a === b ? formatNumber(a) : `${formatNumber(a)} · ${formatNumber(b)}`);
+type Sides = readonly [string, string];
+/** "3", or "3 source1 · 2 source2" when the sides differ. */
+const perSide = (a: number, b: number, labels: Sides) => (a === b ? formatNumber(a) : `${formatNumber(a)} ${labels[0]} · ${formatNumber(b)} ${labels[1]}`);
+/** Reasons the web doesn't know yet: told once to the console, never printed raw. */
+const unknownSeen = new Set<string>();
+/** A simulation's projection of day close; `unconfirmed` = suggestions nobody confirms by then, per side (API, wt/runs). */
+export type Projection = { a: Record<string, number>; b: Record<string, number>; unconfirmed?: { a: number; b: number } | null };
 /**
- * What day close would do with a simulation's waiting items (Captain): "3 currency differs · 1 amount outside tolerance
- * · 20 no counterpart"; one number when both sides agree, side A · side B otherwise; `skip` leaves reasons out (a card of
- * their own). "" when nothing waits.
+ * What day close would do with a simulation's waiting items and unconfirmed suggestions (Captain): "3 currency differs
+ * · 1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions"; one number when both sides agree,
+ * per side otherwise; `skip` leaves reasons out (a card of their own). "" when nothing would break.
  */
-export function projectionText(p: { a: Record<string, number>; b: Record<string, number> }, skip: readonly string[] = []): string {
-  const known = new Set(REASON_TEXT.map(([k]) => k));
-  const rows = [...REASON_TEXT, ...[...new Set([...Object.keys(p.a), ...Object.keys(p.b)])].filter((k) => !known.has(k)).map((k) => [k, k.toLowerCase()] as const)];
-  return rows.filter(([k]) => !skip.includes(k) && ((p.a[k] ?? 0) || (p.b[k] ?? 0))).map(([k, t]) => `${perSide(p.a[k] ?? 0, p.b[k] ?? 0)} ${t}`).join(" · ");
+export function projectionText(p: Projection, labels: Sides, skip: readonly string[] = []): string {
+  for (const k of new Set([...Object.keys(p.a), ...Object.keys(p.b)])) {
+    if (REASON_TEXT.some(([r]) => r === k) || unknownSeen.has(k)) continue;
+    unknownSeen.add(k);
+    console.warn(`Day close reason without a text on screen: ${k}`);
+  }
+  const parts = REASON_TEXT.filter(([k]) => !skip.includes(k) && ((p.a[k] ?? 0) || (p.b[k] ?? 0))).map(([k, t]) => `${perSide(p.a[k] ?? 0, p.b[k] ?? 0, labels)} ${t}`);
+  const u = p.unconfirmed;
+  if (u && (u.a || u.b)) parts.push(`${perSide(u.a, u.b, labels)} unconfirmed ${u.a === 1 && u.b === 1 ? "suggestion" : "suggestions"}`);
+  return parts.join(" · ");
 }
 /** One reason's count as a card says it: "3 pairs" when both sides agree, else per side. */
 export function reasonCount(p: { a: Record<string, number>; b: Record<string, number> }, reason: string, labels: readonly [string, string]): string | null {

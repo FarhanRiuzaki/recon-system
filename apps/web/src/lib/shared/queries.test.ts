@@ -42,3 +42,24 @@ it("relative timestamp filters stay in stable API paths and keys for refresh and
   const filters = { range: "7d" as const, from: "", to: "", start: "now-15m", end: "now", user: "Alex", event: "" as const, method: "" as const };
   expect(q.AUTH_LOG.params!(filters)).toMatchObject({ start: "now-15m", end: "now", user: "Alex" });
 });
+
+describe("reconRunItems: the request a results tab sends", () => {
+  const passes = [{ accept: "auto", cardinality: "1:1" }, { accept: "suggest", cardinality: "N:1" }];
+  const params = (f: Partial<q.RunItemFilters>) => q.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", ...f });
+  it("no tab = pass 1's pairs: its own outcome, one row per group from side A", () => {
+    expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "" });
+  });
+  it("a suggest pass shows its suggestions; an N:1 pass's single side is B", () => {
+    expect(params({ pass: "2" })).toEqual({ pass: "2", status: "suggested", side: "b", date: "" });
+  });
+  it("the items a pass broke: both sides unless one is picked", () => {
+    expect(params({ pass: "1", status: "break" })).toEqual({ pass: "1", status: "break", side: "", date: "" });
+    expect(params({ status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "" });
+  });
+  it("Waiting is the open items, with no pass; the date passes through", () => {
+    expect(params({ status: "open", side: "a", date: "2026-11-04" })).toEqual({ pass: "", status: "open", side: "a", date: "2026-11-04" });
+  });
+  it("a pair outcome ignores a side left in the URL", () => {
+    expect(params({ pass: "1", status: "matched", side: "b" })).toEqual({ pass: "1", status: "matched", side: "a", date: "" });
+  });
+});

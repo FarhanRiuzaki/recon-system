@@ -100,11 +100,13 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
   const path = v1Path(versionId ? reconVersion(spaceId, configId, versionId).url : reconDetail(spaceId, configId).url);
   if (!s.token || !path) return [];
   const { data } = await backendJson<SpecHolder>(path, { token: s.token, req: { headers: await headers() } });
-  const sides = (data?.spec ?? data?.draft?.spec ?? data?.published?.spec)?.sides ?? [];
+  const sides = (data?.spec ?? data?.draft?.spec ?? data?.published?.spec)?.sides;
   // the open draft: its people, and its latest simulation for the simulation bar
   const draft = !versionId && data?.draft?.id ? [reads.reconVersion(spaceId, configId, data.draft.id), reads.draftSimulations(spaceId, configId, data.draft.id)] : [];
-  return [...[...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id)), ...draft];
+  return [...sourceReads(spaceId, sides), ...draft];
 }
+/** The sources a spec's sides read, once each. */
+const sourceReads = (spaceId: string, sides: { source_id: string }[] = []) => [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
 
 /**
  * What a run's page shows: the run, its version (the passes name the tabs and decide the table's request) with its
@@ -118,10 +120,11 @@ export async function reconRunReads(spaceId: string, configId: string, runId: st
   const { data: run } = await backendJson<{ versionId: string }>(path, { token: s.token, req });
   if (!run) return [reads.reconRun(spaceId, configId, runId)];
   const vPath = v1Path(reconVersion(spaceId, configId, run.versionId).url);
-  const { data: v } = vPath ? await backendJson<{ spec?: { passes?: { accept: string; cardinality: string }[] } }>(vPath, { token: s.token, req }) : { data: null };
+  const { data: v } = vPath
+    ? await backendJson<{ spec?: { passes?: { accept: string; cardinality: string }[]; sides?: { source_id: string }[] } }>(vPath, { token: s.token, req }) : { data: null };
   return [
     reads.reconRun(spaceId, configId, runId), reads.reconVersion(spaceId, configId, run.versionId),
-    reads.reconRunItems(spaceId, configId, runId, sp, v?.spec?.passes ?? []), ...(await reconSourceReads(spaceId, configId, run.versionId)),
+    reads.reconRunItems(spaceId, configId, runId, sp, v?.spec?.passes ?? []), ...sourceReads(spaceId, v?.spec?.sides),
   ];
 }
 

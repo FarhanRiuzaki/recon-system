@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { amountText, connectorText, countLine, dayTotals, differenceText, passOutcome, projectionText, rangeText, reasonCount, replayEnd, runTotals, simView } from "./run-model";
 
@@ -13,7 +13,7 @@ const gate = {
   intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 }, open: { a: 24, b: 24 },
   passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
 };
-const run = { status: "succeeded" as const, from: "2026-11-02", to: "2026-11-05", counters: gate, error: null, finishedAt: "2026-11-21T07:22:00Z", specHash: "h1" };
+const run = { status: "succeeded" as const, mode: "simulation" as const, from: "2026-11-02", to: "2026-11-05", counters: gate, error: null, finishedAt: "2026-11-21T07:22:00Z", specHash: "h1" };
 
 describe("run-model", () => {
   it("writes business date ranges as the design does", () => {
@@ -80,7 +80,7 @@ describe("run-model", () => {
     expect(simView(v, run, run, true)).toMatchObject({ chip: { label: "Out of date" }, line: "The draft changed after the last simulation", dim: true });
     expect(simView({ ...v, specHash: "h2" }, run, run, false).chip.label).toBe("Out of date");
     const failed = simView(v, { ...run, status: "failed" as const, error: "The run stopped before it finished. Run it again." }, null, false);
-    expect(failed).toMatchObject({ chip: { label: "Not simulated" }, line: "The simulation stopped: the run stopped before it finished. Run it again.", counts: null });
+    expect(failed).toMatchObject({ chip: { label: "Stopped" }, line: "The simulation stopped: the run stopped before it finished. Run it again.", counts: null });
   });
 
   it("reads a group's difference from its evidence (side B − side A) in the currency's units", () => {
@@ -96,9 +96,17 @@ describe("run-model", () => {
 
   it("says what day close would do with the gate's waiting items, and sums a strip day", () => {
     const gateProjection = { a: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 }, b: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 } };
-    expect(projectionText(gateProjection)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart");
-    expect(projectionText(gateProjection, ["Currency differs"])).toBe("1 amount outside tolerance · 20 no counterpart");
-    expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 } })).toBe("2 · 1 no counterpart");
+    const L = ["source1", "source2"] as const;
+    expect(projectionText(gateProjection, L)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart");
+    expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
+    expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L, ["Currency differs"])).toBe("1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
+    expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 } }, L)).toBe("2 source1 · 1 source2 no counterpart");
+    // a reason the web has no words for is never printed raw
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(projectionText({ a: { "Something new": 5 }, b: {} }, L)).toBe("");
+    expect(projectionText({ a: { "Something new": 5 }, b: {} }, L)).toBe("");
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
     expect(reasonCount(gateProjection, "Currency differs", ["source1", "source2"])).toBe("3 pairs");
     expect(reasonCount(gateProjection, "Date differs", ["source1", "source2"])).toBeNull();
     // 2 Nov of the answer key: 312 matched, 5 suggested, 7 · 8 waiting, 12 duplicate items
