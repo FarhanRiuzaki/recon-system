@@ -12,6 +12,7 @@ import { pagesFor } from "@/lib/shared/nav";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
 import { openShortcuts } from "./command-palette";
+import { leaveHeld } from "@/lib/client/use-leave-guard";
 import { NavGlyph } from "./nav-icon";
 
 const PLACEHOLDER = "Search pages";
@@ -24,7 +25,7 @@ export function PaletteDialog({ open, onOpenChange, noSpace }: { open: boolean; 
   const router = useRouter();
   const { perms } = useAuth();
   const { prefs } = usePrefs();
-  const go = (href: string) => { onOpenChange(false); router.push(viewHref(href, prefs)); };
+  const go = (href: string) => { onOpenChange(false); const to = viewHref(href, prefs); if (!leaveHeld(to)) router.push(to); };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent phone="top" showCloseButton={false} className="top-24 translate-y-0 p-0 md:max-w-xl">

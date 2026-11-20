@@ -14,6 +14,7 @@ import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
 import { SPACE_PAGES, type SpacePage } from "@/lib/shared/nav";
+import { leaveHeld } from "@/lib/client/use-leave-guard";
 import { ROLE_LABEL, spaceHref, useSpaces } from "./use-spaces";
 
 // The menu's body loads on the first open (space-menu.tsx), like the account menu's.
@@ -116,7 +117,7 @@ export function SpaceSwitcher({ drawer }: { drawer?: boolean }) {
     );
   }
 
-  const pick = (id: string) => { update({ space: id }); router.push(switchHref(path, id)); };
+  const pick = (id: string) => { const to = switchHref(path, id); if (leaveHeld(to)) return; update({ space: id }); router.push(to); };
   return (
     <DropdownMenu open={open} onOpenChange={(o) => { setOpen(o); setTip(false); if (o) setUsed(true); }}>
       <Tooltip open={tip && !open} onOpenChange={setTip}>

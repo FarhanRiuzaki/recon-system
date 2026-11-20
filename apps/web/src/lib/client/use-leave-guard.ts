@@ -3,15 +3,32 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+/** The open guard's hold on a navigation made in code, or null (one guarded form on screen at a time). */
+let holder: ((href: string) => void) | null = null;
+/** Sets the hold on navigations made in code; the returned function releases it (if it is still this one). */
+export function holdLeaving(fn: (href: string) => void): () => void {
+  holder = fn;
+  return () => { if (holder === fn) holder = null; };
+}
+/**
+ * A navigation made in code (the page search, the G shortcuts, the space switcher) asks here first: true when a form
+ * with unsaved edits holds it (its Leave question opens), false to go ahead.
+ */
+export function leaveHeld(href: string): boolean {
+  if (!holder) return false;
+  holder(href);
+  return true;
+}
+
 /**
  * Unsaved changes: while `dirty`, the browser asks before a reload or closing the tab (beforeunload), and a click on
- * an in-app link is held: `leaving` is where it pointed, for the screen's ConfirmActionDialog; `leave()` goes there,
- * `stay()` closes the question. Limits: Back/Forward and programmatic navigation (the command palette) aren't held.
+ * an in-app link, or a navigation made in code through `leaveHeld`, is held: `leaving` is where it pointed, for the
+ * screen's ConfirmActionDialog; `leave()` goes there, `stay()` closes the question. Limit: Back/Forward isn't held.
  */
 export function useLeaveGuard(dirty: boolean): { leaving: string | null; stay: () => void; leave: () => void; restoreFocus: () => void } {
   const router = useRouter();
   const [leaving, setLeaving] = useState<string | null>(null);
-  const opener = useRef<HTMLAnchorElement | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!dirty) return;
     const unload = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -29,9 +46,14 @@ export function useLeaveGuard(dirty: boolean): { leaving: string | null; stay: (
     };
     window.addEventListener("beforeunload", unload);
     document.addEventListener("click", click, true);
+    const release = holdLeaving((href) => {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      setLeaving(href);
+    });
     return () => {
       window.removeEventListener("beforeunload", unload);
       document.removeEventListener("click", click, true);
+      release();
     };
   }, [dirty]);
   return {
