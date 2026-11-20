@@ -108,15 +108,26 @@ numbers from examples.
 
 **Source wizard and versions** (Figma page 02, Build notes 02; `apps/web/src/features/sources/`). Steps: "Connection",
 "Fields & mapping", "Review & submit"; Next reads "Next: fields & mapping", "Next: review", "Submit for approval".
-- Next on Connection is blocked until a test passes for the values on screen: "Test the connection first; step 2
-  reads the columns through it." (a file inbox: "Test the folder first; files are picked up from it."); after a
-  change: "The connection changed since the last test. Test it again." (a file inbox: "The folder changed since the
-  last test. Test it again."). Until the source exists, the test's panel says "Next unlocks once the test passes; the
-  source is saved at Next". A folder outside the inbox roots, on the Folder field: "Use a folder inside the inbox
-  folders this install allows." (never an environment variable's name).
-- The test's answer is the API's sentence, as is (`connectors/errors.ts`, `inbox.ts`): "Connected.", "Folder readable
-  · 3 files match act*.txt", "The server did not answer within 8 s.", "The server refused the login (ORA-01017).
-  Check the user and password." Never add "Nothing was saved": the connection is stored before it is tested.
+- Step 1 (Figma 02 v1.0.5) runs in stages: Server → Sign in → **Connect** → Data (database and table). The stage's
+  action is "Connect" (a file inbox: "Check folder"); Enter runs it. While it runs: "Connecting…". After it passes,
+  Server and Sign in fold into one line with "Change server": "PostgreSQL 18.6 · recon_ro@db.bank.local:5432 ·
+  TLS on". A file inbox's answer is one line naming the pattern: "Folder readable · 3 files match act*.txt" (no
+  separate "1 file matches." note).
+- A failed connect is an error on the field that caused it, one fact and one step, naming what was typed (never the
+  password; for a stored connection never its values) — `apps/api/src/modules/sources/rules.ts` `testFailure`:
+  Password: "Password rejected for {user}." · Host: "Can't reach {host}:{port} in 8 s." / "Can't reach
+  {host}:{port}. Check the host and port." · TLS: "This server doesn't offer TLS. Ask IT to turn it on for the
+  server." / "The server's certificate isn't trusted by this install. Ask IT to add your bank's CA." · Database:
+  "Database {name} wasn't found. Check the name." (Oracle: "Service …"). Focus moves to that field. "Can't reach"
+  only when the host really didn't answer; a failure on the app's side never blames the typed host.
+- TLS starts on, off only for a local host (localhost, 127.0.0.1, host.docker.internal). Turning it off for any other
+  host asks first: title "Turn off TLS for {host}?", body "The password and the data travel unencrypted. This is
+  recorded in the activity log.", actions "Turn off TLS" (danger) · "Keep TLS"; closing it returns focus to the switch.
+- Next on Connection is blocked until the connection passes for the values on screen; after a change: "The connection
+  changed since you connected. Connect again." (a file inbox: "The folder changed since the last check. Check it
+  again."); a picker list that is out of date: "The connection changed. Connect again to refresh this list." A folder
+  outside the inbox roots, on the Folder field: "Use a folder inside the inbox folders this install allows." (never an
+  environment variable's name). Never add "Nothing was saved": the source is saved at Next.
 - Username hint: "Use a read-only account."
   A stored credential field: "Stored. Enter a new value to replace it." (never the value).
 - A watermark or id column that allows NULL is offered disabled with "can be empty" after its name; SQL Server float and real: "SQL Server sends float and real in scientific notation (1.5E+2).

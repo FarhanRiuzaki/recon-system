@@ -83,6 +83,42 @@ through `next/font`.
 
 Detail pages add `Tabs` (line variant) directly under the header; the tab value lives in the URL `tab`.
 
+## 1a. Page types (anatomy every page follows: older pages, recon pages and every future plan)
+
+Every page is one of four types. A user who learns one list, one detail, one version and one form page knows them
+all (Jakob's law applied inside the app). Draft by designer-recon, 21 Nov 2026, for Captain's decision; the live
+deviations are in `.superpowers/scratch/consistency/DEVIATIONS.md`.
+
+**Rules for every type**
+- Header = `PageHeader`, never a page-made header. Breadcrumb: parents, then the open page; every crumb but the last
+  links back.
+- Title: a noun. A record's title is its name. Description: one line of facts (scope, state, who, when), never advice.
+- Status chip right after the title, only when the record has a state (Draft, In review, Published, Healthy …).
+- **One primary action, top right**, the most frequent next step, as a verb + object ("Create source", "Edit
+  version 2", "Pull now"). Secondary actions follow it as buttons from 768 px.
+- **A destructive action is always in the ⋯ menu** ("More actions", last in the header; per row in a table), never a
+  button of its own, never in a form footer. It opens a confirmation dialog that names the record and the impact; the
+  confirm button repeats the action ("Delete draft source"). Destructive = deletes, deactivates, revokes, resets, retires.
+- One surface level: section `Panel` → its items. No card inside a card, no tray inside a card (§0a).
+- States per region (§3): loading in the page's own shape, empty = fact + one next step, error = fact + Retry.
+
+| | List | Detail | Version | Form (create, edit, wizard, editor) |
+|---|---|---|---|---|
+| Example | Sources, Recons, Users, Roles, Members, Activity log | Source, Recon, User, Role | Source version n, Recon version n | New source, Edit user, New recon, recon builder |
+| Breadcrumb | `Sources` | `Sources / source1` | `Sources / source1 / Version 2` | `Sources / New source`, `Users / Rina / Edit user` |
+| Title | Plural noun | The record's name | `{name} · version {n}` | `New {noun}` / `Edit {noun}` (the name is in the breadcrumb); an editor keeps the record's name |
+| Description | Scope in one sentence | Facts: version, kind, cadence (`Version 1 · Database · watermark · pulled every minute`) | `Published {date} · approved by {name}` / `In review · sent by {name}, {time}` / `Draft · last saved by {name}, {time}` | What the form makes, one sentence |
+| Primary (top right) | `Create {noun}` (new record) or `Add {noun}` (attach an existing one) | The next step (`Pull now`, `Edit source`) | Maker of a draft: `Edit version {n}`. Checker of a version in review: the decision panel, first under the header, with `Approve version {n}` (primary) and `Reject` | None in the header; the form's primary is in its footer |
+| ⋯ menu | Per row, when a row has actions; never inline row buttons | Destructive actions (`Delete draft source`, `Deactivate user`, `Delete role`) | — | `Delete draft {noun}` on a draft that exists |
+| Below the header | Filters rail (§1 item 4), one table panel named by its view (`All sources 13`), paging | `Tabs`: `Overview` first, `Versions`, `Activity` last; others between them | `Changes from version {n−1}` → `Settings of version {n}` → preview / simulation | Sections in dependency order (ux-form-rules 1–11) |
+| Side panel | — | Inspector of the selected item: right 340 px ≥ 1280, under the list 768–1279, bottom sheet < 768 | — | Same inspector rule (recon builder) |
+| Read-only values | Table cells | Facts and settings as text | Settings as text (a label and a value per row), **never disabled inputs** | Read-only fields use the read-only look, not disabled |
+| Footer | Table paging | — | — | Sticky, left under the fields: primary (`Create {noun}`, `Save {noun}`, `Next: {step}`), then `Back` in a wizard, then `Cancel`. An editor that saves itself has no footer; it shows `Saved` / `Saving…` / `Not saved · Retry` in the header description |
+
+A new plan (Plan 4 Today and Live day, Plan 5 Breaks, Approvals and Explain) picks one of these types per screen in its
+first Figma frame and names the type in its spec; a screen that needs something else is decided by Captain before
+it is drawn.
+
 ## 2. Grid, spacing, sizing
 
 - Content fills the sheet's width, no max (padding 32 px horizontal, 24 top, 40 bottom): a collapsed sidebar or a wide
