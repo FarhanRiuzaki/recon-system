@@ -3,7 +3,7 @@ import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
-/** Work and Setup: the coming-soon items and Sources, in sidebar order. */
+/** Work and Setup: the coming-soon items, Recons and Sources, in sidebar order. */
 const SOON = ["Today", "Breaks", "Approvals", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
@@ -38,7 +38,7 @@ describe("navFor", () => {
 
   it("coming-soon items: no shortcut, no permission, not in the palette or shortcut list, no page behind them", () => {
     const soon = NAV.filter((n) => n.soon);
-    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Today"], ["work", "Breaks"], ["work", "Approvals"], ["setup", "Recons"]]);
+    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Today"], ["work", "Breaks"], ["work", "Approvals"]]);
     expect(soon.every((n) => n.shortcut === "" && n.perm === null)).toBe(true);
     const pages = pagesFor(new Set(PERMISSIONS));
     expect(pages.some((n) => n.soon || n.hidden)).toBe(false);
@@ -47,7 +47,7 @@ describe("navFor", () => {
     expect(crumbs("/today", new Set(PERMISSIONS))).toEqual([]);
     expect(SOON_REASON).toBe("Arrives in a later release.");
     const sections = navFor(new Set());
-    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Today, Breaks and Approvals arrive in a later release.", "Arrives in a later release.", null, null]);
+    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Today, Breaks and Approvals arrive in a later release.", null, null, null]);
     expect(soonCaption([{ ...soon[0]! }])).toBe("Arrives in a later release.");
   });
 
@@ -60,8 +60,8 @@ describe("navFor", () => {
 describe("space group", () => {
   it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
     const admin = new Set(["user.view", "role.view", "space.view"] as const);
-    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...SOON.filter((l) => l !== "Sources"), "Users", "Roles", "Profile"]);
-    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "setup", "personal"]);
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...SOON.filter((l) => l !== "Sources" && l !== "Recons"), "Users", "Roles", "Profile"]);
+    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "personal"]); // Setup holds only space pages
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
   });
@@ -86,6 +86,18 @@ describe("space group", () => {
     expect(crumbs(`${S}/sources`, new Set()).map((c) => [c.label, c.href])).toEqual([["Sources", "/sources"]]);
     expect([isSubPage(`${S}/sources`), isSubPage(`${S}/sources/x`)]).toEqual([false, true]);
     expect(pagePerm(`${S}/sources/x`)).toBeNull(); // membership: page.tsx asks the API
+  });
+
+  it("Recons is a link in Setup (G C) to the current space's recons, active there and below", () => {
+    const r = NAV.find((n) => n.label === "Recons")!;
+    expect([r.group, r.href, r.shortcut, r.soon, r.perm, r.space]).toEqual(["setup", "/recons", "G C", undefined, null, "recons"]);
+    const S = "/spaces/5b0c1f2e-0000-4000-8000-000000000000";
+    for (const p of ["/recons", `${S}/recons`, `${S}/recons/x/versions/y`]) expect(onItem(p, r), p).toBe(true);
+    expect(onItem(`${S}/sources`, r)).toBe(false);
+    expect(crumbs(`${S}/recons`, new Set()).map((c) => [c.label, c.href])).toEqual([["Recons", "/recons"]]);
+    expect([isSubPage(`${S}/recons`), isSubPage(`${S}/recons/x`)]).toEqual([false, true]);
+    expect(pagePerm(`${S}/recons/new`)).toBeNull(); // membership: page.tsx asks the API
+    expect(pagesFor(new Set(), true).map((n) => n.label)).not.toContain("Recons");
   });
 
   it("Members is in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {

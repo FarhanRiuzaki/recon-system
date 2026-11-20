@@ -23,14 +23,14 @@ export function soonCaption(items: readonly NavItem[]): string | null {
  * `soon`: a page of a later release, shown disabled (not a link, no shortcut, not in the palette). `hidden`: a
  * template page whose route still works (guard, breadcrumb) but that the navigation does not list.
  * `space`: a page every space has, at /spaces/<id>/<space>; `href` is its entry, which opens the current space's
- * (app/(main)/spaces/page.tsx, app/(main)/sources/page.tsx), and the item is active on that page and below it.
+ * (app/(main)/spaces/page.tsx, app/(main)/sources/page.tsx, app/(main)/recons/page.tsx), and the item is active on that page and below it.
  */
 export type NavItem = {
   href: string; label: string; icon: NavIcon; shortcut: string; group: NavGroup; perm: PermissionName | null; children?: readonly NavChild[]; soon?: true; hidden?: true;
   space?: SpacePage;
 };
 /** The pages every space has (/spaces/<id>/<page>). */
-export const SPACE_PAGES = ["members", "sources"] as const;
+export const SPACE_PAGES = ["members", "sources", "recons"] as const;
 export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
@@ -40,7 +40,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/today", label: "Today", icon: "today", shortcut: "", group: "work", perm: null, soon: true },
   { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true },
   { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "", group: "work", perm: null, soon: true },
-  { href: "/recons", label: "Recons", icon: "recons", shortcut: "", group: "setup", perm: null, soon: true },
+  { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
   { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null, space: "members" },

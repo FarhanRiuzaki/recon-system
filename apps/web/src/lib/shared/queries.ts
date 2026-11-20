@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
@@ -119,6 +119,29 @@ export const sourceVersion = (spaceId: string, id: string, versionId: string) =>
   key: [...SOURCES_KEY, "version", spaceId, id, versionId] as const,
   url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
 });
+
+export const RECON_KEY = ["recon"] as const;
+const RECONS_SPEC: TableSpec<{ q: string }> = { sorts: RECON_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
+const reconsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/recons` as const;
+/** A space's recons; `q` matches the code or the name. */
+export const RECONS = (spaceId: string): TableDef<{ q: string }> => ({ key: RECON_KEY[0], path: reconsPath(spaceId), spec: RECONS_SPEC });
+export const reconDetail = (spaceId: string, id: string) => ({
+  key: [...RECON_KEY, "detail", spaceId, id] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}`,
+});
+/** A recon's versions, newest first (`tab` stays when the table pages). */
+const RECON_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: RECON_VERSION_SORTS, defaultSort: "-version", filters: {} };
+export const reconVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
+  ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: RECON_VERSIONS_SPEC, transient: ["tab"] });
+/** A recon's own activity, newest first; the API takes no sort. */
+export const reconActivity = (spaceId: string, id: string): TableDef<NoFilters> =>
+  ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: INGEST_SPEC, transient: ["tab"] });
+/** One version of a recon, with the names of the people it names. */
+export const reconVersion = (spaceId: string, id: string, versionId: string) => ({
+  key: [...RECON_KEY, "version", spaceId, id, versionId] as const,
+  url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+});
+/** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
+export const sideSourceOptions = (spaceId: string) => ({ key: [...SOURCES_KEY, "options", spaceId] as const, url: `${sourcesPath(spaceId)}?pageSize=100` });
 
 export const AUDIT_KEY = ["audit"] as const;
 /** Entry identity is independent of list state; only validated, normalized UUIDs become BFF paths. */

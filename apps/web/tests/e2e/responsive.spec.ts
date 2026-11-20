@@ -89,7 +89,7 @@ test.describe("shell from 768 px", () => {
 
 test.describe("navigation: hidden template pages and coming-soon items", () => {
   test.use({ storageState: AUTH_STATE });
-  const GROUPS = [{ id: "work", caption: "Today, Breaks and Approvals arrive in a later release.", items: ["Today", "Breaks", "Approvals"] }, { id: "setup", caption: "Arrives in a later release.", items: ["Recons"] }];
+  const GROUPS = [{ id: "work", caption: "Today, Breaks and Approvals arrive in a later release.", items: ["Today", "Breaks", "Approvals"] }];
   const REASON = "Arrives in a later release.";
 
   test("Projects and Design system are not in the navigation or the page search, but /projects and /ds open by URL", async ({ page, isMobile }) => {

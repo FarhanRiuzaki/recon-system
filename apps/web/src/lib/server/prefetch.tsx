@@ -8,12 +8,14 @@ import { Hydrate } from "@/lib/client/hydrate";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
+import { ReconActivityQuery, ReconListQuery, ReconVersionListQuery } from "@starterkit/shared/contracts/recon";
 import { IngestListQuery, SourceListQuery, SourceVersionListQuery } from "@starterkit/shared/contracts/sources";
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
+  reconActivity, reconDetail, RECONS, reconVersion, reconVersions, sideSourceOptions,
   sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
@@ -75,6 +77,12 @@ export const reads = {
   sourceVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceVersions(spaceId, id), sp, SourceVersionListQuery),
   sourceActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceActivity(spaceId, id), sp, IngestListQuery),
   sourceVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: sourceVersion(spaceId, id, versionId).key, path: sourceVersion(spaceId, id, versionId).url }),
+  recons: (spaceId: string, sp: URLSearchParams) => table(RECONS(spaceId), sp, ReconListQuery),
+  recon: (spaceId: string, id: string): Read => ({ key: reconDetail(spaceId, id).key, path: reconDetail(spaceId, id).url }),
+  reconVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(reconVersions(spaceId, id), sp, ReconVersionListQuery),
+  reconActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(reconActivity(spaceId, id), sp, ReconActivityQuery),
+  reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
+  sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
 /**
