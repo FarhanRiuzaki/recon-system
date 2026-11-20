@@ -236,7 +236,9 @@ Keduanya memakai engine yang sama: run harian adalah tick yang jalan sekali deng
 **Run tick** (interval, atau satu kali untuk harian)
 1. Ambil lock transaksi per config (`pg_advisory_xact_lock`) — satu config tidak pernah jalan dobel.
 2. Masukkan `record` baru dari source tiap sisi (filter sisi) sebagai `recon_item open`.
-3. Jalankan pass berurutan atas item `open` saja (inkremental, bukan scan sehari).
+3. Jalankan pass berurutan atas item `open` ditambah break dalam jendela `carry_over_days` (DEC-047; inkremental, bukan
+   scan sehari). Pass auto yang memasangkan break → `AUTO_MATCHED_LATE_DATA` tanpa membuka ulang hari yang sudah
+   sign-off; pass suggest → break tetap break dengan pasangan usulan terlampir ("Match pair" satu klik).
 4. Item `open` yang source lawannya `complete_through ≥ event_time + grace` → `break`. Grace per config.
 5. Break yang kemudian ketemu pasangan ditutup otomatis sebagai `AUTO_MATCHED_LATE_DATA` (tanpa approval).
 
