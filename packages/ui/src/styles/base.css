@@ -554,3 +554,11 @@ details[open]::details-content { block-size: auto; opacity: 1; }
   [data-slot="setup-checklist"] [data-slot="step-marker"] > .animate-swap path { stroke-dasharray: 24; animation: tick-draw var(--dur-enter) var(--ease-out) both; }
 }
 [data-motion-preview="reduced"] [data-slot="setup-checklist"] [data-slot="step-marker"] > .animate-swap path { stroke-dasharray: none !important; animation: none !important; }
+
+/* A popover marked data-phone="sheet" (the server-search combobox, REC-F2a) is a bottom sheet below 768 px, as a Dialog
+   is (ui-standard §7): Radix still places its wrapper beside the trigger, so the wrapper is pinned to the viewport's
+   bottom instead, 1.5rem under the top; the list fills it. Decided in CSS, one DOM for every width. */
+@media (max-width: 767px) {
+  [data-radix-popper-content-wrapper]:has(> [data-phone="sheet"]) { position: fixed !important; inset: 1.5rem 0 0 0 !important; transform: none !important; min-width: 0 !important; }
+  [data-phone="sheet"] { width: 100%; max-width: none; height: 100%; max-height: none; border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding-bottom: env(safe-area-inset-bottom); }
+}

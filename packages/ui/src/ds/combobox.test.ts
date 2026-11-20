@@ -106,3 +106,54 @@ describe("Combobox (server search)", () => {
     expect(document.querySelector('[role="listbox"]')!.textContent).toContain("Couldn't load the options.");
   });
 });
+
+describe("CommandCombobox (server query mode, REC-F2a)", () => {
+  const TABLES = [
+    { value: "core.tx", label: "tx", group: "core", description: "table · 18 columns", mono: true },
+    { value: "core.tx_v", label: "tx_v", group: "core", description: "view · 7 columns", mono: true },
+    { value: "ops.log", label: "log", group: "ops", description: "table · 3 columns", mono: true },
+  ];
+  async function openWith(props: Record<string, unknown>) {
+    await mount(h(Combobox, { label: "Table", options: [], value: [], onValueChange: () => {}, query: "", onQuery: () => {}, phone: "sheet", ...props }));
+    const trigger = document.querySelector<HTMLButtonElement>('button[aria-label^="Table:"]')!;
+    await act(async () => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); trigger.click(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    return trigger;
+  }
+
+  it("loading: three hidden skeleton rows and a status for screen readers", async () => {
+    await openWith({ loading: true, loadingText: "Loading tables…" });
+    expect(document.querySelector('[role="status"]')!.textContent).toBe("Loading tables…");
+    expect(document.querySelectorAll('[data-slot="skeleton"]').length).toBe(6);
+  });
+
+  it("options grouped under their heading, each with its second line; footer and live count inside the list", async () => {
+    const pick = vi.fn();
+    await openWith({ options: TABLES, onValueChange: pick, footer: "Showing 3 of 1,284 tables. Type to narrow the list.", status: "3 of 1,284 tables shown" });
+    expect([...document.querySelectorAll("[cmdk-group-heading]")].map((g) => g.textContent)).toEqual(["core", "ops"]);
+    expect(options()).toEqual(["txtable · 18 columns", "tx_vview · 7 columns", "logtable · 3 columns"]);
+    expect(document.querySelector('[cmdk-list]')!.textContent).toContain("Showing 3 of 1,284 tables. Type to narrow the list.");
+    expect(document.querySelector('[aria-live="polite"]')!.textContent).toBe("3 of 1,284 tables shown");
+    await act(async () => { (document.querySelectorAll('[role="option"]')[2] as HTMLElement).click(); });
+    expect(pick).toHaveBeenCalledWith(["ops.log"]);
+  });
+
+  it("empty: the caller's sentence; failed: the message with Retry, which can wait", async () => {
+    await openWith({ emptyText: "This account can't read any tables in core. Ask IT to grant SELECT." });
+    expect(document.querySelector("[cmdk-empty]")!.textContent).toBe("This account can't read any tables in core. Ask IT to grant SELECT.");
+    await act(async () => root?.unmount()); root = null; document.body.innerHTML = "";
+    const retry = vi.fn();
+    await openWith({ error: "The table list couldn't be loaded. The host could not be reached.", onRetry: retry, retryDisabled: true });
+    const alert = document.querySelector('[role="alert"]')!;
+    expect(alert.textContent).toContain("The table list couldn't be loaded.");
+    const button = alert.querySelector("button")!;
+    expect(button.disabled).toBe(true);
+  });
+
+  it("a value not among the options (picked before, gone after a retest) still shows on the trigger; disabled can't open", async () => {
+    const trigger = await openWith({ value: ["core.gone"], disabled: true });
+    expect(trigger.getAttribute("aria-label")).toBe("Table: core.gone");
+    expect(trigger.disabled).toBe(true);
+    expect(document.querySelector("[cmdk-list]")).toBeNull();
+  });
+});
