@@ -153,15 +153,29 @@ export const draftSimulations = (spaceId: string, id: string, versionId: string)
 export const reconRun = (spaceId: string, id: string, runId: string) => ({
   key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,
 });
-export type RunItemFilters = { pass: string; status: string; side: string };
+export type RunItemFilters = { pass: string; status: string; side: string; date: string };
 const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
   sorts: RECON_RUN_ITEM_SORTS, defaultSort: "businessDate",
-  filters: { pass: oneOf(["", ...Array.from({ length: PASSES_MAX }, (_, i) => String(i + 1))], ""), status: oneOf(["", ...ITEM_STATUSES], ""), side: oneOf(["", "a", "b"], "") },
+  filters: {
+    pass: oneOf(["", ...Array.from({ length: PASSES_MAX }, (_, i) => String(i + 1))], ""), status: oneOf(["", ...ITEM_STATUSES], ""),
+    side: oneOf(["", "a", "b"], ""), date: isoDate,
+  },
 };
-/** A run's items: a pass tab (`pass`), a status tab (`status`), one side; no tab chosen = the first pass. */
-export const reconRunItems = (spaceId: string, id: string, runId: string): TableDef<RunItemFilters> => ({
+type PassLike = { accept: string; cardinality: string };
+/**
+ * A run's items as its results tabs ask for them: a pass tab (`pass`, the first when no tab is chosen) shows its pairs,
+ * one row per group from the group's single side (`status` matched or suggested, the pass's own by default), or the
+ * items it broke (`status` break, both sides); the Waiting tab is `status` open. `date` = the day the strip picked.
+ * `passes` = the run version's passes (their accept and cardinality decide the defaults).
+ */
+export const reconRunItems = (spaceId: string, id: string, runId: string, passes: readonly PassLike[] = []): TableDef<RunItemFilters> => ({
   key: ENGINE_KEY[0], path: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}/items`, spec: RUN_ITEMS_SPEC,
-  params: (f) => (f.pass || f.status ? f : { ...f, pass: "1" }),
+  params: (f) => {
+    if (f.status === "open" && !f.pass) return f;
+    const pass = f.pass || "1", p = passes[Number(pass) - 1];
+    const status = f.status || (p?.accept === "suggest" ? "suggested" : "matched");
+    return { ...f, pass, status, side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
+  },
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
 export const sideSourceOptions = (spaceId: string) => ({ key: [...SOURCES_KEY, "options", spaceId] as const, url: `${sourcesPath(spaceId)}?pageSize=100` });

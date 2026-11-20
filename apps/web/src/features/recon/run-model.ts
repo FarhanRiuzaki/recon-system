@@ -3,7 +3,7 @@
 // difference. Pure: the builder, the simulation bar and the run page read the same numbers from here.
 import { APP_TIME_ZONE_LABEL, appDate, appDayStart, formatDate, formatDecimal, formatMinor, formatNumber, formatTime, shiftDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
-import type { PassSpec, ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
+import type { PassSpec, ReconRunDto, ReconSpec, RunDay } from "@starterkit/shared/contracts/recon";
 import { RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
@@ -193,4 +193,42 @@ export function amountText(minor: string | null, ccy: string | null): string {
   if (minor === null) return "—";
   const exp = ccy ? CURRENCY_EXPONENT[ccy] : undefined;
   return exp === undefined ? minor : formatMinor(BigInt(minor), exp);
+}
+
+/** A business date of a run in the strip: groups matched and suggested, items broken by label, items waiting per side. */
+export function dayTotals(day: Pick<RunDay, "passes" | "open">, spec: ReconSpec) {
+  let matched = 0, suggested = 0, duplicate = 0, ambiguous = 0;
+  for (const p of spec.passes) {
+    const x = day.passes[String(p.no)];
+    if (!x) continue;
+    matched += x.matched;
+    suggested += x.suggested;
+    if (breakLabel(p) === "Duplicate") duplicate += x.broken; else ambiguous += x.broken;
+  }
+  return { matched, suggested, duplicate, ambiguous, waiting: day.open };
+}
+
+/** Day close's reason for a pair that only the currency keeps apart: a card of its own in the builder (BUILDER-SPEC). */
+export const CURRENCY_DIFFERS = "Currency differs";
+/** Day close's reasons in the order they read best (day close's classifier, engine sql/breaks.ts NEAR_MISS). */
+const REASON_TEXT: readonly (readonly [string, string])[] = [
+  ["Currency differs", "currency differs"], ["Amount differs", "amount outside tolerance"], ["Date differs", "date differs"], ["No counterpart", "no counterpart"],
+];
+/** "3", or "3 · 2" (side A · side B) when the sides differ. */
+const perSide = (a: number, b: number) => (a === b ? formatNumber(a) : `${formatNumber(a)} · ${formatNumber(b)}`);
+/**
+ * What day close would do with a simulation's waiting items (Captain): "3 currency differs · 1 amount outside tolerance
+ * · 20 no counterpart"; one number when both sides agree, side A · side B otherwise; `skip` leaves reasons out (a card of
+ * their own). "" when nothing waits.
+ */
+export function projectionText(p: { a: Record<string, number>; b: Record<string, number> }, skip: readonly string[] = []): string {
+  const known = new Set(REASON_TEXT.map(([k]) => k));
+  const rows = [...REASON_TEXT, ...[...new Set([...Object.keys(p.a), ...Object.keys(p.b)])].filter((k) => !known.has(k)).map((k) => [k, k.toLowerCase()] as const)];
+  return rows.filter(([k]) => !skip.includes(k) && ((p.a[k] ?? 0) || (p.b[k] ?? 0))).map(([k, t]) => `${perSide(p.a[k] ?? 0, p.b[k] ?? 0)} ${t}`).join(" · ");
+}
+/** One reason's count as a card says it: "3 pairs" when both sides agree, else per side. */
+export function reasonCount(p: { a: Record<string, number>; b: Record<string, number> }, reason: string, labels: readonly [string, string]): string | null {
+  const a = p.a[reason] ?? 0, b = p.b[reason] ?? 0;
+  if (!a && !b) return null;
+  return a === b ? `${formatNumber(a)} ${a === 1 ? "pair" : "pairs"}` : `${formatNumber(a)} ${labels[0]} · ${formatNumber(b)} ${labels[1]}`;
 }

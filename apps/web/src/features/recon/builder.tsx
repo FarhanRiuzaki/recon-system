@@ -28,7 +28,7 @@ import {
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
-import { connectorText, countLine, defaultReplay, isLive, passOutcome, RUNNING_REASON, runTotals, simView } from "./run-model";
+import { connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
@@ -296,6 +296,9 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)
   const body = editor && <fieldset disabled={!editable || submitting} className="contents">{editor}</fieldset>;
   const counters = simOn ? sim.counts?.counters : undefined;
+  // what day close would do with the simulation's waiting items (its projection); currency differs has its own card
+  const projection = counters ? (simulation.shown?.projection ?? null) : null;
+  const currency = projection ? reasonCount(projection, CURRENCY_DIFFERS, [spec.sides[0].label, spec.sides[1].label]) : null;
   const rows: PassRowProps[] = spec.passes.map((p, i) => ({
     id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
@@ -387,8 +390,14 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
               </div>
               <div className="grid gap-1 border-l-2 border-line pl-3">
                 <span className="text-label text-fg-2">Break · at day close</span>
-                <span>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {DASH}</span>
+                <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [CURRENCY_DIFFERS]) || "none" : DASH}</span>
               </div>
+              {currency && (
+                <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>
+                  <span className="text-label text-down-ink">{CURRENCY_DIFFERS}</span>
+                  <span className="tabular">{currency} · break at day close</span>
+                </div>
+              )}
             </div>
           </div>
         </Panel>

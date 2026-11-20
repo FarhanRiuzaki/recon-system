@@ -30,3 +30,10 @@ export const RECON_VERSION_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[12, 56]] },
   { kind: "panels", panels: [[12, 480]] },
 ];
+
+/** A run's results: the header, the run's summary, the per-date strip with the pass tabs and the items table. */
+export const RECON_RUN_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "panels", panels: [[12, 96]] },
+  { kind: "panels", panels: [[12, 640]] },
+];

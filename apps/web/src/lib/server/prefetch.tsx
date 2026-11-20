@@ -84,7 +84,8 @@ export const reads = {
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
-  reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams) => table(reconRunItems(spaceId, id, runId), sp, ReconRunItemQuery),
+  reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string }[]) =>
+    table(reconRunItems(spaceId, id, runId, passes), sp, ReconRunItemQuery),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
@@ -103,6 +104,25 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
   // the open draft: its people, and its latest simulation for the simulation bar
   const draft = !versionId && data?.draft?.id ? [reads.reconVersion(spaceId, configId, data.draft.id), reads.draftSimulations(spaceId, configId, data.draft.id)] : [];
   return [...[...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id)), ...draft];
+}
+
+/**
+ * What a run's page shows: the run, its version (the passes name the tabs and decide the table's request) with its
+ * sides' sources, and the items of the tab in the URL. Read once on the server for the version id and its passes.
+ */
+export async function reconRunReads(spaceId: string, configId: string, runId: string, sp: URLSearchParams): Promise<Read[]> {
+  const s = await getSession();
+  const path = v1Path(reconRun(spaceId, configId, runId).url);
+  if (!s.token || !path) return [];
+  const req = { headers: await headers() };
+  const { data: run } = await backendJson<{ versionId: string }>(path, { token: s.token, req });
+  if (!run) return [reads.reconRun(spaceId, configId, runId)];
+  const vPath = v1Path(reconVersion(spaceId, configId, run.versionId).url);
+  const { data: v } = vPath ? await backendJson<{ spec?: { passes?: { accept: string; cardinality: string }[] } }>(vPath, { token: s.token, req }) : { data: null };
+  return [
+    reads.reconRun(spaceId, configId, runId), reads.reconVersion(spaceId, configId, run.versionId),
+    reads.reconRunItems(spaceId, configId, runId, sp, v?.spec?.passes ?? []), ...(await reconSourceReads(spaceId, configId, run.versionId)),
+  ];
 }
 
 /**

@@ -22,6 +22,7 @@ export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable
 export const VIEW_PAGES = [
   "/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects", "/spaces/[spaceId]/members", "/spaces/[spaceId]/sources",
   "/spaces/[spaceId]/sources/[sourceId]", "/spaces/[spaceId]/recons", "/spaces/[spaceId]/recons/[configId]",
+  "/spaces/[spaceId]/recons/[configId]/runs/[runId]",
 ] as const;
 export type ViewPage = (typeof VIEW_PAGES)[number];
 const VIEW_MAX = REMEMBERED_VIEW_QUERY_MAX; // characters per view: the whole cookie stays far under the 4 KB limit

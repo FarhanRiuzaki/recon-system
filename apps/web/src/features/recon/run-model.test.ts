@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, differenceText, passOutcome, rangeText, replayEnd, runTotals, simView } from "./run-model";
+import { amountText, connectorText, countLine, dayTotals, differenceText, passOutcome, projectionText, rangeText, reasonCount, replayEnd, runTotals, simView } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -92,5 +92,17 @@ describe("run-model", () => {
     expect(amountText("2551779", "IDR")).toBe("25,517.79");
     expect(amountText("-500", "JPY")).toBe("-500");
     expect(amountText(null, "IDR")).toBe("—");
+  });
+
+  it("says what day close would do with the gate's waiting items, and sums a strip day", () => {
+    const gateProjection = { a: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 }, b: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 } };
+    expect(projectionText(gateProjection)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart");
+    expect(projectionText(gateProjection, ["Currency differs"])).toBe("1 amount outside tolerance · 20 no counterpart");
+    expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 } })).toBe("2 · 1 no counterpart");
+    expect(reasonCount(gateProjection, "Currency differs", ["source1", "source2"])).toBe("3 pairs");
+    expect(reasonCount(gateProjection, "Date differs", ["source1", "source2"])).toBeNull();
+    // 2 Nov of the answer key: 312 matched, 5 suggested, 7 · 8 waiting, 12 duplicate items
+    const day = { passes: { 1: { matched: 312, suggested: 0, broken: 12, brokenRefs: 4 }, 2: { matched: 0, suggested: 3, broken: 0, brokenRefs: 0 }, 3: { matched: 0, suggested: 2, broken: 0, brokenRefs: 0 } }, open: { a: 7, b: 8 } };
+    expect(dayTotals(day, spec)).toEqual({ matched: 312, suggested: 5, duplicate: 12, ambiguous: 0, waiting: { a: 7, b: 8 } });
   });
 });
