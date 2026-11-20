@@ -1,7 +1,9 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+// Internal Next API (also in packages/ui/src/motion/framer.tsx): recheck on every Next upgrade.
+import { LayoutRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Panel, StatTiles, StatTileSkeletons } from "@starterkit/ui/ds";
 import { DUR, LOADING, useDelayedFlag, useHoldShape } from "@starterkit/ui/motion";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -65,10 +67,23 @@ function TableBlock({ chrome, rows, rowHeight }: { chrome: number; rows: number;
 
 type Copy = { copy: HTMLElement; rect: DOMRect; scrolled: [HTMLElement, number, number][] };
 /** A fresh copy to put up, or the copy already up (a navigation started within the previous one's first 150 ms). */
-type Previous = (Copy | { adopt: HTMLElement }) & { owner: object };
+type Previous = Copy | { adopt: HTMLElement };
 
-/** The frozen copy on screen and the loading shape that owns it (only the owner takes it down). */
-let up: { holder: HTMLElement; owner: object } | null = null;
+/**
+ * The frozen copy on screen and the latest mounted shape's claim on it. Written only in layout effects, never while
+ * rendering: a render React throws away (strict mode's second call, a suspended sibling's pre-render, an interrupted
+ * navigation) must not take the copy from the shape that shows it, or nobody takes it down (route-skeleton.test.ts).
+ */
+let up: { holder: HTMLElement; claim: object } | null = null;
+const gone = new WeakSet<HTMLElement>();
+
+function takeDown(holder: HTMLElement) {
+  if (gone.has(holder)) return;
+  gone.add(holder);
+  holder.animate?.([{ opacity: 1 }, { opacity: 0 }], { duration: DUR.fast * 1000, fill: "forwards" });
+  // A timer, not the animation's `finished`: a background tab never plays it, and the copy must still go.
+  setTimeout(() => holder.remove(), DUR.fast * 1000);
+}
 
 /**
  * What the page region showed when this shape mounted on a client navigation (the page, or a held shape over it),
@@ -83,14 +98,11 @@ function usePreviousPage(): Previous | null {
       .find((p) => !p.closest("[inert]")); // not a page the Framer layer is fading out (motion/framer.tsx Frozen)
     const root = page?.parentElement;
     if (!page || !root) return null;
-    const owner = {};
     if (page.querySelector("[data-route-skeleton]")) {
       // The page region is another loading shape: a navigation started while the previous one was still in its
-      // first 150 ms. Its copy of the page before it stays up, handed to this shape now (while rendering, before the
-      // old shape's cleanup could take it down), so the screen never goes blank in between.
-      if (!up?.holder.isConnected) return null;
-      up.owner = owner;
-      return { adopt: up.holder, owner };
+      // first 150 ms. Its copy of the page before it stays up; this shape claims it as it mounts (showCopy), in the
+      // same commit that unmounts the old shape, so the screen never goes blank in between.
+      return up?.holder.isConnected ? { adopt: up.holder } : null;
     }
     const copy = root.cloneNode(true) as HTMLElement;
     // Same order in both trees: the copy's twin of each scrolled box, to restore its position once the copy is shown.
@@ -104,7 +116,7 @@ function usePreviousPage(): Previous | null {
     copy.setAttribute("data-frozen", "");
     copy.setAttribute("aria-hidden", "true");
     copy.inert = true;
-    return { copy, rect: root.getBoundingClientRect(), scrolled, owner };
+    return { copy, rect: root.getBoundingClientRect(), scrolled };
   });
   return previous;
 }
@@ -112,12 +124,15 @@ function usePreviousPage(): Previous | null {
 /**
  * Shows the copy at the exact viewport box the page had, above the page region and outside its enter animation (one
  * source of the old page: a page the Framer layer is still fading out is hidden meanwhile, by globals.css). Leaves with a short fade,
- * over the page or the shape that takes its place.
+ * over the page or the shape that takes its place. One copy at a time: any other still up goes. The cleanup waits for
+ * the rest of the commit (a microtask): a shape mounting in it may claim the copy; unclaimed, it goes.
  */
 function showCopy(previous: Previous): () => void {
   let holder: HTMLElement;
-  if ("adopt" in previous) holder = previous.adopt;
-  else {
+  if ("adopt" in previous) {
+    holder = previous.adopt;
+    if (gone.has(holder) || !holder.isConnected) return () => undefined; // already taken down before this shape mounted
+  } else {
     const { copy, rect, scrolled } = previous;
     holder = document.createElement("div");
     holder.setAttribute("data-frozen-holder", "");
@@ -126,16 +141,36 @@ function showCopy(previous: Previous): () => void {
     document.body.append(holder);
     for (const [el, top, left] of scrolled) { el.scrollTop = top; el.scrollLeft = left; }
   }
-  up = { holder, owner: previous.owner };
-  return () => {
-    if (up?.owner !== previous.owner) return; // handed to the next navigation's shape
-    up = null;
-    const fade = holder.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DUR.fast * 1000, fill: "forwards" });
-    fade.finished.then(() => holder.remove(), () => holder.remove());
+  if (up && up.holder !== holder) takeDown(up.holder);
+  const claim = {};
+  up = { holder, claim };
+  const release = () => {
+    if (up?.holder === holder && up.claim !== claim) return; // claimed since: the next navigation's shape
+    if (up?.holder === holder) up = null;
+    takeDown(holder);
   };
+  // Never longer than the shape's own 150 ms, even if this shape's effects never clean up.
+  const cap = setTimeout(release, (LOADING.delay + LOADING.margin) * 1000);
+  return () => { clearTimeout(cap); queueMicrotask(release); };
 }
 
-export function RouteSkeleton({ sections }: { sections: readonly Section[] }) {
+/** What a boundary shows for a page below its own folder: a title and one block, not the shape of a page it isn't. */
+const NEUTRAL: readonly Section[] = [{ kind: "header", h: 50 }, { kind: "panels", panels: [[12, 374]] }];
+
+/**
+ * Whether this `loading.tsx` stands for the page being loaded. A folder's loading.tsx is also the Suspense boundary of
+ * every route below it, shown when the router has nothing yet for the child segment (no prefetch: dev, a click before
+ * the prefetch landed), so `/`'s shape would show for `/spaces/<id>/sources/new`. The fallback renders in its folder's
+ * layout context; the active child there is the folder's own page, or a deeper route.
+ */
+function useOwnPage(): boolean {
+  const child = useContext(LayoutRouterContext)?.parentTree[1].children?.[0];
+  const segment = Array.isArray(child) ? child[1] : child;
+  return segment == null || segment.startsWith("__PAGE__");
+}
+
+export function RouteSkeleton({ sections: own }: { sections: readonly Section[] }) {
+  const sections = useOwnPage() ? own : NEUTRAL;
   const shown = useDelayedFlag(true);
   const hold = useHoldShape();
   const previous = usePreviousPage();
