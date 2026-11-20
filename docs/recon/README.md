@@ -22,6 +22,7 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
   (DEC-037).
 - [`ksei-sample-data.md`](ksei-sample-data.md) — spesifikasi fixture sintetis KSEI ACT (prefiks TST, tanpa data nyata).
 - [`source-test-db.md`](source-test-db.md) — database PostgreSQL sintetis (`recon_source_test`, tabel source1/source2) untuk mencoba wizard Sources; daftar break.
+- [`ux-form-rules.md`](ux-form-rules.md) — aturan form untuk semua layar recon (urutan, aksi primer, default aman, error di kolom); penerapan pertama REC-F2b.
 
 ## Bawaan dari Plan 1 untuk plan berikutnya
 
