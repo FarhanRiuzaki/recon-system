@@ -9,6 +9,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber, formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
+import { Select } from "@starterkit/ui/ui/select";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { NetworkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { BRAND } from "@starterkit/shared/brand";
@@ -142,34 +143,47 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
     ...(x?.broken ? [{ value: "break", label: breakLabel(pass), count: x.broken }] : []),
   ] : [];
   const items = status === "open" || status === "break";
-  const allDays = run.counters;
   const strip = run.days ?? [];
+  const dayTiles = [{ date: "", t: { ...runTotals(run.counters, spec), waiting: run.counters.open } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
+  const dayLabel = (date: string) => (date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates");
+  const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: "open", side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" });
 
   return (
     <div className="grid gap-section">
       <PageHeader title={title} trail={trail} description={`${recon.name} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
-      <Panel flush icon={NetworkIcon} title="Results per pass" count={t.count}
+      <Panel flush icon={NetworkIcon} title="Results per pass"
         description={run.mode === "simulation" ? "Not stored: after a real run the same pairs wait in Breaks" : undefined}
         toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
         <div className="grid gap-3 px-3 pb-3">
+          {/* from 768 px: a tile per business date and a tab per pass; on a phone the same choices as two selects */}
+          <div className="grid gap-2 md:hidden">
+            {strip.length > 0 && (
+              <Select aria-label="Business date" value={s.date} onChange={(e) => t.set({ date: e.target.value })} className="w-full">
+                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested</option>)}
+              </Select>
+            )}
+            <Select aria-label="Pass" value={waiting ? "waiting" : `p${passNo}`} onChange={(e) => { const tab = tabs.find((x) => x.key === e.target.value); if (tab) t.set(tabPatch(tab)); }} className="w-full">
+              {tabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
+            </Select>
+          </div>
           {strip.length > 0 && (
-            <div role="group" aria-label="Business dates" className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
-              {[{ date: "", t: { ...runTotals(allDays, spec), waiting: allDays.open } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))].map(({ date, t: d }) => (
+            <div role="group" aria-label="Business dates" className="grid gap-2 max-md:hidden md:grid-cols-3 xl:grid-cols-5">
+              {dayTiles.map(({ date, t: d }) => (
                 <Link key={date || "all"} href={href({ date })} onClick={go({ date })} aria-current={s.date === date ? "true" : undefined}
                   className={cn("grid gap-0.5 rounded-md border bg-card p-2.5 text-left text-caption text-fg-3 tabular focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                     s.date === date ? "border-fg shadow-sm" : "border-line hover:bg-tray")}>
-                  <span className="text-label text-fg">{date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates"}</span>
+                  <span className="text-label text-fg">{dayLabel(date)}</span>
                   <span>{formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.duplicate ? ` · ${formatNumber(d.duplicate)} duplicate` : ""}</span>
                   <span>{formatNumber(d.waiting.a)} {labels[0]} · {formatNumber(d.waiting.b)} {labels[1]} waiting</span>
                 </Link>
               ))}
             </div>
           )}
-          <RouteTabs aria-label="Passes">
+          <RouteTabs aria-label="Passes" className="max-md:hidden">
             {tabs.map((tab) => {
-              const patch = tab.status ? { pass: "", status: "open", side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" };
+              const patch = tabPatch(tab);
               const current = tab.status ? waiting : !waiting && passNo === tab.pass;
               return <Link key={tab.key} href={href(patch)} onClick={go(patch)} aria-current={current ? "page" : undefined}>{tab.label}</Link>;
             })}

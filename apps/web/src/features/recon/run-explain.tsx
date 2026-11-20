@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { StatusChip } from "@starterkit/ui/ds";
+import { cn } from "@starterkit/ui/lib/cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { amountText, differenceText, evidenceOf, rangeText } from "./run-model";
@@ -32,34 +34,45 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
   const pass = spec.passes.find((p) => p.no === g.passNo);
   const ev = evidenceOf(g.evidence);
   const ccy = g.members[0]?.currency ?? null;
+  // what differs (side B − side A), from the evidence: marks side B's amount or date
+  const preds = ev.predicates ?? [];
+  const moved = (ops: readonly string[]) => preds.some((x) => ops.includes(x.op) && x.delta !== null && x.delta !== undefined && Number(x.delta) !== 0);
+  const diff = { amount: moved(["amount_abs_tol", "amount_pct_tol", "eq_sum"]), date: moved(["date_window", "bday_window"]), text: differenceText(g.evidence, ccy) };
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent onCloseAutoFocus={(e) => { e.preventDefault(); returnFocus(); }}>
+      <DialogContent className="max-w-160" onCloseAutoFocus={(e) => { e.preventDefault(); returnFocus(); }}>
         <DialogHeader>
           <DialogTitle>Pass {g.passNo}{pass ? ` · ${pass.name}` : ""}</DialogTitle>
           <DialogDescription>{[KIND[g.kind] ?? g.kind, rangeText(g.businessDate, g.businessDate), ev.chosen ? CHOSEN[ev.chosen] ?? "" : ""].filter(Boolean).join(" · ")}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 px-6 py-5 text-body-sm">
-          <section aria-label="Items" className="grid gap-1">
-            {g.members.map((m) => (
-              <p key={m.recordId} className="flex flex-wrap gap-x-3 gap-y-0.5">
-                <span className="w-24 shrink-0 text-fg-3">{m.side === "a" ? labels[0] : labels[1]}</span>
-                <span className="font-mono text-mono text-fg">{m.extRef ?? "—"}</span>
-                <span className="text-fg-2">{rangeText(m.businessDate, m.businessDate)}</span>
-                <span className="tabular text-fg">{amountText(m.amountMinor, m.currency)} {m.currency}</span>
-              </p>
+          {/* the two records side by side, as the break page compares them (Figma 174:20748); side B's differing values marked */}
+          <div className="grid gap-3 md:grid-cols-2">
+            {(["a", "b"] as const).map((side) => (
+              <section key={side} aria-label={side === "a" ? labels[0] : labels[1]} className="grid content-start gap-2 rounded-md border border-line bg-card p-3">
+                <h3 className="text-caption text-fg-3">{side === "a" ? labels[0] : labels[1]}</h3>
+                {g.members.filter((m) => m.side === side).map((m) => (
+                  <div key={m.recordId} className="grid gap-0.5">
+                    <span className={cn("text-title-2 tabular", side === "b" && diff.amount ? "text-degraded-ink" : "text-fg")}>{amountText(m.amountMinor, m.currency)} {m.currency}</span>
+                    <span className="font-mono text-mono text-fg">{m.extRef ?? "—"}</span>
+                    <span className={side === "b" && diff.date ? "text-degraded-ink" : "text-fg-2"}>{rangeText(m.businessDate, m.businessDate)}</span>
+                  </div>
+                ))}
+                {side === "b" && diff.text && <p className="text-caption text-degraded-ink">{diff.text}</p>}
+              </section>
             ))}
-          </section>
+          </div>
           {pass && (
-            <section aria-label="Conditions" className="grid gap-1.5 border-t border-line pt-3">
+            <section aria-label="Conditions" className="grid gap-2">
               {pass.blocking.length > 0 && <p className="text-fg-2">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</p>}
               {pass.predicates.map((q, j) => {
                 const seen = ev.predicates?.[j];
-                const diff = seen ? differenceText({ predicates: [seen] }, ccy) : "";
+                const d = seen ? differenceText({ predicates: [seen] }, ccy) : "";
                 return (
-                  <p key={j} className="flex flex-wrap items-baseline gap-x-3">
+                  <p key={j} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {seen && <StatusChip health={seen.passed ? "healthy" : "down"} label={seen.passed ? "Pass" : "Fail"} />}
                     <span className="font-mono text-mono text-fg wrap-anywhere">{conditionText(q, fields)}</span>
-                    <span className="text-fg-3">{seen ? (seen.passed ? "Passed" : "Failed") : "—"}{diff ? ` · ${diff}` : ""}</span>
+                    {d && <span className="text-caption text-fg-3">{d}</span>}
                   </p>
                 );
               })}
