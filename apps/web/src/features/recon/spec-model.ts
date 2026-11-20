@@ -163,9 +163,18 @@ export function withFilterOp(f: SideSpec["filter"][number], op: FilterOp): SideS
 const numbered = (passes: readonly PassSpec[]): PassSpec[] => passes.map((p, i) => ({ ...p, no: i + 1 }));
 
 /** `spec` with a new last pass: 1:1, auto-accept, the starting field equal on both sides. */
+/** The core fields a new pass compares, in this order, when both sides map them (FINDINGS P2-1). */
+export const AUTO_FIELDS = ["ext_ref", "currency", AMOUNT, "business_date"] as const;
+/**
+ * `spec` with a new last pass that the maker edits rather than builds (Captain, builder round 2): 1:1, auto-accept,
+ * "equals" for every core field both sides map (reference, currency, amount, business date), candidates found by the
+ * reference when it is one of them; without any shared core field, the starting field.
+ */
 export function addPass(spec: ReconSpec, fields: Fields): ReconSpec {
   const n = spec.passes.length + 1;
-  const pass: PassSpec = { no: n, name: `Pass ${n}`, cardinality: "1:1", blocking: [], predicates: [predicateOf("eq", startField(fields))], accept: "auto", on_ambiguous: "suggest" };
+  const shared = AUTO_FIELDS.filter((f) => fields[0]?.has(f) && fields[1]?.has(f));
+  const predicates = shared.length ? shared.map((f) => predicateOf("eq", f)) : [predicateOf("eq", startField(fields))];
+  const pass: PassSpec = { no: n, name: `Pass ${n}`, cardinality: "1:1", blocking: shared.includes("ext_ref") ? ["ext_ref"] : [], predicates, accept: "auto", on_ambiguous: "suggest" };
   return { ...spec, passes: [...spec.passes, pass] };
 }
 export const removePass = (spec: ReconSpec, i: number): ReconSpec => ({ ...spec, passes: numbered(spec.passes.filter((_, j) => j !== i)) });

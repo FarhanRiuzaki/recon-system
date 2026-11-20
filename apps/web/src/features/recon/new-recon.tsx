@@ -13,14 +13,14 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { ReconDto } from "@starterkit/shared/contracts/recon";
-import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
-import { RECON_CODE, RECON_NAME_MAX } from "@starterkit/shared/recon";
+import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
+import { RECON_CODE, RECON_NAME_MAX, recordFields } from "@starterkit/shared/recon";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { PageHeader } from "@/components/shell/page-header";
 import { ApiError, api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { RECON_KEY } from "@/lib/shared/queries";
-import { defaultSpec, placeOf } from "./spec-model";
+import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
+import { addPass, defaultSpec, type Fields, placeOf } from "./spec-model";
 import { NEW_RECON_REASON, reconApi, reconHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
 
 type Values = { name: string; code: string; a: string; b: string };
@@ -44,7 +44,7 @@ const optionText = (s: SourceRowDto) =>
 
 /**
  * /spaces/[spaceId]/recons/new (README row Plan 3): a name, a code and the two sides' sources; the API makes the recon
- * and its Draft v1 together on this first save, then the builder opens over it. A role other than config maker gets
+ * and its Draft v1 (with pass 1 ready to edit) together on this first save, then the builder opens over it. A role other than config maker gets
  * the reason. With no published source in the space there is nothing to pick: one sentence and New source instead.
  */
 export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
@@ -73,7 +73,15 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
     setError(null);
     setApiErr({});
     try {
-      const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec: defaultSpec(a, b) }) });
+      // pass 1 starts with an "equals" for every core field both sources map (addPass): read their published fields first
+      const [fa, fb] = await Promise.all([a, b].map(async (s) => {
+        const { key, url } = sourceDetail(spaceId, s.id);
+        const spec = (await qc.fetchQuery({ queryKey: key, queryFn: () => api<SourceDto>(url) })).published?.spec;
+        return spec ? recordFields(spec) : null;
+      }));
+      const fields: Fields = [fa ?? null, fb ?? null];
+      const spec = addPass(defaultSpec(a, b), fields);
+      const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec }) });
       toast(`Created ${r.name} as Draft v1. Add its passes, then save the draft.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
       router.push(reconHref(spaceId, r.id));

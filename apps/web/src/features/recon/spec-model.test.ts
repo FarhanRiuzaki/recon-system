@@ -46,6 +46,17 @@ describe("fields and conditions in the builder's words", () => {
   });
 });
 
+describe("a new pass", () => {
+  it("starts with equals on every core field both sides map, candidates by the reference", () => {
+    const p = base().passes[0]!;
+    expect(p.predicates.map((q) => conditionText(q, fields))).toEqual(["txn_ref equals reference", "ccy equals currency", "amount_minor equals amount", "business_date equals value_date"]);
+    expect(p.blocking).toEqual(["ext_ref"]);
+    const noRef = recordFields({ ...s2, mapping: { ...s2.mapping, ext_ref: undefined } });
+    const q = addPass(defaultSpec({ id: "a", name: "a" }, { id: "b", name: "b" }), [fields[0], noRef]).passes[0]!;
+    expect([q.blocking, q.predicates.map((x) => x.field)]).toEqual([[], ["currency", "amount_minor", "business_date"]]);
+  });
+});
+
 describe("pass order", () => {
   it("drag and Alt+↑/↓ move a pass; the passes are renumbered in run order", () => {
     const s = base();
@@ -63,15 +74,15 @@ describe("pass order", () => {
   it("a group pass matches or breaks only and sums its many side; back to 1:1 its sums go", () => {
     const p = { ...base().passes[0]!, accept: "suggest" as const, on_ambiguous: "suggest" as const };
     const g = withCardinality(p, "N:1", fields);
-    expect([g.accept, g.on_ambiguous, g.predicates.map((q) => q.op)]).toEqual(["auto", "break", ["eq", "eq_sum"]]);
-    expect(withCardinality(g, "1:1", fields).predicates.map((q) => q.op)).toEqual(["eq"]);
+    expect([g.accept, g.on_ambiguous, g.predicates.map((q) => q.op)]).toEqual(["auto", "break", ["eq", "eq", "eq", "eq", "eq_sum"]]);
+    expect(withCardinality(g, "1:1", fields).predicates.map((q) => q.op)).toEqual(["eq", "eq", "eq", "eq"]);
   });
 });
 
 describe("checks before a save", () => {
   it("passes comparing amounts without a currency condition, when a side holds more than one currency", () => {
     const s = base();
-    const amounts = { ...s, passes: s.passes.map((p) => ({ ...p, predicates: [...p.predicates, { op: "eq" as const, field: "amount_minor" }] })) };
+    const amounts = { ...s, passes: s.passes.map((p) => ({ ...p, predicates: p.predicates.filter((q) => q.field !== "currency") })) };
     expect(currencyGaps(amounts, [s1, s2])).toEqual([1, 2, 3]);
     expect(currencyGapText([1, 2, 3])).toBe("Passes 1–3 compare amounts in more than one currency without a currency condition. Add “currency equals currency” to each pass.");
     expect(currencyGaps(addCurrencyCondition(amounts, [1, 2, 3]), [s1, s2])).toEqual([]);
