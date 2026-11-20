@@ -64,6 +64,23 @@ pada tabel/view yang dibaca): SQL Server tidak punya sesi read-only sama sekali,
 Untuk membatasi kolom yang bisa dibaca config maker, definisikan source dengan SELECT atau view, bukan tabel (akun sumber
 diberi SELECT pada view itu saja).
 
+### 5a. CA internal bank untuk TLS ke DB sumber (keputusan Captain 20 Nov, REC-F2b)
+
+Konektor memverifikasi sertifikat server (`rejectUnauthorized: true`, SQL Server `trustServerCertificate: false`). CA
+internal bank dipasang IT sekali per instalasi, tidak pernah diunggah user per koneksi:
+
+1. Taruh bundle PEM (CA root + intermediate bank) sebagai secret yang di-mount ke container API **dan** worker, mis.
+   `/run/secrets/bank-ca.pem`.
+2. Set `NODE_EXTRA_CA_CERTS=/run/secrets/bank-ca.pem` di service `api` dan `worker`. Satu variabel ini dipakai semua
+   driver karena semuanya jalan di atas TLS runtime Bun: PostgreSQL (Bun.SQL), MySQL (`mysql2`), SQL Server (`mssql`/tedious)
+   dan Oracle (`oracledb` Thin, koneksi `tcps://`). Belum dicoba terhadap server TLS dengan CA bank; cek pertama di
+   lingkungan bank = Connect di wizard source dengan TLS on.
+3. Restart API dan worker: bundle hanya dibaca saat proses mulai.
+
+Bila sertifikat tetap tidak dipercaya, wizard menampilkan di toggle TLS: "The server's certificate isn't trusted by this
+install. Ask IT to add your bank's CA." Mematikan TLS ke host non-lokal tetap bisa lewat konfirmasi dan tercatat di
+activity source ("TLS turned off for <host> by <user>").
+
 ## 6. Cek setelah deploy
 
 1. Sebagai `recon_app`: `select count(*) from <tabel domain>;` tanpa `withSpace` → 0 baris.

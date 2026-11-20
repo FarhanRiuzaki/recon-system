@@ -11,7 +11,7 @@ import type {
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
-import { amountUnit, type DbEngine, type SourceKind, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
+import { amountUnit, type DbEngine, isLocalHost, type SourceKind, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
@@ -30,7 +30,9 @@ import {
 import { reconsUsingFields } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { canStep, defaultRefused, fieldChanges, readsDifferently, specHash, specIssue, specWarnings, type TestFound, testSentence, usedBySentence } from "./rules";
+import {
+  canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, specWarnings, type TestFound, testFailure, testSentence, usedBySentence,
+} from "./rules";
 import { calendars, sourceConnections, sourceShares, sourceVersions, sources } from "./schema";
 
 type SourceRow = typeof sources.$inferSelect;
@@ -266,7 +268,9 @@ async function writeConnection(tx: InTx, ctx: Ctx, s: SourceRow, b: SetConnectio
   const [row] = await tx.insert(sourceConnections).values({ spaceId, sourceId: id, engine, options, secretEnc })
     .onConflictDoUpdate({ target: [sourceConnections.spaceId, sourceConnections.sourceId], set: { engine, options, secretEnc, updatedAt: NOW } })
     .returning(connectionColumns);
-  await recordActivity(tx, ctx, { action: "source.connection_set", target: target(s), before: before ?? null, after: { engine, options } });
+  // TLS off to a host that isn't this machine is the user's confirmed choice (REC-F2b): the entry names the host
+  const tlsOff = !options.tls && !isLocalHost(host) ? { tlsOff: { host } } : {};
+  await recordActivity(tx, ctx, { action: "source.connection_set", target: target(s), before: before ?? null, after: { engine, options, ...tlsOff } });
   return connectionDto(row!);
 }
 
@@ -452,11 +456,13 @@ async function probe(ctx: Ctx, t: Target): Promise<ConnectionTestDto> {
   try {
     const f = await within(connectorOf(t), INTERACTIVE_SECONDS, async (x) => { await x.test(); return found(x, t, until); });
     result = "ok";
-    return { ok: true, message: testSentence(t.engine, f), code: null };
+    return { ok: true, message: testSentence(t.engine, f), code: null, field: null, version: f.version ? shortVersion(t.engine, f.version) : null };
   } catch (e) {
     if (!(e instanceof ConnectorError)) throw e;
     result = e.kind;
-    return { ok: false, message: failureText(t, e), code: e.code };
+    if (t.defaulted && (e.kind === "database" || e.kind === "query")) return { ok: false, message: defaultRefused(t.defaulted, e.code), code: e.code, field: "database", version: null };
+    const at = t.typed ? { engine: t.engine, host: t.secret.host, port: t.secret.port, user: t.secret.user, database: t.secret.database } : null;
+    return { ok: false, ...testFailure(e, at, Math.min(t.options.connectTimeoutSeconds, INTERACTIVE_SECONDS)), code: e.code, version: null };
   } finally {
     log.info({ userId: ctx.user.id, spaceId: ctx.space!.id, engine: t.engine, host: t.secret.host, port: t.secret.port, result }, "source connection test");
   }
@@ -504,7 +510,7 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
   if ("spec" in got) {
     const input = b.path !== undefined ? { path: b.path, pattern: b.pattern! } : got.spec?.input.kind === "file_inbox" ? got.spec.input : null;
     if (!input) throw new ApiError("bad_request", "This source has no folder yet. Enter the folder and the pattern, then test.");
-    return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null };
+    return { ...(await inboxProbe(config().INBOX_ROOTS, input.path, input.pattern)), code: null, field: null, version: null };
   }
   if (b.connection) return probe(ctx, typedTarget(b.connection, got.conn));
   if (!got.conn) throw noConnection();
@@ -518,7 +524,7 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
 export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<ConnectionTestDto> {
   // the space guard (source_admin) is the whole authorization: nothing of the space is read
   await limited(connectionTests, ctx);
-  if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null };
+  if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null, field: null, version: null };
   return probe(ctx, typedTarget(b.connection, null));
 }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { SourceSpec, UpdateSourceVersionBody as UpdateBody } from "@starterkit/shared/contracts/sources";
-import { canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, specWarnings, type TestFound, testSentence, usedBySentence } from "../../rules";
+import { canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, specWarnings, type TestFound, testFailure, testSentence, usedBySentence } from "../../rules";
 import { ksei } from "../spec";
 
 describe("specHash", () => {
@@ -119,6 +119,30 @@ describe("testSentence (REC-F2a: what a passing test found)", () => {
   });
   it("a refused default database names it, quotes the code and says what to do", () => {
     expect(defaultRefused("postgres", "42501")).toBe("The database list couldn't be loaded: this account can't open the default database postgres (42501). Type the database name instead.");
+  });
+});
+
+describe("testFailure (REC-F2b: the field a failed test points at)", () => {
+  const at = { engine: "postgres" as const, host: "localhost", port: 5433, user: "recon_ro", database: "recon_core" };
+  const f = (kind: Parameters<typeof testFailure>[0]["kind"], code: string | null = null, a: Parameters<typeof testFailure>[1] = at) => testFailure({ kind, code, message: "as classified" }, a, 8);
+  it("names the typed values, one sentence and one step", () => {
+    expect(f("login", "28P01")).toEqual({ field: "password", message: "Password rejected for recon_ro." });
+    expect(f("timeout")).toEqual({ field: "host", message: "Can't reach localhost:5433 in 8 s." });
+    expect(f("host", "ECONNREFUSED")).toEqual({ field: "host", message: "Can't reach localhost:5433. Check the host and port." });
+    expect(f("database", "3D000")).toEqual({ field: "database", message: "Database recon_core wasn't found. Check the name." });
+    expect(f("database", "ORA-12514", { ...at, engine: "oracle", database: "BIFASTPRD" })).toEqual({ field: "database", message: "Service BIFASTPRD wasn't found. Check the name." });
+  });
+  it("an untrusted certificate points at TLS and asks IT for the bank's CA; no TLS on the server says so", () => {
+    for (const code of ["SELF_SIGNED_CERT_IN_CHAIN", "UNABLE_TO_GET_ISSUER_CERT_LOCALLY", "ORA-29024", null]) {
+      expect(f("tls", code)).toEqual({ field: "tls", message: "The server's certificate isn't trusted by this install. Ask IT to add your bank's CA." });
+    }
+    expect(f("tls", "ERR_POSTGRES_TLS_NOT_AVAILABLE")).toEqual({ field: "tls", message: "This server doesn't offer TLS. Ask IT to turn it on for the server." });
+  });
+  it("a stored connection's values are never named; a query failure keeps its sentence and no field", () => {
+    expect(f("login", "28P01", null).message).toBe("The server rejected the stored sign-in. Enter the username and password again.");
+    expect(f("timeout", null, null).message).toBe("Can't reach the server in 8 s.");
+    for (const k of ["login", "timeout", "host", "database"] as const) for (const bit of ["localhost", "recon_ro", "recon_core"]) expect(f(k, null, null).message).not.toContain(bit);
+    expect(f("query", "42501")).toEqual({ field: null, message: "as classified" });
   });
 });
 

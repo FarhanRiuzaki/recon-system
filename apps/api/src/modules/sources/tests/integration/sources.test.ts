@@ -246,6 +246,11 @@ describe("PUT connection", () => {
     expect(entries.map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.connection_set"]);
     expect(entries[1]).toMatchObject({ before: null, after: { engine: "postgres", options: { tls: true, connectTimeoutSeconds: 15 } } });
     expect(entries[2]).toMatchObject({ before: { engine: "postgres" }, after: { engine: "mysql" } });
+    // TLS off to a host that isn't this machine names the host (REC-F2b); TLS on doesn't
+    expect(entries[1]!.after).not.toHaveProperty("tlsOff");
+    expect(entries[2]!.after).toMatchObject({ tlsOff: { host: CONNECTION.host } });
+    expect((await call("PUT", `${base(A)}/${s.id}/connection`, { token: t.adm, body: { ...CONNECTION, host: "localhost" } })).status).toBe(200);
+    expect((await acts()).at(-1)!.after).not.toHaveProperty("tlsOff");
     const logged = JSON.stringify(spies.flatMap((s) => s.mock.calls));
     for (const out of [text, badText, gotText, JSON.stringify(entries), logged]) {
       expect(out).not.toContain(PASSWORD);
@@ -685,7 +690,7 @@ describe("versions and activity reads (Task 7)", () => {
     const { s, v } = await published();
     expect((await call("PUT", `${base(A)}/${s.id}/connection`, { token: t.adm, body: CONNECTION })).status).toBe(400); // a file source has none
     const dbs = await made({ code: "bifast", name: "BI-FAST", kind: "db_watermark" });
-    expect((await call("PUT", `${base(A)}/${dbs.id}/connection`, { token: t.adm, body: CONNECTION })).status).toBe(200);
+    expect((await call("PUT", `${base(A)}/${dbs.id}/connection`, { token: t.adm, body: { ...CONNECTION, options: { tls: true } } })).status).toBe(200);
     const text = await (await trail(t.op, dbs.id)).text();
     for (const secret of [PASSWORD, CONNECTION.host, CONNECTION.user, CONNECTION.database]) expect(text).not.toContain(secret);
     expect((JSON.parse(text) as Page<ActivityDto>).items.map((e) => e.action)).toEqual(["source.connection_set", "source.create"]);

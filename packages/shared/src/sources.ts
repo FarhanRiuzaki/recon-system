@@ -6,6 +6,11 @@ export const SOURCE_STATUSES = ["active", "paused"] as const;
 export type SourceStatus = (typeof SOURCE_STATUSES)[number];
 export const DB_ENGINES = ["postgres", "mysql", "mssql", "oracle"] as const;
 export type DbEngine = (typeof DB_ENGINES)[number];
+/** Hosts on this machine: TLS starts off for them; turning TLS off for any other host is confirmed and recorded (REC-F2b). */
+export const isLocalHost = (host: string) => ["localhost", "127.0.0.1", "host.docker.internal"].includes(host.trim().toLowerCase());
+/** The connection field a failed test points at (REC-F2b); null = none of them. */
+export const CONNECTION_FIELDS = ["host", "port", "username", "password", "database", "tls"] as const;
+export type ConnectionField = (typeof CONNECTION_FIELDS)[number];
 /** draft → in_review → published (the one before it retires); a reject sends in_review back to draft. */
 export const VERSION_STATUSES = ["draft", "in_review", "published", "retired"] as const;
 export type VersionStatus = (typeof VERSION_STATUSES)[number];

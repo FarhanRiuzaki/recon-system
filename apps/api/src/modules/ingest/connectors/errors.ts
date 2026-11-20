@@ -23,6 +23,8 @@ const CODES: Record<Exclude<ConnectorErrorKind, "query" | "spec">, string[]> = {
   ],
   database: ["3D000", "ER_BAD_DB_ERROR", "4060", "ORA-12514", "ORA-12505", "NJS-518"],
 };
+/** TLS codes that mean the server offers no TLS at all (the other TLS codes: its certificate isn't trusted). */
+export const NO_TLS_CODES = ["ERR_POSTGRES_TLS_NOT_AVAILABLE", "HANDSHAKE_NO_SSL_SUPPORT"];
 /** Timeouts of a statement (not of the connect): their message names the statement timeout. */
 const STATEMENT_TIMEOUTS = ["57014", "ER_QUERY_TIMEOUT", "ORA-01013", "DPI-1067", "NJS-123"];
 const KIND = new Map<string, ConnectorErrorKind>([

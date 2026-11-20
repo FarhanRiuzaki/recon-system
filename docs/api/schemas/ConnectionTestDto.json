@@ -14,12 +14,38 @@
         "string",
         "null"
       ]
+    },
+    "field": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "host",
+            "port",
+            "username",
+            "password",
+            "database",
+            "tls"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "version": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
     "ok",
     "message",
-    "code"
+    "code",
+    "field",
+    "version"
   ],
   "additionalProperties": false
 }

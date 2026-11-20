@@ -1,5 +1,6 @@
 import { fieldLabel, recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
-import type { DbEngine } from "@starterkit/shared/sources";
+import type { ConnectionField, DbEngine } from "@starterkit/shared/sources";
+import { type ConnectorErrorKind, NO_TLS_CODES } from "../ingest/connectors/errors";
 import { specHash } from "../../kernel/versions";
 
 // The version rules every maker-checker module shares live in kernel/versions.ts (sources and recon).
@@ -55,6 +56,31 @@ export function testSentence(engine: DbEngine, f: TestFound): string {
  */
 export const defaultRefused = (database: string, code: string | null) =>
   `The database list couldn't be loaded: this account can't open the default database ${database}${code ? ` (${code})` : ""}. Type the database name instead.`;
+
+/** The values on screen a failed test may name back to the person who typed them; null for a stored connection. */
+export type TypedAt = { engine: DbEngine; host: string; port: number; user: string; database: string } | null;
+
+/**
+ * A failed test's answer (REC-F2b): the field the failure points at and one sentence with one step, naming the typed
+ * host, user or database (never for a stored connection: its values are its credential; never the password).
+ * `seconds` = the connect timeout used. A kind no field explains (a query, the spec) keeps the connector's sentence.
+ */
+export function testFailure(e: { kind: ConnectorErrorKind; code: string | null; message: string }, at: TypedAt, seconds: number): { message: string; field: ConnectionField | null } {
+  const where = at ? `${at.host}:${at.port}` : "the server";
+  switch (e.kind) {
+    case "login": return { field: "password", message: at ? `Password rejected for ${at.user}.` : "The server rejected the stored sign-in. Enter the username and password again." };
+    case "timeout": return { field: "host", message: `Can't reach ${where} in ${seconds} s.` };
+    case "host": return { field: "host", message: `Can't reach ${where}. Check the host and port.` };
+    case "tls": return { field: "tls", message: e.code && NO_TLS_CODES.includes(e.code)
+      ? "This server doesn't offer TLS. Ask IT to turn it on for the server."
+      : "The server's certificate isn't trusted by this install. Ask IT to add your bank's CA." };
+    case "database": {
+      const what = at?.engine === "oracle" ? "Service" : "Database";
+      return { field: "database", message: at ? `${what} ${at.database} wasn't found. Check the name.` : `The stored ${what.toLowerCase()} wasn't found. Enter the connection again.` };
+    }
+    default: return { field: null, message: e.message };
+  }
+}
 
 /**
  * The record fields `next` drops or retypes against the published `before` (Plan 3 A4): gone, of another kind, or read

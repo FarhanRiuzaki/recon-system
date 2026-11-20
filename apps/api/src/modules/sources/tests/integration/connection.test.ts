@@ -76,12 +76,12 @@ describe("POST …/connection/test (database)", () => {
     expect((await connect(s.id)).status).toBe(200);
     const ok = await test_(t.adm, s.id);
     // what it found; a stored connection's login is part of its credential, so the sentence leaves it out
-    expect([ok.status, await ok.json()]).toEqual([200, { ok: true, message: expect.stringMatching(new RegExp(`^Connected to PostgreSQL \\d+\\.\\d+\\. \\d+ databases; \\d+ tables in ${secret.database}\\.$`)), code: null }]);
+    expect([ok.status, await ok.json()]).toEqual([200, { ok: true, message: expect.stringMatching(new RegExp(`^Connected to PostgreSQL \\d+\\.\\d+\\. \\d+ databases; \\d+ tables in ${secret.database}\\.$`)), code: null, field: null, version: expect.stringMatching(/^\d+\.\d+$/) }]);
 
     expect((await connect(s.id, { user: "recon_nobody_x", password: "Pa55-word-nobody-guesses" })).status).toBe(200);
     const bad = await test_(t.adm, s.id);
     const text = await bad.text();
-    expect([bad.status, JSON.parse(text)]).toEqual([200, { ok: false, message: "The server refused the login (28000). Check the user and password.", code: "28000" }]);
+    expect([bad.status, JSON.parse(text)]).toEqual([200, { ok: false, message: "The server rejected the stored sign-in. Enter the username and password again.", code: "28000", field: "password", version: null }]);
     const logged = JSON.stringify(spies.flatMap((x) => x.mock.calls));
     for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses", secret.host]) expect(text).not.toContain(secretBit);
     for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses"]) expect(logged).not.toContain(secretBit); // the host is logged (the probe's target)
@@ -89,10 +89,12 @@ describe("POST …/connection/test (database)", () => {
     expect(entries.map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.connection_set"]);
   });
 
-  it("an unreachable host is the host class", async () => {
+  it("an unreachable host points at Host; a typed one is named, a stored one isn't (REC-F2b)", async () => {
     const s = await made("db_watermark");
     await connect(s.id, { port: 1 });
-    expect(await json(test_(t.adm, s.id))).toEqual({ ok: false, message: "The host could not be reached (ERR_POSTGRES_CONNECTION_REFUSED). Check the host and port, and that this server may connect to it.", code: "ERR_POSTGRES_CONNECTION_REFUSED" });
+    expect(await json(test_(t.adm, s.id))).toEqual({ ok: false, message: "Can't reach the server. Check the host and port.", code: "ERR_POSTGRES_CONNECTION_REFUSED", field: "host", version: null });
+    expect(await json(test_(t.adm, s.id, { connection: { engine: "postgres", ...secret, port: 1 } })))
+      .toEqual({ ok: false, message: `Can't reach ${secret.host}:1. Check the host and port.`, code: "ERR_POSTGRES_CONNECTION_REFUSED", field: "host", version: null });
   });
 
   it("source_admin only; no connection yet is 400", async () => {
@@ -116,7 +118,7 @@ describe("POST …/connection/test (file inbox)", () => {
     expect([none.status, (await errOf(none)).message]).toEqual([400, "This source has no folder yet. Enter the folder and the pattern, then test."]);
     const k = ksei();
     const v = await draftWith(s.id, { ...k, input: { ...k.input, path: path.join(root, "ksei") } });
-    expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt", code: null });
+    expect(await json(test_(t.adm, s.id))).toEqual({ ok: true, message: "Folder readable · 3 files match act*.txt", code: null, field: null, version: null });
     const r = await call("PATCH", `${base()}/${s.id}/versions/${v.id}`, { token: t.adm, body: { spec: { ...k, input: { ...k.input, path: "/etc" } } } });
     expect(r.status).toBe(200);
     const out = await test_(t.adm, s.id);
@@ -130,13 +132,13 @@ describe("POST …/connection/test (file inbox, the folder being typed)", () => 
     mkdirSync(path.join(root, "typed"), { recursive: true });
     for (const f of ["act20261102.txt", "act20261103.txt", "x.pdf"]) writeFileSync(path.join(root, "typed", f), "x");
     const s = await made("file_inbox");
-    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 2 files match act*.txt", code: null });
+    expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 2 files match act*.txt", code: null, field: null, version: null });
     // the typed folder wins over the draft's
     const k = ksei();
     await draftWith(s.id, { ...k, input: { ...k.input, path: "/nowhere" } });
     expect(await json(test_(t.adm, s.id, { path: path.join(root, "typed"), pattern: "*.pdf" }))).toMatchObject({ ok: true, message: "Folder readable · 1 file matches *.pdf" });
     const missing = await json(test_(t.adm, s.id, { path: path.join(root, "absent"), pattern: "*.txt" }));
-    expect(missing).toEqual({ ok: false, message: "The folder can't be read (ENOENT). Check that it exists and that this server may read it.", code: null });
+    expect(missing).toEqual({ ok: false, message: "The folder can't be read (ENOENT). Check that it exists and that this server may read it.", code: null, field: null, version: null });
     // outside the roots: as written, through a dot segment, and through a link inside a root that leads out
     const outside = mkdtempSync(path.join(tmpdir(), "recon-out-"));
     const link = path.join(root, `link-${Date.now()}`);
@@ -166,10 +168,10 @@ describe("typed values are tested without being stored (fix round 1)", () => {
   it("a stored source tests a typed connection; nothing is stored or recorded, the stored one stays", async () => {
     const s = await made("db_watermark");
     const typed = { engine: "postgres", ...secret };
-    expect(await json(test_(t.adm, s.id, { connection: typed }))).toEqual({ ok: true, message: expect.stringMatching(new RegExp(`^Connected to PostgreSQL [\\d.]+ as ${secret.user}\\. \\d+ databases; \\d+ tables in ${secret.database}\\.$`)), code: null });
+    expect(await json(test_(t.adm, s.id, { connection: typed }))).toEqual({ ok: true, message: expect.stringMatching(new RegExp(`^Connected to PostgreSQL [\\d.]+ as ${secret.user}\\. \\d+ databases; \\d+ tables in ${secret.database}\\.$`)), code: null, field: null, version: expect.any(String) });
     expect((await json<SourceDto>(call("GET", `${base()}/${s.id}`, { token: t.adm }))).connection).toBeNull();
-    const bad = await json<{ ok: boolean; code: string }>(test_(t.adm, s.id, { connection: { ...typed, database: "recon_no_such_db" } }));
-    expect([bad.ok, bad.code]).toEqual([false, "3D000"]);
+    expect(await json(test_(t.adm, s.id, { connection: { ...typed, database: "recon_no_such_db" } })))
+      .toEqual({ ok: false, message: "Database recon_no_such_db wasn't found. Check the name.", code: "3D000", field: "database", version: null });
     expect((await db.select({ action: activity.action }).from(activity)).map((e) => e.action)).toEqual(["source.create"]);
     // a connection and a folder don't go together; a file source takes no connection
     expect((await test_(t.adm, s.id, { connection: typed, path: "/x", pattern: "*" })).status).toBe(400);
@@ -182,7 +184,7 @@ describe("typed values are tested without being stored (fix round 1)", () => {
     mkdirSync(path.join(root, "fresh"), { recursive: true });
     writeFileSync(path.join(root, "fresh", "act20261102.txt"), "x");
     const tryNew = (token: string, body: unknown) => call("POST", `${base()}/connection-test`, { token, body });
-    expect(await json(tryNew(t.adm, { kind: "file_inbox", path: path.join(root, "fresh"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 1 file matches act*.txt", code: null });
+    expect(await json(tryNew(t.adm, { kind: "file_inbox", path: path.join(root, "fresh"), pattern: "act*.txt" }))).toEqual({ ok: true, message: "Folder readable · 1 file matches act*.txt", code: null, field: null, version: null });
     const out = await tryNew(t.adm, { kind: "file_inbox", path: "/etc", pattern: "*" });
     expect([out.status, (await errOf(out)).message]).toEqual([400, "Check input.path: Use a folder inside the inbox folders this install allows."]);
     expect(await json(tryNew(t.adm, { kind: "db_snapshot", connection: { engine: "postgres", ...secret } }))).toMatchObject({ ok: true, code: null });
@@ -197,7 +199,7 @@ describe("connection tests are logged and limited per user", () => {
   it("one log line per database test: who, which space, engine, host, port and the result kind; never the login or password", async () => {
     const info = spyOn(log, "info");
     const typed = { engine: "postgres", ...secret, user: "recon_nobody_y", password: "Pa55-word-nobody-guesses-y" };
-    expect(await json(call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "db_watermark", connection: typed } }))).toMatchObject({ ok: false, code: "28000" });
+    expect(await json(call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "db_watermark", connection: typed } }))).toEqual({ ok: false, message: "Password rejected for recon_nobody_y.", code: "28000", field: "password", version: null });
     const s = await made("db_watermark");
     await connect(s.id);
     expect(await json(test_(t.adm, s.id))).toMatchObject({ ok: true });

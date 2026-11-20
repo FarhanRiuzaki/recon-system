@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_UNITS, ATTR_NAME, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  AMOUNT_UNITS, ATTR_NAME, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -276,9 +276,13 @@ export type SourceCatalogDto = z.infer<typeof SourceCatalogDto>;
 
 /**
  * POST …/connection/test: whether the stored connection (or a file source's folder) works now. `message` is one fixed
- * sentence per outcome; `code` is the driver's error code when it failed (ORA-01017, 28P01 …), never its text.
+ * sentence per outcome; `code` is the driver's error code when it failed (ORA-01017, 28P01 …), never its text; `field`
+ * the connection field the failure points at (null: none, or a folder); `version` the server's short version on a pass
+ * ("18.6", "19c"), else null.
  */
-export const ConnectionTestDto = z.object({ ok: z.boolean(), message: z.string(), code: z.string().nullable() });
+export const ConnectionTestDto = z.object({
+  ok: z.boolean(), message: z.string(), code: z.string().nullable(), field: z.enum(CONNECTION_FIELDS).nullable(), version: z.string().nullable(),
+});
 export type ConnectionTestDto = z.infer<typeof ConnectionTestDto>;
 
 /** GET /api/spaces/{spaceId}/sources: `q` matches the code or the name. */

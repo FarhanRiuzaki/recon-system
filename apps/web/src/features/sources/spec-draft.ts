@@ -209,7 +209,10 @@ export function activitySentence(e: Entry): string {
   const v = field(e.after, "version");
   switch (e.action) {
     case "source.create": return `${who} created the source.`;
-    case "source.connection_set": return e.before ? `${who} replaced the connection.` : `${who} set the connection.`;
+    case "source.connection_set": {
+      const off = field(field(e.after, "tlsOff"), "host");
+      return `${who} ${e.before ? "replaced" : "set"} the connection.${typeof off === "string" ? ` TLS turned off for ${off} by ${who}.` : ""}`;
+    }
     case "source.version_create": { const from = field(e.after, "from"); return `${who} started version ${String(v)}${from ? ` from version ${String(from)}` : ""}.`; }
     case "source.version_update": return `${who} edited version ${String(v)}.`;
     case "source.version_submit": return `${who} submitted version ${String(v)}.`;
