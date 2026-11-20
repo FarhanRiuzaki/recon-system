@@ -116,7 +116,8 @@ suggest: blocking `ext_ref` + `business_date`, `amount_abs_tol ≤ 100000` (hany
 **Files:** `modules/engine/{controller,jobs}.ts`, `src/worker.ts` (handler), `kernel/jobs.ts` (expireInSeconds per antrean).
 
 **Interfaces (Produces):** `POST …/recons/:configId/runs` (manual atas versi terbit; `operator`|`config_maker`), `POST
-…/versions/:versionId/simulate` (draft; mengisi `simulated_hash`; hasil = diff vs versi terbit: gained / lost /
+…/versions/:versionId/simulate` (draft; keduanya menerima rentang `business_date` `{from, to}`, bawaan satu hari, maks 31 hari —
+config gerbang memakai 2–4 Nov 2026 karena pasangan "tanggal beda" melintasi hari; mengisi `simulated_hash`; hasil = diff vs versi terbit: gained / lost /
 re-paired / suggested↔auto, paged), `GET …/runs` (paged) dan `GET …/runs/:runId` (counter per pass, status), `GET
 …/runs/:runId/items` (paged; filter pass/status/side). Job di `recon.heavy` (simulasi, rerun) dan `recon.tick`; kunci per
 config; `expireInSeconds` diset per antrean (bawaan README). Run dipin ke versi (Focus 5).
