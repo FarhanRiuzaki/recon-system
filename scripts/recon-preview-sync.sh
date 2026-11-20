@@ -1,5 +1,5 @@
 #!/bin/sh
-# Recon preview sync (local only): after a commit on feat/recon-phase1, move the preview worktree that the dev stack on
+# Recon preview sync (local only; installed as post-commit AND post-merge): after a commit or merge on feat/recon-phase1, move the preview worktree that the dev stack on
 # :3000 mounts to the new commit — only if that commit passes a quick gate, so the owner never sees :3000 broken by a
 # bad commit. Never blocks the commit: the gate runs in the background; every outcome is one line in the log.
 # Gate: tsc of apps/api and apps/web on exactly that commit (in a separate check worktree), then after the move
@@ -13,13 +13,11 @@ unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY
 BASE="/Users/riuzaki/Private Space/Sunny Go/PROJECT-APPS/RECON-ENIGNE"
 PREVIEW="$BASE/recon-preview"; CHECK="$BASE/recon-check"
 [ -d "$PREVIEW" ] || exit 0
-mkdir -p "$PREVIEW/.superpowers"; LOG="$PREVIEW/.superpowers/preview-sync.log"; GOOD="$PREVIEW/.superpowers/last-good"
+mkdir -p "$PREVIEW/.superpowers"; LOCK="$PREVIEW/.superpowers/gate.lock"; LOG="$PREVIEW/.superpowers/preview-sync.log"; GOOD="$PREVIEW/.superpowers/last-good"
 
 gate() {
   # One gate at a time; a later commit's gate waits, then checks the branch tip (skips stale commits).
-  LOCK="$PREVIEW/.superpowers/gate.lock"
   until mkdir "$LOCK" 2>/dev/null; do sleep 2; done
-  trap 'rmdir "$LOCK"' EXIT
   TIP=$(git -C "$REPO" rev-parse feat/recon-phase1)
   [ "$TIP" = "$NEW" ] || { echo "$(date '+%F %T') skip $(echo "$NEW" | cut -c1-7): newer commit $(echo "$TIP" | cut -c1-7)" >> "$LOG"; return; }
   S=$(echo "$NEW" | cut -c1-7)
@@ -58,5 +56,6 @@ gate() {
        echo "$(date '+%F %T') gate FAILED for $S: /login $WEB, /api $API after ${T}s; preview back at $(echo "$BACK" | cut -c1-7)" >> "$LOG" ;;
   esac
 }
-(gate >/dev/null 2>&1 &)
+# The lock is released by the caller (a trap inside a backgrounded function does not fire in sh).
+(gate >/dev/null 2>&1; rmdir "$LOCK" 2>/dev/null) &
 exit 0

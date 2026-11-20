@@ -107,7 +107,7 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   `RECON-ENIGNE/recon-preview` (a detached worktree of `feat/recon-phase1`), not the working checkout, so :3000 shows
   every **committed** change and never a half-saved one. A `post-commit` hook (in the repo's common hooks, active only on
   `feat/recon-phase1`) moves the preview to the new commit; Next Fast Refresh and `bun --watch` pick it up in seconds.
-  The hook only moves the preview when the commit passes a gate (in the background, never blocking the commit): `tsc` of
+  The hook (installed as `post-commit` and `post-merge`, so the integrator's fast-forward merges count too) only moves the preview when the commit passes a gate (in the background, never blocking the commit): `tsc` of
   `apps/api` and `apps/web` on exactly that commit, in a separate check worktree `RECON-ENIGNE/recon-check`; then, after the
   reload, `GET /login` = 200 and `POST /api/auth/login` without credentials = 4xx (the API answers). A failed gate keeps
   or puts the preview back at the last healthy commit (`recon-preview/.superpowers/last-good`), so :3000 is never broken by
