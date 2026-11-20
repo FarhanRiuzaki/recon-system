@@ -217,6 +217,15 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   simulation ran on the spec as it is). Publishing records which fields of each source the recon reads, and a source
   version that drops or retypes one is then refused at submit and approve (`drizzle/0021_recon_rls.sql`: the source's
   space reads those rows, never the recon).
+- Runs: `POST …/recons/{configId}/runs` and `POST …/versions/{versionId}/simulate` answer 202 with the run, status
+  `queued`, pinned to its version; the worker runs it (queue `recon.heavy`) and the screen polls `GET …/runs/{runId}`
+  (`queued` → `running` → `succeeded` | `failed` with `error` in a sentence). One run of a recon at a time: a request
+  while another is queued or running is 409 `invalid_state` ("This recon is already running. Wait for that run to
+  finish, then start another."); a run whose job ended without it is failed then ("The run stopped before it finished.
+  Run it again."). A simulation also runs the published version over the same business dates and lists the pairs that
+  change (`GET …/runs/{runId}/changes`: gained, lost, re-paired, auto ↔ suggested); when it succeeds on the draft as it
+  still is, the draft's `simulatedHash` = its `specHash` (submit opens; an edit closes it again). Only the latest
+  simulation of a version is kept, with its changes.
 - Every POST/PATCH/PUT/DELETE outside `/api/auth/*` that changes something writes an activity entry; sign-in, sign-out
   and 2FA steps write sign-in log entries. `POST /api/me/reauth` is an auth step and writes neither.
 
@@ -300,6 +309,8 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `recon.version_approve` | Recon version approved | recon | – | `{ version, specHash, retired }` (`retired` = the version it replaced, or null) |
 | `recon.version_reject` | Recon version rejected | recon | – | `{ version, comment }` |
 | `recon.discard` | Draft recon deleted | recon | `{ code, name }` | – |
+| `recon.run` | Recon run started | recon | – | `{ runId, version, from, to }` (the published version run over business dates from–to) |
+| `recon.simulate` | Recon simulation started | recon | – | `{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to) |
 <!-- actions:end -->
 
 ### Backend notes
@@ -408,6 +419,12 @@ endpoint adds to the guard's 401/403 and the 400 for an invalid body or query.
 | POST | `/api/spaces/{spaceId}/recons/{configId}/versions` | `config_maker` in the space | none (a draft with the published spec) | 201 [ReconVersionDto](schemas/ReconVersionDto.json) | `not_found`, `duplicate` (a draft or a version in review exists), `space_archived` |
 | PATCH | `/api/spaces/{spaceId}/recons/{configId}/versions/{versionId}` | `config_maker` in the space | [UpdateReconVersionBody](schemas/UpdateReconVersionBody.json) (the whole spec; the caller becomes the maker and a contributor; the same spec = no entry) | [ReconVersionDto](schemas/ReconVersionDto.json) (`warnings`: carry over shorter than a daily pass's date window, a currency its records hold without a tolerance, never blocking) | `not_found`, `invalid_state` (not a draft), `bad_request` (as POST), `space_archived` |
 | POST | `/api/spaces/{spaceId}/recons/{configId}/versions/{versionId}/submit` | `config_maker` in the space | none | [ReconVersionDto](schemas/ReconVersionDto.json) (in review; the caller becomes `submitterId`) | `not_found`, `invalid_state`, `bad_request` ("Add at least one pass, then submit."; the spec's first error; carry over shorter than a daily pass's date window: "Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."; "Run a simulation on this draft first."; "The draft changed after the last simulation. Run it again."), `space_archived` |
+| GET | `/api/spaces/{spaceId}/recons/{configId}/runs` | any role in the space | [ReconRunListQuery](schemas/ReconRunListQuery.json) (`mode`, `versionId`; `sort` `startedAt`, default `-startedAt`) | [ReconRunPage](schemas/ReconRunPage.json) (rows are [ReconRunDto](schemas/ReconRunDto.json); a simulation's run of the published version is not listed, its draft's run names it as `baseline`) | `not_found` |
+| POST | `/api/spaces/{spaceId}/recons/{configId}/runs` | `operator` or `config_maker` in the space | [RunRangeBody](schemas/RunRangeBody.json) (`from`, `to` business dates, at most 31; one left out takes the other, none = today) | 202 [ReconRunDto](schemas/ReconRunDto.json) (the published version's run, `queued`; `recon.run` entry) | `not_found`, `invalid_state` (no published version: "This recon has no published version yet. Approve one first."; a run under way), `bad_request` (range: "Pick a business date range that starts on or before its end.", "A run covers at most 31 business dates."; a side's source this space can no longer read), `space_archived` |
+| GET | `/api/spaces/{spaceId}/recons/{configId}/runs/{runId}` | any role in the space | none | [ReconRunDto](schemas/ReconRunDto.json) (`counters` per pass, `doneThrough`, `error`; a draft's simulation: `baseline`, `changes` once succeeded) | `not_found` |
+| GET | `/api/spaces/{spaceId}/recons/{configId}/runs/{runId}/items` | any role in the space | [ReconRunItemQuery](schemas/ReconRunItemQuery.json) (`pass`, `status`, `side`; `sort` `businessDate`) | [ReconRunItemPage](schemas/ReconRunItemPage.json) (the items of the run's dates and the carry over before them as they are now: a simulation's own, else the live ones; each with its record's reference, amount and currency and its group with evidence) | `not_found` |
+| GET | `/api/spaces/{spaceId}/recons/{configId}/runs/{runId}/changes` | any role in the space | [ReconSimChangeQuery](schemas/ReconSimChangeQuery.json) (`change` `gained`, `lost`, `repaired` or `kind`) | [ReconSimChangePage](schemas/ReconSimChangePage.json) (a draft simulation's changed pairs by business date: the draft's group and the published one's with their members; empty for another run) | `not_found` |
+| POST | `/api/spaces/{spaceId}/recons/{configId}/versions/{versionId}/simulate` | `config_maker` in the space | [RunRangeBody](schemas/RunRangeBody.json) (as POST runs) | 202 [ReconRunDto](schemas/ReconRunDto.json) (the draft's simulation, `queued`; the caller becomes a contributor; `recon.simulate` entry) | `not_found`, `invalid_state` ("Only a draft can be simulated. Make a new draft from the published version."; a run under way), `bad_request` (as POST runs), `space_archived` |
 | POST | `/api/spaces/{spaceId}/recons/{configId}/versions/{versionId}/approve` | `config_checker` in the space, not a contributor | none | [ReconVersionDto](schemas/ReconVersionDto.json) (published; the one before retires) | `not_found`, `self_approval`, `invalid_state`, `bad_request` (the spec's first error as its sources read now), `space_archived` |
 | POST | `/api/spaces/{spaceId}/recons/{configId}/versions/{versionId}/reject` | `config_checker` in the space, not a contributor | [RejectReconVersionBody](schemas/RejectReconVersionBody.json) (comment required) | [ReconVersionDto](schemas/ReconVersionDto.json) (back to draft; `checkerId` = who sent it back, `reviewComment` = why) | `not_found`, `self_approval`, `invalid_state`, `space_archived` |
 | GET | `/api/roles` | `role.view` | [RoleListQuery](schemas/RoleListQuery.json) | [RolePage](schemas/RolePage.json) | none |

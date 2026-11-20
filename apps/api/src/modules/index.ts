@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { auditController } from "./audit";
 import { authController } from "./auth";
 import { dashboardController } from "./dashboard";
+import { engineController } from "./engine";
 import { healthController, type Pingable } from "./health";
 import { ingestController } from "./ingest";
 import { meController } from "./me";
@@ -35,4 +36,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(spacesController())
     .use(sourcesController())
     .use(ingestController())
-    .use(reconController());
+    .use(reconController())
+    .use(engineController());

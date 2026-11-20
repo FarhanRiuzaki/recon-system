@@ -44,6 +44,26 @@ export const PASSES_MAX = 20;
 /** HH:MM, 00:00–23:59 (Asia/Jakarta): a daily run's time and a day's close. */
 export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+// Runs (spec §8–§10, Plan 3 Task 3): how a run started, where it is, what an item and a group are, and what a draft's
+// simulation changes against the published version.
+export const RUN_MODES = ["manual", "tick", "daily", "rerun", "simulation"] as const;
+export type RunMode = (typeof RUN_MODES)[number];
+/** `queued` = waiting for a worker; a run of one recon at a time (the API refuses a second while one is queued or running). */
+export const RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
+export const ITEM_STATUSES = ["open", "matched", "suggested", "break", "closed"] as const;
+export type ItemStatus = (typeof ITEM_STATUSES)[number];
+export const GROUP_KINDS = ["auto", "suggested", "manual", "force"] as const;
+export type GroupKind = (typeof GROUP_KINDS)[number];
+/**
+ * A pair a draft's simulation changes against the published version's simulation over the same dates: gained, lost,
+ * re-paired (shares some records with a published pair, not all), or the same records auto in one and suggested in the other.
+ */
+export const SIM_CHANGES = ["gained", "lost", "repaired", "kind"] as const;
+export type SimChange = (typeof SIM_CHANGES)[number];
+/** The most business dates one run or simulation covers. */
+export const RUN_RANGE_MAX_DAYS = 31;
+
 /** A field of the records a source version writes: its kind and the source field it is read from (null for CEL). */
 export type RecordField = { kind: FieldKind; from: string | null; fromType: string | null };
 type Ref = { field: string } | { cel: string };

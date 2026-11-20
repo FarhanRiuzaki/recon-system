@@ -19,12 +19,13 @@ import { reconConfigs } from "../recon/schema";
 // deleting its run removes it all (cascade). Chosen over shadow tables: one schema, one compiled SQL, and the draft-vs-
 // published diff (Task 3) joins groups of two runs by record.
 
-export const ITEM_STATUSES = ["open", "matched", "suggested", "break", "closed"] as const;
-export const GROUP_KINDS = ["auto", "suggested", "manual", "force"] as const;
-export const RUN_MODES = ["manual", "tick", "daily", "rerun", "simulation"] as const;
-export const RUN_STATUSES = ["running", "succeeded", "failed"] as const;
 
-/** A run of a config's version over business dates `date_from`..`date_to`; `counters` per pass (service.ts RunCounters). */
+/**
+ * A run of a config's version over business dates `date_from`..`date_to`; `counters` per pass (service.ts RunCounters).
+ * `done_through` = the last business date whose step committed (a retried job goes on from the next one); `spec_hash` =
+ * the spec it runs (a draft can change while its simulation waits); `baseline_of` = for the published version's
+ * simulation a draft's simulation compares with, that simulation's run (deleted with it).
+ */
 export const reconRuns = pgTable("recon_runs", {
   id: uuid("id").primaryKey(),
   spaceId: uuid("space_id").notNull(),
@@ -37,6 +38,11 @@ export const reconRuns = pgTable("recon_runs", {
   status: text("status").notNull().default("running"),
   counters: jsonb("counters").notNull().default(sql`'{}'::jsonb`),
   error: text("error"),
+  specHash: text("spec_hash"),
+  doneThrough: date("done_through"),
+  baselineOf: uuid("baseline_of"),
+  /** The job that runs it (pg-boss id; null = run in process): a run whose job is over while it is not is failed (reaper). */
+  jobId: uuid("job_id"),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, (t) => [
@@ -44,7 +50,8 @@ export const reconRuns = pgTable("recon_runs", {
   index("recon_runs_config_started").on(t.spaceId, t.configId, t.startedAt),
   foreignKey({ name: "recon_runs_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   check("recon_runs_mode_check", sql`${t.mode} in ('manual', 'tick', 'daily', 'rerun', 'simulation')`),
-  check("recon_runs_status_check", sql`${t.status} in ('running', 'succeeded', 'failed')`),
+  foreignKey({ name: "recon_runs_baseline_fkey", columns: [t.spaceId, t.baselineOf], foreignColumns: [t.spaceId, t.id] }).onDelete("cascade"),
+  check("recon_runs_status_check", sql`${t.status} in ('queued', 'running', 'succeeded', 'failed')`),
   check("recon_runs_window_check", sql`${t.dateFrom} <= ${t.dateTo}`),
 ]);
 
@@ -119,4 +126,24 @@ export const matchMembers = pgTable("match_members", {
   index("match_members_item").on(t.spaceId, t.itemId),
   foreignKey({ name: "match_members_group_fkey", columns: [t.spaceId, t.groupId], foreignColumns: [matchGroups.spaceId, matchGroups.id] }).onDelete("cascade"),
   check("match_members_side_check", sql`${t.side} in ('a', 'b')`),
+]);
+
+/**
+ * What a draft's simulation changes against the published version's simulation over the same dates (spec §10), one row
+ * per changed pair of groups, written by the simulation's job: `gained` (a draft group sharing no record with a
+ * published one), `lost` (the other way round), `repaired` (a draft group and a published one sharing some records but
+ * not all), `kind` (the same records, auto in one and suggested in the other). Deleted with the simulation's run.
+ */
+export const reconSimChanges = pgTable("recon_sim_changes", {
+  id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
+  runId: uuid("run_id").notNull(),
+  change: text("change").notNull(),
+  draftGroupId: uuid("draft_group_id"),
+  publishedGroupId: uuid("published_group_id"),
+  businessDate: date("business_date").notNull(),
+}, (t) => [
+  index("recon_sim_changes_run").on(t.spaceId, t.runId, t.change, t.businessDate),
+  foreignKey({ name: "recon_sim_changes_run_fkey", columns: [t.spaceId, t.runId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
+  check("recon_sim_changes_change_check", sql`${t.change} in ('gained', 'lost', 'repaired', 'kind')`),
 ]);

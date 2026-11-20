@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RunGroupDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "passNo": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "suggested",
+        "manual",
+        "force"
+      ]
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "evidence": {}
+  },
+  "required": [
+    "id",
+    "passNo",
+    "kind",
+    "businessDate",
+    "evidence"
+  ],
+  "additionalProperties": false
+}

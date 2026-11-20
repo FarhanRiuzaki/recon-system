@@ -33,12 +33,15 @@ export const CONCURRENCY: Record<QueueName, number> = {
  * The ingest queues set expireInSeconds above their longest legitimate run (spike S2). ingest.file: a 1M-line file
  * took 58 s end to end (docs/recon/spikes.md "S1 ingest (Plan 2)"), so 1800 s is 3× a 10M-line file at that rate.
  * ingest.pull is chunked per page and gets the same; a snapshot of a whole position per date may take longer.
+ * The recon queues (spike S1, docs/recon/spikes.md): a daily run of 3M records per side took 376 s, so recon.daily (one
+ * business date) gets 3600 s; recon.heavy runs a manual run or a simulation of up to 31 dates (a simulation runs the
+ * published version over them too), 4 h ≈ 31 × 376 s + margin; recon.tick (p95 1.2 s, catch-up 1.85 s) 600 s.
  */
 export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "ingest.pull": { heartbeatSeconds: 30, expireInSeconds: 1800 }, "ingest.file": { heartbeatSeconds: 30, expireInSeconds: 1800 },
   "ingest.snapshot": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "maintenance.partitions": { heartbeatSeconds: 30, expireInSeconds: 600 },
-  "recon.tick": { heartbeatSeconds: 30 },
-  "recon.daily": { heartbeatSeconds: 30 }, "recon.heavy": { heartbeatSeconds: 30 }, "breaks.sla": { heartbeatSeconds: 30 },
+  "recon.tick": { heartbeatSeconds: 30, expireInSeconds: 600 },
+  "recon.daily": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "recon.heavy": { heartbeatSeconds: 30, expireInSeconds: 14_400 }, "breaks.sla": { heartbeatSeconds: 30 },
 };
 
 /** The cron time zone of every schedule. */
@@ -106,11 +109,21 @@ async function syncQueues(b: PgBoss, options: Record<QueueName, QueueOptions>): 
 }
 
 /**
- * Queues a job of `queue` under `key` (its config, source, file…), to start no sooner than `startAfter`. Null when a
- * job with that key is already queued: the two are merged (one queued and one active per key, never two of either).
+ * Queues a job of `queue` under `key` (its config, source, file…), to start no sooner than `startAfter`; `id` = the
+ * job's id when the caller keeps it (a recon run's id). Null when a job with that key is already queued: the two are
+ * merged (one queued and one active per key, never two of either).
  */
-export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date }): Promise<string | null> {
-  return (await boss()).send(queue, data, { singletonKey: opts.key, startAfter: opts.startAfter });
+export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date; id?: string }): Promise<string | null> {
+  return (await boss()).send(queue, data, { singletonKey: opts.key, startAfter: opts.startAfter, id: opts.id });
+}
+
+/**
+ * Whether job `id` of `queue` may still run: queued, waiting for a retry or running. False once it completed, failed
+ * for good or was cancelled, and for a job pg-boss doesn't have (never sent, or deleted after its retention).
+ */
+export async function jobAlive(queue: QueueName, id: string): Promise<boolean> {
+  const job = await (await boss()).getJobById(queue, id);
+  return !!job && (job.state === "created" || job.state === "retry" || job.state === "active");
 }
 
 /**

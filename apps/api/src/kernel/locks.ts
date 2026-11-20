@@ -38,6 +38,12 @@ export async function configLock(tx: Tx, configId: string): Promise<void> {
   await tx.execute(sql`select pg_advisory_xact_lock(${LOCK_KINDS.config}::int, hashtext(${configId}))`);
 }
 
+/** configLock without waiting: true when taken (until `tx` ends), false while another transaction holds it. */
+export async function tryConfigLock(tx: Tx, configId: string): Promise<boolean> {
+  const [r] = (await tx.execute(sql`select pg_try_advisory_xact_lock(${LOCK_KINDS.config}::int, hashtext(${configId})) as ok`)) as unknown as { ok: boolean }[];
+  return r!.ok;
+}
+
 /**
  * Takes the lock of source `sourceId` until `tx` ends: its ingest steps (a pull page, a file, a snapshot switch) run one
  * after the other, whichever queue they come from. Same hashing as configLock, in a kind of its own.

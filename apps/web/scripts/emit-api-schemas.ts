@@ -56,6 +56,9 @@ const COMPOSED = {
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
+  ReconRunPage: pageOf(recon.ReconRunDto),
+  ReconRunItemPage: pageOf(recon.ReconRunItemDto),
+  ReconSimChangePage: pageOf(recon.ReconSimChangeDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };
@@ -121,6 +124,8 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "recon.version_approve": ["recon", "–", "`{ version, specHash, retired }` (`retired` = the version it replaced, or null)"],
   "recon.version_reject": ["recon", "–", "`{ version, comment }`"],
   "recon.discard": ["recon", "`{ code, name }`", "–"],
+  "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
+  "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };
 
 export const README = path.join(path.dirname(SCHEMA_DIR), "README.md");

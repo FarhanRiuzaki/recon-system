@@ -134,6 +134,33 @@ Sekitar 10× lebih lambat dari COPY + INSERT di S1 (180 ribu baris/s); belum dip
 dengan sha256 per baris, atau insert) yang dominan. `expireInSeconds` `ingest.file` 1800 s = 3× file 10 juta baris
 pada laju ini. Upgrade path: COPY ke temp table saat Bun yang di-pin punya `writable()`, diukur ulang terhadap angka ini.
 
+### Plan 3 engine: statistik planner setelah intake
+
+Tanggal 2026-11-21. Run engine (`runRecon`/`execRun`, `apps/api/src/modules/engine/service.ts`) memasukkan item lalu
+menjalankan pass dalam satu transaksi per tanggal bisnis. Planner merencanakan intake sisi B (anti join ke item sisi A
+yang baru masuk) dan pass atas statistik partisi `recon_items` (dan `records`) yang belum mencatat baris baru itu:
+nested loop. Perbaikan: `recon_analyze_month_partitions` (`drizzle/0026_engine_runs_rls.sql`, security definer: ANALYZE
+butuh owner) dipanggil di dalam langkah, pada `records` sebelum intake dan pada `recon_items` setelah intake tiap sisi;
+ia meng-ANALYZE partisi bulan jendela itu bila perubahan sejak analyze terakhir (`n_mod_since_analyze` + baris yang baru
+ditulis transaksi ini) ≥ 1.000 dan > 10% `reltuples` (aturan autovacuum, dijalankan sekarang).
+
+Diukur sebagai role app (`appRoleDb`, RLS aktif), satu tanggal bisnis, dua pass (exact; toleransi suggest), 3% sisi B
+bergeser 500 minor: `PERF_ENGINE=1 [PERF_ANALYZE_RECORDS=1] bun test src/modules/engine/tests/integration/run-perf.test.ts`.
+Mesin dan PostgreSQL sama dengan "rowsToday" di atas; `statement_timeout` pool tes 30 s. Satu jalan per angka.
+
+| Record per sisi | Sebelum | Sesudah (records belum di-analyze) | Sesudah (records di-analyze tes) |
+|---|---|---|---|
+| 5.000 | 17,2 s | 0,76 s | 0,49 s |
+| 20.000 | > 30 s (intake sisi B kena `statement_timeout`) | 1,96 s | 1,71 s |
+
+Rincian 20.000 sesudah: intake sisi A 0,2 s, sisi B 0,3 s, ANALYZE 13–17 ms per panggilan, pass 1 (FIFO exact, 19.394
+grup) 1,2 s, pass 2 0,04–0,08 s. Sebelum, intake sisi B sendiri 24,8 s (versi antara yang hanya meng-ANALYZE setelah kedua
+sisi: 5,9 s total untuk 20.000). Kolom pertama sesudah: ANALYZE `records` tidak terpicu pada 5.000 karena statistik
+kumulatif belum mencatat insert tes (dikirim berkala), jadi angka itu juga yang terjadi bila run jalan sesaat setelah ingest.
+
+Batas: ANALYZE memegang share-update-exclusive lock partisi sampai langkah selesai, jadi dua config yang sama-sama memicu
+ANALYZE pada bulan yang sama menunggu satu sama lain (komentar `ponytail:` di `execRun`); belum diukur pada volume S1.
+
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
 Tanggal 2026-11-20. Semula `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
@@ -264,8 +291,8 @@ Batas dan angka yang belum diukur:
   (dihitung dari setelan, belum diukur di produksi; tes mengukur 10,7 s pada heartbeat 10 s dan supervise 1 s). Selama itu
   job tetap `active` dan tick berikutnya config itu antre di belakangnya; 90 s di bawah interval 2 menit dan di bawah alert
   freshness 2× interval.
-- `expireInSeconds` masih bawaan 900 s untuk semua queue: run `recon.daily`/`recon.heavy` yang hidup lebih dari 15 menit
-  akan digagalkan dan diulang. Nilainya diputuskan saat handler-nya dibuat (Plan 3–4).
+- `expireInSeconds` (Plan 3 Task 3, `QUEUE_OPTIONS`): `recon.tick` 600 s, `recon.daily` 3.600 s, `recon.heavy` 14.400 s
+  (31 tanggal × 376 s run harian S1 + sisa); `breaks.sla` masih bawaan 900 s.
 - Polling bawaan 2 s per slot: 14 slot per worker bila keenam queue punya handler (4+2+4+2+1+1), tiap slot satu query fetch tiap 2 s saat kosong; beban di
   PostgreSQL produksi tidak diukur. LISTEN/NOTIFY (`useListenNotify`) tidak dipakai.
 - Upgrade pg-boss ke versi dengan migrasi async (BAM, mis. `CREATE INDEX CONCURRENTLY`) dijalankan oleh `migrateJobs` saat

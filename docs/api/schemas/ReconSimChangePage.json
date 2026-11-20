@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReconSimChangePage",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "change": {
+            "type": "string",
+            "enum": [
+              "gained",
+              "lost",
+              "repaired",
+              "kind"
+            ]
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "passNo": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "suggested",
+                      "manual",
+                      "force"
+                    ]
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "side": {
+                          "type": "string",
+                          "enum": [
+                            "a",
+                            "b"
+                          ]
+                        },
+                        "recordId": {
+                          "type": "string"
+                        },
+                        "extRef": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "amountMinor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "side",
+                        "recordId",
+                        "extRef",
+                        "amountMinor"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "passNo",
+                  "kind",
+                  "members"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "published": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "passNo": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "suggested",
+                      "manual",
+                      "force"
+                    ]
+                  },
+                  "members": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "side": {
+                          "type": "string",
+                          "enum": [
+                            "a",
+                            "b"
+                          ]
+                        },
+                        "recordId": {
+                          "type": "string"
+                        },
+                        "extRef": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "amountMinor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "side",
+                        "recordId",
+                        "extRef",
+                        "amountMinor"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "id",
+                  "passNo",
+                  "kind",
+                  "members"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "change",
+          "businessDate",
+          "draft",
+          "published"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "page": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "totalCapped": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "items",
+    "total",
+    "page",
+    "pageSize"
+  ],
+  "additionalProperties": false
+}

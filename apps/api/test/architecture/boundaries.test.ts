@@ -35,6 +35,7 @@ const RAW_SQL_OK: Record<string, string> = {
   "src/modules/ingest/tests/integration/pipeline.test.ts": "builds the tables the pipeline pulls from in <test database>_src, a source database, not the app's",
   "src/modules/engine/sql/": "the engine's passes compiled to set-based SQL (spec §10, S1: CTEs with FOR UPDATE SKIP LOCKED, window functions, data-modifying CTEs, which the builder can't say): values bound, identifiers fixed or from the side's field whitelist (recordFields), attribute names bound",
   "src/modules/engine/tests/unit/pass.test.ts": "the expected SQL of each pass operator, filter and statement, pinned",
+  "src/modules/engine/tests/integration/run-perf.test.ts": "seeds records per side with generate_series in one INSERT … SELECT for the run latency measurement (off unless PERF_ENGINE)",
   "src/modules/ingest/tests/integration/rows-today-perf.test.ts":"seeds a million records per source with generate_series in one INSERT … SELECT for the rowsToday measurement (off unless PERF_ROWS_TODAY)",
 };
 const rawSqlOk = (file: string) => Object.keys(RAW_SQL_OK).some((k) => (k.endsWith("/") ? file.startsWith(k) : file === k));

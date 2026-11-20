@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReconRunItemDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "recordId": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "matched",
+        "suggested",
+        "break",
+        "closed"
+      ]
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "breakReason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "extRef": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amountMinor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "group": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "passNo": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "suggested",
+                "manual",
+                "force"
+              ]
+            },
+            "businessDate": {
+              "type": "string"
+            },
+            "evidence": {}
+          },
+          "required": [
+            "id",
+            "passNo",
+            "kind",
+            "businessDate",
+            "evidence"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "recordId",
+    "side",
+    "status",
+    "businessDate",
+    "breakReason",
+    "extRef",
+    "amountMinor",
+    "currency",
+    "group"
+  ],
+  "additionalProperties": false
+}

@@ -4,12 +4,13 @@ import { loadWorkerConfig } from "./kernel/config";
 import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, workerAlive } from "./kernel/jobs";
 import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
+import { engineHandlers } from "./modules/engine";
 import { ingestHandlers } from "./modules/ingest";
 
 const { API_HOST, WORKER_HEALTH_PORT } = loadWorkerConfig(process.env);
 
-/** The job handlers, on the worker's pool (DEC-036): ingest (Plan 2); Plans 3–4 add recon and SLA. */
-const HANDLERS = { ...ingestHandlers(workerDb) };
+/** The job handlers, on the worker's pool (DEC-036): ingest (Plan 2), recon runs and simulations (Plan 3); Plan 4 adds SLA. */
+const HANDLERS = { ...ingestHandlers(workerDb), ...engineHandlers(workerDb) };
 
 const stopWorker = await startWorker(HANDLERS);
 // Partitions daily at 00:10 Asia/Jakarta, and once now: a fresh install has none, and ingest makes one only as a fallback.

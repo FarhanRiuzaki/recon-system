@@ -233,6 +233,28 @@ export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<
   });
 }
 
+/**
+ * For the engine (POST …/versions/:versionId/simulate, Plan 3 Task 3): draft `versionId` of the space's config
+ * `configId`, its config row locked, the caller added to its contributors (a simulation readies the version for submit,
+ * so whoever ran it may not approve it). 404 for a config or version not there, 409 for a version that is not a draft.
+ */
+export async function draftToSimulate(tx: InTx, ctx: Ctx, configId: string, versionId: string): Promise<{ config: ConfigRow; version: VersionRow }> {
+  const c = await configOf(tx, ctx.space!.id, configId, true);
+  const v = await versionOf(tx, c, versionId);
+  if (v.status !== "draft") throw wrongState("Only a draft can be simulated. Make a new draft from the published version.");
+  if (!v.contributorIds.includes(ctx.user.id)) await tx.update(reconConfigVersions).set({ contributorIds: withCaller(ctx, v) }).where(eq(reconConfigVersions.id, v.id));
+  return { config: c, version: v };
+}
+
+/**
+ * For the engine: a simulation of version `versionId` with spec hash `hash` succeeded; the draft may be submitted while
+ * its spec stays that one (submitVersion compares). A version edited since, or no longer a draft, is left as it is.
+ */
+export async function markSimulated(tx: InTx, spaceId: string, versionId: string, hash: string): Promise<void> {
+  await tx.update(reconConfigVersions).set({ simulatedHash: hash })
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, versionId), eq(reconConfigVersions.status, "draft"), eq(reconConfigVersions.specHash, hash)));
+}
+
 /** 409 `self_approval` when the caller created, edited or submitted the version (spec §11: maker ≠ checker by user id). */
 function notAContributor(ctx: Ctx, v: VersionRow): void {
   if (v.makerId === ctx.user.id || v.contributorIds.includes(ctx.user.id)) throw new ApiError("self_approval");
