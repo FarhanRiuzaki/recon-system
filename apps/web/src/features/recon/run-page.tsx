@@ -88,7 +88,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const t = useTableQuery<ReconRunItemDto, RunItemFilters>(def, !!spec);
   const [explain, setExplain] = useState<ReconRunItemDto | null>(null);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
-  const labels = spec ? [spec.sides[0].label, spec.sides[1].label] as const : (["Side A", "Side B"] as const);
+  const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
   const columns = useColumns(t.state, labels);
 
   const title = run?.mode === "simulation" ? `Simulation of draft v${run.version}` : run ? `Run of version ${run.version}` : "Recon run";
