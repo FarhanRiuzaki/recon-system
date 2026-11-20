@@ -13,8 +13,12 @@
 // spec's fixed `currency`; the amount is read in its unit (amountUnit: declared, else as before the unit existed) and
 // scaled per row by that currency's ISO 4217 exponent. A spec saved before both existed and mapping no currency keeps
 // the old reading: a decimal field's own scale is its minor unit.
+//
+// The amount's sign has one source (Plan 3): with direction mapped, the direction ("debit"/"credit", read from the
+// codes in directionOf) and the amount is never negative (a negative one, an empty or unknown direction next to an
+// amount is quarantined); without it, the amount's own sign. signedAmount gives the signed value the engine uses.
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { amountUnit, CURRENCY_EXPONENT, currencyCode, toMinor } from "@starterkit/shared/sources";
+import { amountUnit, CURRENCY_EXPONENT, currencyCode, DIRECTION_HINT, directionOf, toMinor } from "@starterkit/shared/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
 import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type Value } from "./coerce";
 
@@ -219,7 +223,18 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     else if (typeof r.v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(r.v) && !Number.isNaN(Date.parse(r.v))) event_time = new Date(r.v).toISOString();
     else if (r.v !== null) fail("event_time", `not a date-time (${JSON.stringify(String(r.v))})`);
   }
-  const direction = str("direction", m.direction);
+  let direction = str("direction", m.direction);
+  const dirKey = m.direction && "field" in m.direction ? m.direction.field : "direction";
+  if (m.direction && !reasons[dirKey] && !reasons.direction) {
+    const d = direction === null ? null : directionOf(direction);
+    if (direction !== null && !d) reasons[dirKey] = `${dirKey}: ${JSON.stringify(direction)} is not a debit or a credit (${DIRECTION_HINT})`;
+    else if (d === null && amount_minor !== null) reasons[dirKey] = `${dirKey}: is empty; the amount's sign comes from it`;
+    direction = d;
+  }
+  if (m.direction && amount_minor !== null && amount_minor < 0n) {
+    const key = "field" in m.amount_minor! ? m.amount_minor.field : "amount_minor";
+    reasons[key] = `${key}: negative, but direction is mapped; the sign comes from direction (${JSON.stringify("field" in m.amount_minor! ? raw[key] ?? "" : String(amount_minor))})`;
+  }
   const ext_ref = str("ext_ref", m.ext_ref), account_ref = str("account_ref", m.account_ref);
   const attrs: CoreRecord["attrs"] = {};
   for (const [k, ref] of Object.entries(m.attrs)) {
@@ -237,3 +252,7 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     record: { business_date, bday_index: ctx.calendar.bdayIndex(business_date), amount_minor, amount_text, currency, direction, event_time, ext_ref, account_ref, attrs, row_hash: sha256(JSON.stringify(sorted)), natural_key },
   };
 }
+
+/** The amount with its sign (Plan 3: the engine's one rule): negated for a debit, else as stored; null without an amount. */
+export const signedAmount = (r: { amount_minor: bigint | null; direction: string | null }): bigint | null =>
+  r.amount_minor === null ? null : r.direction === "debit" ? -r.amount_minor : r.amount_minor;

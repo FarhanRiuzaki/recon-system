@@ -72,6 +72,17 @@ export function currencyCode(s: string): string | null {
   return code !== undefined && Object.hasOwn(CURRENCY_EXPONENT, code) ? code : null;
 }
 
+/**
+ * How sources write a debit or a credit (trimmed, any case), English and Indonesian. ponytail: the codes known so far;
+ * a row with another is quarantined, add the source's own here.
+ */
+const DIRECTION_CODES: Readonly<Record<string, "credit" | "debit">> = {
+  D: "debit", DR: "debit", DB: "debit", DEBIT: "debit", DEBET: "debit", C: "credit", CR: "credit", K: "credit", CREDIT: "credit", KREDIT: "credit",
+};
+export const DIRECTION_HINT = "D, DR, DB, DEBIT, DEBET or C, CR, K, CREDIT, KREDIT";
+/** A direction as a source writes it → "debit" or "credit", or null when it is neither. */
+export const directionOf = (s: string): "credit" | "debit" | null => DIRECTION_CODES[s.trim().toUpperCase()] ?? null;
+
 /** A source code: 2–64 of a-z, 0-9, "_" and "-", starting with a letter or digit (sent in any case, stored lower case). */
 export const SOURCE_CODE = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 export const SOURCE_NAME_MAX = 100;
