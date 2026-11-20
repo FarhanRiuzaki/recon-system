@@ -342,7 +342,7 @@ test.describe("phone", () => {
   test("the page header keeps its primary action and folds the others into More actions", async ({ page, baseURL }) => {
     await open(page, await withIds("/users/{admin}", baseURL));
     await expect(page.getByRole("link", { name: "Edit user" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Reset password" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Reset password" })).toHaveCount(0);
     await page.getByRole("button", { name: "More actions" }).click();
     for (const name of ["Reset password", "Deactivate user", "Delete user"]) await expect(page.getByRole("menuitem", { name })).toBeVisible();
   });

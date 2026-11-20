@@ -321,7 +321,7 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await expect(page).toHaveURL(/\/versions\/new\?step=1$/);
   await expect(page.getByRole("heading", { level: 1, name: "Edit KSEI ACT e2e" })).toBeVisible();
   // it was submitted once, so it has a history: no Delete draft source
-  await expect(page.getByRole("button", { name: "Delete draft source" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "More actions" })).toHaveCount(0);
 
   // a new source made at Next and never submitted: deleted from the wizard
   const folder = path.join(INBOX, "ksei");
@@ -338,7 +338,8 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await expect(next(page, "Next: fields & mapping")).toBeEnabled();
   await next(page, "Next: fields & mapping").click();
   await expect(page).toHaveURL(/step=2$/);
-  await page.getByRole("button", { name: "Delete draft source", exact: true }).click();
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete draft source", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Delete this draft source?" });
   await expect(dialog).toContainText("Throwaway e2e was never submitted, so nothing was pulled or ingested. Its connection and draft settings are removed. This can't be undone.");
   await dialog.getByRole("button", { name: "Delete draft source", exact: true }).click();

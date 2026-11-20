@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
-import { BlockedButton, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
+import { ActionMenu, BlockedButton, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
 import { Stagger, StaggerItem, useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { ActivityIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
@@ -55,7 +55,7 @@ function Rows({ items }: { items: { label: string; value: ReactNode }[] }) {
   );
 }
 
-type Dialog = "delete" | "reset" | { end: SessionDto } | null;
+type Dialog = { end: SessionDto } | null;
 
 
 export function UserDetail({ id }: { id: string }) {
@@ -85,7 +85,7 @@ export function UserDetail({ id }: { id: string }) {
   const resetBlock = u.id === me.id ? "Use Security in your account to change your own password." : rank ?? (u.isLdap ? "This user signs in with a directory password. Change it in your directory." : null);
   const granted = new Set<string>(u.permissions);
 
-  // No confirmation: the result toast offers Undo (deactivating can be reversed; delete still confirms).
+  // Deactivating confirms in the header's ⋯ menu (ui-standard §1a); the result toast still offers Undo.
   // Optimistic: the status changes at once and goes back if the server refuses.
   async function setActive(active: boolean) {
     setActivating(true);
@@ -113,14 +113,21 @@ export function UserDetail({ id }: { id: string }) {
           ? <BlockedButton variant="secondary" reason={rank}>Edit user</BlockedButton>
           : <Button asChild variant="secondary"><Link href={`/users/${id}/edit`}>Edit user</Link></Button>)}
         more={[
+          ...(can("user.edit") && !(activating ? !u.isActive : u.isActive) ? [{ label: "Activate user", reason: rank, busy: activating, onSelect: () => void setActive(true) }] : []),
           ...(can("user.edit") ? [
-            { label: "Reset password", reason: resetBlock, onSelect: () => setDialog("reset") },
+            { label: "Reset password", reason: resetBlock, destructive: true as const, confirm: {
+              title: `Reset password for ${u.name}`, description: u.email, impact: ["A temporary password replaces the current one.", "Their sessions end."],
+              onConfirm: async () => { const r = await api<{ temporaryPassword: string }>(`/api/users/${id}/reset-password`, { method: "POST" }); setTemp(r.temporaryPassword); await refresh(); },
+            } },
             // While the change runs the status is already the new one (optimistic): the action keeps naming what runs.
-            (activating ? !u.isActive : u.isActive)
-              ? { label: "Deactivate user", reason: block, busy: activating, onSelect: () => void setActive(false) }
-              : { label: "Activate user", reason: rank, busy: activating, onSelect: () => void setActive(true) },
+            ...((activating ? !u.isActive : u.isActive) ? [{ label: "Deactivate user", reason: block, busy: activating, destructive: true as const, confirm: {
+              title: `Deactivate ${u.name}`, description: u.email, impact: ["Their sessions end and they can't sign in until reactivated."],
+              onConfirm: () => setActive(false),
+            } }] : []),
           ] : []),
-          ...(can("user.delete") ? [{ label: "Delete user", reason: block, destructive: true, onSelect: () => setDialog("delete") }] : []),
+          ...(can("user.delete") ? [{ label: "Delete user", reason: block, destructive: true as const, confirm: {
+            title: `Delete ${u.name}`, description: u.email, impact: ["The account is removed and its sessions end.", "This can't be undone."], onConfirm: () => remove(u.name),
+          } }] : []),
         ]} />
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this user; showing the last loaded details.</Notice>}
       {/* First data reveal: the cards rise in one after another (a refetch keeps them, so nothing replays). */}
@@ -151,10 +158,11 @@ export function UserDetail({ id }: { id: string }) {
       </Stagger>
       {/* Part of the first load (DEC-040): server-rendered from the list page.tsx prefetched, filled on first paint. */}
       {can("space.view") && <UserSpaces user={u} canManage={can("space.manage")} />}
-      {/* End session: no touch caption in the row; the same `rank` reason is the caption of the header's Edit user. */}
+      {/* End session revokes: an item of the row's ⋯ menu (ui-standard §1a), with the `rank` reason when blocked. */}
       <SessionsTable table={userSessions(id)} enabled={!userGone(q.error, deleted)} title="Active sessions" description="Where this user is signed in"
         current="Your session" emptyHint="Sessions appear here when this user signs in."
-        action={can("user.edit") ? (s) => (s.current ? <span className="text-caption text-fg-3">Your session</span> : <BlockedButton size="sm" variant="ghost" reason={rank} caption={false} onClick={() => setDialog({ end: s })}>End session</BlockedButton>) : undefined} />
+        action={can("user.edit") ? (s) => (s.current ? <span className="text-caption text-fg-3">Your session</span>
+          : <ActionMenu label={`Actions for the session on ${s.device}`} actions={[{ id: "end", label: "End session", destructive: true, disabled: !!rank, hint: rank ?? undefined, onSelect: () => setDialog({ end: s }) }]} />) : undefined} />
       {can("audit.view") && u.recentActivity && (
       <Panel flush icon={LogIcon} title="Recent activity" description="The last 20 actions on this user" count={u.recentActivity.length}
         actions={<div className="flex flex-wrap items-center gap-2"><span className="text-caption text-fg-3">Activity · Last 90 days</span><Button asChild variant="secondary" size="sm"><Link href={activityHistoryHref("user", u.id)}>View history</Link></Button></div>}>
@@ -164,16 +172,6 @@ export function UserDetail({ id }: { id: string }) {
       </Panel>
       )}
 
-      {dialog === "delete" && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDialog(null); }} auditFields={false} reasons={[]} destructive title={`Delete ${u.name}`} description={u.email}
-          impact={["The account is removed and its sessions end.", "This can't be undone."]} actionLabel="Delete user"
-          onConfirm={() => remove(u.name)} />
-      )}
-      {dialog === "reset" && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDialog(null); }} auditFields={false} reasons={[]} title={`Reset password for ${u.name}`} description={u.email}
-          impact={["A temporary password replaces the current one.", "Their sessions end."]} actionLabel="Reset password"
-          onConfirm={async () => { const r = await api<{ temporaryPassword: string }>(`/api/users/${id}/reset-password`, { method: "POST" }); setTemp(r.temporaryPassword); await refresh(); }} />
-      )}
       {typeof dialog === "object" && dialog && (
         <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDialog(null); }} auditFields={false} reasons={[]} destructive title="End this session" description={`${dialog.end.device} · ${dialog.end.ip}`}
           impact={["That device is signed out and must sign in again."]} actionLabel="End session"

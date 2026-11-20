@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
-import { BlockedButton, ErrorSummary, Field, FormActions, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
+import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -136,12 +136,11 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
             {sources.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load this space&apos;s sources. {errorText(sources.error)}</p>}
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>
-          <FormActions className="md:-mx-6 md:-mb-6 md:px-6">
-            <BlockedButton type="submit" reason={maker ? null : NEW_RECON_REASON} disabled={busy} aria-busy={busy || undefined}>
+          <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
+            primary={<BlockedButton type="submit" reason={maker ? null : NEW_RECON_REASON} disabled={busy} aria-busy={busy || undefined}>
               {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Create recon
-            </BlockedButton>
-            <Button asChild variant="ghost"><Link href={reconsHref(spaceId)}>Cancel</Link></Button>
-          </FormActions>
+            </BlockedButton>}
+            cancel={<Button asChild variant="ghost"><Link href={reconsHref(spaceId)}>Cancel</Link></Button>} />
         </form>
       </Panel>
       )}

@@ -13,11 +13,11 @@ import { skipReason } from "./use-users";
 
 export type BulkAction = "activate" | "deactivate" | "delete" | "assignRole";
 /** A bulk action on the rows picked (`ids`) or on every user the list matches (`filter`, "Select all N users"); `count` names it. */
-export type Pending = { kind: "bulk"; action: BulkAction; ids: string[]; filter?: BulkUserFilter; count: number } | { kind: "one"; action: "delete"; user: UserRowDto };
+export type Pending = { kind: "bulk"; action: BulkAction; ids: string[]; filter?: BulkUserFilter; count: number } | { kind: "one"; action: "delete" | "deactivate"; user: UserRowDto };
 
 /** Runs only after this dialog has opened; the page owns selection and query invalidation. */
 export async function confirmUserAction(p: Pending, role: string) {
-  if (p.kind === "one") {
+  if (p.kind === "one") { // delete; one deactivate runs in users-page (optimistic)
     await api(`/api/users/${p.user.id}`, { method: "DELETE" });
     toast(`Deleted ${p.user.name}.`);
     return;
@@ -49,12 +49,12 @@ export function UsersActionDialog({ pending, role, onRole, roles, onClose, onCon
 }) {
   const dialog = pending.kind === "bulk"
     ? { title: `${VERB[pending.action]} ${formatNumber(pending.count)} ${pending.count === 1 ? "user" : "users"}`, description: BULK_NOTE[pending.action], label: LABEL[pending.action] }
-    : { title: `Delete ${pending.user.name}`, description: pending.user.email, label: "Delete user" };
+    : { title: `${VERB[pending.action]} ${pending.user.name}`, description: pending.user.email, label: LABEL[pending.action].replace("users", "user") };
   const impact = pending.action === "delete" ? ["The account is removed and its sessions end.", "This can't be undone."]
     : pending.action === "deactivate" ? ["They are signed out and can't sign in until reactivated."]
     : pending.action === "assignRole" ? ["The role is added to each user's current roles."] : ["They can sign in again."];
   return (
-    <ConfirmActionDialog open onOpenChange={(o) => { if (!o) onClose(); }} auditFields={false} reasons={[]} destructive={pending.action === "delete"}
+    <ConfirmActionDialog open onOpenChange={(o) => { if (!o) onClose(); }} auditFields={false} reasons={[]} destructive={pending.action === "delete" || pending.action === "deactivate"}
       title={dialog.title} description={dialog.description} impact={impact} actionLabel={dialog.label} onConfirm={onConfirm}
       extra={pending.action === "assignRole" && (
         <Field id="bulk-role" label="Role">

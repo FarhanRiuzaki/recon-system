@@ -2,8 +2,9 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { type ChangeEvent, useState } from "react";
+import { useState } from "react";
 import { BlockedButton, Failure, Field, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
+import { VersionDecision, VersionLayout } from "@/components/version-layout";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -15,7 +16,6 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
 import type { SourcePreviewDto, SourceVersionDetailDto } from "@starterkit/shared/contracts/sources";
-import { REVIEW_COMMENT_MAX } from "@starterkit/shared/sources";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
@@ -59,10 +59,6 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const roles = useSpaceRoles(spaceId);
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [comment, setComment] = useState("");
-  const [commentError, setCommentError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "approve" | "reject">(null);
   const skeleton = useDelayedFlag((!sq.data || !vq.data) && !sq.error && !vq.error);
 
   const list = { href: sourcesHref(spaceId), label: "Sources" };
@@ -90,92 +86,55 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
     ? <Button asChild><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}>Edit version {v.version}</Link></Button>
     : <BlockedButton reason={EDIT_REASON}>Edit version {v.version}</BlockedButton>);
 
-  async function decide(act: "approve" | "reject") {
-    setError(null);
-    if (act === "reject" && !comment.trim()) {
-      setCommentError("Enter a comment to reject: say what the maker should change.");
-      requestAnimationFrame(() => document.getElementById("src-review-comment")?.focus());
-      return;
-    }
-    setCommentError(null);
-    setBusy(act);
-    try {
-      await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment: comment.trim() } : {}) });
-      toast(act === "approve" ? `Version ${v!.version} of ${s!.name} approved. It is in use from the next run.` : `Version ${v!.version} of ${s!.name} sent back to its maker with your comment.`);
-      setComment("");
-      await qc.invalidateQueries({ queryKey: SOURCES_KEY });
-      requestAnimationFrame(() => document.querySelector<HTMLElement>("main h1")?.focus());
-    } catch (e) {
-      setError(errorText(e)); // 409 self_approval / invalid_state and the rest: the API's sentence, beside the buttons
-    } finally {
-      setBusy(null);
-    }
+  async function decide(act: "approve" | "reject", comment: string) {
+    await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
+    toast(act === "approve" ? `Version ${v!.version} of ${s!.name} approved. It is in use from the next run.` : `Version ${v!.version} of ${s!.name} sent back to its maker with your comment.`);
+    await qc.invalidateQueries({ queryKey: SOURCES_KEY });
   }
 
+  const table = (
+    <Panel flush title={isPublished || !published ? `Settings of version ${v.version}` : `Changes from version ${published.version}`}
+      description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${changes(rows.length)}; everything else is as in version ${published.version}` : "Nothing differs"}>
+      {!v.spec ? <p className="px-4 py-6 text-body-sm text-fg-3">This draft has no fields and mapping yet.</p> : rows.length === 0
+        ? <p className="px-4 py-6 text-body-sm text-fg-3">The spec is the same as version {published?.version}.</p> : (
+          <div className="scroll-quiet overflow-x-auto">
+            <Table aria-label="Changes">
+              <TableHeader><TableRow>
+                <TableHead>Field</TableHead>
+                {!isPublished && published && <TableHead>Version {published.version} (published)</TableHead>}
+                <TableHead>Version {v.version}</TableHead>
+              </TableRow></TableHeader>
+              <TableBody>
+                {rows.map((r) => (
+                  <TableRow key={r.key}>
+                    {/* a field or derived name is a machine value (mono); a setting's name is words */}
+                    <TableCell className={/^(field|attrs|derive):/.test(r.key) ? "font-mono text-mono text-fg" : "text-fg"}>{r.label}</TableCell>
+                    {!isPublished && published && <TableCell className="whitespace-normal wrap-anywhere text-fg-2 md:min-w-56">{r.before ?? <span className="text-fg-3">Not there</span>}</TableCell>}
+                    <TableCell className="whitespace-normal wrap-anywhere text-fg md:min-w-56">{r.after ?? <span className="text-fg-3">Removed</span>}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+    </Panel>
+  );
+  const comparing = !isPublished && !!published;
+
   return (
-    <div className="grid gap-section">
-      <PageHeader title={`${s.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
-        description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} actions={edit || undefined} />
-      {sentBack && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
-
-      <Panel flush title={isPublished || !published ? `Settings of version ${v.version}` : `Changes from version ${published.version}`}
-        description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${changes(rows.length)}; everything else is as in version ${published.version}` : "Nothing differs"}>
-        {!v.spec ? <p className="px-4 py-6 text-body-sm text-fg-3">This draft has no fields and mapping yet.</p> : rows.length === 0
-          ? <p className="px-4 py-6 text-body-sm text-fg-3">The spec is the same as version {published?.version}.</p> : (
-            <div className="scroll-quiet overflow-x-auto">
-              <Table aria-label="Changes">
-                <TableHeader><TableRow>
-                  <TableHead>Field</TableHead>
-                  {!isPublished && published && <TableHead>Version {published.version} (published)</TableHead>}
-                  <TableHead>Version {v.version}</TableHead>
-                </TableRow></TableHeader>
-                <TableBody>
-                  {rows.map((r) => (
-                    <TableRow key={r.key}>
-                      {/* a field or derived name is a machine value (mono); a setting's name is words */}
-                      <TableCell className={/^(field|attrs|derive):/.test(r.key) ? "font-mono text-mono text-fg" : "text-fg"}>{r.label}</TableCell>
-                      {!isPublished && published && <TableCell className="whitespace-normal wrap-anywhere text-fg-2 md:min-w-56">{r.before ?? <span className="text-fg-3">Not there</span>}</TableCell>}
-                      <TableCell className="whitespace-normal wrap-anywhere text-fg md:min-w-56">{r.after ?? <span className="text-fg-3">Removed</span>}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-      </Panel>
-
-      {v.spec && <VersionPreview spaceId={spaceId} id={id} v={v} canPreview={roles.some((r) => r === "source_admin" || r === "config_maker" || r === "config_checker")} />}
-
-      {/* a decision is for a version in review only (Figma 98:9211); anyone who may not decide sees why (98:9467) */}
-      {v.status === "in_review" && approveWhy && (
-        <Panel title="Your decision" bodyClassName="grid gap-3">
-          <p className="text-body-sm text-fg-2">{[v.submitterId, v.makerId, ...v.contributorIds].includes(user.id) ? "A config checker other than you approves or rejects this version." : "A config checker of this space approves or rejects this version."}</p>
-          <span><BlockedButton reason={approveWhy}>Approve version {v.version}</BlockedButton></span>
-        </Panel>
+    <VersionLayout
+      header={<PageHeader title={`${s.name} · version ${v.version}`} status={<StatusChip health={st.health} label={st.label} description={st.description} />}
+        description={lineOf(v, published && !isPublished ? published.version : null)} trail={[{ label: s.name, href: sourceHref(spaceId, id) }]} actions={edit || undefined} />}
+      notice={sentBack && <Notice tone="warn">Sent back by {nameOf(v, v.checkerId) ?? "a config checker"}: {v.reviewComment}</Notice>}
+      // a decision is for a version in review only (Figma 98:9211); anyone who may not decide sees why (98:9467)
+      decision={v.status === "in_review" && (
+        <VersionDecision id="src-review-comment" version={v.version} mine={[v.submitterId, v.makerId, ...v.contributorIds].includes(user.id)}
+          approveWhy={approveWhy} rejectWhy={rejectWhy} onDecide={decide}
+          effect={`Approving publishes version ${v.version}${comparing ? ` and retires version ${published.version}` : ""}. Pulls and files use it from the next run.`} />
       )}
-      {v.status === "in_review" && !approveWhy && (
-      <Panel title="Your decision" bodyClassName="grid gap-4">
-        <div className="max-w-xl">
-          <Field id="src-review-comment" label="Comment" note="Required to reject. The maker sees it with the version." error={commentError}>
-            <Textarea id="src-review-comment" value={comment} limit={REVIEW_COMMENT_MAX} countValue={comment.trim()} rows={4} placeholder="What you checked"
-              onChange={(e: ChangeEvent<HTMLTextAreaElement>) => { setComment(e.target.value); if (commentError && e.target.value.trim()) setCommentError(null); }} />
-          </Field>
-        </div>
-        <div className="flex flex-wrap items-start gap-3">
-          <BlockedButton reason={approveWhy} disabled={busy !== null} aria-busy={busy === "approve" || undefined} onClick={() => void decide("approve")}>
-            {busy === "approve" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Approve version {v.version}
-          </BlockedButton>
-          <BlockedButton variant="secondary" reason={rejectWhy} disabled={busy !== null} aria-busy={busy === "reject" || undefined} onClick={() => void decide("reject")}>
-            {busy === "reject" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Reject
-          </BlockedButton>
-          <p className="max-w-[72ch] text-caption text-fg-3">
-            Approving publishes version {v.version}{published && !isPublished ? ` and retires version ${published.version}` : ""}. Pulls and files use it from the next run.
-          </p>
-        </div>
-        {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
-      </Panel>
-      )}
-    </div>
+      changes={comparing && table}
+      settings={!comparing && table}
+      preview={v.spec && <VersionPreview spaceId={spaceId} id={id} v={v} canPreview={roles.some((r) => r === "source_admin" || r === "config_maker" || r === "config_checker")} />} />
   );
 }
 

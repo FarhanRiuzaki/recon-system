@@ -1,7 +1,6 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useState } from "react";
@@ -20,9 +19,6 @@ import { activityHistoryHref } from "@/lib/shared/activity-links";
 import { projectDetail } from "@/lib/shared/queries";
 import { PROJECT_DETAIL_SHAPE } from "./shapes";
 import { PROJECT_LEGEND, projectPage, PROJECTS_KEY, projectStatus, projectUrl, useProjectDetail } from "./use-projects";
-
-/** Opened on click only: the dialog loads then, outside the page's first load (route budget, AGENTS.md §9). */
-const ConfirmActionDialog = dynamic(() => import("@starterkit/ui/ds").then((m) => m.ConfirmActionDialog), { ssr: false });
 
 const LIST = { href: "/projects", label: "Projects" };
 
@@ -49,7 +45,6 @@ export function ProjectDetail({ id }: { id: string }) {
   const q = useProjectDetail(id, !deleted);
   // No flash: the loading shape appears after 150 ms and then stays at least 300 ms.
   const skeleton = useDelayedFlag(!q.data && !q.error);
-  const [deleting, setDeleting] = useState(false);
   useEffect(() => () => { if (deleted) qc.removeQueries({ queryKey: projectDetail(id).key }); }, [deleted, id, qc]);
 
   if (isNotFound(q.error)) return <DetailNotFound title="Project" noun="project" list={LIST} />;
@@ -74,7 +69,9 @@ export function ProjectDetail({ id }: { id: string }) {
           {can("project.edit") && <Button asChild variant="secondary"><Link href={`${projectPage(id)}/edit`}>Edit project</Link></Button>}
           {can("audit.view") && <div className="grid gap-1"><Button asChild variant="secondary"><Link href={activityHistoryHref("project", p.id)}>View history</Link></Button><span className="text-caption text-fg-3">Activity · Last 90 days</span></div>}
         </>}
-        more={can("project.delete") ? [{ label: "Delete project", destructive: true, onSelect: () => setDeleting(true) }] : []} />
+        more={can("project.delete") ? [{ label: "Delete project", destructive: true, confirm: {
+          title: `Delete ${p.name}`, description: p.description ?? "This project has no description.", impact: ["The project is removed.", "This can't be undone."], onConfirm: () => remove(p.name),
+        } }] : []} />
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this project; showing the last loaded details.</Notice>}
       <Panel icon={FolderIcon} title="Details" description="Project facts" legend={PROJECT_LEGEND}>
         <Rows items={[
@@ -84,11 +81,6 @@ export function ProjectDetail({ id }: { id: string }) {
           { label: "Updated", value: <RelativeTime at={Date.parse(p.updatedAt)} /> },
         ]} />
       </Panel>
-      {deleting && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDeleting(false); }} auditFields={false} reasons={[]} destructive title={`Delete ${p.name}`}
-          description={p.description ?? "This project has no description."} impact={["The project is removed.", "This can't be undone."]} actionLabel="Delete project"
-          onConfirm={() => remove(p.name)} />
-      )}
     </div>
   );
 }

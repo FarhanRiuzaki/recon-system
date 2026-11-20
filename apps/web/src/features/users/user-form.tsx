@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BlockedButton, ErrorSummary, Failure, Field, FormActions, FormSection, Notice, Panel, PasswordChecks, RadioGroup, RequiredNote, useForm,
+  BlockedButton, ErrorSummary, Failure, Field, FormFooter, FormSection, Notice, Panel, PasswordChecks, RadioGroup, RequiredNote, useForm,
 } from "@starterkit/ui/ds";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
@@ -173,10 +173,9 @@ function UserForm({ user }: { user?: UserDetailDto }) {
           )}
         </fieldset>
         {error && <p role="alert" className="mb-4 text-body-sm text-down-ink">{error}</p>}
-        <FormActions className="md:-mx-6 md:-mb-6 md:px-6">
-          <BlockedButton type="submit" reason={blocked} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{user ? "Save user" : "Create user"}</BlockedButton>
-          <Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>Cancel</Button>
-        </FormActions>
+        <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
+          primary={<BlockedButton type="submit" reason={blocked} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{user ? "Save user" : "Create user"}</BlockedButton>}
+          cancel={<Button type="button" variant="ghost" onClick={() => router.back()} disabled={busy}>Cancel</Button>} />
       </form>
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"

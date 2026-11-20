@@ -6,14 +6,13 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
-import { ActionMenu, BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import { ActionMenu, ColumnsMenu, DataTable, FilterLayout, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { HEALTH } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
-import { Icon } from "@starterkit/ui/ui/icon";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import { SpinnerIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { UsersIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -31,13 +30,6 @@ const FILTER_DEFAULTS: UserFilters = { q: "", role: "", status: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "role", label: "Role", multiple: true }, { key: "status", label: "Status", multiple: true, format: (value: string) => value === "active" ? "Active" : "Inactive" }] as const;
 /** The table names the view it shows, as the sidebar's Users children do (the page bar already says "Users"). */
 const VIEW_TITLE: Record<(typeof USER_STATUSES)[number], string> = { "": "All users", active: "Active users", inactive: "Inactive users" };
-/**
- * The Deactivate / Activate row button is a desktop shortcut (from 1280 px). Below that (phone card, and the tablet
- * table, where it would push the name column into a sideways scroll) and on any touch screen it is an item of the
- * row's Actions menu instead, with its reason inline.
- */
-const ROW_ONLY = "max-xl:hidden";
-const MENU_ON_TOUCH = "hidden max-xl:flex pointer-coarse:flex";
 const LEGEND = (["healthy", "stopped"] as const).map((h) => ({ health: h, label: h === "healthy" ? "Active" : "Inactive", description: h === "healthy" ? "Can sign in." : HEALTH.stopped.description }));
 
 /**
@@ -87,21 +79,22 @@ export function UsersPage() {
 
   async function confirm() {
     const p = pending!;
+    if (p.kind === "one" && p.action === "deactivate") { await setStatus(p.user, false, true); return; }
     await (await loadDialog()).confirmUserAction(p, role);
     if (p.kind === "bulk") { setSelected(new Set()); setEveryMatch(false); }
     await refresh();
   }
 
-  // One user: no confirmation, the result toast offers Undo (it can be reversed); a bulk deactivate still confirms.
-  // Optimistic: the row's status changes at once and goes back if the server refuses.
-  async function setStatus(u: UserRowDto, active: boolean) {
+  // Deactivating confirms first (row ⋯ menu, ui-standard §1a); activating runs at once. The result toast offers Undo.
+  // Optimistic: the row's status changes at once and goes back if the server refuses (in the dialog: its error there).
+  async function setStatus(u: UserRowDto, active: boolean, inDialog = false) {
     setChanging(u.id);
     const restore = await patchUserCache(qc, u.id, { isActive: active });
     try {
       await api(`/api/users/${u.id}/status`, { method: "POST", body: JSON.stringify({ active }) });
       if (active) toast(`Activated ${u.name}.`);
       else toast.undo(`Deactivated ${u.name}.`, () => void setStatus(u, true), { description: "Their sessions ended. Undo lets them sign in again." });
-    } catch (e) { restore(); toast.error(errorText(e)); }
+    } catch (e) { restore(); if (inDialog) throw e; toast.error(errorText(e)); }
     finally { setChanging(null); void refresh(); }
   }
 
@@ -158,29 +151,18 @@ export function UsersPage() {
           rowActions={(u) => {
             const block = protection(u, me.id, perms, lastSuperId);
             const rank = rankBlock(u, perms);
-            // No touch caption in the row (it would stretch the row). Below 1280 px the Deactivate / Activate button
-            // moves into the Actions menu, and on any touch screen the menu has it too: there each item shows its reason
-            // under the label (Deactivate: `block`, Activate and Edit user: `rank`, Delete user: `block`).
+            // Every row action is an item of the row's ⋯ menu, each with its reason when blocked (ui-standard §1a).
             const busy = changing === u.id;
-            // While the change runs the row already shows its new status (optimistic); its button keeps naming the
-            // action in flight, with the spinner.
+            // While the change runs the row already shows its new status (optimistic): the item keeps naming the action in flight.
             const wasActive = busy ? !u.isActive : u.isActive;
-            return <>
-              {can("user.edit") && (wasActive
-                ? <BlockedButton reason={block} caption={false} size="sm" variant="ghost" className={cn(!busy && ROW_ONLY)} wrapClassName={ROW_ONLY} disabled={busy} aria-busy={busy || undefined} onClick={() => void setStatus(u, false)}>
-                  {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Deactivate</BlockedButton>
-                // While it runs the button stays on the card too: its spinner and aria-busy are the pending state.
-                : <BlockedButton reason={rank} caption={false} size="sm" variant="ghost" className={cn(!busy && ROW_ONLY)} wrapClassName={ROW_ONLY} disabled={busy} aria-busy={busy || undefined} onClick={() => void setStatus(u, true)}>
-                  {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Activate</BlockedButton>)}
-              <ActionMenu label={`Actions for ${u.name}`} actions={[
-                { id: "open", label: "View user", onSelect: () => router.push(`/users/${u.id}`) },
-                ...(can("user.edit") ? [wasActive
-                  ? { id: "status", label: busy ? "Deactivating…" : "Deactivate user", className: MENU_ON_TOUCH, disabled: !!block || busy, hint: block ?? undefined, onSelect: () => void setStatus(u, false) }
-                  : { id: "status", label: busy ? "Activating…" : "Activate user", className: MENU_ON_TOUCH, disabled: !!rank || busy, hint: rank ?? undefined, onSelect: () => void setStatus(u, true) }] : []),
-                ...(can("user.edit") ? [{ id: "edit", label: "Edit user", disabled: !!rank, hint: rank ?? undefined, onSelect: () => router.push(`/users/${u.id}/edit`) }] : []),
-                ...(can("user.delete") ? [{ id: "delete", label: "Delete user", destructive: true, disabled: !!block, hint: block ?? undefined, onSelect: () => setPending({ kind: "one", action: "delete", user: u }) }] : []),
-              ]} />
-            </>;
+            return <ActionMenu label={`Actions for ${u.name}`} actions={[
+              { id: "open", label: "View user", onSelect: () => router.push(`/users/${u.id}`) },
+              ...(can("user.edit") ? [{ id: "edit", label: "Edit user", disabled: !!rank, hint: rank ?? undefined, onSelect: () => router.push(`/users/${u.id}/edit`) }] : []),
+              ...(can("user.edit") ? [wasActive
+                ? { id: "status", label: busy ? "Deactivating…" : "Deactivate user", destructive: true, disabled: !!block || busy, hint: block ?? undefined, onSelect: () => setPending({ kind: "one", action: "deactivate", user: u }) }
+                : { id: "status", label: busy ? "Activating…" : "Activate user", disabled: !!rank || busy, hint: rank ?? undefined, onSelect: () => void setStatus(u, true) }] : []),
+              ...(can("user.delete") ? [{ id: "delete", label: "Delete user", destructive: true, disabled: !!block, hint: block ?? undefined, onSelect: () => setPending({ kind: "one", action: "delete", user: u }) }] : []),
+            ]} />;
           }} />
       </Panel>}
       </FilterLayout>

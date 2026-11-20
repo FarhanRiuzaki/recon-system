@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Failure, Field, FormActions, FormSection, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
+import { Failure, Field, FormFooter, FormSection, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
 import { rules } from "@starterkit/ui/lib/validate";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -97,10 +97,9 @@ function Form({ user }: { user: MeDto }) {
         </Field>
       </FormSection>
       {error && <p role="alert" className="mb-4 text-body-sm text-down-ink">{error}</p>}
-      <FormActions className="md:-mx-6 md:-mb-6 md:px-6">
-        <Button type="submit" disabled={busy || !dirty} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save profile</Button>
-        {!dirty && <span className="text-caption text-fg-3">Change a field to save.</span>}
-      </FormActions>
+      <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
+        primary={<Button type="submit" disabled={busy || !dirty} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save profile</Button>}
+        cancel={!dirty && <span className="text-caption text-fg-3">Change a field to save.</span>} />
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
           description="Your profile changes aren't saved." impact={["What you typed is discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />

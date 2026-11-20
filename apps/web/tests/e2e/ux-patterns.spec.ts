@@ -38,12 +38,15 @@ test("a press before the JS arrives acts once the page can: a toggle toggles onc
   await expect(page.getByText("Loading your views…")).toHaveCount(0);
 });
 
-test("deactivating one user needs no confirmation; the toast's Undo makes them active again", async ({ page }) => {
+test("deactivating one user confirms from the row menu; the toast's Undo makes them active again", async ({ page }) => {
   await page.goto("/users?q=citra.17%40example.com");
   const table = page.getByRole("table");
   const row = table.getByRole("row", { name: /Citra Utama/ });
   await expect(row).toContainText("Active");
-  await row.getByRole("button", { name: "Deactivate", exact: true }).click();
+  await row.getByRole("button", { name: "Actions for Citra Utama" }).click();
+  await page.getByRole("menuitem", { name: "Deactivate user" }).click();
+  const dialog = page.getByRole("dialog", { name: "Deactivate Citra Utama" });
+  await dialog.getByRole("button", { name: "Deactivate user", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const toast = page.getByRole("listitem").filter({ hasText: "Deactivated Citra Utama." });
   await expect(toast).toBeVisible();

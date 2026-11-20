@@ -171,11 +171,11 @@ test.describe("phone: stacked rows", () => {
     await page.keyboard.press("Escape");
   });
 
-  test("users: a card's Actions menu holds Deactivate with its reason (own account), the row button is off the card", async ({ page }) => {
+  test("users: a card's Actions menu holds Deactivate with its reason (own account); no row button", async ({ page }) => {
     await open(page, "/users?q=superadmin%40example.com");
     const table = page.getByRole("table", { name: "Users" });
     await expect(table.getByRole("row")).toHaveCount(1);
-    await expect(table.getByRole("button", { name: "Deactivate", exact: true })).toBeHidden();
+    await expect(table.getByRole("button", { name: "Deactivate", exact: true })).toHaveCount(0);
     await table.getByRole("button", { name: /^Actions for / }).tap();
     const item = page.getByRole("menuitem", { name: /Deactivate user/ });
     await expect(item).toBeVisible();
@@ -183,7 +183,7 @@ test.describe("phone: stacked rows", () => {
     await expect(item).toContainText("You can't do this to your own account.");
   });
 
-  test("users: Activate from a card's menu keeps a pending state on the card while it runs", async ({ page }) => {
+  test("users: Activate from a card's menu keeps a pending state in the menu while it runs", async ({ page }) => {
     await open(page, "/users?q=inactive%40example.com");
     const id = (await page.getByRole("table", { name: "Users" }).getByRole("link", { name: "Inactive User" }).getAttribute("href"))!.split("/").pop()!;
     const token = await csrfOf(page);
@@ -191,9 +191,9 @@ test.describe("phone: stacked rows", () => {
     try {
       await page.getByRole("button", { name: "Actions for Inactive User" }).tap();
       await page.getByRole("menuitem", { name: "Activate user" }).tap();
-      const busy = page.getByRole("table", { name: "Users" }).locator('button[aria-busy="true"]');
-      await expect(busy, "the card's Activate button, with its spinner").toBeVisible();
-      await expect(busy).toContainText("Activate");
+      await page.getByRole("button", { name: "Actions for Inactive User" }).tap();
+      await expect(page.getByRole("menuitem", { name: "Activating…" }), "the menu names the action in flight").toBeVisible();
+      await page.keyboard.press("Escape");
       await expect(page.getByText("Activated Inactive User.")).toBeVisible();
     } finally {
       await page.unrouteAll({ behavior: "ignoreErrors" });
@@ -320,14 +320,10 @@ test.describe("tablet and desktop: the table stays a table", () => {
     const pager = page.getByRole("navigation", { name: "Users pages" });
     await expect(pager.getByRole("button", { name: "Page 2", exact: true })).toBeVisible();
     await expect(pager.getByText(/^Page 1 of/)).toBeHidden();
-    // Below 1280 the row's Deactivate / Activate is a menu item (the table fits); from 1280 it is a row button.
-    if (test.info().project.name === "tablet") {
-      await expect(table.getByRole("button", { name: "Deactivate", exact: true }).first()).toBeHidden();
-      await table.getByRole("button", { name: /^Actions for / }).first().click();
-      await expect(page.getByRole("menuitem", { name: /Deactivate user/ })).toBeVisible();
-    } else {
-      await expect(table.getByRole("button", { name: "Deactivate", exact: true }).first()).toBeVisible();
-    }
+    // Deactivate / Activate is a row menu item at every width (ui-standard §1a), never a row button.
+    await expect(table.getByRole("button", { name: "Deactivate", exact: true })).toHaveCount(0);
+    await table.getByRole("button", { name: /^Actions for / }).first().click();
+    await expect(page.getByRole("menuitem", { name: /Deactivate user/ })).toBeVisible();
   });
 
   test("identity columns keep their text: names are not cut to a letter, and the users table fits its card", async ({ page, baseURL }) => {

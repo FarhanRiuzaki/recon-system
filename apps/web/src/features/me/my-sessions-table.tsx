@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Button } from "@starterkit/ui/ui/button";
+import { ActionMenu } from "@starterkit/ui/ds";
 import { toast } from "@starterkit/ui/ui/toast";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { SessionsTable } from "@/components/sessions-table";
@@ -23,7 +23,7 @@ export function MySessionsPage() {
         emptyHint="Your sessions appear here after you sign in."
         action={(r) => r.current
           ? <span className="text-caption text-fg-3">Sign out from the account menu</span>
-          : <Button size="sm" variant="ghost" onClick={() => setEnding(r)}>End session</Button>} />
+          : <ActionMenu label={`Actions for the session on ${r.device}`} actions={[{ id: "end", label: "End session", destructive: true, onSelect: () => setEnding(r) }]} />} />
       {/* Loaded on the first End session: the dialog stays out of the page's first load (AGENTS.md §9). */}
       {ending && <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setEnding(null); }} auditFields={false} reasons={[]}
         title="End this session" description={`${ending.device} · ${ending.ip}`}

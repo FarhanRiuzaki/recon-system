@@ -29,7 +29,8 @@ test("projects: create, edit, delete", async ({ page }) => {
   await heading(page, name);
   await expect(page.getByText("Archived").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "Delete project" }).click();
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Delete project" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog).toContainText("This can't be undone.");
   await dialog.getByRole("button", { name: "Delete project" }).click();

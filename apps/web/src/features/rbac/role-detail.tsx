@@ -25,7 +25,7 @@ import { assertRoleName, deleteBlock, RoleNameField } from "./role-name";
 import { roleKey, roleUrl, useAfterRbacChange, useRole } from "./use-rbac";
 import { ROLE_DETAIL_SHAPE } from "./shapes";
 
-type Dialog = "save" | "rename" | "delete" | null;
+type Dialog = "save" | "rename" | null;
 
 /**
  * Opened on click only: the dialog loads then, outside the page's first load (route budget, AGENTS.md §9); the import
@@ -103,7 +103,9 @@ export function RoleDetail({ id }: { id: string }) {
         actions={can("user.view") && r.userCount > 0 && <Button asChild variant="secondary"><Link href={`/users?role=${encodeURIComponent(r.name)}`}>View users</Link></Button>}
         more={[
           ...(can("role.edit") ? [{ label: "Rename role", reason: editBlock, onSelect: () => { setName(r.name); setDialog("rename"); } }] : []),
-          ...(can("role.delete") ? [{ label: "Delete role", reason: deleteBlock(r), destructive: true, onSelect: () => setDialog("delete") }] : []),
+          ...(can("role.delete") ? [{ label: "Delete role", reason: deleteBlock(r), destructive: true as const, confirm: {
+            title: `Delete ${r.name}`, description: "No user has this role.", impact: ["The role and its permission set are removed.", "This can't be undone."], onConfirm: () => remove(r),
+          } }] : []),
         ]} />
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this role; showing the last loaded permissions.</Notice>}
       <Panel flush icon={KeyIcon} title="Permissions" description="Header checkboxes switch a whole module, an action in every module, or everything"
@@ -139,11 +141,6 @@ export function RoleDetail({ id }: { id: string }) {
         <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDialog(null); }} auditFields={false} reasons={[]} title={`Rename ${r.name}`}
           description="Users with this role keep it under the new name." impact={[]} actionLabel="Rename role"
           lead={<RoleNameField value={name} onChange={setName} />} onConfirm={rename} />
-      )}
-      {dialog === "delete" && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setDialog(null); }} auditFields={false} reasons={[]} destructive title={`Delete ${r.name}`}
-          description="No user has this role." impact={["The role and its permission set are removed.", "This can't be undone."]} actionLabel="Delete role"
-          onConfirm={() => remove(r)} />
       )}
     </div>
   );

@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, EmptyState, Failure, FormActions, Panel, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, EmptyState, Failure, FormFooter, Panel, Wizard } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -29,7 +29,7 @@ import {
   amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
 } from "./steps/model";
-import { DiscardDialog } from "./discard-dialog";
+import { discardConfirm } from "./discard-dialog";
 import { ReviewStep } from "./steps/review";
 import {
   EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, versionHref,
@@ -140,7 +140,6 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [stored, setStored] = useState(!!source?.s.connection);
   /** The connection as stored, as the form shows it: a difference replaces it (all fields, a test, a PUT at Next). */
   const [base, setBase] = useState(initial.conn);
-  const [discarding, setDiscarding] = useState(false);
   const [headerHint, setHeaderHint] = useState(false);
   const [typedNames, setTypedNames] = useState<Record<string, string>>({});
   const typeName = (field: string, name: string | undefined, clear: string[]) => {
@@ -561,7 +560,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={title} description={DESCRIPTION(spaceName)[step]} trail={source ? [{ label: source.s.name, href: sourceHref(spaceId, source.s.id) }] : []} />
+      <PageHeader title={title} description={DESCRIPTION(spaceName)[step]} trail={source ? [{ label: source.s.name, href: sourceHref(spaceId, source.s.id) }] : []}
+        more={deletable && admin ? [{ label: "Delete draft source", reason: working ? "Wait for the current step to finish." : null, destructive: true, confirm: discardConfirm(d.name.trim(), discard) }] : undefined} />
       <Wizard title="Setup progress" steps={steps}>
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (blocked === null && !working) void next(); }} className="grid gap-section">
           <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>
@@ -587,14 +587,12 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
           {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep}
             publishedTable={publishedTableOf(source?.s ?? null)} />}
           {formError && <p role="alert" className="text-body-sm text-down-ink">{formError}</p>}
-          <FormActions className="justify-end">
-            {deletable && admin && <Button type="button" variant="ghost" className="mr-auto text-down-ink" disabled={working} onClick={() => setDiscarding(true)}>Delete draft source</Button>}
-            <Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)}>Cancel</Link></Button>
-            {step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
-            <BlockedButton type="submit" reason={blocked || null} variant={blocked === null ? "default" : "secondary"} disabled={(working && blocked === null) || blocked === ""} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
+          <FormFooter
+            primary={<BlockedButton type="submit" reason={blocked || null} variant={blocked === null ? "default" : "secondary"} disabled={(working && blocked === null) || blocked === ""} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
               {(busy === "next" || busy === "submit" || (step === 0 && busy === "columns")) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{NEXT[step]}
-            </BlockedButton>
-          </FormActions>
+            </BlockedButton>}
+            back={step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
+            cancel={<Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)}>Cancel</Link></Button>} />
         </form>
       </Wizard>
       {guard.leaving && (
@@ -603,7 +601,6 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
           description={ids ? `Version ${ids.version} stays a draft with what was saved; changes on this step aren't saved.${deletable ? " To remove the source, use Delete draft source." : ""}` : "This source isn't created yet: nothing is saved."}
           impact={["What you typed and didn't save is discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
       )}
-      {discarding && <DiscardDialog name={d.name.trim()} onClose={() => setDiscarding(false)} onConfirm={discard} />}
     </div>
   );
 }

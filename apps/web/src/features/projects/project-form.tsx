@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { type FormEvent, useRef, useState } from "react";
-import { ErrorSummary, Failure, Field, FormActions, Notice, Panel, RadioGroup, RequiredNote, useForm } from "@starterkit/ui/ds";
+import { ErrorSummary, Failure, Field, FormFooter, Notice, Panel, RadioGroup, RequiredNote, useForm } from "@starterkit/ui/ds";
 import { rules, type Rule, type Schema } from "@starterkit/ui/lib/validate";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -98,11 +98,10 @@ function ProjectForm({ project }: { project?: ProjectDto }) {
           { value: "archived", label: "Archived", description: "Put away. It can be made active again later." },
         ]} />
         {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
-        <FormActions className="md:-mx-6 md:-mb-6 md:px-6">
-          <Button type="submit" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{project ? "Save project" : "Create project"}</Button>
-          {busy ? <Button type="button" variant="ghost" disabled>Cancel</Button>
-            : <Button asChild variant="ghost"><Link href={project ? projectPage(project.id) : "/projects"}>Cancel</Link></Button>}
-        </FormActions>
+        <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
+          primary={<Button type="submit" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{project ? "Save project" : "Create project"}</Button>}
+          cancel={busy ? <Button type="button" variant="ghost" disabled>Cancel</Button>
+            : <Button asChild variant="ghost"><Link href={project ? projectPage(project.id) : "/projects"}>Cancel</Link></Button>} />
         </fieldset>
       </form>
       {guard.leaving && (

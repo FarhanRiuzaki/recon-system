@@ -3,7 +3,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
@@ -17,8 +16,8 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, isNotFound } from "@/lib/client/api";
 import { SOURCES_KEY } from "@/lib/shared/queries";
-import { DiscardDialog } from "./discard-dialog";
-import type { HeaderAction } from "@/components/shell/page-header";
+import { discardConfirm } from "./discard-dialog";
+import type { PlainAction } from "@/components/shell/page-header";
 import { ActivityTable, FilesTable, QuarantineTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
@@ -37,7 +36,7 @@ const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", quarantine:
 export const discardable = (s: SourceDto, roles: readonly string[]) =>
   roles.includes("source_admin") && !s.owner && s.publishedVersion === null && !s.draft?.submitterId && !s.draft?.reviewComment && !s.shares.length;
 
-export function editAction(s: SourceDto, spaceId: string, roles: readonly string[], start: { busy: boolean; run: () => void }): HeaderAction {
+export function editAction(s: SourceDto, spaceId: string, roles: readonly string[], start: { busy: boolean; run: () => void }): PlainAction {
   const may = roles.includes("source_admin") || roles.includes("config_maker");
   if (!may) return { label: "Edit source", reason: EDIT_REASON };
   if (s.draft?.status === "in_review") return { label: `Open version ${s.draft.version}`, href: versionHref(spaceId, s.id, s.draft.id) };
@@ -85,7 +84,7 @@ const DRIFT_COLUMNS = (version: number | null): Column<DriftColumn>[] => [
  * expects, what is there now and the effect (a card per column on a phone), and the way out: a new source version
  * (the wizard, Task 7).
  */
-function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: HeaderAction }) {
+function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: PlainAction }) {
   const d = s.drift!;
   return (
     <Panel flush title="What changed in the source table" description={`Checked against version ${s.publishedVersion ?? "–"} at ${at(d.checkedAt)}`}
@@ -114,7 +113,6 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const roles = useSpaceRoles(spaceId);
   const run = useRunSource(spaceId, id, q.data?.kind);
   const start = useStartVersion(spaceId, id);
-  const [discarding, setDiscarding] = useState(false);
   const router = useRouter();
   const qc = useQueryClient();
   const skeleton = useDelayedFlag(!q.data && !q.error);
@@ -127,9 +125,10 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const own = !s.owner;
   const h = s.health;
   /** Why the viewer can't pull now, or null. */
-  const blocked = !roles.includes("source_admin") ? RUN_REASON : s.status === "paused" ? PAUSED_REASON : !s.publishedVersion ? "Nothing to pull until a version is approved." : null;
+  const blocked = !roles.includes("source_admin") ? RUN_REASON : s.status === "paused" ? PAUSED_REASON : null;
   const date = s.kind === "db_snapshot" ? h?.businessDate : undefined;
-  const pull = own && (
+  // Never published: nothing can be pulled (the API answers 400), so the page offers no Pull now at all.
+  const pull = own && !!s.publishedVersion && (
     <BlockedButton variant="secondary" reason={blocked} disabled={run.isPending} aria-busy={run.isPending || undefined} onClick={() => run.mutate(date)}>
       {date ? `Pull ${day(date)} now` : s.kind === "file_inbox" ? "Check the folder now" : "Pull now"}
     </BlockedButton>
@@ -142,13 +141,12 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   return (
     <div className="grid gap-section">
       <PageHeader title={s.name} status={<SourceStatusChip s={s} />} description={summary(s)} actions={pull || undefined}
-        more={own ? [edit, ...(discardable(s, roles) ? [{ label: "Delete draft source", destructive: true, onSelect: () => setDiscarding(true) }] : [])] : undefined} />
-      {discarding && <DiscardDialog name={s.name} onClose={() => setDiscarding(false)} onConfirm={async () => {
-        await api(sourceApi(spaceId, id), { method: "DELETE" });
-        toast(`Deleted the draft source ${s.name}.`);
-        await qc.invalidateQueries({ queryKey: SOURCES_KEY });
-        router.push(sourcesHref(spaceId));
-      }} />}
+        more={own ? [edit, ...(discardable(s, roles) ? [{ label: "Delete draft source", destructive: true as const, confirm: discardConfirm(s.name, async () => {
+          await api(sourceApi(spaceId, id), { method: "DELETE" });
+          toast(`Deleted the draft source ${s.name}.`);
+          await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+          router.push(sourcesHref(spaceId));
+        }) }] : [])] : undefined} />
       {s.owner && (
         <>
           <span><CategoryChip label={`Shared from ${s.owner.name}`} slot="neutral" /></span>

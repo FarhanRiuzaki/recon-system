@@ -7,37 +7,56 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { MoreIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { type TrailCrumb, usePublishTrail } from "@/lib/client/crumb-trail";
 
-/** A secondary header action: a link (`href`) or a command (`onSelect`); `reason` blocks it and says why; `busy` while it runs. */
-export type HeaderAction = { label: string; href?: string; onSelect?: () => void; reason?: string | null; destructive?: boolean; busy?: boolean };
+/**
+ * What a destructive header action asks before it runs (copy guide "Confirmations"): the title names the action and
+ * the record, the description and `impact` say what happens; the confirm button repeats the action (`actionLabel`,
+ * the item's label by default). A failure stays in the dialog.
+ */
+export type HeaderConfirm = { title: string; description: string; impact?: string[]; actionLabel?: string; onConfirm: () => Promise<void> };
+type Base = { label: string; reason?: string | null; busy?: boolean };
+/**
+ * A secondary header action: a link (`href`) or a command (`onSelect`); `reason` blocks it and says why; `busy` while
+ * it runs. A destructive one (deletes, deactivates, revokes, resets, retires: ui-standard §1a) is always an item of the
+ * ⋯ menu, at every width, and runs only through its confirmation.
+ */
+export type HeaderAction = PlainAction | (Base & { destructive: true; confirm: HeaderConfirm });
+/** A header action that is not destructive: a link or a command. */
+export type PlainAction = Base & { destructive?: false; href?: string; onSelect?: () => void };
 
-/** From 768 px: the action as a secondary (or destructive) button, a BlockedButton when a rule blocks it. */
+/** From 768 px: a non-destructive action as a secondary button, a BlockedButton when a rule blocks it. */
 function ActionButton({ a }: { a: HeaderAction }) {
-  const variant = a.destructive ? "destructive" : "secondary";
-  if (a.href && !a.reason) return <Button asChild variant={variant}><Link href={a.href}>{a.label}</Link></Button>;
+  if (a.destructive) return null;
+  if (a.href && !a.reason) return <Button asChild variant="secondary"><Link href={a.href}>{a.label}</Link></Button>;
   return (
-    <BlockedButton variant={variant} reason={a.reason ?? null} disabled={a.busy} aria-busy={a.busy || undefined} onClick={a.onSelect}>
+    <BlockedButton variant="secondary" reason={a.reason ?? null} disabled={a.busy} aria-busy={a.busy || undefined} onClick={a.onSelect}>
       {a.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{a.label}
     </BlockedButton>
   );
 }
 
-/** Below 768 px: the same actions in one "More actions" menu (a deferred overlay); a blocked one is off with its reason. */
-function MoreMenu({ actions }: { actions: HeaderAction[] }) {
+/**
+ * The "More actions" menu (a deferred overlay), last in the header: below 768 px every action, from 768 px only the
+ * destructive ones (the others are buttons there). A blocked or running item is off, with its reason.
+ */
+function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: (a: Extract<HeaderAction, { destructive: true }>) => void }) {
+  const danger = actions.some((a) => a.destructive);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="icon" aria-label="More actions" className="md:hidden"><Icon icon={MoreIcon} /></Button>
+        <Button variant="secondary" size="icon" aria-label="More actions" className={danger ? undefined : "md:hidden"}><Icon icon={MoreIcon} /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        {actions.map((a) => {
+        {[...actions.filter((a) => !a.destructive), ...actions.filter((a) => a.destructive)].map((a) => {
           const off = !!a.reason || !!a.busy;
           const body = <span className="grid min-w-0"><span>{a.label}</span>{a.reason && <span className="text-caption text-fg-3">{a.reason}</span>}</span>;
+          if (a.destructive) return <DropdownMenuItem key={a.label} disabled={off} onSelect={() => onConfirm(a)} variant="destructive">{body}</DropdownMenuItem>;
           return a.href && !off
-            ? <DropdownMenuItem key={a.label} asChild variant={a.destructive ? "destructive" : "default"}><Link href={a.href}>{body}</Link></DropdownMenuItem>
-            : <DropdownMenuItem key={a.label} disabled={off} onSelect={a.onSelect} variant={a.destructive ? "destructive" : "default"}>{body}</DropdownMenuItem>;
+            ? <DropdownMenuItem key={a.label} asChild className="md:hidden"><Link href={a.href}>{body}</Link></DropdownMenuItem>
+            : <DropdownMenuItem key={a.label} disabled={off} onSelect={a.onSelect} className="md:hidden">{body}</DropdownMenuItem>;
         })}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -50,13 +69,14 @@ function MoreMenu({ actions }: { actions: HeaderAction[] }) {
  * nav page and any parents in `trail` ("Users / Rina Wulandari / Edit user"). Title and description wrap (a long
  * name or email breaks anywhere rather than widening the page). `actions` stay visible at every width; `more`
  * (secondary actions) follow them as buttons from 768 px and fold into a "More actions" menu below, both in the server
- * HTML and switched by CSS.
+ * HTML and switched by CSS. A destructive `more` action is in that menu at every width and opens its confirmation.
  */
 export function PageHeader({ title, status, actions, more, description, trail = [] }: {
   title: string; status?: ReactNode; actions?: ReactNode; more?: HeaderAction[]; description?: string; trail?: TrailCrumb[];
 }) {
   usePublishTrail(usePathname(), [...trail, { label: title }]);
   const extra = more?.length ? more : null;
+  const [asking, setAsking] = useState<Extract<HeaderAction, { destructive: true }> | null>(null);
   return (
     <header data-slot="page-header" className="flex flex-wrap items-start gap-x-3 gap-y-3">
       <div className="grid min-w-0 gap-1">
@@ -71,9 +91,14 @@ export function PageHeader({ title, status, actions, more, description, trail = 
           {actions}
           {extra && <>
             <div className="contents max-md:hidden">{extra.map((a) => <ActionButton key={a.label} a={a} />)}</div>
-            <MoreMenu actions={extra} />
+            <MoreMenu actions={extra} onConfirm={setAsking} />
           </>}
         </div>
+      )}
+      {asking && (
+        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setAsking(null); }} auditFields={false} reasons={[]} destructive
+          title={asking.confirm.title} description={asking.confirm.description} impact={asking.confirm.impact ?? []}
+          actionLabel={asking.confirm.actionLabel ?? asking.label} onConfirm={async () => asking.confirm.onConfirm()} />
       )}
     </header>
   );
