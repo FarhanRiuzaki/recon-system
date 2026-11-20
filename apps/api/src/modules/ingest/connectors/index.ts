@@ -24,7 +24,7 @@ import { oracleDriver } from "./oracle";
 import { postgresDriver } from "./postgres";
 
 export { CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, DEFAULT_DATABASE, type From } from "./dialect";
-export { ConnectorError, type ConnectorErrorKind, NO_TLS_CODES } from "./errors";
+export { ConnectorError, type ConnectorErrorKind, HOSTNAME_MISMATCH_CODES, NO_TLS_CODES } from "./errors";
 
 /** The stored credential (sources.source_connections.secret_enc, decrypted). */
 export type Secret = { host: string; port: number; database: string; user: string; password: string };

@@ -15,15 +15,15 @@ const PASSWORD = "tls-test-pw";
 let dir = "", name = "", port = 0;
 
 /** Connect (TLS on) in a fresh process; `ca` = the trust bundle to set before it starts, or none. */
-async function connect(ca?: string): Promise<{ ok: true } | { ok: false; kind: string; code: string | null; tls: { field: string | null; message: string } }> {
+async function connect(ca?: string, host = "localhost"): Promise<{ ok: true } | { ok: false; kind: string; code: string | null; tls: { field: string | null; message: string } }> {
   const script = `
     import { connectorFor } from ${JSON.stringify(path.join(here, "../../connectors/index.ts"))};
     import { classify } from ${JSON.stringify(path.join(here, "../../connectors/errors.ts"))};
     import { testFailure } from ${JSON.stringify(path.join(here, "../../../sources/rules.ts"))};
-    const c = connectorFor("postgres", { host: "localhost", port: ${port}, database: "postgres", user: "postgres", password: ${JSON.stringify(PASSWORD)} },
+    const c = connectorFor("postgres", { host: ${JSON.stringify(host)}, port: ${port}, database: "postgres", user: "postgres", password: ${JSON.stringify(PASSWORD)} },
       { tls: true, connectTimeoutSeconds: 20, statementTimeoutMs: 10000 });
     try { await c.test(); console.log(JSON.stringify({ ok: true })); }
-    catch (e) { const x = classify(e, { connectS: 20, statementS: 10 }); console.log(JSON.stringify({ ok: false, kind: x.kind, code: x.code, tls: testFailure(x, null, 20) })); }
+    catch (e) { const x = classify(e, { connectS: 20, statementS: 10 }); console.log(JSON.stringify({ ok: false, kind: x.kind, code: x.code, tls: testFailure(x, { engine: "postgres", host: ${JSON.stringify(host)}, port: ${port}, user: "postgres", database: "postgres" }, 20) })); }
     await c.close(); process.exit(0);`;
   const env = { ...process.env } as Record<string, string>;
   delete env.NODE_EXTRA_CA_CERTS;
@@ -59,6 +59,12 @@ describe.skipIf(!ok)("source database over TLS signed by an internal CA", () => 
   it("without the CA in the trust bundle, the test points at the TLS field with the CA sentence", async () => {
     const r = await connect();
     expect(r).toMatchObject({ ok: false, kind: "tls", code: "UNABLE_TO_VERIFY_LEAF_SIGNATURE", tls: { field: "tls", message: "The server's certificate isn't trusted by this install. Ask IT to add your bank's CA." } });
+  }, 30_000);
+
+  it("a certificate that does not name the typed host says so (Bun gives no certificate name: the fallback sentence)", async () => {
+    // the cert's SAN lists localhost and 127.0.0.1; Bun's error is only "Hostname/IP does not match certificate's altnames"
+    const r = await connect(path.join(dir, "ca.pem"), "localhost.localdomain");
+    expect(r).toMatchObject({ ok: false, kind: "tls", code: "ERR_TLS_CERT_ALTNAME_INVALID", tls: { field: "tls", message: "The certificate doesn't name localhost.localdomain. Use the name on the certificate as Host." } });
   }, 30_000);
 
   it("with the CA in NODE_EXTRA_CA_CERTS (as deploy.md documents), Connect succeeds", async () => {

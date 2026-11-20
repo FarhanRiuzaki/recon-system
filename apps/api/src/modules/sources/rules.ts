@@ -1,6 +1,6 @@
 import { fieldLabel, recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import type { ConnectionField, DbEngine } from "@starterkit/shared/sources";
-import { type ConnectorErrorKind, NO_TLS_CODES } from "../ingest";
+import { type ConnectorErrorKind, HOSTNAME_MISMATCH_CODES, NO_TLS_CODES } from "../ingest";
 import { specHash } from "../../kernel/versions";
 
 // The version rules every maker-checker module shares live in kernel/versions.ts (sources and recon).
@@ -65,13 +65,15 @@ export type TypedAt = { engine: DbEngine; host: string; port: number; user: stri
  * host, user or database (never for a stored connection: its values are its credential; never the password).
  * `seconds` = the connect timeout used. A kind no field explains (a query, the spec) keeps the connector's sentence.
  */
-export function testFailure(e: { kind: ConnectorErrorKind; code: string | null; message: string }, at: TypedAt, seconds: number): { message: string; field: ConnectionField | null } {
+export function testFailure(e: { kind: ConnectorErrorKind; code: string | null; message: string; certName?: string | null }, at: TypedAt, seconds: number): { message: string; field: ConnectionField | null } {
   const where = at ? `${at.host}:${at.port}` : "the server";
   switch (e.kind) {
     case "login": return { field: "password", message: at ? `Password rejected for ${at.user}.` : "The server rejected the stored sign-in. Enter the username and password again." };
     case "timeout": return { field: "host", message: `Can't reach ${where} in ${seconds} s.` };
     case "host": return { field: "host", message: `Can't reach ${where}. Check the host and port.` };
-    case "tls": return { field: "tls", message: e.code && NO_TLS_CODES.includes(e.code)
+    case "tls": return { field: "tls", message: e.code && HOSTNAME_MISMATCH_CODES.includes(e.code)
+      ? `${e.certName ? `The certificate is for ${e.certName}${at ? `, not ${at.host}` : ""}.` : `The certificate doesn't name ${at ? at.host : "this host"}.`} Use the name on the certificate as Host.`
+      : e.code && NO_TLS_CODES.includes(e.code)
       ? "This server doesn't offer TLS. Ask IT to turn it on for the server."
       : "The server's certificate isn't trusted by this install. Ask IT to add your bank's CA." };
     case "database": {

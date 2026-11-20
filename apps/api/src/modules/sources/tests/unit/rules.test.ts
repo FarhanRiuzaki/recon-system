@@ -138,6 +138,13 @@ describe("testFailure (REC-F2b: the field a failed test points at)", () => {
     }
     expect(f("tls", "ERR_POSTGRES_TLS_NOT_AVAILABLE")).toEqual({ field: "tls", message: "This server doesn't offer TLS. Ask IT to turn it on for the server." });
   });
+  it("a certificate for another host name names both and says to use the certificate's name as Host", () => {
+    const g = (certName: string | null, a: Parameters<typeof testFailure>[1] = { ...at, host: "db.bank.local" }) =>
+      testFailure({ kind: "tls", code: "ERR_TLS_CERT_ALTNAME_INVALID", message: "as classified", certName }, a, 8);
+    expect(g("db01.bank.local")).toEqual({ field: "tls", message: "The certificate is for db01.bank.local, not db.bank.local. Use the name on the certificate as Host." });
+    expect(g(null)).toEqual({ field: "tls", message: "The certificate doesn't name db.bank.local. Use the name on the certificate as Host." });
+    expect(g("db01.bank.local", null).message).toBe("The certificate is for db01.bank.local. Use the name on the certificate as Host.");
+  });
   it("a stored connection's values are never named; a query failure keeps its sentence and no field", () => {
     expect(f("login", "28P01", null).message).toBe("The server rejected the stored sign-in. Enter the username and password again.");
     expect(f("timeout", null, null).message).toBe("Can't reach the server in 8 s.");

@@ -5,7 +5,7 @@
 export { compileDerive, runDerive } from "./cel";
 export {
   CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, type Connector, ConnectorError, type ConnectorErrorKind, connectorFor, DEFAULT_DATABASE, type From,
-  NO_TLS_CODES, type Row, type Secret, within,
+  HOSTNAME_MISMATCH_CODES, NO_TLS_CODES, type Row, type Secret, within,
 } from "./connectors";
 export { ingestController } from "./controller";
 export { rawHashOf } from "./copy";

@@ -57,3 +57,20 @@ describe("classify", () => {
     expect(classify(own, t)).toBe(own);
   });
 });
+
+describe("a certificate for another host name", () => {
+  const code = "ERR_TLS_CERT_ALTNAME_INVALID";
+  it("is a tls error that carries the certificate's first DNS name, from cert, wrapped cert or message", () => {
+    const names = (e: unknown) => classify(e, t).certName;
+    expect(names(fake({ code, cert: { subjectaltname: "DNS:db01.bank.local, DNS:b.local, IP Address:10.0.0.1" } }))).toBe("db01.bank.local");
+    expect(names(fake({ code, cert: { subject: { CN: "db01.bank.local" } } }))).toBe("db01.bank.local");
+    expect(names(fake({ code: "ESOCKET", originalError: { code, cert: { subjectaltname: "DNS:sql01.bank.local" } } }))).toBe("sql01.bank.local");
+    expect(names(Object.assign(new Error("Hostname/IP does not match certificate's altnames: Host: x. is not in the cert's altnames: DNS:db01.bank.local"), { code }))).toBe("db01.bank.local");
+    expect(classify(fake({ code }), t)).toMatchObject({ kind: "tls", code, certName: null });
+  });
+  it("never quotes a name that is not a host name", () => {
+    expect(classify(fake({ code, cert: { subjectaltname: "DNS:a;rm" } }), t).certName).toBeNull();
+    expect(classify(fake({ code, cert: { subject: { CN: "Pa55 word, x" } } }), t).certName).toBeNull();
+  });
+});
+

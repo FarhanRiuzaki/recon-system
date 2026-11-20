@@ -25,6 +25,8 @@ const CODES: Record<Exclude<ConnectorErrorKind, "query" | "spec">, string[]> = {
 };
 /** TLS codes that mean the server offers no TLS at all (the other TLS codes: its certificate isn't trusted). */
 export const NO_TLS_CODES = ["ERR_POSTGRES_TLS_NOT_AVAILABLE", "HANDSHAKE_NO_SSL_SUPPORT"];
+/** TLS codes that mean the certificate is fine but names another host (Node's tls, which pg/Bun, mysql2 and tedious all use). */
+export const HOSTNAME_MISMATCH_CODES = ["ERR_TLS_CERT_ALTNAME_INVALID"];
 /** Timeouts of a statement (not of the connect): their message names the statement timeout. */
 const STATEMENT_TIMEOUTS = ["57014", "ER_QUERY_TIMEOUT", "ORA-01013", "DPI-1067", "NJS-123"];
 const KIND = new Map<string, ConnectorErrorKind>([
@@ -49,7 +51,7 @@ const text = (kind: ConnectorErrorKind, code: string | null, seconds: number): s
 /** A failure of a source connector: `kind` decides the sentence, `code` is the driver's code (or null). */
 export class ConnectorError extends Error {
   /** `seconds`: for a timeout, the time actually spent (all attempts); null = the connector's connect timeout. */
-  constructor(readonly kind: ConnectorErrorKind, readonly code: string | null, message: string, readonly seconds: number | null = null) {
+  constructor(readonly kind: ConnectorErrorKind, readonly code: string | null, message: string, readonly seconds: number | null = null, readonly certName: string | null = null) {
     super(message);
     this.name = "ConnectorError";
   }
@@ -68,6 +70,26 @@ function codesOf(e: unknown): string[] {
     .filter((v) => typeof v === "string" || typeof v === "number").map(String).filter((v) => SAFE_CODE.test(v));
 }
 
+/** A host name as a certificate lists it: letters, digits, `.`, `-`, `_`, `*`; anything else is not quoted. */
+const CERT_NAME = /^[A-Za-z0-9*][A-Za-z0-9*._-]{0,252}$/;
+
+/**
+ * The first DNS name (else the CN) the certificate of a hostname mismatch carries: Node's error has `cert`
+ * (`subjectaltname` "DNS:a, IP Address:1.2.3.4", `subject.CN`); without it, the message's "DNS:a" list. Null when none.
+ */
+function certNameOf(e: unknown): string | null {
+  const top = (e ?? {}) as Record<string, unknown>;
+  // tedious wraps the TLS error in originalError, others in cause
+  for (const o of [top, (top.originalError ?? {}) as Record<string, unknown>, (top.cause ?? {}) as Record<string, unknown>]) {
+    const cert = (o.cert ?? {}) as { subjectaltname?: unknown; subject?: { CN?: unknown } };
+    const alt = typeof cert.subjectaltname === "string" ? cert.subjectaltname : typeof o.message === "string" ? o.message : "";
+    const dns = /DNS:([^\s,]+)/.exec(alt)?.[1];
+    const name = dns ?? (typeof cert.subject?.CN === "string" ? cert.subject.CN : null);
+    if (name && CERT_NAME.test(name)) return name;
+  }
+  return null;
+}
+
 /** A driver's error as a ConnectorError; one already is passes through. `connectS` / `statementS` = the connector's timeouts. */
 export function classify(e: unknown, t: { connectS: number; statementS: number }): ConnectorError {
   if (e instanceof ConnectorError) return e;
@@ -75,7 +97,8 @@ export function classify(e: unknown, t: { connectS: number; statementS: number }
   const hit = codes.find((c) => KIND.has(c));
   const kind = hit ? KIND.get(hit)! : "query";
   const code = hit ?? codes[0] ?? null;
-  return new ConnectorError(kind, code, text(kind, code, hit && STATEMENT_TIMEOUTS.includes(hit) ? t.statementS : t.connectS));
+  const certName = hit && HOSTNAME_MISMATCH_CODES.includes(hit) ? certNameOf(e) : null;
+  return new ConnectorError(kind, code, text(kind, code, hit && STATEMENT_TIMEOUTS.includes(hit) ? t.statementS : t.connectS), null, certName);
 }
 
 /** The timeout of a whole operation (connect and statements together), with no driver code. */
