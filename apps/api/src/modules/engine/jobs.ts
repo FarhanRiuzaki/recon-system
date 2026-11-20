@@ -16,11 +16,15 @@ import { ApiError, notFound } from "../../kernel/errors";
 import { enqueue, type JobHandler, jobAlive, QUEUE_OPTIONS, type QueueName, QUEUES } from "../../kernel/jobs";
 import { tryConfigLock } from "../../kernel/locks";
 import { recordActivity } from "../audit";
+import { todayIn } from "../ingest";
 import type { Ctx } from "../auth";
 import { draftToSimulate, markSimulated, reconConfigs, reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
+import { lastClosedDay } from "./breaks";
+import { LOOKBACK_DAYS } from "./rules";
+import { dispatch, runScheduled } from "./schedule";
 import { reconRuns } from "./schema";
-import { createRun, execRun, failRun, projectDayClose, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, createRun, execRun, failRun, projectDayClose, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -41,7 +45,7 @@ export const RUN_STOPPED = "The run stopped before it finished. Run it again.";
  * running is either alive (its job may still run: 409 RUN_BUSY) or failed now with RUN_STOPPED, with the published
  * version's simulation it started (baseline_of). A run without a job counts as alive for NO_JOB_MAX_MS.
  */
-async function claimConfig(tx: InTx, spaceId: string, configId: string): Promise<void> {
+export async function claimConfig(tx: InTx, spaceId: string, configId: string): Promise<void> {
   if (!(await tryConfigLock(tx, configId))) throw new ApiError("invalid_state", RUN_BUSY);
   const active = await tx.select({ id: reconRuns.id, mode: reconRuns.mode, jobId: reconRuns.jobId, startedAt: reconRuns.startedAt }).from(reconRuns)
     .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId), inArray(reconRuns.status, ["queued", "running"]), isNull(reconRuns.baselineOf)));
@@ -54,7 +58,7 @@ async function claimConfig(tx: InTx, spaceId: string, configId: string): Promise
 }
 
 /** Queues run `runId` (job id = run id) in `tx`, with its row; null from pg-boss (a job of the config waits) is 409. */
-async function send(tx: InTx, spaceId: string, configId: string, runId: string, mode: RunMode): Promise<void> {
+export async function send(tx: InTx, spaceId: string, configId: string, runId: string, mode: RunMode): Promise<void> {
   if (!(await enqueue(queueOf(mode), { spaceId, runId }, { key: configId, id: runId, tx }))) throw new ApiError("invalid_state", RUN_BUSY);
 }
 
@@ -62,17 +66,31 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 /**
- * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (a day by default: today;
- * the last closed day once days close, Task 6), queued. 404 recon, 409 no published version or a run under way, 400 range.
+ * The business dates of a request's body `b`: as given (checked before anything is read), or by default one day, the
+ * last closed one within the last 30 days (spec §10), else today (Asia/Jakarta).
+ */
+const rangeOf = (b: RunRangeBody) => {
+  const given = b.from || b.to ? runRange(b.from, b.to) : null;
+  return async (tx: InTx, spaceId: string, configId: string) => {
+    if (given) return given;
+    const today = todayIn(new Date());
+    return runRange(await lastClosedDay(tx, spaceId, configId, addDays(today, -LOOKBACK_DAYS)) ?? today, undefined);
+  };
+};
+
+/**
+ * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (by default the last closed
+ * day, rangeOf), queued. 404 recon, 409 no published version or a run under way, 400 range.
  */
 export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): Promise<ReconRunDto> {
-  const range = runRange(b.from, b.to);
+  const rangeIn = rangeOf(b);
   return inSpace(ctx, async (tx, spaceId) => {
     const [c] = await tx.select().from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
     if (!c) throw notFound("recon");
     const [p] = await tx.select({ id: reconConfigVersions.id, version: reconConfigVersions.version }).from(reconConfigVersions)
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
     if (!p) throw new ApiError("invalid_state", "This recon has no published version yet. Approve one first.");
+    const range = await rangeIn(tx, spaceId, configId);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId: p.id, mode: "manual", ...range, status: "queued", id, jobId: id });
@@ -88,9 +106,10 @@ export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): P
  * the changes between the two, then marks the draft simulated (submit opens). 404, 409 not a draft or a run under way.
  */
 export async function requestSimulation(ctx: Ctx, configId: string, versionId: string, b: RunRangeBody): Promise<ReconRunDto> {
-  const range = runRange(b.from, b.to);
+  const rangeIn = rangeOf(b);
   return inSpace(ctx, async (tx, spaceId) => {
     const { config: c, version: v } = await draftToSimulate(tx, ctx, configId, versionId);
+    const range = await rangeIn(tx, spaceId, configId);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId, mode: "simulation", ...range, status: "queued", id, jobId: id });
@@ -180,4 +199,10 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => ({
   [QUEUES.reconHeavy]: ({ data, signal }) => runJob(on, data as { spaceId: string; runId: string }, signal),
+  // the schedule's minute (data { schedule: true }) or a tick it started
+  [QUEUES.reconTick]: async ({ data, signal }) => {
+    if ((data as { schedule?: boolean }).schedule) await dispatch(on);
+    else await runScheduled(on, data as { spaceId: string; runId: string }, signal);
+  },
+  [QUEUES.reconDaily]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
 });
