@@ -37,10 +37,10 @@ function lineOf(r: ReconDto, by: string | null): string {
   return `${what} · ${live}`;
 }
 
-/** "Edit recon": a new draft's setup; an open draft's setup ("Continue editing"); a version in review opens on its page. */
+/** "Edit recon": a new draft's setup; a version in review opens on its page (an open draft: the header's Continue editing). */
 function editAction(r: ReconDto, spaceId: string, maker: boolean, start: { busy: boolean; run: () => void }): HeaderAction | null {
   if (r.draft?.status === "in_review") return { label: `Open version ${r.draft.version}`, href: reconVersionHref(spaceId, r.id, r.draft.id) };
-  if (r.draft) return maker ? { label: "Continue editing", href: reconEditHref(spaceId, r.id, 5) } : null;
+  if (r.draft) return null; // the header's Continue editing
   return maker ? { label: "Edit recon", onSelect: start.run, busy: start.busy } : { label: "Edit recon", reason: MAKER_REASON };
 }
 
@@ -79,7 +79,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   return (
     <div className="grid gap-section">
       <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by)}
-        actions={edit && "href" in edit && edit.href && r.draft?.status === "draft" ? <Button asChild><Link href={edit.href}>Continue editing</Link></Button> : undefined}
+        actions={maker && r.draft?.status === "draft" ? <Button asChild><Link href={reconEditHref(spaceId, id, 5)}>Continue editing</Link></Button> : undefined}
         more={more.length ? more : undefined} />
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
@@ -93,15 +93,6 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this recon; showing the last loaded draft.</Notice>}
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
-            {r.draft?.status === "draft" && (
-              // an open draft: where it stands and the way back into its setup
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-tray px-4 py-3">
-                <p className="min-w-0 flex-1 basis-64 text-body-sm text-fg">
-                  Draft v{r.draft.version} is open{r.published ? `; version ${r.published.version} keeps running until it is approved` : ""}.
-                </p>
-                {maker && <Button asChild variant="secondary" size="sm"><Link href={reconEditHref(spaceId, r.id, 5)}>Continue editing</Link></Button>}
-              </div>
-            )}
             {shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
           </>
         )}
