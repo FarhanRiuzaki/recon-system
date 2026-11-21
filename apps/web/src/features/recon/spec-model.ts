@@ -422,6 +422,8 @@ export function conditionParts(q: Predicate, fields: Fields): { field: string; r
   })();
   return { field, rule, columns };
 }
-/** A pass's matching keys as a reader names them: "Reference, Business date". */
-export const keysText = (keys: readonly FieldPair[]) =>
-  keys.map((k) => { const a = sideRef(k, 0), b = sideRef(k, 1); return a === b ? readerLabel(a) : `${readerLabel(a)} ↔ ${readerLabel(b)}`; }).join(", ");
+/** A pass's matching keys as a reader names them: "Reference and Business date". */
+export function keysText(keys: readonly FieldPair[]): string {
+  const l = keys.map((k) => { const a = sideRef(k, 0), b = sideRef(k, 1); return a === b ? readerLabel(a) : `${readerLabel(a)} ↔ ${readerLabel(b)}`; });
+  return l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l.at(-1)}` : (l[0] ?? "");
+}

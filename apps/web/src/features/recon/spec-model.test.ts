@@ -243,6 +243,7 @@ describe("a pass condition as a reader scans it (owner, 22 Nov: clear, tidy)", (
     expect(conditionParts({ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "2500.00" } }, fields).rule).toBe("within ± IDR 2,500.00 · other currencies exact");
     expect(conditionParts({ op: "date_window", field: "business_date", days: 1 }, fields)).toMatchObject({ field: "Business date", rule: "within 1 day", columns: "value_date" });
     expect(conditionParts({ op: "eq", field: { a: "ext_ref", b: "attrs.ref2" } }, fields).field).toBe("Reference ↔ ref2");
-    expect(keysText(["ext_ref", "business_date"])).toBe("Reference, Business date");
+    expect(keysText(["ext_ref", "business_date"])).toBe("Reference and Business date");
+    expect(keysText(["ext_ref"])).toBe("Reference");
   });
 });
