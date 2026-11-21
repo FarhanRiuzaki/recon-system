@@ -17,7 +17,7 @@ import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from 
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
 import { ComputedColumns } from "./computed";
-import { computeCel } from "@starterkit/shared/compute";
+import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
 const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
@@ -140,7 +140,11 @@ export function FieldsStep(p: FieldsStepProps) {
           const id = ctl(`mapping.${c.key}`);
           const value = refValue(s.mapping[c.key]);
           const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
-          const extra = value.startsWith("x:") ? [value] : [];
+          // a value inside a JSON column (a payload, a remark holding JSON): offered as its own option, kept as
+          // json_value(row.col, "path"), the computed-column step ingest runs too (owner, 21 Nov)
+          const jsonOpts: ComboOption[] = names.flatMap((n) => jsonPaths(examples.get(n) ?? []).map(({ path, example }) => ({
+            value: `x:${computeCel(n, [{ type: "json", args: [path] }])}`, label: `${n} › ${path}`, description: `In JSON · e.g. ${example}` })));
+          const extra = value.startsWith("x:") && !jsonOpts.some((o) => o.value === value) ? [value] : [];
           // searchable (owner, 21 Nov): a source can have tens of columns; clearing the field = not used
           const opts: ComboOption[] = [
             ...(c.key === "business_date" && file ? [{ value: "c:file_date", label: "From the file name" }] : []),
@@ -154,7 +158,13 @@ export function FieldsStep(p: FieldsStepProps) {
               return { value: `f:${n}`, label: n, tone: fits && t ? (bad ? "bad" : "ok") : undefined,
                 description: [t ? TYPE_LABEL[t] : "Computed column", ex ? `e.g. ${ex}` : null, why].filter(Boolean).join(" · ") };
             }).sort((a, b) => Number(a.tone === "bad") - Number(b.tone === "bad")),
-            ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
+            ...jsonOpts,
+            ...extra.map((x) => {
+              // a JSON value whose example isn't read yet still shows as column › path
+              const b = computeSteps(x.slice(2));
+              const one = b?.steps.length === 1 && b.steps[0]!.type === "json" ? `${b.source} › ${b.steps[0]!.args[0]}` : null;
+              return { value: x, label: one ?? `Expression: ${x.slice(2)}` };
+            }),
           ];
           const field = (
             <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={c.note} suggested={!!hinted(c.key, value)} error={err(id)} help={c.help}>

@@ -23,6 +23,52 @@ type Def = {
 const n1 = (n: unknown) => Math.max(1, Math.trunc(Number(n)) || 1);
 const chars = (s: string) => Array.from(s); // by character, not UTF-16 unit: "ü" is one
 
+/** Text past which a JSON value isn't read (a column holding a whole document is not a remark). */
+const JSON_MAX = 65_536;
+/**
+ * The value at `path` (`a.b`, `items[0].id`, `["odd key"]`) in the JSON text `s`, as text: a string as itself, a number
+ * or boolean as written, an object or list as JSON (another JSON step reads into it); "" for no such path, null, text
+ * that isn't JSON, or text over JSON_MAX. JSON.parse is linear: no input can make it hang.
+ */
+function jsonValue(s: string, path: string): string {
+  if (!s || s.length > JSON_MAX) return "";
+  let v: unknown;
+  try { v = JSON.parse(s); } catch { return ""; }
+  for (const m of path.matchAll(/([^.[\]]+)|\[(\d+)\]|\["((?:[^"\\]|\\.)*)"\]/g)) {
+    const key = m[1] ?? m[2] ?? (m[3] !== undefined ? (JSON.parse(`"${m[3]}"`) as string) : "");
+    // JSON inside JSON: a value that is itself JSON text (`"{\"rc\":20}"`) is read into as well
+    if (typeof v === "string" && /^\s*[[{]/.test(v)) { try { v = JSON.parse(v); } catch { return ""; } }
+    if (v === null || typeof v !== "object") return "";
+    v = Array.isArray(v) ? (m[2] !== undefined || /^\d+$/.test(key) ? v[Number(key)] : undefined) : (v as Record<string, unknown>)[key];
+  }
+  if (v === undefined || v === null) return "";
+  return typeof v === "object" ? JSON.stringify(v) : String(v);
+}
+
+/**
+ * The paths to the plain values (text, number, true/false) inside `examples` that are JSON objects or lists, with the
+ * first example's value at each: what a mapping can offer from a JSON column. A list is read at its first item
+ * (`items[0].id`), JSON text inside a value is read into; at most 6 levels and 50 paths. None when no example is JSON.
+ */
+export function jsonPaths(examples: readonly string[]): { path: string; example: string }[] {
+  const out = new Map<string, string>();
+  const key = (k: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : `[${JSON.stringify(k)}]`);
+  const join = (base: string, k: string) => { const p = key(k); return !base ? p : p.startsWith("[") ? base + p : `${base}.${p}`; };
+  const walk = (v: unknown, path: string, depth: number) => {
+    if (out.size >= 50 || depth > 6 || v === null || v === undefined) return;
+    if (Array.isArray(v)) { if (v.length) walk(v[0], `${path}[0]`, depth + 1); return; }
+    if (typeof v === "object") { for (const [k, x] of Object.entries(v)) walk(x, join(path, k), depth + 1); return; }
+    if (typeof v === "string" && /^\s*[[{]/.test(v)) { try { walk(JSON.parse(v), path, depth + 1); return; } catch { /* plain text */ } }
+    if (path && !out.has(path)) out.set(path, String(v));
+  };
+  for (const e of examples) {
+    const t = e.trim();
+    if (!t.startsWith("{") && !t.startsWith("[")) continue;
+    try { walk(JSON.parse(t), "", 0); } catch { /* not JSON */ }
+  }
+  return [...out].map(([path, example]) => ({ path, example }));
+}
+
 const STEP = {
   word: { sample: ["20261120BRI0123 BRI 0123", [1]] as const, fn: "word_at", label: "Take word number", sentence: "Take word {0}", args: [{ kind: "int", label: "Word number", start: 1 }],
     run: (s: string, n: number) => s.trim().split(/\s+/).filter(Boolean)[n1(n) - 1] ?? "" },
@@ -71,6 +117,9 @@ const STEP = {
     run: (s: string, p: string) => p + s },
   suffix: { sample: ["7781", ["-IDR"]] as const, fn: "add_suffix", label: "Add text at the end", sentence: "Add {0} at the end", args: [{ kind: "text", label: "Text at the end", start: "" }],
     run: (s: string, p: string) => s + p },
+  json: { sample: ['{"e2e_id":"E2E-7781","payment":{"ref":"INV-42"}}', ["payment.ref"]] as const, fn: "json_value", label: "Take a value from JSON",
+    sentence: "Take the JSON value at {0}", args: [{ kind: "text", label: "Path", start: "" }],
+    run: (s: string, path: string) => jsonValue(s, path) },
   default: { sample: ["", ["NONE"]] as const, fn: "or_default", label: "If empty, use", sentence: "If empty, use {0}", args: [{ kind: "text", label: "Value when empty", start: "" }],
     run: (s: string, v: string) => (s.trim() ? s : v) },
 } as const satisfies Record<string, Def>;

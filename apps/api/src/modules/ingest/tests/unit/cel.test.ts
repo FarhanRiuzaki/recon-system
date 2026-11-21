@@ -50,6 +50,7 @@ describe("computed columns (@starterkit/shared/compute): ingest's CEL = the wiza
   const REMARKS = [
     "20261120BRINIDJA010O0123456789 BRI 0123456789", "  E2E-77781 Mandiri 123", "E2E777|BCA|123", "", "single",
     "ref:ABC-12 / acct 99", "TRF  INV-2026/0042  PT Maju", 'quote " inside', "ünïcode 42",
+    '{"e2e_id":"E2E-7781","payment":{"ref":"INV-42","amount":1500},"items":[{"id":"A1"},{"id":"B2"}]}', '{"broken": ',
   ];
   // every step of the menu with the arguments its example uses, edge arguments, and chains
   const one = COMPUTE_STEPS.map((x) => [startStep(x.type)]);
