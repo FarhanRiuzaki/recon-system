@@ -147,6 +147,27 @@ export function addCurrency(t: Record<string, string>): Record<string, string> {
   const free = CURRENCIES.find((c) => !Object.hasOwn(t, c));
   return free ? { ...t, [free]: "" } : t;
 }
+/** A tolerance value as the API takes it (contracts/recon.ts Tolerance): a number with up to 6 decimals. */
+export const TOLERANCE_VALUE = /^\d{1,15}(\.\d{1,6})?$/;
+/** Why a tolerance row can't be saved yet, or null (shown on the field when it is left). */
+export function toleranceProblem(v: string): string | null {
+  if (v === "") return "Enter a tolerance such as 1000.00, or remove the currency.";
+  return TOLERANCE_VALUE.test(v) ? null : "Write the tolerance as a number such as 1000.00";
+}
+/**
+ * The first field of the spec still being filled in (a tolerance row added but empty or not a number yet), or null:
+ * autosave waits for it instead of sending a spec the API refuses, and Run simulation / Submit say what to fill in.
+ */
+export function incompleteField(spec: ReconSpec): string | null {
+  for (const p of spec.passes) {
+    for (const q of p.predicates) {
+      if (q.op !== "amount_abs_tol" && q.op !== "eq_sum") continue;
+      const code = Object.entries(q.tolerance).find(([, v]) => toleranceProblem(v))?.[0];
+      if (code) return `Fill in the ${code} tolerance in pass ${p.no}.`;
+    }
+  }
+  return null;
+}
 export const removeCurrency = (t: Record<string, string>, code: string) => Object.fromEntries(Object.entries(t).filter(([c]) => c !== code));
 
 /** Comma-separated filter values as a list, without empty entries ("a, b,, c ," → a, b, c). */

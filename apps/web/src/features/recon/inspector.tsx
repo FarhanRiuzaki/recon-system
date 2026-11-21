@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -13,7 +13,7 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, CURRENCIES, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, CURRENCIES, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -55,6 +55,13 @@ function FieldPick({ id, label, i, pair, op, fields, onPick }: {
 function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: Record<string, string>; onChange: (t: Record<string, string>) => void; onRemoved?: (code: string, value: string) => void }) {
   const rows = Object.entries(value);
   const free = CURRENCIES.filter((c) => !Object.hasOwn(value, c));
+  // a row's error shows once it is left (ux-form-rules 7) and goes as soon as the value is right
+  const [left, setLeft] = useState<ReadonlySet<string>>(new Set());
+  const add = () => {
+    const next = addCurrency(value), code = Object.keys(next).find((c) => !Object.hasOwn(value, c));
+    onChange(next);
+    if (code) requestAnimationFrame(() => document.getElementById(`${id}-${code}`)?.focus());
+  };
   return (
     <div className="grid gap-2">
       {rows.map(([code, v]) => (
@@ -63,11 +70,13 @@ function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: 
             {[code, ...free].map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Input id={`${id}-${code}`} aria-label={`${code} tolerance`} inputMode="decimal" value={v} className="min-w-0 flex-1 tabular" placeholder={(0).toFixed(currencyDecimals(code))}
-            onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
+            aria-invalid={(left.has(code) && !!toleranceProblem(v)) || undefined} aria-describedby={left.has(code) && toleranceProblem(v) ? `${id}-${code}-error` : undefined}
+            onBlur={() => setLeft((s) => new Set(s).add(code))} onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove the ${code} tolerance`} onClick={() => { onChange(removeCurrency(value, code)); onRemoved?.(code, v); }}><Icon icon={CloseIcon} /></Button>
         </div>
       ))}
-      {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={() => onChange(addCurrency(value))}>Add currency</Button></span>}
+      {rows.map(([code, v]) => (left.has(code) ? <PlaceError key={code} id={`${id}-${code}-error`} text={toleranceProblem(v)} /> : null))}
+      {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={add}>Add currency</Button></span>}
     </div>
   );
 }

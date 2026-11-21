@@ -78,7 +78,11 @@ export function useStartVersion(spaceId: string, id: string) {
 export function useLastRun(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconLatestRuns(spaceId, id);
   // ponytail: the newest real run among the last 50 runs; a `mode=real` filter on GET …/runs when simulations crowd it out
-  return useQuery({ queryKey: key, queryFn: () => api<Page<ReconRunDto>>(url), enabled, select: (p) => p.items.find((r) => r.mode !== "simulation") ?? null });
+  const list = useQuery({ queryKey: key, queryFn: () => api<Page<ReconRunDto>>(url), enabled, select: (p) => p.items.find((r) => r.mode !== "simulation") ?? null });
+  // its detail, the run page's own query: a list row has no days or live totals, so the line would read the run's own
+  // counts while the run page reads what stands now (re-check B7)
+  const run = useRun(spaceId, id, enabled ? (list.data?.id ?? null) : null);
+  return run.data ?? null;
 }
 
 /** How often a queued or running run is read again. */

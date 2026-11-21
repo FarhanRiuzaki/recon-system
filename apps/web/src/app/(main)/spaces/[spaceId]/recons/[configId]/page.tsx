@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ReconDetail } from "@/features/recon/recon-detail";
 import { RECON_TABS } from "@/features/recon/recon-text";
 import { guardedTitle, openSpace, requirePagePermission } from "@/lib/server/page-guard";
-import { Prefetch, reads, reconSourceReads, type SearchParams, toSearch } from "@/lib/server/prefetch";
+import { lastRunReads, Prefetch, reads, reconSourceReads, type SearchParams, toSearch } from "@/lib/server/prefetch";
 
 type Params = Promise<{ spaceId: string; configId: string }>;
 
@@ -24,7 +24,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const sp = toSearch(await searchParams);
   const tab = RECON_TABS.find((t) => t === sp.get("tab")) ?? "overview";
   const tables = tab === "versions" ? [reads.reconVersions(spaceId, configId, sp)] : tab === "activity" ? [reads.reconActivity(spaceId, configId, sp)]
-    : await reconSourceReads(spaceId, configId);
+    : [...(await reconSourceReads(spaceId, configId)), ...(await lastRunReads(spaceId, configId))];
   return (
     <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), ...tables]}>
       <ReconDetail spaceId={spaceId} id={configId} tab={tab} />
