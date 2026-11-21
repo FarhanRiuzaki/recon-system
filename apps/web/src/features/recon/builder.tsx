@@ -22,7 +22,7 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addPass, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
+  addCurrencyCondition, addPass, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -35,7 +35,7 @@ import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSim
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
 /** The draft's autosave as the page header says it (ui-standard §1a: save status lives only in the header line). */
-export type SaveState = { status: "saved" | "saving" | "failed"; retry: () => void };
+export type SaveState = { status: "saved" | "saving" | "failed" | "incomplete"; retry: () => void };
 /** How long after the last change the draft saves itself. */
 const SAVE_DELAY_MS = 800;
 /** "Pass 2, condition 1: …" for the status line: the place and the API's sentence. */
@@ -126,6 +126,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const json = JSON.stringify(spec);
   const dirty = json !== savedJson;
   const failed = dirty && failedJson === json;
+  // a field still being filled in (save-queue waits; Run simulation and Submit say what to fill in)
+  const incomplete = incompleteField(spec);
   // the leave guard holds only while a change is waiting, saving or refused
   const guard = useLeaveGuard(editable && dirty);
   const conflict = editable && version.specHash !== ourHash;
@@ -224,7 +226,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   }
   // a moment after the last change; never again for a spec the API refused until it changes
   useEffect(() => {
-    if (!editable || !dirty || saving || failedJson === json) return;
+    // never for a spec still being filled in (an empty tolerance row): the API would refuse it; its field says why
+    if (!editable || !dirty || saving || failedJson === json || incomplete) return;
     const t = setTimeout(() => void save(), SAVE_DELAY_MS);
     return () => clearTimeout(t);
   }, [json, savedJson, failedJson, saving, editable]); // eslint-disable-line react-hooks/exhaustive-deps -- save reads the spec of this render
@@ -275,12 +278,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setStarting(false);
     }
   }
-  const blocked = !canEdit ? MAKER_REASON : !dirty && (live || starting) ? RUNNING_REASON : submitReason(saved, { dirty, failed, passes: spec.passes.length, gaps });
-  const simBlocked = !canEdit ? MAKER_REASON : failed ? "The draft isn't saved. Retry the save, then run the simulation." : null;
+  const blocked = !canEdit ? MAKER_REASON : incomplete ?? (!dirty && (live || starting) ? RUNNING_REASON : submitReason(saved, { dirty, failed, passes: spec.passes.length, gaps }));
+  const simBlocked = !canEdit ? MAKER_REASON : incomplete ?? (failed ? "The draft isn't saved. Retry the save, then run the simulation." : null);
   // the header's save line: a stable Retry that saves the spec of the latest render
   const retry = useRef(() => {});
   useEffect(() => { retry.current = () => void save(true); });
-  const saveStatus = failed ? "failed" : dirty || saving ? "saving" : "saved";
+  const saveStatus = failed ? "failed" : saving ? "saving" : dirty && incomplete ? "incomplete" : dirty ? "saving" : "saved";
   useEffect(() => { if (editable) onSaveState?.({ status: saveStatus, retry: () => retry.current() }); }, [saveStatus, editable, onSaveState]);
   const placed = problem && (problem.pass !== undefined || problem.side !== undefined || problem.setting) ? problem : null;
   const gates = carryOverGates(spec);

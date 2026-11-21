@@ -16,9 +16,9 @@ vi.mock("next/headers", () => ({
 import type { QueryKey } from "@tanstack/react-query";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { readTable, tableRequest, text } from "@/lib/shared/table-state";
-import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions, userSpaces } from "@/lib/shared/queries";
+import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, reconLatestRuns, reconRun, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions, userSpaces } from "@/lib/shared/queries";
 import { fakeApi, pathOf, sealCookie, TEST_TOKEN } from "@/test/session";
-import { Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
+import { lastRunReads, Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
 
 const sp = (qs: string) => toSearch(Object.fromEntries(new URLSearchParams(qs)));
 /** The key useTableQuery builds for `table` at URL state `qs`, and the request it would send. */
@@ -180,4 +180,21 @@ it("raw exact Activity filters retain invalid presence so SSR never prefetches a
   const read = reads.activity(raw);
   expect(read.path).not.toBeNull();
   expect(new URL(read.path!, "http://local").searchParams.get("targetId")).toBe(" \nopaque\t ");
+});
+
+describe("a published recon's Overview reads its last run as the run page does (re-check B7)", () => {
+  it("the newest run that isn't a simulation, by its detail (days and live totals), beside the list", async () => {
+    const space = "0199f0a0-0000-7000-8000-00000000000a", recon = "0199f0a0-0000-7000-8000-00000000000b";
+    const sim = "0199f0a0-0000-7000-8000-00000000000c", run = "0199f0a0-0000-7000-8000-00000000000d";
+    fakeApi(() => Response.json({ items: [{ id: sim, mode: "simulation" }, { id: run, mode: "manual" }], total: 2, page: 1, pageSize: 50 }));
+    await sealCookie(jar);
+    const rs = await lastRunReads(space, recon);
+    expect(rs.map((r) => r.key)).toEqual([reconLatestRuns(space, recon).key, reconRun(space, recon, run).key]);
+  });
+
+  it("no real run yet: the list only", async () => {
+    fakeApi(() => Response.json({ items: [{ id: "0199f0a0-0000-7000-8000-00000000000c", mode: "simulation" }], total: 1, page: 1, pageSize: 50 }));
+    await sealCookie(jar);
+    expect(await lastRunReads("0199f0a0-0000-7000-8000-00000000000a", "0199f0a0-0000-7000-8000-00000000000b")).toHaveLength(1);
+  });
 });

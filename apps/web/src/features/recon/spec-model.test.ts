@@ -5,6 +5,7 @@ import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
   addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldFor, fieldName, fieldReason, type Fields, kindOf,
   movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
+  incompleteField, toleranceProblem,
 } from "./spec-model";
 
 // the Plan 3 gate config's sources: source1 (txn_ref, amount_minor, business_date, ccy) and source2 (reference, amount, value_date, currency)
@@ -210,5 +211,20 @@ describe("undo of a removal: the removed item goes back into the current spec, e
     const back = restoreTolerance(tol, 0, 0, "USD", "0.50")!;
     expect((back.passes[0]!.predicates[0] as { tolerance: Record<string, string> }).tolerance.USD).toBe("0.50");
     expect(restoreTolerance(back, 0, 0, "USD", "1.00")).toBeNull();
+  });
+});
+
+describe("a tolerance row still being filled in (autosave waits; the field says why)", () => {
+  const withTol = (tolerance: Record<string, string>) => ({ passes: [{ no: 2, predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance }] }] }) as unknown as ReconSpec;
+  it("an empty or malformed row keeps the spec from saving and names the row", () => {
+    expect(incompleteField(withTol({ IDR: "" }))).toBe("Fill in the IDR tolerance in pass 2.");
+    expect(incompleteField(withTol({ IDR: "1,000" }))).toBe("Fill in the IDR tolerance in pass 2.");
+    expect(incompleteField(withTol({ IDR: "1000.00" }))).toBeNull();
+    expect(incompleteField(withTol({}))).toBeNull();
+  });
+  it("the field's own error once left", () => {
+    expect(toleranceProblem("")).toBe("Enter a tolerance such as 1000.00, or remove the currency.");
+    expect(toleranceProblem("abc")).toBe("Write the tolerance as a number such as 1000.00");
+    expect(toleranceProblem("1000.5")).toBeNull();
   });
 });

@@ -40,7 +40,8 @@ export const discardable = (r: ReconDto, roles: readonly string[]) =>
 function lineOf(r: ReconDto, by: string | null, save: SaveState["status"] = "saved"): string {
   const live = r.published ? `live v${r.published.version}${r.published.publishedAt ? ` since ${at(r.published.publishedAt)}` : ""}` : "no live version";
   if (!r.draft) return r.published ? `Version ${r.published.version} · ${live}` : live;
-  const saved = save === "saving" ? "Saving…" : save === "failed" ? "Not saved" : `saved ${at(r.draft.updatedAt)}`;
+  // "incomplete": a field is still being filled in; the field says what (nothing is sent until it is)
+  const saved = save === "saving" ? "Saving…" : save === "failed" || save === "incomplete" ? "Not saved" : `saved ${at(r.draft.updatedAt)}`;
   const what = r.draft.status === "in_review" ? `Version ${r.draft.version} in review` : `Draft v${r.draft.version} · ${saved}`;
   if (by) return `${what} · by ${by} · ${live}`;
   return `${what} · ${live}`;
@@ -113,8 +114,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
             {building && shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
             {!building && r.published && runner && <RunControl spaceId={spaceId} id={id} spec={r.published.spec} />}
-            {!building && last.data && r.published && <RunSummary run={last.data} spec={r.published.spec}
-              labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} action={<Button asChild variant="secondary"><Link href={reconRunHref(spaceId, id, last.data.id)}>Open run</Link></Button>} />}
+            {!building && last && r.published && <RunSummary run={last} spec={r.published.spec}
+              labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} action={<Button asChild variant="secondary"><Link href={reconRunHref(spaceId, id, last.id)}>Open run</Link></Button>} />}
             {!building && shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
           </>
         )}

@@ -15,7 +15,7 @@ import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  draftSimulations, reconActivity, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
+  draftSimulations, reconActivity, reconLatestRuns, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
   sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
@@ -84,6 +84,7 @@ export const reads = {
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
+  reconLatestRuns: (spaceId: string, id: string): Read => ({ key: reconLatestRuns(spaceId, id).key, path: reconLatestRuns(spaceId, id).url }),
   reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string }[]) =>
     table(reconRunItems(spaceId, id, runId, passes), sp, ReconRunItemQuery),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
@@ -107,6 +108,19 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
 }
 /** The sources a spec's sides read, once each. */
 const sourceReads = (spaceId: string, sides: { source_id: string }[] = []) => [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
+
+/**
+ * A published recon's Overview: its latest runs and the detail of the newest one that isn't a simulation (its days and
+ * live totals, as its run page shows them), so the Overview's last-run line is the run page's line on first paint.
+ */
+export async function lastRunReads(spaceId: string, configId: string): Promise<Read[]> {
+  const s = await getSession();
+  const path = v1Path(reconLatestRuns(spaceId, configId).url);
+  if (!s.token || !path) return [];
+  const { data } = await backendJson<{ items?: { id: string; mode: string }[] }>(path, { token: s.token, req: { headers: await headers() } });
+  const last = data?.items?.find((r) => r.mode !== "simulation");
+  return [reads.reconLatestRuns(spaceId, configId), ...(last ? [reads.reconRun(spaceId, configId, last.id)] : [])];
+}
 
 /**
  * What a run's page shows: the run, its version (the passes name the tabs and decide the table's request) with its
