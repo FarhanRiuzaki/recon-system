@@ -34,6 +34,11 @@ import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSim
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
+/** The builder's copy of an unsaved spec (rule 12), or null: `base` = the server spec hash it was made over. */
+function readKept(key: string): { base: string; spec: ReconSpec } | null {
+  try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as { base: string; spec: ReconSpec }) : null; } catch { return null; }
+}
+
 /** The draft's autosave as the page header says it (ui-standard §1a: save status lives only in the header line). */
 export type SaveState = { status: "saved" | "saving" | "failed" | "incomplete"; retry: () => void };
 /** How long after the last change the draft saves itself. */
@@ -130,6 +135,27 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const incomplete = incompleteField(spec);
   // the leave guard holds only while a change is waiting, saving or refused
   const guard = useLeaveGuard(editable && dirty);
+  // Never lose an edit (ux-form-rules rule 12): a change the API hasn't taken yet (waiting, still being filled in,
+  // or refused) is kept in the browser per draft version, over the hash it was made from, and comes back on the next
+  // open while the server's draft is still that one; a saved spec drops the copy.
+  const keptKey = `recon:builder-draft:${version.id}`;
+  useEffect(() => {
+    const k = readKept(keptKey);
+    if (!k || k.base !== version.specHash || JSON.stringify(k.spec) === JSON.stringify(version.spec)) return;
+    // the browser's copy is only readable after mount (no localStorage in the server render): one restore, once
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSpec(k.spec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (!editable) return;
+    try {
+      if (dirty) localStorage.setItem(keptKey, JSON.stringify({ base: ourHash, spec }));
+      else localStorage.removeItem(keptKey);
+    } catch { /* not kept */ }
+    // the spec is compared by its JSON
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [json, dirty, editable, ourHash, keptKey]);
   const conflict = editable && version.specHash !== ourHash;
   const gaps = currencyGaps(spec, sourceSpecs);
   // the drag order loads only where it can be used (a draft with two passes or more); the cmdk field list with the
