@@ -12,8 +12,8 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { RECONS } from "@/lib/shared/queries";
 import { RECON_LEGEND } from "@/lib/shared/recon-status";
-import { reconColumns } from "./recon-columns";
-import { NEW_RECON_REASON, newReconHref, useSpaceRoles } from "./use-recons";
+import { type LiveIndex, reconColumns } from "./recon-columns";
+import { NEW_RECON_REASON, newReconHref, useSpaceRoles, useToday } from "./use-recons";
 
 const FILTER_DEFAULTS = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
@@ -24,7 +24,10 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
  */
 export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const def = useMemo(() => RECONS(spaceId), [spaceId]);
-  const columns = useMemo(() => reconColumns(spaceId), [spaceId]);
+  // the live columns read Today (the recons' current days and their sources), joined by id
+  const today = useToday(spaceId).data;
+  const live = useMemo((): LiveIndex | null => today ? { recons: new Map(today.recons.map((r) => [r.id, r])), sources: new Map(today.sources.map((s) => [s.id, s])) } : null, [today]);
+  const columns = useMemo(() => reconColumns(spaceId, live), [spaceId, live]);
   const t = useTableQuery<ReconRowDto, { q: string }>(def);
   const maker = useSpaceRoles(spaceId).includes("config_maker");
   const add = maker
