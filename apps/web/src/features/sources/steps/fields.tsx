@@ -1,11 +1,11 @@
 "use client";
 
-import { type ChangeEvent, useRef } from "react";
-import { Checkbox, Combobox, type ComboOption, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { type ChangeEvent, Fragment, useRef } from "react";
+import { Checkbox, Combobox, type ComboOption, Disclosure, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, CloseIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
@@ -15,7 +15,7 @@ import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_
 import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
+import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
 const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
@@ -25,15 +25,24 @@ type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
  * The core fields with what each means, behind an ⓘ (owner, 21 Nov: watermark, id column and the like are not
  * self-explaining). Plain words and one example; the note under a field stays for what to pick.
  */
-const CORE: { key: Core; label: string; note?: string; help: string }[] = [
-  { key: "business_date", label: "Business date", help: "The day a row belongs to. Recons match, close and sign off per business date, so rows of 20 Nov are compared with the other side's 20 Nov. Usually a value or booking date column, or the date in the file name." },
-  { key: "amount_minor", label: "Amount", help: "The money value both sides compare. Leave it out when a recon only matches by keys, such as an account list." },
-  { key: "currency", label: "Currency", note: "ISO code or number, such as IDR or 360.", help: "The currency of each row's amount. A source in one currency leaves this as Not used and picks the currency for every row below." },
-  { key: "direction", label: "Direction", help: "Whether a row is a debit or a credit (D/C, DR/CR, DEBIT/CREDIT). A debit counts as negative, so both sides compare amounts with the same sign." },
-  { key: "event_time", label: "Event time", help: "When the transaction happened, with its time. Matching rules can allow a time window with it, such as within 10 minutes." },
-  { key: "ext_ref", label: "Reference", help: "The id both sides share for the same transaction, such as an end-to-end or transfer reference. The strongest thing to match on." },
-  { key: "account_ref", label: "Account", help: "The account the row is posted to. Matching on it as well keeps two equal amounts on different accounts apart." },
+const CORE: { key: Core; group: "date" | "money" | "match"; label: string; note?: string; help: string }[] = [
+  { key: "business_date", group: "date", label: "Business date", help: "The day a row belongs to. Recons match, close and sign off per business date, so rows of 20 Nov are compared with the other side's 20 Nov. Usually a value or booking date column, or the date in the file name." },
+  { key: "amount_minor", group: "money", label: "Amount", help: "The money value both sides compare. Leave it out when a recon only matches by keys, such as an account list." },
+  { key: "currency", group: "money", label: "Currency", note: "ISO code or number, such as IDR or 360.", help: "The currency of each row's amount. A source in one currency leaves this as Not used and picks the currency for every row below." },
+  { key: "direction", group: "money", label: "Direction", help: "Whether a row is a debit or a credit (D/C, DR/CR, DEBIT/CREDIT). A debit counts as negative, so both sides compare amounts with the same sign." },
+  { key: "event_time", group: "match", label: "Event time", help: "When the transaction happened, with its time. Matching rules can allow a time window with it, such as within 10 minutes." },
+  { key: "ext_ref", group: "match", label: "Reference", help: "The id both sides share for the same transaction, such as an end-to-end or transfer reference. The strongest thing to match on." },
+  { key: "account_ref", group: "match", label: "Account", help: "The account the row is posted to. Matching on it as well keeps two equal amounts on different accounts apart." },
 ];
+/** The core fields in three groups, the required one first (Hick's law: one decision at a time). */
+const GROUPS = [
+  { key: "date", title: "When" }, { key: "money", title: "Money" }, { key: "match", title: "Matching" },
+] as const;
+/** The types a core field reads well from; another type gets a red cross with what to change (Combobox tone). */
+const FITS: Partial<Record<Core, readonly FieldSpec["type"][]>> = {
+  business_date: ["date", "datetime"], amount_minor: ["integer", "decimal"], event_time: ["datetime"],
+};
+
 const refValue = (r: ValueRef | undefined) => (!r ? "" : "field" in r ? (r.field ? `f:${r.field}` : "") : r.cel === FILE_DATE.cel ? "c:file_date" : `x:${r.cel}`);
 const refOf = (v: string): ValueRef | undefined => (!v ? undefined : v.startsWith("f:") ? { field: v.slice(2) } : v === "c:file_date" ? FILE_DATE : { cel: v.slice(2) });
 
@@ -110,6 +119,44 @@ export function FieldsStep(p: FieldsStepProps) {
   // what Read the columns reads: the table or the SELECT typed in step 1 (none yet: nothing to read, said instead of a 400)
   const hasSource = s.input.kind === "db_snapshot" ? !!s.input.query.trim()
     : s.input.kind === "db_watermark" ? (d.from === "table" ? !!(s.input.table ?? "").trim() : !!(s.input.query ?? "").trim()) : true;
+  const byName = new Map(s.fields.map((f) => [f.name, f]));
+  const coreField = (c: (typeof CORE)[number]) => {
+          const id = ctl(`mapping.${c.key}`);
+          const value = refValue(s.mapping[c.key]);
+          const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
+          const extra = value.startsWith("x:") ? [value] : [];
+          // searchable (owner, 21 Nov): a source can have tens of columns; clearing the field = not used
+          const opts: ComboOption[] = [
+            ...(c.key === "business_date" && file ? [{ value: "c:file_date", label: "From the file name" }] : []),
+            ...names.map((n): ComboOption => {
+              const t = byName.get(n)?.type;
+              const ex = examples.get(n)?.[0];
+              const fits = FITS[c.key];
+              const bad = !!t && !!fits && !fits.includes(t);
+              return { value: `f:${n}`, label: n, tone: fits && t ? (bad ? "bad" : "ok") : undefined,
+                description: [t ? TYPE_LABEL[t] : "Derived value", ex ? `e.g. ${ex}` : null, bad ? `set its type to ${TYPE_LABEL[fits[0]!]} in Columns` : null].filter(Boolean).join(" · ") };
+            }),
+            ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
+          ];
+          const field = (
+            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)} help={c.help}>
+              <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
+                placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
+                onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
+            </Field>
+          );
+          // the currency per row or one for every row: two answers to one question, kept together in one cell
+          if (c.key !== "currency" || s.mapping.currency) return field;
+          return (
+            <div key={c.key} className="grid content-start gap-3">
+              {field}
+              <Field id={ctl("currency")} label="Or one currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
+                <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
+                  value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
+              </Field>
+            </div>
+          );
+  };
   return (
     <div className="grid gap-section">
       {file ? (
@@ -137,56 +184,7 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       )}
 
-      <Panel title="Core fields" bodyClassName="grid gap-4 md:grid-cols-2">
-        {CORE.map((c) => {
-          const id = ctl(`mapping.${c.key}`);
-          const value = refValue(s.mapping[c.key]);
-          const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
-          const extra = value.startsWith("x:") ? [value] : [];
-          // searchable (owner, 21 Nov): a source can have tens of columns; clearing the field = not used
-          const opts: ComboOption[] = [
-            ...(c.key === "business_date" && file ? [{ value: "c:file_date", label: "From the file name" }] : []),
-            ...names.map((n) => ({ value: `f:${n}`, label: n })),
-            ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
-          ];
-          const field = (
-            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)} help={c.help}>
-              <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
-                placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
-                onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
-            </Field>
-          );
-          // the currency per row or one for every row: two answers to one question, kept together in one cell
-          if (c.key !== "currency" || s.mapping.currency) return field;
-          return (
-            <div key={c.key} className="grid content-start gap-3">
-              {field}
-              <Field id={ctl("currency")} label="Or one currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
-                <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
-                  value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
-              </Field>
-            </div>
-          );
-        })}
-        {s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
-        {s.input.kind !== "db_snapshot" && (
-          <span className="inline-flex items-center gap-2 md:col-span-2">
-            <Switch id={ctl("mutable")} checked={s.mutable} onChange={(e) => setSpec((x) => ({ ...x, mutable: e.target.checked }))} aria-label="Rows can change after they arrive" />
-            <label htmlFor={ctl("mutable")} className="text-body text-fg">Rows can change after they arrive</label>
-            <InfoTip label="Rows can change after they arrive">
-              Turn on when the source can send the same transaction again with new values, such as a status or amount
-              corrected later. The newest version of each row counts and replaces the earlier one. Leave off when a row,
-              once sent, never changes.
-            </InfoTip>
-          </span>
-        )}
-        {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
-      </Panel>
-
-      {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
-
-      <Panel flush title="Columns" description={`${s.fields.length} columns`}>
-        {err(ctl("key_fields")) && <p role="alert" className="px-4 pt-3 text-body-sm text-down-ink">{err(ctl("key_fields"))}</p>}
+      <Panel flush title="Columns" description={`${s.fields.length} columns · check each type: the fields below read it`}>
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
@@ -196,14 +194,13 @@ export function FieldsStep(p: FieldsStepProps) {
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
                 <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
-                <TableHead>Empty ok</TableHead><TableHead>Match key</TableHead>
+                <TableHead>Empty ok</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {s.fields.map((f, i) => {
                   const id = ctl(`fields.${i}`);
                   const hint = p.engine ? fieldTypeOf(p.engine, p.native.get(f.name) ?? "").note : undefined;
                   const why = err(id) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`));
-                  const key = s.key_fields.includes(f.name);
                   const stored = storedName(s, f.name);
                   const nameId = `src-attr-${i}`;
                   const typedName = p.typedNames[f.name];
@@ -254,8 +251,6 @@ export function FieldsStep(p: FieldsStepProps) {
                       </TableCell>
                       <TableCell className="max-xl:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
-                      <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} is part of the match key`} checked={key}
-                        onToggle={() => setSpec((x) => ({ ...x, key_fields: key ? x.key_fields.filter((k) => k !== f.name) : [...x.key_fields, f.name] }))} /><Cap inline>Match key</Cap></span></TableCell>
                     </TableRow>
                   );
                 })}
@@ -266,11 +261,44 @@ export function FieldsStep(p: FieldsStepProps) {
       </Panel>
 
       <Derived {...p} setSpec={setSpec} />
+      <Panel title="Map to recon fields" description="Which column gives each value the recons read" bodyClassName="grid gap-4 md:grid-cols-2">
+        {GROUPS.map((g) => (
+          <Fragment key={g.key}>
+            <h3 className="eyebrow text-fg-3 md:col-span-2">{g.title}</h3>
+            {CORE.filter((c) => c.group === g.key).map(coreField)}
+            {g.key === "money" && s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
+          </Fragment>
+        ))}
+        {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
+      </Panel>
+
+
+      {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
+      {s.input.kind !== "db_snapshot" && (
+        <Panel title="When a row changes" bodyClassName="grid gap-4">
+          <span className="inline-flex items-center gap-2 md:col-span-2">
+            <Switch id={ctl("mutable")} checked={s.mutable} onChange={(e) => setSpec((x) => ({ ...x, mutable: e.target.checked }))} aria-label="Rows can change after they arrive" />
+            <label htmlFor={ctl("mutable")} className="text-body text-fg">Rows can change after they arrive</label>
+            <InfoTip label="Rows can change after they arrive">
+              Turn on when the source can send the same transaction again with new values, such as a status or amount
+              corrected later. The newest version of each row counts and replaces the earlier one. Leave off when a row,
+              once sent, never changes.
+            </InfoTip>
+          </span>
+          {s.mutable && (
+            <Field id={ctl("key_fields")} label="Match key" required error={err(ctl("key_fields"))}
+              note="The columns that together name one row, such as its reference. A newer row with the same match key replaces the earlier one.">
+              <Combobox multiple id={ctl("key_fields")} label="Match key" placeholder="Pick the columns" options={s.fields.map((f) => ({ value: f.name, label: f.name }))}
+                value={s.key_fields.map((k) => ({ value: k, label: k }))} onChange={(v) => setSpec((x) => ({ ...x, key_fields: v.map((o) => o.value) }))} />
+            </Field>
+          )}
+        </Panel>
+      )}
       <PreviewPanel {...p} />
+      <Left d={d} />
     </div>
   );
 }
-
 /** The Columns table as cards below 1280 px (a cell's height stays its content's: no fixed row height). */
 const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_tr]:grid-cols-2 max-xl:[&_tr]:gap-x-3 max-xl:[&_tr]:gap-y-3 max-xl:[&_tr]:border-b max-xl:[&_tr]:border-line max-xl:[&_tr]:px-4 max-xl:[&_tr]:py-3 max-xl:[&_td]:block max-xl:[&_td]:h-auto max-xl:[&_td]:border-0 max-xl:[&_td]:p-0 max-xl:[&_td]:whitespace-normal";
 
@@ -388,6 +416,18 @@ function SampleInput(p: FieldsStepProps) {
 function Derived({ d, err, setSpec }: FieldsStepProps & { setSpec: (fn: (s: SourceSpec) => SourceSpec) => void }) {
   const entries = Object.entries(d.spec.derive);
   const rename = (from: string, to: string) => setSpec((x) => ({ ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])) }));
+  const add = () => setSpec((x) => ({ ...x, derive: { ...x.derive, [`value_${Object.keys(x.derive).length + 1}`]: "" } }));
+  // rarely needed: closed until one exists, so the usual path is columns, then the mapping
+  if (!entries.length) {
+    return (
+      <Disclosure summary="Derived values (optional)">
+        <span className="grid gap-3">
+          A value computed per row before mapping, such as a reference built from two columns, written in CEL over row.&lt;column&gt;, file_name and file_date. It can then be mapped like a column.
+          <span><Button type="button" variant="secondary" onClick={add}>Add a derived value</Button></span>
+        </span>
+      </Disclosure>
+    );
+  }
   return (
     <Panel title="Derived values" description="Optional · computed per row before mapping, with CEL over row.<column>, file_name and file_date" bodyClassName="grid gap-3">
       {entries.map(([name, expr], i) => {
@@ -403,7 +443,35 @@ function Derived({ d, err, setSpec }: FieldsStepProps & { setSpec: (fn: (s: Sour
           </div>
         );
       })}
-      <span><Button type="button" variant="secondary" onClick={() => setSpec((x) => ({ ...x, derive: { ...x.derive, [`value_${Object.keys(x.derive).length + 1}`]: "" } }))}>Add a derived value</Button></span>
+      <span><Button type="button" variant="secondary" onClick={add}>Add a derived value</Button></span>
+    </Panel>
+  );
+}
+
+/**
+ * What is still missing before Next, each with a check or a cross and its words (goal gradient: the end is visible;
+ * the same rules Next checks: mappingProblem, amountProblems, the watermark, the match key).
+ */
+function Left({ d }: { d: Draft }) {
+  const s = d.spec, i = s.input;
+  const items = [
+    { ok: s.fields.length > 0, text: "Columns read" },
+    { ok: s.fields.length > 0 && !mappingProblem(s), text: "Business date mapped" },
+    ...(s.mapping.amount_minor ? [{ ok: !!s.mapping.amount_minor.unit, text: "Amount unit chosen" }, { ok: !!(s.mapping.currency || s.currency), text: "Currency set" }] : []),
+    ...(i.kind === "db_watermark" ? [{ ok: !!i.watermark.column && !!i.watermark.id_column, text: "Watermark and id column picked" }] : []),
+    ...(i.kind !== "db_snapshot" && s.mutable ? [{ ok: s.key_fields.length > 0, text: "Match key picked" }] : []),
+  ];
+  const left = items.filter((x) => !x.ok).length;
+  return (
+    <Panel title="Before you go on" description={left ? `${left} of ${items.length} left` : "Ready for review"}>
+      <ul className="grid gap-2 md:grid-cols-2">
+        {items.map((x) => (
+          <li key={x.text} className="flex items-center gap-2 text-body-sm">
+            <Icon icon={x.ok ? CheckIcon : CloseIcon} className={x.ok ? "size-4 shrink-0 text-healthy-mark" : "size-4 shrink-0 text-down-mark"} />
+            <span className={x.ok ? "text-fg-2" : "text-fg"}>{x.text}</span><span className="sr-only">{x.ok ? " (done)" : " (to do)"}</span>
+          </li>
+        ))}
+      </ul>
     </Panel>
   );
 }
