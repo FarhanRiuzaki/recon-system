@@ -542,7 +542,19 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   // open while the server's draft is still the one the copy was made over. Quiet: Next still saves and reports.
   const serverHash = useRef<string | null>(source?.v.specHash ?? null);
   const savedStep = useRef(step);
+  // the copy kept by an earlier visit, once, after mount (localStorage is the browser's: never in the server render);
+  // declared first, and the save below skips that first commit, so the server's spec never overwrites the copy
+  const restoring = useRef(false);
   useEffect(() => {
+    if (!ids) return;
+    const kept = readLocal(ids.versionId);
+    if (!kept || (kept.base !== null && kept.base !== serverHash.current)) return;
+    restoring.current = true;
+    setDraft((x) => ({ ...x, spec: kept.spec, from: kept.from }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (restoring.current) { restoring.current = false; return; }
     if (!ids || saved.current === specKey) return;
     keepLocal(ids.versionId, { base: serverHash.current, spec, from: d.from });
     const moved = savedStep.current !== step;
@@ -555,13 +567,6 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specKey, ids, step, spaceId]);
-  // the copy kept by an earlier visit, once, after mount (localStorage is the browser's: never in the server render)
-  useEffect(() => {
-    if (!ids) return;
-    const kept = readLocal(ids.versionId);
-    if (kept && (kept.base === null || kept.base === serverHash.current)) setDraft((x) => ({ ...x, spec: kept.spec, from: kept.from }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function next() {
     setFormError(null);
