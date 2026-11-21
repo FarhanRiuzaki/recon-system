@@ -6,17 +6,12 @@ import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { RemoveIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
-import { Select } from "@starterkit/ui/ui/select";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { applySteps, COMPUTE_STEPS, type ComputeStep, type ComputeType, computeCel, computeSteps } from "@starterkit/shared/compute";
+import { applySteps, COMPUTE_STEPS, type ComputeStep, type ComputeType, computeCel, computeSteps, DUMMY_EXAMPLES, startStep } from "@starterkit/shared/compute";
 import { ctl } from "./model";
 
-/** A step as it starts when picked from the menu. */
-const START: Record<ComputeType, ComputeStep> = {
-  word: { type: "word", n: 1 }, part: { type: "part", sep: "|", n: 1 }, between: { type: "between", before: "", after: "" },
-  digits: { type: "digits" }, trim: { type: "trim" }, upper: { type: "upper" }, lower: { type: "lower" },
-  replace: { type: "replace", find: "", with: "" }, default: { type: "default", value: "" },
-};
+/** The menu of steps: what each does on its own example, at the right; its expression under it. */
+const STEP_OPTIONS: ComboOption[] = COMPUTE_STEPS.map((x) => ({ value: x.type, label: x.label, hint: x.example, description: x.expression }));
 
 type Props = {
   spec: SourceSpec;
@@ -36,6 +31,8 @@ type Props = {
 export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
   const entries = Object.entries(spec.derive);
   const [asText, setAsText] = useState<Record<string, boolean>>({});
+  // no example from the source yet (no rows): try the steps on sample values a person can change
+  const [tryWith, setTryWith] = useState<string[]>(DUMMY_EXAMPLES);
   const sources: ComboOption[] = spec.fields.map((f) => ({ value: f.name, label: f.name, description: examples.get(f.name)?.[0] ? `e.g. ${examples.get(f.name)![0]}` : undefined }));
   const setExpr = (name: string, expr: string) => setSpec((x) => ({ ...x, derive: { ...x.derive, [name]: expr } }));
   const rename = (from: string, to: string) => setSpec((x) => ({ ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])) }));
@@ -48,7 +45,8 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
         const built = computeSteps(expr);
         const text = asText[name] || !built;
         const set = (source: string, steps: ComputeStep[]) => setExpr(name, computeCel(source, steps));
-        const examplesOf = built ? (examples.get(built.source) ?? []).slice(0, 3) : [];
+        const real = built ? (examples.get(built.source) ?? []).slice(0, 3) : [];
+        const examplesOf = real.length ? real : tryWith;
         return (
           // one card per computed column (common region): what it is called and starts from, its steps, its result
           <section key={i} aria-label={`Computed column ${name || i + 1}`} className="grid gap-4 rounded-lg border border-line bg-card p-4">
@@ -85,10 +83,9 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
                     ))}
                   </ol>
                 )}
-                <Select aria-label="Add a step" value="" className="w-full md:w-80" onChange={(e) => e.target.value && set(built.source, [...built.steps, START[e.target.value as ComputeType]])}>
-                  <option value="">{built.steps.length ? "Add another step…" : "Add a step…"}</option>
-                  {COMPUTE_STEPS.map((x) => <option key={x.type} value={x.type}>{x.label}</option>)}
-                </Select>
+                <Combobox label="Add a step" className="w-full md:max-w-xl" options={STEP_OPTIONS} value={null}
+                  placeholder={built.steps.length ? "Add another step…" : "Add a step…"} emptyText="No step has that name. Try word, part, between, digits."
+                  onChange={(o) => o && set(built.source, [...built.steps, startStep(o.value as ComputeType)])} />
                 {err(id) && <p role="alert" className="text-body-sm text-down-ink">{err(id)}</p>}
               </div>
             )}
@@ -96,13 +93,17 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
             {built && !text && (
               <div className="grid gap-2">
                 <span className="text-label text-fg">Result</span>
+                {!real.length && <p className="text-caption text-fg-3">No example from the source yet: sample values below, change them to try your data.</p>}
                 {examplesOf.length ? (
                   <table className="w-full overflow-hidden rounded-md text-body-sm">
                     <thead className="bg-tray text-left text-caption text-fg-3"><tr><th className="px-3 py-1.5 font-normal">{built.source}</th><th className="px-3 py-1.5 font-normal">{name || "Result"}</th></tr></thead>
                     <tbody className="font-mono text-mono">
                       {examplesOf.map((v, k) => (
                         <tr key={k} className="border-t border-line">
-                          <td className="px-3 py-1.5 text-fg-3">{v || "(empty)"}</td>
+                          <td className="px-3 py-1.5 text-fg-3">{real.length ? v || "(empty)" : (
+                            <Input aria-label={`Sample value ${k + 1}`} value={v} className="h-7 w-full font-mono" spellCheck={false}
+                              onChange={(e) => setTryWith((t) => t.map((x, j) => (j === k ? e.target.value : x)))} />
+                          )}</td>
                           <td className="px-3 py-1.5 text-fg">{applySteps(v, built.steps) || <span className="text-fg-3">(empty)</span>}</td>
                         </tr>
                       ))}
@@ -123,23 +124,21 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
   );
 }
 
-/** One step's own inputs, in a sentence: "Take word [1]", "Split by [|], take part [2]". */
-function StepEditor({ step: s, onChange }: { step: ComputeStep; onChange: (s: ComputeStep) => void }) {
-  const num = (v: number, set: (n: number) => void, label: string) => (
-    <Input type="number" min={1} aria-label={label} value={v} className="w-16" onChange={(e) => set(Math.max(1, Number(e.target.value) || 1))} />
+/** One step's own inputs in its sentence: "Take word [1]", "Split by [|] take part [2]" (COMPUTE_STEPS). */
+function StepEditor({ step, onChange }: { step: ComputeStep; onChange: (s: ComputeStep) => void }) {
+  const def = COMPUTE_STEPS.find((x) => x.type === step.type)!;
+  const parts = def.sentence.split(/(\{\d\})/);
+  const setArg = (i: number, v: string | number) => onChange({ ...step, args: def.args.map((_, j) => (j === i ? v : step.args[j] ?? def.args[j]!.start)) });
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      {parts.map((p, k) => {
+        const m = /^\{(\d)\}$/.exec(p);
+        if (!m) return p.trim() && <span key={k}>{p.trim()}</span>;
+        const i = Number(m[1]), a = def.args[i]!, v = step.args[i] ?? a.start;
+        return a.kind === "int"
+          ? <Input key={k} type="number" min={1} aria-label={a.label} value={v} className="w-16" onChange={(e) => setArg(i, Math.max(1, Number(e.target.value) || 1))} />
+          : <Input key={k} aria-label={a.label} value={v} className="w-28 font-mono" onChange={(e) => setArg(i, e.target.value)} autoComplete="off" spellCheck={false} />;
+      })}
+    </span>
   );
-  const txt = (v: string, set: (t: string) => void, label: string, w = "w-24") => (
-    <Input aria-label={label} value={v} className={`${w} font-mono`} onChange={(e) => set(e.target.value)} autoComplete="off" spellCheck={false} />
-  );
-  switch (s.type) {
-    case "word": return <span className="inline-flex items-center gap-2">Take word {num(s.n, (n) => onChange({ ...s, n }), "Word number")}</span>;
-    case "part": return <span className="inline-flex flex-wrap items-center gap-2">Split by {txt(s.sep, (sep) => onChange({ ...s, sep }), "Separator", "w-14")} take part {num(s.n, (n) => onChange({ ...s, n }), "Part number")}</span>;
-    case "between": return <span className="inline-flex flex-wrap items-center gap-2">Take the text between {txt(s.before, (before) => onChange({ ...s, before }), "Text before")} and {txt(s.after, (after) => onChange({ ...s, after }), "Text after")}</span>;
-    case "replace": return <span className="inline-flex flex-wrap items-center gap-2">Replace {txt(s.find, (find) => onChange({ ...s, find }), "Text to find")} with {txt(s.with, (w) => onChange({ ...s, with: w }), "Replacement")}</span>;
-    case "default": return <span className="inline-flex items-center gap-2">If empty, use {txt(s.value, (value) => onChange({ ...s, value }), "Value when empty")}</span>;
-    case "digits": return <span>Keep digits only</span>;
-    case "trim": return <span>Trim spaces</span>;
-    case "upper": return <span>UPPERCASE</span>;
-    case "lower": return <span>lowercase</span>;
-  }
 }

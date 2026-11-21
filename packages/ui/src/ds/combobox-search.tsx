@@ -10,7 +10,11 @@ import { CheckIcon, ChevronDownIcon, CloseIcon, SpinnerIcon } from "../ui/icons"
  * An option; `tone` marks whether it can be used here: "ok" a green check, "bad" a red cross with its description
  * (the reason) in Down ink. A "bad" option that is disabled keeps full colour so the reason stays readable.
  */
-export type ComboOption = { value: string; label: string; description?: string; disabled?: boolean; tone?: "ok" | "bad" };
+export type ComboOption = {
+  value: string; label: string; description?: string; disabled?: boolean; tone?: "ok" | "bad";
+  /** A short example beside the label, at the right (mono, muted): what the option does, such as "a|b" → "b". */
+  hint?: string;
+};
 type Load = (query: string, signal: AbortSignal) => Promise<ComboOption[]>;
 type Common = {
   id?: string; label: string; placeholder?: string; disabled?: boolean; invalid?: boolean; describedBy?: string; className?: string;
@@ -191,7 +195,10 @@ export function SearchCombobox(props: Single | Multiple) {
             o.disabled && "cursor-not-allowed", o.disabled && o.tone !== "bad" && "opacity-50", o.value === CREATE && "text-primary-ink")}>
           {o.tone && <Icon icon={o.tone === "ok" ? CheckIcon : CloseIcon} className={cn("mt-0.5 size-4 shrink-0", o.tone === "ok" ? "text-healthy-mark" : "text-down-mark")} />}
           <span className="grid min-w-0 flex-1">
-            <span className={cn("truncate", o.tone === "bad" && o.disabled && "text-fg-2")}>{o.label}</span>
+            <span className="flex min-w-0 items-baseline gap-3">
+              <span className={cn("truncate", o.tone === "bad" && o.disabled && "text-fg-2")}>{o.label}</span>
+              {o.hint && <span className="ml-auto max-w-3/5 shrink-0 truncate font-mono text-mono text-fg-3">{o.hint}</span>}
+            </span>
             {o.description && <span className={cn("truncate text-body-sm", o.tone === "bad" ? "text-down-ink" : "text-fg-3")}>{o.description}</span>}
           </span>
           {on && <Icon icon={CheckIcon} className="mt-0.5 size-4 shrink-0 text-primary" />}

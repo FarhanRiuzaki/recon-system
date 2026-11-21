@@ -26,20 +26,16 @@ export const SAFE_PATTERNS: Record<string, RegExp> = {
 export type DeriveVars = { row: Record<string, string>; file_name: string; file_date: string };
 export type Compiled = { readonly run: ParseResult };
 
-const env = new Environment({ limits: LIMITS })
+const base = new Environment({ limits: LIMITS })
   .registerVariable("row", "map")
   .registerVariable("file_name", "string")
   .registerVariable("file_date", "string")
-  .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v))
-  .registerFunction("trimmed(string): string", COMPUTE_FUNCTIONS.trimmed)
-  .registerFunction("upper(string): string", COMPUTE_FUNCTIONS.upper)
-  .registerFunction("lower(string): string", COMPUTE_FUNCTIONS.lower)
-  .registerFunction("digits_only(string): string", COMPUTE_FUNCTIONS.digits_only)
-  .registerFunction("word_at(string, int): string", (s: string, n: bigint | number) => COMPUTE_FUNCTIONS.word_at(s, Number(n)))
-  .registerFunction("part_at(string, string, int): string", (s: string, sep: string, n: bigint | number) => COMPUTE_FUNCTIONS.part_at(s, sep, Number(n)))
-  .registerFunction("text_between(string, string, string): string", COMPUTE_FUNCTIONS.text_between)
-  .registerFunction("replace_text(string, string, string): string", COMPUTE_FUNCTIONS.replace_text)
-  .registerFunction("or_default(string, string): string", COMPUTE_FUNCTIONS.or_default);
+  .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v));
+// computed columns' steps, from the one table the wizard previews with; a CEL int arrives as a bigint
+const env = Object.entries(COMPUTE_FUNCTIONS).reduce((e, [fn, f]) => e.registerFunction(
+  `${fn}(${["string", ...f.args.map((k) => (k === "int" ? "int" : "string"))].join(", ")}): string`,
+  (s: string, ...a: unknown[]) => f.run(s, ...(a.map((v) => (typeof v === "bigint" ? Number(v) : v)) as never[])),
+), base);
 
 type Node = { op?: string; args?: unknown };
 /** Every call node of the tree: [function name, argument nodes]. */

@@ -188,8 +188,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const y = !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
     return withUnit(y);
   };
-  /** A database source previews once after its columns are read, so Example isn't empty (one pull, not one per edit). */
-  const autoPreview = useRef(false);
+  /**
+   * A database source previews once when step 2 opens with what step 1 read, and again after its columns are read, so
+   * Example and the computed columns' results fill by themselves (owner, 21 Nov; one pull per visit, not per edit).
+   */
+  const autoPreview = useRef(true);
   const tablesFor = useRef<string | null>(null);
   const tableSeq = useRef(0);
   const saved = useRef(source?.v.spec ? JSON.stringify(source.v.spec) : null);
