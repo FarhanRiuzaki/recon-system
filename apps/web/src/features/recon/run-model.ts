@@ -3,7 +3,7 @@
 // difference. Pure: the builder, the simulation bar and the run page read the same numbers from here.
 import { APP_TIME_ZONE_LABEL, appDate, appDayStart, formatDate, formatDecimal, formatMinor, formatNumber, formatTime, shiftDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
-import type { PassSpec, ReconRunDto, ReconSpec, RunDay } from "@starterkit/shared/contracts/recon";
+import type { PassSpec, ReconRunDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
 import { RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
@@ -76,16 +76,41 @@ export function runTotals(c: Counters, spec: ReconSpec) {
   }
   const inA = c.intake.a - c.replaced.a, inB = c.intake.b - c.replaced.b;
   const rate = a !== null && inA > 0 ? a / inA : null;
-  return { matched, suggested, duplicate, duplicateRefs: refs, ambiguous, waiting: c.open, items: inA + inB, in: { a: inA, b: inB }, rate };
+  return { matched, suggested, duplicate, duplicateRefs: refs, ambiguous, waiting: c.open, breaks: null as PerSide | null, items: inA + inB, in: { a: inA, b: inB }, rate };
 }
+type PerSide = { a: number; b: number };
+export type Totals = ReturnType<typeof runTotals>;
+
+/**
+ * A run's totals as they stand now (the run page, a recon's last run): `live` and the run's `days` once the API has
+ * them (suggestions confirmed or broken since, breaks of time per side, waiting items), else what the run itself did
+ * (`counters`). Items taken in, references and the pass split stay the run's own.
+ */
+export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "live">, spec: ReconSpec): Totals {
+  const own = runTotals(run.counters, spec);
+  if (!run.live || !run.days) return own;
+  let duplicate = 0, ambiguous = 0;
+  for (const d of run.days) { const t = dayTotals(d, spec); duplicate += t.duplicate; ambiguous += t.ambiguous; }
+  // ponytail: one side A item per matched group; an N:1 pass that matched leaves the rate to the run's own counters
+  const n1 = spec.passes.some((p) => p.cardinality === "N:1" && run.counters.passes[String(p.no)]?.matched);
+  const rate = n1 ? own.rate : own.in.a > 0 ? run.live.matched / own.in.a : null;
+  return { ...own, matched: run.live.matched, suggested: run.live.suggested, duplicate, ambiguous, waiting: run.live.open, breaks: run.live.breaks, rate };
+}
+
+/** "2,000 items", or the one fact that the run found nothing new to take in. */
+export const itemsText = (n: number) => (n ? `${formatNumber(n)} items` : "no new records");
 
 /** "93.7%" (one decimal, as the design writes it), or "—". */
 export const rateText = (rate: number | null) => (rate === null ? "—" : `${formatDecimal(rate * 100, 1)}%`);
 
-/** "937 matched · 24 suggested (open) · 30 duplicate · 24 · 24 waiting · match rate 93.7%" (BUILDER-SPEC count line). */
-export function countLine(t: ReturnType<typeof runTotals>): string {
+/**
+ * "937 matched · 24 suggested (open) · 30 duplicate · 24 · 24 waiting · match rate 93.7%" (BUILDER-SPEC count line);
+ * breaks per side after waiting once there are any ("48 · 48 breaks").
+ */
+export function countLine(t: Totals): string {
+  const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [`${formatNumber(t.breaks.a)} · ${formatNumber(t.breaks.b)} breaks`] : [];
   return [`${formatNumber(t.matched)} matched`, `${formatNumber(t.suggested)} suggested (open)`, `${formatNumber(t.duplicate)} duplicate`,
-    ...(t.ambiguous ? [`${formatNumber(t.ambiguous)} ambiguous`] : []), `${formatNumber(t.waiting.a)} · ${formatNumber(t.waiting.b)} waiting`, `match rate ${rateText(t.rate)}`].join(" · ");
+    ...(t.ambiguous ? [`${formatNumber(t.ambiguous)} ambiguous`] : []), `${formatNumber(t.waiting.a)} · ${formatNumber(t.waiting.b)} waiting`, ...breaks, `match rate ${rateText(t.rate)}`].join(" · ");
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -112,7 +137,7 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   }
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;
   const at = shown.finishedAt ? ` · ${formatTime(Date.parse(shown.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
-  return { chip: { health: "healthy", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${formatNumber(items)} items${at}`, counts: shown, dim: false };
+  return { chip: { health: "healthy", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
 }
 
 /** Why Submit for approval waits on a simulation that is running (BUILDER-SPEC), before submitReason's own reasons. */
@@ -215,7 +240,7 @@ export function amountText(minor: string | null, ccy: string | null): string {
 }
 
 /** A business date of a run in the strip: groups matched and suggested, items broken by label, items waiting per side. */
-export function dayTotals(day: Pick<RunDay, "passes" | "open">, spec: ReconSpec) {
+export function dayTotals(day: Pick<RunDay, "passes" | "open"> & Partial<Pick<RunDay, "breaks" | "closed">>, spec: ReconSpec) {
   let matched = 0, suggested = 0, duplicate = 0, ambiguous = 0;
   for (const p of spec.passes) {
     const x = day.passes[String(p.no)];
@@ -224,7 +249,17 @@ export function dayTotals(day: Pick<RunDay, "passes" | "open">, spec: ReconSpec)
     suggested += x.suggested;
     if (breakLabel(p) === "Duplicate") duplicate += x.broken; else ambiguous += x.broken;
   }
-  return { matched, suggested, duplicate, ambiguous, waiting: day.open };
+  return { matched, suggested, duplicate, ambiguous, waiting: day.open, breaks: day.breaks ?? null, closed: !!day.closed };
+}
+
+/** Each pass's groups and broken items over all of a run's dates as they stand now (the pass tabs under "All dates"). */
+export function dayPasses(days: readonly Pick<RunDay, "passes">[]): RunDay["passes"] {
+  const out: RunDay["passes"] = {};
+  for (const d of days) for (const [no, x] of Object.entries(d.passes)) {
+    const o = (out[no] ??= { matched: 0, suggested: 0, broken: 0, brokenRefs: 0 });
+    o.matched += x.matched; o.suggested += x.suggested; o.broken += x.broken; o.brokenRefs += x.brokenRefs;
+  }
+  return out;
 }
 
 /** Day close's reason for a pair that only the currency keeps apart: a card of its own in the builder (BUILDER-SPEC). */
@@ -238,14 +273,12 @@ type Sides = readonly [string, string];
 const perSide = (a: number, b: number, labels: Sides) => (a === b ? formatNumber(a) : `${formatNumber(a)} ${labels[0]} · ${formatNumber(b)} ${labels[1]}`);
 /** Reasons the web doesn't know yet: told once to the console, never printed raw. */
 const unknownSeen = new Set<string>();
-/** A simulation's projection of day close; `unconfirmed` = suggestions nobody confirms by then, per side (API, wt/runs). */
-export type Projection = { a: Record<string, number>; b: Record<string, number>; unconfirmed?: { a: number; b: number } | null };
 /**
  * What day close would do with a simulation's waiting items and unconfirmed suggestions (Captain): "3 currency differs
  * · 1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions"; one number when both sides agree,
  * per side otherwise; `skip` leaves reasons out (a card of their own). "" when nothing would break.
  */
-export function projectionText(p: Projection, labels: Sides, skip: readonly string[] = []): string {
+export function projectionText(p: Pick<RunProjection, "a" | "b" | "unconfirmed">, labels: Sides, skip: readonly string[] = []): string {
   for (const k of new Set([...Object.keys(p.a), ...Object.keys(p.b)])) {
     if (REASON_TEXT.some(([r]) => r === k) || unknownSeen.has(k)) continue;
     unknownSeen.add(k);

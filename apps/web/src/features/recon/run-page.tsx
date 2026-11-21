@@ -23,7 +23,7 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakLabel, dayTotals, differenceText, isLive, rangeText, runTotals } from "./run-model";
+import { amountText, breakLabel, dayPasses, dayTotals, differenceText, isLive, rangeText, standingTotals } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
@@ -34,8 +34,13 @@ const RunExplain = dynamic(() => import("./run-explain"), { ssr: false });
 const none = <span className="text-fg-3">—</span>;
 const dateText = (d: string) => rangeText(d, d);
 /** Members of one side, summed: "26,017.79", or the sum of several (a group pass). */
-function sideAmount(ms: readonly RunGroupMember[]): { text: string; ccy: string | null } {
+/**
+ * One side of a group: its members' sum ("26,017.79", "(3 items)" for several), or, for the side whose members the
+ * API cut off (`more` left out), how many there are without a sum that would be short.
+ */
+function sideAmount(ms: readonly RunGroupMember[], more = 0): { text: string; ccy: string | null } {
   const ccy = ms[0]?.currency ?? null;
+  if (more > 0) return { text: ms.length ? `${formatNumber(ms.length)} items + ${formatNumber(more)} more` : `${formatNumber(more)} more items`, ccy };
   if (!ms.length || ms.some((m) => m.amountMinor === null || m.currency !== ccy)) return { text: "—", ccy };
   const sum = ms.reduce((t, m) => t + BigInt(m.amountMinor!), 0n);
   return { text: `${amountText(sum.toString(), ccy)}${ms.length > 1 ? ` (${ms.length} items)` : ""}`, ccy };
@@ -105,8 +110,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const passNo = waiting ? 0 : Number(s.pass || "1");
   const pass = spec.passes[passNo - 1];
   const day = s.date ? run.days?.find((d) => d.date === s.date) : undefined;
-  const counts = day ? day.passes : run.counters.passes;
-  const open = day ? day.open : run.counters.open;
+  // as they stand now once the API has the run's days (live), else what the run itself did
+  const standing = run.live && run.days ? run.days : null;
+  const counts = day ? day.passes : standing ? dayPasses(standing) : run.counters.passes;
+  const open = day ? day.open : (run.live?.open ?? run.counters.open);
   const path = reconRunHref(spaceId, id, runId);
   const href = (patch: Partial<RunItemFilters>) => { const q = writeTable(s, patch, def.spec); return q?.size ? `${path}?${q}` : path; };
   const go = (patch: Partial<RunItemFilters>) => (e: React.MouseEvent) => { e.preventDefault(); t.set(patch); };
@@ -122,7 +129,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   ] : [];
   const items = status === "open" || status === "break";
   const strip = run.days ?? [];
-  const dayTiles = [{ date: "", t: { ...runTotals(run.counters, spec), waiting: run.counters.open } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
+  const dayTiles = [{ date: "", t: { ...standingTotals(run, spec), closed: false } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
   const dayLabel = (date: string) => (date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates");
   const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: "open", side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" });
 
@@ -139,7 +146,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           <div className="grid gap-2 md:hidden">
             {strip.length > 0 && (
               <Select aria-label="Business date" value={s.date} onChange={(e) => t.set({ date: e.target.value })} className="w-full">
-                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested</option>)}
+                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)}{d.closed ? " · closed" : ""} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.breaks && (d.breaks.a || d.breaks.b) ? ` · ${formatNumber(d.breaks.a)} · ${formatNumber(d.breaks.b)} breaks` : ""}</option>)}
               </Select>
             )}
             <Select aria-label="Pass" value={waiting ? "waiting" : `p${passNo}`} onChange={(e) => { const tab = tabs.find((x) => x.key === e.target.value); if (tab) t.set(tabPatch(tab)); }} className="w-full">
@@ -152,9 +159,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
                 <Link key={date || "all"} href={href({ date })} onClick={go({ date })} aria-current={s.date === date ? "true" : undefined}
                   className={cn("grid gap-0.5 rounded-md border bg-card p-2.5 text-left text-caption text-fg-3 tabular focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
                     s.date === date ? "border-fg shadow-sm" : "border-line hover:bg-tray")}>
-                  <span className="text-label text-fg">{dayLabel(date)}</span>
+                  <span className="text-label text-fg">{dayLabel(date)}{d.closed ? " · closed" : ""}</span>
                   <span>{formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.duplicate ? ` · ${formatNumber(d.duplicate)} duplicate` : ""}</span>
                   <span>{formatNumber(d.waiting.a)} {labels[0]} · {formatNumber(d.waiting.b)} {labels[1]} waiting</span>
+                  {d.breaks && (d.breaks.a > 0 || d.breaks.b > 0) && <span>{formatNumber(d.breaks.a)} {labels[0]} · {formatNumber(d.breaks.b)} {labels[1]} breaks</span>}
                 </Link>
               ))}
             </div>
@@ -204,7 +212,13 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
     const ref: Column<ReconRunItemDto> = { key: "ref", header: "Reference", mobile: "title", className: "font-mono text-mono", cell: (r) => r.extRef ?? none };
     const date: Column<ReconRunItemDto> = { key: "businessDate", header: "Business date", sortable: true, mobile: "meta", cell: (r) => dateText(r.group?.businessDate ?? r.businessDate) };
     if (pairs) {
-      const side = (k: "a" | "b") => (r: ReconRunItemDto) => sideAmount(r.group?.members.filter((m) => m.side === k) ?? []);
+      const side = (k: "a" | "b") => (r: ReconRunItemDto) => {
+        const ms = r.group?.members ?? [], more = r.group ? r.group.memberCount - ms.length : 0;
+        // the API lists side A first and cuts the rest, so the members left out are side B's
+        // ponytail: a group with more than 50 side A members also hides some of A; the API would need a count per side
+        const cut = more > 0 && k === "b";
+        return sideAmount(ms.filter((m) => m.side === k), cut ? more : 0);
+      };
       return [ref, date,
         { key: "amountA", header: `Amount ${labels[0]}`, align: "right", mobile: "meta", cell: (r) => side("a")(r).text },
         { key: "amountB", header: `Amount ${labels[1]}`, align: "right", mobile: "meta", cell: (r) => side("b")(r).text },

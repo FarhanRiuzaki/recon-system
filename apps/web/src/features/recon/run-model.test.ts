@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayTotals, differenceText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runTotals, simView } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runTotals, simView, standingTotals } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -103,22 +103,43 @@ describe("run-model", () => {
   });
 
   it("says what day close would do with the gate's waiting items, and sums a strip day", () => {
-    const gateProjection = { a: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 }, b: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 } };
+    const none = { a: 0, b: 0 };
+    const gateProjection = { a: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 }, b: { "No counterpart": 20, "Currency differs": 3, "Amount differs": 1 }, unconfirmed: none };
     const L = ["source1", "source2"] as const;
     expect(projectionText(gateProjection, L)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart");
     expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
     expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L, ["Currency differs"])).toBe("1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
-    expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 } }, L)).toBe("2 source1 · 1 source2 no counterpart");
+    expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 }, unconfirmed: none }, L)).toBe("2 source1 · 1 source2 no counterpart");
     // a reason the web has no words for is never printed raw
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(projectionText({ a: { "Something new": 5 }, b: {} }, L)).toBe("");
-    expect(projectionText({ a: { "Something new": 5 }, b: {} }, L)).toBe("");
+    expect(projectionText({ a: { "Something new": 5 }, b: {}, unconfirmed: none }, L)).toBe("");
+    expect(projectionText({ a: { "Something new": 5 }, b: {}, unconfirmed: none }, L)).toBe("");
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
     expect(reasonCount(gateProjection, "Currency differs", ["source1", "source2"])).toBe("3 pairs");
     expect(reasonCount(gateProjection, "Date differs", ["source1", "source2"])).toBeNull();
     // 2 Nov of the answer key: 312 matched, 5 suggested, 7 · 8 waiting, 12 duplicate items
     const day = { passes: { 1: { matched: 312, suggested: 0, broken: 12, brokenRefs: 4 }, 2: { matched: 0, suggested: 3, broken: 0, brokenRefs: 0 }, 3: { matched: 0, suggested: 2, broken: 0, brokenRefs: 0 } }, open: { a: 7, b: 8 } };
-    expect(dayTotals(day, spec)).toEqual({ matched: 312, suggested: 5, duplicate: 12, ambiguous: 0, waiting: { a: 7, b: 8 } });
+    expect(dayTotals(day, spec)).toEqual({ matched: 312, suggested: 5, duplicate: 12, ambiguous: 0, waiting: { a: 7, b: 8 }, breaks: null, closed: false });
+  });
+
+  it("reads the gate after its days closed as it stands now: 937 matched, 0 suggested, 30 duplicate, 48 · 48 breaks, 0 · 0 waiting", () => {
+    // the gate run's days after day close (answer key per date; suggestions and waiting items broke at close)
+    const day = (date: string, matched: number, dup: number, breaksA: number, breaksB: number) => ({
+      date, closed: true, open: { a: 0, b: 0 }, breaks: { a: breaksA, b: breaksB },
+      passes: { 1: { matched, suggested: 0, broken: dup, brokenRefs: 0 }, 2: { matched: 0, suggested: 0, broken: 0, brokenRefs: 0 }, 3: { matched: 0, suggested: 0, broken: 0, brokenRefs: 0 } },
+    });
+    const days = [day("2026-11-02", 312, 12, 12, 13), day("2026-11-03", 313, 9, 16, 16), day("2026-11-04", 312, 9, 16, 15), day("2026-11-05", 0, 0, 4, 4)];
+    const run = { counters: gate, days, live: { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 } } };
+    const t = standingTotals(run, spec);
+    expect(t).toMatchObject({ matched: 937, suggested: 0, duplicate: 30, waiting: { a: 0, b: 0 }, breaks: { a: 48, b: 48 }, items: 2000 });
+    expect(countLine(t)).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 · 0 waiting · 48 · 48 breaks · match rate 93.7%");
+    expect(dayPasses(days)["1"]).toMatchObject({ matched: 937, broken: 30 });
+    expect(dayTotals(days[0]!, spec)).toMatchObject({ breaks: { a: 12, b: 13 }, closed: true });
+    // without days or live (a run before them, or days that couldn't be read): what the run itself did
+    expect(standingTotals({ counters: gate, days: null, live: null }, spec)).toMatchObject({ matched: 937, suggested: 24, waiting: { a: 24, b: 24 }, breaks: null });
+    expect(standingTotals({ counters: gate, days: [], live: null }, spec).suggested).toBe(24);
+    expect(itemsText(0)).toBe("no new records");
+    expect(itemsText(2000)).toBe("2,000 items");
   });
 });

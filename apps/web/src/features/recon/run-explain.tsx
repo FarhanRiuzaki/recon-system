@@ -58,6 +58,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
                     <span className={side === "b" && diff.date ? "text-degraded-ink" : "text-fg-2"}>{rangeText(m.businessDate, m.businessDate)}</span>
                   </div>
                 ))}
+                {side === "b" && g.memberCount > g.members.length && <p className="text-caption text-fg-3">{g.memberCount - g.members.length} more items not listed</p>}
                 {side === "b" && diff.text && <p className="text-caption text-degraded-ink">{diff.text}</p>}
               </section>
             ))}
