@@ -1164,6 +1164,13 @@ No new animation runtime or per-control pointer listeners are needed. Data refre
 No permanent `will-change`, cursor follower, parallax, validation shake, or layout animation on tables is introduced.
 Motion preferences follow [WCAG 2.2, Animation from Interactions](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions).
 
+**New or rarely seen action, and what it adds (owner, 21 Nov 2026).** An action a person may not notice (Add computed
+column) wraps its label in `text-shimmer`: a light band sweeps across the text (`--fg` / `--fg-2`, ≥ 4.5:1 throughout,
+`--dur-flash`), only until the action is first used in this browser (`useFirstUse(name)`, `ds/first-use.ts`); reduced
+motion shows plain text. The button keeps its variant: a step's one primary action stays the only primary (form rule 3).
+An action that adds a form section moves the focus to that section's first field and brings it to the middle of the
+window (`focusNew(id)`: smooth, at once under reduced motion). (`first-use.test.ts`)
+
 ### 7.10 Vendored affectUI items (2026-11-14)
 `packages/ui/src/affect/` holds 73 free affectUI items (MIT, https://github.com/flohoeller/affectui; components,
 illustrations, motion effects and blocks) as upstream wrote them, at the owner's request for a 1:1 copy of their

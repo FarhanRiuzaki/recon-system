@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, Fragment, useRef } from "react";
-import { Checkbox, Combobox, type ComboOption, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -118,6 +118,20 @@ export function FieldsStep(p: FieldsStepProps) {
   const names = [...s.fields.map((f) => f.name), ...Object.keys(s.derive)];
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
 
+  // Add computed column shimmers until first used, and the card it adds takes the focus (design-system §7.9)
+  const [computedNew, computedUsed] = useFirstUse("source.computed-column");
+  const addComputed = () => {
+    computedUsed();
+    const taken = new Set([...s.fields.map((f) => f.name), ...Object.keys(s.derive)]);
+    let n = 1;
+    while (taken.has(`computed_${n}`)) n++;
+    const name = `computed_${n}`;
+    // it starts from the first text column (a remark, a reference), the usual source of a computed key
+    const from = (s.fields.find((f) => f.type === "string") ?? s.fields[0]!).name;
+    setSpec((x) => ({ ...x, derive: { ...x.derive, [name]: computeCel(from, []) } }));
+    focusNew(`${ctl(`derive.${name}`)}-name`);
+  };
+
   // what Read the columns reads: the table or the SELECT typed in step 1 (none yet: nothing to read, said instead of a 400)
   const hasSource = s.input.kind === "db_snapshot" ? !!s.input.query.trim()
     : s.input.kind === "db_watermark" ? (d.from === "table" ? !!(s.input.table ?? "").trim() : !!(s.input.query ?? "").trim()) : true;
@@ -198,14 +212,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
             )}
             {/* a value made from another column (the remark's first word as the reference): set with the columns */}
-            <Button type="button" variant="secondary" size="sm" onClick={() => setSpec((x) => {
-              const taken = new Set([...x.fields.map((f) => f.name), ...Object.keys(x.derive)]);
-              let n = 1;
-              while (taken.has(`computed_${n}`)) n++;
-              // it starts from the first text column (a remark, a reference), the usual source of a computed key
-              const from = (x.fields.find((f) => f.type === "string") ?? x.fields[0]!).name;
-              return { ...x, derive: { ...x.derive, [`computed_${n}`]: computeCel(from, []) } };
-            })}>Add computed column</Button>
+            <Button type="button" variant="secondary" size="sm" onClick={addComputed}><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
           </span>
         )}>
         {s.fields.length === 0 ? (
