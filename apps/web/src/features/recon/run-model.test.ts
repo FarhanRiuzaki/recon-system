@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runTotals, simView, standingTotals } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, simView, standingTotals } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -130,15 +130,21 @@ describe("run-model", () => {
       passes: { 1: { matched, suggested: 0, broken: dup, brokenRefs: 0 }, 2: { matched: 0, suggested: 0, broken: 0, brokenRefs: 0 }, 3: { matched: 0, suggested: 0, broken: 0, brokenRefs: 0 } },
     });
     const days = [day("2026-11-02", 312, 12, 12, 13), day("2026-11-03", 313, 9, 16, 16), day("2026-11-04", 312, 9, 16, 15), day("2026-11-05", 0, 0, 4, 4)];
-    const run = { counters: gate, days, live: { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 } } };
+    const live = { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 } };
+    const run = { counters: gate, days, live, from: "2026-11-02", to: "2026-11-05" };
     const t = standingTotals(run, spec);
     expect(t).toMatchObject({ matched: 937, suggested: 0, duplicate: 30, waiting: { a: 0, b: 0 }, breaks: { a: 48, b: 48 }, items: 2000 });
     expect(countLine(t)).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 · 0 waiting · 48 · 48 breaks · match rate 93.7%");
     expect(dayPasses(days)["1"]).toMatchObject({ matched: 937, broken: 30 });
     expect(dayTotals(days[0]!, spec)).toMatchObject({ breaks: { a: 12, b: 13 }, closed: true });
+    // a carry-over date before the run (1 Nov) is a tile of its own and never counts in the totals or the pass tabs
+    const withCarry = { ...run, days: [day("2026-11-01", 5, 4, 1, 1), ...days] };
+    expect(runDays(withCarry).map((d) => d.date)).toEqual(["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"]);
+    expect(standingTotals(withCarry, spec)).toMatchObject({ matched: 937, duplicate: 30 });
+    expect(dayPasses(runDays(withCarry))["1"]).toMatchObject({ matched: 937, broken: 30 });
     // without days or live (a run before them, or days that couldn't be read): what the run itself did
-    expect(standingTotals({ counters: gate, days: null, live: null }, spec)).toMatchObject({ matched: 937, suggested: 24, waiting: { a: 24, b: 24 }, breaks: null });
-    expect(standingTotals({ counters: gate, days: [], live: null }, spec).suggested).toBe(24);
+    expect(standingTotals({ counters: gate, days: null, live: null, from: "2026-11-02", to: "2026-11-05" }, spec)).toMatchObject({ matched: 937, suggested: 24, waiting: { a: 24, b: 24 }, breaks: null });
+    expect(standingTotals({ counters: gate, days: [], live: null, from: "2026-11-02", to: "2026-11-05" }, spec).suggested).toBe(24);
     expect(itemsText(0)).toBe("no new records");
     expect(itemsText(2000)).toBe("2,000 items");
   });

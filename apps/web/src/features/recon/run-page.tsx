@@ -23,7 +23,7 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakLabel, dayPasses, dayTotals, differenceText, isLive, rangeText, standingTotals } from "./run-model";
+import { amountText, breakLabel, dayPasses, dayTotals, runDays, differenceText, isLive, rangeText, standingTotals } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
@@ -111,7 +111,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const pass = spec.passes[passNo - 1];
   const day = s.date ? run.days?.find((d) => d.date === s.date) : undefined;
   // as they stand now once the API has the run's days (live), else what the run itself did
-  const standing = run.live && run.days ? run.days : null;
+  const standing = run.live && run.days ? runDays(run) : null;
   const counts = day ? day.passes : standing ? dayPasses(standing) : run.counters.passes;
   const open = day ? day.open : (run.live?.open ?? run.counters.open);
   const path = reconRunHref(spaceId, id, runId);
