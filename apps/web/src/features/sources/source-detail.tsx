@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
-import { formatNumber, formatTime } from "@starterkit/ui/lib/format";
+import { formatDate, formatDateTime, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { CheckIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
@@ -115,16 +115,18 @@ function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: Plai
  */
 function TodayTiles({ s }: { s: SourceDto }) {
   const h = s.health!;
-  const complete = completeText(s);
-  const lag = lagText(s);
+  // the value is what is complete (a date, or a moment for a watermark); the caption what is still awaited or how late
+  const ct = h.completeThrough ? Date.parse(h.completeThrough) : null;
+  const complete = ct === null ? "None yet" : s.kind === "db_watermark" ? formatDateTime(ct) : formatDate(ct - 1);
+  const waiting = h.missingDate ? `Waiting for ${day(h.missingDate)}` : lagText(s) ?? "Up to date";
   return (
     <StatTiles>
       <StatTile icon={DiskIcon} label="Records today" value={s.rowsToday === null ? "—" : formatNumber(s.rowsToday)} caption={`Business date ${day(h.businessDate)}`} />
       <StatTile icon={WarningIcon} label="Quarantined today" value={s.quarantinedToday === null ? "—" : formatNumber(s.quarantinedToday)}
         caption={s.quarantinedToday === null ? "Kept by the owning space" : s.quarantinedToday ? "See why in Quarantine" : "No line refused"} />
-      <StatTile icon={CheckIcon} label="Complete through" value={complete.replace(/^Through /, "")} caption={lag ?? "Every record up to this point is in"} />
+      <StatTile icon={CheckIcon} label="Complete through" value={complete} caption={waiting} />
       <StatTile icon={TimeIcon} label="Next read" value={s.nextRunAt ? formatTime(Date.parse(s.nextRunAt)) : "—"}
-        caption={s.nextRunAt ? at(s.nextRunAt) : "Not while paused"} />
+        caption={s.nextRunAt ? `${formatDate(Date.parse(s.nextRunAt))} · WIB` : "Not while paused"} />
     </StatTiles>
   );
 }
