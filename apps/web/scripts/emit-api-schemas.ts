@@ -53,6 +53,7 @@ const COMPOSED = {
   SourceFilePage: pageOf(sources.SourceFileDto),
   SourceSnapshotPage: pageOf(sources.SourceSnapshotDto),
   QuarantinePage: pageOf(sources.QuarantineRowDto),
+  SourceRecordPage: pageOf(sources.SourceRecordDto),
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),

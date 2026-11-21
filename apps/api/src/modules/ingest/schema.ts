@@ -149,6 +149,9 @@ export const records = pgTable("records", {
   unique("records_dedup_key").on(t.spaceId, t.sourceId, t.rowHash, t.businessDate, t.snapshotId).nullsNotDistinct(),
   index("records_source_seq").on(t.spaceId, t.sourceId, t.businessDate, t.seq),
   index("records_current_key").on(t.spaceId, t.sourceId, t.naturalKey).where(sql`${t.supersededBy} is null`),
+  // Records tab (owner, 21 Nov): find a record by the start of its reference or account (LIKE 'x%' uses these)
+  index("records_source_ext_ref").on(t.spaceId, t.sourceId, t.extRef.op("text_pattern_ops")),
+  index("records_source_account_ref").on(t.spaceId, t.sourceId, t.accountRef.op("text_pattern_ops")),
   foreignKey({ name: "records_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
 ]);
 

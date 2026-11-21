@@ -1,0 +1,2 @@
+CREATE INDEX "records_source_ext_ref" ON "records" USING btree ("space_id","source_id","ext_ref" text_pattern_ops);--> statement-breakpoint
+CREATE INDEX "records_source_account_ref" ON "records" USING btree ("space_id","source_id","account_ref" text_pattern_ops);

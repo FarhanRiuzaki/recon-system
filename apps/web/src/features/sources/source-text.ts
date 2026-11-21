@@ -95,5 +95,5 @@ export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt">)
 }
 
 /** The tabs of a source's detail, in order (`?tab=`); the page reads them on the server, so they live outside the screen. */
-export const SOURCE_TABS = ["overview", "quarantine", "versions", "activity"] as const;
+export const SOURCE_TABS = ["overview", "records", "quarantine", "versions", "activity"] as const;
 export type SourceTab = (typeof SOURCE_TABS)[number];

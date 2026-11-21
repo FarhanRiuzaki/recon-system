@@ -112,6 +112,11 @@ const ingestTable = (what: "files" | "snapshots" | "quarantine") => (spaceId: st
 export const sourceFiles = ingestTable("files");
 export const sourceSnapshots = ingestTable("snapshots");
 export const sourceQuarantine = ingestTable("quarantine");
+/** A source's current records (the Records tab): `q` the start of a reference or account, `businessDate` one date. */
+export type RecordFilters = { q: string; businessDate: string };
+const RECORDS_SPEC: TableSpec<RecordFilters> = { sorts: [], defaultSort: "", search: ["q"], filters: { q: text(200), businessDate: isoDate } };
+export const sourceRecords = (spaceId: string, id: string): TableDef<RecordFilters> =>
+  ({ key: INGEST_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/records`, spec: RECORDS_SPEC, transient: ["tab"] });
 /** A source's versions, newest first (`tab` stays when the table pages). */
 const SOURCE_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: SOURCE_VERSION_SORTS, defaultSort: "-version", filters: {} };
 export const sourceVersions = (spaceId: string, id: string): TableDef<NoFilters> =>

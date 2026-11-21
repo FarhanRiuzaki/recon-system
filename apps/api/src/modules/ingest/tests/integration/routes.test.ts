@@ -2,7 +2,7 @@
 // a source is shared to may read, the run now (queued once, activity entry, day_closed, paused).
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { QuarantineRowDto, SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
+import type { QuarantineRowDto, SourceDto, SourceFileDto, SourceRecordDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -15,6 +15,7 @@ import { users } from "../../../users";
 import { makeCalendar } from "../../map";
 import { previousBusinessDay, todayIn } from "../../rules";
 import { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
+import { ensureIngestPartitions } from "../../service";
 import { ingestHooks, recountDays } from "../../service";
 import { idDefault, ksei } from "../unit/fixtures";
 
@@ -93,6 +94,31 @@ describe("GET files, snapshots, quarantine", () => {
     expect((await call("GET", `${path(A, FILE_SRC, "files")}?page=1001`)).status).toBe(400);
     expect((await call("GET", `${path(A, FILE_SRC, "files")}?pageSize=7`)).status).toBe(400);
     expect((await call("GET", path(A, "nope", "files"), { token: t.op })).status).toBe(404);
+  });
+});
+
+describe("GET records (the Records tab)", () => {
+  it("current records newest date first, found by the start of a reference or account, by date, also through a share", async () => {
+    await ensureIngestPartitions(db, new Date(Date.UTC(2026, 10, 3)));
+    const [f] = await db.select({ id: sourceFiles.id }).from(sourceFiles).where(eq(sourceFiles.name, "act20261102.txt"));
+    const rec = (businessDate: string, extRef: string, accountRef: string, o: Partial<typeof records.$inferInsert> = {}) => ({
+      id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, sourceVersionId: Bun.randomUUIDv7(), businessDate, bdayIndex: 1, extRef, accountRef,
+      amountMinor: 150050n, currency: "IDR", attrs: { status: "Successful" }, rowHash: Bun.randomUUIDv7(), originId: f!.id, ...o,
+    });
+    const newer = rec("2026-11-03", "E2E-AAB2", "ACC-9");
+    await db.insert(records).values([rec("2026-11-02", "E2E-AAA1", "ACC-1"), newer, rec("2026-11-02", "XYZ%1", "ACC-2"),
+      rec("2026-11-02", "E2E-OLD", "ACC-3", { supersededBy: newer.id })]);
+    const page = (query: string, token = t.op, s = A) => json<Page<SourceRecordDto>>(call("GET", `${path(s, FILE_SRC, "records")}${query}`, { token }));
+    const all = await page("");
+    expect(all.items.map((r) => [r.businessDate, r.extRef])).toEqual([["2026-11-03", "E2E-AAB2"], ["2026-11-02", "XYZ%1"], ["2026-11-02", "E2E-AAA1"]]);
+    expect(all.items[0]).toMatchObject({ amountMinor: "150050", currency: "IDR", attrs: { status: "Successful" }, origin: { kind: "file", file: "act20261102.txt" } });
+    expect((await page("?q=E2E-AA")).items.map((r) => r.extRef)).toEqual(["E2E-AAB2", "E2E-AAA1"]);
+    expect((await page("?q=ACC-2")).items.map((r) => r.extRef)).toEqual(["XYZ%1"]);
+    expect((await page("?q=%25")).total).toBe(0); // a % is a character, not a wildcard
+    expect((await page("?businessDate=2026-11-02")).total).toBe(2);
+    expect((await page("", t.other, B)).total).toBe(3);
+    expect((await call("GET", path(A, FILE_SRC, "records"), { token: t.other })).status).toBe(403);
+    expect((await call("GET", `${path(A, FILE_SRC, "records")}?businessDate=2026-13-01`)).status).toBe(400);
   });
 });
 

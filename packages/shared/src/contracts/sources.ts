@@ -496,6 +496,30 @@ export const IngestListQuery = ListQuery.omit({ q: true, sort: true });
 export type IngestListQuery = z.infer<typeof IngestListQuery>;
 
 /**
+ * GET …/sources/{sourceId}/records: the source's current records, newest business date first (owner, 21 Nov: see and
+ * find what a source stored). `q`: the start of a reference or an account (as stored, case kept); `businessDate`: that
+ * date only.
+ */
+export const RecordListQuery = ListQuery.omit({ sort: true }).extend({ businessDate: isoDate.optional() });
+export type RecordListQuery = z.infer<typeof RecordListQuery>;
+/** A stored record: its recon fields, its stored columns and where it came from (a file by name, a pull, a snapshot). */
+export const SourceRecordDto = z.object({
+  id: z.string(),
+  businessDate: z.string(),
+  amountMinor: z.string().nullable(),
+  currency: z.string().nullable(),
+  direction: z.string().nullable(),
+  eventTime: z.string().nullable(),
+  extRef: z.string().nullable(),
+  accountRef: z.string().nullable(),
+  naturalKey: z.string().nullable(),
+  attrs: z.record(z.string(), z.union([z.string(), z.boolean(), z.null()])),
+  origin: z.object({ kind: z.enum(["file", "pull", "snapshot"]), file: z.string().nullable() }),
+  createdAt: z.string(),
+});
+export type SourceRecordDto = z.infer<typeof SourceRecordDto>;
+
+/**
  * A file the inbox picked up. `version` = its place among the ingested files of the same name (1 = first); `reason` =
  * why it was rejected or failed. `rowsNew` = records it added; `rowsOk` − `rowsNew` were stored already.
  */

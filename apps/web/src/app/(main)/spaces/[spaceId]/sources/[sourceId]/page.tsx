@@ -16,7 +16,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
  * A source of the space, or one shared to it. What renders depends on the source (its kind decides the Overview's
  * table; a shared one has no Quarantine tab and shows the Overview even at ?tab=quarantine), which the server can't
  * know before the source answers: so the files and the snapshots are always read with it, and the quarantine too at
- * ?tab=quarantine (a shared source answers it 404, left out), and the tab's own list at ?tab=versions|activity. Nothing
+ * ?tab=quarantine (a shared source answers it 404, left out), and the tab's own list at ?tab=records|versions|activity. Nothing
  * the screen renders is fetched after hydration.
  */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
@@ -28,6 +28,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const tab = SOURCE_TABS.find((t) => t === sp.get("tab")) ?? "overview";
   const tables = [
     reads.sourceFiles(spaceId, sourceId, sp), reads.sourceSnapshots(spaceId, sourceId, sp),
+    ...(tab === "records" ? [reads.sourceRecords(spaceId, sourceId, sp)] : []),
     ...(tab === "quarantine" ? [reads.sourceQuarantine(spaceId, sourceId, sp)] : []),
     ...(tab === "versions" ? [reads.sourceVersions(spaceId, sourceId, sp)] : []),
     ...(tab === "activity" ? [reads.sourceActivity(spaceId, sourceId, sp)] : []),

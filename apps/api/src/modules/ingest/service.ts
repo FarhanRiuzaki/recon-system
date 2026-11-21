@@ -17,7 +17,7 @@
 // A source of an archived space is not run at all (load answers null).
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  IngestListQuery, QuarantineRowDto, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourceSnapshotDto, SourceSpec,
+  IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus } from "@starterkit/shared/sources";
 import { and, count, desc, eq, exists, inArray, isNull, max, or, sql } from "drizzle-orm";
@@ -27,7 +27,7 @@ import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { enqueue, type JobHandler, type QueueName, QUEUES, scheduleEvery } from "../../kernel/jobs";
 import { sourceLock } from "../../kernel/locks";
-import { one, pageQuery } from "../../kernel/pagination";
+import { likeEscape, one, pageQuery } from "../../kernel/pagination";
 import { ensureMonthPartitions } from "../../kernel/partitions";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
@@ -650,6 +650,35 @@ export function quarantinePage(ctx: Ctx, id: string, q: IngestListQuery): Promis
       map: ({ r, name, version }) => ({
         id: r.id, origin: r.origin as QuarantineRowDto["origin"], originId: r.originId, file: name === null ? null : { name, version }, line: r.lineNo, raw: r.raw,
         reasons: r.reasons as Record<string, string>, businessDate: day(r.businessDate), createdAt: r.createdAt.toISOString(),
+      }),
+    });
+  });
+}
+
+/**
+ * GET …/records (owner, 21 Nov: the Records tab): the source's current records (a mutable row's latest, an active
+ * snapshot's), newest business date first, then newest written; `q` = the start of a reference or account (prefix,
+ * the records_source_* indexes), `businessDate` = that date only. Also through a share, as the records' read policy allows.
+ */
+export function recordPage(ctx: Ctx, id: string, q: RecordListQuery): Promise<Page<SourceRecordDto>> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await readable(tx, spaceId, id, false);
+    const text = q.q?.trim();
+    const like = text ? `${likeEscape(text)}%` : null;
+    const where = and(eq(records.spaceId, s.spaceId), eq(records.sourceId, s.id), currentRecord(tx),
+      q.businessDate ? eq(records.businessDate, q.businessDate) : undefined,
+      like ? or(sql`${records.extRef} like ${like}`, sql`${records.accountRef} like ${like}`) : undefined);
+    // a file's record names its file (origin_id = the source_files row of the same space)
+    const file = and(eq(sourceFiles.spaceId, records.spaceId), eq(sourceFiles.id, records.originId));
+    return pageQuery({
+      rows: tx.select({ r: records, name: sourceFiles.name }).from(records).leftJoin(sourceFiles, file).where(where).$dynamic(),
+      count: tx.select(one).from(records).where(where).$dynamic(),
+      orderBy: [desc(records.businessDate), desc(records.seq)], query: q, on: tx,
+      map: ({ r, name }) => ({
+        id: r.id, businessDate: r.businessDate, amountMinor: r.amountMinor?.toString() ?? null, currency: r.currency, direction: r.direction,
+        eventTime: iso(r.eventTime), extRef: r.extRef, accountRef: r.accountRef, naturalKey: r.naturalKey,
+        attrs: r.attrs as SourceRecordDto["attrs"], origin: { kind: r.snapshotId ? "snapshot" : name !== null ? "file" : "pull", file: name },
+        createdAt: r.createdAt.toISOString(),
       }),
     });
   });

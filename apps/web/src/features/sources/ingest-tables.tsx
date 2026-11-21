@@ -1,18 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import type { Health } from "@starterkit/ui/lib/status";
-import { formatNumber } from "@starterkit/ui/lib/format";
+import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
+import { Input } from "@starterkit/ui/ui/input";
+import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { ActivityIcon, AlertsIcon, BranchIcon, DiskIcon, LogIcon } from "@starterkit/ui/ui/icons";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
-import type { QuarantineRowDto, SourceFileDto, SourceSnapshotDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
+import type { QuarantineRowDto, SourceFileDto, SourceRecordDto, SourceSnapshotDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import type { NoFilters } from "@/lib/shared/queries";
-import { sourceActivity, sourceFiles, sourceQuarantine, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
+import type { NoFilters, RecordFilters } from "@/lib/shared/queries";
+import { sourceActivity, sourceFiles, sourceQuarantine, sourceRecords, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
 import { VERSION_LEGEND, versionChip } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
 import { activitySentence } from "./spec-draft";
@@ -88,6 +90,59 @@ export function FilesTable({ spaceId, id }: { spaceId: string; id: string }) {
           cell: (f: SourceFileDto) => (f.status === "ingested" ? formatNumber(leftOut(f)) : none) }] : []),
         { key: "result", header: "Result", mobile: "meta", className: `${WRAP} min-w-64 w-full`, cell: (f) => result(FILE_STATUS[f.status], fileResult(f, rows.find((r) => r.id === f.versionOf))) },
       ]} />
+  );
+}
+
+/** A record's amount in its currency ("IDR 1,500.50"), or as stored when its currency has no known decimals. */
+const amountOf = (r: SourceRecordDto) => {
+  if (r.amountMinor === null) return none;
+  const exp = r.currency ? CURRENCY_EXPONENT[r.currency] : undefined;
+  return <span className="font-mono text-mono tabular">{exp === undefined ? r.amountMinor : `${r.currency} ${formatMinor(BigInt(r.amountMinor), exp)}`}</span>;
+};
+const attrsText = (r: SourceRecordDto) => Object.entries(r.attrs).map(([k, v]) => `${k}=${v === null ? "∅" : String(v)}`).join(" · ");
+
+/**
+ * The Records tab (owner, 21 Nov: see and find what a source stored): the current records, newest business date first,
+ * found by the start of a reference or account and kept to one date; each with its recon fields, where it came from
+ * and its stored columns (all of them on hover, and on a phone's card).
+ */
+export function RecordsTable({ spaceId, id }: { spaceId: string; id: string }) {
+  const def = useMemo(() => sourceRecords(spaceId, id), [spaceId, id]);
+  const t = useTableQuery<SourceRecordDto, RecordFilters>(def);
+  const [q, setQ] = useState(t.state.q);
+  // the search applies a moment after typing stops, so each key isn't a query
+  useEffect(() => {
+    if (q === t.state.q) return;
+    const h = setTimeout(() => t.set({ q } as Partial<typeof t.state>, { history: "replace" }), 300);
+    return () => clearTimeout(h);
+  }, [q, t]);
+  const filtered = !!(t.state.q || t.state.businessDate);
+  const cols: Column<SourceRecordDto>[] = [
+    { key: "extRef", header: "Reference", mobile: "title", help: "The reference both sides share for the same transaction.", cell: (r) => (r.extRef ? mono(r.extRef) : none) },
+    { key: "businessDate", header: "Business date", mobile: "meta", cell: (r) => day(r.businessDate) },
+    { key: "amount", header: "Amount", mobile: "meta", align: "right", cell: amountOf },
+    { key: "accountRef", header: "Account", mobile: "meta", cell: (r) => (r.accountRef ? mono(r.accountRef) : none) },
+    { key: "origin", header: "From", mobile: "meta", help: "The file the record was read from, or a pull or a snapshot of the database.", cell: (r) => (r.origin.file ? mono(r.origin.file) : <span className="text-fg-2">{r.origin.kind === "pull" ? "Pull" : "Snapshot"}</span>) },
+    { key: "attrs", header: "Stored columns", mobile: "meta", className: "max-w-96", help: "Every column kept with the record, under its stored name. Recons can match on any of them.",
+      cell: (r) => <span className="block truncate font-mono text-mono text-fg-2" title={attrsText(r)}>{attrsText(r) || none}</span> },
+  ];
+  return (
+    <>
+      {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the records; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
+      <Panel flush icon={DiskIcon} title="Records" description="The source's current records, newest business date first" count={t.count}
+        toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={cols} hidden={t.hidden} onChange={t.setHidden} /></>}>
+          <Input type="search" aria-label="Find a reference or account" placeholder="Reference or account starts with" className="w-full md:w-72 font-mono"
+            value={q} onChange={(e) => setQ(e.target.value)} autoComplete="off" spellCheck={false} />
+          <Input type="date" aria-label="Business date" className="w-full md:w-44" value={t.state.businessDate}
+            onChange={(e) => t.set({ businessDate: e.target.value } as Partial<typeof t.state>)} />
+        </Toolbar>}>
+        <DataTable label="Records" columns={cols} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
+          error={t.loadError ? { title: "Couldn't load records", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
+          empty={filtered
+            ? { icon: DiskIcon, title: "No record matches", description: "Change the reference, account or date, or clear them to see every record." }
+            : { icon: DiskIcon, title: "No records yet", description: "Records appear here once the source's first file, pull or snapshot is read." }} />
+      </Panel>
+    </>
   );
 }
 
