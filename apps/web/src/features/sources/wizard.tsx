@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, EmptyState, Failure, FormFooter, Panel, type SqlContext, type SqlSuggestion, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, EmptyState, Failure, FormFooter, Notice, Panel, type SqlContext, type SqlSuggestion, Wizard } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -133,6 +133,11 @@ function readLocal(versionId: string): Kept | null {
   try { const raw = localStorage.getItem(keptKey(versionId)); return raw ? (JSON.parse(raw) as Kept) : null; } catch { return null; }
 }
 
+/** A new source's step 1 as the browser kept it (key `recon:source-new:<space>`), or null. */
+function readNew(key: string): Draft | null {
+  try { const raw = localStorage.getItem(key); return raw ? (JSON.parse(raw) as Draft) : null; } catch { return null; }
+}
+
 /** The published version's table of a watermark source (step 3 says a change of it), else null. */
 const publishedTableOf = (s: SourceDto | null) => {
   const i = s?.published?.spec?.input;
@@ -201,6 +206,19 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const moved = useRef(false);
   // once the draft exists its edits are kept (autosave and the browser's copy): only a source not made yet can lose them
   const guard = useLeaveGuard(edited && !ids && !done && busy !== "submit");
+
+  // A new source, before it exists (owner rule, 21 Nov: what was entered never goes away): the browser keeps step 1 per
+  // space, without the password (never stored in the browser), restored on the next open of …/new and dropped once
+  // the source is made or the user cancels.
+  const newKey = `recon:source-new:${spaceId}`;
+  useEffect(() => {
+    if (source) return;
+    try {
+      if (ids) localStorage.removeItem(newKey);
+      else if (edited) localStorage.setItem(newKey, JSON.stringify({ ...d, conn: { ...d.conn, password: "" } }));
+    } catch { /* not kept */ }
+  }, [d, ids, edited, newKey, source]);
+  const dropNew = () => { try { localStorage.removeItem(newKey); } catch { /* nothing */ } };
 
   const set = (fn: (d: Draft) => Draft) => { setDraft(fn); setEdited(true); };
   const err = (id: string) => problems[id] ?? (fieldErr?.id === id ? fieldErr.reason : undefined);
@@ -549,7 +567,15 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   // declared first, and the save below skips that first commit, so the server's spec never overwrites the copy
   const restoring = useRef(false);
   useEffect(() => {
-    if (!ids) return;
+    if (!ids) {
+      // a new source not made yet: its step 1 as the browser kept it (above)
+      const k = source ? null : readNew(newKey);
+      if (!k) return;
+      // the browser's copy is only readable after mount (no localStorage in the server render): one restore, once
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDraft((x) => ({ ...x, ...k, conn: { ...k.conn, password: "" }, restored: true }));
+      return;
+    }
     const kept = readLocal(ids.versionId);
     if (!kept || (kept.base !== null && kept.base !== serverHash.current)) return;
     restoring.current = true;
@@ -645,6 +671,9 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (blocked === null && !working) void next(); }} className="grid gap-section">
           {/* the Setup progress rail shows the step (owner, 21 Nov): the heading stays for screen readers and as the focus target of a step change */}
           <h2 ref={heading} tabIndex={-1} className="sr-only">Step {step + 1} of 3 · {STEPS[step]}</h2>
+          {step === 0 && d.restored && !ids && (
+            <Notice live>What you entered before the page closed is back. Enter the password again: it is never kept in this browser.</Notice>
+          )}
           {step === 0 && (
             <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
               connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}
@@ -672,7 +701,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               {(busy === "next" || busy === "submit" || (step === 0 && busy === "columns")) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{NEXT[step]}
             </BlockedButton>}
             back={step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
-            cancel={<Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)}>Cancel</Link></Button>} />
+            cancel={<Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)} onClick={source ? undefined : dropNew}>Cancel</Link></Button>} />
         </form>
       </Wizard>
       {guard.leaving && (

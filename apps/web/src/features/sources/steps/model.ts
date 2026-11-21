@@ -17,6 +17,8 @@ export type Draft = {
   hint?: Partial<Record<"business_date" | "amount_minor" | "currency" | "ext_ref" | "account_ref", string>>;
   /** The amount unit suggested from the amount column, while it is still the value (a choice of the user clears it). */
   unitHint?: { unit: AmountUnit; note: string };
+  /** A new source's step 1 brought back from the browser's copy after a reload (its password is never kept). */
+  restored?: boolean;
 };
 /** The one error on screen: the control it belongs to and why. */
 export type FieldErr = { id: string; reason: string } | null;
