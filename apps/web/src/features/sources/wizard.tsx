@@ -536,7 +536,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       // a spec still being set up (an amount without its currency) must not hide the examples every step relies on:
       // the columns are read again with the plainest mapping, and only their examples are kept (no records shown)
       let columns: SourcePreviewDto | null = null;
-      if (named && !file) {
+      // any refusal of the spec (400), named or not: the examples never wait for the setup to be complete
+      if (!file && e instanceof ApiError && e.code === "bad_request") {
         const plain: SourceSpec = { ...spec, mapping: { business_date: ARRIVED_DATE, attrs: {} }, derive: {}, key_fields: [], mutable: false };
         delete plain.keep; delete plain.currency;
         // a sample read has no watermark predicate: one not picked yet is stood in for by the first column

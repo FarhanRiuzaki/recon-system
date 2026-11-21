@@ -32,9 +32,14 @@ export function specIssue(e: unknown, root = "spec", place?: (path: PropertyKey[
   const flat = (xs: Issue[], at: PropertyKey[] = []): Issue[] => xs.flatMap((x) => x.code === "invalid_union"
     ? flat(x.errors.flat(), [...at, ...x.path])
     : x.code === "invalid_key" ? flat(x.issues as Issue[], [...at, ...x.path]) : [{ ...x, path: [...at, ...x.path] }]);
-  const i = flat(e.issues).find((x) => x.path[0] === root && (x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid"))));
+  const issues = flat(e.issues).filter((x) => x.path[0] === root);
+  // a reason written for a person first; else an empty or out-of-list value still names its field (owner, 21 Nov:
+  // a watermark not picked yet answered only the fixed 400, so nothing on screen said what was missing)
+  const i = issues.find((x) => x.code === "custom" || (x.code === "invalid_format" && !x.message.startsWith("Invalid")))
+    ?? issues.find((x) => (x.code === "too_small" && x.origin === "string") || x.code === "invalid_value");
   if (!i) return null;
-  const why = i.message.charAt(0).toUpperCase() + i.message.slice(1);
+  const plain = i.code === "too_small" ? "Required" : i.code === "invalid_value" ? `Pick one of ${i.values.map(String).join(", ")}` : i.message;
+  const why = plain.charAt(0).toUpperCase() + plain.slice(1);
   const end = /[.?]$/.test(why) ? "" : ".";
   return place ? `${place(i.path.slice(1))}: ${why}${end}` : `Check ${i.path.slice(1).join(".")}: ${why}${end}`;
 }

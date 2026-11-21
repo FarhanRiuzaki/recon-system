@@ -40,6 +40,11 @@ gate() {
     WAIT=600
   else
     WAIT=120
+    # The API and the worker run under bun --watch, which does not see a change inside a workspace package
+    # (packages/shared contracts, packages/ui/src/lib): touching their entry files restarts both on the new code.
+    if ! git -C "$REPO" diff --quiet "$OLD" "$NEW" -- packages/shared packages/ui/src/lib 2>/dev/null; then
+      touch "$PREVIEW/apps/api/src/index.ts" "$PREVIEW/apps/api/src/worker.ts"
+    fi
   fi
   # Health after the reload: poll until both answer or the wait runs out.
   T=0; WEB=000; API=000

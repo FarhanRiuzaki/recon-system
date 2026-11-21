@@ -80,6 +80,12 @@ describe("specIssue", () => {
     expect(issueOf({ ...k, fields: [{ ...k.fields[0], format: { timezone: "Mars/Olympus" } }, ...k.fields.slice(1)] }))
       .toBe("Check fields.0.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta.");
   });
+  it("names an empty value or one out of its list too, so the screen says what is missing (owner, 21 Nov)", () => {
+    const db = { ...ksei(), input: { kind: "db_watermark", table: "t", watermark: { column: "", id_column: "id" } } };
+    expect(issueOf(db)).toBe("Check input.watermark.column: Required.");
+    expect(issueOf({ ...ksei(), fields: [{ ...ksei().fields[0], type: "money" }, ...ksei().fields.slice(1)] }))
+      .toBe("Check fields.0.type: Pick one of string, integer, decimal, date, datetime, boolean.");
+  });
   it("is null for a schema miss with zod's own message, and for anything that is no zod error", () => {
     expect(issueOf({ ...ksei(), mutable: "yes" })).toBeNull();
     expect(issueOf({ ...ksei(), health: { graceMinutes: 0 } })).toBeNull();
