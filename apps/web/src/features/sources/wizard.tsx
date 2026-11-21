@@ -11,7 +11,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { DeniedIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
-import type { ConnectionTestDto, SourceCatalogDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { ConnectionTestDto, SourceCatalogDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceSpec, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -21,7 +21,7 @@ import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
-import { attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
+import { ARRIVED_DATE, attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
@@ -527,7 +527,16 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       if (n !== seq.current) return;
       const named = e instanceof ApiError ? fieldError(e.message) : null;
       if (named) setFieldErr({ id: controlOf(named.path) ?? "src-columns", reason: named.reason });
-      setPreview({ result: null, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
+      // a spec still being set up (an amount without its currency) must not hide the examples every step relies on:
+      // the columns are read again with the plainest mapping, and only their examples are kept (no records shown)
+      let columns: SourcePreviewDto | null = null;
+      if (named && !file) {
+        const plain: SourceSpec = { ...spec, mapping: { business_date: ARRIVED_DATE, attrs: {} }, derive: {}, key_fields: [], mutable: false };
+        delete plain.keep; delete plain.currency;
+        columns = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify({ spec: plain, ...(businessDate ? { businessDate } : {}) }) }).catch(() => null);
+        if (n !== seq.current) return;
+      }
+      setPreview({ result: columns, columnsOnly: !!columns, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
     }
   };
   // a file's preview is live (ruling 2): a moment after the last change. A database source's pulls from the bank's

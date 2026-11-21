@@ -23,7 +23,8 @@ export type Draft = {
 /** The one error on screen: the control it belongs to and why. */
 export type FieldErr = { id: string; reason: string } | null;
 export type Tested = { result: ConnectionTestDto; key: string };
-export type Preview = { result: SourcePreviewDto | null; error: string | null; pending: boolean };
+/** `columnsOnly`: the spec isn't complete yet, so `result` holds the columns' examples only (no records to show). */
+export type Preview = { result: SourcePreviewDto | null; error: string | null; pending: boolean; columnsOnly?: boolean };
 
 export const DEFAULT_PORT: Record<DbEngine, string> = { postgres: "5432", mysql: "3306", mssql: "1433", oracle: "1521" };
 /** A new connection starts with TLS on (REC-F2b: secure default); typing a local host turns it off until the user chooses. */

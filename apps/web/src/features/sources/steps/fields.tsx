@@ -568,7 +568,7 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
     <div aria-busy={preview.pending || undefined} className="grid gap-3">
       {/* while a new preview runs, the last one's failure goes: a failure never stands beside a spinner */}
       {preview.pending ? <Notice tone="progress" live>Updating the preview</Notice> : preview.error && <Notice tone="warn" live>{preview.error}</Notice>}
-      {r && (
+      {r && !preview.columnsOnly && (
         <>
           <p role="status" className="text-body-sm text-fg">
             {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records,{r.skipped ? ` ${formatNumber(r.skipped)} left out by the conditions,` : ""} {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the {file ? "file" : "pull"}.
