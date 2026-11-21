@@ -730,7 +730,11 @@ A SQL field is `SqlEditor` (`ds/sql-editor.tsx`): the textarea's text coloured a
 Light+ / Dark+ hues as `--code-keyword`, `--code-string`, `--code-number`, `--code-comment` (italic) and `--code-param`
 (`:name`), each ≥ 4.5:1 on card and inset (`tokens.test.ts`); its `action` (a secondary small "Check query") sits inside
 the box at the bottom right. A check's failure is the field's error; a pass is a Healthy-ink line under it
-(`sql-editor.test.ts`; shown on /ds/forms).
+(`sql-editor.test.ts`; shown on /ds/forms). Suggestions open at the caret as in VS Code while a word is typed or on
+Ctrl+Space (↑/↓, Enter or Tab inserts as one undo step, Esc closes): keywords and functions, `params` after ":", and what
+the caller's `suggest` gives for the context `sqlContext` reads (tables after FROM/JOIN; after `alias.` the columns of
+that table; else the columns of the tables the query names), each with a kind letter and its detail (a type, a table).
+`suggest` is asked once typing pauses (250 ms), the previous request aborted; a caller reading a connection caches.
 
 ### 5.13 Empty, error, loading, stale (the five states)
 - **Loading**: shimmer skeletons in the final shape (§7.2): text bars 10 px radius 4, chart = gridlines + 3 ghost

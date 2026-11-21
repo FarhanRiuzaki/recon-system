@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, Panel, Segmented, SqlEditor, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Field, Panel, Segmented, SqlEditor, type SqlSuggest, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -29,6 +29,8 @@ type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
 export type CatalogProps = {
   /** "Check query": the columns a SELECT gives over the connection on screen (POST …/catalog list query). */
   onCheckQuery: (query: string) => Promise<{ columns: { name: string }[] }>;
+  /** Tables and columns for the SELECT's suggestions, read over the connection on screen. */
+  onSuggest: SqlSuggest;
   /** Databases (Oracle: schemas) the login can open, read after a passing test. */
   names: ListState<{ items: string[]; truncated: boolean }>;
   tables: ListState<TablesPage>;
@@ -421,7 +423,7 @@ function Data(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
         </div>
       ) : (
         <div className="grid gap-1">
-          <QueryField note="Only SELECT is allowed." error={err(ctl("input.query"))} value={i.query ?? ""} rows={6} check={cat.onCheckQuery}
+          <QueryField note="Only SELECT is allowed." error={err(ctl("input.query"))} value={i.query ?? ""} rows={6} check={cat.onCheckQuery} suggest={cat.onSuggest}
             onChange={(query) => setInput({ query } as Partial<WatermarkInput>)} />
           <span><Button type="button" variant="link" size="sm" onClick={() => set((x) => ({ ...x, from: "table" }))}>Choose a table instead</Button></span>
         </div>
@@ -446,7 +448,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   if (i.kind === "db_snapshot") {
     body = (
       <>
-        <QueryField error={err(ctl("input.query"))} value={i.query} rows={8} check={p.catalog.onCheckQuery} onChange={(query) => setInput({ query })}
+        <QueryField error={err(ctl("input.query"))} value={i.query} rows={8} check={p.catalog.onCheckQuery} suggest={p.catalog.onSuggest} params={BUSINESS_DATE} onChange={(query) => setInput({ query })}
           note="Only SELECT is allowed. :business_date is filled in for each run. A new snapshot becomes active only when the pull finishes; if it fails halfway, the active one stays." />
         <Field id={ctl("input.schedule")} label="Runs" error={err(ctl("input.schedule"))}
           note={`A cron expression in ${APP_TIME_ZONE_LABEL}: minute hour day month weekday. ${i.schedule.trim() ? `Now: ${scheduleText(i.schedule)}.` : ""}`}>
@@ -487,8 +489,11 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
  * query gives (no rows) over the connection on screen; its result belongs to the text it checked, so an edit clears it.
  * A failure is the field's error (the sentence the API gives), a pass a green line naming the columns.
  */
-function QueryField({ value, rows, note, error, onChange, check }: {
+const BUSINESS_DATE = [":business_date"] as const;
+
+function QueryField({ value, rows, note, error, onChange, check, suggest, params }: {
   value: string; rows: number; note: string; error?: string | null; onChange: (query: string) => void; check: CatalogProps["onCheckQuery"];
+  suggest: SqlSuggest; params?: readonly string[];
 }) {
   const [run, setRun] = useState<{ query: string; busy: boolean; ok?: string; failed?: string } | null>(null);
   const mine = run && run.query === value ? run : null;
@@ -505,7 +510,7 @@ function QueryField({ value, rows, note, error, onChange, check }: {
   return (
     <div className="grid gap-1.5">
       <Field id={ctl("input.query")} label="Query" note={note} error={error || mine?.failed || undefined}>
-        <SqlEditor id={ctl("input.query")} value={value} rows={rows} onChange={(e) => onChange(e.target.value)}
+        <SqlEditor id={ctl("input.query")} value={value} rows={rows} onChange={(e) => onChange(e.target.value)} suggest={suggest} params={params}
           action={<Button type="button" variant="secondary" size="sm" onClick={() => void go()} disabled={!value.trim() || !!mine?.busy} aria-busy={mine?.busy || undefined}>
             {mine?.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Check query</Button>} />
       </Field>

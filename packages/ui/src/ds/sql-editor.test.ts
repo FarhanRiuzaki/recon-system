@@ -1,7 +1,7 @@
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SqlEditor, sqlTokens } from "./sql-editor";
+import { builtInSuggestions, rankSuggestions, SqlEditor, sqlContext, sqlTokens } from "./sql-editor";
 
 describe("sqlTokens", () => {
   it("colours keywords, strings, numbers, comments and :parameters; the pieces join back to the text", () => {
@@ -29,5 +29,35 @@ describe("SqlEditor", () => {
     expect(out).toContain('<span class="text-code-keyword">select</span>');
     expect(out).toContain('aria-hidden="true"');
     expect(out).toContain("Check query");
+  });
+});
+
+describe("sqlContext", () => {
+  const at = (sql: string) => sqlContext(sql.replace("|", ""), sql.indexOf("|"));
+  it("a table after FROM or JOIN, schema-qualified too", () => {
+    expect(at("select * from led|")).toMatchObject({ want: "table", word: "led" });
+    expect(at("select * from a join core.tx|")).toMatchObject({ want: "table", word: "tx" });
+  });
+  it("a column of the aliased table after alias.; the query's tables listed", () => {
+    expect(at("select l.am| from core.ledger l join fx f on f.id = l.fx")).toMatchObject({ want: "column", table: "core.ledger", word: "am", tables: ["core.ledger", "fx"] });
+    expect(at("select ledger.| from core.ledger")).toMatchObject({ want: "column", table: "core.ledger" });
+  });
+  it("anything elsewhere; nothing inside a string or a comment", () => {
+    expect(at("select id, am| from t")).toMatchObject({ want: "any", word: "am" });
+    expect(at("select 'am| from t").want).toBe("none");
+    expect(at("-- am|").want).toBe("none");
+  });
+});
+
+describe("suggestions", () => {
+  it("keywords and functions where anything goes, params after ':', none where a table is wanted", () => {
+    expect(builtInSuggestions(sqlContext("sel", 3), [])).toContainEqual({ label: "SELECT", kind: "keyword" });
+    expect(builtInSuggestions(sqlContext("where d = :b", 12), [":business_date"])).toEqual([{ label: ":business_date", kind: "param", detail: "filled in per run" }]);
+    expect(builtInSuggestions(sqlContext("from le", 7), [])).toEqual([]);
+  });
+  it("rank: starts-with first, then contains; the typed word itself and duplicates left out", () => {
+    const list = [{ label: "amount", kind: "column" }, { label: "net_amount", kind: "column" }, { label: "AMOUNT", kind: "column" }, { label: "amount", kind: "column" }] as const;
+    expect(rankSuggestions(list, "am").map((s) => s.label)).toEqual(["amount", "AMOUNT", "net_amount"]);
+    expect(rankSuggestions(list, "amount").map((s) => s.label)).toEqual(["net_amount"]);
   });
 });

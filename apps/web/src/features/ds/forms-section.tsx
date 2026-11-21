@@ -6,6 +6,7 @@ import {
   RequiredNote, ReviewList, Timeline,
   InputAffix, type TimelineItem, type UploadFn, useForm,
   SqlEditor,
+  type SqlSuggest,
 } from "@starterkit/ui/ds";
 import { rules } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
@@ -60,6 +61,15 @@ const SLOTS: ComboOption[] = [
   { value: "pm", label: "Afternoon, 13:00–17:00", tone: "ok" },
   { value: "night", label: "Night, 19:00–22:00", tone: "bad", disabled: true, description: "Not served in this area" },
 ];
+
+/** Tables and columns the SqlEditor sample suggests, as a connection would answer them. */
+const SQL_TABLES: Record<string, [string, string][]> = {
+  ledger: [["id", "bigint"], ["amount", "numeric"], ["value_date", "date"], ["account_id", "bigint"]],
+  accounts: [["id", "bigint"], ["name", "text"], ["currency", "text"]],
+};
+const sqlSample: SqlSuggest = (c) => c.want === "table"
+  ? Object.keys(SQL_TABLES).map((t) => ({ label: t, kind: "table" as const, detail: `table, ${SQL_TABLES[t]!.length} columns` }))
+  : (c.table ? [c.table] : c.tables).flatMap((t) => (SQL_TABLES[t] ?? []).map(([n, type]) => ({ label: n, kind: "column" as const, detail: type })));
 
 /** Simulated server search over CITIES. */
 const searchCities = (q: string, signal: AbortSignal) => new Promise<ComboOption[]>((resolve, reject) => {
@@ -198,7 +208,7 @@ function ComboDemo() {
   return (
     <div className="grid gap-4">
       <div className="grid gap-1.5"><label htmlFor="ds-sql" className="text-label text-fg">SQL (SqlEditor, action inside the box)</label>
-        <SqlEditor id="ds-sql" value={sql} onChange={(e) => setSql(e.target.value)} action={<Button type="button" variant="secondary" size="sm">Check query</Button>} /></div>
+        <SqlEditor id="ds-sql" value={sql} onChange={(e) => setSql(e.target.value)} suggest={sqlSample} params={[":business_date"]} action={<Button type="button" variant="secondary" size="sm">Check query</Button>} /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">Delivery slot (options with tone)</span><Combobox label="Delivery slot" options={SLOTS} value={slot} onChange={setSlot} placeholder="Pick a slot" /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">City (single, local)</span><Combobox label="City" options={CITIES} value={one} onChange={setOne} placeholder="Search a city" /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">Teams (multiple, create)</span>

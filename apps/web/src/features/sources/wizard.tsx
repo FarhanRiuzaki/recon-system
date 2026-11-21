@@ -4,7 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, EmptyState, Failure, FormFooter, Panel, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, EmptyState, Failure, FormFooter, Panel, type SqlContext, type SqlSuggestion, Wizard } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -266,6 +266,35 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const typedConn = !ids || !stored || connChanged(x.conn, base);
     const url = ids ? sourceApi(spaceId, ids.sourceId, "/connection/catalog") : `/api/spaces/${encodeURIComponent(spaceId)}/sources/catalog`;
     return api<T>(url, { method: "POST", body: JSON.stringify({ ...body, ...(typedConn ? { connection: connBody(x.conn) } : {}) }) });
+  }
+  /**
+   * Suggestions for the source's SELECT (owner, 21 Nov), read over the connection on screen: tables matching the word
+   * after FROM/JOIN (the server searches the whole catalog), else the columns of the table before the dot or of every
+   * table the query names, with their types. Cached per connection, database and table or prefix: the catalog allows
+   * 60 lists a minute, and the editor already waits for typing to pause.
+   */
+  const sqlCache = useRef(new Map<string, SqlSuggestion[]>());
+  async function suggestSql(c: SqlContext): Promise<SqlSuggestion[]> {
+    const scope = `${connKey(d)}|${d.conn.engine === "oracle" ? schema : d.conn.database}`;
+    const cached = async (key: string, load: () => Promise<SqlSuggestion[]>) => {
+      const k = `${scope}|${key}`;
+      const hit = sqlCache.current.get(k);
+      if (hit) return hit;
+      const v = await load();
+      sqlCache.current.set(k, v);
+      return v;
+    };
+    if (c.want === "table") {
+      return cached(`t:${c.word.toLowerCase()}`, async () => (await catalog<TablesPage>({
+        list: "tables", ...(c.word ? { q: c.word } : {}), ...(d.conn.engine === "oracle" && schema ? { schema } : {}),
+      })).items.map((t): SqlSuggestion => ({ label: t.schema ? `${t.schema}.${t.name}` : t.name, kind: "table", detail: `${t.kind}, ${t.columns} columns` })));
+    }
+    const tables = c.table ? [c.table] : c.tables.slice(0, 4);
+    const lists = await Promise.all(tables.map((t) => cached(`c:${t.toLowerCase()}`, async () =>
+      (await catalog<Extract<SourceCatalogDto, { list: "columns" }>>({ list: "columns", table: t })).columns
+        .map((col): SqlSuggestion => ({ label: col.name, kind: "column", detail: c.table || tables.length === 1 ? col.type : `${col.type} · ${t}` })))
+      .catch(() => [] as SqlSuggestion[])));
+    return lists.flat();
   }
   async function loadNames(x: Draft = d) {
     setNames({ status: "loading" });
@@ -575,7 +604,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               catalog={{
                 names, tables, stale: listsStale, tablesStale, free, onFree: (k, f) => setFree((x) => ({ ...x, [k]: f })), query: tableQuery, onQuery: setTableQuery,
                 schema, onSchema: setSchema, onPickDatabase: pickDatabase, onPickTable: (t) => void pickTable(t), onRetryNames: () => void loadNames(), onRetryTables: () => void loadTables(tableQuery),
-                columns: picked, onCheckQuery: (query) => catalog<Extract<SourceCatalogDto, { list: "query" }>>({ list: "query", query }),
+                columns: picked, onSuggest: suggestSql, onCheckQuery: (query) => catalog<Extract<SourceCatalogDto, { list: "query" }>>({ list: "query", query }),
               }} />
           )}
           {step === 1 && (
