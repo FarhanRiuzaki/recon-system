@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { Avatar, BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, RelativeTime, StatusChip, Toolbar, Truncate } from "@starterkit/ui/ds";
 import type { Health } from "@starterkit/ui/lib/status";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Input } from "@starterkit/ui/ui/input";
@@ -17,7 +17,7 @@ import type { NoFilters, RecordFilters } from "@/lib/shared/queries";
 import { sourceActivity, sourceFiles, sourceQuarantine, sourceRecords, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
 import { VERSION_LEGEND, versionChip } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
-import { activitySentence } from "./spec-draft";
+import { activitySentence, activityWhat } from "./spec-draft";
 import { versionHref } from "./use-sources";
 
 // The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, versions and
@@ -242,8 +242,14 @@ export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) 
     <Table<ActivityDto> def={def} title="Activity" description="Newest first; the credential is never recorded" icon={ActivityIcon} rowKey={(e) => e.id}
       empty={{ title: "No activity yet", description: "Entries appear here when someone changes this source, its connection or a version." }}
       columns={() => [
-        { key: "event", header: "What happened", mobile: "title", className: `${WRAP} wrap-anywhere md:min-w-80 w-full`, cell: (e) => <span className="text-fg">{activitySentence(e)}</span> },
-        { key: "at", header: "When", mobile: "meta", cell: (e) => at(e.at) },
+        // as the activity log reads (time, user, what): the time on one line, the user with an avatar, then what they did
+        { key: "at", header: "Time", mobile: "meta", className: "whitespace-nowrap", cell: (e) => (
+          <span className="grid"><RelativeTime at={Date.parse(e.at)} touchDate={false} /><span className="font-mono text-caption text-fg-3">{at(e.at)}</span></span>
+        ) },
+        { key: "actor", header: "User", mobile: "meta", className: "min-w-48", cell: (e) => (
+          <span className="flex min-w-0 max-w-56 items-center gap-2.5"><Avatar name={e.actor.name} seed={e.actor.id} /><Truncate title={e.actor.name}>{e.actor.name}</Truncate></span>
+        ) },
+        { key: "event", header: "What happened", mobile: "title", className: `${WRAP} wrap-anywhere md:min-w-80 w-full`, cell: (e) => <span className="text-fg">{activityWhat(e) ?? activitySentence(e)}</span> },
       ]} />
   );
 }

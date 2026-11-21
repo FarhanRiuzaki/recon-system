@@ -223,25 +223,34 @@ const field = (o: unknown, k: string): unknown => (o && typeof o === "object" ? 
  * One sentence per entry of a source's activity (designer review 03): who did what to which version, never a hash or a
  * raw before/after; a check's comment is quoted.
  */
-export function activitySentence(e: Entry): string {
-  const who = e.actor.name || "Someone";
+/** What an entry did, without who ("Edited version 2.", "Set the connection. TLS turned off for core-db."); null for an action not known here. */
+export function activityWhat(e: Entry): string | null {
   const v = field(e.after, "version");
-  switch (e.action) {
-    case "source.create": return `${who} created the source.`;
-    case "source.connection_set": {
-      const off = field(field(e.after, "tlsOff"), "host");
-      return `${who} ${e.before ? "replaced" : "set"} the connection.${typeof off === "string" ? ` TLS turned off for ${off} by ${who}.` : ""}`;
+  const what = ((): string | null => {
+    switch (e.action) {
+      case "source.create": return "created the source.";
+      case "source.connection_set": {
+        const off = field(field(e.after, "tlsOff"), "host");
+        return `${e.before ? "replaced" : "set"} the connection.${typeof off === "string" ? ` TLS turned off for ${off}.` : ""}`;
+      }
+      case "source.version_create": { const from = field(e.after, "from"); return `started version ${String(v)}${from ? ` from version ${String(from)}` : ""}.`; }
+      case "source.version_update": return `edited version ${String(v)}.`;
+      case "source.version_submit": return `submitted version ${String(v)}.`;
+      case "source.version_approve": { const retired = field(e.after, "retired"); return `approved version ${String(v)}${retired ? `; version ${String(retired)} retired` : ""}.`; }
+      case "source.version_reject": return `sent version ${String(v)} back: \u201c${String(field(e.after, "comment") ?? "")}\u201d`;
+      case "source.share": return `shared the source with ${String(field(field(e.after, "space"), "name") ?? "another space")}.`;
+      case "source.unshare": return `stopped sharing the source with ${String(field(field(e.before, "space"), "name") ?? "another space")}.`;
+      case "source.run": { const d = field(e.after, "businessDate"); return d ? `pulled ${String(d)} again.` : "started a pull."; }
+      default: return null;
     }
-    case "source.version_create": { const from = field(e.after, "from"); return `${who} started version ${String(v)}${from ? ` from version ${String(from)}` : ""}.`; }
-    case "source.version_update": return `${who} edited version ${String(v)}.`;
-    case "source.version_submit": return `${who} submitted version ${String(v)}.`;
-    case "source.version_approve": { const retired = field(e.after, "retired"); return `${who} approved version ${String(v)}${retired ? `; version ${String(retired)} retired` : ""}.`; }
-    case "source.version_reject": return `${who} sent version ${String(v)} back: \u201c${String(field(e.after, "comment") ?? "")}\u201d`;
-    case "source.share": return `${who} shared the source with ${String(field(field(e.after, "space"), "name") ?? "another space")}.`;
-    case "source.unshare": return `${who} stopped sharing the source with ${String(field(field(e.before, "space"), "name") ?? "another space")}.`;
-    case "source.run": { const d = field(e.after, "businessDate"); return d ? `${who} pulled ${String(d)} again.` : `${who} started a pull.`; }
-    default: return `${who}: ${e.action}.`;
-  }
+  })();
+  return what && what.charAt(0).toUpperCase() + what.slice(1);
+}
+
+/** An entry as one sentence: "Ayu edited version 2." */
+export function activitySentence(e: Entry): string {
+  const who = e.actor.name || "Someone", what = activityWhat(e);
+  return what ? `${who} ${what.charAt(0).toLowerCase()}${what.slice(1)}` : `${who}: ${e.action}.`;
 }
 
 /** "1 change", "3 changes". */

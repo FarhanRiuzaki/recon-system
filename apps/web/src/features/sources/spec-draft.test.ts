@@ -132,7 +132,7 @@ describe("activitySentence", () => {
     expect(activitySentence(e("source.create", { code: "x" }))).toBe("Ayu created the source.");
     expect(activitySentence(e("source.connection_set", { engine: "postgres" }))).toBe("Ayu set the connection.");
     expect(activitySentence(e("source.connection_set", { engine: "postgres" }, { engine: "mysql" }))).toBe("Ayu replaced the connection.");
-    expect(activitySentence(e("source.connection_set", { engine: "postgres", tlsOff: { host: "core-db.bank.internal" } }))).toBe("Ayu set the connection. TLS turned off for core-db.bank.internal by Ayu.");
+    expect(activitySentence(e("source.connection_set", { engine: "postgres", tlsOff: { host: "core-db.bank.internal" } }))).toBe("Ayu set the connection. TLS turned off for core-db.bank.internal.");
     expect(activitySentence(e("source.version_create", { version: 2, from: 1 }))).toBe("Ayu started version 2 from version 1.");
     expect(activitySentence(e("source.version_update", { version: 2, specHash: "58bc7319" }))).toBe("Ayu edited version 2.");
     expect(activitySentence(e("source.version_submit", { version: 2, specHash: "58bc" }))).toBe("Ayu submitted version 2.");
