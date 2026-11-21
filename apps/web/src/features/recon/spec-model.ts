@@ -3,7 +3,7 @@
 // checkReconSpec (apps/api/src/modules/recon/rules.ts) stays the judge; the few checks here only explain a control
 // before a save (a field of the wrong kind, a missing currency condition, why submit is off).
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
-import { type Cardinality, type FieldKind, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
+import { type Cardinality, type FieldKind, FIELD_LABEL, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 
@@ -393,3 +393,35 @@ export function filterText(f: SideSpec["filter"][number], fields: SideFields): s
   const value = "value" in f ? ` ${f.value}` : "values" in f ? ` ${f.values.join(", ")}` : "";
   return `${fieldName(f.field, fields)} ${label}${value}`;
 }
+
+/** A field as a reader names it in a pass card: a core field's label ("Reference"), an attribute by its stored name. */
+const readerLabel = (ref: string) => (ref.startsWith("attrs.") ? ref.slice(6) : (FIELD_LABEL[ref as keyof typeof FIELD_LABEL] ?? ref));
+
+/**
+ * A pass condition as a reader scans it (owner, 22 Nov: clear, not the engine's words): which field (side A's and
+ * side B's when they differ), the rule in plain words, and the source columns behind them (once when both sides name
+ * the same one).
+ */
+export function conditionParts(q: Predicate, fields: Fields): { field: string; rule: string; columns: string } {
+  const ra = sideRef(q.field, 0), rb = sideRef(q.field, 1);
+  const field = ra === rb ? readerLabel(ra) : `${readerLabel(ra)} ↔ ${readerLabel(rb)}`;
+  const ca = fieldName(ra, fields[0]), cb = fieldName(rb, fields[1]);
+  const columns = ca === cb ? ca : `${ca} ↔ ${cb}`;
+  const rule = ((): string => {
+    switch (q.op) {
+      case "eq": return "the same on both sides";
+      case "eq_normalized": return "the same, ignoring case and symbols";
+      case "amount_abs_tol": return Object.keys(q.tolerance).length ? `within ± ${toleranceText(q.tolerance)}` : "the same on both sides";
+      case "amount_pct_tol": return `within ${q.percent}%`;
+      case "date_window": return `within ${plural(q.days, "day")}`;
+      case "bday_window": return `within ${plural(q.days, "business day")}`;
+      case "contains": return "side A's contains side B's";
+      case "similarity": return `similar, at least ${q.min}`;
+      case "eq_sum": return `the sums match, ${toleranceText(q.tolerance)}`;
+    }
+  })();
+  return { field, rule, columns };
+}
+/** A pass's matching keys as a reader names them: "Reference, Business date". */
+export const keysText = (keys: readonly FieldPair[]) =>
+  keys.map((k) => { const a = sideRef(k, 0), b = sideRef(k, 1); return a === b ? readerLabel(a) : `${readerLabel(a)} ↔ ${readerLabel(b)}`; }).join(", ");

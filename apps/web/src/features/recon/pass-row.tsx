@@ -5,7 +5,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { MenuIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
-import { conditionText, type Fields, pairText } from "./spec-model";
+import { conditionParts, type Fields, keysText } from "./spec-model";
 
 export const DASH = "—";
 
@@ -36,12 +36,20 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
       </span>
       <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
         <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.cardinality}</span>
-        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Auto-accept" : "Suggest"}</span>
-        {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</span>}
+        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</span>
+        {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Looks at the same {keysText(pass.blocking)}</span>}
       </span>
-      <span className="grid gap-0.5 font-mono text-mono text-fg-2 wrap-anywhere">
-        {pass.predicates.map((q, j) => <span key={j}>{conditionText(q, fields)}</span>)}
-      </span>
+      {/* each condition in people's words, its source column after it (owner, 22 Nov: clear, not the engine's words) */}
+      <ul className="grid gap-0.5">
+        {pass.predicates.map((q, j) => {
+          const c = conditionParts(q, fields);
+          return (
+            <li key={j} className="text-body-sm text-fg-2 wrap-anywhere">
+              <span className="text-fg">{c.field}</span> {c.rule}<span className="ml-2 font-mono text-caption text-fg-3">{c.columns}</span>
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

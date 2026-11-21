@@ -2,20 +2,80 @@
 
 import { useMemo } from "react";
 import { Panel } from "@starterkit/ui/ds";
+import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
-import type { ReconSpec } from "@starterkit/shared/contracts/recon";
+import { Icon } from "@starterkit/ui/ui/icon";
+import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
-import type { SourceKind } from "@starterkit/shared/sources";
-import { PassBody } from "./pass-row";
-import { daysText, type Fields, filterText, graceText, measureText, scheduleText } from "./spec-model";
+import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
+import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { useSideSource } from "./use-recons";
 
-const KIND: Record<SourceKind, string> = { file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot" };
+const CARDINALITY: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one" };
+
+/** A small word chip in a pass's head. */
+const Chip = ({ children, primary }: { children: string; primary?: boolean }) => (
+  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-caption", primary ? "bg-primary-soft text-primary" : "bg-tray text-fg-2")}>{children}</span>
+);
+
+/** One row of a pass: the question on the left (the same width in every pass), the answer on the right. */
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-1 md:grid-cols-[8rem_minmax(0,1fr)] md:gap-4">
+      <dt className="text-caption text-fg-3 md:pt-0.5">{label}</dt>
+      <dd className="min-w-0">{children}</dd>
+    </div>
+  );
+}
+
+/** A pass as a step a reader follows (owner, 22 Nov: clear, tidy): what it does, where it looks, when it pairs, a tie. */
+function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; last: boolean; fields: Fields }) {
+  return (
+    <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3">
+      {/* the run order as a rail: the step's number, a line down to the next */}
+      <div aria-hidden="true" className="flex flex-col items-center">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-fg text-label text-bg tabular">{step}</span>
+        {!last && <span className="w-px flex-1 bg-line" />}
+      </div>
+      <div className={cn("grid min-w-0 gap-3 rounded-lg border border-line bg-card p-4", !last && "mb-3")}>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <h3 className="min-w-0 truncate text-label text-fg"><span className="sr-only">Pass {step}: </span>{pass.name || "Untitled pass"}</h3>
+          <Chip primary={pass.accept === "auto"}>{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</Chip>
+          <Chip>{CARDINALITY[pass.cardinality]}</Chip>
+        </div>
+        <dl className="grid gap-3">
+          <Row label="Looks at">
+            <span className="text-body-sm text-fg">{pass.blocking.length ? `Items with the same ${keysText(pass.blocking)}` : "Every item still open"}</span>
+          </Row>
+          <Row label="Pairs when">
+            <ul className="grid gap-1.5">
+              {pass.predicates.map((q, j) => {
+                const c = conditionParts(q, fields);
+                return (
+                  <li key={j} className="grid gap-x-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
+                    <span className="text-body-sm text-fg">{c.field}</span>
+                    <span className="min-w-0 text-body-sm text-fg-2">
+                      {c.rule}
+                      <span className="ml-2 font-mono text-caption wrap-anywhere text-fg-3">{c.columns}</span>
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Row>
+          <Row label="Several fit">
+            <span className="text-body-sm text-fg-2">{pass.on_ambiguous === "break" ? "Raise a break for someone to review" : "Suggest them for review"}</span>
+          </Row>
+        </dl>
+      </div>
+    </li>
+  );
+}
 
 /**
  * A recon version's spec as text (ui-standard §1a "Version": values as text, never disabled inputs, no inspector): the
- * settings strip, then the two sides and the passes in run order as read-only cards.
+ * settings, the two sides, and the passes in run order as steps (owner, 22 Nov: tidy and clear for a reader).
  */
 export function SpecView({ spaceId, spec }: { spaceId: string; spec: ReconSpec }) {
   const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
@@ -32,29 +92,38 @@ export function SpecView({ spaceId, spec }: { spaceId: string; spec: ReconSpec }
           ))}
         </dl>
       </section>
-      <Panel title="Passes in run order" bodyClassName="grid gap-3">
+
+      <Panel title="Sides" description="What each side reads">
         <div className="grid gap-3 md:grid-cols-2">
           {([0, 1] as const).map((i) => {
             const s = spec.sides[i], src = sources[i];
             return (
-              <div key={i} className="grid min-w-0 content-start gap-1.5 rounded-md border border-line bg-card p-3">
-                <span className="flex min-w-0 items-baseline gap-2"><span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span><span className="text-label text-fg">{s.label}</span></span>
-                <span className="text-caption text-fg-2">{src ? [src.name, KIND[src.kind], src.owner ? `shared from ${src.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}</span>
-                <span className="grid gap-0.5 font-mono text-mono text-fg-3 wrap-anywhere">
-                  {s.filter.length ? s.filter.map((f, j) => <span key={j}>{filterText(f, fields[i])}</span>) : <span>no filter</span>}
-                  {s.amount_sign === "negate" && <span>amount with the opposite sign</span>}
+              <div key={i} className="flex min-w-0 items-start gap-3 rounded-lg border border-line bg-card p-4">
+                <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-md bg-tray text-fg-2">
+                  {src ? <Icon icon={sourceKindIcon(src.kind)} size={18} /> : null}
+                </span>
+                <span className="grid min-w-0 gap-1">
+                  <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span>
+                    <span className="truncate text-label text-fg">{s.label}</span>
+                  </span>
+                  <span className="truncate text-body-sm text-fg-2">
+                    {src ? [src.name, SOURCE_KIND_WORD[src.kind], src.owner ? `shared from ${src.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}
+                  </span>
+                  <span className="text-caption text-fg-3">
+                    {s.filter.length ? `Only ${s.filter.map((f) => filterText(f, fields[i])).join(", and ")}` : "Every record"}
+                    {s.amount_sign === "negate" ? " · amounts with the opposite sign" : ""}
+                  </span>
                 </span>
               </div>
             );
           })}
         </div>
-        <ol aria-label="Passes in run order" className="grid gap-3">
-          {spec.passes.map((p) => (
-            <li key={p.no} className="grid min-w-0 gap-2 rounded-md border border-line bg-card p-3">
-              <PassBody pass={p} fields={fields} />
-              <span className="text-caption text-fg-3">{p.on_ambiguous === "break" ? "When several candidates fit: raise a break" : "When several candidates fit: suggest them for review"}</span>
-            </li>
-          ))}
+      </Panel>
+
+      <Panel title="Passes in run order" description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart">
+        <ol aria-label="Passes in run order" className="grid">
+          {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} />)}
         </ol>
       </Panel>
     </>

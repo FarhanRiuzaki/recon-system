@@ -233,3 +233,16 @@ describe("a tolerance row still being filled in (autosave waits; the field says 
     expect(toleranceProblem("1000.5", "JPY")).toBe("JPY takes no decimals, such as 1000.");
   });
 });
+
+import { conditionParts, keysText } from "./spec-model";
+describe("a pass condition as a reader scans it (owner, 22 Nov: clear, tidy)", () => {
+  const side = new Map([["ext_ref", { from: "end_to_end_id", kind: "text" as const }], ["amount_minor", { from: "amount", kind: "decimal" as const }], ["business_date", { from: "value_date", kind: "date" as const }]]);
+  const fields = [side, side] as unknown as Parameters<typeof conditionParts>[1];
+  it("the field in people's words, the rule in plain words, the source column once when both sides name it", () => {
+    expect(conditionParts({ op: "eq", field: "ext_ref" }, fields)).toEqual({ field: "Reference", rule: "the same on both sides", columns: "end_to_end_id" });
+    expect(conditionParts({ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "2500.00" } }, fields).rule).toBe("within ± IDR 2,500.00 · other currencies exact");
+    expect(conditionParts({ op: "date_window", field: "business_date", days: 1 }, fields)).toMatchObject({ field: "Business date", rule: "within 1 day", columns: "value_date" });
+    expect(conditionParts({ op: "eq", field: { a: "ext_ref", b: "attrs.ref2" } }, fields).field).toBe("Reference ↔ ref2");
+    expect(keysText(["ext_ref", "business_date"])).toBe("Reference, Business date");
+  });
+});
