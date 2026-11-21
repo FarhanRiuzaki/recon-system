@@ -269,6 +269,10 @@ describe("PUT connection", () => {
     const mineText = await mine.text();
     expect((JSON.parse(mineText) as SourceDto).connection?.server).toEqual({ host: CONNECTION.host, port: 3306, database: "core", user: "recon_ro" });
     expect(mineText).not.toContain(PASSWORD);
+    // the list says what it reads and where: engine for every reader, the server for a source admin only (owner, 21 Nov)
+    const listRow = async (token: string) => (await json<Page<SourceRowDto>>(call("GET", `${base(A)}?q=core-bifast`, { token }))).items[0]!;
+    expect(await listRow(t.adm)).toMatchObject({ engine: "mysql", server: `recon_ro@${CONNECTION.host}:3306/core`, usedByCount: 0, pending: null });
+    expect(await listRow(t.op)).toMatchObject({ engine: "mysql", server: null });
 
     const entries = await acts();
     expect(entries.map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.connection_set"]);

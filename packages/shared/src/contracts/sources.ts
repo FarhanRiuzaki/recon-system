@@ -407,6 +407,8 @@ export const SourceHealthDto = z.object({
   reason: z.string().nullable(),
   missingDate: z.string().nullable(),
   lastError: z.string().nullable(),
+  /** The last read that succeeded (a pull, a scan of the folder, a snapshot). */
+  lastReadAt: z.string().nullable(),
 });
 export type SourceHealthDto = z.infer<typeof SourceHealthDto>;
 
@@ -429,6 +431,16 @@ export const SourceRowDto = z.object({
   health: SourceHealthDto.nullable(),
   rowsToday: z.number().int().nullable(),
   quarantinedToday: z.number().int().nullable(),
+  /** The database engine (null for a file inbox, or through a share). */
+  engine: z.enum(DB_ENGINES).nullable(),
+  /** Where it connects, user@host:port/database: a source admin of the owner space only, else null. */
+  server: z.string().nullable(),
+  /** What it reads: the table, "Own SELECT", or the folder and file name pattern (the published version's). */
+  reads: z.string().nullable(),
+  /** How many published recons read it (the owner space's view counts every space's). */
+  usedByCount: z.number().int(),
+  /** A version waiting: a draft, or one in review. */
+  pending: z.object({ version: z.number().int(), status: z.enum(["draft", "in_review"]) }).nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

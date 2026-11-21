@@ -120,6 +120,12 @@
                 "null"
               ]
             },
+            "lastReadAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
             "graceMinutes": {
               "anyOf": [
                 {
@@ -147,6 +153,7 @@
             "reason",
             "missingDate",
             "lastError",
+            "lastReadAt",
             "graceMinutes",
             "deadline"
           ],
@@ -175,6 +182,68 @@
           "type": "integer",
           "minimum": -9007199254740991,
           "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "engine": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "mysql",
+            "mssql",
+            "oracle"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "server": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reads": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "usedByCount": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "pending": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review"
+              ]
+            }
+          },
+          "required": [
+            "version",
+            "status"
+          ],
+          "additionalProperties": false
         },
         {
           "type": "null"
@@ -2116,6 +2185,11 @@
     "health",
     "rowsToday",
     "quarantinedToday",
+    "engine",
+    "server",
+    "reads",
+    "usedByCount",
+    "pending",
     "createdAt",
     "updatedAt",
     "nextRunAt",

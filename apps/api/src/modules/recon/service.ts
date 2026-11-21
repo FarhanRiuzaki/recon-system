@@ -411,6 +411,15 @@ export async function reconsUsingSource(tx: InTx, sourceId: string): Promise<{ i
   return [...by.values()].map((x) => ({ ...x, fields: [...new Set(x.fields)].sort() })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** How many published recons read each of `sourceIds` (those `tx` can read), by source id. */
+export async function reconsUsingSources(tx: InTx, sourceIds: string[]): Promise<Map<string, number>> {
+  if (!sourceIds.length) return new Map();
+  const rows = await tx.selectDistinct({ id: reconSourceUses.sourceId, config: reconSourceUses.configId }).from(reconSourceUses).where(inArray(reconSourceUses.sourceId, sourceIds));
+  const out = new Map<string, number>();
+  for (const r of rows) out.set(r.id, (out.get(r.id) ?? 0) + 1);
+  return out;
+}
+
 /**
  * The health inputs the published recons that read sources `sourceIds` set (Plan 2 carry-over): per source the
  * smallest grace and the earliest daily deadline (HH:MM) among them, the strictest. Only the configs `tx` can read

@@ -119,6 +119,12 @@
                 "string",
                 "null"
               ]
+            },
+            "lastReadAt": {
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           "required": [
@@ -128,7 +134,8 @@
             "completeThrough",
             "reason",
             "missingDate",
-            "lastError"
+            "lastError",
+            "lastReadAt"
           ],
           "additionalProperties": false
         },
@@ -161,6 +168,68 @@
         }
       ]
     },
+    "engine": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "postgres",
+            "mysql",
+            "mssql",
+            "oracle"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "server": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reads": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "usedByCount": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "pending": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review"
+              ]
+            }
+          },
+          "required": [
+            "version",
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "createdAt": {
       "type": "string"
     },
@@ -181,6 +250,11 @@
     "health",
     "rowsToday",
     "quarantinedToday",
+    "engine",
+    "server",
+    "reads",
+    "usedByCount",
+    "pending",
     "createdAt",
     "updatedAt"
   ],

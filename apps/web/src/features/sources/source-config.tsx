@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { EmptyState, InfoTip, Pagination, Panel } from "@starterkit/ui/ds";
+import { CategoryChip, EmptyState, InfoTip, Pagination, Panel } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
-import { BranchIcon, DiskIcon, NetworkIcon, ComponentsIcon } from "@starterkit/ui/ui/icons";
+import { BranchIcon, ComponentsIcon, DiskIcon, NetworkIcon, ShareIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { computeSteps, stepText } from "@starterkit/shared/compute";
@@ -135,6 +135,12 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
           ["Rows to load", spec.keep?.length ? spec.keep.map((c) => conditionText(c, spec)).join("; ") : "Every row"],
           ["When a row changes", spec.mutable ? `The newest row per ${spec.key_fields.join(" + ")} replaces the earlier one` : "Rows never change once they arrive"],
         ]} />
+      </Panel>
+
+      <Panel icon={ShareIcon} title="Shared with" count={s.shares.length} description="Spaces that read this source and its published versions; they change nothing">
+        {s.shares.length
+          ? <ul className="flex flex-wrap gap-2">{s.shares.map((x) => <li key={x.spaceId}><CategoryChip slot="neutral" label={x.name} /></li>)}</ul>
+          : <p className="text-body-sm text-fg-3">Only this space reads it.</p>}
       </Panel>
 
       <Panel flush icon={BranchIcon} title="Used by recons" count={s.usedBy.length}

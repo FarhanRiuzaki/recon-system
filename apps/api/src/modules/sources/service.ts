@@ -27,7 +27,7 @@ import {
   CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
-import { reconHealthInputs, reconsUsingFields, reconsUsingSource } from "../recon";
+import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
 import {
@@ -46,11 +46,44 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 type Owners = Map<string, string>;
-const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string, owners: Owners, state: SourceState | undefined): SourceRowDto => ({
+type Extras = Pick<SourceRowDto, "engine" | "server" | "reads" | "usedByCount" | "pending">;
+const NO_EXTRAS: Extras = { engine: null, server: null, reads: null, usedByCount: 0, pending: null };
+/** What a source reads, in a few words: its table, its own SELECT, or its folder and file name pattern. */
+const readsOf = (spec: unknown): string | null => {
+  const i = (spec as SourceSpec | null)?.input;
+  if (!i) return null;
+  return i.kind === "file_inbox" ? `${i.path} · ${i.pattern}` : i.kind === "db_watermark" && i.table !== undefined ? i.table : "Own SELECT";
+};
+/**
+ * The admin's view of `list` (owner, 21 Nov: the list says what each source reads and where): engine, server (a
+ * source admin of the owner space), what it reads, the recons that read it, a version waiting. Four queries a page.
+ */
+async function rowExtras(tx: InTx, list: { s: SourceRow; spec: unknown }[], spaceId: string, admin: boolean): Promise<Map<string, Extras>> {
+  const out = new Map<string, Extras>(list.map(({ s, spec }) => [s.id, { ...NO_EXTRAS, reads: readsOf(spec) }]));
+  const own = list.filter(({ s }) => s.spaceId === spaceId).map(({ s }) => s.id);
+  if (!list.length) return out;
+  const ids = list.map(({ s }) => s.id);
+  if (own.length) {
+    const conns = await tx.select({ id: sourceConnections.sourceId, engine: sourceConnections.engine, secretEnc: sourceConnections.secretEnc }).from(sourceConnections)
+      .where(and(eq(sourceConnections.spaceId, spaceId), inArray(sourceConnections.sourceId, own)));
+    for (const c of conns) {
+      const x = out.get(c.id)!;
+      x.engine = c.engine as Extras["engine"];
+      if (admin) { const k = JSON.parse(decryptSecret(c.secretEnc)) as Secret; x.server = `${k.user}@${k.host}:${k.port}/${k.database}`; }
+    }
+    const open = await tx.select({ id: sourceVersions.sourceId, version: sourceVersions.version, status: sourceVersions.status }).from(sourceVersions)
+      .where(and(eq(sourceVersions.spaceId, spaceId), inArray(sourceVersions.sourceId, own), inArray(sourceVersions.status, ["draft", "in_review"])));
+    for (const v of open) out.get(v.id)!.pending = { version: v.version, status: v.status as "draft" | "in_review" };
+  }
+  for (const [id, uses] of await reconsUsingSources(tx, ids)) out.get(id)!.usedByCount = uses;
+  return out;
+}
+const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string, owners: Owners, state: SourceState | undefined, extras: Extras = NO_EXTRAS): SourceRowDto => ({
   id: s.id, spaceId: s.spaceId, code: s.code, name: s.name, kind: s.kind as SourceKind, status: s.status as SourceStatus,
   shared: s.spaceId !== spaceId, publishedVersion,
   owner: s.spaceId !== spaceId ? { spaceId: s.spaceId, name: owners.get(s.spaceId) ?? "" } : null,
   health: state?.health ? omitInputs(state.health) : null, rowsToday: state?.rowsToday ?? null, quarantinedToday: state?.quarantinedToday ?? null,
+  ...extras,
   createdAt: s.createdAt.toISOString(), updatedAt: s.updatedAt.toISOString(),
 });
 /** The list's health: the detail's without the inputs it was judged on. */
@@ -110,11 +143,13 @@ export function sourcePage(ctx: Ctx, q: SourceListQuery): Promise<Page<SourceRow
       const { states, owners } = await readModel(tx, all, spaceId);
       const kept = all.filter((r) => stateOf(r.s, r.published, states.get(r.s.id)?.health) === q.state);
       const items = kept.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
-      return { items: items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id))), total: kept.length, page: q.page, pageSize: q.pageSize };
+      const extras = await rowExtras(tx, items, spaceId, isSourceAdmin(ctx));
+      return { items: items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id), extras.get(r.s.id))), total: kept.length, page: q.page, pageSize: q.pageSize };
     }
     const page = await pageQuery({ rows, count: tx.select(one).from(sources).where(where).$dynamic(), orderBy, query: q, map: (r) => r, on: tx });
     const { states, owners } = await readModel(tx, page.items, spaceId);
-    return { ...page, items: page.items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id))) };
+    const extras = await rowExtras(tx, page.items, spaceId, isSourceAdmin(ctx));
+    return { ...page, items: page.items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id), extras.get(r.s.id))) };
   });
 }
 
@@ -150,8 +185,9 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string, admin = false)
     .where(and(eq(sourceShares.spaceId, s.spaceId), eq(sourceShares.sourceId, s.id))).orderBy(asc(spaces.name)) : [];
   const { states, owners } = await readModel(tx, [{ s, spec: published?.spec }], spaceId);
   const state = states.get(s.id);
+  const extras = (await rowExtras(tx, [{ s, spec: published?.spec }], spaceId, admin)).get(s.id);
   return {
-    ...rowDto(s, published?.version ?? null, spaceId, owners, state),
+    ...rowDto(s, published?.version ?? null, spaceId, owners, state, extras),
     health: state?.health ?? null,
     nextRunAt: state?.nextRunAt ?? null,
     drift: state?.drift ?? null,

@@ -572,7 +572,7 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
       latestActiveDate: latest.get(x.id) ?? null, graceSeconds: graceMinutes === null ? null : graceMinutes * 60,
       deadline: deadline === null ? null : deadlineOn(today, deadline),
     }, now);
-    return [{ x, c, health: { ...h, lastError: c?.lastError ?? null, graceMinutes, deadline } }];
+    return [{ x, c, health: { ...h, lastError: c?.lastError ?? null, lastReadAt: c?.lastSuccessAt?.toISOString() ?? null, graceMinutes, deadline } }];
   });
   if (!judged.length) return out;
   // the day counters (schema.ts sourceDayCounts); a shared source's quarantined counter is not readable here (0019 RLS)

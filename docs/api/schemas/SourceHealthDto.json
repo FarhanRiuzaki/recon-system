@@ -49,6 +49,12 @@
         "string",
         "null"
       ]
+    },
+    "lastReadAt": {
+      "type": [
+        "string",
+        "null"
+      ]
     }
   },
   "required": [
@@ -58,7 +64,8 @@
     "completeThrough",
     "reason",
     "missingDate",
-    "lastError"
+    "lastError",
+    "lastReadAt"
   ],
   "additionalProperties": false
 }

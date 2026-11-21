@@ -25,7 +25,7 @@ import { ActivityTable, FilesTable, QuarantineTable, RecordsTable, SnapshotsTabl
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
 import { SOURCE_TABS, type SourceTab } from "./source-text";
-import { at, completeText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
+import { at, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
 import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
@@ -211,21 +211,24 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
             // the Pull card and its history side by side, the history as tall as the card (owner, 21 Nov)
             <div className="grid items-stretch gap-section xl:grid-cols-2">
             <Panel icon={NetworkIcon} title="Pull" description="By watermark, every minute">
+              {/* what the tiles above don't say (complete through and the next read are there): what it reads, how the
+                  last pull went and how its lag is judged */}
               <Rows items={[
-                { label: "Complete through", value: completeText(s) },
-                { label: "Behind by", value: lagText(s) ?? "–" },
-                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
+                { label: "Reads", value: s.reads ?? "–" },
+                { label: "Last read", value: h.lastReadAt ? at(h.lastReadAt) : "Not yet" },
                 { label: "Last error", value: h.lastError ? errorSentence(h.lastError) : "None" },
-                { label: "Next pull", value: s.nextRunAt ? at(s.nextRunAt) : "None while paused" },
+                { label: "Behind by", value: lagText(s) ?? "Up to date" },
+                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min: degraded past half, down past it` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
               ]} />
             </Panel>
             {own && <PullHistory spaceId={spaceId} id={id} />}
             </div>
           )}
           {s.connection && (
-            <Panel icon={KeyIcon} title="Connection" description="The credential is stored encrypted and never shown">
+            <Panel icon={KeyIcon} title="Connection" description="Stored encrypted; the password is never shown">
               <Rows items={[
                 { label: "Engine", value: ENGINE[s.connection.engine] },
+                ...(s.server ? [{ label: "Server", value: s.server }] : []),
                 { label: "TLS", value: s.connection.options.tls ? "On" : "Off" },
                 // a test waits 8 s at most (the API's interactive deadline); this is the scheduled pull's connect option
                 { label: "Connect timeout for scheduled pulls", value: `${s.connection.options.connectTimeoutSeconds} s` },

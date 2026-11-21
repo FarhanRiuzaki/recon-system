@@ -3,7 +3,7 @@ import type { SourceFileDto, SourceSnapshotDto } from "@starterkit/shared/contra
 import { afterColon, completeText, errorSentence, fileResult, keptSnapshot, lagText, missingText, scheduleText, shortSha, withDays } from "./source-text";
 
 const h = (o: Partial<{ state: "healthy" | "degraded" | "down"; reason: string | null; missingDate: string | null; completeThrough: string | null; lagSeconds: number | null; lastError: string | null }>) =>
-  ({ state: "healthy" as const, businessDate: "2026-11-04", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, ...o });
+  ({ state: "healthy" as const, businessDate: "2026-11-04", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
 
 describe("source text (display only: the API judged the health)", () => {
   it("complete through: the API's reason for a date not delivered; else to the minute (pull) or the date (per date)", () => {
