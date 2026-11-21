@@ -23,8 +23,8 @@ import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
-import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
-import { alias, unionAll } from "drizzle-orm/pg-core";
+import { and, asc, count, countDistinct, eq, exists, inArray, isNotNull, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
 import { log } from "../../kernel/log";
@@ -768,12 +768,15 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
       sql`${reconItems.businessDate} between ${q.own ? run.dateFrom : addDays(run.dateFrom, -spec.carry_over_days)}::date and ${run.dateTo}::date`,
       q.status ? eq(reconItems.status, q.status) : undefined, q.side ? eq(reconItems.side, q.side) : undefined,
       q.reason ? and(eq(reconItems.status, "break"), eq(reconItems.breakReason, q.reason)) : undefined,
-      // pass: its groups' members or the items it broke, one branch each
-      q.pass ? inArray(reconItems.id, unionAll(
-        tx.select({ id: matchMembers.itemId }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
-          .where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy), eq(matchGroups.passNo, q.pass), inWindow(matchGroups.businessDate))),
-        tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), scopeI, eq(reconItems.breakPass, q.pass), inWindow(reconItems.businessDate))),
-      )) : undefined,
+      // pass: a member of one of its groups, or an item it broke. Per item (an index lookup each), so the page walks the
+      // items in date order and stops at its last row: an IN over the pass's members built the whole window's set
+      // first (REC-P1 gate 3: past the 5 s timeout for a pass holding 1.2M items over 31 days; 149 ms this way)
+      q.pass ? or(
+        exists(tx.select(countOne).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
+          .where(and(eq(matchMembers.spaceId, reconItems.spaceId), eq(matchMembers.itemId, reconItems.id), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy),
+            eq(matchGroups.passNo, q.pass), inWindow(matchGroups.businessDate)))),
+        eq(reconItems.breakPass, q.pass),
+      ) : undefined,
       // the date it counts on: its group's (the latest member's, so its own is within carry over before it), else its own
       q.date ? and(sql`${reconItems.businessDate} between ${addDays(q.date, -spec.carry_over_days)}::date and ${q.date}::date`,
         sql`coalesce(${cur.businessDate}, ${reconItems.businessDate}) = ${q.date}::date`) : undefined,

@@ -367,8 +367,29 @@ Gerbang:
   jalan; statement pass 1 174 s lalu 475 s. Selisihnya belum dibuktikan penyebabnya (jalan kedua bersamaan dengan stack
   Docker :3000 dan browser); estimasi planner untuk kandidat 387k vs aktual ~2,9M dan sort window yang tumpah ke disk
   (185 MB pada 1M) adalah kandidat. Belum diukur di perangkat keras produksi.
-- (3) Bacaan layar hasil pada 31 hari × volume S1 × 3 config: **belum diukur** (±558M record/sisi tidak muat di laptop
-  ini). Terakhir terukur: 200k/sisi item `pass=2` halaman 2 1,2 s. Dikerjakan sebelum Today/Live day memakai bacaan yang sama.
+- (3) Bacaan layar hasil, 21 Nov: **lulus setelah satu perbaikan**, pada volume yang muat di laptop ini, bukan volume
+  S1 penuh (±558M record/sisi). Data: 3 config × 31 tanggal bisnis × 20.000 record/sisi/tanggal = 3,72M item dan 1,86M
+  grup di riwayat, satu run live per config atas 31 tanggal (run 394 s, 568 s, 573 s). Bacaan dari pool API (statement
+  timeout 5 s), median dari 5, run config ketiga (`PERF_READ=1` di `run-perf.test.ts`; `PERF_READ_REUSE=1` membaca ulang
+  riwayat yang sama tanpa membuat ulang):
+
+  | Bacaan | Sebelum | Sesudah | Target |
+  |---|---|---|---|
+  | GET run | 3 ms | 3 ms | ≤ 50 ms |
+  | item `pass=1` (97% item jendela, 1,2M) | > 5 s (timeout) | 387 ms | ≤ 2 s |
+  | item `pass=2` halaman 2 | 827 ms | 244 ms | ≤ 2 s |
+  | item `date=` satu tanggal | 121 ms | 115 ms | ≤ 2 s |
+  | item `status=suggested` (pasangan) | 97 ms | 96 ms | ≤ 2 s |
+  | item `own=1` halaman 50 | 152 ms | 146 ms | ≤ 2 s |
+
+  Penyebab timeout (EXPLAIN ANALYZE): filter pass `id IN (anggota grup pass ∪ item yang dipecah pass)` membangun
+  seluruh himpunan jendela dulu (1,2M baris, HashAggregate dan sort ke disk 73 MB) baru memotong 100. Perbaikan
+  (`runItemPage`): `EXISTS` per item atau `break_pass = pass`, sehingga planner menelusuri item urut tanggal lewat indeks
+  `(space_id, config_id, business_date)` dan berhenti di baris terakhir halaman; hitungan dibatasi 100.000
+  (`COUNT_CAP`) selesai 210 ms. Biaya halaman kini sebanding dengan satu tanggal (±40k item config ini), bukan jendela.
+  **Dugaan, belum diukur**: pada volume S1 (±18M item/sisi/tanggal) satu tanggal penuh yang harus diurutkan sebelum
+  halaman pertama menjadi batasnya; bila itu terjadi, indeks `(space_id, config_id, business_date, id)` menghapus sort
+  per tanggal.
 
 ## REC-S6 (canvas): React Flow + ELK untuk builder kanvas
 

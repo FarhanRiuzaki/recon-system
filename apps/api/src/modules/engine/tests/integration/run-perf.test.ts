@@ -18,6 +18,7 @@ import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import type { Ctx } from "../../../auth";
+import { reconRuns } from "../../schema";
 import { classifyUnmatched, refreshRunDays, runDetail, runItemPage, runRecon } from "../../service";
 
 const A = Bun.randomUUIDv7();
@@ -161,5 +162,88 @@ describe.if(!!process.env.PERF_TICK)("tick on a full day", () => {
       expect(run.counters.intake).toEqual({ a: TICK, b: TICK });
     }
     expect(Math.max(...took)).toBeLessThan(30_000);
+  }, 3_600_000);
+});
+
+// REC-P1 gate (3), the results screen's reads over history: PERF_READ_CONFIGS configs (default 3), each with
+// PERF_READ_ROWS records a side (default 20,000) on each of PERF_READ_DAYS business dates (default 31), one live run
+// per config over all its dates. Then the reads on the API's pool (5 s statement timeout), each the median of 5:
+//   PERF_READ=1 [PERF_READ_ROWS=… PERF_READ_DAYS=… PERF_READ_CONFIGS=…] bun test src/modules/engine/tests/integration/run-perf.test.ts
+// PERF_READ_REUSE=1 reads the history the last PERF_READ run left in the test database (no truncate, no runs): a read
+// over the timeout is recorded as such, not thrown, so every read is measured.
+describe.if(!!process.env.PERF_READ)("results screen reads over history", () => {
+  const ROWS = Number(process.env.PERF_READ_ROWS ?? 20_000), DAYS = Number(process.env.PERF_READ_DAYS ?? 31), CONFIGS = Number(process.env.PERF_READ_CONFIGS ?? 3);
+  const first = "2026-10-01";
+  const dateOf = (i: number) => new Date(Date.parse(`${first}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10);
+  const last = dateOf(DAYS - 1), mid = dateOf(Math.floor(DAYS / 2));
+  /** Records of source `id` for every date, ROWS a date (references R<date index>-<g>; `off`: every 33rd amount 500 minor off). */
+  const fill = async (id: string, v: string, off: boolean) => {
+    for (let d = 0; d < DAYS; d++) {
+      for (let g = 1; g <= ROWS; g += 100_000) {
+        await db.execute(sql`insert into records (id, space_id, source_id, source_version_id, business_date, bday_index, ext_ref, amount_minor, currency, attrs, row_hash, origin_id)
+          select uuidv7(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${dateOf(d)}::date, ${d + 1}, 'R' || ${d} || '-' || g, 100000 + g + case when ${off} and g % 33 = 0 then 500 else 0 end, 'IDR', '{}'::jsonb, md5(${d} || '-' || g), ${v}::uuid
+          from generate_series(${g}::int, ${Math.min(ROWS, g + 99_999)}::int) g`);
+      }
+    }
+  };
+  const median = async (read: () => Promise<unknown>) => {
+    const ms: number[] = [];
+    for (let i = 0; i < 5; i++) { const t = performance.now(); await read(); ms.push(performance.now() - t); }
+    return Math.round(ms.sort((x, y) => x - y)[2]!);
+  };
+
+  const REUSE = !!process.env.PERF_READ_REUSE;
+  beforeAll(async () => {
+    if (REUSE) return;
+    await truncateAll();
+    await db.insert(spaces).values({ id: A, code: "a", name: "A" });
+    await db.transaction((tx) => ensureMonthPartitions(tx, records, new Date(`${first}T00:00:00Z`), 3));
+    await probe?.$client.close();
+    probe = drizzle({ client: new SQL(process.env.DATABASE_URL!, { max: 4, connection: { role: "recon_app_probe", statement_timeout: 3_600_000, idle_in_transaction_session_timeout: 3_600_000 } }) });
+  });
+  afterAll(() => probe?.$client.close());
+
+  it(`${CONFIGS} configs × ${DAYS} days × ${ROWS} records a side`, async () => {
+    const runs: { configId: string; runId: string; spaceId?: string }[] = REUSE
+      ? (await db.select({ configId: reconRuns.configId, runId: reconRuns.id, spaceId: reconRuns.spaceId }).from(reconRuns).where(eq(reconRuns.status, "succeeded")).orderBy(reconRuns.startedAt))
+      : [];
+    for (let k = 0; k < (REUSE ? 0 : CONFIGS); k++) {
+      const sides = [];
+      for (const off of [false, true]) {
+        const id = Bun.randomUUIDv7(), v = Bun.randomUUIDv7();
+        await db.insert(sources).values({ id, spaceId: A, code: `p-${id.slice(-12)}`, name: "P", kind: "file_inbox" });
+        await db.insert(sourceVersions).values({ id: v, spaceId: A, sourceId: id, version: 1, status: "published", spec, specHash: "h", makerId: A, publishedAt: new Date() });
+        await fill(id, v, off);
+        sides.push(id);
+      }
+      const { configId, versionId } = await config(sides[0]!, sides[1]!);
+      await db.execute(sql`analyze records`);
+      const t0 = performance.now();
+      const run = await runRecon(probe, { spaceId: A, configId, versionId, mode: "manual", from: first, to: last });
+      console.log(`config ${k + 1}: run ${DAYS} days × ${ROWS}/side in ${Math.round((performance.now() - t0) / 1000)} s`);
+      runs.push({ configId, runId: run.runId });
+    }
+    await db.execute(sql`analyze recon_items`); await db.execute(sql`analyze match_groups`); await db.execute(sql`analyze match_members`);
+    const [{ items }] = (await db.execute(sql`select count(*)::int as items from recon_items`)) as unknown as [{ items: number }];
+    console.log(`history: ${items} items, ${CONFIGS} configs`);
+    // the reads of the results screen, on the API's pool, of the last config's run (the others share the tables)
+    const { configId, runId, spaceId = A } = runs.at(-1)!;
+    const ctx = { space: { id: spaceId, roles: [] }, user: { id: spaceId } } as unknown as Ctx;
+    const q = { page: 1, pageSize: 100 } as const;
+    const reads = [
+      ["GET run", () => runDetail(ctx, configId, runId), 50],
+      ["items pass=1", () => runItemPage(ctx, configId, runId, { ...q, pass: 1 }), 2000],
+      ["items pass=2 page 2", () => runItemPage(ctx, configId, runId, { ...q, pass: 2, page: 2 }), 2000],
+      [`items date=${mid}`, () => runItemPage(ctx, configId, runId, { ...q, date: mid }), 2000],
+      ["items status=suggested (pairs)", () => runItemPage(ctx, configId, runId, { ...q, status: "suggested" }), 2000],
+      ["items own=1 page 50", () => runItemPage(ctx, configId, runId, { ...q, own: "1", page: 50 }), 2000],
+    ] as const;
+    const out: string[] = [];
+    for (const [name, read, limit] of reads) {
+      const ms = await median(read).catch((e: unknown) => (String((e as { cause?: unknown }).cause ?? e).includes("statement timeout") ? Infinity : Promise.reject(e)));
+      out.push(`${name}: ${ms === Infinity ? "past the 5 s statement timeout" : `${ms} ms`} (target ≤ ${limit} ms)${ms > limit ? " OVER" : ""}`);
+    }
+    console.log(out.map((x) => `  ${x}`).join("\n"));
+    expect(out.filter((x) => x.endsWith("OVER"))).toEqual([]);
   }, 3_600_000);
 });
