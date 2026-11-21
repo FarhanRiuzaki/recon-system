@@ -25,14 +25,18 @@ pipeline hari berjalan per recon (REC-F4).
 
 ## Tugas
 
+Status 21 Nov: T1–T6 selesai. Belum: review desain Figma page 04 (layar dibangun dari komponen DS tanpa frame Figma),
+animasi angka yang berpindah di edge kanvas Live day (tile angka sudah ber-tween), target lag per config (REC-FUT-3),
+counter hari setelah sweep (REC-FUT-17).
+
 - [x] T1 REC-P1 gerbang (3): `PERF_READ` di `run-perf.test.ts`, hasil di `docs/recon/spikes.md`.
 - [x] T2 Kanvas builder: `canvas-graph.ts` (lajur tetap, tanpa ELK), `recon-canvas.tsx`, List | Canvas di URL.
-- [ ] T3 API: `GET /v1/spaces/:spaceId/today` (ringkasan, ≤ 200 recon, `capped`), `GET …/recons/:configId/live`
+- [x] T3 API: `GET /v1/spaces/:spaceId/today` (ringkasan, ≤ 200 recon, `capped`), `GET …/recons/:configId/live`
   (hari berjalan: angka per tahap, run terakhir, run berjalan, source + lag), `recon_alerts` + dispatch.
-- [ ] T4 Web Today: Space map (kanvas source → recon, Degraded menyorot recon terdampak, View as list) + tabel recon.
-- [ ] T5 Web Live day: tab di detail recon, pipeline read-only dari kanvas builder dengan angka hari, polling 15 s,
+- [x] T4 Web Today: Space map (kanvas source → recon, Degraded menyorot recon terdampak, View as list) + tabel recon.
+- [x] T5 Web Live day: tab di detail recon, pipeline read-only dari kanvas builder dengan angka hari, polling 15 s,
   angka berubah dengan `NumberTween` (reduced motion: opacity).
-- [ ] T6 Docs: endpoint table, schemas, DEC, backlog REC-F4.
+- [x] T6 Docs: endpoint table, schemas, DEC, backlog REC-F4.
 
 Tes: unit untuk aturan alert dan model graf; integration untuk kedua route (guard, 404, RLS antar space, angka dari
 run); tanpa E2E (aturan pemilik).

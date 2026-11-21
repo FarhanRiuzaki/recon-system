@@ -500,3 +500,21 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
 ## DEC-049 — Baris kembar dalam satu file atau snapshot adalah dua transaksi
 
 21 November 2026 — pemilik: ada data tanpa kolom unik ("tidak ada data uniq"), sehingga dua transaksi asli bisa sama persis di semua kolom. Sebelumnya dedup `(row_hash, business_date, snapshot)` membuang baris kedua tanpa jejak. Captain: di dalam satu file atau satu snapshot, baris yang sama ke-n (n ≥ 2) disimpan dengan `row_hash` = sha256(hash + "#n") (`Origin.seen`, `apps/api/src/modules/ingest/service.ts`); kemunculan ke-1 tetap hash aslinya, jadi file yang dikirim ulang atau versi koreksinya tetap tidak menggandakan apa pun, dan snapshot diganti utuh per tanggal. Pull watermark tidak dinomori: lookback membaca ulang baris dengan sengaja, dan `id_column` (unik bersama watermark-nya) yang membedakan barisnya; source tanpa kolom unik memakai snapshot. Tes: `pipeline.test.ts` "rows with no unique column".
+
+## DEC-050 — Today dan Live day: angka dari `days` run, snapshot per 15 s, alert freshness per config
+
+21 November 2026 — core-recon (Plan 4, keputusan yang bisa dibalik pemilik):
+
+- **Angka hari = `days` run live terakhir yang sudah final dan mencakup tanggal itu** (`recon_runs.days`, ditulis
+  `finalizeRun`, ditulis ulang setelah tutup hari; `apps/api/src/modules/engine/today.ts`). Layar tidak menghitung
+  `recon_items` tiap kali dibuka: pada volume S1 (±18M item/sisi/hari) hitung ulang per baca tidak muat dalam statement
+  timeout 5 s. Angka berubah sekali per run, sesuai spec §11a ("beranimasi sekali per tick"). Break terbuka dihitung dari
+  indeks parsial `recon_items_breaks` (0040).
+- **Snapshot tiap 15 s selama tab terlihat, bukan SSE** (`LIVE_POLL_MS`, `apps/web/src/lib/shared/queries.ts`). Spec §9
+  "Progres ke UI" menyebut SSE dari `pg_notify`; itu butuh stream panjang lewat BFF (batas 10 s dan relay jawaban utuh di
+  `apps/web/src/lib/server/backend.ts`, AGENTS.md §3) dan satu koneksi LISTEN di API. AC REC-F4 "reconnect menampilkan
+  snapshot terkini" terpenuhi karena setiap baca adalah snapshot. SSE dikerjakan bila ada kebutuhan latensi < 15 s.
+- **Alert freshness disimpan per config** (`recon_alerts`, `alertStale` di `schedule.ts`): satu keadaan stale (spec §9:
+  tanpa run terjadwal sukses dalam 2× interval, selama masih ada yang dijalankan) = satu alert, diulang paling cepat tiap
+  jam; upsert bersyarat, jadi dispatch yang bersamaan mengalert sekali (tes `schedule.test.ts` "a stale spell alerts
+  once"). Alertnya masih baris log; kanal di luar app tetap REC-FUT-10.
