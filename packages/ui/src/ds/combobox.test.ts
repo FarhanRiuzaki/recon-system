@@ -71,6 +71,27 @@ describe("Combobox (single)", () => {
   });
 });
 
+describe("Combobox option tone", () => {
+  it("ok draws a green check; bad a red cross with its reason in Down ink, readable while disabled", async () => {
+    const opts: ComboOption[] = [
+      { value: "upd", label: "updated_at", tone: "ok" },
+      { value: "note", label: "note", tone: "bad", disabled: true, description: "Can be empty" },
+      { value: "plain", label: "plain", disabled: true },
+    ];
+    await mount(h(Combobox, { label: "Watermark", options: opts, value: null, onChange: () => {} }));
+    await type("");
+    await key("ArrowDown");
+    const [ok, bad, plain] = [...document.querySelectorAll('[role="option"]')] as HTMLElement[];
+    expect(ok!.querySelector("svg")!.getAttribute("class")).toContain("text-healthy-mark");
+    expect(bad!.querySelector("svg")!.getAttribute("class")).toContain("text-down-mark");
+    expect(bad!.className).not.toContain("opacity-50");
+    expect(bad!.textContent).toContain("Can be empty");
+    expect(bad!.innerHTML).toContain("text-down-ink");
+    expect(plain!.className).toContain("opacity-50");
+    expect(plain!.querySelector("svg")).toBeNull();
+  });
+});
+
 describe("Combobox (multiple)", () => {
   it("picks become chips (and leave the list); Backspace on an empty field removes the last; each chip has a named remove button", async () => {
     await mount(h(Multi));

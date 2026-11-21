@@ -721,6 +721,11 @@ under the field in Down ink `body-sm` with the 14 px alert icon (`Field error`),
 same look, 3 lines at least; `limit` adds the count ("120 of 500 characters", "12 characters too many" past it; typing
 is never blocked). `Switch`: 36 × 20 pill, primary when on, for a setting that applies at once; in a form that saves
 later, a Checkbox.
+Native `Select` draws its own chevron (`--fg-3`, 12 px from the edge; `base.css`), the text kept clear of it. A list a
+person searches, or longer than a short fixed set, is a `Combobox` (`ds/combobox`). A Combobox option may carry `tone`:
+`ok` = a check in Healthy mark, `bad` = a cross in Down mark with the reason (its description) in Down ink; a `bad`
+option that can't be chosen stays at full colour so the reason reads (`combobox.test.ts` "Combobox option tone"). The
+icon always comes with words: the label, and for `bad` the reason.
 
 ### 5.13 Empty, error, loading, stale (the five states)
 - **Loading**: shimmer skeletons in the final shape (§7.2): text bars 10 px radius 4, chart = gridlines + 3 ghost

@@ -277,7 +277,9 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
   };
   const cols: ComboOption[] = options.map((c) => {
     const empty = d.from === "table" && c.nullable === true;
-    return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty };
+    // read from the table, a column is known usable (never empty: green check) or not (can be empty: red cross)
+    const tone = d.from !== "table" || c.nullable === undefined ? undefined : empty ? "bad" as const : "ok" as const;
+    return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty, tone };
   });
   const pick = (key: "column" | "id_column", label: string, plain: string) => {
     const note = said(key) ?? plain;

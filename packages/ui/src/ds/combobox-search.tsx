@@ -5,7 +5,11 @@ import { cn } from "../lib/cn";
 import { Icon } from "../ui/icon";
 import { CheckIcon, ChevronDownIcon, CloseIcon, SpinnerIcon } from "../ui/icons";
 
-export type ComboOption = { value: string; label: string; description?: string; disabled?: boolean };
+/**
+ * An option; `tone` marks whether it can be used here: "ok" a green check, "bad" a red cross with its description
+ * (the reason) in Down ink. A "bad" option that is disabled keeps full colour so the reason stays readable.
+ */
+export type ComboOption = { value: string; label: string; description?: string; disabled?: boolean; tone?: "ok" | "bad" };
 type Load = (query: string, signal: AbortSignal) => Promise<ComboOption[]>;
 type Common = {
   id?: string; label: string; placeholder?: string; disabled?: boolean; invalid?: boolean; describedBy?: string; className?: string;
@@ -158,10 +162,11 @@ export function SearchCombobox(props: Single | Multiple) {
         <li key={o.value} id={`${id}-opt-${i}`} role="option" aria-selected={i === active} aria-disabled={o.disabled || undefined}
           onMouseDown={(e) => e.preventDefault()} onClick={() => pick(o)} onMouseMove={() => !o.disabled && setActive(i)}
           className={cn("flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 text-body text-fg", i === active && "bg-tray",
-            o.disabled && "cursor-not-allowed opacity-50", o.value === CREATE && "text-primary-ink")}>
+            o.disabled && "cursor-not-allowed", o.disabled && o.tone !== "bad" && "opacity-50", o.value === CREATE && "text-primary-ink")}>
+          {o.tone && <Icon icon={o.tone === "ok" ? CheckIcon : CloseIcon} className={cn("mt-0.5 size-4 shrink-0", o.tone === "ok" ? "text-healthy-mark" : "text-down-mark")} />}
           <span className="grid min-w-0 flex-1">
-            <span className="truncate">{o.label}</span>
-            {o.description && <span className="truncate text-body-sm text-fg-3">{o.description}</span>}
+            <span className={cn("truncate", o.tone === "bad" && o.disabled && "text-fg-2")}>{o.label}</span>
+            {o.description && <span className={cn("truncate text-body-sm", o.tone === "bad" ? "text-down-ink" : "text-fg-3")}>{o.description}</span>}
           </span>
           {on && <Icon icon={CheckIcon} className="mt-0.5 size-4 shrink-0 text-primary" />}
         </li>
