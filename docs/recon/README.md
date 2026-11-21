@@ -11,7 +11,7 @@ FigJam `IkQE0oZYhMGwbsFMokTYxu`.
 | Fondasi: spike, space/RLS, worker | §7, §9, §11, §12 | [Plan 1](../superpowers/plans/2026-11-19-recon-phase1-plan1-spikes-foundation.md) | — | `spaces`, `kernel/jobs` | — | REC-F1 | berjalan |
 | 1 Space & shell | §2, §11, §11b | Plan 1b (belum ditulis) | 01 Space & shell | `spaces` | `spaces` | REC-F1b | desain direview |
 | 2 Sources + ingest | §7, §8 | `docs/superpowers/plans/2026-11-19-recon-phase1-plan2-sources-ingest.md` | 02 Sources | `sources`, `ingest` | `sources` | REC-F2 | selesai (Oracle/MySQL/MSSQL belum diuji ke server nyata) |
-| 3 Builder + engine | §9, §10, §11a | Plan 3 | 03 Builder & simulation | `recon`, `engine` | `recon` | REC-F3 | belum |
+| 3 Builder + engine | §9, §10, §11a | `docs/superpowers/plans/2026-11-20-recon-phase1-plan3-engine-builder.md` | 03 Builder & simulation | `recon`, `engine` | `recon` | REC-F3 | selesai 21 Nov (builder list + engine; spike S6 selesai: go dengan perubahan, implementasi kanvas di Plan 4) |
 | 4 Live day + Today | §9, §11a | Plan 4 | 04 Live day & Today | `engine` | `engine` | REC-F4 | belum |
 | 5 Breaks + approvals + export | §11 | Plan 5 | 05 Breaks & approvals | `breaks`, `approvals` | `breaks`, `approvals` | REC-F5 | belum |
 
