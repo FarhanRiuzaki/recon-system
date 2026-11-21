@@ -1,6 +1,7 @@
 "use client";
 
-import { type FocusEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type FocusEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import { Icon } from "../ui/icon";
 import { CheckIcon, ChevronDownIcon, CloseIcon, SpinnerIcon } from "../ui/icons";
@@ -29,6 +30,7 @@ type Single = Common & { multiple?: false; value: ComboOption | null; onChange: 
 type Multiple = Common & { multiple: true; value: readonly ComboOption[]; onChange: (v: ComboOption[]) => void };
 
 const DEBOUNCE_MS = 250;
+const noSubscribe = () => () => {};
 const CREATE = "\u0000create";
 
 /** Options matching `query` (label, case-insensitive), the matches that start with it first; all of them for no query. */
@@ -78,6 +80,24 @@ export function SearchCombobox(props: Single | Multiple) {
   const [failed, setFailed] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // the list hangs on the page's top layer (a portal), under the field's box: a parent that clips (a flush panel's
+  // rounded body, a dialog's scroll) can't cut it; it follows the field while the page or a parent scrolls or resizes
+  const boxRef = useRef<HTMLDivElement>(null);
+  // after hydration only (deferred-overlay's way): the server's HTML keeps the list in place
+  const mounted = useSyncExternalStore(noSubscribe, () => true, () => false);
+  const listRef = useRef<HTMLUListElement>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const at = () => {
+      // written to the list's style, not state: a scroll moves it without a render
+      const r = boxRef.current?.getBoundingClientRect(), ul = listRef.current;
+      if (r && ul) Object.assign(ul.style, { position: "fixed", top: `${r.bottom + 4}px`, left: `${r.left}px`, width: `${r.width}px` });
+    };
+    at();
+    window.addEventListener("scroll", at, true);
+    window.addEventListener("resize", at);
+    return () => { window.removeEventListener("scroll", at, true); window.removeEventListener("resize", at); };
+  }, [open, mounted]);
   const query = typing ? text : "";
 
   // A single value chosen elsewhere: show its label while the user isn't typing.
@@ -176,7 +196,7 @@ export function SearchCombobox(props: Single | Multiple) {
 
   return (
     <div className={cn("relative", className)} onBlur={onBlurAll}>
-      <div onClick={() => inputRef.current?.focus()}
+      <div ref={boxRef} onClick={() => inputRef.current?.focus()}
         className={cn("flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md border border-control-border bg-card px-1.5 py-1 transition-[border-color,box-shadow] duration-(--dur-fast)",
           "focus-within:border-primary focus-within:ring-3 focus-within:ring-primary-soft",
           invalid && "border-down-mark focus-within:ring-down-soft", disabled && "pointer-events-none bg-inset opacity-60")}>
@@ -200,10 +220,16 @@ export function SearchCombobox(props: Single | Multiple) {
               className="inline-grid size-6 shrink-0 cursor-pointer place-items-center rounded-xs text-down-mark hover:bg-down-soft hover:text-down-ink"><Icon icon={CloseIcon} className="size-3.5" /></button>
           : <Icon icon={ChevronDownIcon} className="mr-1 size-4 shrink-0 text-fg-3" />}
       </div>
-      <ul id={listId} role="listbox" aria-label={label} aria-multiselectable={multiple || undefined} hidden={!open}
-        className="scroll-quiet absolute inset-x-0 top-full z-30 mt-1 max-h-64 overflow-y-auto rounded-lg border border-line bg-raised p-1 shadow-overlay">
-        {body}
-      </ul>
+      {(() => {
+        const list = (
+          <ul ref={listRef} id={listId} role="listbox" aria-label={label} aria-multiselectable={multiple || undefined} hidden={!open}
+            className={cn("scroll-quiet z-50 max-h-64 overflow-y-auto rounded-lg border border-line bg-raised p-1 shadow-overlay", !mounted && "absolute inset-x-0 top-full mt-1")}>
+            {body}
+          </ul>
+        );
+        // before hydration (the server's HTML) the list stays in place, closed; after it, on the top layer
+        return mounted ? createPortal(list, document.body) : list;
+      })()}
       <span role="status" aria-live="polite" className="sr-only">{status}</span>
     </div>
   );

@@ -202,7 +202,9 @@ export function FieldsStep(p: FieldsStepProps) {
               const taken = new Set([...x.fields.map((f) => f.name), ...Object.keys(x.derive)]);
               let n = 1;
               while (taken.has(`computed_${n}`)) n++;
-              return { ...x, derive: { ...x.derive, [`computed_${n}`]: computeCel(x.fields[0]!.name, []) } };
+              // it starts from the first text column (a remark, a reference), the usual source of a computed key
+              const from = (x.fields.find((f) => f.type === "string") ?? x.fields[0]!).name;
+              return { ...x, derive: { ...x.derive, [`computed_${n}`]: computeCel(from, []) } };
             })}>Add computed column</Button>
           </span>
         )}>

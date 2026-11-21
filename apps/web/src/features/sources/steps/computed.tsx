@@ -50,18 +50,19 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
         const set = (source: string, steps: ComputeStep[]) => setExpr(name, computeCel(source, steps));
         const examplesOf = built ? (examples.get(built.source) ?? []).slice(0, 3) : [];
         return (
-          <div key={i} className="grid gap-3 rounded-lg border border-line bg-card p-3">
-            <div className="flex flex-wrap items-end gap-3">
+          // one card per computed column (common region): what it is called and starts from, its steps, its result
+          <section key={i} aria-label={`Computed column ${name || i + 1}`} className="grid gap-4 rounded-lg border border-line bg-card p-4">
+            <div className="grid items-end gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
               <Field id={`${id}-name`} label="Name">
-                <Input id={`${id}-name`} value={name} className="w-56 font-mono" onChange={(e) => rename(name, e.target.value)} autoComplete="off" spellCheck={false} />
+                <Input id={`${id}-name`} value={name} className="w-full font-mono" onChange={(e) => rename(name, e.target.value)} autoComplete="off" spellCheck={false} />
               </Field>
-              {!text && built && (
+              {!text && built ? (
                 <Field id={`${id}-from`} label="From column">
-                  <Combobox id={`${id}-from`} label="From column" className="w-64" options={sources} value={sources.find((o) => o.value === built.source) ?? null}
+                  <Combobox id={`${id}-from`} label="From column" className="w-full" options={sources} value={sources.find((o) => o.value === built.source) ?? null}
                     placeholder="Pick a column" onChange={(o) => o && set(o.value, built.steps)} />
                 </Field>
-              )}
-              <Button type="button" variant="ghost" size="icon" className="ml-auto" aria-label={`Remove ${name || "this computed column"}`}
+              ) : <span />}
+              <Button type="button" variant="ghost" size="icon" className="justify-self-end" aria-label={`Remove ${name || "this computed column"}`}
                 onClick={() => setSpec((x) => { const { [name]: _drop, ...rest } = x.derive; return { ...x, derive: rest }; })}><Icon icon={RemoveIcon} /></Button>
             </div>
 
@@ -70,39 +71,52 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
                 <Input id={id} value={expr} className="font-mono" spellCheck={false} onChange={(e) => setExpr(name, e.target.value)} />
               </Field>
             ) : built && (
-              <ol className="grid gap-2">
-                {built.steps.map((s, j) => (
-                  <li key={j} className="flex flex-wrap items-center gap-2 text-body-sm">
-                    <span className="w-5 text-right text-fg-3 tabular">{j + 1}.</span>
-                    <StepEditor step={s} onChange={(next) => set(built.source, built.steps.map((x, k) => (k === j ? next : x)))} />
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove step ${j + 1}`} onClick={() => set(built.source, built.steps.filter((_, k) => k !== j))}><Icon icon={RemoveIcon} /></Button>
-                  </li>
-                ))}
-                <li className="flex items-center gap-2">
-                  <span className="w-5" />
-                  <Select aria-label="Add a step" value="" className="w-72" onChange={(e) => e.target.value && set(built.source, [...built.steps, START[e.target.value as ComputeType]])}>
-                    <option value="">Add a step…</option>
-                    {COMPUTE_STEPS.map((s) => <option key={s.type} value={s.type}>{s.label}</option>)}
-                  </Select>
-                </li>
-              </ol>
+              <div className="grid gap-2">
+                <span className="text-label text-fg">Steps</span>
+                {built.steps.length > 0 && (
+                  <ol className="grid gap-1.5">
+                    {built.steps.map((st, j) => (
+                      <li key={j} className="flex flex-wrap items-center gap-3 rounded-md bg-tray px-3 py-2 text-body-sm text-fg">
+                        <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full bg-card text-caption text-fg-2 tabular">{j + 1}</span>
+                        <StepEditor step={st} onChange={(next) => set(built.source, built.steps.map((x, k) => (k === j ? next : x)))} />
+                        <Button type="button" variant="ghost" size="icon-sm" className="ml-auto" aria-label={`Remove step ${j + 1}`}
+                          onClick={() => set(built.source, built.steps.filter((_, k) => k !== j))}><Icon icon={RemoveIcon} /></Button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                <Select aria-label="Add a step" value="" className="w-full md:w-80" onChange={(e) => e.target.value && set(built.source, [...built.steps, START[e.target.value as ComputeType]])}>
+                  <option value="">{built.steps.length ? "Add another step…" : "Add a step…"}</option>
+                  {COMPUTE_STEPS.map((x) => <option key={x.type} value={x.type}>{x.label}</option>)}
+                </Select>
+                {err(id) && <p role="alert" className="text-body-sm text-down-ink">{err(id)}</p>}
+              </div>
             )}
-            {err(id) && !text && <p role="alert" className="text-body-sm text-down-ink">{err(id)}</p>}
 
             {built && !text && (
-              examplesOf.length
-                ? <ul className="grid gap-1 font-mono text-mono">
-                    {examplesOf.map((v, k) => (
-                      <li key={k} className="flex flex-wrap items-baseline gap-2"><span className="text-fg-3">{v || "(empty)"}</span><span aria-hidden="true" className="text-fg-3">→</span><span className="sr-only">gives</span><span className="text-fg">{applySteps(v, built.steps) || "(empty)"}</span></li>
-                    ))}
-                  </ul>
-                : <p className="text-caption text-fg-3">The result shows here on example values once Show examples has read them.</p>
+              <div className="grid gap-2">
+                <span className="text-label text-fg">Result</span>
+                {examplesOf.length ? (
+                  <table className="w-full overflow-hidden rounded-md text-body-sm">
+                    <thead className="bg-tray text-left text-caption text-fg-3"><tr><th className="px-3 py-1.5 font-normal">{built.source}</th><th className="px-3 py-1.5 font-normal">{name || "Result"}</th></tr></thead>
+                    <tbody className="font-mono text-mono">
+                      {examplesOf.map((v, k) => (
+                        <tr key={k} className="border-t border-line">
+                          <td className="px-3 py-1.5 text-fg-3">{v || "(empty)"}</td>
+                          <td className="px-3 py-1.5 text-fg">{applySteps(v, built.steps) || <span className="text-fg-3">(empty)</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : <p className="rounded-md bg-tray px-3 py-2 text-caption text-fg-3">The result shows here on example values once Show examples has read them.</p>}
+              </div>
             )}
+
             <span>
               <Button type="button" variant="link" size="sm" disabled={text && !built}
                 onClick={() => setAsText((x) => ({ ...x, [name]: !text }))}>{text ? "Use steps instead" : "Write an expression instead"}</Button>
             </span>
-          </div>
+          </section>
         );
       })}
     </div>
