@@ -2,7 +2,7 @@
 
 import { type ChangeEvent, Fragment, useRef } from "react";
 import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
-import { formatNumber } from "@starterkit/ui/lib/format";
+import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { CheckIcon, CloseIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -189,24 +189,17 @@ export function FieldsStep(p: FieldsStepProps) {
             </Notice>
           )}
         </Panel>
-      ) : (
-        <Panel title="Columns of the source" description={s.input.kind === "db_watermark" && s.input.table ? `From ${s.input.table}` : "From the query"} bodyClassName="grid gap-3">
-          {p.canRead && !hasSource
-            ? <p id="src-columns" tabIndex={-1} className="text-body-sm text-fg-2">{s.input.kind === "db_watermark" && d.from === "table" ? "No table chosen yet." : "No SELECT written yet."} Go back to Connection to {s.input.kind === "db_watermark" && d.from === "table" ? "choose it" : "write it"}, then read its columns here.</p>
-            : p.canRead
-            ? <span><Button id="src-columns" type="button" variant="secondary" onClick={p.onReadColumns} disabled={p.reading} aria-busy={p.reading || undefined}>
-              {p.reading && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Read the columns again</Button></span>
-            : <p id="src-columns" tabIndex={-1} className="text-body-sm text-fg-2">These are the fields of the version this draft started from. A source admin reads the columns the table has now.</p>}
-          {err("src-columns") && <p role="alert" className="text-body-sm text-down-ink">{err("src-columns")}</p>}
-          {p.columns && <p role="status" className="text-body-sm text-fg-2">{p.columns.length} columns read: {p.columns.map((c) => c.name).join(", ")}.</p>}
-        </Panel>
-      )}
+      ) : null}
 
       {/* a database's examples come from Preview rows (each pulls from the bank's database: on demand only), offered
           here where the examples are read, before the mapping that needs them */}
-      <Panel flush title="Columns" description={`${s.fields.length} columns · check each type: the fields below read it`}
-        actions={s.fields.length > 0 && (
+      <Panel flush title="Columns" description={`${s.fields.length} columns${!file ? ` from ${s.input.kind === "db_watermark" && s.input.table?.trim() ? s.input.table.trim() : "the query"}` : ""} · check each type: the fields below read it`}
+        actions={(s.fields.length > 0 || (!file && p.canRead && hasSource)) && (
           <span className="flex flex-wrap gap-2">
+            {!file && p.canRead && hasSource && (
+              <Button id="src-columns" type="button" variant="secondary" size="sm" onClick={p.onReadColumns} disabled={p.reading} aria-busy={p.reading || undefined}>
+                {p.reading && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Read the columns again</Button>
+            )}
             {p.onPreview && !p.preview.result && (
               <Button type="button" variant="secondary" size="sm" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
                 {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
@@ -215,6 +208,10 @@ export function FieldsStep(p: FieldsStepProps) {
             <Button type="button" variant="secondary" size="sm" onClick={addComputed}><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
           </span>
         )}>
+        {/* where the columns come from, when they can't be read here (the panel "Columns of the source" folded in) */}
+        {!file && p.canRead && !hasSource && <p id="src-columns" tabIndex={-1} className="px-4 pt-3 text-body-sm text-fg-2">{s.input.kind === "db_watermark" && d.from === "table" ? "No table chosen yet." : "No SELECT written yet."} Go back to Connection to {s.input.kind === "db_watermark" && d.from === "table" ? "choose it" : "write it"}, then read its columns here.</p>}
+        {!file && !p.canRead && <p id="src-columns" tabIndex={-1} className="px-4 pt-3 text-body-sm text-fg-2">These are the fields of the version this draft started from. A source admin reads the columns the table has now.</p>}
+        {!file && err("src-columns") && <p role="alert" className="px-4 pt-3 text-body-sm text-down-ink">{err("src-columns")}</p>}
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
@@ -295,8 +292,13 @@ export function FieldsStep(p: FieldsStepProps) {
         {GROUPS.map((g) => (
           <Fragment key={g.key}>
             <h3 className="eyebrow text-fg-3 md:col-span-2">{g.title}</h3>
-            {CORE.filter((c) => c.group === g.key).map(coreField)}
-            {g.key === "money" && s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
+            {CORE.filter((c) => c.group === g.key).map((c) => (
+              <Fragment key={c.key}>
+                {coreField(c)}
+                {/* the amount's unit belongs with the amount: right after Amount and Currency, before Direction */}
+                {c.key === "currency" && s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
+              </Fragment>
+            ))}
           </Fragment>
         ))}
         {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
@@ -490,7 +492,7 @@ function PreviewPanel(p: FieldsStepProps) {
         {p.onPreview && (
           <span>
             <Button type="button" variant="secondary" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
-              {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Preview rows
+              {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{p.preview.result ? "Preview again" : "Preview rows"}
             </Button>
           </span>
         )}
@@ -517,29 +519,45 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
           <p role="status" className="text-body-sm text-fg">
             {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records, {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the {file ? "file" : "pull"}.
           </p>
-          {r.records.length > 0 && (
-            <div className="scroll-quiet overflow-x-auto">
+          {r.records.length > 0 && (() => {
+            // every recon field the records carry, so each mapping (a computed column's too) can be checked here;
+            // a field no record has stays out (Match key only for a source whose rows change)
+            const rows = r.records.slice(0, 10);
+            const amount = (x: (typeof rows)[number]) => {
+              if (x.amountMinor === null) return "—";
+              const exp = x.currency ? CURRENCY_EXPONENT[x.currency] : undefined;
+              return exp === undefined ? x.amountMinor : `${x.currency} ${formatMinor(BigInt(x.amountMinor), exp)}`;
+            };
+            const all: { head: string; cell: (x: (typeof rows)[number]) => string | null }[] = [
+              { head: "Business date", cell: (x) => x.businessDate },
+              { head: "Amount", cell: (x) => (x.amountMinor === null ? null : amount(x)) },
+              { head: "Currency", cell: (x) => x.currency },
+              { head: "Direction", cell: (x) => x.direction },
+              { head: "Event time", cell: (x) => x.eventTime },
+              { head: "Reference", cell: (x) => x.extRef },
+              { head: "Account", cell: (x) => x.accountRef },
+              { head: "Match key", cell: (x) => x.naturalKey?.replaceAll("\u001f", " · ") ?? null },
+            ];
+            const cols = all.filter((c) => rows.some((x) => c.cell(x) !== null));
+            return (
               <Table aria-label="Preview records">
                 <TableHeader><TableRow>
-                  <TableHead>Row</TableHead><TableHead>Business date</TableHead><TableHead>Amount</TableHead><TableHead>Match key</TableHead><TableHead>Account</TableHead><TableHead>Stored columns</TableHead>
+                  <TableHead>Row</TableHead>{cols.map((c) => <TableHead key={c.head}>{c.head}</TableHead>)}<TableHead>Stored columns</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
-                  {r.records.slice(0, 10).map((x) => (
+                  {rows.map((x) => (
                     <TableRow key={x.line}>
                       <TableCell className="tabular">{x.line}</TableCell>
-                      <TableCell className="font-mono text-mono">{x.businessDate}</TableCell>
-                      <TableCell className="font-mono text-mono">{x.amountMinor ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-mono">{x.naturalKey?.replaceAll("\u001f", " · ") ?? "—"}</TableCell>
-                      <TableCell className="font-mono text-mono">{x.accountRef ?? "—"}</TableCell>
-                      <TableCell className="max-w-96 truncate font-mono text-mono text-fg-2">
+                      {cols.map((c) => <TableCell key={c.head} className="font-mono text-mono whitespace-nowrap">{c.cell(x) ?? "—"}</TableCell>)}
+                      <TableCell className="max-w-72 truncate font-mono text-mono text-fg-2" title={Object.entries(x.attrs).map(([k, v]) => `${k}=${v === null ? "∅" : String(v)}`).join("\n")}>
                         {Object.entries(x.attrs).map(([k, v]) => `${k}=${v === null ? "∅" : String(v)}`).join(" · ") || "—"}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            </div>
-          )}
+            );
+          })()}
           {r.quarantine.length > 0 && (
             <div className="grid gap-1">
               <h3 className="text-label text-fg">Quarantined</h3>
