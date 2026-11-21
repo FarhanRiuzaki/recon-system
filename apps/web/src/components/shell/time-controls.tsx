@@ -9,14 +9,16 @@ import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ChevronLeftIcon, ChevronRightIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
-import { patchTimeSearch, refreshInterval, refreshScope, timeRange } from "@/lib/shared/time-controls";
+import { patchTimeSearch, refreshInterval, refreshScope, timeRange, timeWindowDays } from "@/lib/shared/time-controls";
 
 export function TimeControls() {
   const path = usePathname(), sp = useSearchParams(), client = useQueryClient();
-  const scope = refreshScope(path), scoped = path === "/" || path.startsWith("/audit/");
-  const range = timeRange(sp, path === "/" ? 14 : 7);
+  const tab = sp.get("tab"), scope = refreshScope(path, tab), days = timeWindowDays(path, tab), scoped = days !== null;
+  const range = timeRange(sp, days ?? 7);
   const interval = refreshInterval(sp.get("refresh"));
-  const fetching = useIsFetching({ queryKey: scope ? [scope] : ["no-refresh"] }) > 0;
+  // a page reads one module or several (a source: sources and ingest): every query whose key starts with one of them
+  const ofScope = (q: { queryKey: readonly unknown[] }) => !!scope?.includes(q.queryKey[0] as string);
+  const fetching = useIsFetching({ predicate: ofScope }) > 0;
   const [hidden, setHidden] = useState(false), [offline, setOffline] = useState(false);
   useEffect(() => {
     const sync = () => { setHidden(document.hidden); setOffline(!navigator.onLine); };
@@ -27,18 +29,18 @@ export function TimeControls() {
   useEffect(() => {
     if (!scope || !interval || paused) return;
     const timer = window.setInterval(() => {
-      if (document.hidden || !navigator.onLine || document.querySelector('[role="dialog"], [data-state="open"][role="menu"]') || client.isFetching({ queryKey: [scope] })) return;
-      void client.refetchQueries({ queryKey: [scope], type: "active" });
+      if (document.hidden || !navigator.onLine || document.querySelector('[role="dialog"], [data-state="open"][role="menu"]') || client.isFetching({ predicate: ofScope })) return;
+      void client.refetchQueries({ predicate: ofScope, type: "active" });
     }, interval * 1000);
     return () => window.clearInterval(timer);
-  }, [scope, interval, paused, client]);
+  }, [scope, interval, paused, client]); // eslint-disable-line react-hooks/exhaustive-deps -- ofScope follows scope
   function update(patch: Record<string, string>, replace = false) {
     const next = patchTimeSearch(new URLSearchParams(sp.toString()), patch);
     window.history[replace ? "replaceState" : "pushState"](null, "", `${path}${next.size ? `?${next}` : ""}`);
   }
   async function refresh() {
     if (!scope || fetching || paused) return;
-    try { await client.refetchQueries({ queryKey: [scope], type: "active" }, { throwOnError: true }); toast("Data refreshed."); }
+    try { await client.refetchQueries({ predicate: ofScope, type: "active" }, { throwOnError: true }); toast("Data refreshed."); }
     catch { toast.error("Couldn't refresh data.", { description: "Your previous data is kept. Try again." }); }
   }
   function apply(value: { start: string; end: string }) { update({ ...value, range: "", from: "", to: "" }); }

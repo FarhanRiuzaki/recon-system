@@ -746,6 +746,12 @@ describe("versions and activity reads (Task 7)", () => {
     expect(page.items.every((e) => e.target.id === s.id)).toBe(true);
     expect((await json<Page<ActivityDto>>(trail(t.op, s.id, "?pageSize=15&page=2"))).items).toEqual([]);
     expect((await trail(t.op, s.id, "?pageSize=7")).status).toBe(400);
+    // the header's range (owner, 22 Nov): today's entries in a range ending today, none in one that ended before
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+    expect((await json<Page<ActivityDto>>(trail(t.op, s.id, `?from=${today}&to=${today}`))).total).toBe(5);
+    expect((await json<Page<ActivityDto>>(trail(t.op, s.id, "?from=2026-01-01&to=2026-01-31"))).total).toBe(0);
+    expect((await json<Page<ActivityDto>>(trail(t.op, s.id, "?start=now-7d&end=now"))).total).toBe(5);
+    expect((await trail(t.op, s.id, "?from=2026-02-01&to=2026-01-01")).status).toBe(400);
     expect((await call("PUT", `${base(A)}/${s.id}/shares/${B}`, { token: t.both })).status).toBe(200);
     expect((await trail(t.op, s.id, "", B)).status).toBe(404);
     expect((await trail(t.sa, s.id)).status).toBe(403);

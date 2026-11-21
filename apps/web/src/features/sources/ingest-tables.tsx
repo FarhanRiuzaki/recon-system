@@ -13,7 +13,7 @@ import type { QuarantineRowDto, SourceFileDto, SourceRecordDto, SourceSnapshotDt
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import type { NoFilters, RecordFilters } from "@/lib/shared/queries";
+import type { NoFilters, RecordFilters, TableDef, TrailFilters } from "@/lib/shared/queries";
 import { sourceActivity, sourceFiles, sourceQuarantine, sourceRecords, sourceSnapshots, sourceVersions } from "@/lib/shared/queries";
 import { VERSION_LEGEND, versionChip } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
@@ -45,12 +45,12 @@ const result = (c: Chip, line: string | null) => <span className="grid gap-1 jus
 /** A cell whose text wraps in the column instead of running past the card. */
 const WRAP = "whitespace-normal";
 
-function Table<T>({ def, title, description, icon, legendItems, columns, rowKey, empty, rowActions, notice }: {
-  def: ReturnType<typeof sourceFiles>; title: string; description: string; icon: typeof DiskIcon; legendItems?: readonly Chip[];
+function Table<T, F extends NoFilters | TrailFilters = NoFilters>({ def, title, description, icon, legendItems, columns, rowKey, empty, rowActions, notice }: {
+  def: TableDef<F>; title: string; description: string; icon: typeof DiskIcon; legendItems?: readonly Chip[];
   columns: (rows: readonly T[]) => Column<T>[]; rowKey: (r: T) => string; empty: { title: string; description: string };
   rowActions?: (r: T, rows: readonly T[]) => ReactNode; notice?: (rows: readonly T[]) => string | null;
 }) {
-  const t = useTableQuery<T, NoFilters>(def);
+  const t = useTableQuery<T, F>(def);
   const cols = columns(t.rows);
   const note = notice?.(t.rows) ?? null;
   return (
@@ -239,7 +239,7 @@ export function VersionsTable({ spaceId, id }: { spaceId: string; id: string }) 
 export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => sourceActivity(spaceId, id), [spaceId, id]);
   return (
-    <Table<ActivityDto> def={def} title="Activity" description="Newest first; the credential is never recorded" icon={ActivityIcon} rowKey={(e) => e.id}
+    <Table<ActivityDto, TrailFilters> def={def} title="Activity" description="Newest first; the credential is never recorded" icon={ActivityIcon} rowKey={(e) => e.id}
       empty={{ title: "No activity yet", description: "Entries appear here when someone changes this source, its connection or a version." }}
       columns={() => [
         // as the activity log reads (time, user, what): the time on one line, the user with an avatar, then what they did

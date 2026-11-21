@@ -449,6 +449,18 @@ export const SourceRowDto = z.object({
   usedByCount: z.number().int(),
   /** A version waiting: a draft, or one in review. */
   pending: z.object({ version: z.number().int(), status: z.enum(["draft", "in_review"]) }).nullable(),
+  /**
+   * Records per business date, the 7 dates up to its health's business date (the one `rowsToday` counts), oldest first:
+   * the list's trend (owner, 22 Nov). Empty before its first publish.
+   */
+  recent: z.array(z.number().int()),
+  /** Its last watermark pull (its own space only; null for another kind, through a share or before any). */
+  lastPull: z.object({
+    at: z.string(), status: z.enum(["new", "nothing_new", "failed", "paused"]), added: z.number().int(), leftOut: z.number().int(),
+    quarantined: z.number().int(), error: z.string().nullable(),
+  }).nullable(),
+  /** When it reads next (null while paused or before its first publish). */
+  nextRunAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

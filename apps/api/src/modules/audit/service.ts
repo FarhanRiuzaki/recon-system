@@ -83,8 +83,8 @@ export function activityPage(q: ActivityQuery): Promise<Page<ActivityDto>> {
  * One page of the entries recorded on one target, newest first: the trail a module shows beside its record (a source's
  * own activity, read by its space's members through `sources`). The snapshots are the masked ones recordActivity kept.
  */
-export function targetActivityPage(target: { type: string; id: string }, q: { page: number; pageSize: number }): Promise<Page<ActivityDto>> {
-  const where = and(eq(activity.targetType, target.type), eq(activity.targetId, target.id));
+export function targetActivityPage(target: { type: string; id: string }, q: { page: number; pageSize: number; from?: string; to?: string; start?: string; end?: string }): Promise<Page<ActivityDto>> {
+  const where = and(eq(activity.targetType, target.type), eq(activity.targetId, target.id), inRange(activity.at, q));
   return pageQuery({
     rows: db.select().from(activity).where(where).$dynamic(), count: db.select(one).from(activity).where(where).$dynamic(),
     orderBy: sortSql(undefined, ACTIVITY_SORTS, "-at", activity.id), query: q, map: toActivity,

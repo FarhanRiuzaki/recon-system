@@ -250,17 +250,79 @@
         }
       ]
     },
-    "createdAt": {
-      "type": "string"
+    "recent": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
     },
-    "updatedAt": {
-      "type": "string"
+    "lastPull": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "at": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "new",
+                "nothing_new",
+                "failed",
+                "paused"
+              ]
+            },
+            "added": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "leftOut": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "quarantined": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "at",
+            "status",
+            "added",
+            "leftOut",
+            "quarantined",
+            "error"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "nextRunAt": {
       "type": [
         "string",
         "null"
       ]
+    },
+    "createdAt": {
+      "type": "string"
+    },
+    "updatedAt": {
+      "type": "string"
     },
     "drift": {
       "anyOf": [
@@ -2341,9 +2403,11 @@
     "reads",
     "usedByCount",
     "pending",
+    "recent",
+    "lastPull",
+    "nextRunAt",
     "createdAt",
     "updatedAt",
-    "nextRunAt",
     "drift",
     "days",
     "usedBy",

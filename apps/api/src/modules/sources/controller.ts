@@ -6,6 +6,7 @@
 // source's activity (any role reads the versions; through a share the published and retired ones). Query 400 → guard 401/403 → body 400 →
 // 404 → rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
+import { TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import {
   CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceCatalogBody, SourceColumnsQuery,
   SourceListQuery, SourceVersionListQuery, TestConnectionBody, UpdateSourceVersionBody,
@@ -67,7 +68,7 @@ export const sourcesController = () =>
     }, { guard: { space: ["source_admin"] } })
     /** The source's own activity: its creation, connection, every version step and share. */
     .get("/v1/spaces/:spaceId/sources/:sourceId/activity", ({ ctx, params, query }) =>
-      sourceActivity(ctx, idParam(params.sourceId, "source"), query), { query: IngestListQuery, guard: { space: SPACE_ROLES } })
+      sourceActivity(ctx, idParam(params.sourceId, "source"), query), { query: TargetActivityQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/sources/:sourceId/versions", ({ ctx, params, query }) =>
       versionPage(ctx, idParam(params.sourceId, "source"), query), { query: SourceVersionListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/sources/:sourceId/versions/:versionId", ({ ctx, params }) =>

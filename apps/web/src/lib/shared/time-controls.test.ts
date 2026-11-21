@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { timeRange, patchTimeSearch, refreshInterval, refreshScope } from "./time-controls";
+import { timeRange, patchTimeSearch, refreshInterval, refreshScope, timeWindowDays } from "./time-controls";
 
 describe("navbar time controls", () => {
   const now = Date.UTC(2026, 10, 7, 18);
@@ -16,7 +16,27 @@ describe("navbar time controls", () => {
   });
   it("pauses on forms and limits refresh to the owning module", () => {
     expect(refreshScope("/users/new")).toBeNull(); expect(refreshScope("/users/id/edit")).toBeNull();
-    expect(refreshScope("/me")).toBeNull(); expect(refreshScope("/roles")).toBe("rbac");
-    expect(refreshScope("/audit/auth")).toBe("audit");
+    expect(refreshScope("/me")).toBeNull(); expect(refreshScope("/roles")).toEqual(["rbac"]);
+    expect(refreshScope("/audit/auth")).toEqual(["audit"]);
+  });
+  it("a space's pages with data refresh their modules; a wizard and a recon's builder never (owner, 22 Nov)", () => {
+    const sp = "/spaces/s1";
+    expect(refreshScope(`${sp}/sources`)).toEqual(["sources"]);
+    expect(refreshScope(`${sp}/sources/x`)).toEqual(["sources", "ingest"]);
+    expect(refreshScope(`${sp}/sources/new`)).toBeNull();
+    expect(refreshScope(`${sp}/sources/x/versions/new`)).toBeNull();
+    expect(refreshScope(`${sp}/recons/x`)).toBeNull(); // the Overview is the builder
+    expect(refreshScope(`${sp}/recons/x`, "live")).toEqual(["recon", "engine"]);
+    expect(refreshScope(`${sp}/recons/x/runs/r`)).toEqual(["engine"]);
+    expect(refreshScope(`${sp}/today`)).toEqual(["engine"]);
+    expect(refreshScope(`${sp}/members`)).toEqual(["spaces"]);
+  });
+  it("the date range shows where rows are dated: the dashboard, the logs, a source's or a recon's Activity tab", () => {
+    expect(timeWindowDays("/")).toBe(14);
+    expect(timeWindowDays("/audit/activity")).toBe(7);
+    expect(timeWindowDays("/spaces/s1/sources/x", "activity")).toBe(90);
+    expect(timeWindowDays("/spaces/s1/recons/x", "activity")).toBe(90);
+    expect(timeWindowDays("/spaces/s1/sources/x")).toBeNull();
+    expect(timeWindowDays("/spaces/s1/today")).toBeNull();
   });
 });

@@ -5,6 +5,7 @@ import {
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, toMinor, VERSION_STATUSES } from "../sources";
+import { TargetActivityQuery } from "./audit";
 import { ListQuery, sortParam } from "./common";
 import { SourceHealthDto } from "./sources";
 
@@ -140,7 +141,8 @@ export type ReconListQuery = z.infer<typeof ReconListQuery>;
 export const ReconVersionListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(RECON_VERSION_SORTS) });
 export type ReconVersionListQuery = z.infer<typeof ReconVersionListQuery>;
 /** GET …/recons/{configId}/activity. */
-export const ReconActivityQuery = ListQuery.omit({ q: true, sort: true });
+/** A recon's own trail: TargetActivityQuery (paging and the logs' range). */
+export const ReconActivityQuery = TargetActivityQuery;
 export type ReconActivityQuery = z.infer<typeof ReconActivityQuery>;
 
 /**

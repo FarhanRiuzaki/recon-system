@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CategoryChip, type CategorySlot, type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
-import { formatNumber } from "@starterkit/ui/lib/format";
+import { Sparkline } from "@starterkit/ui/charts";
+import { formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { sourceStatus } from "@/lib/shared/source-status";
 import { completeText, KIND_LABEL, lagText, withDays } from "./source-text";
@@ -15,6 +16,14 @@ const ONE_LINE = "block max-w-full overflow-hidden text-ellipsis whitespace-nowr
  * and 5 (orange, teal, ochre) are left out: beside the state chip they read as Degraded or Healthy.
  */
 const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 4, db_snapshot: 4 };
+
+/** What the last pull brought: "+4 rows · 1 left out", "Nothing new", "Paused". */
+function pullText(p: NonNullable<SourceRowDto["lastPull"]>): string {
+  if (p.status === "nothing_new") return "Nothing new";
+  if (p.status === "paused") return "Paused";
+  if (p.status === "failed") return "The last pull failed";
+  return [`+${formatNumber(p.added)} ${p.added === 1 ? "row" : "rows"}`, p.leftOut ? `${formatNumber(p.leftOut)} left out` : "", p.quarantined ? `${formatNumber(p.quarantined)} quarantined` : ""].filter(Boolean).join(" · ");
+}
 
 /** A source's state chip with the API's reason (or last error) as its description. */
 export function SourceStatusChip({ s }: { s: SourceRowDto }) {
@@ -53,22 +62,45 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         {s.server && <span className={`${ONE_LINE} text-fg-3`} title={s.server}>{s.server}</span>}
       </span>
     ) },
-    { key: "state", header: "State", mobile: "meta", cell: (s) => <SourceStatusChip s={s} /> },
+    // the reason in the cell, not only in the chip's tooltip (owner, 22 Nov: why it needs attention at a glance)
+    { key: "state", header: "State", mobile: "meta", cell: (s) => {
+      const why = s.status === "paused" ? null : s.health && s.health.state !== "healthy" ? (s.health.reason ?? s.health.lastError) : null;
+      return (
+        <span className="grid max-w-56 justify-items-start gap-1">
+          <SourceStatusChip s={s} />
+          {why && <span className="line-clamp-2 text-caption text-fg-3" title={withDays(why)}>{withDays(why)}</span>}
+        </span>
+      );
+    } },
     { key: "complete", header: "Complete through", mobile: "meta", className: "md:max-xl:hidden", cell: (s) => {
       const lag = lagText(s);
       return <span className="grid"><span>{completeText(s)}</span>{lag && <span className="text-caption text-fg-3">{lag}</span>}</span>;
     } },
-    { key: "lastRead", header: "Last read", mobile: "meta", className: "md:max-xl:hidden", help: "The last pull, folder check or snapshot that succeeded; a failing read shows its error.", cell: (s) => (
+    { key: "lastRead", header: "Last read", mobile: "meta", className: "md:max-xl:hidden",
+      help: "The last read that succeeded, what the last pull brought (rows added, rows the source's conditions left out) and when it reads next.", cell: (s) => (
       !s.health ? none : (
         <span className="grid max-w-64">
           {s.health.lastReadAt ? <RelativeTime at={Date.parse(s.health.lastReadAt)} touchDate={false} /> : <span className="text-fg-3">Not yet</span>}
-          {s.health.lastError && <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>}
+          {s.health.lastError ? <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>
+            : s.lastPull && <span className="text-caption text-fg-3">{pullText(s.lastPull)}</span>}
+          {s.nextRunAt && <span className="text-caption text-fg-3">Next read {formatTime(Date.parse(s.nextRunAt))}</span>}
         </span>
       )
     ) },
-    { key: "rowsToday", header: "Records today", mobile: "meta", align: "right", className: "md:max-xl:hidden", cell: (s) => (s.rowsToday === null ? none : formatNumber(s.rowsToday)) },
-    { key: "quarantinedToday", header: "Quarantined today", mobile: "meta", align: "right", className: "md:max-xl:hidden",
-      cell: (s) => (s.quarantinedToday === null ? none : formatNumber(s.quarantinedToday)) },
+    // the day's count with its week (owner, 22 Nov: a drop shows before the state does) and its quarantined lines
+    { key: "rowsToday", header: "Records today", mobile: "meta", align: "right", className: "md:max-xl:hidden",
+      help: "Records for the business date its health counts, the 7 dates up to it, the day before and lines quarantined that date.", cell: (s) => (
+      s.rowsToday === null ? none : (
+        <span className="ml-auto grid w-28 justify-items-end gap-1">
+          <span className="tabular">{formatNumber(s.rowsToday)}</span>
+          {s.recent.some((n) => n > 0) && <span className="block w-full"><Sparkline values={s.recent} height={20} /></span>}
+          <span className="text-caption text-fg-3 tabular">
+            {s.recent.length > 1 ? `${formatNumber(s.recent.at(-2)!)} the day before` : ""}
+            {s.quarantinedToday ? `${s.recent.length > 1 ? " · " : ""}${formatNumber(s.quarantinedToday)} quarantined` : ""}
+          </span>
+        </span>
+      )
+    ) },
     { key: "usedBy", header: "Used by", mobile: "meta", align: "right", className: "md:max-xl:hidden", help: "How many approved recons read this source.",
       cell: (s) => (s.usedByCount ? `${formatNumber(s.usedByCount)} ${s.usedByCount === 1 ? "recon" : "recons"}` : none) },
   ];

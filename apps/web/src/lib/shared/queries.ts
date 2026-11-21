@@ -127,8 +127,8 @@ const SOURCE_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: SOURCE_VERSION_SORTS
 export const sourceVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
   ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: SOURCE_VERSIONS_SPEC, transient: ["tab"] });
 /** A source's own activity (read through the sources module), newest first; the API takes no sort. */
-export const sourceActivity = (spaceId: string, id: string): TableDef<NoFilters> =>
-  ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: INGEST_SPEC, transient: ["tab"] });
+export const sourceActivity = (spaceId: string, id: string): TableDef<TrailFilters> =>
+  ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: TRAIL_SPEC, params: auditParams, transient: ["tab"] });
 /** One version of a source, with the names of the people it names. */
 export const sourceVersion = (spaceId: string, id: string, versionId: string) => ({
   key: [...SOURCES_KEY, "version", spaceId, id, versionId] as const,
@@ -148,8 +148,8 @@ const RECON_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: RECON_VERSION_SORTS, 
 export const reconVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
   ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: RECON_VERSIONS_SPEC, transient: ["tab"] });
 /** A recon's own activity, newest first; the API takes no sort. */
-export const reconActivity = (spaceId: string, id: string): TableDef<NoFilters> =>
-  ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: INGEST_SPEC, transient: ["tab"] });
+export const reconActivity = (spaceId: string, id: string): TableDef<TrailFilters> =>
+  ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/activity`, spec: TRAIL_SPEC, params: auditParams, transient: ["tab"] });
 /** One version of a recon, with the names of the people it names. */
 export const reconVersion = (spaceId: string, id: string, versionId: string) => ({
   key: [...RECON_KEY, "version", spaceId, id, versionId] as const,
@@ -234,8 +234,18 @@ const timeExpression: FilterParser<string> = raw => raw && isTimeExpression(raw)
 const AUDIT_FILTERS = { start: timeExpression, end: timeExpression, user: text(64), range: oneOf(AUDIT_RANGES, "7d"), from: isoDate, to: isoDate } satisfies { [K in keyof AuditFilters]: FilterParser<AuditFilters[K]> };
 export const customRange = (f: { from: string; to: string }) => (f.from && f.to && rangeProblem(f.from, f.to) === null ? { from: f.from, to: f.to } : null);
 /** API parameters: a valid custom from–to, else the preset as from/to calendar dates (app time zone, today included). */
-const auditParams = ({ range, from, to, start, end, ...rest }: AuditFilters & Record<string, string>) =>
+const auditParams = ({ range, from, to, start, end, ...rest }: Omit<AuditFilters, "user"> & Record<string, string>) =>
   ({ ...rest, ...(resolveTimeRange({ start, end }, Date.now()) ? { start, end } : customRange({ from, to }) ?? presetRange(range, Date.now())) });
+
+/**
+ * A record's own trail (a source's, a recon's Activity tab): the header's range as the logs read it (start–end, from–to
+ * or a preset), the last 90 days by default (owner, 22 Nov: the header's date filter on every module with dated rows; a
+ * week would hide most of a config's history).
+ */
+export type TrailFilters = Omit<AuditFilters, "user">;
+const TRAIL_SPEC: TableSpec<TrailFilters> = { sorts: [], defaultSort: "", filters: { start: timeExpression, end: timeExpression, range: oneOf(AUDIT_RANGES, "90d"), from: isoDate, to: isoDate } };
+/** The default range of a trail, for the header's label. */
+export const TRAIL_DAYS = 90;
 
 export type ActivityFilters = AuditFilters & { action: string; actorId: string; targetType: string; targetId: string };
 const exact: FilterParser<string> = raw => raw ?? "";

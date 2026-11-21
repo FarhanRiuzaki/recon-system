@@ -9,7 +9,7 @@ import type { ReconVersionRowDto } from "@starterkit/shared/contracts/recon";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import type { NoFilters } from "@/lib/shared/queries";
+import type { NoFilters, TrailFilters } from "@/lib/shared/queries";
 import { reconActivity, reconVersions } from "@/lib/shared/queries";
 import { RECON_VERSION_LEGEND, reconVersionChip } from "@/lib/shared/recon-status";
 import { activitySentence, at } from "./recon-text";
@@ -54,7 +54,7 @@ export function VersionsTable({ spaceId, id }: { spaceId: string; id: string }) 
 /** The recon's own activity: one sentence per event, newest first. */
 export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => reconActivity(spaceId, id), [spaceId, id]);
-  const t = useTableQuery<ActivityDto, NoFilters>(def);
+  const t = useTableQuery<ActivityDto, TrailFilters>(def);
   const columns = useMemo(() => [
     { key: "event", header: "What happened", mobile: "title" as const, className: "whitespace-normal wrap-anywhere md:min-w-80 w-full", cell: (e: ActivityDto) => <span className="text-fg">{activitySentence(e)}</span> },
     { key: "at", header: "When", mobile: "meta" as const, cell: (e: ActivityDto) => at(e.at) },

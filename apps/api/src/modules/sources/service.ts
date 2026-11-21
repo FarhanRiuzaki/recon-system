@@ -4,7 +4,7 @@
 // the sources shared to it; the queries also filter by space themselves, so an answer never depends on the role the
 // pool connects as. A change locks the source row first, so changes to one source run one after the other.
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ActivityDto } from "@starterkit/shared/contracts/audit";
+import type { ActivityDto, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import type {
   ConnectionTestDto, CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourceSummaryDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
@@ -26,7 +26,7 @@ import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
   CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState,
-  sourceStates, specCelError, within,
+  lastPulls, listTrends, sourceStates, specCelError, todayIn, within,
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
@@ -47,8 +47,8 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 type Owners = Map<string, string>;
-type Extras = Pick<SourceRowDto, "engine" | "server" | "reads" | "usedByCount" | "pending">;
-const NO_EXTRAS: Extras = { engine: null, server: null, reads: null, usedByCount: 0, pending: null };
+type Extras = Pick<SourceRowDto, "engine" | "server" | "reads" | "usedByCount" | "pending" | "recent" | "lastPull" | "nextRunAt">;
+const NO_EXTRAS: Extras = { engine: null, server: null, reads: null, usedByCount: 0, pending: null, recent: [], lastPull: null, nextRunAt: null };
 /** What a source reads, in a few words: its table, its own SELECT, or its folder and file name pattern. */
 const readsOf = (spec: unknown): string | null => {
   const i = (spec as SourceSpec | null)?.input;
@@ -59,8 +59,8 @@ const readsOf = (spec: unknown): string | null => {
  * The admin's view of `list` (owner, 21 Nov: the list says what each source reads and where): engine, server (a
  * source admin of the owner space), what it reads, the recons that read it, a version waiting. Four queries a page.
  */
-async function rowExtras(tx: InTx, list: { s: SourceRow; spec: unknown }[], spaceId: string, admin: boolean): Promise<Map<string, Extras>> {
-  const out = new Map<string, Extras>(list.map(({ s, spec }) => [s.id, { ...NO_EXTRAS, reads: readsOf(spec) }]));
+async function rowExtras(tx: InTx, list: { s: SourceRow; spec: unknown }[], spaceId: string, admin: boolean, states: Map<string, SourceState>): Promise<Map<string, Extras>> {
+  const out = new Map<string, Extras>(list.map(({ s, spec }) => [s.id, { ...NO_EXTRAS, reads: readsOf(spec), nextRunAt: states.get(s.id)?.nextRunAt ?? null }]));
   const own = list.filter(({ s }) => s.spaceId === spaceId).map(({ s }) => s.id);
   if (!list.length) return out;
   const ids = list.map(({ s }) => s.id);
@@ -77,6 +77,13 @@ async function rowExtras(tx: InTx, list: { s: SourceRow; spec: unknown }[], spac
     for (const v of open) out.get(v.id)!.pending = { version: v.version, status: v.status as "draft" | "in_review" };
   }
   for (const [id, uses] of await reconsUsingSources(tx, ids)) out.get(id)!.usedByCount = uses;
+  // the trend up to the date each one's health counts (a file delivered per date: yesterday's), and the last pull
+  const judged = list.filter(({ spec }) => spec);
+  const trends = await listTrends(tx, judged.map(({ s }) => ({ spaceId: s.spaceId, sourceId: s.id, to: states.get(s.id)?.health?.businessDate ?? todayIn(new Date()) })));
+  for (const [id, recent] of trends) out.get(id)!.recent = recent;
+  for (const [id, p] of await lastPulls(tx, own)) {
+    out.get(id)!.lastPull = { at: p.finishedAt.toISOString(), status: p.status as NonNullable<Extras["lastPull"]>["status"], added: p.added, leftOut: p.leftOut, quarantined: p.quarantined, error: p.error };
+  }
   return out;
 }
 const rowDto = (s: SourceRow, publishedVersion: number | null, spaceId: string, owners: Owners, state: SourceState | undefined, extras: Extras = NO_EXTRAS): SourceRowDto => ({
@@ -144,12 +151,12 @@ export function sourcePage(ctx: Ctx, q: SourceListQuery): Promise<Page<SourceRow
       const { states, owners } = await readModel(tx, all, spaceId);
       const kept = all.filter((r) => stateOf(r.s, r.published, states.get(r.s.id)?.health) === q.state);
       const items = kept.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
-      const extras = await rowExtras(tx, items, spaceId, isSourceAdmin(ctx));
+      const extras = await rowExtras(tx, items, spaceId, isSourceAdmin(ctx), states);
       return { items: items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id), extras.get(r.s.id))), total: kept.length, page: q.page, pageSize: q.pageSize };
     }
     const page = await pageQuery({ rows, count: tx.select(one).from(sources).where(where).$dynamic(), orderBy, query: q, map: (r) => r, on: tx });
     const { states, owners } = await readModel(tx, page.items, spaceId);
-    const extras = await rowExtras(tx, page.items, spaceId, isSourceAdmin(ctx));
+    const extras = await rowExtras(tx, page.items, spaceId, isSourceAdmin(ctx), states);
     return { ...page, items: page.items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id), extras.get(r.s.id))) };
   });
 }
@@ -186,7 +193,7 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string, admin = false)
     .where(and(eq(sourceShares.spaceId, s.spaceId), eq(sourceShares.sourceId, s.id))).orderBy(asc(spaces.name)) : [];
   const { states, owners } = await readModel(tx, [{ s, spec: published?.spec }], spaceId);
   const state = states.get(s.id);
-  const extras = (await rowExtras(tx, [{ s, spec: published?.spec }], spaceId, admin)).get(s.id);
+  const extras = (await rowExtras(tx, [{ s, spec: published?.spec }], spaceId, admin, states)).get(s.id);
   return {
     ...rowDto(s, published?.version ?? null, spaceId, owners, state, extras),
     health: state?.health ?? null,
@@ -296,7 +303,7 @@ export function versionDetail(ctx: Ctx, id: string, versionId: string): Promise<
  * first, for any member of the owning space; 404 through a share. Read through the audit module (no global audit.view:
  * the trail belongs to the space's members). Snapshots are the masked ones recordActivity kept.
  */
-export async function sourceActivity(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<ActivityDto>> {
+export async function sourceActivity(ctx: Ctx, id: string, q: TargetActivityQuery): Promise<Page<ActivityDto>> {
   const s = await inSpace(ctx, async (tx, spaceId) => {
     const [row] = await tx.select().from(sources).where(and(eq(sources.id, id), eq(sources.spaceId, spaceId)));
     if (!row) throw notFound("source");

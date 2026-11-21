@@ -220,6 +220,19 @@ describe("the sources list and detail read model", () => {
     expect(rows[0]!.health).not.toHaveProperty("deadline");
   });
 
+  it("the list's trend, last pull and next read (owner, 22 Nov): 7 dates up to the health's date, the newest pull, a time", async () => {
+    const at = (m: number) => new Date(Date.UTC(2026, 10, 21, 1, m));
+    await db.insert(sourcePulls).values([1, 2].map((m) => ({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, startedAt: at(m), finishedAt: at(m),
+      status: m === 2 ? "failed" : "new", rows: 5, added: m === 2 ? 0 : 4, leftOut: m === 2 ? 0 : 1, error: m === 2 ? "Can't reach the source database." : null })));
+    const row = (await list(A, t.op)).find((r) => r.id === FILE_SRC)!;
+    expect(row.recent).toHaveLength(7);
+    expect(row.recent.at(-1)).toBe(2); // the health's business date, as rowsToday
+    expect(row.lastPull).toMatchObject({ status: "failed", added: 0, error: "Can't reach the source database." });
+    expect(row.nextRunAt).toEqual(expect.any(String));
+    // through a share: the trend, never the owner's pulls
+    expect((await list(B, t.other))[0]).toMatchObject({ lastPull: null });
+  });
+
   it("the space it is shared to: the owner's name and the health, no quarantine count", async () => {
     const [row] = await list(B, t.other);
     expect(row).toMatchObject({ id: FILE_SRC, shared: true, owner: { spaceId: A, name: "TREASURY" }, rowsToday: 2, quarantinedToday: null, health: { state: "healthy" } });

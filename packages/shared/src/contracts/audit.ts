@@ -50,6 +50,18 @@ const validRange = [
   { message: `Choose a valid calendar range (up to ${MAX_RANGE_DAYS} days) or a time range (up to 366 days).` },
 ] as const;
 
+/**
+ * One record's own trail (a source's, a recon's Activity tab): paging and the logs' range (start–end or from–to,
+ * validated as theirs), newest first.
+ */
+export const TargetActivityQuery = ListQuery.omit({ q: true, sort: true }).extend({
+  start: z.string().max(100).refine(isTimeExpression).optional(),
+  end: z.string().max(100).refine(isTimeExpression).optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+}).refine(...validRange);
+export type TargetActivityQuery = z.infer<typeof TargetActivityQuery>;
+
 /** GET /api/audit/activity. `user` matches the actor's name, id or current email; `action` is exact. Exact actorId and paired opaque targetType/targetId are ANDed with every existing filter. */
 export const ActivityQuery = AuditQuery.extend({
   sort: sortParam(ACTIVITY_SORTS), action: filterSelection(z.string().min(1).max(64)).optional(),

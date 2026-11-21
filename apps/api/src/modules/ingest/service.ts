@@ -693,6 +693,28 @@ export async function sourceDays(tx: InTx, s: Scope, to: string, days = 14): Pro
   return dates.map((date) => ({ date, records: n(date, "records"), quarantined: n(date, "quarantined") }));
 }
 
+/**
+ * For the sources list (one query each for a page): records per business date of each of `list` over the `days` dates up
+ * to its own `to`, oldest first; and its last watermark pull (the caller's space's own, RLS).
+ */
+export async function listTrends(tx: InTx, list: (Scope & { to: string })[], days = 7): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  if (!list.length) return out;
+  const dateOf = (to: string, i: number) => new Date(Date.parse(`${to}T00:00:00Z`) - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10);
+  const first = list.map((x) => dateOf(x.to, 0)).sort()[0]!, last = list.map((x) => x.to).sort().at(-1)!;
+  const c = sourceDayCounts;
+  const rows = await tx.select({ id: c.sourceId, date: c.businessDate, n: c.n }).from(c)
+    .where(and(inArray(c.sourceId, list.map((x) => x.sourceId)), eq(c.kind, "records"), sql`${c.businessDate} between ${first}::date and ${last}::date`));
+  for (const x of list) out.set(x.sourceId, Array.from({ length: days }, (_, i) => rows.find((r) => r.id === x.sourceId && r.date === dateOf(x.to, i))?.n ?? 0));
+  return out;
+}
+export async function lastPulls(tx: InTx, ids: string[]): Promise<Map<string, typeof sourcePulls.$inferSelect>> {
+  if (!ids.length) return new Map();
+  const rows = await tx.selectDistinctOn([sourcePulls.sourceId]).from(sourcePulls).where(inArray(sourcePulls.sourceId, ids))
+    .orderBy(sourcePulls.sourceId, desc(sourcePulls.startedAt));
+  return new Map(rows.map((r) => [r.sourceId, r]));
+}
+
 /** GET …/pulls (the Pull history card): a watermark source's pulls of the last PULL_DAYS days, newest first; its own space only. */
 export function pullPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<SourcePullDto>> {
   return inSpace(ctx, async (tx, spaceId) => {

@@ -20,12 +20,37 @@ export function patchTimeSearch(sp: URLSearchParams, patch: Record<string, strin
   for (const [key, value] of Object.entries(patch)) { if (value) next.set(key, value); else next.delete(key); }
   return next;
 }
-/** Forms never refetch underneath unsaved input. */
-export function refreshScope(path: string): string | null {
-  if (path === "/") return "dashboard";
-  if (path === "/users") return "users";
-  if (path === "/roles" || path === "/permissions") return "rbac";
-  if (path === "/audit/activity" || path === "/audit/auth") return "audit";
-  if (path === "/me/sessions") return "me";
+/**
+ * The query keys (their first element, the owning module) the header's refresh reads again on `path`; `tab` = the
+ * page's ?tab. Null = no refresh: forms never refetch underneath unsaved input (a new user, a source wizard, a recon's
+ * Overview, which is its builder).
+ */
+export function refreshScope(path: string, tab: string | null = null): readonly string[] | null {
+  if (path === "/") return ["dashboard"];
+  if (path === "/users") return ["users"];
+  if (path === "/roles" || path === "/permissions") return ["rbac"];
+  if (path === "/audit/activity" || path === "/audit/auth") return ["audit"];
+  if (path === "/me/sessions") return ["me"];
+  // a space's pages with data (owner, 22 Nov: the header's refresh on every module that has it)
+  const page = /^\/spaces\/[^/]+\/(.+)$/.exec(path)?.[1];
+  if (!page) return null;
+  if (page === "members") return ["spaces"];
+  if (page === "today") return ["engine"];
+  if (page === "sources") return ["sources"];
+  if (page === "recons") return ["recon"];
+  if (/^sources\/[^/]+$/.test(page) && page !== "sources/new") return ["sources", "ingest"];
+  if (/^recons\/[^/]+$/.test(page) && page !== "recons/new") return tab && tab !== "overview" ? ["recon", "engine"] : null;
+  if (/^recons\/[^/]+\/runs\/[^/]+$/.test(page)) return ["engine"];
+  return null;
+}
+
+/**
+ * Pages whose rows are dated, so the header's date range filters them, with the days it covers by default: the
+ * dashboard, both logs, and a source's or a recon's Activity tab (its trail, TRAIL_DAYS in queries.ts). Null = none.
+ */
+export function timeWindowDays(path: string, tab: string | null = null): number | null {
+  if (path === "/") return 14;
+  if (path.startsWith("/audit/")) return 7;
+  if (tab === "activity" && /^\/spaces\/[^/]+\/(sources|recons)\/[^/]+$/.test(path) && !/\/(sources|recons)\/new$/.test(path)) return 90;
   return null;
 }
