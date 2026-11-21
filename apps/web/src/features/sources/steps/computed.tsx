@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Combobox, type ComboOption, Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -19,6 +19,8 @@ type Props = {
   err: (id: string) => string | undefined;
   /** Example values per column (the preview's), to show each computed column's result as it is built. */
   examples: Map<string, string[]>;
+  /** The recon fields a computed column fills ("Use as", as for a column). */
+  renderUseAs: (name: string, i: number) => ReactNode;
 };
 
 /**
@@ -28,14 +30,18 @@ type Props = {
  * draft's `derive` CEL in computeCel's form, so ingest runs the very functions the result here ran; an expression
  * that isn't in that form (written by hand) is edited as an expression.
  */
-export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
+export function ComputedColumns({ spec, setSpec, err, examples, renderUseAs }: Props) {
   const entries = Object.entries(spec.derive);
   const [asText, setAsText] = useState<Record<string, boolean>>({});
   // no example from the source yet (no rows): try the steps on sample values a person can change
   const [tryWith, setTryWith] = useState<string[]>(DUMMY_EXAMPLES);
   const sources: ComboOption[] = spec.fields.map((f) => ({ value: f.name, label: f.name, description: examples.get(f.name)?.[0] ? `e.g. ${examples.get(f.name)![0]}` : undefined }));
   const setExpr = (name: string, expr: string) => setSpec((x) => ({ ...x, derive: { ...x.derive, [name]: expr } }));
-  const rename = (from: string, to: string) => setSpec((x) => ({ ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])) }));
+  // a rename keeps the recon fields it fills
+  const rename = (from: string, to: string) => setSpec((x) => ({
+    ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])),
+    mapping: Object.fromEntries(Object.entries(x.mapping).map(([k, r]) => [k, r && typeof r === "object" && "field" in r && r.field === from ? { ...r, field: to } : r])) as SourceSpec["mapping"],
+  }));
   if (!entries.length) return null;
   return (
     <div className="grid gap-3 border-t border-line p-4">
@@ -50,7 +56,7 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
         return (
           // one card per computed column (common region): what it is called and starts from, its steps, its result
           <section key={i} aria-label={`Computed column ${name || i + 1}`} className="grid gap-4 rounded-lg border border-line bg-card p-4">
-            <div className="grid items-end gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_auto]">
+            <div className="grid items-end gap-3 md:grid-cols-[minmax(0,14rem)_minmax(0,1fr)_minmax(0,1fr)_auto]">
               <Field id={`${id}-name`} label="Name">
                 <Input id={`${id}-name`} value={name} className="w-full font-mono" onChange={(e) => rename(name, e.target.value)} autoComplete="off" spellCheck={false} />
               </Field>
@@ -60,6 +66,7 @@ export function ComputedColumns({ spec, setSpec, err, examples }: Props) {
                     placeholder="Pick a column" onChange={(o) => o && set(o.value, built.steps)} />
                 </Field>
               ) : <span />}
+              <div className="grid min-w-0 content-start gap-2"><span className="text-label text-fg">Use as</span>{renderUseAs(name, i)}</div>
               <Button type="button" variant="ghost" size="icon" className="justify-self-end" aria-label={`Remove ${name || "this computed column"}`}
                 onClick={() => setSpec((x) => { const { [name]: _drop, ...rest } = x.derive; return { ...x, derive: rest }; })}><Icon icon={RemoveIcon} /></Button>
             </div>

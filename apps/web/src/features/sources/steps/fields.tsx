@@ -5,7 +5,7 @@ import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice,
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, CloseIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, CloseIcon, SpinnerIcon, SuggestedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
@@ -13,7 +13,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
 import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
-import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
+import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
 import { ComputedColumns } from "./computed";
@@ -36,17 +36,11 @@ const CORE: { key: Core; group: "date" | "money" | "match"; label: string; note?
   { key: "ext_ref", group: "match", label: "Reference", help: "The id both sides share for the same transaction, such as an end-to-end or transfer reference. The strongest thing to match on." },
   { key: "account_ref", group: "match", label: "Account", help: "The account the row is posted to. Matching on it as well keeps two equal amounts on different accounts apart." },
 ];
-/** The core fields in three groups, the required one first (Hick's law: one decision at a time). */
-const GROUPS = [
-  { key: "date", title: "When" }, { key: "money", title: "Money" }, { key: "match", title: "Matching" },
-] as const;
 /** The types a core field reads well from; another type gets a red cross with what to change (Combobox tone). */
 const FITS: Partial<Record<Core, readonly FieldSpec["type"][]>> = {
   business_date: ["date", "datetime"], amount_minor: ["integer", "decimal"], event_time: ["datetime"],
 };
 
-const refValue = (r: ValueRef | undefined) => (!r ? "" : "field" in r ? (r.field ? `f:${r.field}` : "") : r.cel === FILE_DATE.cel ? "c:file_date" : `x:${r.cel}`);
-const refOf = (v: string): ValueRef | undefined => (!v ? undefined : v.startsWith("f:") ? { field: v.slice(2) } : v === "c:file_date" ? FILE_DATE : { cel: v.slice(2) });
 
 export type FieldsStepProps = {
   d: Draft;
@@ -115,7 +109,6 @@ export function FieldsStep(p: FieldsStepProps) {
     const a = x.spec.mapping.amount_minor;
     return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
   });
-  const names = [...s.fields.map((f) => f.name), ...Object.keys(s.derive)];
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
 
   // Add computed column shimmers until first used, and the card it adds takes the focus (design-system §7.9)
@@ -136,54 +129,56 @@ export function FieldsStep(p: FieldsStepProps) {
   const hasSource = s.input.kind === "db_snapshot" ? !!s.input.query.trim()
     : s.input.kind === "db_watermark" ? (d.from === "table" ? !!(s.input.table ?? "").trim() : !!(s.input.query ?? "").trim()) : true;
   const byName = new Map(s.fields.map((f) => [f.name, f]));
-  const coreField = (c: (typeof CORE)[number]) => {
-          const id = ctl(`mapping.${c.key}`);
-          const value = refValue(s.mapping[c.key]);
-          const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
-          // a value inside a JSON column (a payload, a remark holding JSON): offered as its own option, kept as
-          // json_value(row.col, "path"), the computed-column step ingest runs too (owner, 21 Nov)
-          const jsonOpts: ComboOption[] = names.flatMap((n) => jsonPaths(examples.get(n) ?? []).map(({ path, example }) => ({
-            value: `x:${computeCel(n, [{ type: "json", args: [path] }])}`, label: `${n} › ${path}`, description: `In JSON · e.g. ${example}` })));
-          const extra = value.startsWith("x:") && !jsonOpts.some((o) => o.value === value) ? [value] : [];
-          // searchable (owner, 21 Nov): a source can have tens of columns; clearing the field = not used
-          const opts: ComboOption[] = [
-            ...(c.key === "business_date" && file ? [{ value: "c:file_date", label: "From the file name" }] : []),
-            ...names.map((n): ComboOption => {
-              const t = byName.get(n)?.type;
-              const ex = examples.get(n)?.[0];
-              const fits = FITS[c.key];
-              const bad = !!t && !!fits && !fits.includes(t);
-              // only text can hold a date or a number to retype; another type just isn't one
-              const why = !bad ? null : t === "string" ? `if it holds ${fits[0] === "integer" ? "numbers" : "dates"}, set its type in Columns` : `not ${fits[0] === "integer" ? "a number" : "a date"}`;
-              return { value: `f:${n}`, label: n, tone: fits && t ? (bad ? "bad" : "ok") : undefined,
-                description: [t ? TYPE_LABEL[t] : "Computed column", ex ? `e.g. ${ex}` : null, why].filter(Boolean).join(" · ") };
-            }).sort((a, b) => Number(a.tone === "bad") - Number(b.tone === "bad")),
-            ...jsonOpts,
-            ...extra.map((x) => {
-              // a JSON value whose example isn't read yet still shows as column › path
-              const b = computeSteps(x.slice(2));
-              const one = b?.steps.length === 1 && b.steps[0]!.type === "json" ? `${b.source} › ${b.steps[0]!.args[0]}` : null;
-              return { value: x, label: one ?? `Expression: ${x.slice(2)}` };
-            }),
-          ];
-          const field = (
-            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={c.note} suggested={!!hinted(c.key, value)} error={err(id)} help={c.help}>
-              <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
-                placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
-                onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
-            </Field>
-          );
-          // the currency per row or one for every row: two answers to one question, kept together in one cell
-          if (c.key !== "currency" || s.mapping.currency) return field;
-          return (
-            <div key={c.key} className="grid content-start gap-3">
-              {field}
-              <Field id={ctl("currency")} label="Or one currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
-                <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
-                  value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
-              </Field>
-            </div>
-          );
+  /** Where a recon field's value comes from, in words: a column, a JSON value (column › path), the file name, an expression. */
+  const refLabel = (r: ValueRef) => {
+    if ("field" in r) return r.field;
+    if (r.cel === FILE_DATE.cel) return "the file name";
+    const b = computeSteps(r.cel);
+    return b?.steps.length === 1 && b.steps[0]!.type === "json" ? `${b.source} › ${b.steps[0]!.args[0]}` : `expression ${r.cel}`;
+  };
+  const jsonRef = (col: string, path: string): ValueRef => ({ cel: computeCel(col, [{ type: "json", args: [path] }]) });
+  /**
+   * "Use as" of one column or computed column (owner, 21 Nov: the mapping joins Columns): the recon fields it fills,
+   * picked beside its type and example. A recon field takes one value, so picking it here moves it from where it was
+   * ("Now from …"); a JSON column offers each value inside it (Reference ← data.code.rc) instead of the whole text.
+   */
+  const fieldPicker = (col: string, idx: string) => {
+    const t = byName.get(col)?.type ?? "string";
+    const paths = jsonPaths(examples.get(col) ?? []);
+    const mine = (k: Core): string | null => {
+      const r = s.mapping[k];
+      if (!r) return null;
+      if ("field" in r) return r.field === col ? k : null;
+      const cel = r.cel;
+      const p = paths.find((x) => "cel" in jsonRef(col, x.path) && computeCel(col, [{ type: "json", args: [x.path] }]) === cel);
+      if (p) return `${k}@${p.path}`;
+      const b = computeSteps(cel);
+      return b?.source === col && b.steps.length === 1 && b.steps[0]!.type === "json" ? `${k}@${b.steps[0]!.args[0]}` : null;
+    };
+    const opts: ComboOption[] = CORE.flatMap((c) => {
+      const now = s.mapping[c.key];
+      const from = now && ("field" in now ? now.field : true) ? refLabel(now) : null;
+      const elsewhere = from && !mine(c.key) ? `Now from ${from}` : null;
+      if (paths.length) return paths.map((x) => ({ value: `${c.key}@${x.path}`, label: `${c.label} ← ${x.path}`, description: [`e.g. ${x.example}`, elsewhere].filter(Boolean).join(" · ") }));
+      const fits = FITS[c.key];
+      const bad = !!fits && !fits.includes(t);
+      // only text can hold a date or a number to retype; another type just isn't one
+      const why = !bad ? null : t === "string" ? `if it holds ${fits[0] === "integer" ? "numbers" : "dates"}, set its type` : `not ${fits[0] === "integer" ? "a number" : "a date"}`;
+      return [{ value: c.key, label: c.label, tone: fits ? (bad ? "bad" : "ok") : undefined, description: [why, elsewhere].filter(Boolean).join(" · ") || undefined } as ComboOption];
+    });
+    const value = CORE.map((c) => mine(c.key)).filter((v): v is string => !!v).map((v) => opts.find((o) => o.value === v) ?? { value: v, label: v });
+    return (
+      <Combobox multiple id={`src-useas-${idx}`} label={`${col} is used as`} className="w-full min-w-48" options={opts} value={value} placeholder="Not used"
+        emptyText="No recon field has that name." onChange={(next) => {
+          const want = new Map(next.map((o) => { const [k, path] = o.value.split("@") as [Core, string | undefined]; return [k, path] as const; }));
+          for (const c of CORE) {
+            const had = mine(c.key), path = want.get(c.key);
+            const now = want.has(c.key) ? (path === undefined ? c.key : `${c.key}@${path}`) : null;
+            if (now === had) continue;
+            setCore(c.key, now === null ? undefined : path === undefined ? { field: col } : jsonRef(col, path));
+          }
+        }} />
+    );
   };
   return (
     <div className="grid gap-section">
@@ -203,7 +198,7 @@ export function FieldsStep(p: FieldsStepProps) {
 
       {/* a database's examples come from Preview rows (each pulls from the bank's database: on demand only), offered
           here where the examples are read, before the mapping that needs them */}
-      <Panel flush title="Columns" description={`${s.fields.length} columns${!file ? ` from ${s.input.kind === "db_watermark" && s.input.table?.trim() ? s.input.table.trim() : "the query"}` : ""} · check each type: the fields below read it`}
+      <Panel flush title="Columns" description={`${s.fields.length} columns${!file ? ` from ${s.input.kind === "db_watermark" && s.input.table?.trim() ? s.input.table.trim() : "the query"}` : ""} · check each type and what the recons use it as`}
         actions={(s.fields.length > 0 || (!file && p.canRead && hasSource)) && (
           <span className="flex flex-wrap gap-2">
             {!file && p.canRead && hasSource && (
@@ -230,7 +225,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
+                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead><TableHead>Use as</TableHead>
                 <TableHead>Empty ok</TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -287,6 +282,7 @@ export function FieldsStep(p: FieldsStepProps) {
                         </span>
                       </TableCell>
                       <TableCell className="max-xl:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
+                      <TableCell className="max-xl:col-span-2"><Cap>Use as</Cap>{fieldPicker(f.name, String(i))}</TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
                     </TableRow>
                   );
@@ -295,24 +291,10 @@ export function FieldsStep(p: FieldsStepProps) {
             </Table>
           </div>
         )}
-        <ComputedColumns spec={s} setSpec={setSpec} err={err} examples={examples} />
+        <ComputedColumns spec={s} setSpec={setSpec} err={err} examples={examples} renderUseAs={(name, i) => fieldPicker(name, `derive-${i}`)} />
+        <ReconFields d={d} p={p} err={err} refLabel={refLabel} setSpec={setSpec} setCore={setCore} setUnit={setUnit} />
       </Panel>
 
-      <Panel title="Map to recon fields" description="Which column gives each value the recons read" bodyClassName="grid gap-4 md:grid-cols-2">
-        {GROUPS.map((g) => (
-          <Fragment key={g.key}>
-            <h3 className="eyebrow text-fg-3 md:col-span-2">{g.title}</h3>
-            {CORE.filter((c) => c.group === g.key).map((c) => (
-              <Fragment key={c.key}>
-                {coreField(c)}
-                {/* the amount's unit belongs with the amount: right after Amount and Currency, before Direction */}
-                {c.key === "currency" && s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
-              </Fragment>
-            ))}
-          </Fragment>
-        ))}
-        {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
-      </Panel>
 
 
       {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
@@ -585,6 +567,63 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
 }
 
 /** "Amount is in": currency units or minor units, the suggestion while it is still the value, and what the sample's first row per currency is stored as. */
+/**
+ * The recon fields at a glance, under the columns that fill them (owner, 21 Nov: "Map to recon fields" joined Columns):
+ * each one's source with a ✓, or Not used; what isn't a column is set here: the date in the file name, one currency
+ * for every row, the amount's unit. The line is the field's error target (src-mapping-…).
+ */
+function ReconFields({ d, p, err, refLabel, setSpec, setCore, setUnit }: {
+  d: Draft; p: FieldsStepProps; err: FieldsStepProps["err"]; refLabel: (r: ValueRef) => string;
+  setSpec: (fn: (s: SourceSpec) => SourceSpec) => void; setCore: (k: Core, r: ValueRef | undefined) => void; setUnit: (u: AmountUnit) => void;
+}) {
+  const s = d.spec;
+  const file = s.input.kind === "file_inbox";
+  return (
+    <div className="grid gap-4 border-t border-line p-4">
+      <h3 className="eyebrow text-fg-3">Recon fields</h3>
+      <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+        {CORE.map((c) => {
+          const id = ctl(`mapping.${c.key}`);
+          const r = s.mapping[c.key];
+          const set = !!r && (!("field" in r) || !!r.field);
+          const why = err(id);
+          const hint = c.key in p.coreHint ? p.coreHint[c.key as SuggestedCore] : undefined;
+          const typed = set && r && "cel" in r && r.cel !== FILE_DATE.cel;
+          return (
+            <div key={c.key} id={id} tabIndex={-1} className="grid min-w-0 content-start gap-1.5 rounded-md">
+              <span className="flex min-w-0 items-center gap-1 text-label text-fg">
+                {c.label}{c.key === "business_date" && <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>}
+                <InfoTip label={c.label}>{c.help}</InfoTip>
+                {hint && r && "field" in r && r.field === hint && <span className="ml-1 inline-flex items-center gap-1 text-caption text-fg-2"><Icon icon={SuggestedIcon} className="size-3.5 text-chart-1" />Suggested</span>}
+              </span>
+              <span className="flex min-w-0 flex-wrap items-center gap-2 text-body-sm">
+                {set && r ? <>
+                  <Icon icon={CheckIcon} className="size-4 shrink-0 text-healthy-mark" />
+                  <span className="min-w-0 truncate font-mono text-mono text-fg">{refLabel(r)}</span>
+                  {typed && <Button type="button" variant="link" size="sm" onClick={() => setCore(c.key, undefined)}>Stop using it</Button>}
+                </> : <span className="text-fg-3">{c.key === "business_date" ? "Not set: pick it in Use as" : "Not used"}</span>}
+              </span>
+              {file && c.key === "business_date" && (
+                <Checkbox label="From the file name" checked={!!r && "cel" in r && r.cel === FILE_DATE.cel}
+                  onToggle={() => setCore(c.key, r && "cel" in r && r.cel === FILE_DATE.cel ? undefined : FILE_DATE)} />
+              )}
+              {c.key === "currency" && !r && (
+                <Combobox className="w-full min-w-0 md:max-w-64" id={ctl("currency")} label="Or one currency for every row" placeholder="Or one currency for every row" options={CURRENCIES}
+                  invalid={!!err(ctl("currency"))} value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
+              )}
+              {c.key === "currency" && !r && err(ctl("currency")) && <p role="alert" className="text-caption text-down-ink">{err(ctl("currency"))}</p>}
+              {why && <p role="alert" className="text-caption text-down-ink">{why}</p>}
+            </div>
+          );
+        })}
+      </div>
+      {s.mapping.amount_minor
+        ? <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />
+        : <p className="text-caption text-fg-3">Recons on a source without an amount match by keys only.</p>}
+    </div>
+  );
+}
+
 function AmountUnitField({ d, err, records, onUnit }: { d: Draft; err: FieldsStepProps["err"]; records: NonNullable<Preview["result"]>["records"]; onUnit: (u: AmountUnit) => void }) {
   const id = ctl("mapping.amount_minor.unit");
   const unit = d.spec.mapping.amount_minor?.unit;
