@@ -33,7 +33,8 @@ describe("sources columns (Build notes 02 + owner 21 Nov: what it reads, last re
     expect(cell("state", down)).toContain("No file for 4 Nov");
     expect(cell("state")).not.toContain("line-clamp-2");
     const pulled = { ...S, lastPull: { at: "2026-11-05T01:00:00.000Z", status: "new" as const, added: 4, leftOut: 1, quarantined: 0, error: null }, nextRunAt: "2026-11-05T01:01:00.000Z" };
-    expect(cell("lastRead", pulled)).toContain("+4 rows · 1 left out");
+    expect(cell("lastRead", pulled)).toContain('<span class="text-healthy-ink">+4 rows</span> · 1 left out');
+    expect(cell("lastRead", { ...pulled, lastPull: { ...pulled.lastPull, added: 0, leftOut: 0 } })).not.toContain("text-healthy-ink");
     expect(cell("lastRead", pulled)).toContain("Next read 08:01");
     const week = { ...S, recent: [3, 4, 5, 6, 7, 12, 9] };
     expect(cell("rowsToday", week)).toContain("12 the day before");

@@ -17,12 +17,19 @@ const ONE_LINE = "block max-w-full overflow-hidden text-ellipsis whitespace-nowr
  */
 const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 4, db_snapshot: 4 };
 
-/** What the last pull brought: "+4 rows · 1 left out", "Nothing new", "Paused". */
-function pullText(p: NonNullable<SourceRowDto["lastPull"]>): string {
-  if (p.status === "nothing_new") return "Nothing new";
-  if (p.status === "paused") return "Paused";
-  if (p.status === "failed") return "The last pull failed";
-  return [`+${formatNumber(p.added)} ${p.added === 1 ? "row" : "rows"}`, p.leftOut ? `${formatNumber(p.leftOut)} left out` : "", p.quarantined ? `${formatNumber(p.quarantined)} quarantined` : ""].filter(Boolean).join(" · ");
+/**
+ * What the last pull brought: "+4 rows" (in the good-delta green, as a StatTile's pill: rows came in) then "1 left out",
+ * "1 quarantined"; or "Nothing new", "Paused", "The last pull failed".
+ */
+function PullText({ p }: { p: NonNullable<SourceRowDto["lastPull"]> }) {
+  if (p.status !== "new") return <>{p.status === "nothing_new" ? "Nothing new" : p.status === "paused" ? "Paused" : "The last pull failed"}</>;
+  const rest = [p.leftOut ? `${formatNumber(p.leftOut)} left out` : "", p.quarantined ? `${formatNumber(p.quarantined)} quarantined` : ""].filter(Boolean);
+  return (
+    <>
+      <span className={p.added ? "text-healthy-ink" : undefined}>+{formatNumber(p.added)} {p.added === 1 ? "row" : "rows"}</span>
+      {rest.length > 0 && ` · ${rest.join(" · ")}`}
+    </>
+  );
 }
 
 /** A source's state chip with the API's reason (or last error) as its description. */
@@ -82,7 +89,7 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="grid max-w-64 whitespace-nowrap">
           {s.health.lastReadAt ? <RelativeTime at={Date.parse(s.health.lastReadAt)} touchDate={false} /> : <span className="text-fg-3">Not yet</span>}
           {s.health.lastError ? <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>
-            : s.lastPull && <span className="text-caption text-fg-3">{pullText(s.lastPull)}</span>}
+            : s.lastPull && <span className="text-caption text-fg-3"><PullText p={s.lastPull} /></span>}
           {s.nextRunAt && <span className="text-caption text-fg-3">Next read {formatTime(Date.parse(s.nextRunAt))}</span>}
         </span>
       )
