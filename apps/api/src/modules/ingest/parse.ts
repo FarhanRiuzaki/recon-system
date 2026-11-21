@@ -48,11 +48,15 @@ async function* lines(chunks: AsyncIterable<string>, f: ParseFormat, columns: st
   const skipped: ParsedLine[] = [];
   const parser = parse({
     delimiter: f.delimiter, quote: f.quote === undefined ? '"' : f.quote, bom: true, relax_column_count: true, skip_empty_lines: true, info: true, raw: true,
+    // a quote inside an unquoted value is text (RFC 4180 quotes a value only at its start): JSON in a pipe file
+    relax_quotes: true,
     max_record_size: MAX_LINE_BYTES, skip_records_with_error: true,
     on_skip: (err: { message?: string; code?: string; lines?: number } | undefined, raw: string | undefined) => {
       const text = (raw ?? "").replace(/\r?\n$/, "");
       const line = Math.max(1, (err?.lines ?? 1) - newlines(text)); // csv-parse reports where it noticed; the line starts where its text began
       const fatal = err?.code === "CSV_QUOTE_NOT_CLOSED" || err?.code === "CSV_MAX_RECORD_SIZE" ? { fatal: "file" as const } : {};
+      // csv-parse can report one line more than once (each bad character): the line is quarantined once
+      if (skipped.at(-1)?.line === line) return;
       skipped.push({ line, ok: false, cells: [text.slice(0, 1000)], reasons: { [WHOLE_ROW]: reasonOf(err, line) }, ...fatal });
     },
   });

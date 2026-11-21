@@ -40,6 +40,17 @@ describe("parseText", () => {
   });
 });
 
+describe("quotes inside a value (owner, 21 Nov: a JSON column in a pipe file)", () => {
+  it("a quote inside an unquoted value is kept as text; a quoted value still unquotes", async () => {
+    const json = '{"data":{"code":{"rc":20}},"e2e_id":"E2E-1"}';
+    const lines = await parseText(`ref|payload\nT1|${json}\n"T|2"|x\n`, { delimiter: "|", header: true, encoding: "utf-8" }, ["ref", "payload"]);
+    expect(lines).toEqual([
+      { line: 2, ok: true, raw: { ref: "T1", payload: json } },
+      { line: 3, ok: true, raw: { ref: "T|2", payload: "x" } },
+    ]);
+  });
+});
+
 describe("parseDelimited (stream)", () => {
   it("decodes the declared encoding across chunk boundaries", async () => {
     const bytes = new TextEncoder().encode("é|ü\nz|y\n");
