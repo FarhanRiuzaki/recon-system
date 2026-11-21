@@ -6,6 +6,7 @@ import {
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, toMinor, VERSION_STATUSES } from "../sources";
 import { ListQuery, sortParam } from "./common";
+import { SourceHealthDto } from "./sources";
 
 export { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS };
 
@@ -396,3 +397,54 @@ export const ReconSimChangeDto = z.object({
   published: ChangeGroup.nullable(),
 });
 export type ReconSimChangeDto = z.infer<typeof ReconSimChangeDto>;
+
+/** Where a recon's business date stands (recon_days): no row = open, then closing (waits for data), closed. Sign-off is Plan 5's. */
+export const DAY_STATES = ["open", "closing", "closed"] as const;
+
+/** A source a recon of the space reads, as Today and Live day show it (its health judged now; null before its first publish). */
+export const LiveSourceDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  health: SourceHealthDto.nullable(),
+  /** Records that count for its health's business date. */
+  rowsToday: z.number().int().nullable(),
+});
+export type LiveSourceDto = z.infer<typeof LiveSourceDto>;
+
+/**
+ * A recon's current business date (REC-F4): today for an interval recon, the last date due for a daily one. `day` = that
+ * date as the last live run that covered it left it (its RunDay, null before any); `runId`/`runAt` = that run and when
+ * it finished. `lastSuccessAt` = the last successful scheduled run; `stale` = none in twice its interval while it has
+ * something to run (spec §9), `alertedAt` = the last freshness alert. `running` = a live run queued or under way.
+ * `openBreaks` = break items of every date not resolved yet. `sources` = its sides' source ids, side A first.
+ */
+export const LiveReconDto = z.object({
+  id: z.string(),
+  name: z.string(),
+  sides: z.tuple([z.object({ label: z.string(), sourceId: z.string() }), z.object({ label: z.string(), sourceId: z.string() })]),
+  schedule: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("interval"), every_minutes: z.number().int() }),
+    z.object({ kind: z.literal("daily"), at: z.string(), business_date_offset: z.number().int() }),
+  ]),
+  date: z.string(),
+  state: z.enum(DAY_STATES),
+  day: RunDay.nullable(),
+  runId: z.string().nullable(),
+  runAt: z.string().nullable(),
+  lastSuccessAt: z.string().nullable(),
+  stale: z.boolean(),
+  alertedAt: z.string().nullable(),
+  running: z.object({ id: z.string(), status: z.enum(["queued", "running"]), startedAt: z.string() }).nullable(),
+  openBreaks: z.number().int(),
+});
+export type LiveReconDto = z.infer<typeof LiveReconDto>;
+
+/**
+ * GET /api/spaces/{spaceId}/today: the space's active recons with a published version, by name, and the sources they
+ * read (the Space map's nodes). `capped` = the space has more than TODAY_RECONS_MAX.
+ */
+export const TodayDto = z.object({ recons: z.array(LiveReconDto), sources: z.array(LiveSourceDto), capped: z.boolean() });
+export type TodayDto = z.infer<typeof TodayDto>;
+/** GET /api/spaces/{spaceId}/recons/{configId}/live: one recon's current business date and its two sources. */
+export const ReconLiveDto = z.object({ recon: LiveReconDto, sources: z.array(LiveSourceDto) });
+export type ReconLiveDto = z.infer<typeof ReconLiveDto>;

@@ -9,8 +9,8 @@
 // - a manual run closes its due dates too, and never runs a closed one (Captain);
 // - intake per chunk; the default range of a manual run (the day after the last closed one); sourceHealth's inputs from the recons.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { ReconRunDto } from "@starterkit/shared/contracts/recon";
-import { and, asc, eq, sql } from "drizzle-orm";
+import type { ReconRunDto, TodayDto } from "@starterkit/shared/contracts/recon";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { db } from "../../../../kernel/db";
@@ -25,7 +25,9 @@ import { holdTx } from "../../../../../test/helpers/db";
 import { reconConfigVersions } from "../../../recon";
 import { closeDay, sweepClosed } from "../../breaks";
 import { CLOSED_DAY, RUN_STOPPED } from "../../jobs";
-import { dispatch, runScheduled } from "../../schedule";
+import { alertStale, dispatch, runScheduled } from "../../schedule";
+import { reconLive, todayDto } from "../../today";
+import type { Ctx } from "../../../auth";
 import { reconDays, reconItems, reconRuns } from "../../schema";
 import { classifyUnmatched, createRun, execRun, runRecon, type RunCounters } from "../../service";
 import { ccyEq, D, D1, makeSource, plainSource, put, recon, spec, type Src, U } from "../fixtures";
@@ -441,5 +443,79 @@ describe("run details", () => {
     await db.insert(reconSourceUses).values({ spaceId: A, configId: r.configId, sourceSpaceId: A, sourceId: sa.sourceId, field: "ext_ref", configName: "R", graceMinutes: 30, deadline: "09:00" });
     const h = await judge();
     expect([h.state, h.deadline, h.graceMinutes]).toEqual(["down", "09:00", 30]);
+  }, 60_000);
+});
+
+describe("Today and Live day (REC-F4)", () => {
+  /** The schedule's runs finished at the test's clock (finished_at is the database's now otherwise). */
+  const finishedAt = (ids: string[], t: Date) => db.update(reconRuns).set({ finishedAt: t }).where(inArray(reconRuns.id, ids));
+
+  it("the day as the last live run left it, open breaks, freshness from the last scheduled success; sources by name", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, interval(sa.sourceId, sb.sourceId));
+    const ctx = { space: { id: A, roles: [] }, user: { id: U } } as unknown as Ctx;
+    await put(sa, [{ ref: "K1", amount: 100n, et: `${D}T10:00:00+07:00` }, { ref: "K2", amount: 200n, et: `${D}T10:00:00+07:00` }]);
+    await put(sb, [{ ref: "K1", amount: 100n, et: `${D}T10:00:00+07:00` }]);
+    await complete(sa, at(`${D}T10:20:00`));
+    await complete(sb, at(`${D}T10:20:00`));
+    // before any run: an open day without numbers, not stale yet (published today, 2 minutes)
+    const none = (await todayDto(ctx, at(`${D}T00:01:00`))).recons[0]!;
+    expect([none.date, none.state, none.day, none.runId, none.openBreaks, none.lastSuccessAt]).toEqual([D, "open", null, null, 0, null]);
+
+    const first = await dispatch(db, at(`${D}T10:21:00`));
+    await drain("recon.tick", at(`${D}T10:21:00`));
+    await finishedAt(first, at(`${D}T10:21:30`));
+    const t1 = await todayDto(ctx, at(`${D}T10:22:00`));
+    const x = t1.recons[0]!;
+    expect([x.id, x.date, x.state, x.runId, x.stale, x.openBreaks, x.running]).toEqual([r.configId, D, "open", first[0]!, false, 0, null]);
+    expect([x.day!.passes["1"]!.matched, x.day!.open]).toEqual([1, { a: 1, b: 0 }]);
+    expect(t1.sources.map((s) => s.id).sort()).toEqual([sa.sourceId, sb.sourceId].sort());
+    expect(t1.capped).toBe(false);
+
+    // side B complete past K2 + grace without it: K2 breaks; the next run's day says so
+    await complete(sb, at(`${D}T10:31:00`));
+    const second = await dispatch(db, at(`${D}T10:24:00`));
+    await drain("recon.tick", at(`${D}T10:24:00`));
+    await finishedAt(second, at(`${D}T10:24:30`));
+    const x2 = (await reconLive(ctx, r.configId, at(`${D}T10:25:00`))).recon;
+    expect([x2.runId, x2.openBreaks, x2.day!.breaks]).toEqual([second[0]!, 1, { a: 1, b: 0 }]);
+    // no run since 10:24:30: stale past twice its 2 minutes (and not once the day is closed)
+    expect((await reconLive(ctx, r.configId, at(`${D}T10:28:31`))).recon.stale).toBe(true);
+    await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "closed" });
+    const closed = (await reconLive(ctx, r.configId, at(`${D}T10:28:31`))).recon;
+    expect([closed.state, closed.stale]).toEqual(["closed", false]);
+  }, 60_000);
+
+  it("a stale spell alerts once, however many dispatches at once; again an hour later or after a new success", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, interval(sa.sourceId, sb.sourceId));
+    const since = at(`${D}T10:00:00`), now = at(`${D}T10:10:00`);
+    const once = await Promise.all(Array.from({ length: 5 }, () => alertStale(probe, A, r.configId, since, now)));
+    expect(once.filter(Boolean).length).toBe(1);
+    expect(await alertStale(probe, A, r.configId, since, at(`${D}T10:59:59`))).toBe(false);
+    expect(await alertStale(probe, A, r.configId, since, at(`${D}T11:10:00`))).toBe(true);
+    // a success after the last alert, then stale again: a new spell
+    expect(await alertStale(probe, A, r.configId, at(`${D}T11:20:00`), at(`${D}T11:30:00`))).toBe(true);
+  }, 60_000);
+
+  it("routes: a member reads; another space's recon is 404; a recon without an approved version is 409", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, interval(sa.sourceId, sb.sourceId));
+    const draft = await recon(A, interval(sa.sourceId, sb.sourceId), "draft");
+    const viewer = (await db.select({ id: users.id }).from(users).where(eq(users.username, "viewer")))[0]!.id;
+    await db.insert(spaceMembers).values({ spaceId: A, userId: viewer, role: "viewer" });
+    const token = await signIn("viewer");
+    expect((await call("GET", `/v1/spaces/${A}/today`)).status).toBe(401);
+    const today = await call("GET", `/v1/spaces/${A}/today`, { token });
+    expect(today.status).toBe(200);
+    expect(((await today.json()) as TodayDto).recons.map((x) => x.id)).toEqual([r.configId]);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${r.configId}/live`, { token })).status).toBe(200);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${draft.configId}/live`, { token })).status).toBe(409);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${Bun.randomUUIDv7()}/live`, { token })).status).toBe(404);
+    const B = Bun.randomUUIDv7();
+    await db.insert(spaces).values({ id: B, code: `s${B.slice(-8)}`, name: "Other" });
+    await db.insert(spaceMembers).values({ spaceId: B, userId: viewer, role: "viewer" });
+    expect((await call("GET", `/v1/spaces/${B}/recons/${r.configId}/live`, { token })).status).toBe(404);
+    expect(((await (await call("GET", `/v1/spaces/${B}/today`, { token })).json()) as TodayDto).recons).toEqual([]);
   }, 60_000);
 });

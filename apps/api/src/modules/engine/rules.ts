@@ -66,17 +66,18 @@ export function planRun(spec: Pick<ReconSpec, "close_at" | "schedule">, s: Sched
 }
 
 /**
- * Whether the schedule's minute at `now` logs recon `spec` stale (isStale, from `lastSuccess`): the minute it becomes
- * stale, then once an hour while it stays so; never while there is nothing to run (an interval recon whose today is
- * closed, a daily one whose last due date is).
+ * Recon `spec` is stale at `now` (isStale, from `lastSuccess`) with something left to run: never an interval recon
+ * whose today is closed, nor a daily one whose last due date is. Today shows it; the schedule alerts on it, once per
+ * stale spell and then hourly (recon_alerts, schedule.ts dispatch).
  */
-export function staleAlert(spec: Pick<ReconSpec, "close_at" | "schedule">, lastSuccess: Date, lastClosed: string | null, now: Date): boolean {
+export function staleNow(spec: Pick<ReconSpec, "close_at" | "schedule">, lastSuccess: Date, lastClosed: string | null, now: Date): boolean {
   const idle = spec.schedule.kind === "interval" ? todayIn(now) : lastDue(spec, now);
   if (lastClosed && lastClosed >= idle) return false;
-  const interval = spec.schedule.kind === "interval" ? spec.schedule.every_minutes * 60_000 : DAY;
-  const over = now.getTime() - lastSuccess.getTime() - 2 * interval, h = 3_600_000;
-  return over > 0 && (over < 60_000 || Math.floor(over / h) !== Math.floor((over - 60_000) / h));
+  return isStale(spec, lastSuccess, now);
 }
+
+/** A stale recon's alert repeats at most this often while it stays stale. */
+export const ALERT_REPEAT_MS = 3_600_000;
 
 /**
  * Freshness (spec §9): a recon is stale when its last successful scheduled run (or, before any, its first publish)

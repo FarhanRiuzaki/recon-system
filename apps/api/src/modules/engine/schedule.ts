@@ -22,8 +22,8 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { closeDay, seenOn, sweepClosed } from "./breaks";
 import { claimConfig, runJob, send } from "./jobs";
-import { closeMoment, planRun, type ScheduleState, staleAlert } from "./rules";
-import { reconDays, reconRuns } from "./schema";
+import { ALERT_REPEAT_MS, closeMoment, planRun, type ScheduleState, staleNow } from "./rules";
+import { reconAlerts, reconDays, reconRuns } from "./schema";
 import { addDays, createRun } from "./service";
 
 const SCHEDULED = ["tick", "daily"] as const;
@@ -85,14 +85,15 @@ async function moved(tx: InTx, spaceId: string, configId: string, spec: ReconSpe
 }
 
 /**
- * The schedule's minute (recon.schedule): starts each due run (queued, its job on recon.tick or recon.daily) and logs
- * a stale recon (rules.ts staleAlert: when it becomes stale, then hourly). A recon busy with another run is left for
- * the next minute. Answers the runs it started.
+ * The schedule's minute (recon.schedule): starts each due run (queued, its job on recon.tick or recon.daily) and alerts
+ * on a stale recon (rules.ts staleNow) once per stale spell, then hourly (alertStale). A recon busy with another run is
+ * left for the next minute. Answers the runs it started.
  */
 export async function dispatch(on: Tx, now = new Date()): Promise<string[]> {
   const started: string[] = [];
   for (const c of await scheduled(on, now)) {
-    if (staleAlert(c.spec, c.lastSuccess ?? new Date(`${c.firstDate}T00:00:00+07:00`), c.lastClosed, now)) {
+    const since = c.lastSuccess ?? new Date(`${c.firstDate}T00:00:00+07:00`);
+    if (staleNow(c.spec, since, c.lastClosed, now) && (await alertStale(on, c.spaceId, c.configId, since, now))) {
       log.warn({ spaceId: c.spaceId, configId: c.configId, lastSuccess: c.lastSuccess?.toISOString() ?? null }, "recon is stale: no successful scheduled run in twice its interval");
     }
     const range = planRun(c.spec, c, now);
@@ -112,6 +113,19 @@ export async function dispatch(on: Tx, now = new Date()): Promise<string[]> {
     }
   }
   return started;
+}
+
+/**
+ * Records a stale recon's alert at `now` when it is due: none yet, the last one before `since` (the last success: a new
+ * stale spell) or ALERT_REPEAT_MS old. One conditional upsert, so of two dispatches at once one alerts (REC-F4).
+ */
+export async function alertStale(on: Tx, spaceId: string, configId: string, since: Date, now: Date): Promise<boolean> {
+  const t = reconAlerts;
+  const rows = await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => tx.insert(t).values({ spaceId, configId, alertedAt: now })
+    .onConflictDoUpdate({ target: [t.spaceId, t.configId], set: { alertedAt: now },
+      setWhere: sql`${t.alertedAt} < ${since.toISOString()}::timestamptz or ${t.alertedAt} <= ${new Date(now.getTime() - ALERT_REPEAT_MS).toISOString()}::timestamptz` })
+    .returning({ at: t.alertedAt }), on);
+  return rows.length > 0;
 }
 
 /**

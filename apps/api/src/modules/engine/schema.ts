@@ -121,6 +121,8 @@ export const reconItems = pgTable("recon_items", {
   index("recon_items_config_date").on(t.spaceId, t.configId, t.businessDate),
   // the breaks for want of a counterpart in the carry-over window, read by every pass beside the open items (DEC-047)
   index("recon_items_late").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'break' and ${t.lateMatch}`),
+  // the open breaks of a config (Today, Live day: a count per screen read, never a scan of its days)
+  index("recon_items_breaks").on(t.spaceId, t.configId).where(sql`${t.status} = 'break' and ${t.simRunId} is null`),
   // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
   index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
@@ -234,4 +236,18 @@ export const reconSimChanges = pgTable("recon_sim_changes", {
   index("recon_sim_changes_run").on(t.spaceId, t.runId, t.change, t.businessDate),
   foreignKey({ name: "recon_sim_changes_run_fkey", columns: [t.spaceId, t.runId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   check("recon_sim_changes_change_check", sql`${t.change} in ('gained', 'lost', 'repaired', 'kind')`),
+]);
+
+/**
+ * The last freshness alert of a config (spec §9 "Freshness", REC-F4): one stale spell makes one alert, repeated at most
+ * hourly, however the schedule's minutes fall (schedule.ts dispatch writes it with a conditional upsert, so two
+ * dispatches at once alert once). The alert itself is a log line until an outside channel exists (REC-FUT-10).
+ */
+export const reconAlerts = pgTable("recon_alerts", {
+  spaceId: uuid("space_id").notNull(),
+  configId: uuid("config_id").notNull(),
+  alertedAt: timestamp("alerted_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  primaryKey({ name: "recon_alerts_pkey", columns: [t.spaceId, t.configId] }),
+  foreignKey({ name: "recon_alerts_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
 ]);

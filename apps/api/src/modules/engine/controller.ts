@@ -1,4 +1,5 @@
-// /v1/spaces/:spaceId/recons/:configId/runs* and …/versions/:versionId/simulate: runs and simulations of a recon. Every
+// /v1/spaces/:spaceId/recons/:configId/runs* and …/versions/:versionId/simulate: runs and simulations of a recon;
+// /v1/spaces/:spaceId/today and …/recons/:configId/live: the recons' current days (today.ts). Every
 // route takes the space guard without `or` (a platform admin has no data access). Roles (Plan 3 Task 3): an operator or
 // a config maker runs the published version; a config maker simulates a draft (and becomes its contributor); any role
 // reads. A request answers 202 with the run, queued; the worker runs it (jobs.ts). Query 400 → guard 401/403 → body
@@ -10,11 +11,16 @@ import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
+import { reconLive, todayDto } from "./today";
 
 /** The routes of runs and simulations. */
 export const engineController = () =>
   new Elysia()
     .use(guard)
+    /** Today (REC-F4): the space's recons' current business dates and the sources they read. */
+    .get("/v1/spaces/:spaceId/today", ({ ctx }) => todayDto(ctx), { guard: { space: SPACE_ROLES } })
+    /** Live day: one recon's current business date. */
+    .get("/v1/spaces/:spaceId/recons/:configId/live", ({ ctx, params }) => reconLive(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs", ({ ctx, params, query }) => runPage(ctx, idParam(params.configId, "recon"), query), { query: ReconRunListQuery, guard: { space: SPACE_ROLES } })
     /** A run of the published version over business dates, queued. */
     .post("/v1/spaces/:spaceId/recons/:configId/runs", async (c) => {

@@ -1,6 +1,6 @@
 // The schedule's pure rules (rules.ts): close moments, the dates a scheduled run covers, freshness.
 import { describe, expect, it } from "bun:test";
-import { closeMoment, isStale, lastDue, planRun, staleAlert } from "../../rules";
+import { closeMoment, isStale, lastDue, planRun, staleNow } from "../../rules";
 
 const interval = { close_at: "23:00", schedule: { kind: "interval" as const, every_minutes: 2 } };
 const daily = { close_at: "23:00", schedule: { kind: "daily" as const, at: "06:00", business_date_offset: 1 } };
@@ -60,13 +60,12 @@ describe("planRun: waiting and backoff (review round 1)", () => {
 });
 
 describe("freshness", () => {
-  it("logs when a recon becomes stale, then hourly; never while there is nothing to run", () => {
+  it("stale while something is left to run; not once today (interval) or the last due date (daily) is closed", () => {
     const success = at("2026-11-02T10:00:00"); // stale from 10:04
-    expect(staleAlert(interval, success, null, at("2026-11-02T10:04:30"))).toBe(true);
-    expect(staleAlert(interval, success, null, at("2026-11-02T10:05:30"))).toBe(false);
-    expect(staleAlert(interval, success, null, at("2026-11-02T11:04:30"))).toBe(true);
-    expect(staleAlert(interval, success, null, at("2026-11-02T11:05:30"))).toBe(false);
-    expect(staleAlert(interval, success, "2026-11-02", at("2026-11-02T11:04:30"))).toBe(false);
+    expect(staleNow(interval, success, null, at("2026-11-02T10:03:59"))).toBe(false);
+    expect(staleNow(interval, success, null, at("2026-11-02T10:04:30"))).toBe(true);
+    expect(staleNow(interval, success, "2026-11-01", at("2026-11-02T11:04:30"))).toBe(true);
+    expect(staleNow(interval, success, "2026-11-02", at("2026-11-02T11:04:30"))).toBe(false);
   });
 
   it("stale past twice the interval (a daily recon: two days)", () => {

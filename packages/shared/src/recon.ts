@@ -41,6 +41,8 @@ export const sideRef = (f: FieldPair, i: 0 | 1): string => (typeof f === "string
 export const RECON_CODE = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 export const RECON_NAME_MAX = 100;
 export const PASSES_MAX = 20;
+/** At most this many recons on Today (a space has tens); more answer `capped` (TodayDto). */
+export const TODAY_RECONS_MAX = 200;
 /** HH:MM, 00:00–23:59 (Asia/Jakarta): a daily run's time and a day's close. */
 export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 

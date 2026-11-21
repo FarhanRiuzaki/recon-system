@@ -11,6 +11,7 @@ import type {
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
+import type { LiveSourceDto } from "@starterkit/shared/contracts/recon";
 import { amountUnit, type DbEngine, isLocalHost, type SourceKind, type SourceStateFilter, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
 import { and, asc, eq, exists, ilike, inArray, max, ne, not, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
@@ -225,6 +226,22 @@ export async function readableSources(tx: InTx, spaceId: string, ids: string[]):
   const rows = await tx.select({ id: sources.id, spaceId: sources.spaceId, name: sources.name, spec: sourceVersions.spec }).from(sources)
     .leftJoin(sourceVersions, published).where(and(inArray(sources.id, ids), visibleIn(tx, spaceId)));
   return new Map(rows.map((r) => [r.id, { spaceId: r.spaceId, name: r.name, spec: (r.spec ?? null) as SourceSpec | null }]));
+}
+
+/**
+ * For Today and Live day (the engine module): each of `ids` the space may read with its health judged now and its
+ * records for that business date, by name. An id the space may not read is absent.
+ */
+export async function liveSources(tx: InTx, spaceId: string, ids: string[]): Promise<LiveSourceDto[]> {
+  if (!ids.length) return [];
+  const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
+  const rows = await tx.select({ s: sources, spec: sourceVersions.spec }).from(sources).leftJoin(sourceVersions, published)
+    .where(and(inArray(sources.id, ids), visibleIn(tx, spaceId))).orderBy(sql`lower(${sources.name})`, sources.id);
+  const { states } = await readModel(tx, rows, spaceId);
+  return rows.map(({ s }) => {
+    const st = states.get(s.id);
+    return { id: s.id, name: s.name, health: st?.health ? omitInputs(st.health) : null, rowsToday: st?.rowsToday ?? null };
+  });
 }
 
 /** The versions a space reads of `s`: all of its own; through a share, the published and retired ones (as RLS 0011). */
