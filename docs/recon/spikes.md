@@ -326,6 +326,50 @@ Batas dan angka yang belum diukur:
 Verdict: lulus. pg-boss 12.38.2 menyediakan gabung per kunci, cap per queue, recovery, cron ber-zona waktu dan catch-up
 jadwal tanpa fallback.
 
+## REC-P1: gerbang performa (awal Plan 4)
+
+Tanggal 2026-11-21. Mesin sama dengan S1 (Apple M5 Max, 36 GB, PostgreSQL 18.6 lokal :5434, setelan bawaan:
+`shared_buffers` 128 MB, `work_mem` 4 MB, `max_wal_size` 1 GB). Diukur sebagai role app (RLS aktif) lewat
+`apps/api/src/modules/engine/tests/integration/run-perf.test.ts`: `PERF_ENGINE=1 PERF_ENGINE_ROWS=<n>` (satu run) dan
+`PERF_TICK=1 PERF_TICK_BASE=<n> PERF_TICK_COUNT=<k>` (run harian `<n>`/sisi pada satu tanggal, lalu `<k>` tick 5.000/sisi,
+semua di pool `statement_timeout` 120 s = `JOB_STATEMENT_TIMEOUT_MS` bawaan). Dua pass (exact; toleransi suggest), 3% sisi
+B bergeser 500 minor. Satu jalan per angka; profil statement dari `log_min_duration_statement` dan `auto_explain`.
+
+| Perubahan | Run 200k/sisi | Run 1M/sisi | Tick di atas hari 1M | Run 3M/sisi | Tick di atas hari 3M |
+|---|---|---|---|---|---|
+| Awal (112fd97) | 94,6 s | gagal: statement pass 1 > 120 s | — | — | — |
+| 1. ANALYZE `recon_items` di antara chunk intake | 23,0 s | 139 s* | 6,3–7,4 s* | dihentikan: intake kuadratik | — |
+| 2. Intake inkremental (`records.seq` + `recon_intake_marks`, keyset per chunk) | — | 90 s* | 3,3 s* | — | — |
+| 3. Pool = item terkunci ∪ item dipegang lain (anti join) | — | 86 s* | 2,1–2,6 s* | 362 s* (dua jalan) | 5,1–14,6 s* |
+| 4. Statement pass = umur job antrean (DEC-048) | — | — | — | **729 s, succeeded di pool 120 s** | **5,3–11,5 s** |
+
+\* pool setup dengan `statement_timeout` 30 menit (sebelum perubahan 4 run 1M/3M tidak lulus di pool 120 s).
+
+Temuan per perubahan:
+1. Chunk kedua intake direncanakan atas statistik partisi yang belum memuat item config ini: Merge Anti Join hanya di
+   `business_date`, tiap record memindai semua item (200k/sisi: satu chunk 72 s). ANALYZE kini dipanggil sesudah tiap
+   chunk bila aturan autovacuum terpenuhi.
+2. Tiap tick membaca ulang semua record hari itu (anti join 1,6 s per 1M per sisi) dan tiap chunk membaca ulang yang
+   sudah diambil chunk sebelumnya (3M: 7,5 s per chunk × 60 chunk per sisi, plus `closeReplaced` tiap chunk). Penulis
+   record satu source diserialkan `sourceLock` sampai commit, jadi `records.seq` (identity, cache 1) naik menurut urutan
+   commit per source; engine menyimpan seq terakhir per (versi config, sisi, tanggal) dan membaca sesudahnya, per chunk
+   lewat indeks `records_source_seq`. Anti join tetap (idempoten). Snapshot dan simulasi membaca dari awal; versi config
+   baru mulai dari nol (filter bisa berubah). Tes: `schedule.test.ts` "a live intake reads past its mark".
+3. Left join pool ke CTE lock direncanakan sebagai nested loop atas estimasi 5 baris (aktual 5.000): CTE lock dipindai
+   per item, 1 s per sisi per tick.
+4. Statement pass 1 pada 1M/sisi 48 s: baca pool 5,5 s, pilih ~3 s, UPDATE 1,94M item 17,6 s, insert grup 8 s, insert
+   anggota 4,7 s, cek FK sesudah statement ~20 s. Waktunya volume tulis, jadi batas statement mengikuti umur job.
+
+Gerbang:
+- (1) Tick BI-FAST < 30 s: **lulus** di mesin ini, maks 14,6 s di atas hari 3M/sisi (termasuk finalize, yang berjalan
+  sesudah run `succeeded`). Dispatch pg-boss tidak termasuk.
+- (2) Run harian 3M/sisi: **selesai tanpa timeout** (DEC-048: tanpa jendela EOD global). Durasi 362 s dan 729 s pada dua
+  jalan; statement pass 1 174 s lalu 475 s. Selisihnya belum dibuktikan penyebabnya (jalan kedua bersamaan dengan stack
+  Docker :3000 dan browser); estimasi planner untuk kandidat 387k vs aktual ~2,9M dan sort window yang tumpah ke disk
+  (185 MB pada 1M) adalah kandidat. Belum diukur di perangkat keras produksi.
+- (3) Bacaan layar hasil pada 31 hari × volume S1 × 3 config: **belum diukur** (±558M record/sisi tidak muat di laptop
+  ini). Terakhir terukur: 200k/sisi item `pass=2` halaman 2 1,2 s. Dikerjakan sebelum Today/Live day memakai bacaan yang sama.
+
 ## REC-S6 (canvas): React Flow + ELK untuk builder kanvas
 
 Tanggal 2026-11-21, branch `wt/spike-s6` (dari `feat/recon-phase1` 8dfaaa5; kode spike tidak masuk branch produk).

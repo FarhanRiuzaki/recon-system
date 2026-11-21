@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, boolean, check, date, foreignKey, index, integer, numeric, pgTable, primaryKey, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { jsonb } from "../../kernel/columns";
-import { reconConfigs } from "../recon/schema";
+import { reconConfigs, reconConfigVersions } from "../recon/schema";
 
 // The engine's state per config (spec §8 "state per config, not per transaction"): an item per (config, record), the
 // runs, and the match groups with their members. Space-owned under row level security (drizzle/0023_engine_rls.sql).
@@ -150,6 +150,23 @@ export const reconDays = pgTable("recon_days", {
   primaryKey({ name: "recon_days_pkey", columns: [t.spaceId, t.configId, t.businessDate] }),
   foreignKey({ name: "recon_days_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   check("recon_days_status_check", sql`${t.status} in ('closing', 'closed')`),
+]);
+
+/**
+ * How far a live intake of config version `config_version_id` read side `side`'s source for `business_date`: its
+ * records up to `seq` (records.seq) were all taken in or passed over, so the next intake reads past it (REC-P1: a tick
+ * reads what arrived since, not the whole day). Per version: another version's filters or source start from zero.
+ * Never for a snapshot source or a simulation (service.ts intake).
+ */
+export const reconIntakeMarks = pgTable("recon_intake_marks", {
+  spaceId: uuid("space_id").notNull(),
+  configVersionId: uuid("config_version_id").notNull(),
+  side: text("side").notNull(),
+  businessDate: date("business_date").notNull(),
+  seq: bigint("seq", { mode: "number" }).notNull(),
+}, (t) => [
+  primaryKey({ name: "recon_intake_marks_pkey", columns: [t.spaceId, t.configVersionId, t.side, t.businessDate] }),
+  foreignKey({ name: "recon_intake_marks_version_fkey", columns: [t.configVersionId], foreignColumns: [reconConfigVersions.id] }).onDelete("cascade"),
 ]);
 
 /**

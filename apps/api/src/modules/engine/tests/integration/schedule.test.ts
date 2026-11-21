@@ -387,6 +387,27 @@ describe("run details", () => {
     expect((await runOf(id)).intakeDone).toBe(`${D}:b`);
   }, 60_000);
 
+  it("a live intake reads past its mark: the next run takes what arrived since; a new version reads the date from the start", async () => {
+    const [sa, sb] = await sides();
+    const base = spec(sa.sourceId, sb.sourceId, [exact], 0);
+    // version 1 leaves M3 of side A out
+    const r = await recon(A, { ...base, sides: [{ ...base.sides[0], filter: [{ field: "ext_ref", op: "ne", value: "M3" }] }, base.sides[1]] });
+    await put(sa, [1, 2, 3].map((k) => ({ ref: `M${k}`, amount: BigInt(k) })));
+    await put(sb, [1, 2, 3].map((k) => ({ ref: `M${k}`, amount: BigInt(k) })));
+    const run = (versionId: string) => runRecon(probe, { spaceId: A, configId: r.configId, versionId, mode: "manual", from: D });
+    expect((await run(r.versionId)).counters.intake).toEqual({ a: 2, b: 3 });
+    await put(sa, [{ ref: "M4", amount: 4n }]);
+    await put(sb, [{ ref: "M4", amount: 4n }]);
+    const second = await run(r.versionId);
+    expect([second.counters.intake, second.counters.passes["1"]!.matched]).toEqual([{ a: 1, b: 1 }, 1]);
+    // version 2 without the filter: M3, below version 1's mark, is taken in now
+    const v2 = Bun.randomUUIDv7();
+    await db.update(reconConfigVersions).set({ status: "retired" }).where(eq(reconConfigVersions.id, r.versionId));
+    await db.insert(reconConfigVersions).values({ id: v2, configId: r.configId, spaceId: A, version: 2, status: "published", specHash: "v2", makerId: r.configId, spec: base });
+    const third = await run(v2);
+    expect([third.counters.intake, third.counters.passes["1"]!.matched]).toEqual([{ a: 1, b: 0 }, 1]);
+  }, 60_000);
+
   it("a manual run without dates takes the day after the last closed one within 30 days, else today; a closed date is refused", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));

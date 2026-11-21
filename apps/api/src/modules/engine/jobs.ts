@@ -25,7 +25,7 @@ import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, queueOf, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -34,8 +34,6 @@ import { addDays, backfillRun, closedDates, createRun, execRun, failRun, project
 const NO_JOB_MAX_MS = QUEUE_OPTIONS[QUEUES.reconHeavy].expireInSeconds! * 1000;
 import { changesSql } from "./sql/runs";
 
-/** The queue a run of `mode` goes to (spec §9 table): ticks and daily runs have their own (Task 6); the rest is heavy. */
-const queueOf = (mode: string): QueueName => (mode === "tick" ? QUEUES.reconTick : mode === "daily" ? QUEUES.reconDaily : QUEUES.reconHeavy);
 
 /** A manual run over a closed business date. */
 export const CLOSED_DAY = "Some of these dates are already closed. Run dates after the last closed day.";

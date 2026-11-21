@@ -18,7 +18,7 @@ const parts = (o: ReturnType<typeof predicateSql>) => Object.fromEntries(Object.
 const params = (o: ReturnType<typeof predicateSql>) => Object.values(o).flatMap((v) => q(v)!.params);
 
 const side = (key: "a" | "b", negate = false): SideRef => ({
-  key, negate, sourceSpaceId: "00000000-0000-7000-8000-00000000000a", sourceId: "00000000-0000-7000-8000-00000000000b",
+  key, negate, snapshot: false, sourceSpaceId: "00000000-0000-7000-8000-00000000000a", sourceId: "00000000-0000-7000-8000-00000000000b",
   fields: new Map([
     ["ext_ref", { kind: "text", from: "ref", fromType: "string" }], ["amount_minor", { kind: "decimal", from: "amt", fromType: "integer" }],
     ["currency", { kind: "text", from: "ccy", fromType: "string" }], ["business_date", { kind: "date", from: "d", fromType: "date" }],
@@ -118,10 +118,12 @@ describe("statements", () => {
   it("pools: every open item of the window, live or one simulation's; lk = locked by this statement, skipping those held elsewhere", () => {
     const s = text(acceptSql(ctx, p2));
     expect(s).toContain("i.status = 'open' and i.sim_run_id is null and i.business_date between $");
-    expect(s).toContain("with l0 as materialized (select i.id, i.version as v from \"recon_items\" i where i.space_id = $1");
+    expect(s).toContain("with l0 as materialized (select i.id, i.version as v, i.status as st, i.business_date as bd, i.record_id as rec from \"recon_items\" i where i.space_id = $1");
     expect(s).toContain("for update skip locked), l1 as materialized");
-    expect(s).toContain("coalesce(l0.v, i.version) as v, l0.id is not null as lk, i.status as st, i.business_date as bd, \"records\".\"event_time\" as et, \"records\".\"id\" as rid");
-    expect(s).toContain("left join l0 on l0.id = i.id");
+    // the locked items as locked, then the held ones (anti join), each joined to its record
+    expect(s).toContain("from (select l.id, l.v, true as lk, l.st, l.bd, l.rec from l0 l union all select i.id, i.version, false, i.status, i.business_date, i.record_id from \"recon_items\" i");
+    expect(s).toContain("and not exists (select 1 from l0 l where l.id = i.id)) i join \"records\"");
+    expect(s).not.toContain("left join l0");
     expect(s).not.toContain("for update of i");
     expect(s).toContain("from pa a join pb b on a.x0 = b.x0 and a.x2 = b.x2 where abs(b.x1 - a.x1) <=");
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
@@ -194,10 +196,12 @@ describe("statements", () => {
     expect(s).toContain("set status = 'closed', break_reason = $");
   });
 
-  it("intake: current records of the side's source in the window without an item yet", () => {
-    const s = text(intakeSql(ctx, 1, [{ field: "direction", op: "eq", value: "credit" }]));
+  it("intake: one date's records past a seq, in seq order, current and filtered, without an item yet", () => {
+    const s = text(intakeSql(ctx, 1, [{ field: "direction", op: "eq", value: "credit" }], "2026-11-02", 7, 500));
     expect(s).toContain('where "records"."space_id" = $');
-    expect(s).toContain('"records"."business_date" between $');
+    expect(s).toContain('"records"."business_date" = $');
+    expect(s).toContain('and "records"."seq" > $');
+    expect(s).toContain('order by "records"."seq" limit $');
     expect(s).toContain('"records"."direction" = $');
     expect(s).toContain("not exists (select 1 from \"recon_items\" x where");
     expect(s).toContain("on conflict do nothing returning 1");

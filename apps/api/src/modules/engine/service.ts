@@ -28,7 +28,7 @@ import { alias, unionAll } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
 import { log } from "../../kernel/log";
-import { enqueue, QUEUES } from "../../kernel/jobs";
+import { enqueue, QUEUE_OPTIONS, type QueueName, QUEUES } from "../../kernel/jobs";
 import { configLock } from "../../kernel/locks";
 import { one as countOne, pageQuery, sortSql } from "../../kernel/pagination";
 import { ensureMonthPartitions } from "../../kernel/partitions";
@@ -37,7 +37,7 @@ import { currentRecord, records, sourceCursors, todayIn } from "../ingest";
 import { checkReconSpec, reconConfigs, reconConfigVersions } from "../recon";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
-import { matchGroups, matchMembers, reconDays, reconItems, reconRuns, reconSimChanges } from "./schema";
+import { matchGroups, matchMembers, reconDays, reconIntakeMarks, reconItems, reconRuns, reconSimChanges } from "./schema";
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
@@ -85,6 +85,16 @@ const ROUNDS_MAX = 50;
  */
 export const INTAKE_CHUNK = 50_000;
 
+/** The queue a run of `mode` goes to (spec §9 table): ticks and daily runs have their own (Task 6); the rest is heavy. */
+export const queueOf = (mode: string): QueueName => (mode === "tick" ? QUEUES.reconTick : mode === "daily" ? QUEUES.reconDaily : QUEUES.reconHeavy);
+/**
+ * The statement timeout of a date's passes (DEC-036: per queue): its queue's job expiry, past which pg-boss gives the
+ * job up anyway, instead of the pool's JOB_STATEMENT_TIMEOUT_MS. A pass's statement grows with its writes (3M items a
+ * side, one claim statement: 174 s on the reference laptop, docs/recon/spikes.md "REC-P1"), not with a bad plan.
+ * ponytail: one statement per pass and date; bucket the pass by key hash over a temp pool if a date outgrows its job.
+ */
+const passTimeoutMs = (mode: string) => QUEUE_OPTIONS[queueOf(mode)].expireInSeconds! * 1000;
+
 const DAY = 86_400_000;
 export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
@@ -100,7 +110,7 @@ export async function load(tx: InTx, spaceId: string, spec: ReconSpec): Promise<
   const sides = spec.sides.map((s) => {
     const src = found.get(s.source_id);
     if (!src?.spec) throw new ApiError("bad_request", `Side ${s.key.toUpperCase()}: this space can't read a published version of its source.`);
-    return { key: s.key, sourceSpaceId: src.spaceId, sourceId: s.source_id, fields: recordFields(src.spec), negate: s.amount_sign === "negate", spec: src.spec };
+    return { key: s.key, sourceSpaceId: src.spaceId, sourceId: s.source_id, fields: recordFields(src.spec), negate: s.amount_sign === "negate", snapshot: src.spec.input.kind === "db_snapshot", spec: src.spec };
   });
   const check = checkReconSpec(spec, [{ spec: sides[0]!.spec, currencies: [] }, { spec: sides[1]!.spec, currencies: [] }]);
   if (check.errors.length) throw new ApiError("bad_request", check.errors[0]!);
@@ -233,7 +243,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       const counters = had.passes ? { ...had, passes: Object.fromEntries(Object.entries(had.passes).map(([k, v]) => [k, { ...zeroPass(), ...v }])) } : emptyCounters(spec);
       return fn(tx, r, counters);
     }, on);
-    const analyze = (table: "records" | "recon_items", lo: string, hi: string, added: number) => on.transaction((tx) => one(tx, analyzeSql(table, lo, hi, added)));
+    const analyze = (table: "records" | "recon_items", lo: string, hi: string, added: number) => on.transaction((tx) => one<{ n: number }>(tx, analyzeSql(table, lo, hi, added)));
     for (let d = run.doneThrough ? addDays(run.doneThrough, 1) : run.dateFrom; d <= to; d = addDays(d, 1)) {
       if (o.signal?.aborted) throw new RunAborted();
       const lo = addDays(d, -carry), hi = d;
@@ -242,33 +252,60 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       // intake checks side A's, and the passes read both)
       await analyze("records", lo, hi, 0);
       for (const s of [0, 1] as const) {
-        const tag = `${d}:${sides[s].key}`;
-        // per chunk of `chunk` records, a transaction each (a daily run's millions never sit in one statement); a chunk
-        // committed before a retry is skipped by the intake's own check, the marker comes with the last chunk
-        let added = 0;
-        for (let more = true; more;) {
-          const n = await step(async (tx, r, counters) => {
+        const side = sides[s], tag = `${d}:${side.key}`;
+        // a live intake of a source that isn't a snapshot reads past its mark per date (reconIntakeMarks, REC-P1); a
+        // simulation or a snapshot source reads each date from the start, in seq order all the same
+        const marked = !simRunId && !side.snapshot;
+        const mark = and(eq(reconIntakeMarks.spaceId, spaceId), eq(reconIntakeMarks.configVersionId, run.configVersionId), eq(reconIntakeMarks.side, side.key));
+        // per chunk of `chunk` records of the window (its dates in order), a transaction each (a daily run's millions never sit in one
+        // statement), keyset on seq so no chunk reads what one before it read; a chunk committed before a retry is
+        // skipped by the intake's own check, the marker comes with the last chunk of the window's last date.
+        // Fresh statistics between chunks too: planned over a partition analyzed while it held none of this config's
+        // items, a chunk's anti join scanned every item for each record (200,000 a side: 72 s)
+        let pending = 0, first = true, x = lo, after: number | null = null;
+        let ct: string | null = null;
+        for (;;) {
+          const got = await step(async (tx, r, counters) => {
             if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return null;
-            // the source's complete_through before the intake reads (read committed: the intake sees at least that much);
-            // kept with the last chunk, which took every record its statement saw: day close judges on it (seen)
-            const [cur] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors)
-              .where(and(eq(sourceCursors.spaceId, sides[s].sourceSpaceId), eq(sourceCursors.sourceId, sides[s].sourceId)));
-            counters.replaced[sides[s].key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
-            const n = (await one<{ n: number }>(tx, intakeSql(c(tx), s, spec.sides[s].filter, chunk))).n;
-            counters.intake[sides[s].key] += n;
+            if (first) {
+              // the source's complete_through before the intake reads (read committed: every chunk sees at least
+              // that much); kept with the last chunk: day close judges on it (seen)
+              const [cur] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors)
+                .where(and(eq(sourceCursors.spaceId, side.sourceSpaceId), eq(sourceCursors.sourceId, side.sourceId)));
+              ct = cur?.ct?.toISOString() ?? null;
+              counters.replaced[side.key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
+            }
+            // the window's dates in order, as many records as one chunk holds
+            let budget = chunk, n = 0;
+            while (x <= hi && budget > 0) {
+              const from = after ?? (marked ? (await tx.select({ seq: reconIntakeMarks.seq }).from(reconIntakeMarks).where(and(mark, eq(reconIntakeMarks.businessDate, x))))[0]?.seq ?? 0 : 0);
+              const q = await one<{ n: number; scanned: number; last: string | null }>(tx, intakeSql(c(tx), s, spec.sides[s].filter, x, from, budget));
+              const last = q.last === null ? from : Number(q.last);
+              if (marked && last > from) {
+                await tx.insert(reconIntakeMarks).values({ spaceId, configVersionId: run.configVersionId, side: side.key, businessDate: x, seq: last })
+                  .onConflictDoUpdate({ target: [reconIntakeMarks.spaceId, reconIntakeMarks.configVersionId, reconIntakeMarks.side, reconIntakeMarks.businessDate], set: { seq: sql`greatest(${reconIntakeMarks.seq}, excluded.seq)` } });
+              }
+              n += q.n;
+              if (q.scanned < budget) { x = addDays(x, 1); after = null; } else after = last;
+              budget -= q.scanned;
+            }
+            counters.intake[side.key] += n;
+            const sideDone = x > hi;
             const seen = (r.seen ?? {}) as Seen;
-            const last = n < chunk ? { intakeDone: tag, seen: { ...seen, [d]: { ...seen[d], [sides[s].key]: cur?.ct?.toISOString() ?? null } } } : {};
-            await tx.update(reconRuns).set({ counters, ...last }).where(mine);
-            return n;
+            await tx.update(reconRuns).set({ counters, ...(sideDone ? { intakeDone: tag, seen: { ...seen, [d]: { ...seen[d], [side.key]: ct } } } : {}) }).where(mine);
+            return { n, sideDone };
           });
-          if (n === "over") return null;
-          added += n ?? 0;
-          more = n === chunk;
+          if (got === "over") return null;
+          if (got === null) break;
+          first = false;
+          pending += got.n;
+          if (pending && (await analyze("recon_items", lo, hi, pending)).n > 0) pending = 0;
+          if (got.sideDone) break;
         }
-        if (added) await analyze("recon_items", lo, hi, added);
       }
       const passed = await step(async (tx, r, counters) => {
         if (r.doneThrough && r.doneThrough >= d) return;
+        await tx.execute(sql`select set_config('statement_timeout', ${String(passTimeoutMs(r.mode))}, true)`);
         for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
         // a proposal whose proposed item a pass has paired since (this step's included) is cleared (DEC-047)
         if (carry > 0) await one(tx, clearProposalsSql(c(tx)));

@@ -137,10 +137,17 @@ export const records = pgTable("records", {
   snapshotId: uuid("snapshot_id"),
   originId: uuid("origin_id").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  /**
+   * Insert order (identity, cache 1). A source's records are written only under its sourceLock, held to commit (file,
+   * pull page, snapshot switch), so within a source `seq` follows commit order: every record not yet committed has a
+   * larger seq than every committed one. The engine's intake reads past the last seq it saw (engine intake marks,
+   * REC-P1). Not so for a loading snapshot's rows, written outside the lock and counting only once it is active.
+   */
+  seq: bigint("seq", { mode: "number" }).notNull().generatedAlwaysAsIdentity(),
 }, (t) => [
   primaryKey({ name: "records_pkey", columns: [t.spaceId, t.id, t.businessDate] }),
   unique("records_dedup_key").on(t.spaceId, t.sourceId, t.rowHash, t.businessDate, t.snapshotId).nullsNotDistinct(),
-  index("records_source_date").on(t.spaceId, t.sourceId, t.businessDate),
+  index("records_source_seq").on(t.spaceId, t.sourceId, t.businessDate, t.seq),
   index("records_current_key").on(t.spaceId, t.sourceId, t.naturalKey).where(sql`${t.supersededBy} is null`),
   foreignKey({ name: "records_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
 ]);

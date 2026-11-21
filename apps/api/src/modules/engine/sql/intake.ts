@@ -24,21 +24,26 @@ export function filterSql(s: SideRef, f: Filter): SQL {
   }
 }
 
-/** Inserts side `s`'s new items for the window, at most `limit` (one chunk); answers how many. */
-export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[], limit?: number): SQL {
+/**
+ * One chunk of side `s`'s intake of business date `date`: its records with seq past `after` (records.seq), at most
+ * `limit` in seq order (the index records_source_seq), and of those the current ones that pass the side's filters and
+ * have no item yet become open items. Answers the items inserted (`n`), the records read (`scanned`; fewer than `limit`
+ * = the date is read through) and the last seq read (`last`, null when none): the next chunk, and a live intake's mark,
+ * goes on from there, so a tick reads what arrived since, never the day again (REC-P1). A record with an item already
+ * is skipped by NOT EXISTS, not by ON CONFLICT: that would wait on an item an operator holds (A1).
+ */
+export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[], date: string, after: number, limit: number): SQL {
   const side = c.sides[s];
-  const where = [
-    sql`${records.spaceId} = ${side.sourceSpaceId}`, sql`${records.sourceId} = ${side.sourceId}`,
-    sql`${records.businessDate} between ${c.lo}::date and ${c.hi}::date`, c.current, ...filters.map((f) => filterSql(side, f)),
-    // a record with an item already is skipped here, not by ON CONFLICT: that would wait on an item an operator holds (A1)
-    sql`not exists (select 1 from ${reconItems} x where x.space_id = ${c.spaceId} and x.config_id = ${c.configId} and x.record_id = ${records.id}
-      and x.business_date = ${records.businessDate} and ${c.simRunId === null ? sql`x.sim_run_id is null` : sql`x.sim_run_id = ${c.simRunId}`})`,
-  ];
-  return sql`with ins as (insert into ${reconItems} (id, space_id, config_id, record_id, side, business_date, sim_run_id)
-    select uuidv7(), ${c.spaceId}::uuid, ${c.configId}::uuid, ${records.id}, ${side.key}::text, ${records.businessDate}, ${c.simRunId}::uuid
-    from ${records} where ${sql.join(where, sql` and `)}${limit ? sql` limit ${limit}` : sql``}
+  const ok = [c.current, ...filters.map((f) => filterSql(side, f))];
+  return sql`with cand as materialized (select ${records.id} as id, ${records.businessDate} as bd, ${records.seq} as seq, (${sql.join(ok, sql` and `)}) as ok
+      from ${records} where ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId} and ${records.businessDate} = ${date}::date
+        and ${records.seq} > ${after} order by ${records.seq} limit ${limit}),
+  ins as (insert into ${reconItems} (id, space_id, config_id, record_id, side, business_date, sim_run_id)
+    select uuidv7(), ${c.spaceId}::uuid, ${c.configId}::uuid, cand.id, ${side.key}::text, cand.bd, ${c.simRunId}::uuid from cand
+    where cand.ok and not exists (select 1 from ${reconItems} x where x.space_id = ${c.spaceId} and x.config_id = ${c.configId} and x.record_id = cand.id
+        and x.business_date = cand.bd and ${c.simRunId === null ? sql`x.sim_run_id is null` : sql`x.sim_run_id = ${c.simRunId}`})
     on conflict do nothing returning 1)
-  select count(*)::int as n from ins`;
+  select (select count(*) from ins)::int as n, (select count(*) from cand)::int as scanned, (select max(seq) from cand)::text as last`;
 }
 
 /**

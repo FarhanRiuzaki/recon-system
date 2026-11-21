@@ -36,7 +36,11 @@ import { matchGroups, matchMembers, reconItems } from "../schema";
  * A side as the compiled SQL reads it: its source (and the source's space, maybe another one sharing it), its
  * whitelist, and whether its amounts are negated before they are compared (SideSpec.amount_sign).
  */
-export type SideRef = { key: "a" | "b"; sourceSpaceId: string; sourceId: string; fields: ReadonlyMap<string, RecordField>; negate: boolean };
+export type SideRef = {
+  key: "a" | "b"; sourceSpaceId: string; sourceId: string; fields: ReadonlyMap<string, RecordField>; negate: boolean;
+  /** A db_snapshot source: its records count from their snapshot's activation, not their seq, so intake keeps no mark. */
+  snapshot: boolean;
+};
 /** Where a step works: the config's space, the run, live items (simRunId null) or a simulation's, the date window. */
 export type StepCtx = {
   spaceId: string; configId: string; versionId: string; runId: string; simRunId: string | null;
@@ -151,6 +155,9 @@ const openItems = (c: StepCtx, s: 0 | 1): SQL => sql`i.space_id = ${c.spaceId} a
 /**
  * Side `s`'s pool: every open item of the window with its record's fields, the order fields (bd, et, rid), its own
  * signed amount (own) and the compared one (amt), and `lk`: whether this statement locked it (`l<s>`, skip locked).
+ * The items this statement locked (from `l<s>`, as they are now) and, apart, the open ones another transaction holds
+ * (an anti join against `l<s>`), never a left join of every item to `l<s>`: planned on an underestimated join
+ * (5 rows for 5,000), that one rescanned `l<s>` per item, 1 s a side for a tick of 5,000 (REC-P1).
  */
 export function poolSql(c: StepCtx, p: PassSpec, s: 0 | 1): SQL {
   const side = c.sides[s];
@@ -160,12 +167,13 @@ export function poolSql(c: StepCtx, p: PassSpec, s: 0 | 1): SQL {
     return sql`${op === "eq_normalized" ? normalized(x) : op === "contains" ? sql`nullif(${x}, '')` : x} as ${sql.raw(`x${i}`)}`;
   });
   const lock = sql.raw(`l${s}`);
-  return sql`select i.id, coalesce(${lock}.v, i.version) as v, ${lock}.id is not null as lk, i.status as st, i.business_date as bd, ${records.eventTime} as et, ${records.id} as rid,
+  return sql`select i.id, i.v, i.lk, i.st, i.bd, ${records.eventTime} as et, ${records.id} as rid,
       ${records.bdayIndex} as bday, ${records.currency} as ccy, ${signedSql()} as own, ${comparedAmount(side)} as amt${xs.length ? sql`, ${sql.join(xs, sql`, `)}` : sql``}
-    from ${reconItems} i join ${records} on ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
-      and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current}
-    left join ${lock} on ${lock}.id = i.id
-    where ${openItems(c, s)}`;
+    from (select l.id, l.v, true as lk, l.st, l.bd, l.rec from ${lock} l
+      union all select i.id, i.version, false, i.status, i.business_date, i.record_id from ${reconItems} i
+        where ${openItems(c, s)} and not exists (select 1 from ${lock} l where l.id = i.id)) i
+    join ${records} on ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
+      and ${records.id} = i.rec and ${records.businessDate} = i.bd and ${c.current}`;
 }
 
 /** Joins, filters, deltas and distance of the pass's predicates (a group pass's eq_sum is judged on the group). */
@@ -187,8 +195,9 @@ export function candidatesSql(c: StepCtx, p: PassSpec): SQL {
   const sumCol = `x${p.blocking.length + p.predicates.findIndex((q) => q.op === "eq_sum")}`;
   const sum = p.cardinality === "1:1" ? sql`` : sql`, a.${sql.raw(sumCol)} as a_s, b.${sql.raw(sumCol)} as b_s`;
   const side = (x: "a" | "b") => sql.raw(["id", "v", "lk", "st", "bd", "et", "rid", "own", "amt", "ccy"].map((k) => `${x}.${k} as ${x}_${k}`).join(", "));
-  return sql`l0 as materialized (select i.id, i.version as v from ${reconItems} i where ${openItems(c, 0)} for update skip locked),
-  l1 as materialized (select i.id, i.version as v from ${reconItems} i where ${openItems(c, 1)} for update skip locked),
+  const lock = (s: 0 | 1) => sql`select i.id, i.version as v, i.status as st, i.business_date as bd, i.record_id as rec from ${reconItems} i where ${openItems(c, s)} for update skip locked`;
+  return sql`l0 as materialized (${lock(0)}),
+  l1 as materialized (${lock(1)}),
   pa as materialized (${poolSql(c, p, 0)}),
   pb as materialized (${poolSql(c, p, 1)}),
   c as materialized (select ${side("a")}, ${side("b")}${sum}, array[${sql.join(dists, sql`, `)}]::numeric[] as dist, ${sql.join(deltas, sql`, `)}
