@@ -33,21 +33,27 @@ export function StatTiles({ children, className }: { children: ReactNode; classN
  * delta pill right; value `stat` 28/500 with the unit / denominator in body fg-3; then the comparison caption and
  * an optional 6 px striped progress bar or a 28 px sparkline (`trend`). `caption` replaces the comparison line
  * under the value (with or without a delta, e.g. "Last 7 days · vs previous 7 days" or "1,204 tokens today"). `tween` animates value changes
- * (NumberTween; `value` stays the fallback text and is ignored while `tween` is set).
+ * (NumberTween; `value` stays the fallback text and is ignored while `tween` is set). `onSelect` makes the tile a
+ * toggle button (`aria-pressed` = `selected`, primary edge while selected): a tile that filters the list below it.
  */
-export function StatTile({ label, value, unit, delta, caption: captionProp, trend, icon, progress, tween }: {
+export function StatTile({ label, value, unit, delta, caption: captionProp, trend, icon, progress, tween, onSelect, selected }: {
   label: string; value: string; unit?: string; delta?: Delta; caption?: string; trend?: ReactNode; icon?: IconData;
   /** 0–1: 6 px striped bar under the value (e.g. 19 of 24 connected). */
   progress?: number | null;
   tween?: { value: number; format: (v: number) => string; total?: number };
+  onSelect?: () => void; selected?: boolean;
 }) {
   const split = delta ? splitDelta(delta.text) : null;
   const pill = split?.pill ?? null;
   const caption = captionProp ?? split?.caption ?? null;
   const tone = delta ? deltaTone(delta) : "neutral";
   const arrow = delta?.direction === "up" ? ArrowUpIcon : delta?.direction === "down" ? ArrowDownIcon : null;
+  const Root = onSelect ? "button" : "div";
   return (
-    <div data-slot="stat-tile" className="flex min-h-26 min-w-0 flex-col gap-2.5 rounded-lg border border-line bg-card p-4">
+    <Root data-slot="stat-tile" {...(onSelect ? { type: "button" as const, onClick: onSelect, "aria-pressed": !!selected } : {})}
+      className={cn("flex min-h-26 min-w-0 flex-col gap-2.5 rounded-lg border bg-card p-4 text-left",
+        selected ? "border-primary" : "border-line",
+        onSelect && "card-lift cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary")}>
       <div className="flex min-w-0 items-center gap-2 text-body-sm text-fg-2">
         {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-3" />}
         <span className="min-w-0 truncate" title={label}>{label}</span>
@@ -68,7 +74,7 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
       )}
       {caption && <span className="text-caption text-fg-3">{caption}</span>}
       {trend && <div className="mt-auto h-7">{trend}</div>}
-    </div>
+    </Root>
   );
 }
 

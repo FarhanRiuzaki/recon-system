@@ -591,6 +591,10 @@ Delta pill: 20 px, radius full, padding 0 6, `label`, arrow 12 px; good = Health
 ink on Down soft, neutral = fg-2 on `--tray`. Direction of "good" is set per metric (cost up = bad). Caption
 "vs previous 24 h" in `caption` fg-3. Number tween on change (§7.4). The value is the tile's accessible name
 together with its label.
+A tile that filters the list under it takes `onSelect` and `selected`: the tile is a toggle button (`aria-pressed`),
+lifts on hover like `InteractiveCard`, shows the focus ring, and draws a `--primary` edge while selected; pressing the
+selected tile clears the filter, which also shows as a chip in the list's `FilterLayout` (Sources list, Figma 02
+Sources v1.0.6). (`packages/ui/src/ds/stat-tile.test.ts` "StatTile as a filter")
 
 ### 5.6 Toolbar & filters
 Active direction: **FIL-DES-004 / DEC-019** rail/refresh, **FIL-DES-003 / DEC-018** anchor, DEC-017 live multi.

@@ -162,6 +162,29 @@ describe("POST and GET sources", () => {
     expect((await json<Page<SourceRowDto>>(call("GET", base(B), { token: t.op }))).total).toBe(0);
   });
 
+  it("summary counts the sources per state, and the list's state filter keeps the same ones (Figma 02 v1.0.6)", async () => {
+    const { s } = await published();
+    await made({ code: "core-bifast", name: "Core bank · BI-FAST", kind: "db_watermark" });
+    const states = ["healthy", "attention", "paused", "draft"] as const;
+    const check = async (want: Partial<Record<(typeof states)[number], number>>) => {
+      const sum = await json<Record<string, number>>(call("GET", `${base(A)}/summary`, { token: t.op }));
+      for (const st of states) {
+        const page = await json<Page<SourceRowDto>>(call("GET", `${base(A)}?state=${st}`, { token: t.op }));
+        expect([st, page.total, page.items.length]).toEqual([st, sum[st]!, sum[st]!]);
+      }
+      expect(sum).toMatchObject(want);
+      expect(states.reduce((n, st) => n + sum[st]!, 0)).toBe(2);
+      return sum;
+    };
+    // the published source is judged now (healthy or not: no file yet), the other has no published version
+    const now = await check({ paused: 0, draft: 1 });
+    expect(now.healthy! + now.attention!).toBe(1);
+    await db.update(sources).set({ status: "paused" }).where(eq(sources.id, s.id));
+    await check({ healthy: 0, attention: 0, paused: 1, draft: 1 });
+    expect((await call("GET", `${base(A)}?state=broken`, { token: t.op })).status).toBe(400);
+    expect((await call("GET", `${base(A)}/summary`)).status).toBe(401);
+  });
+
   it("a source of another space is 404 through this space's routes", async () => {
     const s = await made();
     expect((await detail(t.op, s.id, B)).status).toBe(404);

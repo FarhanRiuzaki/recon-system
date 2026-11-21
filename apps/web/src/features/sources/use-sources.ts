@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
-import type { RunSourceDto, SourceDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { RunSourceDto, SourceDto, SourceSummaryDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { INGEST_KEY, sourceDetail, SOURCES_KEY, sourceVersion, spaceDetail } from "@/lib/shared/queries";
+import { INGEST_KEY, sourceDetail, SOURCES_KEY, sourceSummary, sourceVersion, spaceDetail } from "@/lib/shared/queries";
 
 export const sourcesHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/sources`;
 export const sourceHref = (spaceId: string, id: string) => `${sourcesHref(spaceId)}/${encodeURIComponent(id)}`;
@@ -28,6 +28,12 @@ export const RUN_REASON = "Only a source admin of this space starts a pull.";
 export function useSource(spaceId: string, id: string) {
   const { key, url } = sourceDetail(spaceId, id);
   return useQuery({ queryKey: key, queryFn: () => api<SourceDto>(url), retry: retryUnlessNotFound });
+}
+
+/** How many of the space's sources are in each summary state (prefetched by the page). */
+export function useSourceSummary(spaceId: string) {
+  const { key, url } = sourceSummary(spaceId);
+  return useQuery({ queryKey: key, queryFn: () => api<SourceSummaryDto>(url) });
 }
 
 /** The viewer's roles in the space (the space's own read, prefetched by the page under the spaces key). */

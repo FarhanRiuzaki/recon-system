@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type CategorySlot, type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { sourceStatus } from "@/lib/shared/source-status";
@@ -8,12 +8,13 @@ import { sourceHref } from "./use-sources";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const none = <span className="text-fg-3">—</span>;
+const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 2, db_snapshot: 3 };
 
 /** A source's state chip with the API's reason (or last error) as its description. */
 export function SourceStatusChip({ s }: { s: SourceRowDto }) {
   const st = sourceStatus(s);
   const why = s.health?.reason ?? s.health?.lastError ?? null;
-  return <StatusChip health={st.health} label={st.label} description={why ? withDays(why) : null} />;
+  return <StatusChip strong health={st.health} label={st.label} description={why ? withDays(why) : null} />;
 }
 
 /** "v1 · bi-settlement", "Draft · code", or, through a share, who owns it. */
@@ -33,8 +34,8 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="truncate text-caption text-fg-3">{sourceCaption(s)}</span>
       </span>
     ) },
-    // plain text: a tint per kind would carry no information and follows the palette (REC-D5)
-    { key: "kind", header: "Kind", mobile: "meta", cell: (s) => <span className="text-fg-2">{s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]}</span> },
+    // one categorical slot per input kind, so a kind reads the same in every row (Figma 02 v1.0.6); a shared source neutral
+    { key: "kind", header: "Kind", mobile: "meta", cell: (s) => <CategoryChip slot={s.owner ? "neutral" : KIND_SLOT[s.kind]} label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} /> },
     { key: "state", header: "State", mobile: "meta", cell: (s) => <SourceStatusChip s={s} /> },
     { key: "complete", header: "Complete through", mobile: "meta", className: "md:max-xl:hidden", cell: (s) => {
       const lag = lagText(s);

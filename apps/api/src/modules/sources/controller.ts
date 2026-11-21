@@ -15,7 +15,7 @@ import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
   approveVersion, createDraft, createSource, discardSource, previewVersion, queryColumns, refusedSpec, rejectVersion, setConnection, shareSource, sourceActivity, sourceColumns, sourceDetail,
-  sourceCatalog, sourcePage, submitVersion, testConnection, testNewSource, unshareSource, updateVersion, versionDetail, versionPage,
+  sourceCatalog, sourcePage, sourceSummary, submitVersion, testConnection, testNewSource, unshareSource, updateVersion, versionDetail, versionPage,
 } from "./service";
 
 const MAKERS = ["source_admin", "config_maker"] as const;
@@ -26,6 +26,8 @@ export const sourcesController = () =>
     .use(guard)
     /** The space's sources and those shared to it. */
     .get("/v1/spaces/:spaceId/sources", ({ ctx, query }) => sourcePage(ctx, query), { query: SourceListQuery, guard: { space: SPACE_ROLES } })
+    /** How many of them are healthy, need attention, are paused or are drafts (the list's summary tiles). */
+    .get("/v1/spaces/:spaceId/sources/summary", ({ ctx }) => sourceSummary(ctx), { guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/sources", async (c) => {
       const s = await createSource(c.ctx, await body(c, CreateSourceBody));
       c.set.status = 201;

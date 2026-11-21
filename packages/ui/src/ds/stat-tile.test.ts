@@ -18,3 +18,14 @@ describe("StatTile tween", () => {
     expect(out).not.toContain("sr-only");
   });
 });
+
+describe("StatTile as a filter", () => {
+  it("with onSelect it is a toggle button whose aria-pressed follows selected; without it a plain block", () => {
+    const on = renderToStaticMarkup(h(StatTile, { label: "Healthy", value: "3", onSelect: () => {}, selected: true }));
+    expect(on).toMatch(/^<button[^>]*type="button"[^>]*aria-pressed="true"/);
+    expect(on).toContain("border-primary");
+    const off = renderToStaticMarkup(h(StatTile, { label: "Healthy", value: "3", onSelect: () => {} }));
+    expect(off).toContain('aria-pressed="false"');
+    expect(renderToStaticMarkup(h(StatTile, { label: "Healthy", value: "3" }))).toMatch(/^<div/);
+  });
+});

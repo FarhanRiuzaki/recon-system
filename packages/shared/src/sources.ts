@@ -22,6 +22,12 @@ export const SNAPSHOT_STATUSES = ["loading", "active", "failed", "superseded"] a
 export type SnapshotStatus = (typeof SNAPSHOT_STATUSES)[number];
 /** Source health for the business date in progress (sourceHealth, apps/api/src/modules/ingest/health.ts). */
 export const SOURCE_HEALTH = ["healthy", "degraded", "down"] as const;
+/**
+ * The Sources list's state filter and summary tiles (Figma 02 Sources v1.0.6): healthy; attention = degraded, down or
+ * not judged yet; paused; draft = no published version (ingests nothing).
+ */
+export const SOURCE_STATE_FILTERS = ["healthy", "attention", "paused", "draft"] as const;
+export type SourceStateFilter = (typeof SOURCE_STATE_FILTERS)[number];
 export type SourceHealthState = (typeof SOURCE_HEALTH)[number];
 export const FIELD_TYPES = ["string", "integer", "decimal", "date", "datetime", "boolean"] as const;
 export const FILE_ENCODINGS = ["utf-8", "latin1", "windows-1252", "utf-16le"] as const;

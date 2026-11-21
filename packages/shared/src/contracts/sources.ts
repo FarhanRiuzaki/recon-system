@@ -2,7 +2,7 @@ import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
   AMOUNT_UNITS, ATTR_NAME, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
-  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATUSES, VERSION_STATUSES,
+  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -286,7 +286,10 @@ export const ConnectionTestDto = z.object({
 export type ConnectionTestDto = z.infer<typeof ConnectionTestDto>;
 
 /** GET /api/spaces/{spaceId}/sources: `q` matches the code or the name. */
-export const SourceListQuery = ListQuery.extend({ sort: sortParam(SOURCE_SORTS) });
+export const SourceListQuery = ListQuery.extend({ sort: sortParam(SOURCE_SORTS), state: z.enum(SOURCE_STATE_FILTERS).optional() });
+/** GET …/sources/summary: how many sources the space reads in each SOURCE_STATE_FILTERS state. */
+export const SourceSummaryDto = z.object({ healthy: z.number().int(), attention: z.number().int(), paused: z.number().int(), draft: z.number().int() });
+export type SourceSummaryDto = z.infer<typeof SourceSummaryDto>;
 export type SourceListQuery = z.infer<typeof SourceListQuery>;
 
 /** The connection as answered: never the credential. */

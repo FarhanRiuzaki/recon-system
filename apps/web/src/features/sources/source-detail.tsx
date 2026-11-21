@@ -4,10 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
-import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs } from "@starterkit/ui/ds";
+import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
+import { formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { KeyIcon, NetworkIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import type { DbEngine } from "@starterkit/shared/sources";
 import { BRAND } from "@starterkit/shared/brand";
@@ -108,6 +109,26 @@ function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: Plai
  * lists rejected lines (own sources only: a shared one's quarantine stays with its owner). Pull now is a source admin's
  * on the space's own source. No credential is ever shown: the connection is its engine and options.
  */
+/**
+ * Today's numbers of a published source (Figma 02 Sources v1.0.6), above its files, snapshots or pull: the business
+ * date in progress's records and quarantined lines, how far it is complete, and when it is read next.
+ */
+function TodayTiles({ s }: { s: SourceDto }) {
+  const h = s.health!;
+  const complete = completeText(s);
+  const lag = lagText(s);
+  return (
+    <StatTiles>
+      <StatTile icon={DiskIcon} label="Records today" value={s.rowsToday === null ? "—" : formatNumber(s.rowsToday)} caption={`Business date ${day(h.businessDate)}`} />
+      <StatTile icon={WarningIcon} label="Quarantined today" value={s.quarantinedToday === null ? "—" : formatNumber(s.quarantinedToday)}
+        caption={s.quarantinedToday === null ? "Kept by the owning space" : s.quarantinedToday ? "See why in Quarantine" : "No line refused"} />
+      <StatTile icon={CheckIcon} label="Complete through" value={complete.replace(/^Through /, "")} caption={lag ?? "Every record up to this point is in"} />
+      <StatTile icon={TimeIcon} label="Next read" value={s.nextRunAt ? formatTime(Date.parse(s.nextRunAt)) : "—"}
+        caption={s.nextRunAt ? at(s.nextRunAt) : "Not while paused"} />
+    </StatTiles>
+  );
+}
+
 export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string; tab: SourceTab }) {
   const q = useSource(spaceId, id);
   const roles = useSpaceRoles(spaceId);
@@ -172,6 +193,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
           )}
           {s.status === "paused" && s.drift && <Drift s={s} spaceId={spaceId} edit={edit} />}
           {missing && <Notice tone="warn">{missingText(s)}</Notice>}
+          {h && <TodayTiles s={s} />}
           {s.kind === "file_inbox" && <FilesTable spaceId={spaceId} id={id} />}
           {s.kind === "db_snapshot" && (
             <SnapshotsTable spaceId={spaceId} id={id} run={own ? { blocked, pending: run.isPending, onPull: (d) => run.mutate(d) } : null} />

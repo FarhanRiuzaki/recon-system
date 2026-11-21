@@ -7,12 +7,12 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type {
   ConnectionTestDto, CreateSourceBody, IngestListQuery, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
-  SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
+  SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourceSummaryDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
 } from "@starterkit/shared/contracts/sources";
 import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
-import { amountUnit, type DbEngine, isLocalHost, type SourceKind, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
-import { and, asc, eq, exists, ilike, inArray, max, or, type SQL, sql } from "drizzle-orm";
+import { amountUnit, type DbEngine, isLocalHost, type SourceKind, type SourceStateFilter, type SourceStatus, type VersionStatus } from "@starterkit/shared/sources";
+import { and, asc, eq, exists, ilike, inArray, max, ne, not, or, type SQL, sql } from "drizzle-orm";
 import { config } from "../../kernel/config";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx } from "../../kernel/db";
@@ -81,23 +81,51 @@ const visibleIn = (tx: InTx, spaceId: string): SQL => or(eq(sources.spaceId, spa
 /** The versions of source `s`. */
 const ofSource = (s: SourceRow) => and(eq(sourceVersions.spaceId, s.spaceId), eq(sourceVersions.sourceId, s.id));
 
-/** One page of the sources the space may read (its own and those shared to it), name A–Z unless `sort` says otherwise. */
+/** The SOURCE_STATE_FILTERS state of a source (sourceStatus's rule, apps/web/src/lib/shared/source-status.ts). */
+const stateOf = (s: SourceRow, published: number | null, health: { state: string } | null | undefined): SourceStateFilter =>
+  published === null ? "draft" : s.status === "paused" ? "paused" : health?.state === "healthy" ? "healthy" : "attention";
+
+/**
+ * One page of the sources the space may read (its own and those shared to it), name A–Z unless `sort` says otherwise;
+ * `state` keeps those of one SOURCE_STATE_FILTERS state. Draft and paused are columns; healthy and attention are the
+ * health judged now, so for them every candidate is judged and the page cut after. ponytail: fine for the tens of
+ * sources a space reads; a stored health column if a space grows to thousands.
+ */
 export function sourcePage(ctx: Ctx, q: SourceListQuery): Promise<Page<SourceRowDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
-    const where = and(visibleIn(tx, spaceId), like ? or(ilike(sources.code, like), ilike(sources.name, like)) : undefined);
     // at most one published version per source (source_versions_published_key)
     const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
-    const page = await pageQuery({
-      rows: tx.select({ s: sources, published: sourceVersions.version, spec: sourceVersions.spec }).from(sources).leftJoin(sourceVersions, published).where(where).$dynamic(),
-      count: tx.select(one).from(sources).where(where).$dynamic(),
-      orderBy: sortSql(q.sort, { name: sql`lower(${sources.name})`, createdAt: sources.createdAt }, "name", sources.id),
-      query: q,
-      map: (r) => r,
-      on: tx,
-    });
+    const hasPublished = exists(tx.select(one).from(sourceVersions).where(published));
+    const byState: Record<SourceStateFilter, SQL | undefined> = {
+      draft: not(hasPublished), paused: and(hasPublished, eq(sources.status, "paused")),
+      healthy: and(hasPublished, ne(sources.status, "paused")), attention: and(hasPublished, ne(sources.status, "paused")),
+    };
+    const where = and(visibleIn(tx, spaceId), like ? or(ilike(sources.code, like), ilike(sources.name, like)) : undefined, q.state ? byState[q.state] : undefined);
+    const rows = tx.select({ s: sources, published: sourceVersions.version, spec: sourceVersions.spec }).from(sources).leftJoin(sourceVersions, published).where(where).$dynamic();
+    const orderBy = sortSql(q.sort, { name: sql`lower(${sources.name})`, createdAt: sources.createdAt }, "name", sources.id);
+    if (q.state === "healthy" || q.state === "attention") {
+      const all = await rows.orderBy(...orderBy);
+      const { states, owners } = await readModel(tx, all, spaceId);
+      const kept = all.filter((r) => stateOf(r.s, r.published, states.get(r.s.id)?.health) === q.state);
+      const items = kept.slice((q.page - 1) * q.pageSize, q.page * q.pageSize);
+      return { items: items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id))), total: kept.length, page: q.page, pageSize: q.pageSize };
+    }
+    const page = await pageQuery({ rows, count: tx.select(one).from(sources).where(where).$dynamic(), orderBy, query: q, map: (r) => r, on: tx });
     const { states, owners } = await readModel(tx, page.items, spaceId);
     return { ...page, items: page.items.map((r) => rowDto(r.s, r.published, spaceId, owners, states.get(r.s.id))) };
+  });
+}
+
+/** GET …/sources/summary: the sources the space may read, counted per SOURCE_STATE_FILTERS state (health judged now). */
+export function sourceSummary(ctx: Ctx): Promise<SourceSummaryDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
+    const all = await tx.select({ s: sources, published: sourceVersions.version, spec: sourceVersions.spec }).from(sources).leftJoin(sourceVersions, published).where(visibleIn(tx, spaceId));
+    const { states } = await readModel(tx, all, spaceId);
+    const out: SourceSummaryDto = { healthy: 0, attention: 0, paused: 0, draft: 0 };
+    for (const r of all) out[stateOf(r.s, r.published, states.get(r.s.id)?.health)]++;
+    return out;
   });
 }
 

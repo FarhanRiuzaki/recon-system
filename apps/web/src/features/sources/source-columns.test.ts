@@ -25,7 +25,13 @@ describe("sources columns (Build notes 02: Source · Kind · State · Complete t
     const shared = { ...S, shared: true, owner: { spaceId: "t", name: "Treasury" }, quarantinedToday: null };
     expect(cell("name", shared)).toContain("Read-only here · owned by Treasury");
     expect(cell("kind", shared)).toContain("Shared from Treasury");
-    expect(cell("kind")).toBe('<span class="text-fg-2">File inbox</span>'); // plain text, no palette tint (REC-D5)
+    // a category chip per input kind, the same slot in every row; a shared source neutral (Figma 02 v1.0.6)
+    expect(cell("kind")).toContain('data-slot="category-chip"');
+    expect(cell("kind")).toContain("bg-chart-1");
+    expect(cell("kind", { ...S, kind: "db_watermark" })).toContain("bg-chart-2");
+    expect(cell("kind", shared)).toContain("bg-fg-4");
+    expect(cell("state")).toContain('data-status="healthy"');
+    expect(cell("state")).toContain("border-transparent");
     expect(cell("quarantinedToday", shared)).toContain("—");
     expect(cell("state")).toContain("Healthy");
     expect(cell("state", { ...S, status: "paused" })).toContain("Paused");

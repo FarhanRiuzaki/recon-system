@@ -242,6 +242,7 @@ type Allow = {
 const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/dashboard": "summary numbers; its recent list is fixed at 5",
   "GET /v1/me": "the signed-in user",
+  "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };
 const ONE_RECORD = /\/:\w+$/;

@@ -8,6 +8,7 @@ import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-rang
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
 import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX } from "@starterkit/shared/recon";
 import { timeRange } from "./time-controls";
@@ -90,10 +91,13 @@ export const spaceCandidates = (id: string, q = "") => ({
 });
 
 export const SOURCES_KEY = ["sources"] as const;
-const SOURCES_SPEC: TableSpec<{ q: string }> = { sorts: SOURCE_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
+export type SourceFilters = { q: string; state: "" | SourceStateFilter };
+const SOURCES_SPEC: TableSpec<SourceFilters> = { sorts: SOURCE_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), state: oneOf(["", ...SOURCE_STATE_FILTERS], "") } };
 const sourcesPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/sources` as const;
-/** A space's sources and those shared to it; `q` matches the code or the name. */
-export const SOURCES = (spaceId: string): TableDef<{ q: string }> => ({ key: SOURCES_KEY[0], path: sourcesPath(spaceId), spec: SOURCES_SPEC });
+/** A space's sources and those shared to it; `q` matches the code or the name, `state` keeps one summary state. */
+export const SOURCES = (spaceId: string): TableDef<SourceFilters> => ({ key: SOURCES_KEY[0], path: sourcesPath(spaceId), spec: SOURCES_SPEC });
+/** How many of them are in each state (the list's summary tiles). */
+export const sourceSummary = (spaceId: string) => ({ key: [...SOURCES_KEY, "summary", spaceId] as const, url: `${sourcesPath(spaceId)}/summary` });
 export const sourceDetail = (spaceId: string, id: string) => ({
   key: [...SOURCES_KEY, "detail", spaceId, id] as const, url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}`,
 });
