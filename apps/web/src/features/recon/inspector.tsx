@@ -279,19 +279,19 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
   return (
     <div className="grid gap-5">
       {place && place.filter === undefined && <PlaceError text={place.text} />}
-      <Field id={id("label")} label="Label">
-        <Input id={id("label")} value={s.label} maxLength={64} onChange={(e) => onChange({ ...s, label: e.target.value })} autoComplete="off" />
+      <Field id={id("label")} label="Label" required>
+        <Input id={id("label")} value={s.label} aria-required maxLength={64} onChange={(e) => onChange({ ...s, label: e.target.value })} autoComplete="off" />
       </Field>
       <Field id={id("source")} label="Source">
         <Input id={id("source")} value={sourceName} readOnly />
       </Field>
       <div className="grid gap-2">
-        <span className="text-label text-fg">Amount sign</span>
+        <span className="text-label text-fg">Amount sign<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
         <Segmented label="Amount sign" value={s.amount_sign} onChange={(amount_sign) => onChange({ ...s, amount_sign })}
           options={[{ value: "as_is", label: "As booked" }, { value: "negate", label: "Opposite sign" }]} />
       </div>
       <fieldset className="grid gap-3">
-        <legend className="mb-2 text-label text-fg">Filters (records this side reads)</legend>
+        <legend className="mb-2 text-label text-fg">Only read records where <span className="text-fg-3">(optional)</span></legend>
         {s.filter.map((f, j) => (
           <PairRow key={j} error={place?.filter === j ? place.text : null} removeLabel={`Remove filter ${j + 1}`} removeReason={null}
             onRemove={() => { onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }); onRemoved(`Removed filter ${j + 1}.`, (cur) => restoreFilter(cur, i, f, j)); }}>
@@ -323,36 +323,36 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">
-        <span className="text-label text-fg">Schedule</span>
+        <span className="text-label text-fg">Schedule<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
         <Segmented label="Schedule" value={s.kind} options={[{ value: "daily", label: "Daily" }, { value: "interval", label: "Every few minutes" }]}
           onChange={(kind) => onChange({ ...spec, schedule: kind === "daily" ? { kind, at: "06:00", business_date_offset: 1 } : { kind, every_minutes: 15 } })} />
         <PlaceError text={err("Schedule")} />
       </div>
       {s.kind === "daily" ? (
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="rs-at" label={`Runs at (${APP_TIME_ZONE_LABEL})`}>
+          <Field id="rs-at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} required>
             <Input id="rs-at" type="time" value={s.at} onChange={(e) => onChange({ ...spec, schedule: { ...s, at: e.target.value } })} />
           </Field>
-          <Field id="rs-offset" label="Business date">
+          <Field id="rs-offset" label="Business date" required>
             <Select id="rs-offset" value={s.business_date_offset} className="w-full" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
               {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
             </Select>
           </Field>
         </div>
       ) : (
-        <Field id="rs-every" label="Every (minutes)">
+        <Field id="rs-every" label="Every (minutes)" required>
           <NumberInput id="rs-every" label="Minutes between runs" min={1} max={1440} value={s.every_minutes} onValueChange={(m) => onChange({ ...spec, schedule: { ...s, every_minutes: m === "" ? 1 : m } })} />
         </Field>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field id="rs-grace" label="Grace (minutes)" error={err("Grace")}>
+        <Field id="rs-grace" label="Grace (minutes)" required error={err("Grace")}>
           <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
         </Field>
-        <Field id="rs-carry" label="Carry over (days)" error={err("Carry over")}>
+        <Field id="rs-carry" label="Carry over (days)" required error={err("Carry over")}>
           <NumberInput id="rs-carry" label="Carry over in days" min={0} max={31} value={spec.carry_over_days} onValueChange={(d) => onChange({ ...spec, carry_over_days: d === "" ? 0 : d })} />
         </Field>
       </div>
-      <Field id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} error={err("Close time")}>
+      <Field id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} required error={err("Close time")}>
         <Input id="rs-close" type="time" value={spec.close_at} onChange={(e) => onChange({ ...spec, close_at: e.target.value })} />
       </Field>
     </div>

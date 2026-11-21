@@ -16,7 +16,7 @@ export function Wizard({ title, steps, children }: { title: string; steps: reado
           {i > 0 && <span aria-hidden="true" className="h-px w-6 bg-line-strong xl:hidden" />}
           {i < steps.length - 1 && <span aria-hidden="true" className="absolute top-6 bottom-1 left-2.5 w-px -translate-x-1/2 bg-line-strong max-xl:hidden" />}
           <StepMarker status={s.status} n={i + 1} />
-          <div className="grid min-w-0 gap-1"><span className="text-label">{s.label}</span><span className="text-caption text-fg-3">{s.status === "done" ? "Complete" : s.status === "current" ? "In progress" : "Upcoming"}</span></div>
+          <div className="grid min-w-0 gap-1"><span className="text-label">{s.label}</span><span className="text-caption text-fg-3">{s.description ?? (s.status === "done" ? "Complete" : s.status === "current" ? "In progress" : s.status === "error" ? "Needs attention" : "Upcoming")}</span></div>
         </li>)}</ol>
       </Panel>
     </aside>

@@ -424,7 +424,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const STEP_LABEL: Record<WizardStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Test", 5: "Review and submit" };
   const wizardSteps = ([1, 2, 3, 4, 5] as const).map((n) => ({
     id: String(n), label: STEP_LABEL[n],
-    status: (n === step ? "current" : n < step || reached >= n ? (n < 5 && why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
+    status: (n === step ? "current" : n === 5 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
   }));
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
@@ -454,7 +454,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           // both sides side by side, in equal columns (symmetric); each its source, label, sign and filters
           <div className="grid items-start gap-section md:grid-cols-2">
             {([0, 1] as const).map((i) => (
-              <Panel key={i} title={`Side ${i === 0 ? "A" : "B"}`} description={sourceOf(i)?.name ?? "Loading the source…"}>
+              <Panel key={i} title={`Side ${i === 0 ? "A" : "B"}`}>
                 <fieldset disabled={!editable} className="contents">
                   <SideEditor spec={spec} i={i} fields={fields} sourceName={sourceOf(i)?.name ?? "Loading…"} place={placed?.side === i ? placed : null}
                     onChange={(x) => change({ ...spec, sides: i === 0 ? [x, spec.sides[1]] : [spec.sides[0], x] })}
