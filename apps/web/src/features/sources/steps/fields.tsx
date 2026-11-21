@@ -221,12 +221,12 @@ export function FieldsStep(p: FieldsStepProps) {
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
-          <div className="scroll-quiet overflow-x-auto max-xl:overflow-visible">
+          <div className="scroll-quiet overflow-x-auto max-xl:overflow-visible xl:[--table-stick:11rem]">
             {/* below 1280 px each column is a card: the header row hides, each cell shows its own label (one DOM); from
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                {COLUMN_HEADS.map(([head, help], k) => <TableHead key={head} className={k === 0 ? STICK_HEAD : undefined}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
+                {COLUMN_HEADS.map(([head, help], k) => <TableHead key={head} className={k === 0 ? `${STICK_HEAD} xl:w-44 xl:min-w-44` : undefined}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
               </TableRow></TableHeader>
               <TableBody>
                 {s.fields.map((f, i) => {
@@ -664,7 +664,7 @@ function AmountUnitField({ d, err, records, onUnit }: { d: Draft; err: FieldsSte
   const note = unit && d.unitHint?.unit === unit ? d.unitHint.note : null;
   const examples = unit ? unitExamples(records, unit) : [];
   return (
-    <div className="grid min-w-0 content-start gap-2 md:col-span-2">
+    <div className="grid min-w-0 content-start gap-2">
       <span className="text-label text-fg">Amount is in<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
       <div id={id} tabIndex={-1} className="w-fit rounded-ctl" aria-invalid={!!why || undefined} aria-describedby={why ? `${id}-error` : undefined}>
         <Segmented label="Amount is in" value={unit ?? ("" as AmountUnit)} onChange={onUnit} options={AMOUNT_UNITS.map((u) => ({ value: u, label: UNIT_LABEL[u] }))} />

@@ -42,7 +42,8 @@ const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tra
  * Wider than the screen (a phone), it scrolls sideways inside its card; the box is then a focusable region named after the table.
  * Once measured to fit, the box stops being a scroll container (overflow visible), so a sticky header sticks to the
  * window; `data-scrolls` (group `scroll`) lets cells stick to the box's sides while it scrolls sideways (DataTable).
- * While it scrolls, each side with hidden content shows a fade (design-system §5.7), so the table reads as wider.
+ * While it scrolls, each side with hidden content shows a fade (design-system §5.7), so the table reads as wider; a table
+ * whose first column sticks sets `--table-stick` (its width) on an ancestor, so the start fade begins past that column.
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   const [ref, scrolls, measured, edges] = useScrollsX<HTMLDivElement>();
@@ -54,7 +55,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
         <table data-slot="table" className={cn("w-full border-separate border-spacing-0 text-body", className)} {...props} />
       </div>
       {/* more to see on that side: a grey edge fading to clear, shown only while content is hidden past it */}
-      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="start" data-on={edges.start || undefined} className={cn(FADE, "left-0 bg-linear-to-r")} />}
+      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="start" data-on={edges.start || undefined} className={cn(FADE, "left-[var(--table-stick,0px)] bg-linear-to-r")} />}
       {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="end" data-on={edges.end || undefined} className={cn(FADE, "right-0 bg-linear-to-l")} />}
     </div>
   );
