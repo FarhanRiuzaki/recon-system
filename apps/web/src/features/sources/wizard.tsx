@@ -21,7 +21,7 @@ import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
-import { ARRIVED_DATE, attrNameOf, fieldError, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
+import { ARRIVED_DATE, attrNameOf, fieldError, fieldMessage, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
@@ -547,7 +547,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         if (n !== seq.current) return;
       }
       if (columns && valueHint.current) { valueHint.current = false; const ex = new Map(columns.columns.map((c) => [c.name, c.examples])); setDraft((x) => withCore(x, ex)); }
-      setPreview({ result: columns, columnsOnly: !!columns, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
+      setPreview({ result: columns, columnsOnly: !!columns, error: named ? `The preview stopped: ${fieldMessage(named, spec.fields)}` : errorText(e), pending: false });
     }
   };
   // a file's preview is live (ruling 2): a moment after the last change. A database source's pulls from the bank's

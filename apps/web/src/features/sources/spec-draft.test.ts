@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { activitySentence, attrNameOf, changes, storeAs, storedName, storedNameProblem, FILE_DATE, fieldError, fieldsOfColumns, fieldTypeOf, looksLikeHeader, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
+import { activitySentence, attrNameOf, changes, storeAs, storedName, storedNameProblem, FILE_DATE, fieldError, fieldMessage, fieldsOfColumns, fieldTypeOf, looksLikeHeader, mergeFields, reviewReason, sampleColumns, sampleHead, specDiff } from "./spec-draft";
 
 const spec = (over: Partial<SourceSpec> = {}): SourceSpec => ({
   fields: [{ name: "sid", type: "string", nullable: false, trim: true }, { name: "bal", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }],
@@ -168,5 +168,15 @@ describe("stored names (fix round 2)", () => {
     expect(storedNameProblem("sid", "bal", s)).toBe("Another column is stored as sid. Use a different name.");
     expect(storedNameProblem("sid", "sid", s)).toBeNull();
     expect(storedNameProblem("balance", "bal", s)).toBeNull();
+  });
+});
+
+describe("fieldMessage (a refused spec in words)", () => {
+  it("says which setting a short reason is about; a written reason stands", () => {
+    expect(fieldMessage({ path: "input.watermark.column", reason: "Required." })).toBe("Watermark column: required.");
+    expect(fieldMessage({ path: "fields.1.type", reason: "Pick one of string, integer." }, [{ name: "a", type: "string", nullable: false, trim: true }, { name: "amt", type: "string", nullable: false, trim: true }]))
+      .toBe("amt, type: pick one of string, integer.");
+    expect(fieldMessage({ path: "keep.0.value", reason: "Required." })).toBe("Condition 1: required.");
+    expect(fieldMessage({ path: "mapping.amount_minor", reason: "The amount needs an integer." })).toBe("The amount needs an integer.");
   });
 });

@@ -102,8 +102,25 @@ export function mergeFields(kept: readonly FieldSpec[], next: readonly FieldSpec
  * path and the reason after it; null for an error that names no field.
  */
 export function fieldError(message: string): { path: string; reason: string } | null {
-  const m = /^Check (?:the expression at )?((?:fields|mapping|derive|key_fields|input|health|mutable|calendar|currency)(?:\.[^:\s]+)*): ([\s\S]+)$/.exec(message);
+  const m = /^Check (?:the expression at )?((?:fields|mapping|derive|key_fields|keep|input|health|mutable|calendar|currency)(?:\.[^:\s]+)*): ([\s\S]+)$/.exec(message);
   return m ? { path: m[1]!, reason: m[2]! } : null;
+}
+
+const PATH_LABEL: Record<string, string> = {
+  "input.watermark.column": "Watermark column", "input.watermark.id_column": "Id column", "input.table": "Table", "input.query": "SELECT",
+  "input.schedule": "Schedule", "input.path": "Folder", "input.pattern": "File name pattern", currency: "Currency", key_fields: "Match key",
+  "mapping.business_date": "Business date", "mapping.amount_minor": "Amount", "mapping.currency": "Currency", "mapping.direction": "Direction",
+  "mapping.event_time": "Event time", "mapping.ext_ref": "Reference", "mapping.account_ref": "Account",
+};
+/**
+ * A refused spec's reason as a sentence a person can act on: a short reason ("Required.", "Pick one of …") says which
+ * setting it is about ("Watermark column: required."); a written one stands as it is.
+ */
+export function fieldMessage(e: { path: string; reason: string }, fields: readonly FieldSpec[] = []): string {
+  if (!/^(Required|Pick one of)\b/.test(e.reason)) return e.reason;
+  const col = /^fields\.(\d+)\.(\w+)/.exec(e.path), cond = /^keep\.(\d+)/.exec(e.path);
+  const label = PATH_LABEL[e.path] ?? (col ? `${fields[Number(col[1])]?.name ?? `Column ${Number(col[1]) + 1}`}, ${col[2]}` : cond ? `Condition ${Number(cond[1]) + 1}` : e.path);
+  return `${label}: ${e.reason.charAt(0).toLowerCase()}${e.reason.slice(1)}`;
 }
 
 const refText = (r: ValueRef | undefined): string | null => (!r ? null : "field" in r ? r.field : r.cel === FILE_DATE.cel ? "the file name's date" : r.cel === ARRIVED_DATE.cel ? "the day it arrives" : `expression ${r.cel}`);
