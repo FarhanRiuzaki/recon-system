@@ -326,6 +326,172 @@ Batas dan angka yang belum diukur:
 Verdict: lulus. pg-boss 12.38.2 menyediakan gabung per kunci, cap per queue, recovery, cron ber-zona waktu dan catch-up
 jadwal tanpa fallback.
 
+## REC-S6 (canvas): React Flow + ELK untuk builder kanvas
+
+Tanggal 2026-11-21, branch `wt/spike-s6` (dari `feat/recon-phase1` 8dfaaa5; kode spike tidak masuk branch produk).
+Versi: `@xyflow/react` 13.0.2 (rilis stabil terbaru, 17 Nov 2026; menarik `@xyflow/system` 1.0.0), `elkjs` 0.12.1 (tag
+`latest` npm; 0.13.0 ada tetapi deprecated). Next 16.4.5, React 19.3.0. Mesin: Apple M5 Max, macOS. Browser: Chrome
+157.0.8103.79 headless (`--headless=new`, 1440 × 900, WebGL melapor "ANGLE Metal Renderer: Apple M5 Max").
+
+Kode spike:
+- `apps/web/src/features/recon/canvas-spike/graph.ts`: graf lajur Sources → Sides → Passes → Outcomes dari `ReconSpec` +
+  `counters`, label edge dari `connectorText`/`passOutcome` (`run-model.ts`, data yang sama dengan builder list), layout ELK,
+  `laneProblem` (cek lajur satu kolom, urutan lajur, urutan pass = urutan run).
+- `canvas.tsx` (React Flow, keyboard, probe `window.__s6`), `canvas.css` (variabel `--xy-*` ke token), `loader.tsx`
+  (`next/dynamic`, `ssr: false`, loading shape empat lajur dari `Skeleton`, di dalam `ChunkBoundary`), route
+  `apps/web/src/app/spike-canvas/page.tsx` (di luar `(main)`, jadi jalan tanpa sesi dan API).
+- Graf: config gerbang (2 sisi, 3 pass, counters kunci jawaban: 11 node, 11 edge), config buatan 12 pass (20 node, 32 edge),
+  graf stres 240 node / 400 edge (40 source, 80 sisi, 100 pass dalam rantai 5, 20 outcome). `PASSES_MAX` = 20, jadi 200+
+  node bukan config nyata; ukuran itu mewakili Space map / Explain.
+- Ukur: `cd apps/web && bun scripts/spike-s6-elk.ts` (ELK di Bun, 1 run awal + 10 run, median/max) dan
+  `node scripts/spike-s6-probe.mjs http://localhost:3107/spike-canvas out.json` terhadap build produksi
+  (`NEXT_DIST_DIR=.next-spike bunx next build`, lalu `next start -p 3107` dengan env dummy; CSP produksi aktif lewat
+  `proxy.ts`). Probe memakai DevTools protocol langsung (bukan Playwright): input mouse/wheel/keyboard nyata
+  (`Input.dispatch*`), frame time = selisih `requestAnimationFrame` dan long task dari `PerformanceObserver` di halaman,
+  CPU 1× dan 4× (`Emulation.setCPUThrottlingRate`). Angka di bawah dari jalan terakhir probe; jalan sebelumnya memberi angka
+  sejenis.
+
+### 1. Kanvas 200+ node dengan layout ELK tetap interaktif
+
+Ambang yang dipakai: selama pan/zoom/drag tidak ada frame > 33 ms (satu frame 60 Hz terlewat) dan tidak ada long task;
+layout ulang sesudah perubahan di builder (≤ 20 pass) ≤ 100 ms pada CPU 4×; graf 200+ node ≤ 100 ms pada CPU 1×.
+
+Layout ELK di Bun (di luar browser):
+
+| Graf | Node / edge (ke ELK) | Run pertama | Median 10 run | Max |
+|---|---|---|---|---|
+| Gerbang, 3 pass | 11 / 9 | 44,0 ms | 6,8 ms | 9,8 ms |
+| 12 pass | 20 / 21 | 11,6 ms | 9,0 ms | 11,0 ms |
+| 20 pass (`PASSES_MAX`) | 28 / 31 | 11,9 ms | 10,9 ms | 12,4 ms |
+| Stres 240 node | 240 / 320 | 156,1 ms | 125,8 ms | 151,0 ms |
+| Stres 480 node | 480 / 640 | 451,9 ms | 410,6 ms | 607,1 ms |
+
+Di browser (build produksi, `elk.bundled.js` di main thread; "layout" = `await layout()` saat graf dibuka, "drop" = lepas
+drag pass sampai layout baru selesai):
+
+| Graf | Layout 1× | Layout 4× | Drop 1× | Drop 4× | Pan, zoom, drag: frame > 33 ms / long task (1× dan 4×) |
+|---|---|---|---|---|---|
+| Gerbang | 8,3 ms | 18,1 ms | 23,3 ms | 29,4 ms | 0 / 0 |
+| 12 pass | 17,2 ms | 41,5 ms | 24,6 ms | 64,1 ms | 0 / 0 (satu frame 33,3 ms saat drag 4×) |
+| Stres 240 | 179,5 ms | 790,3 ms | 138,6 ms | 663,2 ms | pan dan zoom 0 / 0; drag 1×: satu frame 100 ms + long task 123 ms tepat saat drop |
+
+Pan = 60 gerakan mouse 8 px tiap 16 ms di pane; zoom = 40 wheel (20 masuk, 20 keluar) di tengah; drag = satu pass ditarik
+200 px ke bawah dan 240 px ke samping. p95 frame di semua skenario 16,7–16,8 ms. Graf stres: 4.183 elemen DOM, semua node
+dirender (`onlyRenderVisibleElements` tidak dipakai).
+
+Hasil terhadap ambang:
+- Builder (≤ 20 pass): lulus. Layout 8–42 ms, drop sampai layout baru 23–64 ms pada 4×, tanpa frame terlewat.
+- 240 node: pan/zoom/drag lulus; layout gagal ambang: 180 ms pada 1×, 790 ms pada 4×, semuanya di main thread (long task).
+  Untuk Space map / Explain sebesar itu ELK harus di Web Worker (`elk-worker.min.js`); varian worker tidak diuji, termasuk
+  terhadap CSP (`worker-src` jatuh ke `script-src` dengan `'strict-dynamic'`).
+- Lajur terkunci butuh opsi ELK yang tidak bawaan, ditemukan dengan coba-ukur (`laneProblem` di skrip): tanpa
+  `separateConnectedComponents: false` pass tanpa edge masuk jadi komponen terpisah ("Passes spans 2 columns", "Sources
+  spans 9 columns"); tanpa `forceNodeModelOrder` + `greedySwitch.type: OFF` urutan pass tertukar ("passes out of run order").
+  Dipakai juga `partitioning` (satu partisi per lajur) dan `layering.strategy: LONGEST_PATH`. Edge pass → pass berikutnya
+  tidak diberikan ke ELK (edge di dalam satu layer memecah lajur), digambar React Flow sebagai `smoothstep` vertikal.
+- Akibatnya ELK tidak melakukan crossing minimization di lajur builder: hasilnya sama dengan "satu kolom per lajur, susun
+  sesuai urutan". Untuk builder, layout lajur tetap tanpa ELK cukup (dugaan, belum dibuat).
+- Node tidak bisa keluar lajur: `extent` per node (satu properti). Terukur: pointer ditarik 240 px ke samping, node bergeser
+  0 px horizontal dan 200–201 px vertikal. Urutan pass dari posisi vertikal saat drop: `onNodeDragStop` (8 baris) +
+  `movePass`/`moved` yang sudah ada di `spec-model.ts`.
+
+### 2. Navigasi dan aksi lewat keyboard
+
+Terukur di config gerbang (probe, `keyboard()`):
+
+| Uji | Hasil |
+|---|---|
+| Tab dari node pertama | src-a → src-b → side-a → side-b → p0 → p1 → p2 → out-Matched → out-Duplicate → out-Suggested → out-unmatched → tombol Controls; urutan DOM = urutan array `nodes`, jadi lajur demi lajur |
+| Enter pada node | node terpilih (`selected`), bawaan React Flow |
+| Alt+↓ pada pass 1 | urutan jadi Amount within 1,000, Exact, Date within 1 day; fokus tetap di node yang dipindah (p0); `role=status` "Moved to pass 2" |
+| Alt+↑ | urutan kembali semula |
+| ↓ / → / ← ← | p0 → p1; p1 → out-Suggested (node terdekat di lajur kanan); dua kali ke kiri → side-b |
+
+Yang perlu kode sendiri (`canvas.tsx`):
+- Alt+↑/↓ dan panah antar node: `onKeyDownCapture` 16 baris + `move` 7 baris + `focusNode` 1 baris. Harus di fase capture:
+  React Flow sendiri memakai panah untuk menggeser node terpilih 5 px (`NodeWrapper`), yang di lajur terkunci tidak berarti.
+- Tab stop: satu per node (240 di graf stres) ditambah satu per edge bila `edgesFocusable` dibiarkan bawaan (400 lagi); spike
+  mematikan fokus edge. Untuk graf besar perlu roving tabindex (satu tab stop untuk kanvas, panah di dalamnya); belum dibuat.
+- Pengumuman: `role=status` sendiri; React Flow punya live region (`ariaLabelConfig`) hanya untuk geser posisi. Belum dicek
+  dengan screen reader nyata.
+- "View as list" di spike membaca `LaneGraph` yang sama dan memakai Alt+↑/↓ yang sama; builder list produk (`sortable-passes.tsx`)
+  tetap jalur utama.
+
+### 3. Warna dari token tema, mode gelap dan palet
+
+Pemeriksaan otomatis (`colourLeaks` di `canvas.tsx`): semua custom property dari stylesheet halaman di-resolve lewat elemen
+probe; lalu setiap elemen di `.react-flow` dibaca `color`, `background-color`, `border-color` (bila ada border), `fill`/`stroke`
+(SVG) dan `outline-color`. Nilai yang tidak sama dengan token mana pun dihitung bocor. Dijalankan untuk 5 palet (Current,
+Mocha, Burgundy, Onyx, Espresso) × terang/gelap, dengan satu node terpilih dan fokus. Hasil: 0 warna bocor di 10 kombinasi
+(dibaca 600 ms sesudah ganti tema; dibaca 100 ms sesudahnya tombol Controls masih di tengah transisi warna `base.css`).
+
+Yang dibutuhkan: `canvas.css` 35 baris (24 variabel `--xy-*` ke token, fokus, teks edge, tombol Controls). Yang di-hardcode
+React Flow:
+- `dist/base.css`: semua default di balik `--xy-*-default` (abu `#b1b1b7`, `#555`, `#e2e2e2`, …, banyak dengan `light-dark()`),
+  kecuali warna link attribution `#999` dan border handle resize `#fff` (handle resize tidak dipakai).
+- `dist/style.css` (tidak dipakai) memberi tombol Controls abu sendiri; `base.css` tidak menggayakan tombol Controls sama sekali,
+  jadi tanpa CSS sendiri tombolnya memakai warna tombol bawaan browser (terukur sebagai bocor di 9 dari 10 kombinasi sebelum
+  diperbaiki).
+- JS: `defaultMarkerColor = '#b1b1b7'` (prop `ReactFlow`); marker digambar dengan style inline, jadi `color: "var(--line-strong)"`
+  di `markerEnd` berlaku.
+- MiniMap tidak dipakai: mask-nya butuh warna transparan, dan tidak ada token transparan; belum diuji.
+
+### 4. Ukuran first-load terhadap pagar 300 kB (DEC-040)
+
+`NEXT_DIST_DIR=.next-spike bunx next build`, lalu `NEXT_DIST_DIR=.next-spike node scripts/bundle-budget.mjs --budget 300`
+(gzip level 9). `.next-spike` dihapus sesudahnya.
+
+| Yang diukur | Ukuran |
+|---|---|
+| `/spike-canvas` first load | 180,3 kB (12 chunk); route di luar `(main)`, tanpa shell |
+| `/spaces/[spaceId]/recons/[configId]` (builder) first load, build yang sama | 284,0 kB (23 chunk, headroom 16 kB); tidak berubah karena kanvas lazy |
+| Route terbesar di build | 286,7 kB; semua route di bawah 300 kB |
+| Chunk lazy kanvas (JS) | 1.726.152 B mentah, 520.841 B gzip; satu chunk berisi React Flow, ELK dan kode spike |
+| Chunk lazy kanvas (CSS) | 13.002 B mentah, 2.444 B gzip |
+| ELK sendiri (`bun build --minify` atas `elk.bundled.js`) | 1.508.235 B mentah, 453.826 B gzip |
+| `@xyflow/react` sendiri (semua export, React eksternal, `bun build --minify`) | 260.436 B mentah, 89.193 B gzip |
+
+Load di browser (cache dimatikan, localhost, jadi tanpa latensi jaringan; `scripts/spike-s6-probe.mjs` dan tiga navigasi
+ulang per tingkat CPU): loading shape ada di HTML server (masuk DOM 20–48 ms sesudah navigasi), first contentful paint
+320–340 ms (render menunggu dokumen selesai, `app/layout.tsx`), node pertama kanvas di DOM 325–329 ms (1×) dan 367–380 ms (4×);
+pada 4× satu atau dua long task 52–70 ms, pada 1× tidak ada. Di localhost loading shape praktis hanya terlihat satu frame;
+di jaringan nyata lebih lama (tidak diukur). Navigasi pertama sesudah Chrome headless dibuka selalu 5,3–5,4 s (chunk kanvas
+sendiri diunduh 33 ms), navigasi berikutnya ke halaman yang sama 325 ms; dianggap biaya start headless, tidak diselidiki.
+Kanvas wajib lazy: diimpor langsung, ±521 kB gzip masuk first load builder (284 kB) dan pagar 300 kB jebol. Hampir 87% chunk
+itu ELK (453.826 dari 520.841 B; dua minifier berbeda, jadi perkiraan).
+
+### Temuan lain
+
+- API v13 berbeda dari v12: `onNodesChange` menerima `NodeChangeset` (pakai `changes.applyTo(nodes)`); `applyNodeChanges` tidak
+  diekspor lagi, padahal komentar di `index.d.ts` 13.0.2 masih mencontohkannya.
+- Tidak ada error console dan tidak ada pelanggaran CSP (nonce + `'strict-dynamic'`) di build produksi selama semua jalan probe.
+- `@dnd-kit/sortable` tidak dibutuhkan di kanvas (drag dari React Flow); tetap dipakai builder list.
+
+### Tidak terukur
+
+- Perangkat lemah nyata, GPU lain, Chrome headed, Safari, Firefox; hanya Chrome headless di M5 Max dengan throttling CPU.
+- Frame time di atas 60 Hz: rAF terkunci vsync, jadi 16,7 ms berarti "tidak ada frame 60 Hz terlewat", bukan biaya kerja per frame.
+- Transfer chunk 514 kB lewat jaringan lambat (hanya localhost).
+- Screen reader, sentuh/phone (phone memakai list, DEC-041), ELK di Web Worker dan CSP-nya, roving tabindex.
+- Layout lajur tanpa ELK untuk builder (usulan di bawah, belum dibuat dan belum diukur).
+
+### Verdict: jalan dengan perubahan
+
+React Flow 13 layak untuk builder kanvas: interaksi tanpa frame terlewat sampai 240 node, lajur terkunci dengan satu
+properti, tema penuh lewat token dengan 35 baris CSS, keyboard lengkap dengan ±24 baris sendiri. Perubahan:
+1. Kanvas selalu lewat `next/dynamic` (`ssr: false`) dengan loading shape; tanpa itu first load builder melewati 300 kB.
+2. Builder kanvas tanpa ELK: layout lajur tetap (kolom per lajur, susun sesuai urutan), karena opsi yang mengunci lajur sudah
+   mematikan crossing minimization ELK. Chunk lazy turun dari 520.841 B ke kira-kira 67.000 B gzip (dikurangi ukuran ELK sendiri;
+   perkiraan, belum dibangun). ELK hanya untuk Space map / Explain, di Web Worker, diuji ulang terhadap CSP saat dibangun.
+3. Roving tabindex untuk graf besar; untuk builder (≤ 29 node) Tab per node masih wajar.
+4. Tombol Controls dan fokus digayakan di CSS sendiri (base.css tidak menggayakannya).
+
+Perkiraan Plan 4 untuk builder kanvas (dugaan, bukan ukuran): 3–3,5 hari core-recon. Rinciannya: graf dari spec + counters dan
+layout lajur 0,5 hari; drag dan Alt+↑/↓ disambung ke `move`/`keys`/save queue/undo builder serta pengumuman 1 hari; pilih node
+membuka inspector, toggle "View as list" berbagi state builder, angka simulasi di edge redup sampai simulasi baru 0,5–1 hari;
+CSS tema, loading shape, `ChunkBoundary`, tes unit graf 0,5 hari; roving tabindex dan cek aksesibilitas 0,5 hari. Space map dan
+Explain dengan ELK di worker tidak termasuk.
+
 ## Konsekuensi untuk Plan 2–5
 
 Dari S1:
