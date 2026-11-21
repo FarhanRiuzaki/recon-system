@@ -123,6 +123,16 @@ function Refused({ title, reason, back, trail }: { title: string; reason: string
 
 type Ids = { sourceId: string; versionId: string; version: number } | null;
 
+/** The browser's copy of a draft's unsaved spec (wizard autosave): `base` = the server's spec hash it was made over. */
+type Kept = { base: string | null; spec: Draft["spec"]; from: Draft["from"] };
+const keptKey = (versionId: string) => `recon:source-draft:${versionId}`;
+// storage can be off (private mode, quota): the copy is a safety net, never a reason to fail
+function keepLocal(versionId: string, k: Kept) { try { localStorage.setItem(keptKey(versionId), JSON.stringify(k)); } catch { /* not kept */ } }
+function dropLocal(versionId: string) { try { localStorage.removeItem(keptKey(versionId)); } catch { /* nothing */ } }
+function readLocal(versionId: string): Kept | null {
+  try { const raw = localStorage.getItem(keptKey(versionId)); return raw ? (JSON.parse(raw) as Kept) : null; } catch { return null; }
+}
+
 /** The published version's table of a watermark source (step 3 says a change of it), else null. */
 const publishedTableOf = (s: SourceDto | null) => {
   const i = s?.published?.spec?.input;
@@ -186,7 +196,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const detect = useRef<Set<string>>(new Set());
   const heading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
-  const guard = useLeaveGuard(edited && !done && busy !== "submit");
+  // once the draft exists its edits are kept (autosave and the browser's copy): only a source not made yet can lose them
+  const guard = useLeaveGuard(edited && !ids && !done && busy !== "submit");
 
   const set = (fn: (d: Draft) => Draft) => { setDraft(fn); setEdited(true); };
   const err = (id: string) => problems[id] ?? (fieldErr?.id === id ? fieldErr.reason : undefined);
@@ -526,21 +537,31 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   }
 
   // Autosave (owner rule, 21 Nov: data entered in a step is never lost on a reload or a step back): the draft's spec is
-  // saved as soon as the step changes, else 800 ms after the last edit. Quiet: a spec the API refuses mid-edit (a CEL
-  // expression half typed) waits for the next change; Next still saves and shows what is wrong.
+  // saved as soon as the step changes, else 800 ms after the last edit. Until the server takes it (a spec it refuses
+  // mid-edit: "Rows can change" before its match key), the browser keeps a copy per draft version, restored on the next
+  // open while the server's draft is still the one the copy was made over. Quiet: Next still saves and reports.
+  const serverHash = useRef<string | null>(source?.v.specHash ?? null);
   const savedStep = useRef(step);
   useEffect(() => {
     if (!ids || saved.current === specKey) return;
+    keepLocal(ids.versionId, { base: serverHash.current, spec, from: d.from });
     const moved = savedStep.current !== step;
     const t = setTimeout(() => {
       savedStep.current = step;
       void api<SourceVersionDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}`), { method: "PATCH", body: JSON.stringify({ spec }) })
-        .then(() => { saved.current = specKey; }, () => {});
+        .then((v) => { saved.current = specKey; serverHash.current = v.specHash; dropLocal(ids.versionId); }, () => {});
     }, moved ? 0 : 800);
     return () => clearTimeout(t);
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specKey, ids, step, spaceId]);
+  // the copy kept by an earlier visit, once, after mount (localStorage is the browser's: never in the server render)
+  useEffect(() => {
+    if (!ids) return;
+    const kept = readLocal(ids.versionId);
+    if (kept && (kept.base === null || kept.base === serverHash.current)) setDraft((x) => ({ ...x, spec: kept.spec, from: kept.from }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function next() {
     setFormError(null);
