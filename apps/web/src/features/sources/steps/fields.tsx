@@ -225,7 +225,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead><TableHead>Use as</TableHead>
+                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Use as</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
                 <TableHead>Empty ok</TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -270,6 +270,7 @@ export function FieldsStep(p: FieldsStepProps) {
                         </span>
                       </TableCell>
                       <TableCell className="max-w-40 truncate font-mono text-mono text-fg-3 max-xl:col-span-2 max-xl:max-w-none"><Cap>Example</Cap>{examples.get(f.name)?.[0] ?? "—"}</TableCell>
+                      <TableCell className="max-xl:col-span-2"><Cap>Use as</Cap>{fieldPicker(f.name, String(i))}</TableCell>
                       <TableCell className="max-xl:col-span-2">
                         <Cap>Type</Cap>
                         <span className="grid gap-1">
@@ -282,7 +283,6 @@ export function FieldsStep(p: FieldsStepProps) {
                         </span>
                       </TableCell>
                       <TableCell className="max-xl:col-span-2"><Cap>Format</Cap><FormatCell f={f} i={i} setFormat={setFormat} err={err} /></TableCell>
-                      <TableCell className="max-xl:col-span-2"><Cap>Use as</Cap>{fieldPicker(f.name, String(i))}</TableCell>
                       <TableCell><span className="inline-flex items-center gap-2"><Checkbox label={`${f.name} may be empty`} checked={f.nullable} onToggle={() => setField(i, { nullable: !f.nullable })} /><Cap inline>Empty ok</Cap></span></TableCell>
                     </TableRow>
                   );
