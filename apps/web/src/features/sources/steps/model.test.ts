@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, codeOf, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, codeOf, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -78,5 +78,15 @@ describe("repeatedRows (a key that repeats in the preview)", () => {
   it("counts every row whose key another row has; no value is not counted", () => {
     expect(repeatedRows(["a", "b", "a", "c", "a", null, null], (x) => x)).toBe(3);
     expect(repeatedRows(["a", "b"], (x) => x)).toBe(0);
+  });
+});
+
+describe("mappingProblem: a recon field reading a column that is gone", () => {
+  it("names the column, for a column or a JSON value of it; the file name's date is fine", () => {
+    const base = { ...emptySpec("file_inbox"), fields: [{ name: "ref", type: "string" as const, nullable: false, trim: true }] };
+    expect(mappingProblem({ ...base, mapping: { ...base.mapping, ext_ref: { cel: 'json_value(row.payload, "data.rc")' } } }))
+      .toEqual({ id: "src-mapping-ext_ref", reason: "payload is no longer a column. Pick another column in Use as, or stop using this field." });
+    expect(mappingProblem({ ...base, mapping: { ...base.mapping, account_ref: { field: "acct" } } })?.id).toBe("src-mapping-account_ref");
+    expect(mappingProblem({ ...base, mapping: { ...base.mapping, ext_ref: { field: "ref" } } })).toBeNull();
   });
 });

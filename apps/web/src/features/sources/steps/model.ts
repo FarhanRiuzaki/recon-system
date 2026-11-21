@@ -1,8 +1,9 @@
 // The source wizard's working state and the rules its steps share (no React): what the user has typed, how a spec is
 // built from it, which control an API error belongs to, and which values a connection test ran with.
-import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
+import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { type AmountUnit, type ConnectionField, DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
 import { FILE_DATE } from "../spec-draft";
+import { computeSteps } from "@starterkit/shared/compute";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
 export type Conn = { engine: DbEngine; host: string; port: string; database: string; user: string; password: string; tls: boolean };
@@ -154,6 +155,14 @@ export function mappingProblem(s: SourceSpec): { id: string; reason: string } | 
   if (!s.fields.length) return { id: "src-columns", reason: "Read the columns first: a sample of the file, or the source's table." };
   const b = s.mapping.business_date;
   if ("field" in b && !b.field) return { id: ctl("mapping.business_date"), reason: "Pick where the business date comes from." };
+  // a recon field still reading a column that is gone (the sample or the table was read again without it)
+  const names = new Set([...s.fields.map((f) => f.name), ...Object.keys(s.derive)]);
+  for (const [k, r] of Object.entries(s.mapping)) {
+    if (k === "attrs" || !r || typeof r !== "object" || !("field" in r || "cel" in r)) continue;
+    const ref = r as ValueRef;
+    const col = "field" in ref ? ref.field : computeSteps(ref.cel)?.source;
+    if (col && !names.has(col)) return { id: ctl(`mapping.${k}`), reason: `${col} is no longer a column. Pick another column in Use as, or stop using this field.` };
+  }
   return null;
 }
 
