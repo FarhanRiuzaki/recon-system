@@ -78,8 +78,11 @@ export const LaneTitle = ({ x, label, count }: { x: number; label: string; count
 /** The board: dots on the canvas's surface (their colour from --xy-background-pattern-color, recon-canvas.css). */
 export const FlowBoard = () => <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} />;
 
-/** Fit options of both canvases: room for the lane titles, never past 100 % (a small graph stays at reading size). */
-export const FIT = { padding: 0.1, maxZoom: 1, minZoom: 0.3 } as const;
+/**
+ * Fit options of both canvases: a margin all round and room above for the lane titles (they sit 40 px over the nodes,
+ * outside the nodes' bounds), never past 100 % (a small graph stays at reading size).
+ */
+export const FIT = { padding: { top: "64px", right: "32px", bottom: "32px", left: "32px" }, maxZoom: 1, minZoom: 0.3 } as const;
 
 /**
  * The graph fits its card: again whenever `key` changes (another graph) and whenever the card resizes (the window, the
