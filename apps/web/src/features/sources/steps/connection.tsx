@@ -128,7 +128,8 @@ export function ConnectionStep(p: ConnectionStepProps) {
         <>
           <Server {...p} err={err} failed={failedOn === "src-connect" ? failed!.message : null} />
           {p.listed && <Data {...p} err={err} setInput={setInput} />}
-          {p.listed && <Pull {...p} err={err} setInput={setInput} setKind={setKind} />}
+          {/* how and when to pull needs no connection: a saved source shows it at once (the table picker above does) */}
+          {(p.listed || created) && <Pull {...p} err={err} setInput={setInput} setKind={setKind} />}
         </>
       ) : i.kind === "file_inbox" && <Folder {...p} err={err} setInput={setInput} />}
     </div>
