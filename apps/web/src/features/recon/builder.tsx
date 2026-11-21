@@ -429,8 +429,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
     spec.passes.length ? (
-      Sortable && sortable && !readOnly ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
-        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, onRemove: undefined, needs: [] } : {})} />)}</ol>
+      Sortable && sortable && !readOnly ? <Sortable rows={rows.map((x) => ({ ...x, results: false }))} onMove={(from, to) => move(from, to, false)} />
+        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, onRemove: undefined, needs: [] } : { results: false })} />)}</ol>
     ) : null
   );
   const addPass = (t: PassTemplate) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); };

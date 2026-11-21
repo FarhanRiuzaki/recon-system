@@ -31,6 +31,8 @@ export type PassRowProps = {
   needs?: readonly string[];
   /** An example of what it paired in the shown simulation, under its outcome. */
   example?: ReactNode;
+  /** false: the pass alone, no outcome column or connector (the setup's Matching step; results are the Test step's). */
+  results?: boolean;
 };
 /** A labelled part of a pass card: a small heading, then its content; a line between parts. */
 const Part = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -90,12 +92,12 @@ export type SortableBits = {
  * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
  * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, sortable }: PassRowProps & { sortable?: SortableBits }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, results = true, sortable }: PassRowProps & { sortable?: SortableBits }) {
   const dragging = !!sortable?.dragging;
   return (
     <li ref={sortable?.setNodeRef} style={sortable?.style}
       className={cn(dragging ? "relative z-10" : "motion-safe:transition-transform motion-safe:duration-(--dur-enter)")}>
-      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem]">
+      <div className={cn("grid gap-3", results ? "md:grid-cols-[minmax(0,1fr)_12rem]" : "mb-3")}>
         <div className={cn("flex min-w-0 items-start gap-1 rounded-md border bg-card p-3", selected ? "border-fg shadow-sm" : "border-line", dragging && "shadow-overlay")}>
           {editable && (
             <button ref={sortable?.setActivatorNodeRef} type="button" {...sortable?.handle} aria-label={`Drag pass ${pass.no}`}
@@ -119,7 +121,7 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
             </button>
           )}
         </div>
-        <div className={cn("grid content-start gap-3 rounded-md border border-dashed border-line p-3 text-caption text-fg-3", sim?.dim && "opacity-60")}>
+        {results && <div className={cn("grid content-start gap-3 rounded-md border border-dashed border-line p-3 text-caption text-fg-3", sim?.dim && "opacity-60")}>
           {sim?.outcome.length ? sim.outcome.map((o) => (
             <span key={o.tag} className="grid gap-0.5">
               <span className={cn("justify-self-start rounded-sm px-1.5 py-0.5 text-label", o.tone === "warn" ? "bg-degraded-soft text-degraded-ink" : "bg-tray text-fg-2")}>{o.tag}</span>
@@ -130,10 +132,10 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
             <span className="grid gap-1"><span className="text-label text-fg-2">{pass.accept === "auto" ? "Matched" : "Suggested"}</span><span>{DASH}</span></span>
           )}
           {example}
-        </div>
+        </div>}
       </div>
       {notes.map((n) => <p key={n} className="flex items-start gap-1.5 pt-1.5 text-caption text-degraded-ink"><Icon icon={WarningIcon} className="mt-px size-3.5 shrink-0" />{n}</p>)}
-      <Connector text={sim ? sim.connector : undefined} dim={sim?.dim} />
+      {results && <Connector text={sim ? sim.connector : undefined} dim={sim?.dim} />}
     </li>
   );
 }
