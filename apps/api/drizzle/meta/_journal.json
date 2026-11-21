@@ -225,6 +225,20 @@
       "when": 1795199482916,
       "tag": "0031_engine_close_fixes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795222461177,
+      "tag": "0032_engine_run_days",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795222747311,
+      "tag": "0033_engine_analyze_table",
+      "breakpoints": true
     }
   ]
 }

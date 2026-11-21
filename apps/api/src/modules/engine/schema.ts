@@ -45,6 +45,8 @@ export const reconRuns = pgTable("recon_runs", {
    * text): a step's intake commits before its passes (statistics in between), and a second delivery skips it.
    */
   intakeDone: text("intake_done"),
+  /** Per business date and pass what the run left (ReconRunDto.days), written when it succeeds; null before (and for runs before 0032). */
+  days: jsonb("days"),
   /**
    * Per business date and side, the source's complete_through read just before that side's intake of the date
    * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close
@@ -81,7 +83,7 @@ export const reconItems = pgTable("recon_items", {
   status: text("status").notNull().default("open"),
   businessDate: date("business_date").notNull(),
   breakReason: text("break_reason"),
-  /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break or none. */
+  /** The pass that broke it (on_ambiguous break: Duplicate / Ambiguous); null for another break, and for breaks before 0029. */
   breakPass: smallint("break_pass"),
   /**
    * A "No counterpart" break (grace or day close, Task 6): within carry over it stays a candidate of every pass of later

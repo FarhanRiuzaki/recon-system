@@ -71,6 +71,11 @@
         ],
         "additionalProperties": false
       }
+    },
+    "memberCount": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
     }
   },
   "required": [
@@ -79,7 +84,8 @@
     "kind",
     "businessDate",
     "evidence",
-    "members"
+    "members",
+    "memberCount"
   ],
   "additionalProperties": false
 }

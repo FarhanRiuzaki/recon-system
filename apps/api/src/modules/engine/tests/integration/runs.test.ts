@@ -167,6 +167,30 @@ describe("runs and simulations through the API", () => {
     expect((await getRun(r.configId, runs[0]!.id)).status).toBe("succeeded");
   });
 
+  it("a reference broken again on a later date counts once for the run, once per day in days", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "X", amount: 100n, date: D }, { ref: "X", amount: 100n, date: D }, { ref: "X", amount: 100n, date: D1 }, { ref: "X", amount: 100n, date: D1 }]);
+    await put(sb, [{ ref: "X", amount: 100n, date: D }, { ref: "X", amount: 100n, date: D1 }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 0));
+    const q = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D1 }));
+    await drain();
+    const done = await getRun(r.configId, q.id);
+    expect(done.counters.passes["1"]).toMatchObject({ broken: 6, brokenRefs: 1, brokenItems: { a: 4, b: 2 } });
+    expect(done.days!.map((d) => [d.date, d.passes["1"]!.broken, d.passes["1"]!.brokenRefs])).toEqual([[D, 3, 1], [D1, 3, 1]]);
+  });
+
+  it("a group's members are capped at 50 with its member count", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "S", amount: 6000n, sref: "B1" }]);
+    await put(sb, Array.from({ length: 60 }, () => ({ ref: "S", amount: 100n, sref: "B1" })));
+    const sum = { no: 1, name: "Batch", cardinality: "1:N", blocking: ["attrs.settlement_ref"], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq_sum", field: "amount_minor" }, ccyEq] };
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [sum]));
+    const q = await json<ReconRunDto>(startRun(t.op, r.configId));
+    await drain();
+    const [row] = (await items(r.configId, q.id, "side=a")).items;
+    expect([row!.group!.memberCount, row!.group!.members.length, row!.group!.members[0]!.side]).toEqual([61, 50, "a"]);
+  });
+
   it("the reaper: a run whose job is over while the run is not is failed at the next request", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
@@ -403,6 +427,7 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     // a pair is one row: the item's group has both sides' records
     const [row] = (await items(gate.configId, q.id, "pass=2&side=a&pageSize=15")).items;
     expect(row!.group!.members.map((m) => [m.side, m.extRef === row!.extRef, m.currency])).toEqual([["a", true, "IDR"], ["b", true, "IDR"]]);
+    expect(row!.group!.memberCount).toBe(2);
     expect(BigInt(row!.group!.members[1]!.amountMinor!) - BigInt(row!.group!.members[0]!.amountMinor!)).toBe(50000n);
   }, 60_000);
 
@@ -419,7 +444,9 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     expect(v.simulatedHash).toBe(v.specHash);
     // day close as the simulation projects it (the classifier day close uses; nothing broken): 24 waiting per side
     const atClose = { "Currency differs": 3, "Amount differs": 1, "No counterpart": 20 };
-    expect([done.projection?.a, done.projection?.b]).toEqual([atClose, atClose]);
+    expect([done.projection?.a, done.projection?.b, done.projection?.unconfirmed]).toEqual([atClose, atClose, { a: 24, b: 24 }]);
+    const perDayUnconfirmed = done.projection!.days.reduce((n, d) => n + d.unconfirmed.a, 0);
+    expect(perDayUnconfirmed).toBe(24);
     const perDay = (k: "a" | "b") => done.projection!.days.reduce((n, d) => n + Object.values(d[k]).reduce((x, y) => x + y, 0), 0);
     expect([perDay("a"), perDay("b"), done.counters.open]).toEqual([24, 24, { a: 24, b: 24 }]);
     expect(Object.keys(done.counters)).not.toContain("projection");

@@ -92,13 +92,19 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "memberCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
                   "id",
                   "passNo",
                   "kind",
-                  "members"
+                  "members",
+                  "memberCount"
                 ],
                 "additionalProperties": false
               },
@@ -176,13 +182,19 @@
                       ],
                       "additionalProperties": false
                     }
+                  },
+                  "memberCount": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
                   }
                 },
                 "required": [
                   "id",
                   "passNo",
                   "kind",
-                  "members"
+                  "members",
+                  "memberCount"
                 ],
                 "additionalProperties": false
               },

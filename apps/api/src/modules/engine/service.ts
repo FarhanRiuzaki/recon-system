@@ -22,8 +22,9 @@ import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
-import { type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
-import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
+import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { unionAll } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
 import { log } from "../../kernel/log";
@@ -39,7 +40,7 @@ import { matchGroups, matchMembers, reconItems, reconRuns, reconSimChanges } fro
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
-import { analyzeSql } from "./sql/runs";
+import { analyzeSql, analyzeTableSql } from "./sql/runs";
 import { acceptSql, clearProposalsSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
@@ -284,12 +285,29 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       )).groupBy(reconItems.side);
       counters.open = { a: 0, b: 0 };
       for (const r of open) counters.open[r.side as "a" | "b"] = r.n;
+      const { days, refs } = await daysOf(tx, {
+        spaceId, configId, simRunId, passes: spec.passes.map((p) => p.no), first, from: run.dateFrom, to,
+        recordSpaces: [...new Set([spaceId, ...sides.map((x) => x.sourceSpaceId)])],
+      });
+      // a reference broken on two dates of the run counts once: the steps counted it per date, the window's breaks count
+      // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
+      // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
+      for (const p of spec.passes) {
+        const pc = counters.passes[String(p.no)]!;
+        pc.brokenRefs = Math.min(pc.brokenRefs, refs.get(p.no) ?? 0);
+      }
       // succeeded first (only while running, under the row lock), then what comes with it
-      await tx.update(reconRuns).set({ counters, status: "succeeded", finishedAt: sql`now()` }).where(and(mine, eq(reconRuns.status, "running")));
+      await tx.update(reconRuns).set({ counters, days, status: "succeeded", finishedAt: sql`now()` }).where(and(mine, eq(reconRuns.status, "running")));
       await o.finish?.(tx);
       return counters;
     });
-    return counters === "over" ? null : { runId, counters };
+    if (counters === "over") return null;
+    // the result screens read the groups right after: their statistics now, in short transactions of their own
+    const groups = Object.values(counters.passes).reduce((n, p) => n + p.matched + p.suggested, 0);
+    const members = Object.values(counters.passes).reduce((n, p) => n + p.matchedItems.a + p.matchedItems.b + p.suggestedItems.a + p.suggestedItems.b, 0);
+    await on.transaction((tx) => one(tx, analyzeTableSql("match_groups", groups)));
+    await on.transaction((tx) => one(tx, analyzeTableSql("match_members", members)));
+    return { runId, counters };
   } catch (e) {
     if (e instanceof RunAborted) throw e;
     // a person reads `error`: an ApiError's sentence, never a query's text (Drizzle's message holds the SQL and its values)
@@ -300,21 +318,38 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
 }
 
 /**
- * A draft simulation's projection of day close (Captain): its open items of the run's window (its dates and the carry
- * over before them) counted per side, reason and date through classifyUnmatched, the classifier day close uses. Writes
- * nothing; the simulation's job stores it with the run (counters.projection), so reads stay cheap.
+ * A draft simulation's projection of day close (Captain), writing nothing: its open items through classifyUnmatched
+ * (the near-miss classifier day close uses) per side, reason and date, and apart from them its unconfirmed suggestions
+ * (items of suggested groups, which day close breaks too, DEC-046) per side and group date, over the run's window: its
+ * dates and the carry over before them (the classifier then looks for counterparts carry over further back, as a day
+ * close of `from` would). The simulation's job stores it with the run (counters.projection), so reads stay cheap.
  */
 export async function projectDayClose(tx: InTx, run: RunRow): Promise<RunProjection> {
   const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
     .where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId)));
   const from = addDays(run.dateFrom, -ReconSpec.parse(v!.spec).carry_over_days);
   const misses = await classifyUnmatched(tx, { spaceId: run.spaceId, configId: run.configId, versionId: run.configVersionId, simRunId: run.id, from, to: run.dateTo });
-  const out: RunProjection = { a: {}, b: {}, days: [] };
+  const suggested = await tx.select({ side: reconItems.side, d: matchGroups.businessDate, n: count() }).from(reconItems)
+    .innerJoin(matchMembers, and(eq(matchMembers.spaceId, reconItems.spaceId), eq(matchMembers.itemId, reconItems.id)))
+    .innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId), eq(matchGroups.kind, "suggested"), isNull(matchGroups.reversedBy)))
+    .where(and(eq(reconItems.spaceId, run.spaceId), eq(reconItems.configId, run.configId), eq(reconItems.simRunId, run.id), eq(reconItems.status, "suggested"),
+      sql`${matchGroups.businessDate} between ${from}::date and ${run.dateTo}::date`))
+    .groupBy(reconItems.side, matchGroups.businessDate);
+  const out: RunProjection = { a: {}, b: {}, unconfirmed: { a: 0, b: 0 }, days: [] };
+  const dayOf = (date: string) => {
+    let day = out.days.find((d) => d.date === date);
+    if (!day) out.days.push((day = { date, a: {}, b: {}, unconfirmed: { a: 0, b: 0 } }));
+    return day;
+  };
   for (const m of misses) {
     out[m.side][m.reason] = (out[m.side][m.reason] ?? 0) + 1;
-    let day = out.days.find((d) => d.date === m.businessDate);
-    if (!day) out.days.push((day = { date: m.businessDate, a: {}, b: {} }));
-    day[m.side][m.reason] = (day[m.side][m.reason] ?? 0) + 1;
+    const day = dayOf(m.businessDate)[m.side];
+    day[m.reason] = (day[m.reason] ?? 0) + 1;
+  }
+  for (const r of suggested) {
+    const side = r.side as "a" | "b";
+    out.unconfirmed[side] += r.n;
+    dayOf(r.d).unconfirmed[side] += r.n;
   }
   out.days.sort((x, y) => x.date.localeCompare(y.date));
   return out;
@@ -406,45 +441,50 @@ async function runOfConfig(tx: InTx, spaceId: string, configId: string, runId: s
   return r;
 }
 
-/** The run as answered (also the answer of a run or simulation request); `withDays` adds its `days` (GET run). */
+/** The run as answered (also the answer of a run or simulation request); `withDays` adds its stored `days` (GET run). */
 export async function runRow(tx: InTx, spaceId: string, configId: string, runId: string, withDays = false): Promise<ReconRunDto> {
   const run = await runOfConfig(tx, spaceId, configId, runId);
   const dto = (await runDtos(tx, spaceId, [run]))[0]!;
-  return withDays ? { ...dto, days: await runDays(tx, spaceId, run) } : dto;
+  return withDays ? { ...dto, days: (run.days as RunDay[] | null) ?? null } : dto;
 }
 
 /**
- * ReconRunDto.days, read now with three GROUP BYs over the run's window (its dates and the carry over before them):
- * groups per (date, pass, kind), broken items per (date, pass) with distinct references, open items per (date, side).
+ * A run's days (ReconRunDto.days) and its passes' distinct broken references, over its window `first`..`to` (its dates
+ * and the carry over before them) as the items stand when it ends: groups per (date, pass, kind), broken items per (date,
+ * pass) with distinct references (per day: a reference broken on two dates counts on each), open items per (date, side);
+ * and per pass the distinct references of the window's items it broke (each once). Run once, at the run's
+ * end in the worker, and stored with the run (recon_runs.days): a GET never scans the groups of 31 days (S1: ~200k a day).
  */
-async function runDays(tx: InTx, spaceId: string, run: RunRow): Promise<RunDay[]> {
-  const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
-  const first = addDays(run.dateFrom, -spec.carry_over_days);
-  const sim = run.mode === "simulation";
-  const itemsIn = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, run.configId), sim ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId),
-    sql`${reconItems.businessDate} between ${first}::date and ${run.dateTo}::date`);
+async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId: string | null; passes: number[]; first: string; from: string; to: string; recordSpaces: string[] }):
+  Promise<{ days: RunDay[]; refs: Map<number, number> }> {
+  const itemsIn = and(eq(reconItems.spaceId, w.spaceId), eq(reconItems.configId, w.configId), w.simRunId ? eq(reconItems.simRunId, w.simRunId) : isNull(reconItems.simRunId),
+    sql`${reconItems.businessDate} between ${w.first}::date and ${w.to}::date`);
   const groups = await tx.select({ d: matchGroups.businessDate, pass: matchGroups.passNo, kind: matchGroups.kind, n: count() }).from(matchGroups)
-    .where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.configId, run.configId), sim ? eq(matchGroups.simRunId, run.id) : isNull(matchGroups.simRunId),
-      isNull(matchGroups.reversedBy), sql`${matchGroups.businessDate} between ${first}::date and ${run.dateTo}::date`))
+    .where(and(eq(matchGroups.spaceId, w.spaceId), eq(matchGroups.configId, w.configId), w.simRunId ? eq(matchGroups.simRunId, w.simRunId) : isNull(matchGroups.simRunId),
+      isNull(matchGroups.reversedBy), sql`${matchGroups.businessDate} between ${w.first}::date and ${w.to}::date`))
     .groupBy(matchGroups.businessDate, matchGroups.passNo, matchGroups.kind);
+  const brokenRecord = and(inArray(records.spaceId, w.recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
+  const isBroken = and(itemsIn, eq(reconItems.status, "break"), isNotNull(reconItems.breakPass));
   const broken = await tx.select({ d: reconItems.businessDate, pass: reconItems.breakPass, n: count(), refs: countDistinct(records.extRef) }).from(reconItems)
-    .leftJoin(records, and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
-    .where(and(itemsIn, eq(reconItems.status, "break"), isNotNull(reconItems.breakPass))).groupBy(reconItems.businessDate, reconItems.breakPass);
+    .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.businessDate, reconItems.breakPass);
+  const refs = await tx.select({ pass: reconItems.breakPass, refs: countDistinct(records.extRef) }).from(reconItems)
+    .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.breakPass);
   const open = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
     .where(and(itemsIn, eq(reconItems.status, "open"))).groupBy(reconItems.businessDate, reconItems.side);
   const dates = new Set<string>();
-  for (let d = run.dateFrom; d <= run.dateTo; d = addDays(d, 1)) dates.add(d);
+  for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
   for (const r of [...groups, ...broken, ...open]) dates.add(r.d);
-  return [...dates].sort().map((date): RunDay => ({
+  const days = [...dates].sort().map((date): RunDay => ({
     date,
-    passes: Object.fromEntries(spec.passes.map((p) => [String(p.no), {
-      matched: groups.find((g) => g.d === date && g.pass === p.no && g.kind === "auto")?.n ?? 0,
-      suggested: groups.find((g) => g.d === date && g.pass === p.no && g.kind === "suggested")?.n ?? 0,
-      broken: broken.find((b) => b.d === date && b.pass === p.no)?.n ?? 0,
-      brokenRefs: broken.find((b) => b.d === date && b.pass === p.no)?.refs ?? 0,
+    passes: Object.fromEntries(w.passes.map((no) => [String(no), {
+      matched: groups.find((g) => g.d === date && g.pass === no && g.kind === "auto")?.n ?? 0,
+      suggested: groups.find((g) => g.d === date && g.pass === no && g.kind === "suggested")?.n ?? 0,
+      broken: broken.find((b) => b.d === date && b.pass === no)?.n ?? 0,
+      brokenRefs: broken.find((b) => b.d === date && b.pass === no)?.refs ?? 0,
     }])),
     open: { a: open.find((o) => o.d === date && o.side === "a")?.n ?? 0, b: open.find((o) => o.d === date && o.side === "b")?.n ?? 0 },
   }));
+  return { days, refs: new Map(refs.map((r) => [r.pass!, r.refs])) };
 }
 
 /**
@@ -459,16 +499,26 @@ async function versionRead(tx: InTx, spaceId: string, versionId: string): Promis
   return { spec, recordSpaces: [...new Set([spaceId, ...[...found.values()].map((s) => s.spaceId)])] };
 }
 
-/** The members of groups `ids` (both sides, side then record order), their records read in `recordSpaces`. */
-async function membersOf(tx: InTx, spaceId: string, ids: string[], recordSpaces: string[]): Promise<Map<string, RunGroupMember[]>> {
-  const out = new Map<string, RunGroupMember[]>();
+/**
+ * The members of groups `ids` (their records read in `recordSpaces`), at most GROUP_MEMBERS_MAX per group (side A
+ * first; a group pass can hold thousands), with each group's member count.
+ */
+async function membersOf(tx: InTx, spaceId: string, ids: string[], recordSpaces: string[]): Promise<Map<string, { members: RunGroupMember[]; count: number }>> {
+  const out = new Map<string, { members: RunGroupMember[]; count: number }>();
   if (!ids.length) return out;
-  const rows = await tx.select({ id: matchMembers.groupId, side: matchMembers.side, recordId: reconItems.recordId, date: reconItems.businessDate, ref: records.extRef, amount: records.amountMinor, ccy: records.currency })
-    .from(matchMembers).innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId)))
+  const ranked = tx.select({
+    groupId: matchMembers.groupId, side: matchMembers.side, itemId: matchMembers.itemId,
+    rn: sql<number>`row_number() over (partition by ${matchMembers.groupId} order by ${matchMembers.side}, ${matchMembers.itemId})`.as("rn"),
+    n: sql<number>`count(*) over (partition by ${matchMembers.groupId})`.mapWith(Number).as("n"),
+  }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), inArray(matchMembers.groupId, ids))).as("m");
+  const rows = await tx.select({ id: ranked.groupId, side: ranked.side, n: ranked.n, recordId: reconItems.recordId, date: reconItems.businessDate, ref: records.extRef, amount: records.amountMinor, ccy: records.currency })
+    .from(ranked).innerJoin(reconItems, and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, ranked.itemId)))
     .leftJoin(records, and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
-    .where(and(eq(matchMembers.spaceId, spaceId), inArray(matchMembers.groupId, ids))).orderBy(asc(matchMembers.side), asc(reconItems.recordId));
+    .where(lte(ranked.rn, GROUP_MEMBERS_MAX)).orderBy(asc(ranked.side), asc(reconItems.recordId));
   for (const r of rows) {
-    out.set(r.id, [...(out.get(r.id) ?? []), { side: r.side as "a" | "b", recordId: r.recordId, extRef: r.ref, amountMinor: r.amount?.toString() ?? null, currency: r.ccy, businessDate: r.date }]);
+    const g = out.get(r.id) ?? { members: [], count: Number(r.n) };
+    g.members.push({ side: r.side as "a" | "b", recordId: r.recordId, extRef: r.ref, amountMinor: r.amount?.toString() ?? null, currency: r.ccy, businessDate: r.date });
+    out.set(r.id, g);
   }
   return out;
 }
@@ -504,24 +554,35 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
   return inSpace(ctx, async (tx, spaceId) => {
     const run = await runOfConfig(tx, spaceId, configId, runId);
     const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
+    const scopeI = run.mode === "simulation" ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId);
+    const scopeG = run.mode === "simulation" ? eq(matchGroups.simRunId, run.id) : isNull(matchGroups.simRunId);
+    // the item's group now: a group of the run's scope it is a member of, not reversed. A plain join of members and
+    // groups, so the planner joins it by hash or index (a correlated IN in the join condition compared every item with
+    // every group: past the 5 s timeout at 5,000 items a side)
+    const cur = tx.select({
+      itemId: matchMembers.itemId, id: matchGroups.id, passNo: matchGroups.passNo, kind: matchGroups.kind, businessDate: matchGroups.businessDate, evidence: matchGroups.evidence,
+    }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
+      .where(and(eq(matchMembers.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy))).as("cur");
     const where = and(
       eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId),
-      run.mode === "simulation" ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId),
+      scopeI,
       sql`${reconItems.businessDate} between ${addDays(run.dateFrom, -spec.carry_over_days)}::date and ${run.dateTo}::date`,
       q.status ? eq(reconItems.status, q.status) : undefined, q.side ? eq(reconItems.side, q.side) : undefined,
-      q.pass ? or(eq(matchGroups.passNo, q.pass), eq(reconItems.breakPass, q.pass)) : undefined,
+      // pass: its groups' members or the items it broke, one branch each
+      q.pass ? inArray(reconItems.id, unionAll(
+        tx.select({ id: matchMembers.itemId }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
+          .where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy), eq(matchGroups.passNo, q.pass))),
+        tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), scopeI, eq(reconItems.breakPass, q.pass))),
+      )) : undefined,
       // the date it counts on: its group's (the latest member's, so its own is within carry over before it), else its own
       q.date ? and(sql`${reconItems.businessDate} between ${addDays(q.date, -spec.carry_over_days)}::date and ${q.date}::date`,
-        sql`coalesce(${matchGroups.businessDate}, ${reconItems.businessDate}) = ${q.date}::date`) : undefined,
+        sql`coalesce(${cur.businessDate}, ${reconItems.businessDate}) = ${q.date}::date`) : undefined,
     );
-    // the item's group now: a group it is a member of that was not reversed
-    const group = and(eq(matchGroups.spaceId, reconItems.spaceId), isNull(matchGroups.reversedBy), inArray(matchGroups.id,
-      tx.select({ id: matchMembers.groupId }).from(matchMembers).where(and(eq(matchMembers.spaceId, reconItems.spaceId), eq(matchMembers.itemId, reconItems.id)))));
     const record = and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     const page = await pageQuery({
-      rows: tx.select({ i: reconItems, g: matchGroups, ref: records.extRef, amount: records.amountMinor, ccy: records.currency })
-        .from(reconItems).leftJoin(matchGroups, group).leftJoin(records, record).where(where).$dynamic(),
-      count: tx.select(countOne).from(reconItems).leftJoin(matchGroups, group).where(where).$dynamic(),
+      rows: tx.select({ i: reconItems, g: { id: cur.id, passNo: cur.passNo, kind: cur.kind, businessDate: cur.businessDate, evidence: cur.evidence }, ref: records.extRef, amount: records.amountMinor, ccy: records.currency })
+        .from(reconItems).leftJoin(cur, eq(cur.itemId, reconItems.id)).leftJoin(records, record).where(where).$dynamic(),
+      count: tx.select(countOne).from(reconItems).leftJoin(cur, eq(cur.itemId, reconItems.id)).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate }, "businessDate", reconItems.id),
       query: q, on: tx, map: (r) => r,
     });
@@ -531,7 +592,7 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
       items: page.items.map(({ i, g, ref, amount, ccy }): ReconRunItemDto => ({
         id: i.id, recordId: i.recordId, side: i.side as "a" | "b", status: i.status as ItemStatus, businessDate: i.businessDate, breakReason: i.breakReason,
         breakPass: i.breakPass, extRef: ref, amountMinor: amount?.toString() ?? null, currency: ccy,
-        group: g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, businessDate: g.businessDate, evidence: g.evidence, members: members.get(g.id) ?? [] } : null,
+        group: g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, businessDate: g.businessDate, evidence: g.evidence, members: members.get(g.id)?.members ?? [], memberCount: members.get(g.id)?.count ?? 0 } : null,
       })),
     };
   });
@@ -559,7 +620,7 @@ export function simChangePage(ctx: Ctx, configId: string, runId: string, q: Reco
     const members = await membersOf(tx, spaceId, ids, recordSpaces);
     const groupOf = (id: string | null) => {
       const g = groups.find((x) => x.id === id);
-      return g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, members: members.get(g.id) ?? [] } : null;
+      return g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, members: members.get(g.id)?.members ?? [], memberCount: members.get(g.id)?.count ?? 0 } : null;
     };
     return {
       ...page,

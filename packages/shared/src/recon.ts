@@ -61,6 +61,8 @@ export type GroupKind = (typeof GROUP_KINDS)[number];
  */
 export const SIM_CHANGES = ["gained", "lost", "repaired", "kind"] as const;
 export type SimChange = (typeof SIM_CHANGES)[number];
+/** Members a run's screens get per group (RunGroupDto.members); `memberCount` tells how many it has. */
+export const GROUP_MEMBERS_MAX = 50;
 /** The most business dates one run or simulation covers. */
 export const RUN_RANGE_MAX_DAYS = 31;
 

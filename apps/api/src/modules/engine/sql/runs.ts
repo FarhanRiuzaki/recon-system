@@ -13,6 +13,10 @@ import { matchGroups, matchMembers, reconItems, reconSimChanges } from "../schem
 export const analyzeSql = (table: "records" | "recon_items", lo: string, hi: string, added: number): SQL =>
   sql`select recon_analyze_month_partitions(${table}::regclass, ${lo}::date, ${hi}::date, ${added}::int) as n`;
 
+/** Refreshes match_groups' or match_members' statistics after a run wrote `added` rows (recon_analyze_table, 0033). */
+export const analyzeTableSql = (table: "match_groups" | "match_members", added: number): SQL =>
+  sql`select recon_analyze_table(${table}::regclass, ${added}::int) as analyzed`;
+
 /**
  * Writes simulation `runId`'s changes against simulation `baselineId` (null: no published version, every pair gained)
  * into recon_sim_changes, one row per changed pair of live (not reversed) groups, compared by their records' ids (each
@@ -37,3 +41,4 @@ export function changesSql(spaceId: string, runId: string, baselineId: string | 
   select count(*) filter (where change = 'gained')::int as gained, count(*) filter (where change = 'lost')::int as lost,
     count(*) filter (where change = 'repaired')::int as repaired, count(*) filter (where change = 'kind')::int as kind from ins`;
 }
+

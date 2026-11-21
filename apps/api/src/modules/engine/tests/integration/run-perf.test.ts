@@ -15,7 +15,8 @@ import { records } from "../../../ingest";
 import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
-import { classifyUnmatched, runRecon } from "../../service";
+import type { Ctx } from "../../../auth";
+import { classifyUnmatched, runDetail, runItemPage, runRecon } from "../../service";
 
 const A = Bun.randomUUIDv7();
 const D = "2026-11-02";
@@ -68,6 +69,19 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
       const t0 = performance.now();
       const run = await runRecon(probe, { spaceId: A, configId, versionId, mode: "manual", from: D });
       console.log(`run ${n}/side: ${Math.round(performance.now() - t0)} ms`, JSON.stringify(run.counters.passes));
+      // the reads of the results screen on the API's pool (5 s statement timeout): the run with its days, items of pass 1
+      const ctx = { space: { id: A, roles: [] }, user: { id: A } } as unknown as Ctx;
+      const q = { page: 1, pageSize: 100 } as const;
+      for (const [name, read] of [
+        ["GET run", () => runDetail(ctx, configId, run.runId)],
+        ["items pass=1", () => runItemPage(ctx, configId, run.runId, { ...q, pass: 1 })],
+        ["items pass=2 page 2", () => runItemPage(ctx, configId, run.runId, { ...q, pass: 2, page: 2 })],
+        [`items date=${D}`, () => runItemPage(ctx, configId, run.runId, { ...q, date: D })],
+      ] as const) {
+        const t1 = performance.now();
+        await read();
+        console.log(`  ${name}: ${Math.round(performance.now() - t1)} ms`);
+      }
       const offs = Math.floor(n / 33);
       expect(run.counters.passes).toMatchObject({ 1: { matched: n - offs, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: offs, broken: 0 } });
       // the near-miss classifier at its worst: no pass, every item open with a counterpart (day close, projection)

@@ -52,6 +52,11 @@ async function groupsOf(configId: string, runId?: string) {
   return [...by.values()];
 }
 const refsOf = (gs: { refs: string[] }[]) => [...new Set(gs.flatMap((g) => g.refs))].sort();
+/** A run's per-side count; a 1:1 pass's counters (its items per side follow from its groups; broken split evenly). */
+const side = (a: number, b = a) => ({ a, b });
+const pass = (matched: number, suggested: number, broken: number, brokenRefs: number) => ({
+  matched, suggested, broken, brokenRefs, matchedItems: side(matched), suggestedItems: side(suggested), brokenItems: side(broken / 2),
+});
 
 describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 2026", () => {
   let gate: Awaited<ReturnType<typeof recon>>;
@@ -76,10 +81,8 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const run = await runRecon(probe, { ...gate, mode: "manual", from: "2026-11-02", to: "2026-11-05" });
     console.log(`gate run 2–5 Nov: ${Math.round(performance.now() - t0)} ms`);
     firstRun = run.runId;
-    expect(run.counters).toMatchObject({
-      intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 },
-      passes: { 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } },
-      open: { a: 24, b: 24 },
+    expect(run.counters).toEqual({
+      intake: side(1000), replaced: side(0), passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) }, open: side(24),
     });
 
     const groups = await groupsOf(gate.configId);
@@ -143,10 +146,8 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
   it("Focus 3: the same run again changes nothing (no group, no item moved)", async () => {
     const before = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const again = await runRecon(probe, { ...gate, mode: "rerun", from: "2026-11-02", to: "2026-11-05" });
-    expect(again.counters).toMatchObject({
-      intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 },
-      passes: { 1: { matched: 0, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: 0, broken: 0 }, 3: { matched: 0, suggested: 0, broken: 0 } },
-      open: { a: 24, b: 24 },
+    expect(again.counters).toEqual({
+      intake: side(0), replaced: side(0), passes: { 1: pass(0, 0, 0, 0), 2: pass(0, 0, 0, 0), 3: pass(0, 0, 0, 0) }, open: side(24),
     });
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(before);
     expect((await groupsOf(gate.configId, firstRun)).length).toBe(961);
@@ -157,7 +158,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
     const draft = Bun.randomUUIDv7();
     await db.insert(reconConfigVersions).values({ id: draft, configId: gate.configId, spaceId: A, version: 2, status: "draft", spec: gateSpec(...gateSides), specHash: "h2", makerId: U });
     const sim = await runRecon(probe, { ...gate, versionId: draft, mode: "simulation", from: "2026-11-02", to: "2026-11-05" });
-    expect(sim.counters.passes).toMatchObject({ 1: { matched: 937, suggested: 0, broken: 30 }, 2: { matched: 0, suggested: 14, broken: 0 }, 3: { matched: 0, suggested: 10, broken: 0 } });
+    expect(sim.counters.passes).toEqual({ 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) });
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
     expect((await db.select({ n: sql<number>`count(*)::int` }).from(reconItems).where(eq(reconItems.simRunId, sim.runId)))[0]!.n).toBe(2000);
     expect([await itemsOf(gate.configId), await groupsOf(gate.configId)]).toEqual(live);

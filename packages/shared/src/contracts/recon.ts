@@ -219,8 +219,9 @@ export type RunRangeBody = z.infer<typeof RunRangeBody>;
 const PerSide = z.object({ a: z.number().int(), b: z.number().int() });
 /**
  * What a pass did over a run: groups it matched, groups it suggested, items it broke as ambiguous (Duplicate) and their
- * distinct references; the items of each per side (a group pass pairs one item with n). A run before these fields
- * has the first three only.
+ * distinct references (GET run: counted now over the run's window, so a reference broken on two dates counts once; a
+ * list row: as its steps counted them); the items of each per side (a group pass pairs one item with n). A run before
+ * these fields has the first three only.
  */
 export const PassCounters = z.object({
   matched: z.number().int(), suggested: z.number().int(), broken: z.number().int(), brokenRefs: z.number().int().optional(),
@@ -234,7 +235,8 @@ export const SimChangeCounts = z.object({ gained: z.number().int(), lost: z.numb
 /**
  * A business date of a run as it stands now (the run's own items for a simulation, the live ones otherwise): per pass,
  * groups matched and suggested on that date (a group counts on its latest member's date) and items broken there with
- * their distinct references; items still open per side on their own date. Every date of the run, and a carry-over date
+ * their distinct references (per day: a reference broken on two dates counts on each); items still open per side on
+ * their own date. Every date of the run, and a carry-over date
  * before it when it has any.
  */
 export const RunDay = z.object({
@@ -246,12 +248,15 @@ export type RunDay = z.infer<typeof RunDay>;
 /** Waiting items per reason they would break with ("Currency differs", "Amount differs", "Date differs", "No counterpart"). */
 const ByReason = z.record(z.string(), z.number().int());
 /**
- * A simulation's projection of day close (no break written): its waiting items per side by the reason day close would
- * give them, with the classifier day close uses; per business date too.
+ * A simulation's projection of day close (no break written), by day close's own rules: its waiting items per side by
+ * the reason they would break with (`a`, `b`: "Currency differs", "Amount differs", "Date differs", "No counterpart",
+ * the classifier day close uses), and apart from them its unconfirmed suggestions (`unconfirmed`: items per side),
+ * which day close breaks too (DEC-046); per business date too (a waiting item on its own date, a suggestion on its
+ * group's).
  */
 export const RunProjection = z.object({
-  a: ByReason, b: ByReason,
-  days: z.array(z.object({ date: z.string(), a: ByReason, b: ByReason })),
+  a: ByReason, b: ByReason, unconfirmed: PerSide,
+  days: z.array(z.object({ date: z.string(), a: ByReason, b: ByReason, unconfirmed: PerSide })),
 });
 export type RunProjection = z.infer<typeof RunProjection>;
 
@@ -317,6 +322,8 @@ export type RunGroupMember = z.infer<typeof RunGroupMember>;
  */
 export const RunGroupDto = z.object({
   id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), businessDate: z.string(), evidence: z.unknown(), members: z.array(RunGroupMember),
+  /** All its members; `members` holds the first GROUP_MEMBERS_MAX (side A first, then by record). */
+  memberCount: z.number().int(),
 });
 /**
  * An item of a run: its record's reference, amount (minor units, signed as the record has it, as text) and currency,
@@ -342,7 +349,7 @@ export type ReconRunItemDto = z.infer<typeof ReconRunItemDto>;
 export const ReconSimChangeQuery = ListQuery.omit({ q: true, sort: true }).extend({ change: z.enum(SIM_CHANGES).optional() });
 export type ReconSimChangeQuery = z.infer<typeof ReconSimChangeQuery>;
 
-const ChangeGroup = z.object({ id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), members: z.array(RunGroupMember) });
+const ChangeGroup = z.object({ id: z.string(), passNo: z.number().int(), kind: z.enum(GROUP_KINDS), members: z.array(RunGroupMember), memberCount: z.number().int() });
 /** A changed pair: the draft's group (null when lost) and the published version's (null when gained). */
 export const ReconSimChangeDto = z.object({
   id: z.string(),

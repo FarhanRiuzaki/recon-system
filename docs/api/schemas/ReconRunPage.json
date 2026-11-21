@@ -420,6 +420,26 @@
                       "maximum": 9007199254740991
                     }
                   },
+                  "unconfirmed": {
+                    "type": "object",
+                    "properties": {
+                      "a": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "b": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": [
+                      "a",
+                      "b"
+                    ],
+                    "additionalProperties": false
+                  },
                   "days": {
                     "type": "array",
                     "items": {
@@ -449,12 +469,33 @@
                             "minimum": -9007199254740991,
                             "maximum": 9007199254740991
                           }
+                        },
+                        "unconfirmed": {
+                          "type": "object",
+                          "properties": {
+                            "a": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            },
+                            "b": {
+                              "type": "integer",
+                              "minimum": -9007199254740991,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": [
+                            "a",
+                            "b"
+                          ],
+                          "additionalProperties": false
                         }
                       },
                       "required": [
                         "date",
                         "a",
-                        "b"
+                        "b",
+                        "unconfirmed"
                       ],
                       "additionalProperties": false
                     }
@@ -463,6 +504,7 @@
                 "required": [
                   "a",
                   "b",
+                  "unconfirmed",
                   "days"
                 ],
                 "additionalProperties": false

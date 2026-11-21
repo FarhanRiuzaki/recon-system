@@ -22,6 +22,7 @@ begin
   execute format('grant select, insert, update, delete on all tables in schema %I to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_ensure_month_partitions(regclass, date, int) to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_analyze_month_partitions(regclass, date, date, int) to recon_app_probe', current_schema());
+  execute format('grant execute on function %I.recon_analyze_table(regclass, int) to recon_app_probe', current_schema());
 end
 $$`));
   await tx.execute(sql`set local role recon_app_probe`);

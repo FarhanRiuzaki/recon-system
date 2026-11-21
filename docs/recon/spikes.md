@@ -165,6 +165,13 @@ kumulatif belum mencatat insert tes (dikirim berkala), jadi angka itu juga yang 
 Batas: belum diukur pada volume S1 (ANALYZE partisi besar mengambil sampel 30.000 baris; waktunya pada 90 juta baris per
 bulan tidak diketahui).
 
+Bacaan layar hasil (fix round 2 Task 3, pool API 5 s, `PERF_ENGINE=1 …/run-perf.test.ts`, satu jalan): `GET run` 3 ms
+(`days` disimpan saat run selesai, kolom `recon_runs.days`, 0032), item `pass=1` 53 ms (5.000/sisi) / 93 ms (20.000/sisi),
+`pass=2` halaman 2 54 / 145 ms, `date=` 25 / 91 ms. Sebelumnya statistik `match_groups`/`match_members` masih kosong
+tepat setelah run (estimasi 1 baris → nested loop item × grup): item `pass=1` kena `statement_timeout` 5 s sudah pada
+5.000/sisi. Perbaikan: `recon_analyze_table` (0033) di akhir run untuk kedua tabel itu, dan grup item lewat join biasa
+members × groups, bukan `IN` berkorelasi di kondisi join.
+
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
 Tanggal 2026-11-20. Semula `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
