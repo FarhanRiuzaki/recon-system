@@ -373,15 +373,109 @@
                   "b"
                 ],
                 "additionalProperties": false
+              },
+              "breaks": {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "b": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "a",
+                  "b"
+                ],
+                "additionalProperties": false
+              },
+              "closed": {
+                "type": "boolean"
               }
             },
             "required": [
               "date",
               "passes",
-              "open"
+              "open",
+              "breaks",
+              "closed"
             ],
             "additionalProperties": false
           }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "live": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "matched": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "suggested": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "breaks": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "b": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ],
+              "additionalProperties": false
+            },
+            "open": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "b": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "matched",
+            "suggested",
+            "breaks",
+            "open"
+          ],
+          "additionalProperties": false
         },
         {
           "type": "null"
@@ -528,6 +622,7 @@
     "baseline",
     "changes",
     "days",
+    "live",
     "projection"
   ],
   "additionalProperties": false

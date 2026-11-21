@@ -24,7 +24,7 @@ import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, createRun, execRun, failRun, projectDayClose, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -205,11 +205,19 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 }
 
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
-export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => ({
-  // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)
-  [QUEUES.reconHeavy]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
-  // the schedule's minute, and the runs it starts
-  [QUEUES.reconSchedule]: async () => { await dispatch(on); },
-  [QUEUES.reconTick]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
-  [QUEUES.reconDaily]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
-});
+export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => {
+  // a run, then its due dates closed (runScheduled), then its days read again so they show what the close made
+  const run = async ({ data, signal }: { data: unknown; signal?: AbortSignal }) => {
+    const d = data as { spaceId: string; runId: string };
+    await runScheduled(on, d, signal);
+    if (d.runId) await refreshRunDays(on, d.spaceId, d.runId);
+  };
+  return {
+    // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)
+    [QUEUES.reconHeavy]: run,
+    // the schedule's minute, and the runs it starts
+    [QUEUES.reconSchedule]: async () => { await dispatch(on); },
+    [QUEUES.reconTick]: run,
+    [QUEUES.reconDaily]: run,
+  };
+};

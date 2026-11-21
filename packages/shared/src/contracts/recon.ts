@@ -234,7 +234,7 @@ export type RunCounters = z.infer<typeof RunCounters>;
 export const SimChangeCounts = z.object({ gained: z.number().int(), lost: z.number().int(), repaired: z.number().int(), kind: z.number().int() });
 /**
  * A business date of a run as it stands now (the run's own items for a simulation, the live ones otherwise): per pass,
- * groups matched and suggested on that date (a group counts on its latest member's date) and items broken there with
+ * groups matched and still suggested on that date (a group counts on its latest member's date) and items broken there with
  * their distinct references (per day: a reference broken on two dates counts on each); items still open per side on
  * their own date. Every date of the run, and a carry-over date
  * before it when it has any.
@@ -243,6 +243,10 @@ export const RunDay = z.object({
   date: z.string(),
   passes: z.record(z.string(), z.object({ matched: z.number().int(), suggested: z.number().int(), broken: z.number().int(), brokenRefs: z.number().int() })),
   open: PerSide,
+  /** Items broken by time on that date (grace or day close; no pass broke them), per side; a pass's Duplicate stays under it. */
+  breaks: PerSide,
+  /** The day closed (a live run's; a simulation closes nothing). */
+  closed: z.boolean(),
 });
 export type RunDay = z.infer<typeof RunDay>;
 /** Waiting items per reason they would break with ("Currency differs", "Amount differs", "Date differs", "No counterpart"). */
@@ -286,6 +290,11 @@ export const ReconRunDto = z.object({
   changes: SimChangeCounts.nullable(),
   /** GET …/runs/{runId} only (a list answers null). */
   days: z.array(RunDay).nullable(),
+  /**
+   * What stands now over the run's dates, the sums of `days` (GET run only; null without days): groups matched, groups
+   * still suggested, breaks of time per side, waiting items per side. `counters` stay what the run itself did.
+   */
+  live: z.object({ matched: z.number().int(), suggested: z.number().int(), breaks: PerSide, open: PerSide }).nullable(),
   /** A draft's simulation that succeeded: what day close would do with its waiting items (null otherwise). */
   projection: RunProjection.nullable(),
 });

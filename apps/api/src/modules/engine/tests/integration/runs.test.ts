@@ -139,7 +139,9 @@ describe("runs and simulations through the API", () => {
     await drain();
     const done = await getRun(r.configId, q.id);
     expect([done.status, done.doneThrough, done.error, done.counters.passes]).toMatchObject(["succeeded", D, null, { 1: { matched: 2, suggested: 0, broken: 0 } }]);
-    expect(done.counters.open).toEqual({ a: 1, b: 1 });
+    // R3 and R9 waited when the run ended (its counters); the job closed the date since (past its close): breaks now
+    expect([done.counters.open, done.live]).toEqual([{ a: 1, b: 1 }, { matched: 2, suggested: 0, breaks: { a: 1, b: 1 }, open: { a: 0, b: 0 } }]);
+    expect(done.days!.map((d) => [d.date, d.closed])).toEqual([[D, true]]);
     const list = await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs`, { token: t.rv }));
     expect(list.items.map((x) => x.id)).toEqual([q.id]);
     expect((await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs?mode=simulation`, { token: t.rv }))).total).toBe(0);
@@ -375,16 +377,17 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     const pass = (matched: number, suggested: number, broken: number, brokenRefs: number) => ({
       matched, suggested, broken, brokenRefs, matchedItems: side(matched), suggestedItems: side(suggested), brokenItems: side(broken / 2),
     });
+    // what the run itself did (its counters: 24 · 24 waiting when it ended); what stands now is `live` (below)
     expect(done.counters).toEqual({
       intake: side(1000), replaced: side(0),
       passes: { 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) },
       open: side(24),
     });
-    // per side the funnel adds up: 1,000 = 937 matched + 15 duplicate + 48 left (24 suggested, 24 waiting)
+    // per side the funnel adds up: 1,000 = 937 matched + 15 duplicate + 48 left (24 suggested, 24 waiting, closed since)
     const ps = Object.values(done.counters.passes);
     for (const k of ["a", "b"] as const) {
       const sum = (f: "matchedItems" | "suggestedItems" | "brokenItems") => ps.reduce((n, x) => n + x[f]![k], 0);
-      expect([sum("matchedItems"), sum("brokenItems"), sum("suggestedItems") + done.counters.open[k]]).toEqual([937, 15, 48]);
+      expect([sum("matchedItems"), sum("brokenItems"), sum("suggestedItems") + 24]).toEqual([937, 15, 48]);
     }
 
     // the per-date strip (matched / suggested / waiting a · b / duplicate items), a group on its latest member's date;
@@ -404,12 +407,16 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
       const sum = (f: "matched" | "suggested" | "broken") => p.reduce((n, x) => n + x[f], 0);
       return [d.date, sum("matched"), sum("suggested"), d.open.a, d.open.b, sum("broken")];
     });
+    // the suggestions are breaks since the close (their pairs kept): no date counts them as suggested any more
     expect(strip).toEqual([
-      ["2026-11-02", 312, 5, 0, 0, 12],
-      ["2026-11-03", 313, 8, 0, 0, 9],
-      ["2026-11-04", 312, 7, 0, 0, 9],
-      ["2026-11-05", 0, 4, 0, 0, 0],
+      ["2026-11-02", 312, 0, 0, 0, 12],
+      ["2026-11-03", 313, 0, 0, 0, 9],
+      ["2026-11-04", 312, 0, 0, 0, 9],
+      ["2026-11-05", 0, 0, 0, 0, 0],
     ]);
+    // every day closed: per side 48 breaks of time (3 currency + 1 amount + 20 no counterpart + 24 unconfirmed), nothing waits
+    expect(days.every((d) => d.closed)).toBe(true);
+    expect((await getRun(gate.configId, q.id)).live).toEqual({ matched: 937, suggested: 0, breaks: side(48), open: side(0) });
     expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
     expect((await call("GET", `${base(gate.configId)}/runs`, { token: t.rv }).then((r) => r.json()) as Page<ReconRunDto>).items[0]!.days).toBeNull();
 

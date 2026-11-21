@@ -36,7 +36,7 @@ import { currentRecord, records, sourceCursors, todayIn } from "../ingest";
 import { checkReconSpec, reconConfigs, reconConfigVersions } from "../recon";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
-import { matchGroups, matchMembers, reconItems, reconRuns, reconSimChanges } from "./schema";
+import { matchGroups, matchMembers, reconDays, reconItems, reconRuns, reconSimChanges } from "./schema";
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
@@ -424,6 +424,7 @@ async function runDtos(tx: InTx, spaceId: string, rows: RunRow[]): Promise<Recon
       baseline: b ? { runId: b.id, versionId: b.versionId, version: versions.get(b.versionId) ?? 0 } : null,
       changes: isDraftSim && r.status === "succeeded" ? { gained: n("gained"), lost: n("lost"), repaired: n("repaired"), kind: n("kind") } : null,
       days: null,
+      live: null,
       projection: isDraftSim && r.status === "succeeded" ? ((r.counters as { projection?: RunProjection }).projection ?? null) : null,
     };
   });
@@ -445,12 +446,23 @@ async function runOfConfig(tx: InTx, spaceId: string, configId: string, runId: s
 export async function runRow(tx: InTx, spaceId: string, configId: string, runId: string, withDays = false): Promise<ReconRunDto> {
   const run = await runOfConfig(tx, spaceId, configId, runId);
   const dto = (await runDtos(tx, spaceId, [run]))[0]!;
-  return withDays ? { ...dto, days: (run.days as RunDay[] | null) ?? null } : dto;
+  if (!withDays) return dto;
+  const days = (run.days as RunDay[] | null) ?? null;
+  const sum = (f: (d: RunDay) => number) => (days ?? []).reduce((n, d) => n + f(d), 0);
+  const passes = (d: RunDay, f: "matched" | "suggested") => Object.values(d.passes).reduce((n, p) => n + p[f], 0);
+  return {
+    ...dto, days,
+    live: days && {
+      matched: sum((d) => passes(d, "matched")), suggested: sum((d) => passes(d, "suggested")),
+      breaks: { a: sum((d) => d.breaks?.a ?? 0), b: sum((d) => d.breaks?.b ?? 0) }, open: { a: sum((d) => d.open.a), b: sum((d) => d.open.b) },
+    },
+  };
 }
 
 /**
  * A run's days (ReconRunDto.days) and its passes' distinct broken references, over its window `first`..`to` (its dates
- * and the carry over before them) as the items stand when it ends: groups per (date, pass, kind), broken items per (date,
+ * and the carry over before them) as the items stand: matched groups and suggested ones whose items are still
+ * suggested per (date, pass), whether the day closed, breaks of time (grace, close: break_pass null) per (date, side), broken items per (date,
  * pass) with distinct references (per day: a reference broken on two dates counts on each), open items per (date, side);
  * and per pass the distinct references of the window's items it broke (each once). Run once, at the run's
  * end in the worker, and stored with the run (recon_runs.days): a GET never scans the groups of 31 days (S1: ~200k a day).
@@ -459,10 +471,15 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
   Promise<{ days: RunDay[]; refs: Map<number, number> }> {
   const itemsIn = and(eq(reconItems.spaceId, w.spaceId), eq(reconItems.configId, w.configId), w.simRunId ? eq(reconItems.simRunId, w.simRunId) : isNull(reconItems.simRunId),
     sql`${reconItems.businessDate} between ${w.first}::date and ${w.to}::date`);
-  const groups = await tx.select({ d: matchGroups.businessDate, pass: matchGroups.passNo, kind: matchGroups.kind, n: count() }).from(matchGroups)
-    .where(and(eq(matchGroups.spaceId, w.spaceId), eq(matchGroups.configId, w.configId), w.simRunId ? eq(matchGroups.simRunId, w.simRunId) : isNull(matchGroups.simRunId),
-      isNull(matchGroups.reversedBy), sql`${matchGroups.businessDate} between ${w.first}::date and ${w.to}::date`))
-    .groupBy(matchGroups.businessDate, matchGroups.passNo, matchGroups.kind);
+  const groupsIn = and(eq(matchGroups.spaceId, w.spaceId), eq(matchGroups.configId, w.configId), w.simRunId ? eq(matchGroups.simRunId, w.simRunId) : isNull(matchGroups.simRunId),
+    isNull(matchGroups.reversedBy), sql`${matchGroups.businessDate} between ${w.first}::date and ${w.to}::date`);
+  const matched = await tx.select({ d: matchGroups.businessDate, pass: matchGroups.passNo, n: count() }).from(matchGroups)
+    .where(and(groupsIn, eq(matchGroups.kind, "auto"))).groupBy(matchGroups.businessDate, matchGroups.passNo);
+  // a suggestion counts while its items are suggested: once day close broke them (the pair kept), they are breaks
+  const suggested = await tx.select({ d: matchGroups.businessDate, pass: matchGroups.passNo, n: countDistinct(matchGroups.id) }).from(matchGroups)
+    .innerJoin(matchMembers, and(eq(matchMembers.spaceId, matchGroups.spaceId), eq(matchMembers.groupId, matchGroups.id)))
+    .innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId), eq(reconItems.status, "suggested")))
+    .where(and(groupsIn, eq(matchGroups.kind, "suggested"))).groupBy(matchGroups.businessDate, matchGroups.passNo);
   const brokenRecord = and(inArray(records.spaceId, w.recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
   const isBroken = and(itemsIn, eq(reconItems.status, "break"), isNotNull(reconItems.breakPass));
   const broken = await tx.select({ d: reconItems.businessDate, pass: reconItems.breakPass, n: count(), refs: countDistinct(records.extRef) }).from(reconItems)
@@ -471,20 +488,46 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.breakPass);
   const open = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
     .where(and(itemsIn, eq(reconItems.status, "open"))).groupBy(reconItems.businessDate, reconItems.side);
+  // breaks of time (grace, day close: no pass broke them); a pass's Duplicate stays under its pass
+  const timed = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
+    .where(and(itemsIn, eq(reconItems.status, "break"), isNull(reconItems.breakPass))).groupBy(reconItems.businessDate, reconItems.side);
+  const closed = w.simRunId ? [] : await tx.select({ d: reconDays.businessDate }).from(reconDays).where(and(eq(reconDays.spaceId, w.spaceId), eq(reconDays.configId, w.configId),
+    eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
   const dates = new Set<string>();
   for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
-  for (const r of [...groups, ...broken, ...open]) dates.add(r.d);
+  for (const r of [...matched, ...suggested, ...broken, ...open, ...timed]) dates.add(r.d);
+  const perSide = (rows: { d: string; side: string; n: number }[], date: string) => ({
+    a: rows.find((o) => o.d === date && o.side === "a")?.n ?? 0, b: rows.find((o) => o.d === date && o.side === "b")?.n ?? 0,
+  });
   const days = [...dates].sort().map((date): RunDay => ({
     date,
     passes: Object.fromEntries(w.passes.map((no) => [String(no), {
-      matched: groups.find((g) => g.d === date && g.pass === no && g.kind === "auto")?.n ?? 0,
-      suggested: groups.find((g) => g.d === date && g.pass === no && g.kind === "suggested")?.n ?? 0,
+      matched: matched.find((g) => g.d === date && g.pass === no)?.n ?? 0,
+      suggested: suggested.find((g) => g.d === date && g.pass === no)?.n ?? 0,
       broken: broken.find((b) => b.d === date && b.pass === no)?.n ?? 0,
       brokenRefs: broken.find((b) => b.d === date && b.pass === no)?.refs ?? 0,
     }])),
-    open: { a: open.find((o) => o.d === date && o.side === "a")?.n ?? 0, b: open.find((o) => o.d === date && o.side === "b")?.n ?? 0 },
+    open: perSide(open, date),
+    breaks: perSide(timed, date),
+    closed: closed.some((c) => c.d === date),
   }));
   return { days, refs: new Map(refs.map((r) => [r.pass!, r.refs])) };
+}
+
+/**
+ * After a live run's job closed its dates (schedule.ts runScheduled): its stored `days` read again, so the run page
+ * shows the breaks the close made, not the waiting items and suggestions before it (`counters` stay what the run did). A simulation (it
+ * closes nothing) or a run not succeeded is left as it is.
+ */
+export async function refreshRunDays(on: Tx, spaceId: string, runId: string): Promise<void> {
+  await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
+    const [run] = await tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))).for("update");
+    if (run?.status !== "succeeded" || run.mode === "simulation") return;
+    const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
+    const first = addDays(run.dateFrom, -spec.carry_over_days);
+    const { days } = await daysOf(tx, { spaceId, configId: run.configId, simRunId: null, passes: spec.passes.map((p) => p.no), first, from: run.dateFrom, to: run.dateTo, recordSpaces });
+    await tx.update(reconRuns).set({ days }).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
+  }, on);
 }
 
 /**
