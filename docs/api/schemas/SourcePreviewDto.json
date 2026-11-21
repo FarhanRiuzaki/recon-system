@@ -13,6 +13,11 @@
       "minimum": -9007199254740991,
       "maximum": 9007199254740991
     },
+    "skipped": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
     "quarantined": {
       "type": "integer",
       "minimum": -9007199254740991,
@@ -202,6 +207,7 @@
   "required": [
     "lines",
     "ok",
+    "skipped",
     "quarantined",
     "columns",
     "records",

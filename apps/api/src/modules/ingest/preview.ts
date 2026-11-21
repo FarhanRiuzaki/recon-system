@@ -16,7 +16,7 @@ function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileNa
   const cal = makeCalendar(calendar);
   const names = spec.fields.map((f) => f.name);
   const cells = (raw: Record<string, string | null>) => names.map((n) => raw[n] ?? "");
-  const out: SourcePreviewDto = { lines: lines.length, ok: 0, quarantined: 0, columns: [], records: [], quarantine: [] };
+  const out: SourcePreviewDto = { lines: lines.length, ok: 0, skipped: 0, quarantined: 0, columns: [], records: [], quarantine: [] };
   const quarantine = (line: number, cells: string[], reasons: Record<string, string>) => {
     out.quarantined++;
     if (out.quarantine.length < PREVIEW_LIST) out.quarantine.push({ line, cells, reasons });
@@ -24,6 +24,7 @@ function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileNa
   for (const l of lines) {
     if (!l.ok) { quarantine(l.line, l.cells, l.reasons); continue; }
     const r = toRecord(l.raw, spec, { calendar: cal, fileName, arrivedDate });
+    if (!r.ok && r.left) { out.skipped++; continue; }
     if (!r.ok) { quarantine(l.line, cells(l.raw), r.reasons); continue; }
     out.ok++;
     const x = r.record;

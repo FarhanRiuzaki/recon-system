@@ -19,7 +19,7 @@
 // Direction from a column: a negative amount is quarantined. Direction from CEL (spec §7: often from the amount's own
 // sign): the amount's magnitude is stored, and a negative amount on a credit is quarantined. Without direction, the
 // amount keeps its own sign. signedAmount gives the signed value the engine uses.
-import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+import { RELATIVE_DAY, type FieldSpec, type SourceCondition, type SourceSpec, type ValueRef } from "@starterkit/shared/contracts/sources";
 import { amountUnit, CURRENCY_EXPONENT, currencyCode, DIRECTION_HINT, directionOf, toMinor } from "@starterkit/shared/sources";
 import { type Compiled, compileDerive, runDerive } from "./cel";
 import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type Value } from "./coerce";
@@ -46,7 +46,52 @@ export type CoreRecord = {
   row_hash: string;
   natural_key: string | null;
 };
-export type MapResult = { ok: true; record: CoreRecord } | { ok: false; reasons: Record<string, string> };
+/** `left`: the source's conditions (spec.keep) leave the row out: neither a record nor quarantined, only counted. */
+export type MapResult = { ok: true; record: CoreRecord } | { ok: false; reasons: Record<string, string>; left?: true };
+
+/** `today`, `today-N`, `today+N` → that day from `today`; any other text as typed. */
+function relDay(value: string, today: string): string {
+  const m = RELATIVE_DAY.exec(value.trim());
+  if (!m) return value.trim();
+  const n = m[2] ? Number(m[2]) * (m[1] === "-" ? -1 : 1) : 0;
+  return new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+/** A typed value and a condition's value as two comparable things, or null when the value can't be read as the column's type. */
+function comparable(v: Exclude<Value, null>, value: string, f: FieldSpec | undefined, today: string): [number | bigint | string, number | bigint | string] | null {
+  const type = f?.type ?? "string";
+  if (type === "integer" || type === "decimal") {
+    const m = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(value.replace(/,/g, "").trim());
+    if (!m || typeof v !== "bigint") return null;
+    const scale = type === "decimal" ? f?.format?.scale ?? DEFAULT_SCALE : 0;
+    const frac = (m[3] ?? "").padEnd(scale, "0");
+    if (frac.length > scale) return null;
+    return [v, BigInt(`${m[1]}${m[2]}${frac}`)];
+  }
+  if (type === "date") { const d = relDay(value, today); return ISO_DATE.test(d) ? [String(v), d] : null; }
+  if (type === "datetime") {
+    const d = relDay(value, today);
+    // a day alone is its start in Asia/Jakarta
+    const t = Date.parse(ISO_DATE.test(d) ? `${d}T00:00:00+07:00` : d);
+    return Number.isNaN(t) ? null : [Date.parse(String(v)), t];
+  }
+  return [String(v).trim().toLowerCase(), value.trim().toLowerCase()];
+}
+/** Whether `v` (the column's typed value) meets condition `c`: an empty value meets only is empty, is not, none of. */
+export function holds(c: SourceCondition, v: Value | undefined, f: FieldSpec | undefined, today: string): boolean {
+  const empty = v === null || v === undefined || v === "";
+  if (c.op === "is_null") return empty;
+  if (c.op === "not_null") return !empty;
+  if (empty) return c.op === "ne" || c.op === "not_in";
+  const is = (value: string) => { const p = comparable(v, value, f, today); return p !== null && p[0] === p[1]; };
+  if (c.op === "eq") return is(c.value);
+  if (c.op === "ne") return !is(c.value);
+  if (c.op === "in") return c.values.some(is);
+  if (c.op === "not_in") return !c.values.some(is);
+  const p = comparable(v, (c as { value: string }).value, f, today);
+  if (!p) return false;
+  const [a, b] = p;
+  return c.op === "gt" ? a > b : c.op === "gte" ? a >= b : c.op === "lt" ? a < b : a <= b;
+}
 
 const DAY = 86_400_000;
 const dayOf = (iso: string) => Math.floor(Date.parse(`${iso}T00:00:00Z`) / DAY);
@@ -146,12 +191,17 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     const r = coerce(text, f);
     if (r.ok) { typed[f.name] = r.value; row[f.name] = cleanText(text, f); } else reasons[f.name] = r.reason;
   }
-  if (Object.keys(reasons).length) return { ok: false, reasons };
-
-  const fileDate = ctx.fileName ? fileDateOf(ctx.fileName) : null;
   // ponytail: a pull or file is dated the day it is mapped, so a row mapped after midnight lands on the next day; a
   // source that needs the day before uses a snapshot (dated by its run) or a date column
   const arrived = ctx.arrivedDate ?? localDate(new Date().toISOString(), DEFAULT_TIMEZONE);
+  // the source's conditions (owner, 21 Nov: load a clean data mart): a row they leave out is never a record, nor
+  // quarantined for a column it fails, whatever else it holds; a column's condition first, a computed column's after it
+  const keep = spec.keep ?? [];
+  const leaves = (ready: (n: string) => boolean) => keep.some((c) => ready(c.field) && !holds(c, typed[c.field], byName.get(c.field), arrived));
+  if (keep.length && leaves((n) => byName.has(n) && !(n in reasons))) return { ok: false, reasons: {}, left: true };
+  if (Object.keys(reasons).length) return { ok: false, reasons };
+
+  const fileDate = ctx.fileName ? fileDateOf(ctx.fileName) : null;
   const vars = () => ({ row, file_name: ctx.fileName ?? "", file_date: fileDate ?? "", arrived_date: arrived });
   for (const [name, c] of p.derive) {
     const r = runDerive(c, vars());
@@ -160,6 +210,7 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
     typed[name] = s;
     row[name] = s;
   }
+  if (keep.length && leaves((n) => !byName.has(n) && n in typed)) return { ok: false, reasons: {}, left: true };
   for (const k of spec.key_fields) if (typed[k] === null || typed[k] === "" || typed[k] === undefined) reasons[k] = `${k} is required (a key field)`;
   if (Object.keys(reasons).length) return { ok: false, reasons };
 

@@ -291,3 +291,55 @@ describe("the amount's sign: from direction when it is mapped, else from the amo
     expect(signedAmount({ amount_minor: null, direction: "debit" })).toBeNull();
   });
 });
+
+describe("the source's conditions (owner, 21 Nov: load only clean rows)", () => {
+  const spec = (keep: NonNullable<SourceSpec["keep"]>): SourceSpec => ({
+    ...ksei(), currency: "IDR", keep,
+    fields: [
+      { name: "ref", type: "string", nullable: false, trim: true },
+      { name: "status", type: "string", nullable: true, trim: true },
+      { name: "amount", type: "decimal", nullable: false, trim: true, format: { scale: 2 } },
+      { name: "value_date", type: "date", nullable: false, trim: true, format: { date: "yyyy-MM-dd" } },
+    ],
+    mapping: { business_date: { field: "value_date" }, ext_ref: { field: "ref" }, amount_minor: { field: "amount", unit: "major" }, attrs: {} },
+    derive: { channel: 'word_at(row.ref, 1)' }, key_fields: [],
+  });
+  const row = (o: Record<string, string> = {}) => ({ ref: "MSM 001", status: "Successful", amount: "1500.50", value_date: "2026-11-20", ...o });
+  const at = { calendar: cal, arrivedDate: "2026-11-20" };
+  const kept = (keep: NonNullable<SourceSpec["keep"]>, o?: Record<string, string>) => {
+    const r = toRecord(row(o), spec(keep), at);
+    return r.ok ? "kept" : r.left ? "left" : "quarantined";
+  };
+
+  it("is / is not / one of: text without case; an empty value meets is not and none of only", () => {
+    expect(kept([{ field: "status", op: "eq", value: "SUCCESSFUL" }])).toBe("kept");
+    expect(kept([{ field: "status", op: "eq", value: "Successful" }], { status: "Rejected" })).toBe("left");
+    expect(kept([{ field: "status", op: "in", values: ["accepted", "successful"] }])).toBe("kept");
+    expect(kept([{ field: "status", op: "ne", value: "Rejected" }], { status: "" })).toBe("kept");
+    expect(kept([{ field: "status", op: "eq", value: "Successful" }], { status: "" })).toBe("left");
+    expect(kept([{ field: "status", op: "not_null" }], { status: "" })).toBe("left");
+  });
+  it("numbers and days compare by value; today is the day the rows arrive", () => {
+    expect(kept([{ field: "amount", op: "gte", value: "1500.5" }])).toBe("kept");
+    expect(kept([{ field: "amount", op: "gt", value: "1,500.50" }])).toBe("left");
+    expect(kept([{ field: "value_date", op: "gte", value: "today" }])).toBe("kept");
+    expect(kept([{ field: "value_date", op: "gt", value: "today-1" }], { value_date: "2026-11-19" })).toBe("left");
+    expect(kept([{ field: "value_date", op: "lt", value: "2026-11-21" }])).toBe("kept");
+  });
+  it("a row left out is never quarantined for its other columns; a computed column's condition counts too; every condition must hold", () => {
+    expect(kept([{ field: "status", op: "eq", value: "Successful" }], { status: "Rejected", amount: "not a number" })).toBe("left");
+    expect(kept([{ field: "status", op: "eq", value: "Successful" }], { amount: "not a number" })).toBe("quarantined");
+    expect(kept([{ field: "channel", op: "eq", value: "msm" }])).toBe("kept");
+    expect(kept([{ field: "channel", op: "eq", value: "atm" }])).toBe("left");
+    expect(kept([{ field: "status", op: "eq", value: "Successful" }, { field: "amount", op: "lt", value: "100" }])).toBe("left");
+  });
+  it("the contract refuses a comparison on text, a day on a non-date column, and conditions on rows that can change", async () => {
+    const { SourceSpec: Spec } = await import("@starterkit/shared/contracts/sources");
+    const issues = (s: SourceSpec) => (Spec.safeParse(s).error?.issues ?? []).map((i) => i.message);
+    expect(issues(spec([{ field: "status", op: "gt", value: "a" }]))).toEqual(['Greater or less than compares numbers and dates; "status" is string']);
+    expect(issues(spec([{ field: "amount", op: "eq", value: "today" }]))).toEqual(['"today" is a day; "amount" is decimal']);
+    expect(issues(spec([{ field: "nope", op: "not_null" }]))).toEqual(['"nope" is not a column or computed column']);
+    expect(issues({ ...spec([{ field: "status", op: "not_null" }]), mutable: true, key_fields: ["ref"] }))
+      .toContain("Rows that can change can't be left out by conditions: a row that stops meeting them would stay as it was. Filter in the recon instead.");
+  });
+});

@@ -499,6 +499,18 @@ describe("rows with no unique column (owner, 21 Nov): two equal rows are two tra
   });
 });
 
+describe("the source's conditions (owner, 21 Nov: a clean data mart)", () => {
+  it("a file stores only the rows its conditions keep; the others are neither records nor quarantined, only in the total", async () => {
+    const k = await source(A, { ...kseiSpec(), keep: [{ field: "sre", op: "in", values: ["TSTSRE001", "TSTSRE003"] }] });
+    await put("act20261102.txt", [1, 2, 3, 4].map(kseiLine).join("\n") + "\n", new Date(Date.now() - 3_600_000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await current(k)).toBe(2);
+    expect(await quarantined(k)).toEqual([]);
+    expect((await filesOf(k))[0]).toMatchObject({ rowsTotal: 4, rowsOk: 2, rowsQuarantined: 0 });
+    await expectCounters(k);
+  });
+});
+
 describe("Review Focus 5: no leak between spaces, through the handlers too", () => {
   it("a job scoped to space B can't touch space A's source; the same file in two spaces is two files, each seen only in its space", async () => {
     const ka = await source(A, kseiSpec());

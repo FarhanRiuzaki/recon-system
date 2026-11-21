@@ -94,12 +94,30 @@ const FileInboxInput = z.strictObject({
  * key, whether rows change after arrival, the business-day calendar (a `calendars` code) and, under `input`, how data
  * arrives for the source's kind. Names a mapping or key uses must be declared fields or derived values.
  */
+/** A value a condition compares with: text as typed, or for a date column `today`, `today-1`, `today+7` (Asia/Jakarta). */
+const condValue = z.string().trim().min(1).max(200);
+/** `today`, `today-N` or `today+N`: a day relative to the day the rows arrive (a snapshot's own date). */
+export const RELATIVE_DAY = /^today(?:([+-])(\d{1,4}))?$/;
+/**
+ * A condition every loaded row meets (owner, 21 Nov: the source loads a clean data mart, such as only the successful
+ * rows, or dates from today on). A row that fails one is left out: not stored, not quarantined, counted.
+ */
+export const SourceCondition = z.union([
+  z.strictObject({ field: name, op: z.enum(["eq", "ne"]), value: condValue }),
+  z.strictObject({ field: name, op: z.enum(["in", "not_in"]), values: z.array(condValue).min(1).max(100) }),
+  z.strictObject({ field: name, op: z.enum(["is_null", "not_null"]) }),
+  z.strictObject({ field: name, op: z.enum(["gt", "gte", "lt", "lte"]), value: condValue }),
+]);
+export type SourceCondition = z.infer<typeof SourceCondition>;
+
 export const SourceSpec = z.strictObject({
   fields: z.array(FieldSpec).min(1).max(500),
   mapping: Mapping,
   derive: z.record(name, cel).default({}),
   key_fields: z.array(name).max(20),
   mutable: z.boolean(),
+  /** Rows to load: every condition must hold (none = every row). */
+  keep: z.array(SourceCondition).max(20).optional(),
   /** The currency of every row when the source has no currency column (ISO code; required then if it maps an amount). */
   currency: z.string().refine((c) => currencyCode(c) === c, "Use an ISO currency code the product knows, such as IDR").optional(),
   calendar: z.string().trim().min(1).max(64),
@@ -134,6 +152,16 @@ export const SourceSpec = z.strictObject({
   for (const [path, r] of refs) if (r && "field" in r && !known(r.field)) issue(`"${r.field}" is not a column or computed column`, path);
   s.key_fields.forEach((k, i) => known(k) || issue(`"${k}" is not a column or computed column`, ["key_fields", i]));
   if (s.mutable && !s.key_fields.length) issue("A mutable source needs key fields", ["key_fields"]);
+  (s.keep ?? []).forEach((c, i) => {
+    if (!known(c.field)) return issue(`"${c.field}" is not a column or computed column`, ["keep", i, "field"]);
+    const type = s.fields.find((f) => f.name === c.field)?.type ?? "string"; // a computed column is text
+    if ((c.op === "gt" || c.op === "gte" || c.op === "lt" || c.op === "lte") && !["integer", "decimal", "date", "datetime"].includes(type)) {
+      issue(`Greater or less than compares numbers and dates; "${c.field}" is ${type}`, ["keep", i, "op"]);
+    }
+    if ("value" in c && RELATIVE_DAY.test(c.value) && type !== "date" && type !== "datetime") issue(`"${c.value}" is a day; "${c.field}" is ${type}`, ["keep", i, "value"]);
+  });
+  // a row that stops meeting a condition would stay as it was, since nothing replaces it
+  if (s.mutable && s.keep?.length) issue("Rows that can change can't be left out by conditions: a row that stops meeting them would stay as it was. Filter in the recon instead.", ["keep"]);
   if (s.mutable && s.input.kind === "db_snapshot") issue("A snapshot source is replaced whole per business date, so it can't be mutable", ["mutable"]);
   if (s.input.kind === "db_watermark" && (s.input.table === undefined) === (s.input.query === undefined)) issue("Give either a table or a query", ["input"]);
   if (s.input.kind === "db_snapshot" && !/:business_date\b/.test(s.input.query)) issue("The snapshot query needs the :business_date parameter", ["input", "query"]);
@@ -443,6 +471,8 @@ export const PreviewQuarantineDto = z.object({ line: z.number().int(), cells: z.
 export const SourcePreviewDto = z.object({
   lines: z.number().int(),
   ok: z.number().int(),
+  /** Rows the source's conditions left out (keep). */
+  skipped: z.number().int(),
   quarantined: z.number().int(),
   columns: z.array(PreviewColumnDto),
   records: z.array(PreviewRecordDto),
