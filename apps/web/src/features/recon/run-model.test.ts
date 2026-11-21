@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, counterpartWindow } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -174,5 +174,9 @@ describe("run-model", () => {
   it("says where a lone break could have found its counterpart: its date and up to carry over before it", () => {
     expect(counterpartWindow("2026-11-03", 1)).toBe("2–3 Nov 2026");
     expect(counterpartWindow("2026-11-03", 0)).toBe("3 Nov 2026");
+    expect(carryOverText("2026-11-04", 1)).toBe("Carry over is 1 day, so a 4 Nov item is looked for on 3 and 4 Nov.");
+    expect(carryOverText("2026-11-04", 0)).toBe("Carry over is 0 days, so a 4 Nov item is looked for on 4 Nov.");
+    expect(carryOverText("2026-11-04", 2)).toBe("Carry over is 2 days, so a 4 Nov item is looked for on 2–4 Nov.");
+    expect(carryOverText("2026-12-01", 1)).toBe("Carry over is 1 day, so a 1 Dec item is looked for on 30 Nov and 1 Dec.");
   });
 });

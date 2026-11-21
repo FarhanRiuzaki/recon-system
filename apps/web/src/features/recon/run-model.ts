@@ -125,6 +125,17 @@ export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">
  */
 export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), date);
 
+/**
+ * Explain's sentence for a lone break (Figma 206:6372): "Carry over is 1 day, so a 4 Nov item is looked for on 3 and 4
+ * Nov." The dates are day close's window, the item's date and the carry-over days before it.
+ */
+export function carryOverText(date: string, carry: number): string {
+  const day = (d: string) => formatDate(appDayStart(d));
+  const start = shiftDate(date, -carry), first = start.slice(0, 7) === date.slice(0, 7) ? String(Number(start.slice(8))) : day(start);
+  const on = carry === 0 ? day(date) : carry === 1 ? `${first} and ${day(date)}` : `${first}–${day(date)}`;
+  return `Carry over is ${carry} ${carry === 1 ? "day" : "days"}, so a ${day(date)} item is looked for on ${on}.`;
+}
+
 /** "2,000 items", or the one fact that the run found nothing new to take in. */
 export const itemsText = (n: number) => (n ? `${formatNumber(n)} items` : "no new records");
 

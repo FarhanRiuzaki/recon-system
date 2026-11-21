@@ -5,7 +5,7 @@ import { StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, counterpartWindow, differenceText, evidenceOf, rangeText } from "./run-model";
+import { amountText, carryOverText, counterpartWindow, differenceText, evidenceOf, rangeText } from "./run-model";
 import { conditionText, type Fields, pairText } from "./spec-model";
 
 const KIND: Record<string, string> = { auto: "Matched", suggested: "Suggested", manual: "Matched by hand", force: "Forced" };
@@ -40,9 +40,10 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
         <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
           <DialogHeader>
             <DialogTitle>{item.breakReason ?? "Break"}</DialogTitle>
-            <DialogDescription>{own} · {rangeText(item.businessDate, item.businessDate)}</DialogDescription>
+            <DialogDescription>Break · {rangeText(item.businessDate, item.businessDate)} · left open at day close</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 px-6 py-5 text-body-sm md:grid-cols-2">
+          <div className="grid gap-3 px-6 py-5 text-body-sm">
+            <div className="grid gap-3 md:grid-cols-2">
             <section aria-label={own} className="grid content-start gap-2 rounded-md border border-line bg-card p-3">
               <h3 className="text-caption text-fg-3">{own}</h3>
               <span className="text-title-2 tabular text-fg">{amountText(item.amountMinor, item.currency)} {item.currency}</span>
@@ -54,6 +55,8 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
               <h3 className="text-caption text-fg-3">{other}</h3>
               <p className="text-fg-2">No item with reference <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span> on {counterpartWindow(item.businessDate, spec.carry_over_days)}.</p>
             </section>
+            </div>
+            <p className="text-fg-2">{carryOverText(item.businessDate, spec.carry_over_days)}</p>
           </div>
         </DialogContent>
       </Dialog>
