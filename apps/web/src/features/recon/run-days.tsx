@@ -5,19 +5,21 @@ import type { MouseEvent } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { type Breaks, breaksOf, breaksText, dayTotals, rangeText, sidesText, standingTotals } from "./run-model";
+import { type Breaks, breaksOf, breaksText, dayTotals, rangeText, runDays, sidesText, standingTotals } from "./run-model";
 
 type Labels = readonly [string, string];
 /** One tile of a run's date strip: "" = All dates (the run's own dates as they stand), else a business date. */
 export type DayTile = { date: string; t: ReturnType<typeof dayTotals>; b: Breaks | null };
 
 /** A run's tiles: All dates, then each of its days; a real run's breaks by the one definition (Duplicate included). */
-export function dayTilesOf(run: ReconRunDto, spec: ReconSpec): DayTile[] {
+export function dayTilesOf(run: ReconRunDto, spec: ReconSpec, { own = false } = {}): DayTile[] {
   const real = run.mode !== "simulation";
   const all = standingTotals(run, spec);
+  // `own`: the run's own dates only (the Overview), without the carry-over date before them
+  const days = own ? runDays(run) : (run.days ?? []);
   return [
     { date: "", t: { ...all, breaks: all.breaks, closed: false }, b: real ? breaksOf(run.live?.breakReasons) : null },
-    ...(run.days ?? []).map((d) => ({ date: d.date, t: dayTotals(d, spec), b: real ? breaksOf(d.breakReasons) : null })),
+    ...days.map((d) => ({ date: d.date, t: dayTotals(d, spec), b: real ? breaksOf(d.breakReasons) : null })),
   ];
 }
 /** "2 Nov", or "All dates". */
