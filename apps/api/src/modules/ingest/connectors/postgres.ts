@@ -34,12 +34,19 @@ export function postgresDriver(c: DriverConfig): Driver {
   };
   return {
     rows: (q, params) => once((conn) => conn.unsafe(q, params) as Promise<Record<string, unknown>[]>),
+    // The columns of `q` (describeSql: it returns no row) read through SQL, not the driver's result metadata: Bun.SQL
+    // 1.4.3 (the pinned runtime) answers no `columns` at all, so a query described as zero columns (owner, 21 Nov).
+    // `q` LEFT JOINed to one row gives a row of NULLs: its JSON object names every column in order, a name used twice
+    // twice (introspect refuses that), a numeric name too; pg_typeof over the same row gives each type, read as an
+    // array (no object keys to reorder).
     describe: (q, params) => once(async (conn) => {
-      const r = (await conn.unsafe(q, params)) as unknown as { columns?: { name: string; type: number }[] };
-      const cols = r.columns ?? [];
-      const types = await conn.unsafe("SELECT oid::int AS oid, format_type(oid, NULL) AS type FROM pg_type WHERE oid = ANY(string_to_array($1, ',')::oid[])", [cols.map((x) => x.type).join(",")]);
-      const byOid = new Map((types as { oid: number; type: string }[]).map((x) => [x.oid, x.type]));
-      return cols.map((x): Column => ({ name: x.name, type: byOid.get(x.type) ?? "text", nullable: null }));
+      const shell = `(SELECT q.* FROM (SELECT 1) one LEFT JOIN (${q}) q ON true) r`;
+      const names = ((await conn.unsafe(`SELECT k.name FROM (SELECT to_json(r) AS j FROM ${shell}) x, json_object_keys(x.j) WITH ORDINALITY AS k(name, n) ORDER BY k.n`,
+        params)) as { name: string }[]).map((x) => x.name);
+      if (!names.length || new Set(names).size !== names.length) return names.map((name): Column => ({ name, type: "unknown", nullable: null }));
+      const typeOf = names.map((n) => `pg_typeof(r."${n.replaceAll('"', '""')}")::text`).join(", ");
+      const [types] = (await conn.unsafe(`SELECT ${typeOf} FROM ${shell}`, params).values()) as string[][];
+      return names.map((name, i): Column => ({ name, type: types?.[i] ?? "text", nullable: null }));
     }),
     stream: (q, params, chunk) => readOnly(async function* (conn) {
       await conn.unsafe(`DECLARE recon_cursor NO SCROLL CURSOR FOR ${q}`, params);

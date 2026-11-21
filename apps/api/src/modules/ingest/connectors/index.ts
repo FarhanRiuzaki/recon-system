@@ -162,6 +162,8 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
     }
     const b = describeSql(d, from);
     const cols = await wrap(drv.describe(b.sql, b.params));
+    // every engine: a query read as no column is refused, never answered as an empty list (a SELECT names at least one)
+    if (!cols.length) throw specError("The query returns no columns. Select the columns to read, such as SELECT id, amount FROM ….");
     const twice = cols.find((c, i) => cols.findIndex((x) => x.name === c.name) !== i);
     if (twice) throw specError(`The query returns column "${twice.name}" twice. Give each column its own name.`);
     return cols.map((c) => ({ ...c, unique: null, indexed: null }));

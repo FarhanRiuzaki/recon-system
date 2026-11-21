@@ -86,7 +86,14 @@ describe("POST …/sources/catalog (a new source's typed values)", () => {
     // Check query: the columns a typed SELECT gives, before the source exists; a broken one is 400 with its sentence
     const q = await json<Extract<SourceCatalogDto, { list: "query" }>>(fresh({ list: "query", connection: probeLogin(), query: "select id, ref as reference from cat_src.bifast_tx" }));
     expect([q.list, q.columns.map((c) => c.name)]).toEqual(["query", ["id", "reference"]]);
-    expect((await fresh({ list: "query", connection: probeLogin(), query: "select id, id from cat_src.bifast_tx" })).status).toBe(400);
+    // read through SQL, not the driver's result metadata (Bun 1.4.3 answers none): no row, odd names, :business_date
+    const odd = await json<Extract<SourceCatalogDto, { list: "query" }>>(fresh({ list: "query", connection: probeLogin(),
+      query: "select id, updated_at as \"2024\", ref as \"a\"\"b\", :business_date::date as d from cat_src.bifast_tx where false" }));
+    expect(odd.columns.map((c) => [c.name, c.type])).toEqual([["id", "bigint"], ["2024", "timestamp with time zone"], ['a"b', "text"], ["d", "date"]]);
+    const twice = await fresh({ list: "query", connection: probeLogin(), query: "select id, id from cat_src.bifast_tx" });
+    expect([twice.status, (await errOf(twice)).message]).toEqual([400, 'The query returns column "id" twice. Give each column its own name.']);
+    const none = await fresh({ list: "query", connection: probeLogin(), query: "select from cat_src.bifast_tx" });
+    expect([none.status, (await errOf(none)).message]).toEqual([400, "The query returns no columns. Select the columns to read, such as SELECT id, amount FROM …."]);
     const hidden = await fresh({ list: "columns", connection: probeLogin(), table: "cat_src.no_grant" });
     expect([hidden.status, (await errOf(hidden)).message]).toEqual([400, "There is no table or view cat_src.no_grant that this user can read."]);
     // nothing stored, nothing recorded
