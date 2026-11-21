@@ -674,7 +674,7 @@ implementation approval waits for review of the delivered revision.
 | Density | `data-density="compact"` → rows 36/44 |
 
 Sideways scroll (owner, 21 Nov): a table wider than its card scrolls inside it, and each side with content hidden past
-it shows a 40 px fade from `--line-strong` to clear, on while hidden content is there and off at that edge (the
+it shows a 40 px fade from `--tray` (the header row's and the panel's surface) to clear, on while hidden content is there and off at that edge (the
 scroll position, re-read on resize), so a reader notices the table goes on. It is `Table`'s own (`ui/table.tsx`), so
 every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll region stays named and focusable.
 (`table.test.ts` "wider than its box …")
