@@ -1,11 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { StatusChip } from "@starterkit/ui/ds";
+import { StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
+import { formatNumber } from "@starterkit/ui/lib/format";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { isLive, itemsText, projectionText, rangeText, runLine, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
+import { isLive, itemsText, projectionText, rangeText, rateText, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
 import { STALL_TEXT } from "./use-recons";
 
 /** A run in one strip (the run page's head, the recon's last run on its Overview): its state, dates, counts and what day close does; `action` ends the strip. */
@@ -25,10 +26,19 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
         <span role="status" className="text-body-sm text-fg">
           {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${itemsText(t.items)}${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
         </span>
-        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{runLine(run, spec, labels)}</span>}
         {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
       </div>
       {action}
+      {/* the counts as numbers to scan, not a sentence to read (owner, 22 Nov: law of Prägnanz); dimmed while it runs */}
+      {run.status !== "failed" && (
+        <StatTiles className={cn("basis-full rounded-md border-0 bg-transparent p-0", live && "opacity-60")}>
+          <StatTile label="Matched" value={formatNumber(t.matched)} caption={t.rate === null ? "Pairs and groups" : `Match rate ${rateText(t.rate)}`} />
+          <StatTile label="Suggested" value={formatNumber(t.suggested)} caption="Open until someone accepts them" />
+          <StatTile label="Waiting" value={formatNumber(t.waiting.a + t.waiting.b)} caption={`${formatNumber(t.waiting.a)} ${labels[0]} · ${formatNumber(t.waiting.b)} ${labels[1]}`} />
+          <StatTile label="Breaks" value={formatNumber((t.breaks ? t.breaks.a + t.breaks.b : 0) + t.duplicate + t.ambiguous)}
+            caption={t.duplicate ? `${formatNumber(t.duplicate)} duplicate` : "Left open at day close"} />
+        </StatTiles>
+      )}
     </section>
   );
 }

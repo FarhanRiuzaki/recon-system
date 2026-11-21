@@ -137,8 +137,9 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
     ...(x?.broken ? [{ value: "break", label: breakLabel(pass), count: x.broken }] : []),
   ] : [];
   const items = status === "open" || status === "break";
-  const strip = run.days ?? [];
   const dayTiles = dayTilesOf(run, spec);
+  // one business date: its tile says what All dates says, so no strip (owner, 22 Nov: nothing twice)
+  const strip = dayTiles.length > 2 ? (run.days ?? []) : [];
   const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "", reason: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "", reason: "" });
   // the Breaks tab's reasons, on the picked date or over the run's own dates
   const byReason = (day ? day.breakReasons : run.live?.breakReasons) ?? null;
