@@ -176,7 +176,8 @@ export const ConnectionOptions = z.strictObject({
 
 /**
  * PUT /api/spaces/{spaceId}/sources/{sourceId}/connection: replaces the whole credential. host, port, database, user and
- * password are stored encrypted and never answered; `options` is stored as is and answered.
+ * password are stored encrypted; the password is never answered, the rest only to a source admin (SourceConnectionDto).
+ * `options` is stored as is and answered.
  */
 export const SetConnectionBody = z.strictObject({
   engine: z.enum(DB_ENGINES),
@@ -324,7 +325,14 @@ export type SourceSummaryDto = z.infer<typeof SourceSummaryDto>;
 export type SourceListQuery = z.infer<typeof SourceListQuery>;
 
 /** The connection as answered: never the credential. */
-export const SourceConnectionDto = z.object({ engine: z.enum(DB_ENGINES), options: ConnectionOptions, updatedAt: z.string() });
+/**
+ * A source's connection as answered: engine and options; for a source admin of the owner space also the server it
+ * reads (`server`: host, port, database, user; owner, 21 Nov: Change shows what is stored). The password never.
+ */
+export const SourceConnectionDto = z.object({
+  engine: z.enum(DB_ENGINES), options: ConnectionOptions, updatedAt: z.string(),
+  server: z.object({ host: z.string(), port: z.number().int(), database: z.string(), user: z.string() }).optional(),
+});
 export type SourceConnectionDto = z.infer<typeof SourceConnectionDto>;
 
 /** A space a source is shared to (read-only there). */

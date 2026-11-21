@@ -264,6 +264,11 @@ describe("PUT connection", () => {
     const got = await detail(t.op, s.id);
     const gotText = await got.text();
     expect((JSON.parse(gotText) as SourceDto).connection).toEqual({ engine: "mysql", options: { tls: false, connectTimeoutSeconds: 15 }, updatedAt: expect.any(String) });
+    // a source admin sees which server is stored (Change shows it), never the password
+    const mine = await detail(t.adm, s.id);
+    const mineText = await mine.text();
+    expect((JSON.parse(mineText) as SourceDto).connection?.server).toEqual({ host: CONNECTION.host, port: 3306, database: "core", user: "recon_ro" });
+    expect(mineText).not.toContain(PASSWORD);
 
     const entries = await acts();
     expect(entries.map((e) => e.action)).toEqual(["source.create", "source.connection_set", "source.connection_set"]);

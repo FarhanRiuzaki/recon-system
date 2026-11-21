@@ -294,7 +294,8 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
   }
 
   if (folded) {
-    const who = c.host.trim() ? `${c.user.trim() ? `${c.user.trim()}@` : ""}${c.host.trim()}:${c.port}` : "Stored sign-in";
+    // which server, port and database it reads (owner, 21 Nov), as user@host:port/database
+    const who = c.host.trim() ? `${c.user.trim() ? `${c.user.trim()}@` : ""}${c.host.trim()}:${c.port}${c.database.trim() ? `/${c.database.trim()}` : ""}` : "Stored sign-in";
     const summary = [`${ENGINE_LABEL[c.engine]}${p.connected?.version ? ` ${p.connected.version}` : ""}`, who, `TLS ${c.tls ? "on" : "off"}`].join(" · ");
     return (
       <Panel title="Server" bodyClassName="grid gap-4">

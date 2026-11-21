@@ -102,13 +102,17 @@ export function EditSourceWizard({ spaceId, spaceName, id, step }: { spaceId: st
   return <SourceWizard key={v.id} spaceId={spaceId} spaceName={spaceName} source={{ s, v }} admin={admin} start={step0(step, admin)} initial={draftOf(s, v)} />;
 }
 
-/** The draft as the wizard edits it: the version's spec (or the published one's), the connection never filled in. */
+/**
+ * The draft as the wizard edits it: the version's spec (or the published one's); the stored server (host, port,
+ * database, user) as a source admin is answered it, the password never (it stays stored until replaced).
+ */
 function draftOf(s: SourceDto, v: SourceVersionDto): Draft {
   const spec = v.spec ?? s.published?.spec ?? emptySpec(s.kind);
   const engine = s.connection?.engine ?? "postgres";
+  const srv = s.connection?.server;
   return {
     name: s.name, code: s.code, kind: s.kind, from: spec.input.kind === "db_watermark" && spec.input.query !== undefined ? "query" : "table", spec,
-    conn: { ...EMPTY_CONN, engine, port: "", tls: s.connection?.options.tls ?? false },
+    conn: { ...EMPTY_CONN, engine, port: "", tls: s.connection?.options.tls ?? false, ...(srv ? { host: srv.host, port: String(srv.port), database: srv.database, user: srv.user } : {}) },
   };
 }
 

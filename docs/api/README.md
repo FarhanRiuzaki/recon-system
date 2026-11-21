@@ -183,7 +183,9 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   to one space; `PUT …/shares/{toSpaceId}` lets another space read it and its published versions, never its draft or
   connection, and change nothing (row level security, `drizzle/0011_sources_rls.sql`): there it is listed with
   `shared: true`, and its change routes answer 404. The connection's host, port, database, user and password are stored
-  encrypted and never answered, logged or recorded; the answer and the entry carry `engine` and `options` only. A
+  encrypted and never logged or recorded; the PUT's answer and the entry carry `engine` and `options` only. The source's
+  detail answers a source admin of the owner space also `connection.server` (host, port, database, user) so Change
+  shows what is stored; the password is never answered. A
   version moves draft → in review (`submit`) → published (`approve`; the published one before it retires) or back to
   draft (`reject`, with a comment); a source has at most one draft or version in review (409 `duplicate` for a second).
   `makerId` is who last saved the spec (the draft's creator until then); `contributorIds` is everyone who created it,

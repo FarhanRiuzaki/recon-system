@@ -73,6 +73,7 @@ const versionDto = (v: VersionRow): SourceVersionDto => ({
 const connectionColumns = { engine: sourceConnections.engine, options: sourceConnections.options, updatedAt: sourceConnections.updatedAt };
 const connectionDto = (c: { engine: string; options: unknown; updatedAt: Date }): SourceConnectionDto =>
   ({ engine: c.engine, options: c.options, updatedAt: c.updatedAt.toISOString() }) as SourceConnectionDto;
+const isSourceAdmin = (ctx: Ctx) => !!ctx.space?.roles.includes("source_admin");
 const target = (s: SourceRow) => ({ type: "source", id: s.id, label: s.name });
 
 /** Sources `spaceId` may read: its own, and those shared to it (the same rule as the RLS policies). */
@@ -133,14 +134,16 @@ export function sourceSummary(ctx: Ctx): Promise<SourceSummaryDto> {
  * The source with its published version; for the owner space also its open draft, connection (without the credential)
  * and shares. Through a share: the published version only.
  */
-async function detailDto(tx: InTx, s: SourceRow, spaceId: string): Promise<SourceDto> {
+async function detailDto(tx: InTx, s: SourceRow, spaceId: string, admin = false): Promise<SourceDto> {
   const own = s.spaceId === spaceId;
   const versions = await tx.select().from(sourceVersions)
     .where(and(ofSource(s), inArray(sourceVersions.status, own ? ["published", "draft", "in_review"] : ["published"])));
   const published = versions.find((v) => v.status === "published");
   const open = versions.find((v) => v.status !== "published");
-  const [connection] = own ? await tx.select(connectionColumns).from(sourceConnections)
+  const [connection] = own ? await tx.select({ ...connectionColumns, secretEnc: sourceConnections.secretEnc }).from(sourceConnections)
     .where(and(eq(sourceConnections.spaceId, s.spaceId), eq(sourceConnections.sourceId, s.id))) : [];
+  // a source admin sees which server is stored (Change shows it); the password is dropped here and never leaves
+  const server = connection && admin ? (({ host, port, database, user }: Secret) => ({ host, port, database, user }))(JSON.parse(decryptSecret(connection.secretEnc)) as Secret) : undefined;
   // one row per space it is shared to: bounded by the number of spaces
   const shares: SourceShareDto[] = own ? await tx.select({ spaceId: spaces.id, code: spaces.code, name: spaces.name }).from(sourceShares)
     .innerJoin(spaces, eq(spaces.id, sourceShares.toSpaceId))
@@ -152,7 +155,7 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string): Promise<Sourc
     health: state?.health ?? null,
     nextRunAt: state?.nextRunAt ?? null,
     drift: state?.drift ?? null,
-    connection: connection ? connectionDto(connection) : null,
+    connection: connection ? { ...connectionDto(connection), ...(server ? { server } : {}) } : null,
     shares,
     published: published ? versionDto(published) : null,
     draft: open ? versionDto(open) : null,
@@ -162,7 +165,7 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string): Promise<Sourc
 /** GET /v1/spaces/:spaceId/sources/:sourceId; 404 for a source the space may not read. */
 export function sourceDetail(ctx: Ctx, id: string): Promise<SourceDto> {
   return inSpace(ctx, async (tx, spaceId) => {
-    return detailDto(tx, await visibleSource(tx, spaceId, id), spaceId);
+    return detailDto(tx, await visibleSource(tx, spaceId, id), spaceId, isSourceAdmin(ctx));
   });
 }
 
@@ -270,7 +273,7 @@ export function createSource(ctx: Ctx, b: CreateSourceBody): Promise<SourceDto> 
     await recordActivity(tx, ctx, { action: "source.create", target: target(s), after: { code: s.code, name: s.name, kind: s.kind } });
     if (b.connection) await writeConnection(tx, ctx, s, b.connection);
     if (b.draft) await insertDraft(tx, ctx, s);
-    return detailDto(tx, s, spaceId);
+    return detailDto(tx, s, spaceId, isSourceAdmin(ctx));
   });
 }
 
