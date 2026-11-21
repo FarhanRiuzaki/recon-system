@@ -18,6 +18,7 @@ REC-F2b (`docs/backlog.md`). Aturan ini menambah, tidak mengganti, `docs/standar
 | 9 | Tahap yang selesai diringkas jadi satu baris dengan "Change". | Goal-gradient |
 | 10 | Keyboard: Enter di kolom tahap menjalankan aksi primer tahap itu. Tab order mengikuti urutan visual. | WCAG 2.4.3 |
 | 11 | Tanpa AI slop: tidak ada ID atau istilah internal di layar, tidak ada caption di bawah setiap kolom, tidak ada hiasan atau kartu bertingkat, copy pendek berbentuk kata kerja + objek, state menyebut apa yang terjadi + satu langkah berikutnya. | Aturan pemilik 20 Nov |
+| 12 | **Wajib (pemilik, 21 Nov 2026, berlaku untuk wizard sekarang dan ke depan):** data yang sudah diisi tidak pernah hilang begitu pengguna maju ke langkah berikutnya, kembali, atau me-refresh di langkah mana pun. Begitu objeknya ada di server (mis. draft source), isian disimpan otomatis (saat pindah langkah langsung, saat mengedit setelah jeda singkat) dan URL menunjuk ke objek itu, sehingga reload membuka draft tersimpan, bukan wizard kosong. Autosave diam; error tetap ditampilkan oleh aksi Next. Penerapan pertama: wizard source (`apps/web/src/features/sources/wizard.tsx`, autosave + route edit setelah source dibuat). | Aturan pemilik; NN/g "preserve user input" |
 
 ## Pengecualian terhadap standar yang ada
 

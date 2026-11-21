@@ -33,7 +33,7 @@ import {
 import { discardConfirm } from "./discard-dialog";
 import { ReviewStep } from "./steps/review";
 import {
-  EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, versionHref,
+  EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, newVersionHref, versionHref,
 } from "./use-sources";
 
 const STEPS = ["Connection", "Fields & mapping", "Review & submit"] as const;
@@ -194,11 +194,13 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const native = useMemo(() => new Map((columns ?? []).map((c) => [c.name, c.type])), [columns]);
 
   // the step lives in the URL (shareable, Build notes 02 routes) without a server round trip; focus follows the heading
+  // A new source moves to its edit route once it exists (owner rule, 21 Nov: what was entered never goes away), so a
+  // reload opens its saved draft there instead of an empty wizard at …/new.
   useEffect(() => {
-    window.history.replaceState(window.history.state, "", `?step=${step + 1}`);
+    window.history.replaceState(window.history.state, "", !source && ids ? newVersionHref(spaceId, ids.sourceId, (step + 1) as 1 | 2 | 3) : `?step=${step + 1}`);
     if (moved.current) heading.current?.focus();
     moved.current = true;
-  }, [step]);
+  }, [step, ids, source, spaceId]);
 
   /** Shows `list` on their controls and focuses the first; true when there were none. */
   const show = (list: { id: string; reason: string }[]) => {
@@ -522,6 +524,23 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       return false;
     }
   }
+
+  // Autosave (owner rule, 21 Nov: data entered in a step is never lost on a reload or a step back): the draft's spec is
+  // saved as soon as the step changes, else 800 ms after the last edit. Quiet: a spec the API refuses mid-edit (a CEL
+  // expression half typed) waits for the next change; Next still saves and shows what is wrong.
+  const savedStep = useRef(step);
+  useEffect(() => {
+    if (!ids || saved.current === specKey) return;
+    const moved = savedStep.current !== step;
+    const t = setTimeout(() => {
+      savedStep.current = step;
+      void api<SourceVersionDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}`), { method: "PATCH", body: JSON.stringify({ spec }) })
+        .then(() => { saved.current = specKey; }, () => {});
+    }, moved ? 0 : 800);
+    return () => clearTimeout(t);
+    // the spec is compared by its JSON (specKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [specKey, ids, step, spaceId]);
 
   async function next() {
     setFormError(null);
