@@ -1,7 +1,7 @@
 "use client";
 
-import { type ChangeEvent, Fragment, useRef } from "react";
-import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
+import { type ChangeEvent, Fragment, useRef, useState } from "react";
+import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -111,6 +111,17 @@ export function FieldsStep(p: FieldsStepProps) {
     return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
   });
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
+
+  // Columns, a page at a time for a wide table: those the search finds, plus any with an error (Next can focus it)
+  const [colQuery, setColQuery] = useState("");
+  const [colPage, setColPage] = useState(1);
+  const q = colQuery.trim().toLowerCase();
+  const matched = s.fields.flatMap((f, i) => (!q || f.name.toLowerCase().includes(q) ? [i] : []));
+  // a page past the end (columns read again, fewer now) shows the last one
+  const curPage = Math.min(colPage, Math.max(1, Math.ceil(matched.length / COL_PAGE)));
+  const page = matched.length > COL_PAGE ? matched.slice((curPage - 1) * COL_PAGE, curPage * COL_PAGE) : matched;
+  const failing = s.fields.flatMap((f, i) => (err(ctl(`fields.${i}`)) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`)) ?? err(`src-attr-${i}`) ? [i] : []));
+  const shownCols = [...new Set([...page, ...failing])].sort((a, b) => a - b);
 
   // a match key that repeats in the preview replaces rows that are other transactions (ids reset monthly, shared ids)
   const keyRepeats = s.mutable ? repeatedRows(p.preview.result?.records ?? [], (r) => r.naturalKey) : 0;
@@ -224,6 +235,15 @@ export function FieldsStep(p: FieldsStepProps) {
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
+          <>
+          {s.fields.length > COL_PAGE && (
+            // a wide table (200+ columns, owner 21 Nov): find a column by name, and a page of COL_PAGE at a time
+            <div className="flex flex-wrap items-center gap-3 px-4 pt-3">
+              <Input type="search" aria-label="Find a column" placeholder="Find a column" className="w-full md:max-w-72" value={colQuery}
+                onChange={(e) => { setColQuery(e.target.value); setColPage(1); }} autoComplete="off" spellCheck={false} />
+              <span role="status" className="text-body-sm text-fg-3 tabular">{colQuery.trim() ? `${formatNumber(matched.length)} of ${formatNumber(s.fields.length)} columns` : `${formatNumber(s.fields.length)} columns`}</span>
+            </div>
+          )}
           <div className="scroll-quiet overflow-x-auto max-xl:overflow-visible xl:[--table-stick:11rem]">
             {/* below 1280 px each column is a card: the header row hides, each cell shows its own label (one DOM); from
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
@@ -232,7 +252,8 @@ export function FieldsStep(p: FieldsStepProps) {
                 {COLUMN_HEADS.map(([head, help], k) => <TableHead key={head} className={k === 0 ? `${STICK_HEAD} xl:w-44 xl:min-w-44` : undefined}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
               </TableRow></TableHeader>
               <TableBody>
-                {s.fields.map((f, i) => {
+                {shownCols.map((i) => {
+                  const f = s.fields[i]!;
                   const id = ctl(`fields.${i}`);
                   const hint = p.engine ? fieldTypeOf(p.engine, p.native.get(f.name) ?? "").note : undefined;
                   const why = err(id) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`));
@@ -293,6 +314,9 @@ export function FieldsStep(p: FieldsStepProps) {
               </TableBody>
             </Table>
           </div>
+          {matched.length > COL_PAGE && <Pagination label="Columns" page={curPage} pageSize={COL_PAGE} total={matched.length} onPageChange={setColPage} />}
+          {colQuery.trim() && !matched.length && <p className="px-4 py-4 text-body-sm text-fg-3">No column is named like that. Clear the search to see every column.</p>}
+          </>
         )}
         <ComputedColumns spec={s} setSpec={setSpec} err={err} examples={examples} renderUseAs={(name, i) => fieldPicker(name, `derive-${i}`)} />
         <ReconFields d={d} p={p} err={err} refLabel={refLabel} setSpec={setSpec} setCore={setCore} setUnit={setUnit} />
@@ -353,6 +377,10 @@ const COLUMN_HEADS: readonly [string, string][] = [
 const STICK_ON = "xl:group-data-[scrolls=true]/scroll:sticky xl:group-data-[scrolls=true]/scroll:left-0 xl:group-data-[scrolls=true]/scroll:border-r xl:group-data-[scrolls=true]/scroll:border-r-line";
 const STICK_HEAD = `${STICK_ON} xl:group-data-[scrolls=true]/scroll:z-20 bg-tray`;
 const STICK_CELL = `${STICK_ON} xl:group-data-[scrolls=true]/scroll:z-1 xl:group-data-[scrolls=true]/scroll:bg-card xl:group-data-[scrolls=true]/scroll:group-hover/row:bg-tray`;
+/** Columns shown a page at a time (a table of 200+ columns stays one screen of work). */
+const COL_PAGE = 25;
+/** Rows of the preview shown, of records and of quarantined lines each. */
+const PREVIEW_ROWS = 5;
 /** The Columns table as cards below 1280 px (a cell's height stays its content's: no fixed row height). */
 const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_tr]:grid-cols-2 max-xl:[&_tr]:gap-x-3 max-xl:[&_tr]:gap-y-3 max-xl:[&_tr]:border-b max-xl:[&_tr]:border-line max-xl:[&_tr]:px-4 max-xl:[&_tr]:py-3 max-xl:[&_td]:block max-xl:[&_td]:h-auto max-xl:[&_td]:border-0 max-xl:[&_td]:p-0 max-xl:[&_td]:whitespace-normal";
 
@@ -575,7 +603,8 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
           {r.records.length > 0 && (() => {
             // every recon field the records carry, so each mapping (a computed column's too) can be checked here;
             // a field no record has stays out (Match key only for a source whose rows change)
-            const rows = r.records.slice(0, 10);
+            // five rows tell whether the mapping reads right; the counts above say how the whole sample went
+            const rows = r.records.slice(0, PREVIEW_ROWS);
             const amount = (x: (typeof rows)[number]) => {
               if (x.amountMinor === null) return "—";
               const exp = x.currency ? CURRENCY_EXPONENT[x.currency] : undefined;
@@ -617,10 +646,11 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
             <div className="grid gap-1">
               <h3 className="text-label text-fg">Quarantined</h3>
               <ul className="grid gap-1 text-body-sm text-fg">
-                {r.quarantine.slice(0, 20).map((q) => (
+                {r.quarantine.slice(0, PREVIEW_ROWS).map((q) => (
                   <li key={q.line}>Row {q.line} · {Object.entries(q.reasons).map(([k, v]) => (k === "_row" ? v : v.startsWith(k) ? v : `${k}: ${v}`)).join("; ")}</li>
                 ))}
               </ul>
+              {r.quarantined > PREVIEW_ROWS && <p className="text-caption text-fg-3">and {formatNumber(r.quarantined - PREVIEW_ROWS)} more in the sample.</p>}
             </div>
           )}
         </>
