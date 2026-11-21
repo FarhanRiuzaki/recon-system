@@ -37,10 +37,10 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
   it("a watermark source picks its watermark and id columns in step 2", () => {
     expect(watermarkProblems(db()).map((p) => p.id)).toEqual(["src-input-watermark-column", "src-input-watermark-id_column"]);
   });
-  it("Next asks for the amount's unit and a currency; the fixed currency is sent only without a currency column", () => {
+  it("Next asks for the amount's unit, not a currency (optional: read as written); the fixed currency is sent only without a currency column", () => {
     const base = emptySpec("db_watermark");
     const s = { ...base, mapping: { ...base.mapping, amount_minor: { field: "amt" } } };
-    expect(amountProblems(s).map((p) => p.id)).toEqual(["src-mapping-amount_minor-unit", "src-currency"]);
+    expect(amountProblems(s).map((p) => p.id)).toEqual(["src-mapping-amount_minor-unit"]);
     const ok = { ...s, currency: "IDR", mapping: { ...s.mapping, amount_minor: { field: "amt", unit: "minor" as const } } };
     expect(amountProblems(ok)).toEqual([]);
     expect(amountProblems(base)).toEqual([]);

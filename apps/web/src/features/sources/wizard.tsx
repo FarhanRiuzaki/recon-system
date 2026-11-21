@@ -192,8 +192,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [picked, setPicked] = useState<{ reading: boolean; n: number | null }>({ reading: false, n: null });
   const [suggested, setSuggested] = useState<Suggestion | null>(null);
   /** Empty core fields filled from the column names (what is set stays); `hint` is what the note says while it is still the value. */
-  const withCore = (x: Draft): Draft => {
-    const sug = suggestCore(x.spec.fields, x.spec.mapping);
+  const withCore = (x: Draft, examples?: ReadonlyMap<string, readonly string[]>): Draft => {
+    const sug = suggestCore(x.spec.fields, x.spec.mapping, examples);
     const y = !Object.keys(sug).length ? x : { ...x, hint: { ...x.hint, ...sug }, spec: { ...x.spec, mapping: { ...x.spec.mapping, ...Object.fromEntries(Object.entries(sug).map(([k, n]) => [k, { field: n }])) } } };
     return withUnit(y);
   };
@@ -202,6 +202,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
    * Example and the computed columns' results fill by themselves (owner, 21 Nov; one pull per visit, not per edit).
    */
   const autoPreview = useRef(true);
+  /** Columns just read: the next preview's examples join the names in the core suggestions (a currency by its codes). */
+  const valueHint = useRef(false);
   const tablesFor = useRef<string | null>(null);
   const tableSeq = useRef(0);
   const saved = useRef(source?.v.spec ? JSON.stringify(source.v.spec) : null);
@@ -459,7 +461,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       setColumns(r.columns);
       const engine = source?.s.connection?.engine ?? d.conn.engine;
       if (table) applySuggestion(r.columns, table, kindOf(table));
-      if (!file) autoPreview.current = true;
+      if (!file) { autoPreview.current = true; valueHint.current = true; }
       set((x) => {
         const merged = mergeFields(x.spec.fields, fieldsOfColumns(engine, r.columns));
         // a table read: fields its columns lack stay, marked (PO decision 4); a SELECT's columns replace them as before
@@ -511,8 +513,12 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       if (n !== seq.current) return;
       setFieldErr(null);
       setPreview({ result, error: null, pending: false });
+      // the first preview after the columns are read: its values join the names in the suggestions (a currency column)
+      const guessed = new Map(result.columns.map((c) => [c.name, c.examples]));
+      if (valueHint.current && !detect.current.size) { valueHint.current = false; setDraft((x) => withCore(x, guessed)); }
       if (detect.current.size) {
         const guess = new Map(result.columns.map((c) => [c.name, c]));
+        const guessed = new Map(result.columns.map((c) => [c.name, c.examples]));
         const fresh = detect.current;
         detect.current = new Set();
           setDraft((x) => withCore({ ...x, spec: { ...x.spec, fields: x.spec.fields.map((f) => {
@@ -521,7 +527,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
           const places = Math.max(2, ...g.examples.map((e) => /[.,](\d+)$/.exec(e)?.[1]?.length ?? 0));
           // the format the sample was read in comes with the type (20261119 → Date, yyyyMMdd)
           return { ...f, type: g.type, ...(g.type === "decimal" ? { format: { scale: Math.min(18, places) } } : g.format ? { format: { date: g.format } } : {}) };
-        }) } }));
+        }) } }, guessed));
       }
     } catch (e) {
       if (n !== seq.current) return;
@@ -539,6 +545,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         columns = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify({ spec: plain, ...(businessDate ? { businessDate } : {}) }) }).catch(() => null);
         if (n !== seq.current) return;
       }
+      if (columns && valueHint.current) { valueHint.current = false; const ex = new Map(columns.columns.map((c) => [c.name, c.examples])); setDraft((x) => withCore(x, ex)); }
       setPreview({ result: columns, columnsOnly: !!columns, error: named ? `The preview stopped: ${named.reason}` : errorText(e), pending: false });
     }
   };

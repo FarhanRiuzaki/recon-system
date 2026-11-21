@@ -1,31 +1,62 @@
 // The column each empty core field is suggested from, by the column's name and type (no React). The wizard applies it
 // once per read of the columns and never over a value the user (or a loaded spec) already set.
 import type { FieldSpec, SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
-import { type AmountUnit, CURRENCY_EXPONENT, toMinor } from "@starterkit/shared/sources";
+import { type AmountUnit, CURRENCY_EXPONENT, currencyCode, toMinor } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
 
 export type SuggestedCore = "business_date" | "amount_minor" | "currency" | "ext_ref" | "account_ref";
 
 const norm = (s: string) => s.toLowerCase().replace(/[_\s]/g, "");
-const names = (...n: string[]) => new Set(n.map(norm));
-const fits: Record<SuggestedCore, { names: Set<string>; type: (f: FieldSpec) => boolean }> = {
-  business_date: { names: names("business_date", "value_date", "date", "tgl", "tanggal", "trx_date", "txn_date"), type: (f) => f.type === "date" || f.type === "datetime" },
-  amount_minor: { names: names("amount_minor", "amount", "amt", "nominal", "jumlah"), type: (f) => f.type === "integer" || f.type === "decimal" },
-  currency: { names: names("ccy", "currency", "curr", "cur"), type: (f) => f.type === "string" },
-  ext_ref: { names: names("txn_ref", "reference", "ref", "trx_id", "txn_id", "ext_ref"), type: (f) => f.type === "string" },
-  account_ref: { names: names("account_no", "account", "acct", "rekening", "no_rek"), type: (f) => f.type === "string" },
-};
+/** A column name's words: "end_to_end_id" → end, to, end, id; "settledAt" → settled, at. */
+const words = (s: string) => s.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 
 /**
- * Field name per core field whose mapping is still empty. Two columns qualifying for one field: no suggestion; a column
- * already mapped to a core field, or wanted by two, is not suggested.
+ * What makes a column fit a core field (owner, 21 Nov: dynamic, not a fixed list of names): its type must fit; then it
+ * scores by its name (a whole known name 3, a known word in it 2, a weaker word 1) and, given examples, by its values
+ * (every example a currency code the product knows: 3). `avoid`: words that mean another thing (a reason code is no
+ * reference).
  */
-export function suggestCore(fields: readonly FieldSpec[], mapping: SourceSpec["mapping"]): Partial<Record<SuggestedCore, string>> {
+type Fit = { type: (f: FieldSpec) => boolean; names: string[]; strong: string[]; weak?: string[]; avoid?: string[]; values?: (ex: string[]) => boolean };
+const fits: Record<SuggestedCore, Fit> = {
+  business_date: { type: (f) => f.type === "date" || f.type === "datetime", names: ["business_date", "value_date", "date", "tgl", "tanggal", "trx_date", "txn_date"],
+    strong: ["business", "value", "tgl", "tanggal", "posting", "booking"], weak: ["date"] },
+  amount_minor: { type: (f) => f.type === "integer" || f.type === "decimal", names: ["amount_minor", "amount", "amt", "nominal", "jumlah"],
+    strong: ["amount", "amt", "nominal", "jumlah"], avoid: ["balance", "saldo", "fee", "no", "id"] },
+  currency: { type: (f) => f.type === "string", names: ["ccy", "currency", "curr", "cur"], strong: ["ccy", "currency", "curr"],
+    values: (ex) => ex.length > 0 && ex.every((v) => currencyCode(v) !== null) },
+  ext_ref: { type: (f) => f.type === "string", names: ["txn_ref", "reference", "ref", "trx_id", "txn_id", "ext_ref", "end_to_end_id", "e2e_id"],
+    strong: ["ref", "reference", "e2e", "endtoend", "rrn", "trx", "txn"], avoid: ["reason", "status", "channel", "name", "bank", "account", "proxy"] },
+  account_ref: { type: (f) => f.type === "string", names: ["account_no", "account", "acct", "rekening", "no_rek"], strong: ["account", "acct", "rekening", "rek", "norek"],
+    avoid: ["name", "bank", "proxy"] },
+};
+const known = Object.fromEntries(Object.entries(fits).map(([k, x]) => [k, new Set(x.names.map(norm))])) as Record<SuggestedCore, Set<string>>;
+
+/** How well column `f` fits core field `k` (0 = not at all). */
+function score(k: SuggestedCore, f: FieldSpec, ex: string[]): number {
+  const x = fits[k];
+  if (!x.type(f)) return 0;
+  const w = words(f.name), joined = w.join("");
+  if (x.avoid?.some((a) => w.includes(a))) return 0;
+  let n = known[k].has(norm(f.name)) ? 3 : 0;
+  if (!n && (x.strong.some((s) => w.includes(s) || joined.includes(s)))) n = 2;
+  if (!n && x.weak?.some((s) => w.includes(s))) n = 1;
+  if (x.values?.(ex)) n += 3;
+  return n;
+}
+
+/**
+ * Field name per core field whose mapping is still empty: the column that fits it best, by type, name and (given) its
+ * example values. Two columns fitting one field equally well: no suggestion (the user picks); a column already mapped
+ * to a core field, or the best for two, is not suggested.
+ */
+export function suggestCore(fields: readonly FieldSpec[], mapping: SourceSpec["mapping"], examples: ReadonlyMap<string, readonly string[]> = new Map()): Partial<Record<SuggestedCore, string>> {
   const empty = (k: SuggestedCore) => { const r = mapping[k]; return !r || ("field" in r && !r.field); };
   const taken = new Set(Object.values(mapping).flatMap((r) => (r && "field" in r && r.field ? [r.field] : [])));
   const pick = Object.fromEntries((Object.keys(fits) as SuggestedCore[]).filter(empty).flatMap((k) => {
-    const hit = fields.filter((f) => !taken.has(f.name) && fits[k].names.has(norm(f.name)) && fits[k].type(f));
-    return hit.length === 1 ? [[k, hit[0]!.name]] : [];
+    const scored = fields.filter((f) => !taken.has(f.name)).map((f) => ({ f, n: score(k, f, [...(examples.get(f.name) ?? [])].filter(Boolean)) })).filter((x) => x.n > 0);
+    const top = Math.max(0, ...scored.map((x) => x.n));
+    const best = scored.filter((x) => x.n === top);
+    return best.length === 1 ? [[k, best[0]!.f.name]] : [];
   })) as Partial<Record<SuggestedCore, string>>;
   const count = new Map<string, number>();
   for (const n of Object.values(pick)) count.set(n, (count.get(n) ?? 0) + 1);

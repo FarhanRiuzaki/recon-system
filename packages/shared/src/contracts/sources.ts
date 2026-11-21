@@ -118,7 +118,10 @@ export const SourceSpec = z.strictObject({
   mutable: z.boolean(),
   /** Rows to load: every condition must hold (none = every row). */
   keep: z.array(SourceCondition).max(20).optional(),
-  /** The currency of every row when the source has no currency column (ISO code; required then if it maps an amount). */
+  /**
+   * The currency of every row when the source has no currency column (ISO code). Optional (owner, 21 Nov): an amount
+   * with no currency is read at its own decimal places, as written.
+   */
   currency: z.string().refine((c) => currencyCode(c) === c, "Use an ISO currency code the product knows, such as IDR").optional(),
   calendar: z.string().trim().min(1).max(64),
   input: z.discriminatedUnion("kind", [DbWatermarkInput, DbSnapshotInput, FileInboxInput]),
@@ -141,7 +144,6 @@ export const SourceSpec = z.strictObject({
     const f = s.fields.find((x) => x.name === amount.field);
     if (f && f.type !== "integer" && f.type !== "decimal") issue(`The amount needs an integer or a decimal column; "${f.name}" is ${f.type}`, ["mapping", "amount_minor"]);
   }
-  if (amount && !s.mapping.currency && s.currency === undefined) issue("Map the currency column, or set the currency of every row", ["currency"]);
   if (s.mapping.currency && s.currency !== undefined) issue("This source has a currency column; leave the currency of every row empty", ["currency"]);
   const known = (n: string) => fields.has(n) || Object.hasOwn(s.derive, n);
   const { attrs, ...core } = s.mapping;

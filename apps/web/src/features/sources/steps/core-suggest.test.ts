@@ -13,6 +13,20 @@ describe("core field suggestions", () => {
     expect(suggestCore(s1, empty)).toEqual({ ext_ref: "txn_ref", business_date: "business_date", amount_minor: "amount_minor", currency: "ccy", account_ref: "account_no" });
     expect(suggestCore(s2, empty)).toEqual({ ext_ref: "reference", business_date: "value_date", amount_minor: "amount", currency: "currency", account_ref: "acct" });
   });
+  it("reads the words of a name, not only whole known names (owner, 21 Nov): the BI-FAST host table", () => {
+    const host = [f("id", "integer"), f("business_date", "date"), f("no", "string"), f("end_to_end_id", "string"), f("channel_id", "string"), f("sender_name", "string"),
+      f("sender_account", "string"), f("receiver_bank", "string"), f("receiver_account", "string"), f("amount", "decimal", { scale: 2 }), f("status", "string"),
+      f("reason_code", "string"), f("initiated_at", "datetime"), f("settled_at", "datetime")];
+    // two accounts fit equally (sender, receiver): the user picks
+    expect(suggestCore(host, empty)).toEqual({ business_date: "business_date", amount_minor: "amount", ext_ref: "end_to_end_id" });
+    expect(suggestCore([f("TrxReference", "string"), f("PostingDate", "date"), f("txn_amount", "integer"), f("balance_amount", "integer")], empty))
+      .toEqual({ ext_ref: "TrxReference", business_date: "PostingDate", amount_minor: "txn_amount" });
+  });
+  it("reads the values too: a column whose examples are currency codes is the currency, whatever its name", () => {
+    const cols = [f("kode", "string"), f("ket", "string")];
+    expect(suggestCore(cols, empty, new Map([["kode", ["IDR", "USD", "IDR"]], ["ket", ["transfer", "IDR"]]]))).toEqual({ currency: "kode" });
+    expect(suggestCore(cols, empty)).toEqual({});
+  });
   it("ignores case, underscores and spaces", () => {
     expect(suggestCore([f("Value Date", "date"), f("AMT", "integer")], empty)).toEqual({ business_date: "Value Date", amount_minor: "AMT" });
   });

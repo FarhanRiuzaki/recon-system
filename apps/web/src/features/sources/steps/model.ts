@@ -178,7 +178,6 @@ export function amountProblems(s: SourceSpec): { id: string; reason: string }[] 
   if (!a) return [];
   return [
     ...(a.unit ? [] : [{ id: ctl("mapping.amount_minor.unit"), reason: "Choose whether the amount is in currency units or minor units." }]),
-    ...(s.mapping.currency || s.currency ? [] : [{ id: ctl("currency"), reason: "Pick the currency of every row, or map the currency column." }]),
   ];
 }
 

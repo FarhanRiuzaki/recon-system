@@ -520,7 +520,8 @@ describe("CEL on save and the preview (Task 3)", () => {
     const txt = await patch(t.mk, s.id, v.id, { ...k, fields, currency: "IDR", mapping: { ...k.mapping, amount_minor: { field: "txt", unit: "major" } } });
     expect([txt.status, await msg(txt)]).toEqual([400, 'Check mapping.amount_minor: The amount needs an integer or a decimal column; "txt" is string.']);
     const bare = await patch(t.mk, s.id, v.id, { ...k, fields, mapping: { ...k.mapping, amount_minor: { field: "amt", unit: "major" } } });
-    expect([bare.status, await msg(bare)]).toEqual([400, "Check currency: Map the currency column, or set the currency of every row."]);
+    // no currency (owner, 21 Nov: not required): the amount is read at its own decimal places
+    expect(bare.status).toBe(200);
     const both = await patch(t.mk, s.id, v.id, { ...k, fields, currency: "IDR", mapping: { ...k.mapping, currency: { field: "txt" }, amount_minor: { field: "amt", unit: "major" } } });
     expect([both.status, await msg(both)]).toEqual([400, "Check currency: This source has a currency column; leave the currency of every row empty."]);
     for (const c of ["RPH", "idr"]) {

@@ -31,7 +31,7 @@ type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
 const CORE: { key: Core; group: "date" | "money" | "match"; label: string; note?: string; help: string }[] = [
   { key: "business_date", group: "date", label: "Business date", help: "The day a row belongs to. Recons match, close and sign off per business date, so rows of 20 Nov are compared with the other side's 20 Nov. Usually a value or booking date column, or the date in the file name." },
   { key: "amount_minor", group: "money", label: "Amount", help: "The money value both sides compare. Leave it out when a recon only matches by keys, such as an account list." },
-  { key: "currency", group: "money", label: "Currency", note: "ISO code or number, such as IDR or 360.", help: "The currency of each row's amount. A source in one currency leaves this as Not used and picks the currency for every row below." },
+  { key: "currency", group: "money", label: "Currency", note: "ISO code or number, such as IDR or 360.", help: "The currency of each row's amount. Optional: a source in one currency can pick it below, and with none the amounts are read as written, at their own decimal places." },
   { key: "direction", group: "money", label: "Direction", help: "Whether a row is a debit or a credit (D/C, DR/CR, DEBIT/CREDIT). A debit counts as negative, so both sides compare amounts with the same sign." },
   { key: "event_time", group: "match", label: "Event time", help: "When the transaction happened, with its time. Matching rules can allow a time window with it, such as within 10 minutes." },
   { key: "ext_ref", group: "match", label: "Reference", help: "The id both sides share for the same transaction, such as an end-to-end or transfer reference. The strongest thing to match on." },
@@ -510,7 +510,7 @@ function Left({ d }: { d: Draft }) {
   const items = [
     { ok: s.fields.length > 0, text: "Columns read" },
     { ok: s.fields.length > 0 && !mappingProblem(s), text: "Business date mapped" },
-    ...(s.mapping.amount_minor ? [{ ok: !!s.mapping.amount_minor.unit, text: "Amount unit chosen" }, { ok: !!(s.mapping.currency || s.currency), text: "Currency set" }] : []),
+    ...(s.mapping.amount_minor ? [{ ok: !!s.mapping.amount_minor.unit, text: "Amount unit chosen" }] : []),
     ...(i.kind === "db_watermark" ? [{ ok: !!i.watermark.column && !!i.watermark.id_column, text: "Watermark and id column picked" }] : []),
     ...(i.kind !== "db_snapshot" && s.mutable ? [{ ok: s.key_fields.length > 0, text: "Match key picked" }] : []),
   ];
