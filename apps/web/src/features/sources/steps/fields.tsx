@@ -168,7 +168,7 @@ export function FieldsStep(p: FieldsStepProps) {
     });
     const value = CORE.map((c) => mine(c.key)).filter((v): v is string => !!v).map((v) => opts.find((o) => o.value === v) ?? { value: v, label: v });
     return (
-      <Combobox multiple id={`src-useas-${idx}`} label={`${col} is used as`} className="w-full min-w-48" options={opts} value={value} placeholder="Not used"
+      <Combobox multiple id={`src-useas-${idx}`} label={`${col} is used as`} className="w-full min-w-64" options={opts} value={value} placeholder="Not used"
         emptyText="No recon field has that name." onChange={(next) => {
           const want = new Map(next.map((o) => { const [k, path] = o.value.split("@") as [Core, string | undefined]; return [k, path] as const; }));
           for (const c of CORE) {
