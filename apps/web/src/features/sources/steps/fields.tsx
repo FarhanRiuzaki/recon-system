@@ -357,7 +357,13 @@ const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_
 
 /** A cell's label, shown only on the card (the table's header row names the columns from 768 px). */
 function Cap({ children, inline }: { children: string; inline?: boolean }) {
-  return <span aria-hidden="true" className={inline ? "font-sans text-caption text-fg-3 xl:hidden" : "mb-1 block font-sans text-caption text-fg-3 xl:hidden"}>{children}</span>;
+  // below 1280 px the header row is hidden, so the header's ⓘ comes with the card's label
+  const help = COLUMN_HEADS.find(([h]) => h === children)?.[1];
+  return (
+    <span className={inline ? "inline-flex items-center gap-0.5 font-sans text-caption text-fg-3 xl:hidden" : "mb-1 flex items-center gap-0.5 font-sans text-caption text-fg-3 xl:hidden"}>
+      <span aria-hidden="true">{children}</span>{help && <InfoTip label={children}>{help}</InfoTip>}
+    </span>
+  );
 }
 
 /**
