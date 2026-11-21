@@ -49,7 +49,11 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
               <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span>
               <span className="text-fg-2">{rangeText(item.businessDate, item.businessDate)}</span>
             </section>
-            <p className="self-center text-fg-2">No {other} item with reference <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span> on {counterpartWindow(item.businessDate, spec.carry_over_days)}.</p>
+            {/* the other side's column: a dashed card, nothing to compare (Figma 206:6372) */}
+            <section aria-label={other} className="grid content-start gap-2 rounded-md border border-dashed border-line p-3">
+              <h3 className="text-caption text-fg-3">{other}</h3>
+              <p className="text-fg-2">No item with reference <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span> on {counterpartWindow(item.businessDate, spec.carry_over_days)}.</p>
+            </section>
           </div>
         </DialogContent>
       </Dialog>
