@@ -53,6 +53,13 @@ const fakeUpload: UploadFn = (file, { onProgress, signal }) => new Promise((reso
   }, TICK_MS);
   signal.addEventListener("abort", () => { clearInterval(t); reject(new Error("aborted")); });
 });
+/** Options that say whether each can be used (Combobox option tone, design-system §5.12). */
+const SLOTS: ComboOption[] = [
+  { value: "am", label: "Morning, 08:00–12:00", tone: "ok" },
+  { value: "pm", label: "Afternoon, 13:00–17:00", tone: "ok" },
+  { value: "night", label: "Night, 19:00–22:00", tone: "bad", disabled: true, description: "Not served in this area" },
+];
+
 /** Simulated server search over CITIES. */
 const searchCities = (q: string, signal: AbortSignal) => new Promise<ComboOption[]>((resolve, reject) => {
   const t = setTimeout(() => resolve(CITIES.filter((c) => c.label.toLowerCase().includes(q.toLowerCase()))), TICK_MS);
@@ -185,8 +192,10 @@ function ComboDemo() {
   const [one, setOne] = useState<ComboOption | null>(CITIES[0]!);
   const [many, setMany] = useState<ComboOption[]>([TEAMS[1]!]);
   const [remote, setRemote] = useState<ComboOption | null>(null);
+  const [slot, setSlot] = useState<ComboOption | null>(null);
   return (
     <div className="grid gap-4">
+      <div className="grid gap-1.5"><span className="text-label text-fg">Delivery slot (options with tone)</span><Combobox label="Delivery slot" options={SLOTS} value={slot} onChange={setSlot} placeholder="Pick a slot" /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">City (single, local)</span><Combobox label="City" options={CITIES} value={one} onChange={setOne} placeholder="Search a city" /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">Teams (multiple, create)</span>
         <Combobox label="Teams" multiple options={TEAMS} value={many} onChange={setMany} placeholder="Add a team" onCreate={(t) => ({ value: t.toLowerCase(), label: t })} />
