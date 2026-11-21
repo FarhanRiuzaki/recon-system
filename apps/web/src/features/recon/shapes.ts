@@ -15,13 +15,13 @@ export const NEW_RECON_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[12, 320]] },
 ];
 
-/** A recon (BUILDER-SPEC loading): the header, the tabs, the simulation bar, the settings strip and the passes. */
+/** A recon (its Overview, the default tab): the header, the tabs, the day's numbers, Run beside Run history, the trend. */
 export const RECON_SHAPE: readonly Section[] = [
   { kind: "header", h: 50 },
   { kind: "bar", h: 28 },
-  { kind: "panels", panels: [[12, 72]] },
-  { kind: "panels", panels: [[12, 56]] },
-  { kind: "panels", panels: [[12, 560]] },
+  { kind: "panels", panels: [[12, 150]] },
+  { kind: "panels", panels: [[6, 320], [6, 320]] },
+  { kind: "panels", panels: [[12, 300]] },
 ];
 
 /** A recon version: the header, its passes and settings, the decision. */

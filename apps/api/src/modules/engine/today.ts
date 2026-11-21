@@ -3,8 +3,8 @@
 // RunDay (recon_runs.days, written when it finalized, again after a close): a screen read never counts items (S1: ~18M
 // a side a day), so the numbers move once per run, as §11a's "animates once per tick". A handful of queries for every
 // recon of the space at once, all under the viewer's withSpace (RLS).
-import { type LiveReconDto, ReconSpec, type ReconLiveDto, RunDay, type TodayDto } from "@starterkit/shared/contracts/recon";
-import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
+import { type LiveReconDto, ReconSpec, type ReconLiveDto, type ReconTrendDto, RunDay, type TodayDto } from "@starterkit/shared/contracts/recon";
+import { TODAY_RECONS_MAX, TREND_DAYS } from "@starterkit/shared/recon";
 import { and, count, desc, eq, inArray, isNotNull, isNull, max, min, ne, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
@@ -36,6 +36,36 @@ export function reconLive(ctx: Ctx, configId: string, now = new Date()): Promise
     const [recon] = await liveRecons(tx, spaceId, configId, now);
     if (!recon) throw new ApiError("invalid_state", "This recon has no approved version running yet. Its day shows here once a version is approved.");
     return { recon, sources: await liveSources(tx, spaceId, recon.sides.map((s) => s.sourceId)) };
+  });
+}
+
+/**
+ * GET …/recons/:configId/days: the TREND_DAYS business dates up to its current one, each as the last finalized live run
+ * covering it left it. One small query a date (recon_runs_config_started), never a count of items. 409 before an
+ * approved version.
+ */
+export function reconTrend(ctx: Ctx, configId: string, now = new Date()): Promise<ReconTrendDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const [c] = await tx.select({ id: reconConfigs.id }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
+    if (!c) throw notFound("recon");
+    const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
+      .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
+    if (!v) throw new ApiError("invalid_state", "This recon has no approved version running yet. Its days show here once a version is approved.");
+    const spec = ReconSpec.parse(v.spec);
+    const last = spec.schedule.kind === "interval" ? todayIn(now) : lastDue(spec, now);
+    const dates = Array.from({ length: TREND_DAYS }, (_, i) => new Date(Date.parse(`${last}T00:00:00Z`) - (TREND_DAYS - 1 - i) * 86_400_000).toISOString().slice(0, 10));
+    const r = reconRuns;
+    const days = [];
+    for (const date of dates) {
+      const [run] = await tx.select({ days: r.days }).from(r)
+        .where(and(eq(r.spaceId, spaceId), eq(r.configId, configId), ne(r.mode, "simulation"), isNull(r.baselineOf), eq(r.status, "succeeded"), isNotNull(r.days),
+          sql`${date}::date between ${r.dateFrom} and ${r.dateTo}`))
+        .orderBy(desc(r.finishedAt)).limit(1);
+      const stored = Array.isArray(run?.days) ? (run.days as unknown[]).find((d) => (d as { date?: string }).date === date) : undefined;
+      const day = stored ? RunDay.safeParse(stored) : null;
+      days.push({ date, day: day?.success ? day.data : null });
+    }
+    return { days };
   });
 }
 

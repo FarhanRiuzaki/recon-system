@@ -16,9 +16,9 @@ vi.mock("next/headers", () => ({
 import type { QueryKey } from "@tanstack/react-query";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { readTable, tableRequest, text } from "@/lib/shared/table-state";
-import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, reconLatestRuns, reconRecordRuns, reconRun, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions, userSpaces } from "@/lib/shared/queries";
+import { ACTIVITY, AUTH_LOG, DASHBOARD_KEY, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, roleKey, roleOptions, ROLES, SPACE_MEMBERS, spaceDetail, spaceOptions, SUPERADMINS, type TableDef, userDetail, USERS, userSessions, userSpaces } from "@/lib/shared/queries";
 import { fakeApi, pathOf, sealCookie, TEST_TOKEN } from "@/test/session";
-import { lastRunReads, Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
+import { Prefetch, prefetchState, reads, type Read, table, toSearch } from "./prefetch";
 
 const sp = (qs: string) => toSearch(Object.fromEntries(new URLSearchParams(qs)));
 /** The key useTableQuery builds for `table` at URL state `qs`, and the request it would send. */
@@ -182,21 +182,3 @@ it("raw exact Activity filters retain invalid presence so SSR never prefetches a
   expect(new URL(read.path!, "http://local").searchParams.get("targetId")).toBe(" \nopaque\t ");
 });
 
-describe("a published recon's Overview reads its last run as the run page does (re-check B7, R6-1)", () => {
-  const space = "0199f0a0-0000-7000-8000-00000000000a", recon = "0199f0a0-0000-7000-8000-00000000000b";
-  const run = "0199f0a0-0000-7000-8000-00000000000d", empty = "0199f0a0-0000-7000-8000-00000000000e";
-  it("the newest run with records (runs?records=1) by its detail, beside both lists", async () => {
-    fakeApi((r) => Response.json(new URL(r.url).searchParams.get("records")
-      ? { items: [{ id: run, mode: "manual", startedAt: "2026-11-21T01:00:00Z" }], total: 1, page: 1, pageSize: 15 }
-      : { items: [{ id: empty, mode: "daily", startedAt: "2026-11-21T08:55:00Z" }, { id: run, mode: "manual", startedAt: "2026-11-21T01:00:00Z" }], total: 2, page: 1, pageSize: 50 }));
-    await sealCookie(jar);
-    const rs = await lastRunReads(space, recon);
-    expect(rs.map((r) => r.key)).toEqual([reconRecordRuns(space, recon).key, reconLatestRuns(space, recon).key, reconRun(space, recon, run).key]);
-  });
-
-  it("no run at all: the lists only", async () => {
-    fakeApi(() => Response.json({ items: [], total: 0, page: 1, pageSize: 15 }));
-    await sealCookie(jar);
-    expect(await lastRunReads(space, recon)).toHaveLength(2);
-  });
-});

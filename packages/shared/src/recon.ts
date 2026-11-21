@@ -43,6 +43,8 @@ export const RECON_NAME_MAX = 100;
 export const PASSES_MAX = 20;
 /** At most this many recons on Today (a space has tens); more answer `capped` (TodayDto). */
 export const TODAY_RECONS_MAX = 200;
+/** How many business dates a recon's trend shows (its Overview). */
+export const TREND_DAYS = 14;
 /** HH:MM, 00:00–23:59 (Asia/Jakarta): a daily run's time and a day's close. */
 export const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 

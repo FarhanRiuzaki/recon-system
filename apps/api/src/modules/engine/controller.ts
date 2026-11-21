@@ -11,7 +11,7 @@ import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
-import { reconLive, todayDto } from "./today";
+import { reconLive, reconTrend, todayDto } from "./today";
 
 /** The routes of runs and simulations. */
 export const engineController = () =>
@@ -21,6 +21,8 @@ export const engineController = () =>
     .get("/v1/spaces/:spaceId/today", ({ ctx }) => todayDto(ctx), { guard: { space: SPACE_ROLES } })
     /** Live day: one recon's current business date. */
     .get("/v1/spaces/:spaceId/recons/:configId/live", ({ ctx, params }) => reconLive(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
+    /** A recon's trend: its last TREND_DAYS business dates. */
+    .get("/v1/spaces/:spaceId/recons/:configId/days", ({ ctx, params }) => reconTrend(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs", ({ ctx, params, query }) => runPage(ctx, idParam(params.configId, "recon"), query), { query: ReconRunListQuery, guard: { space: SPACE_ROLES } })
     /** A run of the published version over business dates, queued. */
     .post("/v1/spaces/:spaceId/recons/:configId/runs", async (c) => {

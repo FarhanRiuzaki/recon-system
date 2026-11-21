@@ -23,7 +23,7 @@ export function patchTimeSearch(sp: URLSearchParams, patch: Record<string, strin
 /**
  * The query keys (their first element, the owning module) the header's refresh reads again on `path`; `tab` = the
  * page's ?tab. Null = no refresh: forms never refetch underneath unsaved input (a new user, a source wizard, a recon's
- * Overview, which is its builder).
+ * Configuration, its builder).
  */
 export function refreshScope(path: string, tab: string | null = null): readonly string[] | null {
   if (path === "/") return ["dashboard"];
@@ -39,18 +39,19 @@ export function refreshScope(path: string, tab: string | null = null): readonly 
   if (page === "sources") return ["sources"];
   if (page === "recons") return ["recon"];
   if (/^sources\/[^/]+$/.test(page) && page !== "sources/new") return ["sources", "ingest"];
-  if (/^recons\/[^/]+$/.test(page) && page !== "recons/new") return tab && tab !== "overview" ? ["recon", "engine"] : null;
+  if (/^recons\/[^/]+$/.test(page) && page !== "recons/new") return tab === "configuration" ? null : ["recon", "engine"];
   if (/^recons\/[^/]+\/runs\/[^/]+$/.test(page)) return ["engine"];
   return null;
 }
 
 /**
  * Pages whose rows are dated, so the header's date range filters them, with the days it covers by default: the
- * dashboard, both logs, and a source's or a recon's Activity tab (its trail, TRAIL_DAYS in queries.ts). Null = none.
+ * dashboard, both logs, a source's Activity tab and a recon's History tab (their trail, TRAIL_DAYS in queries.ts).
  */
 export function timeWindowDays(path: string, tab: string | null = null): number | null {
   if (path === "/") return 14;
   if (path.startsWith("/audit/")) return 7;
-  if (tab === "activity" && /^\/spaces\/[^/]+\/(sources|recons)\/[^/]+$/.test(path) && !/\/(sources|recons)\/new$/.test(path)) return 90;
+  const detail = /^\/spaces\/[^/]+\/(sources|recons)\/([^/]+)$/.exec(path);
+  if (detail && detail[2] !== "new" && (detail[1] === "sources" ? tab === "activity" : tab === "history" || tab === "activity")) return 90;
   return null;
 }

@@ -26,7 +26,7 @@ import { reconConfigVersions } from "../../../recon";
 import { closeDay, sweepClosed } from "../../breaks";
 import { CLOSED_DAY, RUN_STOPPED } from "../../jobs";
 import { alertStale, dispatch, runScheduled } from "../../schedule";
-import { reconLive, todayDto } from "../../today";
+import { reconLive, reconTrend, todayDto } from "../../today";
 import type { Ctx } from "../../../auth";
 import { reconDays, reconItems, reconRuns } from "../../schema";
 import { classifyUnmatched, createRun, execRun, runRecon, type RunCounters } from "../../service";
@@ -484,6 +484,12 @@ describe("Today and Live day (REC-F4)", () => {
     await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "closed" });
     const closed = (await reconLive(ctx, r.configId, at(`${D}T10:28:31`))).recon;
     expect([closed.state, closed.stale]).toEqual(["closed", false]);
+    // the trend: 14 dates up to its current one, the last run's day on D, nothing before any run
+    const trend = await reconTrend(ctx, r.configId, at(`${D}T10:28:31`));
+    expect(trend.days).toHaveLength(14);
+    expect(trend.days.at(-1)!.date).toBe(D);
+    expect(trend.days.at(-1)!.day!.breaks).toEqual({ a: 1, b: 0 });
+    expect(trend.days.slice(0, -1).every((d) => d.day === null)).toBe(true);
   }, 60_000);
 
   it("a stale spell alerts once, however many dispatches at once; again an hour later or after a new success", async () => {
@@ -511,6 +517,8 @@ describe("Today and Live day (REC-F4)", () => {
     expect(((await today.json()) as TodayDto).recons.map((x) => x.id)).toEqual([r.configId]);
     expect((await call("GET", `/v1/spaces/${A}/recons/${r.configId}/live`, { token })).status).toBe(200);
     expect((await call("GET", `/v1/spaces/${A}/recons/${draft.configId}/live`, { token })).status).toBe(409);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${r.configId}/days`, { token })).status).toBe(200);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${draft.configId}/days`, { token })).status).toBe(409);
     expect((await call("GET", `/v1/spaces/${A}/recons/${Bun.randomUUIDv7()}/live`, { token })).status).toBe(404);
     const B = Bun.randomUUIDv7();
     await db.insert(spaces).values({ id: B, code: `s${B.slice(-8)}`, name: "Other" });

@@ -30,7 +30,8 @@ function MapShape() {
   );
 }
 const SpaceMap = dynamic(() => import("./space-map").then((m) => m.SpaceMap), { ssr: false, loading: MapShape });
-const liveHref = (spaceId: string, id: string) => `${reconHref(spaceId, id)}?tab=live`;
+/** A recon's Overview: its day, runs and trend (Live day merged into it). */
+const liveHref = reconHref;
 
 /** The map's list view: each source with its health, lag and the recons that read it (the same content, by keyboard and screen reader). */
 function MapList({ t, spaceId }: { t: TodayDto; spaceId: string }) {

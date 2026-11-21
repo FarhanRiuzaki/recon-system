@@ -1,7 +1,7 @@
 // Today and Live day as the screens read them (REC-F4, spec §11a): the words of a recon's day and freshness, a source's
 // health and lag, the Space map as a graph (sources → recons, a source that is Degraded or Down marks every recon that
 // reads it) and a day's numbers as the builder canvas's counters. Pure: the screens and their tests share it.
-import type { LiveReconDto, LiveSourceDto, ReconRunDto, TodayDto } from "@starterkit/shared/contracts/recon";
+import type { LiveReconDto, LiveSourceDto, ReconRunDto, RunDay, TodayDto } from "@starterkit/shared/contracts/recon";
 import { formatDateTime, formatDuration, formatNumber } from "@starterkit/ui/lib/format";
 
 type Health = "healthy" | "degraded" | "down" | "stopped" | "unknown";
@@ -36,19 +36,21 @@ export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceD
 /** "Runs every 2 min" / "Runs daily at 06:00". */
 export const scheduleLine = (s: LiveReconDto["schedule"]) => (s.kind === "interval" ? `Runs every ${formatDuration(s.every_minutes * 60)}` : `Runs daily at ${s.at}`);
 
-/** The day's totals: items in, groups matched and suggested, waiting and broken items (both sides). Null before a run. */
-export function dayTotals(r: LiveReconDto): { inItems: number | null; matched: number; suggested: number; waiting: number; breaks: number } | null {
-  const d = r.day;
-  if (!d) return null;
+/** A day's totals: items in, groups matched and suggested, waiting and broken items (both sides), side A's match rate. */
+export function totalsOfDay(d: RunDay): { inItems: number | null; matched: number; suggested: number; waiting: number; breaks: number; rate: number | null } {
   const passes = Object.values(d.passes);
+  const matched = passes.reduce((n, p) => n + p.matched, 0);
   return {
-    inItems: d.items ? d.items.a + d.items.b : null,
-    matched: passes.reduce((n, p) => n + p.matched, 0),
+    inItems: d.items ? d.items.a + d.items.b : null, matched,
     suggested: passes.reduce((n, p) => n + p.suggested, 0),
     waiting: d.open.a + d.open.b,
     breaks: d.breaks.a + d.breaks.b + passes.reduce((n, p) => n + p.broken, 0),
+    // one side A item per matched group, as the run summary counts it (an N:1 pass overcounts: ponytail in run-model)
+    rate: d.items?.a ? Math.min(1, matched / d.items.a) : null,
   };
 }
+/** The current day's totals of a live recon; null before a run covered it. */
+export const dayTotals = (r: LiveReconDto) => (r.day ? totalsOfDay(r.day) : null);
 
 /**
  * The day as the builder canvas's counters (its edges then read the day): items in per side, nothing replaced, each

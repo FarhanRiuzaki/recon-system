@@ -32,11 +32,6 @@ function LastRun({ r }: { r: LiveReconDto }) {
   return r.lastSuccessAt ? <RelativeTime at={Date.parse(r.lastSuccessAt)} touchDate={false} /> : <span className="text-fg-3">No run yet</span>;
 }
 
-/** Side A's items matched on the date, as the run summary counts it (one side A item per matched group). */
-const rateOf = (r: LiveReconDto) => {
-  const t = dayTotals(r), a = r.day?.items?.a;
-  return t && a ? Math.min(1, t.matched / a) : null;
-};
 
 /**
  * Columns of a space's recons (owner, 22 Nov: as the sources list, what an admin needs at a glance): the recon and its
@@ -90,7 +85,7 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
     { key: "lastRun", header: "Last run", mobile: "meta", className: "whitespace-nowrap md:max-xl:hidden", cell: (r) => { const x = of(r); return x ? <LastRun r={x} /> : none; } },
     { key: "rate", header: "Match rate", mobile: "meta", align: "right", className: "md:max-xl:hidden",
       help: "Side A items matched on its business date, of side A items in; suggested pairs count as not matched until accepted.", cell: (r) => {
-      const x = of(r), rate = x ? rateOf(x) : null;
+      const x = of(r), rate = x ? (dayTotals(x)?.rate ?? null) : null;
       return rate === null ? none : <span className="tabular">{rateText(rate)}</span>;
     } },
     { key: "waiting", header: "Waiting", mobile: "meta", align: "right", className: "md:max-xl:hidden", help: "Items of its business date still without a counterpart, both sides; suggested pairs not accepted yet after them.", cell: (r) => {

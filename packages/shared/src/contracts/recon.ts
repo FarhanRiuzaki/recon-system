@@ -447,6 +447,12 @@ export type LiveReconDto = z.infer<typeof LiveReconDto>;
  */
 export const TodayDto = z.object({ recons: z.array(LiveReconDto), sources: z.array(LiveSourceDto), capped: z.boolean() });
 export type TodayDto = z.infer<typeof TodayDto>;
+/**
+ * GET /api/spaces/{spaceId}/recons/{configId}/days: the TREND_DAYS business dates up to its current one, oldest first,
+ * each as the last finalized live run covering it left it (null: no run covered it).
+ */
+export const ReconTrendDto = z.object({ days: z.array(z.object({ date: z.string(), day: RunDay.nullable() })) });
+export type ReconTrendDto = z.infer<typeof ReconTrendDto>;
 /** GET /api/spaces/{spaceId}/recons/{configId}/live: one recon's current business date and its two sources. */
 export const ReconLiveDto = z.object({ recon: LiveReconDto, sources: z.array(LiveSourceDto) });
 export type ReconLiveDto = z.infer<typeof ReconLiveDto>;

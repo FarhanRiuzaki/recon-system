@@ -5,6 +5,7 @@
 // each source's health and lag) with a list view of the same numbers, and the sources. Read again every LIVE_POLL_MS;
 // a number that changes tweens once (reduced motion: no tween, StatTile's own rule).
 import { usePathname, useSearchParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { EmptyState, Failure, Notice, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate, formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
@@ -22,7 +23,8 @@ import { useReconLive } from "./use-recons";
 
 const fmt = (v: number) => formatNumber(Math.round(v));
 
-export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; spec: ReconSpec | null }) {
+/** `between`: what sits under the day's numbers, before the pipeline (the Overview's run card, history and trend). */
+export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: string; spec: ReconSpec | null; between?: ReactNode }) {
   const q = useReconLive(spaceId, id, !!spec);
   const skeleton = useDelayedFlag(!!spec && !q.data && !q.error);
   const elapsed = useElapsed(q.data?.recon.running?.status === "running" ? q.data.recon.running.startedAt : null);
@@ -65,6 +67,8 @@ export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; sp
           <StatTile label="Open breaks" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} broke on this date` : "Every date"} />
         </StatTiles>
       </Panel>
+
+      {between}
 
       <Panel flush title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
         actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>

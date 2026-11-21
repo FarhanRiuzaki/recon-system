@@ -163,14 +163,6 @@ export const draftSimulations = (spaceId: string, id: string, versionId: string)
   key: [...ENGINE_KEY, "simulations", spaceId, id, versionId] as const,
   url: `${runsPath(spaceId, id)}?${new URLSearchParams({ mode: "simulation", versionId })}`,
 });
-/** A recon's latest runs, newest first: its Overview shows the first that isn't a simulation. */
-export const reconLatestRuns = (spaceId: string, id: string) => ({
-  key: [...ENGINE_KEY, "latest-runs", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ pageSize: "50" })}`,
-});
-/** A recon's runs that took in records on their own dates, newest first (runs?records=1): the Overview's headline. */
-export const reconRecordRuns = (spaceId: string, id: string) => ({
-  key: [...ENGINE_KEY, "record-runs", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ records: "1" })}`,
-});
 /** One run of a recon (polled while it is queued or running). */
 export const reconRun = (spaceId: string, id: string, runId: string) => ({
   key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,
@@ -178,6 +170,15 @@ export const reconRun = (spaceId: string, id: string, runId: string) => ({
 /** Today (REC-F4): the space's recons' current days and their sources; the screens read it again every LIVE_POLL_MS. */
 export const spaceToday = (spaceId: string) => ({
   key: [...ENGINE_KEY, "today", spaceId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/today` as const,
+});
+/** A recon's last TREND_DAYS business dates (its Overview's chart), read again with its day. */
+export const reconTrend = (spaceId: string, id: string) => ({
+  key: [...ENGINE_KEY, "trend", spaceId, id] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/days` as const,
+});
+/** The first page of a recon's runs, newest first (its Run history; older pages load as the list scrolls). */
+export const RUN_PAGE = 15;
+export const reconRunsFirst = (spaceId: string, id: string) => ({
+  key: [...ENGINE_KEY, "runs-first", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ pageSize: String(RUN_PAGE) })}`,
 });
 /** Live day: one recon's current day, polled as Today. */
 export const reconLive = (spaceId: string, id: string) => ({

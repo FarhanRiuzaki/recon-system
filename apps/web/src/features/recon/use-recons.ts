@@ -3,17 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReconDto, ReconLiveDto, ReconRunDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody, TodayDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconLiveDto, ReconRunDto, ReconTrendDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody, TodayDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, RECON_KEY, reconLive, reconRecordRuns, reconLatestRuns, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
-import { pickLastRuns } from "@/lib/shared/recon-runs";
+import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, RECON_KEY, reconLive, reconTrend, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
 import { isLive } from "./run-model";
 
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
 export const newReconHref = (spaceId: string) => `${reconsHref(spaceId)}/new`;
 export const reconHref = (spaceId: string, id: string) => `${reconsHref(spaceId)}/${encodeURIComponent(id)}`;
+/** A recon's Configuration tab: the builder over its draft, else its published spec. */
+export const reconConfigHref = (spaceId: string, id: string) => `${reconHref(spaceId, id)}?tab=configuration`;
 export const reconRunHref = (spaceId: string, id: string, runId: string) => `${reconHref(spaceId, id)}/runs/${encodeURIComponent(runId)}`;
 export const reconVersionHref = (spaceId: string, id: string, versionId: string) => `${reconHref(spaceId, id)}/versions/${encodeURIComponent(versionId)}`;
 /** The API path of the space's recons, or of `rest` under recon `id`. */
@@ -68,36 +69,13 @@ export function useStartVersion(spaceId: string, id: string) {
     mutationFn: () => api<ReconVersionDto>(reconApi(spaceId, id, "/versions"), { method: "POST", body: "{}" }),
     onSuccess: async (v) => {
       await qc.invalidateQueries({ queryKey: RECON_KEY });
-      router.push(reconHref(spaceId, id));
+      router.push(reconConfigHref(spaceId, id)); // the new draft: the builder
       toast(`Draft v${v.version} started.`);
     },
     onError: (e) => toast.error(errorText(e)),
   });
 }
 
-/** The recon's last real run (null: none yet), read while `enabled`. */
-export function useLastRun(spaceId: string, id: string, enabled: boolean) {
-  const latest = reconLatestRuns(spaceId, id), records = reconRecordRuns(spaceId, id);
-  const withRecords = useQuery({ queryKey: records.key, queryFn: () => api<Page<ReconRunDto>>(records.url), enabled });
-  const all = useQuery({ queryKey: latest.key, queryFn: () => api<Page<ReconRunDto>>(latest.url), enabled });
-  const list = { data: withRecords.data && all.data ? pickLastRuns(withRecords.data.items, all.data.items) : undefined };
-  // the headline's detail, the run page's own query: a list row has no days or live totals, so the line would read the
-  // run's own counts while the run page reads what stands now (re-check B7)
-  const run = useRun(spaceId, id, enabled ? (list.data?.headline?.id ?? null) : null);
-  // a newer run still going (just started): read until it is over, then both lists again (it may become the headline)
-  const row = list.data?.newer ?? null;
-  const newer = useRun(spaceId, id, row && isLive(row) ? row.id : null, row ?? undefined).data ?? row;
-  const qc = useQueryClient();
-  const was = useRef(newer?.status);
-  useEffect(() => {
-    const before = was.current;
-    was.current = newer?.status;
-    if (!isLive({ status: before ?? "" }) || isLive(newer)) return;
-    void qc.invalidateQueries({ queryKey: records.key });
-    void qc.invalidateQueries({ queryKey: latest.key });
-  }, [newer, qc, records.key, latest.key]);
-  return { headline: run.data ?? null, newer };
-}
 
 /** How often a queued or running run is read again. */
 const POLL_MS = 1500;
@@ -175,4 +153,10 @@ export function useReconLive(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconLive(spaceId, id);
   return useQuery({ queryKey: key, queryFn: () => api<ReconLiveDto>(url), enabled, retry: retryUnlessNotFound, refetchOnWindowFocus: true,
     refetchInterval: (q) => (q.state.data?.recon.running ? LIVE_RUN_POLL_MS : LIVE_POLL_MS) });
+}
+
+/** A recon's last TREND_DAYS business dates; read again every minute (a day's numbers move once per run). */
+export function useReconTrend(spaceId: string, id: string, enabled: boolean) {
+  const { key, url } = reconTrend(spaceId, id);
+  return useQuery({ queryKey: key, queryFn: () => api<ReconTrendDto>(url), enabled, retry: retryUnlessNotFound, refetchInterval: 60_000 });
 }

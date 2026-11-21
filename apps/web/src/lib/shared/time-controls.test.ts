@@ -25,8 +25,8 @@ describe("navbar time controls", () => {
     expect(refreshScope(`${sp}/sources/x`)).toEqual(["sources", "ingest"]);
     expect(refreshScope(`${sp}/sources/new`)).toBeNull();
     expect(refreshScope(`${sp}/sources/x/versions/new`)).toBeNull();
-    expect(refreshScope(`${sp}/recons/x`)).toBeNull(); // the Overview is the builder
-    expect(refreshScope(`${sp}/recons/x`, "live")).toEqual(["recon", "engine"]);
+    expect(refreshScope(`${sp}/recons/x`)).toEqual(["recon", "engine"]); // the Overview: its day and runs
+    expect(refreshScope(`${sp}/recons/x`, "configuration")).toBeNull(); // the builder
     expect(refreshScope(`${sp}/recons/x/runs/r`)).toEqual(["engine"]);
     expect(refreshScope(`${sp}/today`)).toEqual(["engine"]);
     expect(refreshScope(`${sp}/members`)).toEqual(["spaces"]);
@@ -35,7 +35,8 @@ describe("navbar time controls", () => {
     expect(timeWindowDays("/")).toBe(14);
     expect(timeWindowDays("/audit/activity")).toBe(7);
     expect(timeWindowDays("/spaces/s1/sources/x", "activity")).toBe(90);
-    expect(timeWindowDays("/spaces/s1/recons/x", "activity")).toBe(90);
+    expect(timeWindowDays("/spaces/s1/recons/x", "history")).toBe(90);
+    expect(timeWindowDays("/spaces/s1/recons/x")).toBeNull();
     expect(timeWindowDays("/spaces/s1/sources/x")).toBeNull();
     expect(timeWindowDays("/spaces/s1/today")).toBeNull();
   });

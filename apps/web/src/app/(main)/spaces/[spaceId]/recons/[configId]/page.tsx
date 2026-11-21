@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ReconDetail } from "@/features/recon/recon-detail";
-import { RECON_TABS } from "@/features/recon/recon-text";
+import { reconTabOf } from "@/features/recon/recon-text";
 import { guardedTitle, openSpace, requirePagePermission } from "@/lib/server/page-guard";
-import { lastRunReads, Prefetch, reads, reconSourceReads, type SearchParams, toSearch } from "@/lib/server/prefetch";
+import { Prefetch, reads, reconSourceReads, type SearchParams, toSearch } from "@/lib/server/prefetch";
 
 type Params = Promise<{ spaceId: string; configId: string }>;
 
@@ -13,8 +13,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 /**
- * A recon of the space: the builder over its open draft (Overview, with its sides' sources), its live day, its versions
- * or its activity (?tab=).
+ * A recon of the space (?tab=): Overview (its day, runs, trend), Configuration (the builder over its open draft, with its
+ * sides' sources, else the published spec), History (versions and activity).
  */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
   await requirePagePermission(null);
@@ -22,9 +22,10 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
   const sp = toSearch(await searchParams);
-  const tab = RECON_TABS.find((t) => t === sp.get("tab")) ?? "overview";
-  const tables = tab === "live" ? [reads.reconLive(spaceId, configId)] : tab === "versions" ? [reads.reconVersions(spaceId, configId, sp)] : tab === "activity" ? [reads.reconActivity(spaceId, configId, sp)]
-    : [...(await reconSourceReads(spaceId, configId)), ...(await lastRunReads(spaceId, configId))];
+  const tab = reconTabOf(sp.get("tab"));
+  const tables = tab === "overview" ? [reads.reconLive(spaceId, configId), reads.reconTrend(spaceId, configId), reads.reconRunsFirst(spaceId, configId)]
+    : tab === "history" ? [reads.reconVersions(spaceId, configId, sp), reads.reconActivity(spaceId, configId, sp)]
+    : await reconSourceReads(spaceId, configId);
   return (
     <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), ...tables]}>
       <ReconDetail spaceId={spaceId} id={configId} tab={tab} />
