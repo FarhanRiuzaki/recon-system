@@ -526,3 +526,25 @@ export function suggestedName(p: PassSpec): string | null {
 }
 /** A name the builder gave and the user hasn't changed ("Pass 3", or none). */
 export const placeholderName = (name: string) => !name.trim() || /^Pass \d+$/.test(name.trim());
+
+/** Where a step of a draft stands: done, needs something, or not started. */
+export type DraftStepState = "done" | "attention" | "todo";
+export type DraftStep = { key: "sides" | "passes" | "settings" | "simulation" | "submit"; title: string; line: string; state: DraftStepState };
+/**
+ * A draft's five steps in the order a recon is set up (owner, 22 Nov: the user knows what to do, where, and what comes
+ * next): its sides, its passes, its schedule and day close (the defaults to check), a simulation, the submit.
+ */
+export function draftProgress(d: {
+  sides: readonly [string, string] | null; passes: number; needing: number; settings: string; settingsChecked: boolean;
+  simulation: "none" | "stale" | "current"; submitReason: string | null;
+}): DraftStep[] {
+  return [
+    { key: "sides", title: "Sides", line: d.sides ? `${d.sides[0]} and ${d.sides[1]}` : "Loading the sources", state: d.sides ? "done" : "todo" },
+    { key: "passes", title: "Passes", state: !d.passes ? "todo" : d.needing ? "attention" : "done",
+      line: !d.passes ? "Add the first pass" : d.needing ? `${d.needing} ${d.needing === 1 ? "pass needs" : "passes need"} something` : `${d.passes} ${d.passes === 1 ? "pass" : "passes"}, in run order` },
+    { key: "settings", title: "Schedule and day close", state: d.settingsChecked ? "done" : "todo", line: d.settingsChecked ? d.settings : `Defaults: ${d.settings}. Check them` },
+    { key: "simulation", title: "Simulation", state: d.simulation === "current" ? "done" : d.simulation === "stale" ? "attention" : "todo",
+      line: d.simulation === "current" ? "Up to date with the draft" : d.simulation === "stale" ? "The draft changed since: run it again" : "Run it over a recent day" },
+    { key: "submit", title: "Submit for approval", state: d.submitReason ? "todo" : "done", line: d.submitReason ?? "Ready for a config checker" },
+  ];
+}

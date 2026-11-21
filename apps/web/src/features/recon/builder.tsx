@@ -24,13 +24,14 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, draftProgress, type DraftStep, PASS_TEMPLATES, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
+import { DraftSteps } from "./draft-steps";
 import { SideSummary } from "./spec-view";
 import { saveQueue } from "./save-queue";
 import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
@@ -241,6 +242,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const focusLater = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(id)?.focus()));
   const onPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const select = (s: Selected) => {
+    if (s.k === "settings") { setSettingsSeen(true); try { localStorage.setItem(`recon-settings-seen:${saved.id}`, "1"); } catch { /* this session only */ } }
     setSel(s);
     if (onPhone() || view === "canvas") setSheet(true);
     else requestAnimationFrame(() => { const h = inspectorRef.current?.querySelector<HTMLElement>("h2"); h?.setAttribute("tabindex", "-1"); h?.focus(); });
@@ -422,6 +424,29 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setProblem(null);
     }, { id: `recon-undo-${undoSeq.current++}` });
   }
+  // the schedule and day close are checked once looked at (kept per draft in this browser), or when they aren't the
+  // defaults, or when the recon already runs (its settings were approved)
+  const seenKey = `recon-settings-seen:${saved.id}`;
+  const [settingsSeen, setSettingsSeen] = useState(() => { try { return localStorage.getItem(seenKey) === "1"; } catch { return false; } });
+  const markSeen = () => { setSettingsSeen(true); try { localStorage.setItem(seenKey, "1"); } catch { /* private window: this session only */ } };
+  const defaults = spec.grace_minutes === 30 && spec.carry_over_days === 1 && spec.close_at === "23:00" && spec.schedule.kind === "daily" && spec.schedule.at === "06:00";
+  const needing = spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null).length > 0);
+  const steps = draftProgress({
+    sides: fields[0] && fields[1] ? [spec.sides[0].label, spec.sides[1].label] : null,
+    passes: spec.passes.length, needing: needing.filter(Boolean).length,
+    settings: `${scheduleText(spec.schedule)} · closes ${spec.close_at} ${APP_TIME_ZONE_LABEL}`,
+    settingsChecked: settingsSeen || !defaults || !!recon.published,
+    simulation: saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.specHash || dirty ? "stale" : "current",
+    submitReason: blocked,
+  });
+  const focusId = (domId: string) => requestAnimationFrame(() => { const el = document.getElementById(domId); el?.scrollIntoView({ block: "center" }); (el?.querySelector("button") ?? el)?.focus(); });
+  /** A step opens its place: a side, the first pass that needs something (else the first), the schedule, the simulation, the submit. */
+  const pickStep = (key: DraftStep["key"]) => {
+    if (key === "sides") select({ k: "side", i: 0 });
+    else if (key === "passes") { const at = Math.max(0, needing.indexOf(true)); if (keys[at]) select({ k: "pass", key: keys[at]! }); else focusId("draft-add-pass"); }
+    else if (key === "settings") { markSeen(); select({ k: "settings" }); }
+    else focusId(key === "simulation" ? "draft-simulate" : "draft-submit");
+  };
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
     document.getElementById(`pass-${sel.key}`)?.focus();
@@ -432,6 +457,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       <p aria-live="polite" className="sr-only">{said}</p>
       <span role="status" className="sr-only">{editable && failed ? "Not saved" : ""}</span>
       {failed && problem && <p role="alert" className="text-body-sm text-down-ink">{placed ? problemText(placed) : problem.text}</p>}
+      {editable && <DraftSteps steps={steps} onPick={pickStep} />}
       {simOn && (
         <section aria-label="Simulation" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line bg-card p-4 shadow-xs">
           <StatusChip health={sim.chip.health} label={sim.chip.label} />
@@ -445,10 +471,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           </div>
           <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:w-full">
             {editable && <ReplayRange value={range} onChange={setRange} disabled={live || starting} />}
-            <BlockedButton variant="secondary" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
+            <BlockedButton id="draft-simulate" variant="secondary" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
               {(live || starting) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Run simulation
             </BlockedButton>
-            <BlockedButton reason={blocked} disabled={submitting} aria-busy={submitting || undefined} onClick={() => void submit()}>
+            <BlockedButton id="draft-submit" reason={blocked} disabled={submitting} aria-busy={submitting || undefined} onClick={() => void submit()}>
               {submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Submit for approval
             </BlockedButton>
           </div>
@@ -456,14 +482,15 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         </section>
       )}
 
-      <section aria-label="Settings" className="flex flex-wrap items-end gap-x-8 gap-y-3 rounded-lg border border-line bg-tray px-4 py-3">
+      <section aria-label="Schedule and day close" className="grid gap-3 rounded-lg border border-line bg-tray px-4 py-3 md:flex md:flex-wrap md:items-center md:gap-x-8">
+        <h2 className="text-label text-fg md:basis-full">Schedule and day close</h2>
         <dl className="flex flex-1 flex-wrap gap-x-8 gap-y-2">
           {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", daysText(spec.carry_over_days)],
             ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
             <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
           ))}
         </dl>
-        <Button type="button" variant="ghost" onClick={() => select({ k: "settings" })}>{editable ? "Edit settings" : "Show settings"}</Button>
+        <Button type="button" variant={editable ? "secondary" : "ghost"} onClick={() => select({ k: "settings" })}>{editable ? "Edit schedule and day close" : "Show settings"}</Button>
       </section>
 
       {conflict && (
@@ -505,7 +532,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             ) : <p className="rounded-md border border-dashed border-line p-4 text-body-sm text-fg-2">No passes yet.</p>}
             </div>
             {editable && (
-              <span className="pb-3">
+              <span className="pb-3" id="draft-add-pass">
                 <AddPassMenu fields={fields} reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
                   onAdd={(t) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); }} />
               </span>

@@ -286,3 +286,22 @@ describe("what the pass editor suggests (owner, 22 Nov: the user knows what to d
     expect([placeholderName("Pass 3"), placeholderName(""), placeholderName("Exact")]).toEqual([true, true, false]);
   });
 });
+
+import { draftProgress } from "./spec-model";
+describe("a draft's steps (owner, 22 Nov: what to do, where, what next)", () => {
+  const base = { sides: ["Core", "Switch"] as const, passes: 2, needing: 0, settings: "Daily at 06:00 · closes 23:00", settingsChecked: false, simulation: "none" as const, submitReason: "Run a simulation on this draft first." };
+  it("each step's state and line, the defaults to check until looked at", () => {
+    const s = draftProgress(base);
+    expect(s.map((x) => [x.key, x.state])).toEqual([["sides", "done"], ["passes", "done"], ["settings", "todo"], ["simulation", "todo"], ["submit", "todo"]]);
+    expect(s[2]!.line).toBe("Defaults: Daily at 06:00 · closes 23:00. Check them");
+    expect(s[4]!.line).toBe("Run a simulation on this draft first.");
+  });
+  it("a pass that needs something and a simulation out of date ask for attention; all done reads ready", () => {
+    expect(draftProgress({ ...base, needing: 1 })[1]).toMatchObject({ state: "attention", line: "1 pass needs something" });
+    expect(draftProgress({ ...base, simulation: "stale" })[3]!.state).toBe("attention");
+    expect(draftProgress({ ...base, passes: 0 })[1]!.line).toBe("Add the first pass");
+    const ready = draftProgress({ ...base, settingsChecked: true, simulation: "current", submitReason: null });
+    expect(ready.every((x) => x.state === "done")).toBe(true);
+    expect(ready[4]!.line).toBe("Ready for a config checker");
+  });
+});
