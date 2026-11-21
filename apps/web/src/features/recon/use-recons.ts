@@ -7,7 +7,7 @@ import type { ReconDto, ReconRunDto, ReconVersionDetailDto, ReconVersionDto, Run
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { draftSimulations, RECON_KEY, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { draftSimulations, RECON_KEY, reconLatestRuns, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
 import { isLive } from "./run-model";
 
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
@@ -72,6 +72,13 @@ export function useStartVersion(spaceId: string, id: string) {
     },
     onError: (e) => toast.error(errorText(e)),
   });
+}
+
+/** The recon's last real run (null: none yet), read while `enabled`. */
+export function useLastRun(spaceId: string, id: string, enabled: boolean) {
+  const { key, url } = reconLatestRuns(spaceId, id);
+  // ponytail: the newest real run among the last 50 runs; a `mode=real` filter on GET …/runs when simulations crowd it out
+  return useQuery({ queryKey: key, queryFn: () => api<Page<ReconRunDto>>(url), enabled, select: (p) => p.items.find((r) => r.mode !== "simulation") ?? null });
 }
 
 /** How often a queued or running run is read again. */

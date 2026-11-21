@@ -149,6 +149,10 @@ export const draftSimulations = (spaceId: string, id: string, versionId: string)
   key: [...ENGINE_KEY, "simulations", spaceId, id, versionId] as const,
   url: `${runsPath(spaceId, id)}?${new URLSearchParams({ mode: "simulation", versionId })}`,
 });
+/** A recon's latest runs, newest first: its Overview shows the first that isn't a simulation. */
+export const reconLatestRuns = (spaceId: string, id: string) => ({
+  key: [...ENGINE_KEY, "latest-runs", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ pageSize: "50" })}`,
+});
 /** One run of a recon (polled while it is queued or running). */
 export const reconRun = (spaceId: string, id: string, runId: string) => ({
   key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,

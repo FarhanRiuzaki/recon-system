@@ -4,16 +4,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
-import { formatNumber, formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
+import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Select } from "@starterkit/ui/ui/select";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { NetworkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { BRAND } from "@starterkit/shared/brand";
-import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunGroupMember } from "@starterkit/shared/contracts/recon";
+import type { PassSpec, ReconRunItemDto, RunGroupMember } from "@starterkit/shared/contracts/recon";
 import { recordFields } from "@starterkit/shared/recon";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -23,10 +23,11 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakLabel, countLine, dayTotals, differenceText, isLive, projectionText, rangeText, runTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
+import { amountText, breakLabel, dayTotals, differenceText, isLive, rangeText, runTotals } from "./run-model";
+import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
-import { reconHref, reconRunHref, reconsHref, STALL_TEXT, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
+import { reconHref, reconRunHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
 
 const RunExplain = dynamic(() => import("./run-explain"), { ssr: false });
 
@@ -51,29 +52,6 @@ function passLabel(p: PassSpec, x: { matched: number; suggested: number; broken:
 }
 
 /** The summary card: the run's state, its facts, its counts and what day close would do with what waits. */
-function RunSummary({ run, spec, labels, stalled }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled: boolean }) {
-  const t = runTotals(run.counters, spec);
-  const live = isLive(run);
-  const chip = live ? { health: "unknown" as const, label: "Running" } : run.status === "failed" ? STOPPED_CHIP
-    : { health: "healthy" as const, label: run.mode === "simulation" ? "Simulated" : "Done" };
-  const what = run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`;
-  const at = run.finishedAt ? ` · ${formatTime(Date.parse(run.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
-  const day = run.projection ? projectionText(run.projection, labels) : "";
-  return (
-    <section aria-label="Run" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-card p-4 shadow-xs">
-      <StatusChip health={chip.health} label={chip.label} />
-      <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-        {/* the live region is the state line only: the counts change with every poll */}
-        <span role="status" className="text-body-sm text-fg">
-          {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${formatNumber(t.items)} items${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
-        </span>
-        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{countLine(t)}</span>}
-        {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
-      </div>
-    </section>
-  );
-}
-
 /**
  * A run's results per pass (Task 5, Figma page 03 v1.0.4 "Results per pass"): the summary, a strip of the run's
  * business dates (each a filter), a tab per pass and Waiting, and the server-paged items: a pass's pairs one row per

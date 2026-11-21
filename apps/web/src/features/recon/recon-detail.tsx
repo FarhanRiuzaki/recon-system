@@ -21,8 +21,10 @@ import { Builder, type SaveState } from "./builder";
 import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
+import { RunSummary } from "./run-summary";
 import { RECON_SHAPE } from "./shapes";
-import { MAKER_REASON, reconApi, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
+import { SpecView } from "./spec-view";
+import { MAKER_REASON, reconApi, reconHref, reconsHref, reconRunHref, reconVersionHref, useLastRun, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
 const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", versions: "Versions", activity: "Activity" };
 
@@ -52,7 +54,8 @@ function editAction(r: ReconDto, spaceId: string, maker: boolean, start: { busy:
 
 /**
  * A recon (/spaces/[spaceId]/recons/[configId]): Overview = the builder over the open draft (editable for a config
- * maker), or the version in review or the published version read only; Versions and Activity are its lists.
+ * maker); with no draft open, the version in review or the published one as read-only cards (ui-standard §1a
+ * "Detail", the version page's SpecView) and the last run. Versions and Activity are its lists.
  */
 export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string; tab: ReconTab }) {
   const q = useRecon(spaceId, id);
@@ -65,6 +68,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const { user } = useAuth();
   const draftId = q.data?.draft?.id ?? "";
   const dq = useReconVersion(spaceId, id, draftId, !!draftId);
+  const building = q.data?.draft?.status === "draft";
+  const last = useLastRun(spaceId, id, tab === "overview" && !building && !!q.data?.published);
 
   if (isNotFound(q.error)) return <DetailNotFound title="Recon" noun="recon" list={{ href: reconsHref(spaceId), label: "Recons" }} />;
   if (q.error && !q.data) return <div className="grid gap-section"><PageHeader title="Recon" /><Panel><Failure title="The draft couldn't be loaded." error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
@@ -103,7 +108,10 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this recon; showing the last loaded draft.</Notice>}
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
-            {shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
+            {building && shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
+            {!building && last.data && r.published && <RunSummary run={last.data} spec={r.published.spec}
+              labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} action={<Button asChild variant="secondary"><Link href={reconRunHref(spaceId, id, last.data.id)}>Open run</Link></Button>} />}
+            {!building && shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
           </>
         )}
     </div>
