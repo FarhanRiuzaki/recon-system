@@ -21,13 +21,14 @@ import { Builder, type SaveState } from "./builder";
 import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
+import { LiveDay } from "./live-day";
 import { RunControl } from "./run-control";
 import { LastRun } from "./run-summary";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
 import { MAKER_REASON, reconApi, reconHref, reconsHref, reconVersionHref, useLastRun, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
-const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", versions: "Versions", activity: "Activity" };
+const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", live: "Live day", versions: "Versions", activity: "Activity" };
 
 /** A recon nobody submitted (DELETE …/recons/{id} takes it), for a config maker or a space admin (README row Plan 3). */
 export const discardable = (r: ReconDto, roles: readonly string[]) =>
@@ -106,7 +107,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
       </RouteTabs>
-      {tab === "versions" ? <VersionsTable spaceId={spaceId} id={id} />
+      {tab === "live" ? <LiveDay spaceId={spaceId} id={id} spec={r.published?.spec ?? null} />
+        : tab === "versions" ? <VersionsTable spaceId={spaceId} id={id} />
         : tab === "activity" ? <ActivityTable spaceId={spaceId} id={id} /> : (
           <>
             {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this recon; showing the last loaded draft.</Notice>}

@@ -23,15 +23,18 @@ export const NODE_H = 64;
 export const LANE_GAP = 120;
 export const ROW_GAP = 24;
 
-/** The builder canvas of `spec`: pass ids from `keys` (stable across a reorder, as the builder keeps them); counts on the edges with `counters`. */
-export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: Counters): LaneGraph {
+/**
+ * The builder canvas of `spec`: pass ids from `keys` (stable across a reorder, as the builder keeps them); counts on the
+ * edges with `counters`. `sourceLines`: the source nodes' second lines (Live day: each source's health and lag).
+ */
+export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: Counters, sourceLines?: readonly [string, string]): LaneGraph {
   const [a, b] = spec.sides;
   const t = counters ? runTotals(counters, spec) : null;
   const sideLine = (n: number, inCount?: number) =>
     `${n ? `${n} ${n === 1 ? "filter" : "filters"}` : "All records"}${inCount !== undefined ? ` · ${formatNumber(inCount)} in` : ""}`;
   const nodes: GNode[] = [
-    { id: "src-a", lane: 0, title: a.label, line: "Source of side A", select: null },
-    { id: "src-b", lane: 0, title: b.label, line: "Source of side B", select: null },
+    { id: "src-a", lane: 0, title: a.label, line: sourceLines?.[0] ?? "Source of side A", select: null },
+    { id: "src-b", lane: 0, title: b.label, line: sourceLines?.[1] ?? "Source of side B", select: null },
     { id: "side-a", lane: 1, title: `Side A · ${a.label}`, line: sideLine(a.filter.length, t?.in.a), select: { k: "side", i: 0 } },
     { id: "side-b", lane: 1, title: `Side B · ${b.label}`, line: sideLine(b.filter.length, t?.in.b), select: { k: "side", i: 1 } },
   ];

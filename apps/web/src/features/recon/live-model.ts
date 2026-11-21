@@ -71,7 +71,10 @@ export type MapEdge = { id: string; source: string; target: string; /** 1–4 px
 export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: MapNode[]; edges: MapEdge[] } {
   const byId = new Map(t.sources.map((s) => [s.id, s]));
   const busiest = Math.max(1, ...t.sources.map((s) => s.rowsToday ?? 0));
-  const nodes: MapNode[] = t.sources.map((s) => ({
+  // each source beside the first recon that reads it (then by name): edges run across, not over each other
+  const first = (id: string) => { const i = t.recons.findIndex((r) => r.sides.some((x) => x.sourceId === id)); return i < 0 ? t.recons.length : i; };
+  const ordered = [...t.sources].sort((a, b) => first(a.id) - first(b.id) || a.name.localeCompare(b.name));
+  const nodes: MapNode[] = ordered.map((s) => ({
     id: `src-${s.id}`, lane: 0, title: s.name, chip: sourceChip(s),
     line: `${sourceLag(s)}${s.rowsToday != null ? ` · ${formatNumber(s.rowsToday)} today` : ""}`,
   }));

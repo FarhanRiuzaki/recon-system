@@ -13,8 +13,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 /**
- * A recon of the space: the builder over its open draft (Overview, with its sides' sources), its versions or its
- * activity (?tab=).
+ * A recon of the space: the builder over its open draft (Overview, with its sides' sources), its live day, its versions
+ * or its activity (?tab=).
  */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
   await requirePagePermission(null);
@@ -23,7 +23,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   if (!space?.roles.length) notFound();
   const sp = toSearch(await searchParams);
   const tab = RECON_TABS.find((t) => t === sp.get("tab")) ?? "overview";
-  const tables = tab === "versions" ? [reads.reconVersions(spaceId, configId, sp)] : tab === "activity" ? [reads.reconActivity(spaceId, configId, sp)]
+  const tables = tab === "live" ? [reads.reconLive(spaceId, configId)] : tab === "versions" ? [reads.reconVersions(spaceId, configId, sp)] : tab === "activity" ? [reads.reconActivity(spaceId, configId, sp)]
     : [...(await reconSourceReads(spaceId, configId)), ...(await lastRunReads(spaceId, configId))];
   return (
     <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), ...tables]}>

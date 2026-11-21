@@ -26,6 +26,9 @@ describe("Today and Live day model (REC-F4)", () => {
     expect(g.edges.find((e) => e.id === "e-s1-x")!.width).toBe(4);
     expect(g.edges.find((e) => e.id === "e-s3-y")!.width).toBe(1);
     expect(node("rec-x").href).toBe("/r/x");
+    // sources sit beside the first recon reading them, so the lanes' edges don't cross
+    const s = spaceMap({ ...t, sources: [src("s3", "healthy"), src("s2", "healthy"), src("s1", "healthy")] }, (id) => id);
+    expect(s.nodes.filter((n) => n.lane === 0).map((n) => n.id)).toEqual(["src-s1", "src-s2", "src-s3"]);
   });
   it("the day's totals and its counters for the pipeline; nothing before a run", () => {
     const r = recon("x", "s1", "s2");

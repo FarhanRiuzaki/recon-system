@@ -17,9 +17,14 @@ export type CanvasProps = {
   spec: ReconSpec; keys: readonly string[]; counters?: ReconRunDto["counters"]; dim: boolean;
   /** The node open in the inspector: "side-a", "side-b" or a pass key. */
   selectedId: string | null; editable: boolean;
-  onSelect: (s: NonNullable<GNode["select"]>) => void;
+  /** Choosing a side or a pass; none on a read-only canvas (Live day), whose nodes then choose nothing. */
+  onSelect?: (s: NonNullable<GNode["select"]>) => void;
   /** A pass moved from `from` to `to` (0-based); `byKey` when the keyboard moved it (the builder announces and refocuses). */
-  onMove: (from: number, to: number, byKey: boolean) => void;
+  onMove?: (from: number, to: number, byKey: boolean) => void;
+  /** The source nodes' second lines (Live day: health and lag). */
+  sourceLines?: readonly [string, string];
+  /** Its accessible name (the builder's by default). */
+  label?: string;
 };
 
 const TONE_DOT: Record<NonNullable<Data["tone"]>, string> = { matched: "bg-healthy-mark", suggested: "bg-chart-1", break: "bg-degraded-mark", waiting: "bg-fg-4" };
@@ -42,8 +47,8 @@ function LaneNode({ data, selected }: NodeProps<Node<Data>>) {
 const NODE_TYPES = { lane: LaneNode };
 const FAR = 1e6;
 
-function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove }: CanvasProps) {
-  const graph = useMemo(() => specGraph(spec, keys, counters), [spec, keys, counters]);
+function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove, sourceLines, label }: CanvasProps) {
+  const graph = useMemo(() => specGraph(spec, keys, counters, sourceLines), [spec, keys, counters, sourceLines]);
   const pos = useMemo(() => laneLayout(graph), [graph]);
   const drag = editable && spec.passes.length > 1;
   const place = useCallback((): Node<Data>[] => graph.nodes.map((n) => {
@@ -78,14 +83,14 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
     const node = graph.nodes.find((n) => n.id === id);
     if (!node) return;
     if (e.key === "Enter" || e.key === " ") {
-      if (node.select) { e.preventDefault(); onSelect(node.select); }
+      if (node.select && onSelect) { e.preventDefault(); onSelect(node.select); }
       return;
     }
     if (!e.key.startsWith("Arrow")) return;
     e.preventDefault();
     e.stopPropagation(); // React Flow would nudge the selected node 5 px: no meaning in a locked lane
     if (e.altKey && node.lane === 2 && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-      if (!editable) return;
+      if (!editable || !onMove) return;
       const from = passIds.indexOf(node.id), to = from + (e.key === "ArrowUp" ? -1 : 1);
       if (to >= 0 && to < passIds.length) onMove(from, to, true);
       return;
@@ -104,7 +109,7 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   /** A drop in the Passes lane takes the slot nearest its middle; anywhere else it goes back to its slot. */
   const onNodeDragStop = useCallback((_: unknown, n: Node<Data>) => {
     const from = passIds.indexOf(n.id), to = dropIndex(graph, pos, n.position.y);
-    if (from < 0 || from === to) { setNodes(place()); return; }
+    if (from < 0 || from === to || !onMove) { setNodes(place()); return; }
     onMove(from, to, false);
   }, [passIds, graph, pos, place, onMove]);
 
@@ -115,9 +120,9 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   return (
     <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height }} onKeyDownCapture={onKeyDownCapture}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
-        onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select) onSelect(g.select); }}
+        onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select && onSelect) onSelect(g.select); }}
         nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.25} maxZoom={1.5}
-        proOptions={{ hideAttribution: true }} aria-label="Passes as a canvas: sources, sides, passes in run order and their outcomes">
+        proOptions={{ hideAttribution: true }} aria-label={label ?? "Passes as a canvas: sources, sides, passes in run order and their outcomes"}>
         <Background gap={24} />
         <Controls showInteractive={false} />
         <ViewportPortal>

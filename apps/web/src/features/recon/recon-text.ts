@@ -6,7 +6,7 @@ import { rangeText } from "./run-model";
 export const at = (iso: string) => `${formatDateTime(Date.parse(iso))} ${APP_TIME_ZONE_LABEL}`;
 
 /** The tabs of a recon's page (in the URL as ?tab=). */
-export const RECON_TABS = ["overview", "versions", "activity"] as const;
+export const RECON_TABS = ["overview", "live", "versions", "activity"] as const;
 export type ReconTab = (typeof RECON_TABS)[number];
 
 type Entry = { action: string; actor: { name: string }; before: unknown; after: unknown };
