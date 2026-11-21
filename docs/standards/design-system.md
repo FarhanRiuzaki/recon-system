@@ -735,6 +735,10 @@ Ctrl+Space (↑/↓, Enter or Tab inserts as one undo step, Esc closes): keyword
 the caller's `suggest` gives for the context `sqlContext` reads (tables after FROM/JOIN; after `alias.` the columns of
 that table; else the columns of the tables the query names), each with a kind letter and its detail (a type, a table).
 `suggest` is asked once typing pauses (250 ms), the previous request aborted; a caller reading a connection caches.
+A field whose name is a technical term (watermark, id column, business date) passes `help` to `Field`: an `InfoTip` ⓘ
+(28 px ghost, "About <label>") beside the label, outside it, opens a popover with the term in plain words and one
+example, by click, tap or keyboard, never hover only. The note under the field stays for what to pick; the ⓘ explains
+why (progressive disclosure: the form stays short, the meaning is one press away). (`info-tip.test.ts`)
 
 ### 5.13 Empty, error, loading, stale (the five states)
 - **Loading**: shimmer skeletons in the final shape (§7.2): text bars 10 px radius 4, chart = gridlines + 3 ghost

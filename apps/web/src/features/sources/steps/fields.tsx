@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useRef } from "react";
-import { Checkbox, Combobox, type ComboOption, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { Checkbox, Combobox, type ComboOption, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -21,14 +21,18 @@ import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./m
 const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
-const CORE: { key: Core; label: string; note?: string }[] = [
-  { key: "business_date", label: "Business date" },
-  { key: "amount_minor", label: "Amount" },
-  { key: "currency", label: "Currency", note: "ISO code or number, such as IDR or 360." },
-  { key: "direction", label: "Direction" },
-  { key: "event_time", label: "Event time" },
-  { key: "ext_ref", label: "Reference" },
-  { key: "account_ref", label: "Account" },
+/**
+ * The core fields with what each means, behind an ⓘ (owner, 21 Nov: watermark, id column and the like are not
+ * self-explaining). Plain words and one example; the note under a field stays for what to pick.
+ */
+const CORE: { key: Core; label: string; note?: string; help: string }[] = [
+  { key: "business_date", label: "Business date", help: "The day a row belongs to. Recons match, close and sign off per business date, so rows of 20 Nov are compared with the other side's 20 Nov. Usually a value or booking date column, or the date in the file name." },
+  { key: "amount_minor", label: "Amount", help: "The money value both sides compare. Leave it out when a recon only matches by keys, such as an account list." },
+  { key: "currency", label: "Currency", note: "ISO code or number, such as IDR or 360.", help: "The currency of each row's amount. A source in one currency leaves this as Not used and picks the currency for every row below." },
+  { key: "direction", label: "Direction", help: "Whether a row is a debit or a credit (D/C, DR/CR, DEBIT/CREDIT). A debit counts as negative, so both sides compare amounts with the same sign." },
+  { key: "event_time", label: "Event time", help: "When the transaction happened, with its time. Matching rules can allow a time window with it, such as within 10 minutes." },
+  { key: "ext_ref", label: "Reference", help: "The id both sides share for the same transaction, such as an end-to-end or transfer reference. The strongest thing to match on." },
+  { key: "account_ref", label: "Account", help: "The account the row is posted to. Matching on it as well keeps two equal amounts on different accounts apart." },
 ];
 const refValue = (r: ValueRef | undefined) => (!r ? "" : "field" in r ? (r.field ? `f:${r.field}` : "") : r.cel === FILE_DATE.cel ? "c:file_date" : `x:${r.cel}`);
 const refOf = (v: string): ValueRef | undefined => (!v ? undefined : v.startsWith("f:") ? { field: v.slice(2) } : v === "c:file_date" ? FILE_DATE : { cel: v.slice(2) });
@@ -103,6 +107,9 @@ export function FieldsStep(p: FieldsStepProps) {
   const names = [...s.fields.map((f) => f.name), ...Object.keys(s.derive)];
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
 
+  // what Read the columns reads: the table or the SELECT typed in step 1 (none yet: nothing to read, said instead of a 400)
+  const hasSource = s.input.kind === "db_snapshot" ? !!s.input.query.trim()
+    : s.input.kind === "db_watermark" ? (d.from === "table" ? !!(s.input.table ?? "").trim() : !!(s.input.query ?? "").trim()) : true;
   return (
     <div className="grid gap-section">
       {file ? (
@@ -119,7 +126,9 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       ) : (
         <Panel title="Columns of the source" description={s.input.kind === "db_watermark" && s.input.table ? `From ${s.input.table}` : "From the query"} bodyClassName="grid gap-3">
-          {p.canRead
+          {p.canRead && !hasSource
+            ? <p id="src-columns" tabIndex={-1} className="text-body-sm text-fg-2">{s.input.kind === "db_watermark" && d.from === "table" ? "No table chosen yet." : "No SELECT written yet."} Go back to Connection to {s.input.kind === "db_watermark" && d.from === "table" ? "choose it" : "write it"}, then read its columns here.</p>
+            : p.canRead
             ? <span><Button id="src-columns" type="button" variant="secondary" onClick={p.onReadColumns} disabled={p.reading} aria-busy={p.reading || undefined}>
               {p.reading && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Read the columns again</Button></span>
             : <p id="src-columns" tabIndex={-1} className="text-body-sm text-fg-2">These are the fields of the version this draft started from. A source admin reads the columns the table has now.</p>}
@@ -140,25 +149,35 @@ export function FieldsStep(p: FieldsStepProps) {
             ...names.map((n) => ({ value: `f:${n}`, label: n })),
             ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
           ];
-          return (
-            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)}>
+          const field = (
+            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)} help={c.help}>
               <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
                 placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
                 onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
             </Field>
           );
+          // the currency per row or one for every row: two answers to one question, kept together in one cell
+          if (c.key !== "currency" || s.mapping.currency) return field;
+          return (
+            <div key={c.key} className="grid content-start gap-3">
+              {field}
+              <Field id={ctl("currency")} label="Or one currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
+                <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
+                  value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
+              </Field>
+            </div>
+          );
         })}
         {s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
-        {!s.mapping.currency && (
-          <Field id={ctl("currency")} label="Currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
-            <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
-              value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
-          </Field>
-        )}
         {s.input.kind !== "db_snapshot" && (
           <span className="inline-flex items-center gap-2 md:col-span-2">
             <Switch id={ctl("mutable")} checked={s.mutable} onChange={(e) => setSpec((x) => ({ ...x, mutable: e.target.checked }))} aria-label="Rows can change after they arrive" />
-            <label htmlFor={ctl("mutable")} className="text-body text-fg">Rows can change after they arrive (the newest per match key counts)</label>
+            <label htmlFor={ctl("mutable")} className="text-body text-fg">Rows can change after they arrive</label>
+            <InfoTip label="Rows can change after they arrive">
+              Turn on when the source can send the same transaction again with new values, such as a status or amount
+              corrected later. The newest version of each row counts and replaces the earlier one. Leave off when a row,
+              once sent, never changes.
+            </InfoTip>
           </span>
         )}
         {!s.mapping.amount_minor && <p className="text-caption text-fg-3 md:col-span-2">Recons on a source without an amount match by keys only.</p>}
@@ -281,10 +300,10 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     const tone = d.from !== "table" || c.nullable === undefined ? undefined : empty ? "bad" as const : "ok" as const;
     return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty, tone };
   });
-  const pick = (key: "column" | "id_column", label: string, plain: string) => {
+  const pick = (key: "column" | "id_column", label: string, plain: string, help: string) => {
     const note = said(key) ?? plain;
     return (
-    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))}>
+    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))} help={help}>
       <Combobox id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" label={label} placeholder="Pick a column" disabled={!canChangeReading}
         options={cols} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
         onChange={(o) => set((x) => (x.spec.input.kind === "db_watermark"
@@ -293,11 +312,13 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     );
   };
   return (
-    <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table ?? "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
+    <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table?.trim() || "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
       {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>}
       <div className="grid gap-4 md:grid-cols-2">
-        {pick("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at.")}
-        {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.")}
+        {pick("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at.",
+          "How each pull finds what is new. Every pull reads only the rows whose value in this column is past the last one it read, so the source is never read whole again. It must grow whenever a row is added or changed, and never be empty: a row without a value is never pulled.")}
+        {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.",
+          "Puts rows with the same watermark value in a fixed order, such as many rows written in the same second. With it, a pull that stops between them goes on at the right row: none is skipped or read twice. Usually the primary key.")}
       </div>
     </Panel>
   );
@@ -368,7 +389,7 @@ function Derived({ d, err, setSpec }: FieldsStepProps & { setSpec: (fn: (s: Sour
   const entries = Object.entries(d.spec.derive);
   const rename = (from: string, to: string) => setSpec((x) => ({ ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])) }));
   return (
-    <Panel title="Derived values" description="Optional · computed per row before mapping, with CEL: row.col_13, file_name, file_date" bodyClassName="grid gap-3">
+    <Panel title="Derived values" description="Optional · computed per row before mapping, with CEL over row.<column>, file_name and file_date" bodyClassName="grid gap-3">
       {entries.map(([name, expr], i) => {
         const id = ctl(`derive.${name}`);
         return (

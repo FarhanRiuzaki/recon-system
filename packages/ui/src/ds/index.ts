@@ -66,6 +66,7 @@ export { Timeline, type TimelineItem, type TimelineStatus } from "./timeline";
 export { Disclosure } from "./disclosure";
 export { SetupChecklist, type SetupAction, type SetupGroup, type SetupTask } from "./setup-checklist";
 export { FormWizard, ReviewList, type WizardStep } from "./form-wizard";
+export { InfoTip } from "./info-tip";
 export { type SqlContext, SqlEditor, type SqlSuggest, type SqlSuggestion, sqlContext, sqlTokens } from "./sql-editor";
 
 export { ColumnsMenu } from "./toolbar";

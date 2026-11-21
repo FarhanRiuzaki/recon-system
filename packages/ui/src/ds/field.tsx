@@ -1,4 +1,5 @@
-import { type AriaAttributes, cloneElement, type ReactElement } from "react";
+import { type AriaAttributes, cloneElement, type ReactElement, type ReactNode } from "react";
+import { InfoTip } from "./info-tip";
 import { cn } from "../lib/cn";
 import { Icon } from "../ui/icon";
 import { FailedIcon } from "../ui/icons";
@@ -14,8 +15,11 @@ type Control = ReactElement<{ "aria-describedby"?: string; "aria-invalid"?: Aria
  * it is announced as required without the browser's own required pop-up; the form says once what the asterisk means
  * (RequiredNote). `optional` adds a muted "(optional)" instead (Baymard: mark both kinds, so neither is guessed).
  */
-export function Field({ id, label, note, error, required, optional, children }: {
-  id: string; label: string; note?: string; error?: string | null; required?: boolean; optional?: boolean; children: Control;
+export function Field({ id, label, note, error, required, optional, help, children }: {
+  id: string; label: string; note?: string; error?: string | null; required?: boolean; optional?: boolean;
+  /** What the field's term means, behind an ⓘ beside the label (InfoTip): for technical terms only. */
+  help?: ReactNode;
+  children: Control;
 }) {
   const noteId = `${id}-note`, errorId = `${id}-error`;
   const own = children.props["aria-describedby"];
@@ -25,7 +29,11 @@ export function Field({ id, label, note, error, required, optional, children }: 
     : children;
   return (
     <div data-slot="field" className="grid min-w-0 content-start gap-2">
-      <label htmlFor={id} className="text-label text-fg">{label}{required && <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>}{optional && <span className="font-normal text-fg-3"> (optional)</span>}</label>
+      {/* the ⓘ sits outside the label: a button inside a label would toggle the field */}
+      <span className="flex min-w-0 items-center gap-1">
+        <label htmlFor={id} className="text-label text-fg">{label}{required && <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>}{optional && <span className="font-normal text-fg-3"> (optional)</span>}</label>
+        {help && <InfoTip label={label}>{help}</InfoTip>}
+      </span>
       {control}
       {error && <p id={errorId} className="flex animate-enter items-start gap-1.5 text-body-sm text-down-ink"><Icon icon={FailedIcon} className="mt-0.5 size-3.5 shrink-0" />{error}</p>}
       {note && <span id={noteId} className="text-caption text-fg-3">{note}</span>}

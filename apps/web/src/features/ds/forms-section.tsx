@@ -7,6 +7,7 @@ import {
   InputAffix, type TimelineItem, type UploadFn, useForm,
   SqlEditor,
   type SqlSuggest,
+  InfoTip,
 } from "@starterkit/ui/ds";
 import { rules } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
@@ -207,7 +208,8 @@ function ComboDemo() {
   const [sql, setSql] = useState("-- the rows of one business date\nSELECT id, amount, 'IDR' AS currency\nFROM ledger\nWHERE value_date = :business_date AND amount > 0");
   return (
     <div className="grid gap-4">
-      <div className="grid gap-1.5"><label htmlFor="ds-sql" className="text-label text-fg">SQL (SqlEditor, action inside the box)</label>
+      <div className="grid gap-1.5"><span className="flex items-center gap-1"><label htmlFor="ds-sql" className="text-label text-fg">SQL (SqlEditor, action inside the box)</label>
+          <InfoTip label="SQL">Type a SELECT. Suggestions open as you type, or on Ctrl+Space: tables after FROM, the columns of a table after its name and a dot.</InfoTip></span>
         <SqlEditor id="ds-sql" value={sql} onChange={(e) => setSql(e.target.value)} suggest={sqlSample} params={[":business_date"]} action={<Button type="button" variant="secondary" size="sm">Check query</Button>} /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">Delivery slot (options with tone)</span><Combobox label="Delivery slot" options={SLOTS} value={slot} onChange={setSlot} placeholder="Pick a slot" /></div>
       <div className="grid gap-1.5"><span className="text-label text-fg">City (single, local)</span><Combobox label="City" options={CITIES} value={one} onChange={setOne} placeholder="Search a city" /></div>
