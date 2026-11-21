@@ -67,7 +67,7 @@ export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; sp
         actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
         {view === "pipeline" && (
           <div className="max-md:hidden">
-            <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines}
+            <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"}
               label="The live day's pipeline: sources, sides, passes in run order and where the date's items went" />
           </div>
         )}

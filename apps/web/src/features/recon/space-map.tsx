@@ -3,32 +3,37 @@
 // The Space map (DEC-041, spec §11a, REC-F4): sources → recons of the space, read-only. A source's health and lag on
 // its node, a recon's day, waiting and open breaks on its; an edge per side, as thick as the source's records today; a
 // recon reading a Degraded or Down source is marked (border and its line say which). A recon opens its Live day (click
-// or Enter); arrows move the focus in and across the two lanes. Loaded on demand (space-map-loader.tsx).
-import { Background, Controls, Handle, type Edge, type Node, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
+// or Enter); arrows move the focus in and across the two lanes; a recon whose run is under way says Running and its
+// edges flow. Always fits its card (flow-parts.tsx). Loaded on demand (today-page.tsx).
+import { Controls, Handle, type Edge, type Node, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import "./recon-canvas.css";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useMemo, useRef } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
-import { cn } from "@starterkit/ui/lib/cn";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { BranchIcon, DiskIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { type Accent, FIT, FlowBadge, FlowBoard, FlowCard, LaneTitle, useFitToCard } from "./flow-parts";
 import type { MapEdge, MapNode } from "./live-model";
 
-const W = 260, H = 76, GAP_X = 200, GAP_Y = 20;
+const W = 280, H = 68, GAP_X = 180, GAP_Y = 20;
 const LANES = ["Sources", "Recons"] as const;
 type Data = Omit<MapNode, "id">;
+
+const ACCENT: Record<MapNode["chip"]["health"], Accent> = { healthy: null, degraded: "degraded", down: "down", stopped: null, unknown: null };
 
 function MapCard({ data }: NodeProps<Node<Data>>) {
   const hit = !!data.affectedBy?.length;
   return (
-    <div className={cn("grid h-full content-center gap-1 rounded-md border bg-card px-3 shadow-xs", hit ? "border-degraded-mark" : "border-line", data.href && "cursor-pointer")}>
+    <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-body-sm text-fg">{data.title}</span>
-        <StatusChip health={data.chip.health} label={data.chip.label} />
-      </span>
-      <span className="truncate text-caption text-fg-3">{hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}</span>
+      <FlowCard icon={data.lane === 0 ? DiskIcon : BranchIcon} title={data.title} accent={ACCENT[data.chip.health]} marked={hit} interactive={!!data.href}
+        line={hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}
+        badge={data.running
+          ? <FlowBadge tone="primary"><Icon icon={SpinnerIcon} size={12} className={data.running === "running" ? "motion-safe:animate-spin" : undefined} />{data.running === "running" ? "Running" : "Queued"}</FlowBadge>
+          : <StatusChip health={data.chip.health} label={data.chip.label} />} />
       <Handle type="source" position={Position.Right} isConnectable={false} />
-    </div>
+    </>
   );
 }
 const NODE_TYPES = { card: MapCard };
@@ -51,7 +56,8 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
     id, type: "card", position: pos.get(id)!, width: W, height: H, data, draggable: false, selectable: false,
     ariaLabel: `${LANES[data.lane]}: ${data.title}. ${data.chip.label}. ${data.affectedBy?.length ? `Reads ${data.affectedBy.join(", ")}` : data.line}${data.href ? ". Enter opens its live day" : ""}`,
   })), [input, pos]);
-  const edges: Edge[] = useMemo(() => links.map((e) => ({ id: e.id, source: e.source, target: e.target, focusable: false, style: { strokeWidth: e.width } })), [links]);
+  const edges: Edge[] = useMemo(() => links.map((e) => ({ id: e.id, source: e.source, target: e.target, focusable: false, animated: e.live, style: { strokeWidth: e.width } })), [links]);
+  useFitToCard(wrap, `${input.length}:${links.length}`);
   const focus = (id: string | undefined) => { if (id) wrap.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus(); };
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     const id = (e.target as HTMLElement).closest(".react-flow__node")?.getAttribute("data-id");
@@ -72,12 +78,12 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
     <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height: Math.min(640, Math.max(320, tall + 120)) }} onKeyDownCapture={onKey}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} nodesConnectable={false} nodesDraggable={false} elementsSelectable={false} edgesFocusable={false}
         onNodeClick={(_, n) => { const h = input.find((x) => x.id === n.id)?.href; if (h) router.push(h); }}
-        fitView fitViewOptions={{ padding: 0.12, maxZoom: 1 }} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
+        fitView fitViewOptions={FIT} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
         aria-label="Space map: the sources of the space and the recons that read them">
-        <Background gap={24} />
+        <FlowBoard />
         <Controls showInteractive={false} />
         <ViewportPortal>
-          {LANES.map((name, l) => <div key={name} className="absolute text-label text-fg-2" style={{ transform: `translate(${l * (W + GAP_X)}px, -32px)` }}>{name}</div>)}
+          {LANES.map((name, l) => <LaneTitle key={name} x={l * (W + GAP_X)} label={name} count={input.filter((n) => n.lane === l).length} />)}
         </ViewportPortal>
       </ReactFlow>
     </div>

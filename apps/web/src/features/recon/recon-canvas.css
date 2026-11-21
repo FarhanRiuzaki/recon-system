@@ -1,8 +1,8 @@
 /* React Flow's --xy-* variables mapped onto the theme tokens (light, dark and every palette follow). */
 .recon-canvas .react-flow {
   --xy-background-color: var(--bg);
-  --xy-background-pattern-color: var(--grid);
-  --xy-edge-stroke: var(--line-strong);
+  --xy-background-pattern-color: var(--line-strong);
+  --xy-edge-stroke: var(--fg-4);
   --xy-edge-stroke-selected: var(--fg-2);
   --xy-edge-stroke-width: 1.5;
   --xy-edge-label-background-color: var(--card);
@@ -26,8 +26,8 @@
   --xy-attribution-background-color: var(--card);
 }
 .recon-canvas .react-flow__attribution a { color: var(--fg-3); }
-.recon-canvas .react-flow__node:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-md); }
-.recon-canvas .react-flow__edge-textbg { fill: var(--card); }
+.recon-canvas .react-flow__node:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-lg); }
+.recon-canvas .react-flow__edge-textbg { fill: var(--card); stroke: var(--line); stroke-width: 1; }
 .recon-canvas .react-flow__edge-text { fill: var(--fg-2); }
 /* base.css leaves the Controls buttons unstyled (style.css would style them with its own greys). */
 .recon-canvas .react-flow__controls { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
@@ -37,3 +37,11 @@
 .recon-canvas .react-flow__node.selected, .recon-canvas .react-flow__node:focus { box-shadow: none; }
 .recon-canvas .react-flow__node.draggable { cursor: grab; }
 .recon-canvas .react-flow__node.dragging { cursor: grabbing; }
+/* the parts' card draws the node: React Flow's own node box stays invisible, its handles too (nothing connects by hand) */
+.recon-canvas .react-flow__node { border-radius: var(--radius-lg); }
+.recon-canvas .react-flow__handle { opacity: 0; }
+/* a running recon's edges flow in the primary colour (React Flow's dash animation); reduced motion: dashed, still */
+.recon-canvas .react-flow__edge.animated path.react-flow__edge-path { stroke: var(--primary); }
+@media (prefers-reduced-motion: reduce) {
+  .recon-canvas .react-flow__edge.animated path { animation: none; }
+}

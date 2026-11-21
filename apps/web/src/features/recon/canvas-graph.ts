@@ -8,7 +8,11 @@ import { breakLabel, passOutcome, runTotals } from "./run-model";
 export const LANES = ["Sources", "Sides", "Passes", "Outcomes"] as const;
 export type Lane = 0 | 1 | 2 | 3;
 /** `select`: what choosing the node opens in the inspector (a side, a pass by its key), or nothing (a source, an outcome). */
-export type GNode = { id: string; lane: Lane; title: string; line: string; select: { k: "side"; i: 0 | 1 } | { k: "pass"; key: string } | null };
+export type GNode = {
+  id: string; lane: Lane; title: string; line: string; select: { k: "side"; i: 0 | 1 } | { k: "pass"; key: string } | null;
+  /** A pass: what it does with a fit (Auto matches, Suggest proposes). */
+  badge?: "Auto" | "Suggest";
+};
 /**
  * `inLane`: a pass to the next pass, drawn down the Passes lane. `label`: the simulation's count on it, short (a pass's
  * pairs or items); the per-side counts sit in the node lines, so a label never runs over a node.
@@ -18,10 +22,10 @@ export type LaneGraph = { nodes: GNode[]; edges: GEdge[] };
 type Counters = ReconRunDto["counters"];
 
 export const NODE_W = 216;
-export const NODE_H = 64;
+export const NODE_H = 68;
 /** Between two lanes (room for a short edge label) and between two nodes of a lane. */
 export const LANE_GAP = 120;
-export const ROW_GAP = 24;
+export const ROW_GAP = 20;
 
 /**
  * The builder canvas of `spec`: pass ids from `keys` (stable across a reorder, as the builder keeps them); counts on the
@@ -42,7 +46,8 @@ export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: C
   const outs = new Map<string, string>();
   spec.passes.forEach((p, i) => {
     const id = keys[i]!;
-    nodes.push({ id, lane: 2, title: `${i + 1}. ${p.name || "Untitled pass"}`, line: `${p.cardinality} · ${p.accept === "auto" ? "Matches" : "Suggests"} · ${p.predicates.length} ${p.predicates.length === 1 ? "condition" : "conditions"}`, select: { k: "pass", key: id } });
+    nodes.push({ id, lane: 2, title: `${i + 1}. ${p.name || "Untitled pass"}`, line: `${p.cardinality} · ${p.predicates.length} ${p.predicates.length === 1 ? "condition" : "conditions"}`,
+      select: { k: "pass", key: id }, badge: p.accept === "auto" ? "Auto" : "Suggest" });
     if (i === 0) edges.push({ id: `e-a-${id}`, source: "side-a", target: id, label: null }, { id: `e-b-${id}`, source: "side-b", target: id, label: null });
     else edges.push({ id: `e-${keys[i - 1]}-${id}`, source: keys[i - 1]!, target: id, label: null, inLane: true });
     // where a pass's items go: matched, suggested or its break; with counters, how many

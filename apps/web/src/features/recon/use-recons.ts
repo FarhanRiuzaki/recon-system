@@ -7,7 +7,7 @@ import type { ReconDto, ReconLiveDto, ReconRunDto, ReconVersionDetailDto, ReconV
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { draftSimulations, LIVE_POLL_MS, RECON_KEY, reconLive, reconRecordRuns, reconLatestRuns, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
+import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, RECON_KEY, reconLive, reconRecordRuns, reconLatestRuns, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
 import { pickLastRuns } from "@/lib/shared/recon-runs";
 import { isLive } from "./run-model";
 
@@ -160,14 +160,19 @@ export function useSimulation(spaceId: string, id: string, versionId: string, en
   return { run, shown, start, stalled: rq.stalled };
 }
 
-/** Today (REC-F4): read again every LIVE_POLL_MS while the tab is visible; every read is the current snapshot. */
+/**
+ * Today (REC-F4): read again every LIVE_POLL_MS while the tab is visible, LIVE_RUN_POLL_MS while a recon's run is
+ * queued or under way; every read is the current snapshot.
+ */
 export function useToday(spaceId: string) {
   const { key, url } = spaceToday(spaceId);
-  return useQuery({ queryKey: key, queryFn: () => api<TodayDto>(url), refetchInterval: LIVE_POLL_MS, refetchOnWindowFocus: true });
+  return useQuery({ queryKey: key, queryFn: () => api<TodayDto>(url), refetchOnWindowFocus: true,
+    refetchInterval: (q) => (q.state.data?.recons.some((r) => r.running) ? LIVE_RUN_POLL_MS : LIVE_POLL_MS) });
 }
 
 /** A recon's Live day, polled as Today; `enabled` once it has a published version (409 before). */
 export function useReconLive(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconLive(spaceId, id);
-  return useQuery({ queryKey: key, queryFn: () => api<ReconLiveDto>(url), enabled, retry: retryUnlessNotFound, refetchInterval: LIVE_POLL_MS, refetchOnWindowFocus: true });
+  return useQuery({ queryKey: key, queryFn: () => api<ReconLiveDto>(url), enabled, retry: retryUnlessNotFound, refetchOnWindowFocus: true,
+    refetchInterval: (q) => (q.state.data?.recon.running ? LIVE_RUN_POLL_MS : LIVE_POLL_MS) });
 }

@@ -63,7 +63,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
     window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
   };
 
-  const header = <PageHeader title="Today" description={`${spaceName} · the recons' current business dates, read again every 15 seconds`} />;
+  const header = <PageHeader title="Today" description={`${spaceName} · the recons' current business dates, read again every 15 seconds (every 5 while a run is under way)`} />;
   if (q.error && !q.data) return <div className="grid gap-section">{header}<Panel><Failure title="Today couldn't be loaded." error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   const t = q.data;
   if (!t || skeleton) return <LoadingShape sections={TODAY_SHAPE} shown={skeleton} />;

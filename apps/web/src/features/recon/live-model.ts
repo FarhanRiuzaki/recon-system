@@ -64,8 +64,14 @@ export type MapNode = {
   id: string; lane: 0 | 1; title: string; line: string; chip: { health: Health; label: string };
   /** A recon: its page; the names of its sources that are Degraded or Down. */
   href?: string; affectedBy?: string[];
+  /** A recon with a live run queued or under way. */
+  running?: "queued" | "running";
 };
-export type MapEdge = { id: string; source: string; target: string; /** 1–4 px: the source's records today against the busiest source's. */ width: number };
+export type MapEdge = {
+  id: string; source: string; target: string; /** 1–4 px: the source's records today against the busiest source's. */ width: number;
+  /** Its recon is running: the edge flows. */
+  live: boolean;
+};
 
 /** The Space map (DEC-041, §11a): each source once (lane 0), each recon (lane 1), an edge per side. */
 export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: MapNode[]; edges: MapEdge[] } {
@@ -82,13 +88,13 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: 
   for (const r of t.recons) {
     const bad = troubled(r, byId), tot = dayTotals(r);
     nodes.push({
-      id: `rec-${r.id}`, lane: 1, title: r.name, chip: reconChip(r, byId), href: hrefOf(r.id), affectedBy: bad.map((s) => s.name),
+      id: `rec-${r.id}`, lane: 1, title: r.name, chip: reconChip(r, byId), href: hrefOf(r.id), affectedBy: bad.map((s) => s.name), running: r.running?.status,
       line: tot ? `${formatNumber(tot.waiting)} waiting · ${formatNumber(r.openBreaks)} open breaks` : `No run yet · ${formatNumber(r.openBreaks)} open breaks`,
     });
     for (const [i, s] of r.sides.entries()) {
       if (!byId.has(s.sourceId) || (i === 1 && s.sourceId === r.sides[0].sourceId)) continue;
       const rows = byId.get(s.sourceId)!.rowsToday ?? 0;
-      edges.push({ id: `e-${s.sourceId}-${r.id}`, source: `src-${s.sourceId}`, target: `rec-${r.id}`, width: 1 + Math.round((3 * rows) / busiest) });
+      edges.push({ id: `e-${s.sourceId}-${r.id}`, source: `src-${s.sourceId}`, target: `rec-${r.id}`, width: 1 + Math.round((3 * rows) / busiest), live: r.running?.status === "running" });
     }
   }
   return { nodes, edges };
