@@ -117,7 +117,7 @@ export const SourceSpec = z.strictObject({
   const issue = (message: string, path: PropertyKey[]) => ctx.addIssue({ code: "custom", message, path });
   const fields = new Set<string>();
   s.fields.forEach((f, i) => (fields.has(f.name) ? issue(`Field "${f.name}" is declared twice`, ["fields", i, "name"]) : fields.add(f.name)));
-  for (const d of Object.keys(s.derive)) if (fields.has(d)) issue(`Derived value "${d}" has a field's name`, ["derive", d]);
+  for (const d of Object.keys(s.derive)) if (fields.has(d)) issue(`Computed column "${d}" has a source column's name`, ["derive", d]);
   const amount = s.mapping.amount_minor;
   if (amount && "field" in amount) {
     const f = s.fields.find((x) => x.name === amount.field);
@@ -131,8 +131,8 @@ export const SourceSpec = z.strictObject({
     ...Object.entries(core).map(([k, r]): [PropertyKey[], ValueRef | undefined] => [["mapping", k], r]),
     ...Object.entries(attrs).map(([k, r]): [PropertyKey[], ValueRef] => [["mapping", "attrs", k], r]),
   ];
-  for (const [path, r] of refs) if (r && "field" in r && !known(r.field)) issue(`"${r.field}" is not a field or derived value`, path);
-  s.key_fields.forEach((k, i) => known(k) || issue(`"${k}" is not a field or derived value`, ["key_fields", i]));
+  for (const [path, r] of refs) if (r && "field" in r && !known(r.field)) issue(`"${r.field}" is not a column or computed column`, path);
+  s.key_fields.forEach((k, i) => known(k) || issue(`"${k}" is not a column or computed column`, ["key_fields", i]));
   if (s.mutable && !s.key_fields.length) issue("A mutable source needs key fields", ["key_fields"]);
   if (s.mutable && s.input.kind === "db_snapshot") issue("A snapshot source is replaced whole per business date, so it can't be mutable", ["mutable"]);
   if (s.input.kind === "db_watermark" && (s.input.table === undefined) === (s.input.query === undefined)) issue("Give either a table or a query", ["input"]);

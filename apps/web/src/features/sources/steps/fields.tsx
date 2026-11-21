@@ -1,11 +1,11 @@
 "use client";
 
 import { type ChangeEvent, Fragment, useRef } from "react";
-import { Checkbox, Combobox, type ComboOption, Disclosure, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { Checkbox, Combobox, type ComboOption, Field, InfoTip, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, CloseIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, CloseIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
@@ -16,6 +16,8 @@ import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProb
 import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
+import { ComputedColumns } from "./computed";
+import { computeCel } from "@starterkit/shared/compute";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
 const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
@@ -136,7 +138,7 @@ export function FieldsStep(p: FieldsStepProps) {
               // only text can hold a date or a number to retype; another type just isn't one
               const why = !bad ? null : t === "string" ? `if it holds ${fits[0] === "integer" ? "numbers" : "dates"}, set its type in Columns` : `not ${fits[0] === "integer" ? "a number" : "a date"}`;
               return { value: `f:${n}`, label: n, tone: fits && t ? (bad ? "bad" : "ok") : undefined,
-                description: [t ? TYPE_LABEL[t] : "Derived value", ex ? `e.g. ${ex}` : null, why].filter(Boolean).join(" · ") };
+                description: [t ? TYPE_LABEL[t] : "Computed column", ex ? `e.g. ${ex}` : null, why].filter(Boolean).join(" · ") };
             }).sort((a, b) => Number(a.tone === "bad") - Number(b.tone === "bad")),
             ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
           ];
@@ -189,9 +191,20 @@ export function FieldsStep(p: FieldsStepProps) {
       {/* a database's examples come from Preview rows (each pulls from the bank's database: on demand only), offered
           here where the examples are read, before the mapping that needs them */}
       <Panel flush title="Columns" description={`${s.fields.length} columns · check each type: the fields below read it`}
-        actions={p.onPreview && s.fields.length > 0 && !p.preview.result && (
-          <Button type="button" variant="secondary" size="sm" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
-            {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
+        actions={s.fields.length > 0 && (
+          <span className="flex flex-wrap gap-2">
+            {p.onPreview && !p.preview.result && (
+              <Button type="button" variant="secondary" size="sm" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
+                {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
+            )}
+            {/* a value made from another column (the remark's first word as the reference): set with the columns */}
+            <Button type="button" variant="secondary" size="sm" onClick={() => setSpec((x) => {
+              const taken = new Set([...x.fields.map((f) => f.name), ...Object.keys(x.derive)]);
+              let n = 1;
+              while (taken.has(`computed_${n}`)) n++;
+              return { ...x, derive: { ...x.derive, [`computed_${n}`]: computeCel(x.fields[0]!.name, []) } };
+            })}>Add computed column</Button>
+          </span>
         )}>
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
@@ -266,9 +279,9 @@ export function FieldsStep(p: FieldsStepProps) {
             </Table>
           </div>
         )}
+        <ComputedColumns spec={s} setSpec={setSpec} err={err} examples={examples} />
       </Panel>
 
-      <Derived {...p} setSpec={setSpec} />
       <Panel title="Map to recon fields" description="Which column gives each value the recons read" bodyClassName="grid gap-4 md:grid-cols-2">
         {GROUPS.map((g) => (
           <Fragment key={g.key}>
@@ -420,42 +433,6 @@ function SampleInput(p: FieldsStepProps) {
         <input ref={pick} type="file" accept=".txt,.csv,.dat,text/plain,text/csv" className="sr-only" tabIndex={-1} aria-hidden="true" onChange={(e) => void choose(e)} />
       </span>
     </>
-  );
-}
-
-/** Derived values: a name and a CEL expression over `row`, `file_name` and `file_date`; usable as a core value or key. */
-function Derived({ d, err, setSpec }: FieldsStepProps & { setSpec: (fn: (s: SourceSpec) => SourceSpec) => void }) {
-  const entries = Object.entries(d.spec.derive);
-  const rename = (from: string, to: string) => setSpec((x) => ({ ...x, derive: Object.fromEntries(Object.entries(x.derive).map(([k, v]) => [k === from ? to : k, v])) }));
-  const add = () => setSpec((x) => ({ ...x, derive: { ...x.derive, [`value_${Object.keys(x.derive).length + 1}`]: "" } }));
-  // rarely needed: closed until one exists, so the usual path is columns, then the mapping
-  if (!entries.length) {
-    return (
-      <Disclosure summary="Derived values (optional)">
-        <span className="grid gap-3">
-          A value computed per row before mapping, such as a reference built from two columns, written in CEL over row.&lt;column&gt;, file_name and file_date. It can then be mapped like a column.
-          <span><Button type="button" variant="secondary" onClick={add}>Add a derived value</Button></span>
-        </span>
-      </Disclosure>
-    );
-  }
-  return (
-    <Panel title="Derived values" description="Optional · computed per row before mapping, with CEL over row.<column>, file_name and file_date" bodyClassName="grid gap-3">
-      {entries.map(([name, expr], i) => {
-        const id = ctl(`derive.${name}`);
-        return (
-          <div key={i} className="grid items-start gap-3 md:grid-cols-[12rem_minmax(0,1fr)_auto]">
-            <Input aria-label={`Name of derived value ${i + 1}`} value={name} className="font-mono" onChange={(e) => rename(name, e.target.value)} />
-            <Field id={id} label={`Expression for ${name || "this value"}`} error={err(id)}>
-              <Input id={id} value={expr} className="font-mono" spellCheck={false} onChange={(e) => setSpec((x) => ({ ...x, derive: { ...x.derive, [name]: e.target.value } }))} />
-            </Field>
-            <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${name || "this derived value"}`}
-              onClick={() => setSpec((x) => { const { [name]: _drop, ...rest } = x.derive; return { ...x, derive: rest }; })}><Icon icon={RemoveIcon} /></Button>
-          </div>
-        );
-      })}
-      <span><Button type="button" variant="secondary" onClick={add}>Add a derived value</Button></span>
-    </Panel>
   );
 }
 

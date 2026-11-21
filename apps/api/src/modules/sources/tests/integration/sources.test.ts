@@ -530,7 +530,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     // every refine names its field, the same shape as a CEL error; a plain type miss stays the fixed sentence
     const quote = await patch(t.adm, s.id, v.id, { ...k, input: { ...k.input, format: { ...k.input.format, quote: "|" } } });
     expect(await msg(quote)).toBe("Check input.format.quote: The quote character can't be the delimiter.");
-    expect(await msg(await patch(t.mk, s.id, v.id, { ...k, key_fields: ["nope"] }))).toBe('Check key_fields.0: "nope" is not a field or derived value.');
+    expect(await msg(await patch(t.mk, s.id, v.id, { ...k, key_fields: ["nope"] }))).toBe('Check key_fields.0: "nope" is not a column or computed column.');
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, health: { deadline: "9:00" } }))).toBe("Check health.deadline: Use HH:MM, 00:00–23:59.");
     expect(await msg(await patch(t.mk, s.id, v.id, { ...k, mutable: "yes" }))).toBe("A request parameter has an unsupported value.");
     const ok = [...k.fields, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }, { name: "ts", type: "datetime", nullable: true, trim: true, format: { timezone: "UTC" } }];
@@ -595,7 +595,7 @@ describe("an unsaved spec in the preview (Task 7)", () => {
     expect(p.columns).toHaveLength(14);
     const zone = { ...k, fields: [{ ...k.fields[0], type: "datetime", format: { timezone: "Mars/Olympus" } }, ...k.fields.slice(1)] };
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: zone }))).toBe("Check fields.0.format.timezone: Unknown time zone. Use a name such as Asia/Jakarta.");
-    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, key_fields: ["nope"] } }))).toBe('Check key_fields.0: "nope" is not a field or derived value.');
+    expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, key_fields: ["nope"] } }))).toBe('Check key_fields.0: "nope" is not a column or computed column.');
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, derive: { x: "row.sid +" } } }))).toContain("Check the expression at derive.x: ");
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, calendar: "nowhere" } }))).toContain("There is no calendar nowhere");
     const db_ = { ...k, input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 10 } };

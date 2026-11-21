@@ -49,10 +49,10 @@ describe("SourceSpec", () => {
 
   it("refuses a mapping, key or derive that names no field, a repeated field, and a mutable source without keys", () => {
     const s = ksei();
-    expect(issues({ ...s, mapping: { ...s.mapping, ext_ref: { field: "nope" } } })).toEqual(['"nope" is not a field or derived value']);
-    expect(issues({ ...s, key_fields: ["nope"] })).toEqual(['"nope" is not a field or derived value']);
+    expect(issues({ ...s, mapping: { ...s.mapping, ext_ref: { field: "nope" } } })).toEqual(['"nope" is not a column or computed column']);
+    expect(issues({ ...s, key_fields: ["nope"] })).toEqual(['"nope" is not a column or computed column']);
     expect(issues({ ...s, fields: [...s.fields, s.fields[0]] })).toEqual([`Field "${s.fields[0]!.name}" is declared twice`]);
-    expect(issues({ ...s, derive: { [s.fields[0]!.name]: "1" } })).toEqual([`Derived value "${s.fields[0]!.name}" has a field's name`]);
+    expect(issues({ ...s, derive: { [s.fields[0]!.name]: "1" } })).toEqual([`Computed column "${s.fields[0]!.name}" has a source column's name`]);
     expect(issues({ ...s, mutable: true, key_fields: [] })).toEqual(["A mutable source needs key fields"]);
     expect(issues({ ...s, mapping: { ...s.mapping, attrs: { sid: { field: "sid", cel: "x" } } } })).not.toEqual([]);
   });

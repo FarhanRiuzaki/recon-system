@@ -4,6 +4,7 @@
 // with `id` a literal from SAFE_PATTERNS: fixed, linear patterns, so no input can backtrack catastrophically.
 // A spec is compiled once when it is saved (sources draft PATCH) and again when a pipeline starts, never per row.
 import { Environment, type ParseResult } from "@marcbachmann/cel-js";
+import { COMPUTE_FUNCTIONS } from "@starterkit/shared/compute";
 
 export const LIMITS = { maxAstNodes: 200, maxDepth: 20, maxListElements: 100, maxMapEntries: 100, maxCallArguments: 8 };
 export const MAX_EXPR_LENGTH = 1000;
@@ -12,6 +13,8 @@ export const ALLOWED_FUNCTIONS = new Set([
   "startsWith", "endsWith", "contains", "lowerAscii", "upperAscii", "trim",
   "indexOf", "lastIndexOf", "substring", "split", "join",
   "re_match",
+  // computed columns' steps (@starterkit/shared/compute): total string functions, the same code the wizard previews with
+  ...Object.keys(COMPUTE_FUNCTIONS),
 ]);
 export const SAFE_PATTERNS: Record<string, RegExp> = {
   digits_only: /^\d+$/,
@@ -27,7 +30,16 @@ const env = new Environment({ limits: LIMITS })
   .registerVariable("row", "map")
   .registerVariable("file_name", "string")
   .registerVariable("file_date", "string")
-  .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v));
+  .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v))
+  .registerFunction("trimmed(string): string", COMPUTE_FUNCTIONS.trimmed)
+  .registerFunction("upper(string): string", COMPUTE_FUNCTIONS.upper)
+  .registerFunction("lower(string): string", COMPUTE_FUNCTIONS.lower)
+  .registerFunction("digits_only(string): string", COMPUTE_FUNCTIONS.digits_only)
+  .registerFunction("word_at(string, int): string", (s: string, n: bigint | number) => COMPUTE_FUNCTIONS.word_at(s, Number(n)))
+  .registerFunction("part_at(string, string, int): string", (s: string, sep: string, n: bigint | number) => COMPUTE_FUNCTIONS.part_at(s, sep, Number(n)))
+  .registerFunction("text_between(string, string, string): string", COMPUTE_FUNCTIONS.text_between)
+  .registerFunction("replace_text(string, string, string): string", COMPUTE_FUNCTIONS.replace_text)
+  .registerFunction("or_default(string, string): string", COMPUTE_FUNCTIONS.or_default);
 
 type Node = { op?: string; args?: unknown };
 /** Every call node of the tree: [function name, argument nodes]. */

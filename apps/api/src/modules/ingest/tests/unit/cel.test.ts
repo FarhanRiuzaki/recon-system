@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { compileDerive, runDerive } from "../../cel";
+import { applySteps, type ComputeStep, computeCel, computeSteps } from "@starterkit/shared/compute";
 
 const ok = (expr: string) => {
   const c = compileDerive(expr);
@@ -42,5 +43,35 @@ describe("compileDerive", () => {
   it("a runtime failure is a reason, not a throw", () => {
     const r = runDerive(ok("int(row.n)"), vars({ n: "abc" }));
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("computed columns (@starterkit/shared/compute): ingest's CEL = the wizard's preview", () => {
+  const REMARKS = [
+    "20261120BRINIDJA010O0123456789 BRI 0123456789", "  E2E-77781 Mandiri 123", "E2E777|BCA|123", "", "single",
+    "ref:ABC-12 / acct 99", "TRF  INV-2026/0042  PT Maju", 'quote " inside', "ünïcode 42",
+  ];
+  const STEPS: ComputeStep[][] = [
+    [{ type: "word", n: 1 }], [{ type: "word", n: 3 }], [{ type: "part", sep: "|", n: 1 }], [{ type: "part", sep: "|", n: 5 }],
+    [{ type: "between", before: "ref:", after: " /" }], [{ type: "between", before: "INV-", after: "" }], [{ type: "digits" }],
+    [{ type: "trim" }, { type: "upper" }, { type: "word", n: 2 }], [{ type: "replace", find: "-", with: "" }, { type: "lower" }],
+    [{ type: "word", n: 9 }, { type: "default", value: "NONE" }], [{ type: "part", sep: '"', n: 2 }],
+  ];
+  it("every step list gives the same text through CEL as applySteps, on every remark; a missing part is empty, not an error", () => {
+    for (const steps of STEPS) {
+      const expr = computeCel("remark", steps);
+      const c = compileDerive(expr);
+      if ("error" in c) throw new Error(`${expr}: ${c.error}`);
+      for (const remark of REMARKS) {
+        const r = runDerive(c, { row: { remark }, file_name: "", file_date: "" });
+        expect([expr, remark, r]).toEqual([expr, remark, { ok: true, value: applySteps(remark, steps) }]);
+      }
+    }
+  });
+  it("the canonical CEL reads back into the same source and steps; a column name with spaces too; a hand-written one stays an expression", () => {
+    for (const steps of STEPS) expect(computeSteps(computeCel("remark", steps))).toEqual({ source: "remark", steps });
+    expect(computeSteps(computeCel("Remark 2", [{ type: "word", n: 1 }]))).toEqual({ source: "Remark 2", steps: [{ type: "word", n: 1 }] });
+    expect(computeSteps('row.remark.split(" ")[0]')).toBeNull();
+    expect(computeSteps("row.remark")).toEqual({ source: "remark", steps: [] });
   });
 });
