@@ -184,7 +184,13 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       )}
 
-      <Panel flush title="Columns" description={`${s.fields.length} columns · check each type: the fields below read it`}>
+      {/* a database's examples come from Preview rows (each pulls from the bank's database: on demand only), offered
+          here where the examples are read, before the mapping that needs them */}
+      <Panel flush title="Columns" description={`${s.fields.length} columns · check each type: the fields below read it`}
+        actions={p.onPreview && s.fields.length > 0 && !p.preview.result && (
+          <Button type="button" variant="secondary" size="sm" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
+            {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
+        )}>
         {s.fields.length === 0 ? (
           <p className="px-4 py-6 text-body-sm text-fg-3">{file ? "Columns appear here once a sample is read." : "Columns appear here once the source's columns are read."}</p>
         ) : (
