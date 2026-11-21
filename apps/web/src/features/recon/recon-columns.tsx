@@ -7,8 +7,9 @@ import { reconHref } from "./use-recons";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-/** "Version 2 · bifast-credit", or "Draft · code" before the first approval. */
-export const reconCaption = (r: ReconRowDto) => `${r.publishedVersion ? `Version ${r.publishedVersion}` : "Draft"} · ${r.code}`;
+/** "Version 2 · bifast-credit"; before the first approval the open version's state, as the chip says it: "Draft · code", "In review · code". */
+export const reconCaption = (r: Pick<ReconRowDto, "publishedVersion" | "draftStatus" | "code">) =>
+  `${r.publishedVersion ? `Version ${r.publishedVersion}` : r.draftStatus === "in_review" ? "In review" : "Draft"} · ${r.code}`;
 
 /** Columns of a space's recons: the recon (title on a phone), its state, when it was created. Name and created sort (RECON_SORTS). */
 export function reconColumns(spaceId: string): Column<ReconRowDto>[] {
