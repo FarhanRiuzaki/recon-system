@@ -49,7 +49,8 @@
 }
 /* a packet travelling a live edge (SMIL along the edge's path) */
 .recon-canvas .flow-packet { fill: var(--primary); stroke: var(--card); stroke-width: 1.5; }
-.recon-canvas .react-flow__edge.is-live path.react-flow__edge-path { stroke: var(--primary); }
+.recon-canvas .flow-halo { fill: var(--primary-soft); stroke: var(--primary); stroke-opacity: 0.25; }
+.recon-canvas .react-flow__edge.is-live path.react-flow__edge-path { stroke: var(--primary); stroke-width: 2; }
 /* a hovered or focused node's path at full strength, the rest dimmed (opacity only) */
 .recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: opacity var(--dur-fast) var(--ease-standard); }
 .recon-canvas .react-flow__node.is-dim, .recon-canvas .react-flow__edge.is-dim { opacity: 0.35; }

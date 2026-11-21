@@ -142,9 +142,11 @@ export function FlowEdge(p: EdgeProps<Edge<FlowEdgeData>>) {
       <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} label={p.label} labelX={labelX} labelY={labelY}
         labelStyle={p.labelStyle} labelShowBg={p.labelShowBg} labelBgStyle={p.labelBgStyle} labelBgPadding={p.labelBgPadding} labelBgBorderRadius={p.labelBgBorderRadius} />
       {p.data?.live && !reduced && [0, DUR.tween].map((at) => (
-        <circle key={at} r={3.5} className="flow-packet">
-          <animateMotion dur={`${DUR.flash}s`} begin={`-${at}s`} repeatCount="indefinite" path={path} />
-        </circle>
+        // a packet with a soft halo, both on the edge's own path
+        <g key={at}>
+          <circle r={7} className="flow-halo"><animateMotion dur={`${DUR.flash}s`} begin={`-${at}s`} repeatCount="indefinite" path={path} /></circle>
+          <circle r={3.5} className="flow-packet"><animateMotion dur={`${DUR.flash}s`} begin={`-${at}s`} repeatCount="indefinite" path={path} /></circle>
+        </g>
       ))}
     </>
   );

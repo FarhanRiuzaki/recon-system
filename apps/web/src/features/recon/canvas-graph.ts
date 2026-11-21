@@ -21,7 +21,7 @@ export type GEdge = { id: string; source: string; target: string; label: string 
 export type LaneGraph = { nodes: GNode[]; edges: GEdge[] };
 type Counters = ReconRunDto["counters"];
 
-export const NODE_W = 216;
+export const NODE_W = 256;
 export const NODE_H = 68;
 /** Between two lanes (room for a short edge label) and between two nodes of a lane. */
 export const LANE_GAP = 120;
