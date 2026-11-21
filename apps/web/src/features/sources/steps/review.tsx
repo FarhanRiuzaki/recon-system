@@ -1,11 +1,18 @@
 "use client";
 
 import { Panel, ReviewList, StatusChip } from "@starterkit/ui/ds";
+import { computeSteps, stepText } from "@starterkit/shared/compute";
+import type { ValueRef } from "@starterkit/shared/contracts/sources";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 import { KIND_LABEL, scheduleText } from "../source-text";
 import { UNIT_LABEL } from "../spec-draft";
 import type { Draft } from "./model";
+
+/** The recon fields the summary lists after the business date, in step 2's order. */
+const MAPPED = [["amount_minor", "Amount"], ["currency", "Currency"], ["direction", "Direction"], ["event_time", "Event time"], ["ext_ref", "Reference"], ["account_ref", "Account"]] as const;
+/** Where a recon field's value comes from: a column or computed column by name, or an expression. */
+const refText = (r: ValueRef) => ("field" in r ? r.field : `Expression ${r.cel}`);
 
 type Check = { check: string; ready: boolean; details: string };
 
@@ -28,9 +35,10 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
     { ...arrive, ready: true },
     ...table,
     { check: "Core fields", ready: true, details: `Business date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
-    s.key_fields.length
+    // a match key matters only for rows that can change (the newest per key counts); a source whose rows never change has none
+    ...(!s.mutable ? [] : [s.key_fields.length
       ? { check: "Match key", ready: true, details: `${s.key_fields.join(" + ")}, never empty` }
-      : { check: "Match key", ready: false, details: "No match key: rows are told apart by their whole content only." },
+      : { check: "Match key", ready: false, details: "Rows can change, but no match key says which row a newer one replaces." }]),
     !preview
       ? { check: "Preview", ready: false, details: "Not previewed with this version's columns." }
       : preview.quarantined === 0
@@ -72,6 +80,16 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
           ...(canConnect ? [{ label: "Comes from", value: i.kind === "file_inbox" ? `File inbox · ${i.path} · ${i.pattern}` : KIND_LABEL[d.kind], step: 0 }] : []),
           { label: "Columns", value: `${s.fields.length} · ${stored.length} stored${s.key_fields.length ? ` · match key ${s.key_fields.join(" + ")}` : ""}`, step: 1 },
           { label: "Business date", value: "field" in s.mapping.business_date ? s.mapping.business_date.field : "From the file name", step: 1 },
+          // every other recon field and computed column as set in step 2 (what was given, shown once more before submit)
+          ...MAPPED.flatMap(([k, label]) => {
+            const r = s.mapping[k];
+            if (k === "currency" && !r && s.currency) return [{ label, value: `${s.currency} for every row`, step: 1 }];
+            return r ? [{ label, value: refText(r), step: 1 }] : [];
+          }),
+          ...Object.entries(s.derive).map(([name, expr]) => {
+            const b = computeSteps(expr);
+            return { label: `Computed: ${name}`, value: b ? `${b.source}${b.steps.length ? ` → ${b.steps.map(stepText).join(" → ")}` : ""}` : `Expression ${expr}`, step: 1 };
+          }),
         ]} />
       </Panel>
     </div>
