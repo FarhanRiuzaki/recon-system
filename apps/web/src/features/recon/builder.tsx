@@ -434,7 +434,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const steps = draftProgress({
     sides: fields[0] && fields[1] ? [spec.sides[0].label, spec.sides[1].label] : null,
     passes: spec.passes.length, needing: needing.filter(Boolean).length,
-    settings: `${scheduleText(spec.schedule)} · closes ${spec.close_at} ${APP_TIME_ZONE_LABEL}`,
+    // short: the strip under it says the rest
+    settings: `${spec.schedule.kind === "daily" ? `Daily at ${spec.schedule.at}` : `Every ${spec.schedule.every_minutes} min`} · closes ${spec.close_at}`,
     settingsChecked: settingsSeen || !defaults || !!recon.published,
     simulation: saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.specHash || dirty ? "stale" : "current",
     submitReason: blocked,
