@@ -171,8 +171,8 @@ describe("run-model", () => {
     expect(breakCounts({ mode: "manual", counters, live: null })).toBeNull();
   });
 
-  it("says where a lone break could have found its counterpart: its date ± carry over", () => {
-    expect(counterpartWindow("2026-11-03", 1)).toBe("2–4 Nov 2026");
+  it("says where a lone break could have found its counterpart: its date and up to carry over before it", () => {
+    expect(counterpartWindow("2026-11-03", 1)).toBe("2–3 Nov 2026");
     expect(counterpartWindow("2026-11-03", 0)).toBe("3 Nov 2026");
   });
 });

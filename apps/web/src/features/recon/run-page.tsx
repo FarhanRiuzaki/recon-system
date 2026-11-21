@@ -183,7 +183,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           </RouteTabs>
           <div className="flex flex-wrap items-center gap-3">
             {pass && <span className="text-body-sm text-fg-2">Pass {pass.no} · {pass.name}{status === "suggested" ? " · open until someone accepts them" : ""}</span>}
-            {breaksTab && <span className="text-body-sm text-fg-2">Breaks · left open at day close</span>}
+            {breaksTab && <span className="text-body-sm text-fg-2">Duplicates from the passes; the rest left open at day close.</span>}
             {statusOptions.length > 1 && (
               <Segmented label={`Pass ${pass!.no} outcome`} value={status} options={statusOptions}
                 onChange={(v) => t.set({ status: v === own ? "" : v, side: "", pass: v === "break" || pass!.no !== 1 ? String(pass!.no) : "" })} />

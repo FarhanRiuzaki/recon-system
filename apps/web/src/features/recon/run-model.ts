@@ -119,10 +119,11 @@ export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">
 }
 
 /**
- * Where a break without a counterpart could have found one (Explain): the other side's dates the item met in the
- * pool, its own date ± carry over ("2–4 Nov 2026" for 3 Nov with 1 day).
+ * Where a break without a counterpart could have found one (Explain): the other side's dates day close looked at, its
+ * own date and up to carry over before it (engine sql/breaks.ts nearMissSql: o.bd between m.bd − carry and m.bd):
+ * "2–3 Nov 2026" for 3 Nov with 1 day.
  */
-export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), shiftDate(date, carry));
+export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), date);
 
 /** "2,000 items", or the one fact that the run found nothing new to take in. */
 export const itemsText = (n: number) => (n ? `${formatNumber(n)} items` : "no new records");
