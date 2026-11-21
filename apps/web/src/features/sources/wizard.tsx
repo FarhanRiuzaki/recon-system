@@ -519,7 +519,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId]);
 
   useEffect(() => {
-    if (step !== 1 || file || !autoPreview.current || !previewable || !ids) return;
+    if (step < 1 || file || !autoPreview.current || !previewable || !ids) return;
     autoPreview.current = false;
     void runPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
