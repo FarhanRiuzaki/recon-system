@@ -54,9 +54,10 @@ export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; sp
           {r.alertedAt ? ` Last alert ${formatDateTime(Date.parse(r.alertedAt))}.` : ""}
         </Notice>
       )}
-      <Panel title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StatusChip health={chip.health} label={chip.label} /></span>}
+      <Panel flush title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StatusChip health={chip.health} label={chip.label} /></span>}
         description={[scheduleLine(r.schedule), run ?? (r.runAt ? `last run finished ${formatDateTime(Date.parse(r.runAt))}` : "no run has covered this date yet")].join(" · ")}>
-        <StatTiles>
+        {/* the tiles fill the card: its body is the tray (no second frame) */}
+        <StatTiles className="rounded-none border-0">
           <StatTile label="Items in" value={tot?.inItems != null ? fmt(tot.inItems) : "—"} tween={tot?.inItems != null ? { value: tot.inItems, format: fmt } : undefined} caption="Both sides, this date" />
           <StatTile label="Matched" value={tot ? fmt(tot.matched) : "—"} tween={tot ? { value: tot.matched, format: fmt } : undefined} caption="Pairs and groups" />
           <StatTile label="Waiting" value={tot ? fmt(tot.waiting) : "—"} tween={tot ? { value: tot.waiting, format: fmt } : undefined}
