@@ -59,7 +59,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
   return (
     <div className="grid gap-section">
       <Panel flush title="Ready to submit?" footnote="Checks marked Check don't block submitting. The checker sees them.">
-        <div className="scroll-quiet overflow-x-auto">
+        <div className="min-w-0">
           <Table aria-label="Ready to submit">
             <TableHeader><TableRow><TableHead>Check</TableHead><TableHead>Result</TableHead><TableHead>Details</TableHead></TableRow></TableHeader>
             <TableBody>

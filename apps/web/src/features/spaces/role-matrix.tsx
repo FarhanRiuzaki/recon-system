@@ -1,4 +1,4 @@
-import { Panel } from "@starterkit/ui/ds";
+import { Panel, ScrollFade } from "@starterkit/ui/ds";
 import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
 
 type Cell = "does" | "approves" | "views" | "none";
@@ -59,7 +59,7 @@ export function RoleMatrix() {
     </>}>
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
-      <div tabIndex={0} role="region" aria-label={TITLE} className="scroll-quiet relative overflow-x-auto outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
+      <ScrollFade tabIndex={0} role="region" aria-label={TITLE} className="relative overflow-y-hidden outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
         <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-274 border-separate border-spacing-0 text-body-sm">
           <thead>
             <tr>
@@ -79,7 +79,7 @@ export function RoleMatrix() {
             </tbody>
           ))}
         </table>
-      </div>
+      </ScrollFade>
     </Panel>
   );
 }

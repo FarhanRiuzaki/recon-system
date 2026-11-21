@@ -1,7 +1,7 @@
 "use client";
 
 import { type FocusEvent, type KeyboardEvent, type MouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Checkbox } from "@starterkit/ui/ds";
+import { Checkbox, ScrollFade } from "@starterkit/ui/ds";
 import { MODULES, permissionLabel } from "@starterkit/shared/permissions";
 import { cellState, type Edit, type MatrixModules, matrixFor } from "@/lib/shared/matrix";
 
@@ -100,7 +100,7 @@ export function PermissionMatrix({ label, value, onChange, allowed, catalog, mod
     <>
     {/* Scrolls inside its card when wider (or taller) than the screen; `relative` keeps the sr-only reasons of read-only
         checkboxes (absolutely positioned) inside the scroll box instead of widening the page. */}
-    <div className="scroll-quiet relative max-h-[70dvh] overflow-auto overscroll-x-contain">
+    <ScrollFade className="relative max-h-[70dvh] overscroll-x-contain">
       <table ref={gridRef} role="grid" aria-label={label} onKeyDown={onKeyDown} onFocus={onFocus} onClick={onClick} className="w-full border-separate border-spacing-0 text-body">
         <thead className="bg-tray">
           <tr>
@@ -136,7 +136,7 @@ export function PermissionMatrix({ label, value, onChange, allowed, catalog, mod
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollFade>
     <p role="status" className={note ? "border-t border-line px-3 py-2 text-caption text-fg-2" : undefined}>{note}</p>
     </>
   );

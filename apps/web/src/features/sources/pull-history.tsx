@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { EmptyState, Panel, RelativeTime, StatusChip } from "@starterkit/ui/ds";
+import { EmptyState, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
 import type { Health } from "@starterkit/ui/lib/status";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -64,7 +64,8 @@ export function PullHistory({ spaceId, id }: { spaceId: string; id: string }) {
     <Panel flush icon={LogIcon} title="Pull history" count={total} description="Newest first · the last 30 days" className="flex min-h-72 flex-col" bodyClassName="flex flex-1 flex-col">
       {/* the list takes the card's height (the Pull card's, beside it) and scrolls inside it */}
       <div className="relative min-h-64 flex-1">
-        <ol aria-label="Pulls" className="scroll-quiet absolute inset-0 overflow-y-auto">
+        <div className="absolute inset-0"><ScrollFade className="h-full">
+        <ol aria-label="Pulls">
           {first.isError && !pulls.length && <li className="p-4 text-body-sm text-down-ink">Couldn&apos;t load the pulls. {errorText(first.error)}</li>}
           {first.isSuccess && !pulls.length && <li><EmptyState icon={LogIcon} title="No pulls yet" description="Each pull of the source lists here once the source runs." /></li>}
           {pulls.map((p) => (
@@ -81,6 +82,7 @@ export function PullHistory({ spaceId, id }: { spaceId: string; id: string }) {
           ))}
           {hasNextPage && <li ref={end} className="flex items-center gap-2 px-4 py-3 text-caption text-fg-3">{isFetchingNextPage && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Loading older pulls</li>}
         </ol>
+        </ScrollFade></div>
       </div>
     </Panel>
   );

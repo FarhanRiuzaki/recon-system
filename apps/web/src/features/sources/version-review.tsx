@@ -97,7 +97,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
       description={isPublished || !published ? "Every field, mapping and setting" : rows.length ? `${changes(rows.length)}; everything else is as in version ${published.version}` : "Nothing differs"}>
       {!v.spec ? <p className="px-4 py-6 text-body-sm text-fg-3">This draft has no fields and mapping yet.</p> : rows.length === 0
         ? <p className="px-4 py-6 text-body-sm text-fg-3">The spec is the same as version {published?.version}.</p> : (
-          <div className="scroll-quiet overflow-x-auto">
+          <div className="min-w-0">
             <Table aria-label="Changes">
               <TableHeader><TableRow>
                 <TableHead>Field</TableHead>

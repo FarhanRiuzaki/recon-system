@@ -677,6 +677,11 @@ Header help (owner, 21 Nov): a column whose meaning isn't plain from its name ge
 `Column.help` in `DataTable`, an `InfoTip` inside `TableHead` in a plain `Table`). One or two sentences, written as
 copy-guide §4 "Help text" says. (`data-table.test.ts` "header help")
 
+Any scroll, either axis (owner rule, 21 Nov): a list, panel body or table that scrolls shows the same fade on each side
+with content hidden past it. A table has it built in (`Table`, below); anything else scrolls inside `ScrollFade`
+(`ds/scroll-fade.tsx`: top, bottom, left, right, each on only while content is hidden there). Never a bare
+`overflow-auto` around data. (`scroll-fade.test.ts`)
+
 Sideways scroll (owner, 21 Nov): a table wider than its card scrolls inside it, and each side with content hidden past
 it shows a 48 px fade from `--line` (the row divider) through `--tray` (the header row's surface) to clear, on while hidden content is there and off at that edge (the
 scroll position, re-read on resize), so a reader notices the table goes on. It is `Table`'s own (`ui/table.tsx`), so
