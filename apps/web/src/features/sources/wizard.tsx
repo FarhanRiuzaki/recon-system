@@ -533,6 +533,9 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       if (named && !file) {
         const plain: SourceSpec = { ...spec, mapping: { business_date: ARRIVED_DATE, attrs: {} }, derive: {}, key_fields: [], mutable: false };
         delete plain.keep; delete plain.currency;
+        // a sample read has no watermark predicate: one not picked yet is stood in for by the first column
+        const first = spec.fields[0]?.name ?? "";
+        if (plain.input.kind === "db_watermark") plain.input = { ...plain.input, watermark: { column: plain.input.watermark.column || first, id_column: plain.input.watermark.id_column || first } };
         columns = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify({ spec: plain, ...(businessDate ? { businessDate } : {}) }) }).catch(() => null);
         if (n !== seq.current) return;
       }
