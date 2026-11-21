@@ -547,6 +547,22 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     expect(BigInt(row!.group!.members[1]!.amountMinor!) - BigInt(row!.group!.members[0]!.amountMinor!)).toBe(50000n);
   }, 60_000);
 
+  it("records=1 lists the runs whose own dates hold records: the gate run, not an empty catch-up after it", async () => {
+    const [gateRun] = (await json<Page<ReconRunDto>>(call("GET", `${base(gate.configId)}/runs?mode=manual`, { token: t.rv }))).items;
+    const empty = await json<ReconRunDto>(startRun(t.op, gate.configId, { from: "2026-11-06", to: "2026-11-20" }));
+    await drain();
+    expect((await getRun(gate.configId, empty.id)).status).toBe("succeeded");
+    const withRecords = await json<Page<ReconRunDto>>(call("GET", `${base(gate.configId)}/runs?records=1`, { token: t.rv }));
+    expect(withRecords.items.map((x) => x.id)).toEqual([gateRun!.id]);
+    // a run without stored days is unknown: left out
+    await db.update(reconRuns).set({ days: null, finalized: false }).where(eq(reconRuns.id, gateRun!.id));
+    expect((await json<Page<ReconRunDto>>(call("GET", `${base(gate.configId)}/runs?records=1`, { token: t.rv }))).total).toBe(0);
+    await (await boss()).deleteAllJobs(QUEUES.reconHeavy);
+    expect((await getRun(gate.configId, gateRun!.id)).days).toBeNull(); // queues its backfill
+    await drain();
+    expect((await json<Page<ReconRunDto>>(call("GET", `${base(gate.configId)}/runs?records=1`, { token: t.rv }))).items.map((x) => x.id)).toEqual([gateRun!.id]);
+  }, 60_000);
+
   it("a simulation of the same spec as a draft changes no pair and opens submit", async () => {
     const v2 = await json<ReconVersionDto>(call("POST", `${base(gate.configId)}/versions`, { token: t.mk }));
     const sim = await json<ReconRunDto>(simulate(t.mk, gate.configId, v2.id, { from: "2026-11-02", to: "2026-11-05" }));

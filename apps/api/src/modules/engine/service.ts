@@ -23,7 +23,7 @@ import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
-import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
@@ -41,7 +41,7 @@ import { matchGroups, matchMembers, reconDays, reconItems, reconRuns, reconSimCh
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
 import { closeReplacedSql, intakeSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
-import { analyzeSql, analyzeTableSql } from "./sql/runs";
+import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
 import { acceptSql, clearProposalsSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
@@ -693,7 +693,8 @@ export function runPage(ctx: Ctx, configId: string, q: ReconRunListQuery): Promi
   return inSpace(ctx, async (tx, spaceId) => {
     await configExists(tx, spaceId, configId);
     const where = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId), isNull(reconRuns.baselineOf),
-      q.mode ? eq(reconRuns.mode, q.mode) : undefined, q.versionId ? eq(reconRuns.configVersionId, q.versionId) : undefined);
+      q.mode ? eq(reconRuns.mode, q.mode) : undefined, q.versionId ? eq(reconRuns.configVersionId, q.versionId) : undefined,
+      q.records ? and(ne(reconRuns.mode, "simulation"), runHasRecordsSql()) : undefined);
     const page = await pageQuery({
       rows: tx.select().from(reconRuns).where(where).$dynamic(),
       count: tx.select(countOne).from(reconRuns).where(where).$dynamic(),

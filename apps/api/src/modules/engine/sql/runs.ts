@@ -1,7 +1,7 @@
 // What a run adds around its passes: fresh planner statistics after a large intake, and a draft simulation's changes
 // against the published version's simulation over the same dates.
 import { type SQL, sql } from "drizzle-orm";
-import { matchGroups, matchMembers, reconItems, reconSimChanges } from "../schema";
+import { matchGroups, matchMembers, reconItems, reconRuns, reconSimChanges } from "../schema";
 
 /**
  * Refreshes the statistics of `table`'s month partitions of `lo`..`hi` whose rows changed since their last analyze
@@ -42,3 +42,11 @@ export function changesSql(spaceId: string, runId: string, baselineId: string | 
     count(*) filter (where change = 'repaired')::int as repaired, count(*) filter (where change = 'kind')::int as kind from ins`;
 }
 
+
+/**
+ * A run whose stored days (recon_runs.days) hold current records on its own dates (`items` a + b over from..to > 0):
+ * GET …/runs?records=1. A run without days (not finalized) is not one.
+ */
+export const runHasRecordsSql = (): SQL => sql`exists (select 1 from jsonb_array_elements(case when jsonb_typeof(${reconRuns.days}) = 'array' then ${reconRuns.days} else '[]'::jsonb end) d
+    where (d ->> 'date')::date between ${reconRuns.dateFrom} and ${reconRuns.dateTo}
+      and coalesce((d -> 'items' ->> 'a')::int, 0) + coalesce((d -> 'items' ->> 'b')::int, 0) > 0)`;

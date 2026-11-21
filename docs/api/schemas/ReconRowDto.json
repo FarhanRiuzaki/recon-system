@@ -34,6 +34,20 @@
         }
       ]
     },
+    "draftStatus": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "draft",
+            "in_review"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "createdAt": {
       "type": "string"
     }
@@ -45,6 +59,7 @@
     "name",
     "status",
     "publishedVersion",
+    "draftStatus",
     "createdAt"
   ],
   "additionalProperties": false

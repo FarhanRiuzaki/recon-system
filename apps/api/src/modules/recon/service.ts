@@ -12,6 +12,7 @@ import type {
 import type { ReconStatus } from "@starterkit/shared/recon";
 import type { VersionStatus } from "@starterkit/shared/sources";
 import { and, desc, eq, ilike, inArray, isNull, max, min, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { sourceFieldsLock } from "../../kernel/locks";
@@ -95,8 +96,9 @@ const versionDto = (v: VersionRow, warnings: string[]): ReconVersionDto => ({
   createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
 });
 const withWarnings = async (tx: InTx, spaceId: string, v: VersionRow) => versionDto(v, await warningsOf(tx, spaceId, v.spec as ReconSpec));
-const rowDto = (c: ConfigRow, publishedVersion: number | null): ReconRowDto => ({
-  id: c.id, spaceId: c.spaceId, code: c.code, name: c.name, status: c.status as ReconStatus, publishedVersion, createdAt: c.createdAt.toISOString(),
+const rowDto = (c: ConfigRow, publishedVersion: number | null, draftStatus: string | null): ReconRowDto => ({
+  id: c.id, spaceId: c.spaceId, code: c.code, name: c.name, status: c.status as ReconStatus, publishedVersion,
+  draftStatus: draftStatus === "draft" || draftStatus === "in_review" ? draftStatus : null, createdAt: c.createdAt.toISOString(),
 });
 const ofConfig = (c: ConfigRow) => and(eq(reconConfigVersions.spaceId, c.spaceId), eq(reconConfigVersions.configId, c.id));
 
@@ -106,7 +108,7 @@ async function detailDto(tx: InTx, c: ConfigRow): Promise<ReconDto> {
   const published = vs.find((v) => v.status === "published");
   const open = vs.find((v) => v.status !== "published");
   return {
-    ...rowDto(c, published?.version ?? null),
+    ...rowDto(c, published?.version ?? null, open?.status ?? null),
     published: published ? await withWarnings(tx, c.spaceId, published) : null,
     draft: open ? await withWarnings(tx, c.spaceId, open) : null,
   };
@@ -134,12 +136,16 @@ export function reconPage(ctx: Ctx, q: ReconListQuery): Promise<Page<ReconRowDto
     const where = and(eq(reconConfigs.spaceId, spaceId), like ? or(ilike(reconConfigs.code, like), ilike(reconConfigs.name, like)) : undefined);
     // at most one published version per config (recon_config_versions_published_key)
     const published = and(eq(reconConfigVersions.spaceId, reconConfigs.spaceId), eq(reconConfigVersions.configId, reconConfigs.id), eq(reconConfigVersions.status, "published"));
+    // and at most one open (draft or in review: recon_config_versions_open_key)
+    const open = alias(reconConfigVersions, "open");
+    const isOpen = and(eq(open.spaceId, reconConfigs.spaceId), eq(open.configId, reconConfigs.id), inArray(open.status, ["draft", "in_review"]));
     return pageQuery({
-      rows: tx.select({ c: reconConfigs, published: reconConfigVersions.version }).from(reconConfigs).leftJoin(reconConfigVersions, published).where(where).$dynamic(),
+      rows: tx.select({ c: reconConfigs, published: reconConfigVersions.version, draft: open.status }).from(reconConfigs)
+        .leftJoin(reconConfigVersions, published).leftJoin(open, isOpen).where(where).$dynamic(),
       count: tx.select(one).from(reconConfigs).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { name: sql`lower(${reconConfigs.name})`, createdAt: reconConfigs.createdAt }, "name", reconConfigs.id),
       query: q,
-      map: (r) => rowDto(r.c, r.published),
+      map: (r) => rowDto(r.c, r.published, r.draft),
       on: tx,
     });
   });

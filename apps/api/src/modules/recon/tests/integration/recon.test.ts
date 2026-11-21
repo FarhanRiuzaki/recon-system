@@ -185,6 +185,19 @@ describe("POST and GET recons", () => {
 });
 
 describe("versions: edit, simulate, submit, approve, reject", () => {
+  it("the list says whether a recon's open version is a draft or in review (one join, every row)", async () => {
+    const r = await made();
+    const v = r.draft!.id;
+    const row = async () => (await json<Page<ReconRowDto>>(call("GET", base(A), { token: t.op }))).items.find((x) => x.id === r.id)!;
+    expect([(await row()).draftStatus, (await row()).publishedVersion]).toEqual(["draft", null]);
+    await simulated(v);
+    expect((await step(t.mk, r.id, v, "submit")).status).toBe(200);
+    expect((await row()).draftStatus).toBe("in_review");
+    expect((await json<ReconDto>(detail(t.op, r.id))).draftStatus).toBe("in_review");
+    expect((await step(t.ck, r.id, v, "approve")).status).toBe(200);
+    expect([(await row()).draftStatus, (await row()).publishedVersion]).toEqual([null, 1]);
+  });
+
   it("submit needs a simulation of the draft as it is; a checker who had no hand in it publishes; the maker can't", async () => {
     const r = await made();
     const v = r.draft!.id;

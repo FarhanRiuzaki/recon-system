@@ -197,6 +197,8 @@ export const ReconRowDto = z.object({
   name: z.string(),
   status: z.enum(RECON_STATUSES),
   publishedVersion: z.number().int().nullable(),
+  /** Its open version's status: a draft, one in review, or none. */
+  draftStatus: z.enum(["draft", "in_review"]).nullable(),
   createdAt: z.string(),
 });
 export type ReconRowDto = z.infer<typeof ReconRowDto>;
@@ -315,6 +317,8 @@ export type ReconRunDto = z.infer<typeof ReconRunDto>;
 /** GET …/recons/{configId}/runs: newest first; `mode` and `versionId` narrow it (the builder reads a draft's simulations). */
 export const ReconRunListQuery = ListQuery.omit({ q: true }).extend({
   sort: sortParam(RECON_RUN_SORTS), mode: z.enum(RUN_MODES).optional(), versionId: z.uuid().optional(),
+  /** "1": runs (not simulations) whose stored days hold current records on their own dates; a run without days is left out. */
+  records: z.literal("1").optional(),
 });
 export type ReconRunListQuery = z.infer<typeof ReconRunListQuery>;
 
