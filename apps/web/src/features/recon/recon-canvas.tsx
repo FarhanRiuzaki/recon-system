@@ -28,6 +28,8 @@ export type CanvasProps = {
   label?: string;
   /** A run is under way (Live day): packets travel every edge and the passes sweep (reduced motion: still, the stroke primary). */
   running?: boolean;
+  /** New records just came in on side A / B (useArrivals): its source and side sweep, packets travel into the passes. */
+  arriving?: readonly [boolean, boolean];
 };
 
 const TONE: Record<NonNullable<Data["tone"]>, { accent: Accent; icon: typeof SuccessIcon }> = {
@@ -53,7 +55,8 @@ function LaneNode({ data, selected }: NodeProps<Node<Data>>) {
 const NODE_TYPES = { lane: LaneNode };
 const FAR = 1e6;
 
-function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove, sourceLines, label, running }: CanvasProps) {
+function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove, sourceLines, label, running, arriving }: CanvasProps) {
+  const inflow = (id: string) => (arriving?.[0] && (id === "src-a" || id === "side-a")) || (arriving?.[1] && (id === "src-b" || id === "side-b"));
   const graph = useMemo(() => specGraph(spec, keys, counters, sourceLines), [spec, keys, counters, sourceLines]);
   const pos = useMemo(() => laneLayout(graph), [graph]);
   const drag = editable && spec.passes.length > 1;
@@ -61,12 +64,12 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
     const p = pos.get(n.id)!;
     return {
       id: n.id, type: "lane", position: p, width: NODE_W, height: NODE_H, selected: n.id === selectedId,
-      data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n), badge: n.badge, interactive: !!(onSelect && n.select), running: !!running && n.lane === 2 },
+      data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n), badge: n.badge, interactive: !!(onSelect && n.select), running: (!!running && n.lane === 2) || !!inflow(n.id) },
       // a pass moves up and down its lane only: its x is pinned (REC-S6: 0 px sideways at 240 px of pointer)
       draggable: drag && n.lane === 2, extent: [[p.x, -FAR], [p.x + NODE_W, FAR]],
       ariaLabel: `${LANES[n.lane]}: ${n.title}. ${n.line}${n.lane === 2 && editable ? ". Alt+Up or Alt+Down moves it" : ""}`,
     };
-  }), [graph, pos, selectedId, drag, editable, onSelect, running]);
+  }), [graph, pos, selectedId, drag, editable, onSelect, running, arriving]); // eslint-disable-line react-hooks/exhaustive-deps -- inflow follows arriving
   const [nodes, setNodes] = useState<Node<Data>[]>(place);
   // a new graph (a pass moved, renamed, a simulation) or selection: every node back in its lane slot (set while
   // rendering, React's pattern for state that follows a prop)
@@ -79,13 +82,13 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   const hover = useHotNode();
   const lit = useMemo(() => pathOf(hover.hot, graph.edges), [hover.hot, graph.edges]);
   const edges: Edge<FlowEdgeData>[] = useMemo(() => graph.edges.map((e) => ({
-    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: "flow", data: { live: !!running, kind: e.inLane ? "step" : undefined },
+    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: "flow", data: { live: !!running || !!inflow(e.source), kind: e.inLane ? "step" : undefined },
     sourceHandle: e.inLane ? "bottom" : undefined, targetHandle: e.inLane ? "top" : undefined, focusable: false,
     markerEnd: { type: MarkerType.ArrowClosed, color: running ? "var(--primary)" : "var(--fg-4)", width: 14, height: 14 },
     labelBgPadding: [8, 3] as [number, number], labelBgBorderRadius: 999,
     labelStyle: dim ? { opacity: 0.6 } : undefined,
-    className: [running && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
-  })), [graph, dim, running, lit]);
+    className: [(running || inflow(e.source)) && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
+  })), [graph, dim, running, lit, arriving]); // eslint-disable-line react-hooks/exhaustive-deps -- inflow follows arriving
   const shown = useMemo(() => (lit ? nodes.map((n) => ({ ...n, className: lit.nodes.has(n.id) ? undefined : "is-dim" })) : nodes), [nodes, lit]);
 
   const passIds = graph.nodes.filter((n) => n.lane === 2).map((n) => n.id);

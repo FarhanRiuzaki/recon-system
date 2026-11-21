@@ -190,3 +190,32 @@ export function useHotNode() {
     onBlurCapture: () => setHot(null),
   };
 }
+
+/** How long a source's new records show as arriving (its sweep, packets and "+N just in") after a read saw them. */
+export const ARRIVAL_SHOWN_MS = 8_000;
+/** The sources of `now` whose count grew since `before`, by how much (one absent before isn't new: it just appeared). */
+export function grownSince(before: ReadonlyMap<string, number>, now: ReadonlyMap<string, number>): Map<string, number> {
+  return new Map([...now].flatMap(([id, n]) => (before.has(id) && n > before.get(id)! ? [[id, n - before.get(id)!] as const] : [])));
+}
+
+/**
+ * Sources whose records for the day grew since the last read of the screen (a poll): their growth, for ARRIVAL_SHOWN_MS.
+ * The first read only sets the baseline (nothing arrives on load).
+ */
+export function useArrivals(sources: readonly { id: string; rowsToday: number | null }[] | undefined): ReadonlyMap<string, number> {
+  const seen = useRef<Map<string, number> | null>(null);
+  const [arriving, setArriving] = useState<ReadonlyMap<string, number>>(new Map());
+  useEffect(() => {
+    if (!sources) return;
+    const now = new Map(sources.map((s) => [s.id, s.rowsToday ?? 0]));
+    const before = seen.current;
+    seen.current = now;
+    if (!before) return;
+    const grown = grownSince(before, now);
+    if (!grown.size) return;
+    setArriving(grown);
+    const t = setTimeout(() => setArriving(new Map()), ARRIVAL_SHOWN_MS);
+    return () => clearTimeout(t);
+  }, [sources]);
+  return arriving;
+}

@@ -11,6 +11,7 @@ import "./recon-canvas.css";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useMemo, useRef } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
+import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, DiskIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { type Accent, EDGE_TYPES, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useElapsed, useFitToCard, useHotNode } from "./flow-parts";
@@ -29,8 +30,8 @@ function MapCard({ data }: NodeProps<Node<Data>>) {
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
       <FlowCard icon={data.lane === 0 ? DiskIcon : data.running === "running" ? SpinnerIcon : BranchIcon} title={data.title} accent={ACCENT[data.chip.health]} marked={hit}
-        interactive={!!data.href} running={data.running === "running"}
-        line={elapsed ? `Running for ${elapsed}` : hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}
+        interactive={!!data.href} running={data.running === "running" || !!data.arriving}
+        line={elapsed ? `Running for ${elapsed}` : data.arriving ? `+${formatNumber(data.arriving)} records just in` : hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}
         badge={data.running
           ? <FlowBadge tone="primary"><Icon icon={SpinnerIcon} size={12} className={data.running === "running" ? "motion-safe:animate-spin" : undefined} />{data.running === "running" ? "Running" : "Queued"}</FlowBadge>
           : <StatusChip health={data.chip.health} label={data.chip.label} />} />

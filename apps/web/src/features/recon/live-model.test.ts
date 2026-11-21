@@ -30,6 +30,11 @@ describe("Today and Live day model (REC-F4)", () => {
     const run = spaceMap({ ...t, recons: [recon("x", "s1", "s2", { running: { id: "r", status: "running", startedAt: "" } }), recon("y", "s1", "s3", { running: { id: "q", status: "queued", startedAt: "" } })] }, (id) => id);
     expect(run.edges.map((e) => [e.id, e.live])).toEqual([["e-s1-x", true], ["e-s2-x", true], ["e-s1-y", false], ["e-s3-y", false]]);
     expect(run.nodes.find((n) => n.id === "rec-y")!.running).toBe("queued");
+    // a source whose records just grew: its node says how many and its edges carry packets
+    const inflow = spaceMap(t, (id) => id, new Map([["s3", 12]]));
+    expect(inflow.nodes.find((n) => n.id === "src-s3")!.arriving).toBe(12);
+    expect(inflow.edges.filter((e) => e.source === "src-s3").every((e) => e.live)).toBe(true);
+    expect(inflow.edges.find((e) => e.id === "e-s1-x")!.live).toBe(false);
     // sources sit beside the first recon reading them, so the lanes' edges don't cross
     const s = spaceMap({ ...t, sources: [src("s3", "healthy"), src("s2", "healthy"), src("s1", "healthy")] }, (id) => id);
     expect(s.nodes.filter((n) => n.lane === 0).map((n) => n.id)).toEqual(["src-s1", "src-s2", "src-s3"]);

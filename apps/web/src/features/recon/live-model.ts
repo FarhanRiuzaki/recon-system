@@ -68,6 +68,8 @@ export type MapNode = {
   href?: string; affectedBy?: string[];
   /** A recon with a live run queued or under way, and when it started. */
   running?: "queued" | "running"; runStartedAt?: string;
+  /** A source whose records just grew (useArrivals): by how many. */
+  arriving?: number;
 };
 export type MapEdge = {
   id: string; source: string; target: string; /** 1–4 px: the source's records today against the busiest source's. */ width: number;
@@ -75,15 +77,18 @@ export type MapEdge = {
   live: boolean;
 };
 
-/** The Space map (DEC-041, §11a): each source once (lane 0), each recon (lane 1), an edge per side. */
-export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: MapNode[]; edges: MapEdge[] } {
+/**
+ * The Space map (DEC-041, §11a): each source once (lane 0), each recon (lane 1), an edge per side. `arriving`: sources
+ * whose records just grew; their node says so and their edges carry packets.
+ */
+export function spaceMap(t: TodayDto, hrefOf: (id: string) => string, arriving: ReadonlyMap<string, number> = new Map()): { nodes: MapNode[]; edges: MapEdge[] } {
   const byId = new Map(t.sources.map((s) => [s.id, s]));
   const busiest = Math.max(1, ...t.sources.map((s) => s.rowsToday ?? 0));
   // each source beside the first recon that reads it (then by name): edges run across, not over each other
   const first = (id: string) => { const i = t.recons.findIndex((r) => r.sides.some((x) => x.sourceId === id)); return i < 0 ? t.recons.length : i; };
   const ordered = [...t.sources].sort((a, b) => first(a.id) - first(b.id) || a.name.localeCompare(b.name));
   const nodes: MapNode[] = ordered.map((s) => ({
-    id: `src-${s.id}`, lane: 0, title: s.name, chip: sourceChip(s),
+    id: `src-${s.id}`, lane: 0, title: s.name, chip: sourceChip(s), arriving: arriving.get(s.id),
     line: `${sourceLag(s)}${s.rowsToday != null ? ` · ${formatNumber(s.rowsToday)} today` : ""}`,
   }));
   const edges: MapEdge[] = [];
@@ -96,7 +101,7 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: 
     for (const [i, s] of r.sides.entries()) {
       if (!byId.has(s.sourceId) || (i === 1 && s.sourceId === r.sides[0].sourceId)) continue;
       const rows = byId.get(s.sourceId)!.rowsToday ?? 0;
-      edges.push({ id: `e-${s.sourceId}-${r.id}`, source: `src-${s.sourceId}`, target: `rec-${r.id}`, width: 1 + Math.round((3 * rows) / busiest), live: r.running?.status === "running" });
+      edges.push({ id: `e-${s.sourceId}-${r.id}`, source: `src-${s.sourceId}`, target: `rec-${r.id}`, width: 1 + Math.round((3 * rows) / busiest), live: r.running?.status === "running" || arriving.has(s.sourceId) });
     }
   }
   return { nodes, edges };

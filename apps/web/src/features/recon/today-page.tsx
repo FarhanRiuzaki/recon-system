@@ -20,6 +20,7 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
+import { useArrivals } from "./flow-parts";
 import { reconHref, reconsHref, useToday } from "./use-recons";
 
 function MapShape() {
@@ -56,6 +57,7 @@ function MapList({ t, spaceId }: { t: TodayDto; spaceId: string }) {
 export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const q = useToday(spaceId);
   const skeleton = useDelayedFlag(!q.data && !q.error);
+  const arrivals = useArrivals(q.data?.sources);
   const sp = useSearchParams(), pathname = usePathname();
   const view: "map" | "list" = sp.get("view") === "list" ? "list" : "map";
   const setView = (v: "map" | "list") => {
@@ -69,7 +71,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
   const t = q.data;
   if (!t || skeleton) return <LoadingShape sections={TODAY_SHAPE} shown={skeleton} />;
   const byId = new Map(t.sources.map((s) => [s.id, s]));
-  const map = spaceMap(t, (id) => liveHref(spaceId, id));
+  const map = spaceMap(t, (id) => liveHref(spaceId, id), arrivals);
   const affected = map.nodes.filter((n) => n.affectedBy?.length).length;
 
   return (

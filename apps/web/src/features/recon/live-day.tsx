@@ -16,7 +16,7 @@ import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
-import { useElapsed } from "./flow-parts";
+import { useArrivals, useElapsed } from "./flow-parts";
 import { dayCounters, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
 import { LIVE_DAY_SHAPE } from "./shapes";
 import { useReconLive } from "./use-recons";
@@ -28,6 +28,8 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
   const q = useReconLive(spaceId, id, !!spec);
   const skeleton = useDelayedFlag(!!spec && !q.data && !q.error);
   const elapsed = useElapsed(q.data?.recon.running?.status === "running" ? q.data.recon.running.startedAt : null);
+  // a source whose records grew since the last read: its records are coming in (owner, 22 Nov)
+  const arrivals = useArrivals(q.data?.sources);
   const sp = useSearchParams(), pathname = usePathname();
   const view: "pipeline" | "list" = sp.get("view") === "list" ? "list" : "pipeline";
   const setView = (v: "pipeline" | "list") => {
@@ -44,7 +46,8 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
   const chip = reconChip(r, byId), tot = dayTotals(r);
   const keys = spec.passes.map((_, i) => `p${i}`);
   const src = r.sides.map((s) => byId.get(s.sourceId));
-  const sourceLines = src.map((s) => (s ? `${sourceChip(s).label} · ${sourceLag(s)}` : "Not readable from this space")) as [string, string];
+  const sourceLines = src.map((s) => (!s ? "Not readable from this space" : arrivals.get(s.id) ? `+${formatNumber(arrivals.get(s.id)!)} records just in` : `${sourceChip(s).label} · ${sourceLag(s)}`)) as [string, string];
+  const arriving = [!!(src[0] && arrivals.get(src[0].id)), !!(src[1] && arrivals.get(src[1].id))] as const;
   const run = r.running ? (r.running.status === "running" ? `Running for ${elapsed}` : "A run is queued") : null;
 
   return (
@@ -74,7 +77,7 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
         actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
         {view === "pipeline" && (
           <div className="max-md:hidden">
-            <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"}
+            <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"} arriving={arriving}
               label="The live day's pipeline: sources, sides, passes in run order and where the date's items went" />
           </div>
         )}
@@ -114,12 +117,16 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
             {r.sides.map((side, i) => {
               const s = src[i];
               return (
-                <TableRow key={i}>
+                // records just came in: the row flashes once and the count says how many (the new-row flash, reduced motion: none)
+                <TableRow key={`${i}-${s && arrivals.get(s.id) ? s.rowsToday : 0}`} className={s && arrivals.get(s.id) ? "motion-safe:animate-row-new" : undefined}>
                   <TableCell className="whitespace-nowrap text-fg-2">Side {i === 0 ? "A" : "B"} · {side.label}</TableCell>
                   <TableCell>{s?.name ?? "Not readable from this space"}</TableCell>
                   <TableCell>{s && <StatusChip health={sourceChip(s).health} label={sourceChip(s).label} />}</TableCell>
                   <TableCell className="whitespace-nowrap text-fg-2">{s ? sourceLag(s) : "—"}</TableCell>
-                  <TableCell className="text-right tabular">{s?.rowsToday != null ? formatNumber(s.rowsToday) : "—"}</TableCell>
+                  <TableCell className="text-right tabular">
+                    {s && arrivals.get(s.id) ? <span className="mr-2 text-caption text-healthy-ink">+{formatNumber(arrivals.get(s.id)!)}</span> : null}
+                    {s?.rowsToday != null ? formatNumber(s.rowsToday) : "—"}
+                  </TableCell>
                 </TableRow>
               );
             })}
