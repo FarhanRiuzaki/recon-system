@@ -430,7 +430,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const passList = (readOnly: boolean) => (
     spec.passes.length ? (
       Sortable && sortable && !readOnly ? <Sortable rows={rows.map((x) => ({ ...x, results: false }))} onMove={(from, to) => move(from, to, false)} />
-        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, onRemove: undefined, needs: [] } : { results: false })} />)}</ol>
+        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, selected: false, onSelect: () => {}, onRemove: undefined, needs: [] } : { results: false })} />)}</ol>
     ) : null
   );
   const addPass = (t: PassTemplate) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); };
@@ -512,7 +512,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
               return <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days < fix
                 ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>;
             })}
-            <Panel title="Schedule and day close" description="When the recon runs, how long it waits for the other side, and when a day's open items become breaks.">
+            <Panel title="Schedule and day close">
               <fieldset disabled={!editable} className="contents"><SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} /></fieldset>
             </Panel>
           </>
@@ -520,7 +520,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
 
         {step === 4 && (
           <>
-            <Panel title="Test the draft" description="Runs the draft over the dates you pick and shows what each pass pairs. Nothing is stored and no break is raised.">
+            <Panel title="Test the draft" description="Nothing is stored and no break is raised">
               <div className="grid gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <ReplayRange value={range} onChange={setRange} disabled={!editable || live || starting} />
