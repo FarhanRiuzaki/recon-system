@@ -431,3 +431,54 @@ export function keysText(keys: readonly FieldPair[]): string {
 
 /** A pass's cardinality in people's words (the Configuration, the builder's cards and inspector). */
 export const CARDINALITY_WORDS: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one" };
+
+/** The ready passes Add pass offers (owner, 22 Nov: easier to start), each with what it does in a line. */
+export const PASS_TEMPLATES = [
+  { id: "exact", label: "Exact match", hint: "Same reference, amount and business date" },
+  { id: "fee", label: "Amount within a fee", hint: "Same reference and date; the amounts may differ by a fee" },
+  { id: "day", label: "Settled on another day", hint: "Same reference and amount; the dates within 1 day" },
+  { id: "blank", label: "Blank pass", hint: "Choose the fields yourself" },
+] as const;
+export type PassTemplate = (typeof PASS_TEMPLATES)[number]["id"];
+
+/** Why template `t` can't be added (a field it needs missing on a side), or null. */
+export function templateReason(t: PassTemplate, fields: Fields): string | null {
+  if (t === "blank") return null;
+  const need = ["ext_ref", AMOUNT, "business_date"] as const;
+  const missing = need.filter((f) => !fields[0]?.has(f) || !fields[1]?.has(f));
+  return missing.length ? `Both sides need ${missing.map((f) => fieldLabel(f)).join(", ")} for this pass.` : null;
+}
+
+/** `spec` with a pass of template `t` at the end (Blank = addPass); a currency condition when both sides have one. */
+export function addTemplatePass(spec: ReconSpec, fields: Fields, t: PassTemplate): ReconSpec {
+  if (t === "blank") return addPass(spec, fields);
+  const n = spec.passes.length + 1;
+  const ccy = fields[0]?.has(CURRENCY) && fields[1]?.has(CURRENCY) ? [predicateOf("eq", CURRENCY)] : [];
+  const pass: PassSpec = t === "exact"
+    ? { no: n, name: "Exact match", cardinality: "1:1", blocking: ["ext_ref"], accept: "auto", on_ambiguous: "break",
+      predicates: [predicateOf("eq", "ext_ref"), predicateOf("eq", AMOUNT), predicateOf("eq", "business_date"), ...ccy] }
+    : t === "fee"
+      // the tolerance's amount is left to fill in (the pass says so until it is)
+      ? { no: n, name: "Amount within a fee", cardinality: "1:1", blocking: ["ext_ref", "business_date"], accept: "suggest", on_ambiguous: "suggest",
+        predicates: [{ op: "amount_abs_tol", field: AMOUNT, tolerance: { [CURRENCIES[0] ?? "IDR"]: "" } }, ...ccy] }
+      : { no: n, name: "Settled on another day", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest",
+        predicates: [predicateOf("eq", AMOUNT), { op: "date_window", field: "business_date", days: 1 }, ...ccy] };
+  return { ...spec, passes: [...spec.passes, pass] };
+}
+
+/**
+ * What pass `i` still needs before the draft can be submitted (its card says it): a tolerance to fill in, a currency
+ * condition when the sources hold several currencies (`gaps`), the API's refusal of it (`refusal`).
+ */
+export function passNeeds(spec: ReconSpec, i: number, gaps: readonly number[], refusal: string | null): string[] {
+  const p = spec.passes[i];
+  if (!p) return [];
+  const out: string[] = [];
+  for (const q of p.predicates) {
+    if (q.op !== "amount_abs_tol" && q.op !== "eq_sum") continue;
+    for (const [c, v] of Object.entries(q.tolerance)) if (toleranceProblem(v, c)) out.push(`Fill in the ${c} tolerance`);
+  }
+  if (gaps.includes(p.no)) out.push("Add a currency condition");
+  if (refusal) out.push(refusal);
+  return out;
+}

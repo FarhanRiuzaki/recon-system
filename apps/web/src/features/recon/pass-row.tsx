@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, KeyboardEvent, Ref } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode, Ref } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { MenuIcon, RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
@@ -27,6 +27,10 @@ export type PassRowProps = {
   sim?: { outcome: Outcome[]; connector: string | null; dim: boolean };
   /** Remove the pass from the card itself (owner, 22 Nov), with Undo as from the inspector; none read only. */
   onRemove?: () => void;
+  /** What the pass still needs before the draft can be submitted (passNeeds), said on its card. */
+  needs?: readonly string[];
+  /** An example of what it paired in the shown simulation, under its outcome. */
+  example?: ReactNode;
 };
 /** A pass as text: its number and name, cardinality, when found, the matching keys and every condition. */
 export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
@@ -67,7 +71,7 @@ export type SortableBits = {
  * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
  * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, sortable }: PassRowProps & { sortable?: SortableBits }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, sortable }: PassRowProps & { sortable?: SortableBits }) {
   const dragging = !!sortable?.dragging;
   return (
     <li ref={sortable?.setNodeRef} style={sortable?.style}
@@ -83,6 +87,11 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
           <button id={`pass-${id}`} type="button" aria-pressed={selected} onClick={onSelect} onKeyDown={onKey}
             className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <PassBody pass={pass} fields={fields} />
+            {needs.length > 0 && (
+              <span className="flex items-start gap-1.5 text-body-sm text-degraded-ink">
+                <Icon icon={WarningIcon} className="mt-0.5 size-3.5 shrink-0" />Needs: {needs.join(" · ")}
+              </span>
+            )}
           </button>
           {editable && onRemove && (
             <button type="button" onClick={onRemove} aria-label={`Remove pass ${pass.no}${pass.name ? ` (${pass.name})` : ""}`} title="Remove pass"
@@ -101,6 +110,7 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
           )) : (
             <span className="grid gap-1"><span className="text-label text-fg-2">{pass.accept === "auto" ? "Matched" : "Suggested"}</span><span>{DASH}</span></span>
           )}
+          {example}
         </div>
       </div>
       {notes.map((n) => <p key={n} className="flex items-start gap-1.5 pt-1.5 text-caption text-degraded-ink"><Icon icon={WarningIcon} className="mt-px size-3.5 shrink-0" />{n}</p>)}

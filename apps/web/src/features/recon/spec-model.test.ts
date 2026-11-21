@@ -247,3 +247,23 @@ describe("a pass condition as a reader scans it (owner, 22 Nov: clear, tidy)", (
     expect(keysText(["ext_ref"])).toBe("Reference");
   });
 });
+
+import { addTemplatePass, passNeeds, templateReason } from "./spec-model";
+describe("ready passes and what a pass still needs (owner, 22 Nov)", () => {
+  const side = new Map([["ext_ref", { from: "ref", kind: "text" as const }], ["amount_minor", { from: "amount", kind: "decimal" as const }], ["business_date", { from: "d", kind: "date" as const }], ["currency", { from: "ccy", kind: "text" as const }]]);
+  const fields = [side, side] as unknown as Parameters<typeof addTemplatePass>[1];
+  const base = { sides: [], passes: [], grace_minutes: 30, carry_over_days: 1, close_at: "23:00", schedule: { kind: "daily", at: "06:00", business_date_offset: 1 } } as unknown as Parameters<typeof addTemplatePass>[0];
+  it("each template adds its pass, numbered, with the currency condition both sides allow", () => {
+    const s = addTemplatePass(addTemplatePass(base, fields, "exact"), fields, "day");
+    expect(s.passes.map((p) => [p.no, p.name, p.accept])).toEqual([[1, "Exact match", "auto"], [2, "Settled on another day", "suggest"]]);
+    expect(s.passes[0]!.predicates.map((q) => q.op)).toEqual(["eq", "eq", "eq", "eq"]);
+    expect(s.passes[1]!.predicates.find((q) => q.op === "date_window")).toMatchObject({ days: 1 });
+  });
+  it("a fee pass needs its tolerance filled in, and says so on its card; a template refuses a side without its fields", () => {
+    const s = addTemplatePass(base, fields, "fee");
+    expect(passNeeds(s, 0, [], null)).toEqual([expect.stringMatching(/^Fill in the [A-Z]{3} tolerance$/)]);
+    expect(passNeeds(s, 0, [1], "Pass 1: pick a field")).toHaveLength(3);
+    expect(templateReason("exact", [side, new Map()] as unknown as typeof fields)).toMatch(/^Both sides need reference, amount, business date/);
+    expect(templateReason("blank", [null, null])).toBeNull();
+  });
+});

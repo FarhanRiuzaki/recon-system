@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -10,19 +10,21 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { ChevronDownIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
-import type { ReconDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconRunItemDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
+import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
+import { ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addPass, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -31,7 +33,7 @@ import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
 import { SideSummary } from "./spec-view";
 import { saveQueue } from "./save-queue";
-import { connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
+import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
@@ -75,6 +77,53 @@ function SideCard({ i, spec, source, fields, selected, onSelect }: {
       {/* as the Configuration reads it (owner, 22 Nov: editing looks like the config that's settled) */}
       <SideSummary i={i} side={s} source={source} fields={fields} />
     </button>
+  );
+}
+
+/**
+ * What pass `passNo` paired in simulation `runId`, one example (owner, 22 Nov: see what a pass does): its reference and
+ * both sides' amounts. Its first page of items, cached per run; nothing while there are none.
+ */
+function PassExample({ spaceId, configId, runId, passNo }: { spaceId: string; configId: string; runId: string; passNo: number }) {
+  const q = useQuery({
+    queryKey: [...ENGINE_KEY, "pass-example", spaceId, runId, passNo],
+    queryFn: () => api<Page<ReconRunItemDto>>(reconApi(spaceId, configId, `/runs/${encodeURIComponent(runId)}/items?pass=${passNo}&pageSize=15`)),
+    staleTime: Infinity,
+  });
+  const g = q.data?.items.find((x) => x.group && x.group.members.length > 1)?.group;
+  if (!g) return null;
+  const a = g.members.find((m) => m.side === "a"), b = g.members.find((m) => m.side === "b");
+  return (
+    <span className="grid gap-0.5 border-t border-line pt-2">
+      <span className="text-caption text-fg-3">For example</span>
+      <span className="truncate font-mono text-caption text-fg-2" title={a?.extRef ?? b?.extRef ?? undefined}>{a?.extRef ?? b?.extRef ?? "—"}</span>
+      <span className="text-caption text-fg-2 tabular">{amountText(a?.amountMinor ?? null, a?.currency ?? null)} ↔ {amountText(b?.amountMinor ?? null, b?.currency ?? null)}</span>
+    </span>
+  );
+}
+
+/** Add pass (owner, 22 Nov): a ready pass to start from, each saying what it does; one a side can't take says why. */
+function AddPassMenu({ fields, reason, onAdd }: { fields: Fields; reason: string | null; onAdd: (t: PassTemplate) => void }) {
+  if (reason) return <BlockedButton type="button" variant="secondary" reason={reason}>Add pass</BlockedButton>;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="secondary">Add pass<Icon icon={ChevronDownIcon} /></Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-80">
+        {PASS_TEMPLATES.map((t) => {
+          const why = templateReason(t.id, fields);
+          return (
+            <DropdownMenuItem key={t.id} disabled={!!why} onSelect={() => onAdd(t.id)} className="data-[disabled]:opacity-100">
+              <span className="grid min-w-0">
+                <span className="in-data-[disabled]:opacity-50">{t.label}</span>
+                <span className="text-caption text-fg-3">{why ?? t.hint}</span>
+              </span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -345,6 +394,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!), onRemove: editable ? () => removePassAt(i) : undefined,
+    needs: editable ? passNeeds(spec, i, gaps, placed?.pass === i + 1 ? placed.text : null) : [],
+    example: simOn && simulation.shown && !sim.dim ? <PassExample spaceId={spaceId} configId={recon.id} runId={simulation.shown.id} passNo={p.no} /> : undefined,
   }));
   const selectedId = sel.k === "side" ? (sel.i === 0 ? "side-a" : "side-b") : sel.k === "pass" ? sel.key : null;
   const focusNode = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus()));
@@ -455,8 +506,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             </div>
             {editable && (
               <span className="pb-3">
-                <BlockedButton type="button" variant="secondary" reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
-                  onClick={() => { const k = `p${keySeq.current++}`; change(addPass(spec, fields)); setKeys([...keys, k]); select({ k: "pass", key: k }); }}>Add pass</BlockedButton>
+                <AddPassMenu fields={fields} reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
+                  onAdd={(t) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); }} />
               </span>
             )}
             <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">

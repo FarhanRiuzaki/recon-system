@@ -6,14 +6,14 @@ import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } 
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
+import { ChevronDownIcon, CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, CARDINALITY_WORDS, CURRENCIES, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, CARDINALITY_WORDS, CURRENCIES, keysText, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -150,21 +150,6 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           options={group ? [{ value: "auto", label: "Match automatically" }] : [{ value: "auto", label: "Match automatically" }, { value: "suggest", label: "Suggest for review" }]} />
       </div>
 
-      <fieldset className="grid gap-3">
-        <legend className="mb-2 text-label text-fg">Looks at items with the same</legend>
-        {p.blocking.map((f, j) => (
-          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
-            removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
-            onRemove={() => { onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }); onRemoved(`Removed matching key ${j + 1}.`, (cur, at) => restoreKey(cur, at, f, j)); }}>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <FieldPick id={id(`key-${j}-a`)} label={la} i={0} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
-              <FieldPick id={id(`key-${j}-b`)} label={lb} i={1} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
-            </div>
-          </PairRow>
-        ))}
-        <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass has at most 5 matching keys." : null}
-          onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add a field to look at</BlockedButton></span>
-      </fieldset>
 
       <fieldset className="grid gap-3">
         <legend className="mb-2 text-label text-fg">Pairs when <span className="text-caption text-fg-3">every condition holds</span></legend>
@@ -187,6 +172,33 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
         <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
           onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}>Add condition</BlockedButton></span>
       </fieldset>
+
+      {/* optional, after the conditions (owner, 22 Nov: what pairs first, how to narrow it second); its summary names the
+          fields, so a folded section still says what it does; open for a group pass, which needs a key */}
+      <details open={group || undefined} className="group/keys grid gap-3 rounded-md border border-line px-3 py-2">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-label text-fg [&::-webkit-details-marker]:hidden">
+          <span className="grid gap-0.5">
+            Narrow the candidates
+            <span className="text-caption text-fg-3">{p.blocking.length ? `Looks only at items with the same ${keysText(p.blocking)}` : "Looks at every item still open"}</span>
+          </span>
+          <Icon icon={ChevronDownIcon} className="shrink-0 text-fg-3 motion-safe:transition-transform motion-safe:duration-(--dur-fast) group-open/keys:rotate-180" />
+        </summary>
+        <fieldset className="mt-2 grid gap-3">
+          <legend className="sr-only">Looks at items with the same</legend>
+        {p.blocking.map((f, j) => (
+          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
+            removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
+            onRemove={() => { onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }); onRemoved(`Removed matching key ${j + 1}.`, (cur, at) => restoreKey(cur, at, f, j)); }}>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <FieldPick id={id(`key-${j}-a`)} label={la} i={0} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
+              <FieldPick id={id(`key-${j}-b`)} label={lb} i={1} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
+            </div>
+          </PairRow>
+        ))}
+        <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass has at most 5 matching keys." : null}
+          onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add a field to look at</BlockedButton></span>
+        </fieldset>
+      </details>
 
       <Field id={id("ambiguous")} label="When several fit">
         <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
