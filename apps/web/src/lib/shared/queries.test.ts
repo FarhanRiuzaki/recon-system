@@ -45,24 +45,28 @@ it("relative timestamp filters stay in stable API paths and keys for refresh and
 
 describe("reconRunItems: the request a results tab sends", () => {
   const passes = [{ accept: "auto", cardinality: "1:1" }, { accept: "suggest", cardinality: "N:1" }];
-  const params = (f: Partial<q.RunItemFilters>) => q.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", ...f });
+  const params = (f: Partial<q.RunItemFilters>) => q.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", reason: "", ...f });
   it("no tab = pass 1's pairs: its own outcome, one row per group from side A", () => {
-    expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "" });
+    expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
   });
   it("a suggest pass shows its suggestions; an N:1 pass's single side is B", () => {
-    expect(params({ pass: "2" })).toEqual({ pass: "2", status: "suggested", side: "b", date: "" });
+    expect(params({ pass: "2" })).toEqual({ pass: "2", status: "suggested", side: "b", date: "", reason: "" });
   });
   it("the items a pass broke: both sides unless one is picked", () => {
-    expect(params({ pass: "1", status: "break" })).toEqual({ pass: "1", status: "break", side: "", date: "" });
-    expect(params({ pass: "1", status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "" });
+    expect(params({ pass: "1", status: "break" })).toEqual({ pass: "1", status: "break", side: "", date: "", reason: "" });
+    expect(params({ pass: "1", status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "", reason: "" });
   });
-  it("Breaks is every break item of the run, no pass", () => {
-    expect(params({ status: "break" })).toEqual({ pass: "", status: "break", side: "", date: "" });
+  it("Breaks is every break item of the run's own dates, no pass, narrowed by a reason", () => {
+    expect(params({ status: "break" })).toEqual({ pass: "", status: "break", side: "", date: "", reason: "", own: "1" });
+    expect(params({ status: "break", reason: "No counterpart" })).toEqual({ pass: "", status: "break", side: "", date: "", reason: "No counterpart", own: "1" });
+    // a reason left in the URL never narrows a pass tab or Waiting
+    expect(params({ pass: "2", reason: "Duplicate" }).reason).toBe("");
+    expect(params({ status: "open", reason: "Duplicate" }).reason).toBe("");
   });
   it("Waiting is the open items, with no pass; the date passes through", () => {
-    expect(params({ status: "open", side: "a", date: "2026-11-04" })).toEqual({ pass: "", status: "open", side: "a", date: "2026-11-04" });
+    expect(params({ status: "open", side: "a", date: "2026-11-04", reason: "" })).toEqual({ pass: "", status: "open", side: "a", date: "2026-11-04", reason: "" });
   });
   it("a pair outcome ignores a side left in the URL", () => {
-    expect(params({ pass: "1", status: "matched", side: "b" })).toEqual({ pass: "1", status: "matched", side: "a", date: "" });
+    expect(params({ pass: "1", status: "matched", side: "b" })).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
   });
 });

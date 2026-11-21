@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -178,5 +178,29 @@ describe("run-model", () => {
     expect(carryOverText("2026-11-04", 0)).toBe("Carry over is 0 days, so a 4 Nov item is looked for on 4 Nov.");
     expect(carryOverText("2026-11-04", 2)).toBe("Carry over is 2 days, so a 4 Nov item is looked for on 2–4 Nov.");
     expect(carryOverText("2026-12-01", 1)).toBe("Carry over is 1 day, so a 1 Dec item is looked for on 30 Nov and 1 Dec.");
+  });
+
+  it("Breaks on the gate run: the tab counts what the list holds (63 · 63) and each reason has its chip", () => {
+    const byReason = { Duplicate: { a: 15, b: 15 }, "Date differs": { a: 10, b: 10 }, "Amount differs": { a: 15, b: 15 }, "No counterpart": { a: 20, b: 20 }, "Currency differs": { a: 3, b: 3 } };
+    const live = { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 }, items: { a: 1000, b: 1000 }, breakReasons: byReason };
+    expect(breakCounts({ mode: "manual", counters: gate, live })).toEqual({ a: 63, b: 63 });
+    expect(reasonOptions(byReason).map((o) => `${o.label} ${o.count}`).join(" · "))
+      .toBe("All 126 · Duplicate 30 · Currency differs 6 · Amount differs 30 · Date differs 20 · No counterpart 40");
+    expect(reasonOptions({ "No counterpart": { a: 1, b: 0 }, Duplicate: { a: 0, b: 0 } }).map((o) => o.label)).toEqual(["All", "No counterpart"]);
+  });
+
+  it("a proposed pair's difference from its two records (B − A); another currency is the difference", () => {
+    const a = { amountMinor: "2551779", currency: "IDR", businessDate: "2026-11-04" };
+    expect(pairDifference(a, { ...a, amountMinor: "2601779" })).toBe("Amount +500.00");
+    expect(pairDifference(a, { ...a, businessDate: "2026-11-05" })).toBe("Date +1 day");
+    expect(pairDifference(a, { ...a, currency: "USD" })).toBe("IDR vs USD");
+    expect(pairDifference(a, a)).toBe("");
+  });
+
+  it("says what the other side held for a break without a pair to show, by its reason", () => {
+    const item = { extRef: "TSTREF000983", businessDate: "2026-11-04", breakReason: "No counterpart", breakPass: null };
+    expect(lonePairText(item, 1)).toBe("No item with reference TSTREF000983 on 3–4 Nov 2026.");
+    expect(lonePairText({ ...item, extRef: "TSTREF000966", breakReason: "Duplicate", breakPass: 1 }, 1)).toBe("Reference TSTREF000966 is on more than one item of a side, so pass 1 paired none of them.");
+    expect(lonePairText({ ...item, breakReason: "Currency differs" }, 1)).toBe("An item with reference TSTREF000983 on 3–4 Nov 2026 is in another currency.");
   });
 });

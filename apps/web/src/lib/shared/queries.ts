@@ -9,7 +9,7 @@ import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
 import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { MODULES } from "@starterkit/shared/permissions";
-import { ITEM_STATUSES, PASSES_MAX } from "@starterkit/shared/recon";
+import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX } from "@starterkit/shared/recon";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
 
@@ -157,12 +157,12 @@ export const reconLatestRuns = (spaceId: string, id: string) => ({
 export const reconRun = (spaceId: string, id: string, runId: string) => ({
   key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,
 });
-export type RunItemFilters = { pass: string; status: string; side: string; date: string };
+export type RunItemFilters = { pass: string; status: string; side: string; date: string; reason: string };
 const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
   sorts: RECON_RUN_ITEM_SORTS, defaultSort: "businessDate",
   filters: {
     pass: oneOf(["", ...Array.from({ length: PASSES_MAX }, (_, i) => String(i + 1))], ""), status: oneOf(["", ...ITEM_STATUSES], ""),
-    side: oneOf(["", "a", "b"], ""), date: isoDate,
+    side: oneOf(["", "a", "b"], ""), date: isoDate, reason: oneOf(["", ...BREAK_REASONS], ""),
   },
 };
 type PassLike = { accept: string; cardinality: string };
@@ -176,11 +176,12 @@ type PassLike = { accept: string; cardinality: string };
 export const reconRunItems = (spaceId: string, id: string, runId: string, passes: readonly PassLike[] = []): TableDef<RunItemFilters> => ({
   key: ENGINE_KEY[0], path: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}/items`, spec: RUN_ITEMS_SPEC,
   params: (f) => {
-    // Waiting (open) and Breaks (break, every pass and day close) are tabs of their own, without a pass
-    if ((f.status === "open" || f.status === "break") && !f.pass) return f;
+    // Waiting (open) and Breaks (break, every pass and day close, the run's own dates, a reason) are tabs without a pass
+    if (f.status === "open" && !f.pass) return { ...f, reason: "" };
+    if (f.status === "break" && !f.pass) return { ...f, own: "1" };
     const pass = f.pass || "1", p = passes[Number(pass) - 1];
     const status = f.status || (p?.accept === "suggest" ? "suggested" : "matched");
-    return { ...f, pass, status, side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
+    return { ...f, pass, status, reason: "", side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
   },
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */

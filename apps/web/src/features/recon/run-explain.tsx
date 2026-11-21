@@ -5,7 +5,7 @@ import { StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, carryOverText, counterpartWindow, differenceText, evidenceOf, rangeText } from "./run-model";
+import { amountText, carryOverText, differenceText, evidenceOf, lonePairText, pairDifference, rangeText } from "./run-model";
 import { conditionText, type Fields, pairText } from "./spec-model";
 
 const KIND: Record<string, string> = { auto: "Matched", suggested: "Suggested", manual: "Matched by hand", force: "Forced" };
@@ -33,30 +33,47 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
   const close = { onOpenChange: (o: boolean) => { if (!o) onClose(); } };
   const focusBack = (e: Event) => { e.preventDefault(); returnFocus(); };
   if (!item.group) {
-    // a break with no counterpart (designer): its own record, and where the other side had nothing; no conditions
-    const own = item.side === "a" ? labels[0] : labels[1], other = item.side === "a" ? labels[1] : labels[0];
+    // a break without a group: its record beside its proposed pair, or beside what day close looked for (Figma 206:6372)
+    const p = item.proposed, by = p ? spec.passes.find((x) => x.no === p.passNo) : undefined;
+    const a = item.side === "a" ? item : p, b = item.side === "a" ? p : item;
+    const diff = p && a && b ? pairDifference(a, b) : "";
+    const differs = { amount: !!p && p.amountMinor !== item.amountMinor, date: !!p && p.businessDate !== item.businessDate, ccy: !!p && p.currency !== item.currency };
+    const card = (side: "a" | "b") => {
+      const r = side === item.side ? item : p;
+      const name = side === "a" ? labels[0] : labels[1];
+      if (!r) {
+        return (
+          // the other side: a dashed card, nothing to compare
+          <section key={side} aria-label={name} className="grid content-start gap-2 rounded-md border border-dashed border-line p-3">
+            <h3 className="text-caption text-fg-3">{name}</h3>
+            <p className="text-fg-2">{lonePairText(item, spec.carry_over_days)}</p>
+          </section>
+        );
+      }
+      const marked = r === p; // the proposed record carries the marks of what differs
+      return (
+        <section key={side} aria-label={name} className="grid content-start gap-2 rounded-md border border-line bg-card p-3">
+          <h3 className="text-caption text-fg-3">{name}</h3>
+          <span className={cn("text-title-2 tabular", marked && (differs.amount || differs.ccy) ? "text-degraded-ink" : "text-fg")}>{amountText(r.amountMinor, r.currency)} {r.currency}</span>
+          <span className="font-mono text-mono text-fg">{r.extRef ?? "—"}</span>
+          <span className={marked && differs.date ? "text-degraded-ink" : "text-fg-2"}>{rangeText(r.businessDate, r.businessDate)}</span>
+          {marked && diff && <p className="text-caption text-degraded-ink">{diff}</p>}
+        </section>
+      );
+    };
     return (
       <Dialog open {...close}>
         <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
           <DialogHeader>
             <DialogTitle>{item.breakReason ?? "Break"}</DialogTitle>
-            <DialogDescription>Break · {rangeText(item.businessDate, item.businessDate)} · left open at day close</DialogDescription>
+            <DialogDescription>
+              Break · {rangeText(item.businessDate, item.businessDate)} · {p ? `pair proposed by pass ${p.passNo}${by ? ` · ${by.name}` : ""}` : item.breakPass ? `pass ${item.breakPass}` : "left open at day close"}
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 px-6 py-5 text-body-sm">
-            <div className="grid gap-3 md:grid-cols-2">
-            <section aria-label={own} className="grid content-start gap-2 rounded-md border border-line bg-card p-3">
-              <h3 className="text-caption text-fg-3">{own}</h3>
-              <span className="text-title-2 tabular text-fg">{amountText(item.amountMinor, item.currency)} {item.currency}</span>
-              <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span>
-              <span className="text-fg-2">{rangeText(item.businessDate, item.businessDate)}</span>
-            </section>
-            {/* the other side's column: a dashed card, nothing to compare (Figma 206:6372) */}
-            <section aria-label={other} className="grid content-start gap-2 rounded-md border border-dashed border-line p-3">
-              <h3 className="text-caption text-fg-3">{other}</h3>
-              <p className="text-fg-2">No item with reference <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span> on {counterpartWindow(item.businessDate, spec.carry_over_days)}.</p>
-            </section>
-            </div>
-            <p className="text-fg-2">{carryOverText(item.businessDate, spec.carry_over_days)}</p>
+            <div className="grid gap-3 md:grid-cols-2">{card("a")}{card("b")}</div>
+            {/* where day close looked: only for a reason it found by the carry-over window */}
+            {!p && !["Duplicate", "Ambiguous", "Unconfirmed suggestion"].includes(item.breakReason ?? "") && <p className="text-fg-2">{carryOverText(item.businessDate, spec.carry_over_days)}</p>}
           </div>
         </DialogContent>
       </Dialog>

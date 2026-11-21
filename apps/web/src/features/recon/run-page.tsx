@@ -23,7 +23,7 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakCounts, breakLabel, dayPasses, dayTotals, NO_COUNTERPART, runDays, sidesText, differenceText, isLive, rangeText, standingTotals } from "./run-model";
+import { amountText, breakCounts, breakLabel, dayPasses, dayTotals, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays, sidesText, standingTotals } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
@@ -137,7 +137,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const strip = run.days ?? [];
   const dayTiles = [{ date: "", t: { ...standingTotals(run, spec), closed: false } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
   const dayLabel = (date: string) => (date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates");
-  const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" });
+  const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "", reason: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "", reason: "" });
+  // the Breaks tab's reasons, on the picked date or over the run's own dates
+  const byReason = (day ? day.breakReasons : run.live?.breakReasons) ?? null;
+  const reasons = byReason ? reasonOptions(byReason) : [];
 
   return (
     <div className="grid gap-section">
@@ -184,6 +187,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           <div className="flex flex-wrap items-center gap-3">
             {pass && <span className="text-body-sm text-fg-2">Pass {pass.no} · {pass.name}{status === "suggested" ? " · open until someone accepts them" : ""}</span>}
             {breaksTab && <span className="text-body-sm text-fg-2">Duplicates from the passes; the rest left open at day close.</span>}
+            {breaksTab && reasons.length > 1 && (
+              <Segmented label="Reason" value={s.reason || "all"} options={reasons.map((o) => ({ ...o, value: o.value || "all" }))}
+                onChange={(v) => t.set({ reason: v === "all" ? "" : v })} />
+            )}
             {statusOptions.length > 1 && (
               <Segmented label={`Pass ${pass!.no} outcome`} value={status} options={statusOptions}
                 onChange={(v) => t.set({ status: v === own ? "" : v, side: "", pass: v === "break" || pass!.no !== 1 ? String(pass!.no) : "" })} />
@@ -196,7 +203,8 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
         </div>
         <DataTable label="Items" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           rowActions={(r) => {
-            if (!r.group && !(breaksTab && r.breakReason === NO_COUNTERPART)) return null;
+            // every break explains itself (its group, its proposed pair, or what day close looked for); pairs need a group
+            if (!r.group && !breaksTab) return null;
             const busy = explainBusy && explain?.id === r.id;
             return (
               <Button type="button" variant="secondary" size="sm" aria-label={`Explain ${r.extRef ?? "this pair"}`} aria-busy={busy || undefined}
@@ -212,6 +220,13 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
         returnFocus={() => opener.current?.isConnected && opener.current.focus()} onClose={() => setExplain(null)} />}
     </div>
   );
+}
+
+/** What differs in a break's pair: its suggested group's evidence, else its proposed pair's amount and date (B − A). */
+function breakDifference(r: ReconRunItemDto): string {
+  if (r.group) return differenceText(r.group.evidence, r.currency);
+  if (!r.proposed) return "";
+  return r.side === "a" ? pairDifference(r, r.proposed) : pairDifference(r.proposed, r);
 }
 
 /** The table's columns for the tab: a pass's pairs (both sides' amounts, what differs) or items (side, amount, why). */
@@ -241,9 +256,12 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
       { key: "currency", header: "Currency", mobile: "meta", cell: (r) => r.currency ?? none },
     ];
     if (s.status === "break") {
-      // Breaks (designer copy): Reference, Business date, Side, Reason, Amount, Currency, Difference
+      // Breaks (designer, Figma 205:6752): Reference, Business date, Side, Reason, Amount, Currency, Difference, Proposed pair
+      const label = (k: "a" | "b") => (k === "a" ? labels[0] : labels[1]);
       return [ref, date, sideCol, { key: "reason", header: "Reason", mobile: "meta", cell: (r) => r.breakReason ?? none }, ...amount,
-        { key: "difference", header: "Difference", mobile: "meta", cell: (r) => differenceText(r.group?.evidence, r.currency) || none }];
+        { key: "difference", header: "Difference", mobile: "meta", cell: (r) => breakDifference(r) || none },
+        { key: "proposed", header: "Proposed pair", mobile: "meta", cell: (r) => (r.proposed
+          ? <span><span className="font-mono text-mono">{r.proposed.extRef ?? "—"}</span> · {label(r.proposed.side)} · pass {r.proposed.passNo}</span> : none) }];
     }
     return [ref, sideCol, date, ...amount];
   }, [pairs, s.status, labels]);

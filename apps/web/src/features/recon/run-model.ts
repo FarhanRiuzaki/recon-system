@@ -4,7 +4,7 @@
 import { APP_TIME_ZONE_LABEL, appDate, appDayStart, formatDate, formatDecimal, formatMinor, formatNumber, formatTime, shiftDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { PassSpec, ReconRunDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
-import { RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
+import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
 type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
@@ -87,8 +87,7 @@ export type Totals = ReturnType<typeof runTotals>;
  * (`counters`). Items taken in, references and the pass split stay the run's own.
  */
 /** `live.items` (current records per side over the run's dates): added by the runs agent; optional until it lands. */
-type Live = NonNullable<ReconRunDto["live"]> & { items?: PerSide };
-export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "from" | "to"> & { live: Live | null }, spec: ReconSpec): Totals {
+export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "live" | "from" | "to">, spec: ReconSpec): Totals {
   const own = runTotals(run.counters, spec);
   if (!run.live || !run.days) return own;
   let duplicate = 0, ambiguous = 0;
@@ -107,15 +106,44 @@ export const runDays = <D extends { date: string }>(run: { days: readonly D[] | 
   (run.days ?? []).filter((d) => d.date >= run.from && d.date <= run.to);
 
 /**
- * The Breaks tab's count: every item broken over the run, per side: breaks of time (grace, day close: `live.breaks`)
- * and the items passes broke (their per-side counts). Null for a simulation (nothing closes, no Breaks tab) or a run
- * whose live totals the API hasn't read.
+ * The Breaks tab's count: every break item over the run's own dates per side, the sum of `live.breakReasons` (a pass's
+ * Duplicate included), so it equals the list's total; before the API sent reasons, breaks of time plus the items passes
+ * broke. Null for a simulation (nothing closes, no Breaks tab) or a run whose live totals the API hasn't read.
  */
 export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">): PerSide | null {
   if (run.mode === "simulation" || !run.live) return null;
+  if (run.live.breakReasons) return sumSides(Object.values(run.live.breakReasons));
   const out = { ...run.live.breaks };
   for (const x of Object.values(run.counters.passes)) { out.a += x.brokenItems?.a ?? 0; out.b += x.brokenItems?.b ?? 0; }
   return out;
+}
+const sumSides = (xs: readonly PerSide[]) => xs.reduce((t, x) => ({ a: t.a + x.a, b: t.b + x.b }), { a: 0, b: 0 });
+
+/**
+ * The Breaks tab's reason filter (designer, Figma 205:6752): "All 126", then each reason that has items, in day close's
+ * order, with its items on both sides ("Duplicate 30"). `value` "" = all.
+ */
+export function reasonOptions(byReason: Readonly<Record<string, PerSide>>): { value: string; label: string; count: number }[] {
+  const count = (x: PerSide) => x.a + x.b;
+  const present = BREAK_REASONS.filter((r) => byReason[r] && count(byReason[r]!) > 0);
+  return [{ value: "", label: "All", count: count(sumSides(Object.values(byReason))) }, ...present.map((r) => ({ value: r, label: r, count: count(byReason[r]!) }))];
+}
+
+type Rec = { amountMinor: string | null; currency: string | null; businessDate: string };
+/**
+ * What differs between side A's record and side B's (B − A) when no evidence was stored (a proposed pair, DEC-047):
+ * "IDR vs USD" when the currencies differ, else "Amount +500.00" and/or "Date +1 day"; "" when nothing does.
+ */
+export function pairDifference(a: Rec, b: Rec): string {
+  if (a.currency && b.currency && a.currency !== b.currency) return `${a.currency} vs ${b.currency}`;
+  const parts: string[] = [];
+  if (a.amountMinor !== null && b.amountMinor !== null) {
+    const t = amountDelta(String(BigInt(b.amountMinor) - BigInt(a.amountMinor)), a.currency);
+    if (t && BigInt(b.amountMinor) !== BigInt(a.amountMinor)) parts.push(`Amount ${t}`);
+  }
+  const days = (Date.parse(b.businessDate) - Date.parse(a.businessDate)) / 86_400_000;
+  if (days) parts.push(`Date ${dayDelta(days)}`);
+  return parts.join(" · ");
 }
 
 /**
@@ -124,6 +152,24 @@ export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">
  * "2–3 Nov 2026" for 3 Nov with 1 day.
  */
 export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), date);
+
+/**
+ * The other side's card in Explain for a break without a pair to show (no group, no proposal): what day close or the
+ * pass found there, by the break's reason (engine sql/breaks.ts). No counterpart: "No item with reference … on 3–4 Nov
+ * 2026." (Figma 206:6372).
+ */
+export function lonePairText(item: { extRef: string | null; businessDate: string; breakReason: string | null; breakPass: number | null }, carry: number): string {
+  const ref = item.extRef ?? "—", on = counterpartWindow(item.businessDate, carry);
+  switch (item.breakReason) {
+    case "Duplicate": return `Reference ${ref} is on more than one item of a side, so pass ${item.breakPass ?? "—"} paired none of them.`;
+    case "Ambiguous": return `Pass ${item.breakPass ?? "—"} found more than one candidate, so it paired none of them.`;
+    case "Currency differs": return `An item with reference ${ref} on ${on} is in another currency.`;
+    case "Amount differs": return `An item with reference ${ref} on ${on} differs in amount beyond the tolerance.`;
+    case "Date differs": return `An item with reference ${ref} differs in date beyond the window.`;
+    case "Unconfirmed suggestion": return "Its suggested pair wasn't confirmed before the day closed.";
+    default: return `No item with reference ${ref} on ${on}.`;
+  }
+}
 
 /**
  * Explain's sentence for a lone break (Figma 206:6372): "Carry over is 1 day, so a 4 Nov item is looked for on 3 and 4
