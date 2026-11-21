@@ -13,8 +13,10 @@ import { isLive } from "./run-model";
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
 export const newReconHref = (spaceId: string) => `${reconsHref(spaceId)}/new`;
 export const reconHref = (spaceId: string, id: string) => `${reconsHref(spaceId)}/${encodeURIComponent(id)}`;
-/** A recon's Configuration tab: the builder over its draft, else its published spec. */
+/** A recon's Configuration tab: its published spec (a draft's banner says how to continue it). */
 export const reconConfigHref = (spaceId: string, id: string) => `${reconHref(spaceId, id)}?tab=configuration`;
+/** The setup of a recon's open draft at step `step` (1 Sources … 5 Review and submit). */
+export const reconEditHref = (spaceId: string, id: string, step: 1 | 2 | 3 | 4 | 5) => `${reconHref(spaceId, id)}/versions/new?step=${step}`;
 export const reconRunHref = (spaceId: string, id: string, runId: string) => `${reconHref(spaceId, id)}/runs/${encodeURIComponent(runId)}`;
 export const reconVersionHref = (spaceId: string, id: string, versionId: string) => `${reconHref(spaceId, id)}/versions/${encodeURIComponent(versionId)}`;
 /** The API path of the space's recons, or of `rest` under recon `id`. */
@@ -69,7 +71,7 @@ export function useStartVersion(spaceId: string, id: string) {
     mutationFn: () => api<ReconVersionDto>(reconApi(spaceId, id, "/versions"), { method: "POST", body: "{}" }),
     onSuccess: async (v) => {
       await qc.invalidateQueries({ queryKey: RECON_KEY });
-      router.push(reconConfigHref(spaceId, id)); // the new draft: the builder
+      router.push(reconEditHref(spaceId, id, 5)); // the new draft's setup, on Review: every part shown, each with Edit
       toast(`Draft v${v.version} started.`);
     },
     onError: (e) => toast.error(errorText(e)),

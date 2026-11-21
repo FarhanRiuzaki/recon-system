@@ -24,7 +24,7 @@ import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
 import { sourceStatus } from "@/lib/shared/source-status";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { addPass, defaultSpec, type Fields, placeOf } from "./spec-model";
-import { NEW_RECON_REASON, reconApi, reconConfigHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
+import { NEW_RECON_REASON, reconApi, reconEditHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
 
 type Values = { name: string; code: string; a: string; b: string };
 const SCHEMA: Schema<Values> = {
@@ -104,7 +104,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
       const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec }) });
       toast(`Created ${r.name} as Draft v1. Add its passes, then save the draft.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
-      router.push(reconConfigHref(spaceId, r.id)); // its draft: the builder
+      router.push(reconEditHref(spaceId, r.id, 2)); // its setup goes on with the passes
     } catch (err) {
       const text = errorText(err);
       const place = placeOf(text);

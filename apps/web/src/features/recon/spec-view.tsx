@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Panel } from "@starterkit/ui/ds";
+import { Button } from "@starterkit/ui/ui/button";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -104,23 +105,28 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
  * A recon version's spec as text (ui-standard §1a "Version": values as text, never disabled inputs, no inspector): the
  * settings, the two sides, and the passes in run order as steps (owner, 22 Nov: tidy and clear for a reader).
  */
-export function SpecView({ spaceId, spec }: { spaceId: string; spec: ReconSpec }) {
+export function SpecView({ spaceId, spec, onEdit }: {
+  spaceId: string; spec: ReconSpec;
+  /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule). */
+  onEdit?: (step: 1 | 2 | 3) => void;
+}) {
+  const edit = (n: 1 | 2 | 3) => (onEdit ? <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(n)}>Edit</Button> : undefined);
   const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
   const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
   const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
   const sources: [SourceDto | undefined, SourceDto | undefined] = [sa.data, sb.data];
   return (
     <>
-      <section aria-label="Settings" className="rounded-lg border border-line bg-tray px-4 py-3">
+      <Panel title="Schedule and day close" actions={edit(3)}>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
           {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", daysText(spec.carry_over_days)],
             ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
             <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
           ))}
         </dl>
-      </section>
+      </Panel>
 
-      <Panel title="Sides" description="What each side reads">
+      <Panel title="Sides" description="What each side reads" actions={edit(1)}>
         <div className="grid gap-3 md:grid-cols-2">
           {([0, 1] as const).map((i) => (
             <div key={i} className="min-w-0 rounded-lg border border-line bg-card p-4"><SideSummary i={i} side={spec.sides[i]} source={sources[i]} fields={fields} /></div>
@@ -128,7 +134,7 @@ export function SpecView({ spaceId, spec }: { spaceId: string; spec: ReconSpec }
         </div>
       </Panel>
 
-      <Panel title="Passes in run order" description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart">
+      <Panel title="Passes in run order" description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart" actions={edit(2)}>
         <ol aria-label="Passes in run order" className="grid">
           {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} />)}
         </ol>

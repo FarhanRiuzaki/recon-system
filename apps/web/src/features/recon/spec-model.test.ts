@@ -287,21 +287,19 @@ describe("what the pass editor suggests (owner, 22 Nov: the user knows what to d
   });
 });
 
-import { draftProgress } from "./spec-model";
-describe("a draft's steps (owner, 22 Nov: what to do, where, what next)", () => {
-  const base = { sides: ["Core", "Switch"] as const, passes: 2, needing: 0, settings: "Daily at 06:00 · closes 23:00", settingsChecked: false, simulation: "none" as const, submitReason: "Run a simulation on this draft first." };
-  it("each step's state and line, the defaults to check until looked at", () => {
-    const s = draftProgress(base);
-    expect(s.map((x) => [x.key, x.state])).toEqual([["sides", "done"], ["passes", "done"], ["settings", "todo"], ["simulation", "todo"], ["submit", "todo"]]);
-    expect(s[2]!.line).toBe("Defaults: Daily at 06:00 · closes 23:00. Check them");
-    expect(s[4]!.line).toBe("Run a simulation on this draft first.");
+import { stepReasons } from "./spec-model";
+describe("the setup's steps (owner, 22 Nov: Next says what is missing)", () => {
+  const ok = { loaded: true, sideProblem: null, passes: 2, needs: [[], []], incomplete: null, settingProblem: null, simulation: "current" as const, running: false, submit: null };
+  it("every step can go on when nothing is missing", () => {
+    expect(stepReasons(ok)).toEqual({ 1: null, 2: null, 3: null, 4: null, 5: null });
   });
-  it("a pass that needs something and a simulation out of date ask for attention; all done reads ready", () => {
-    expect(draftProgress({ ...base, needing: 1 })[1]).toMatchObject({ state: "attention", line: "1 pass needs something" });
-    expect(draftProgress({ ...base, simulation: "stale" })[3]!.state).toBe("attention");
-    expect(draftProgress({ ...base, passes: 0 })[1]!.line).toBe("Add the first pass");
-    const ready = draftProgress({ ...base, settingsChecked: true, simulation: "current", submitReason: null });
-    expect(ready.every((x) => x.state === "done")).toBe(true);
-    expect(ready[4]!.line).toBe("Ready for a config checker");
+  it("each step names what it still needs", () => {
+    expect(stepReasons({ ...ok, loaded: false })[1]).toBe("The sides' sources are still loading.");
+    expect(stepReasons({ ...ok, passes: 0, needs: [] })[2]).toBe("Add a pass first.");
+    expect(stepReasons({ ...ok, needs: [[], ["A name", "A condition"]] })[2]).toBe("Pass 2 needs: a name, a condition.");
+    expect(stepReasons({ ...ok, simulation: "none" })[4]).toBe("Run a simulation of this draft first.");
+    expect(stepReasons({ ...ok, simulation: "stale" })[4]).toBe("The draft changed since the last simulation. Run it again.");
+    expect(stepReasons({ ...ok, running: true })[4]).toBe("Wait for the simulation to finish.");
+    expect(stepReasons({ ...ok, submit: "Run a simulation on this draft first." })[5]).toBe("Run a simulation on this draft first.");
   });
 });

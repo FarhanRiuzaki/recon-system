@@ -527,24 +527,23 @@ export function suggestedName(p: PassSpec): string | null {
 /** A name the builder gave and the user hasn't changed ("Pass 3", or none). */
 export const placeholderName = (name: string) => !name.trim() || /^Pass \d+$/.test(name.trim());
 
-/** Where a step of a draft stands: done, needs something, or not started. */
-export type DraftStepState = "done" | "attention" | "todo";
-export type DraftStep = { key: "sides" | "passes" | "settings" | "simulation" | "submit"; title: string; line: string; state: DraftStepState };
+/** The setup's steps: 1 Sources, 2 Matching, 3 Schedule, 4 Test, 5 Review and submit. */
+export type SetupStep = 1 | 2 | 3 | 4 | 5;
 /**
- * A draft's five steps in the order a recon is set up (owner, 22 Nov: the user knows what to do, where, and what comes
- * next): its sides, its passes, its schedule and day close (the defaults to check), a simulation, the submit.
+ * Why each step of the setup can't go on yet, or null (owner, 22 Nov: Next says what is missing); step 5's is why the
+ * draft can't be submitted. `needs` = each pass's passNeeds, `sideProblem`/`settingProblem` = the API's refusal there.
  */
-export function draftProgress(d: {
-  sides: readonly [string, string] | null; passes: number; needing: number; settings: string; settingsChecked: boolean;
-  simulation: "none" | "stale" | "current"; submitReason: string | null;
-}): DraftStep[] {
-  return [
-    { key: "sides", title: "Sides", line: d.sides ? `${d.sides[0]} and ${d.sides[1]}` : "Loading the sources", state: d.sides ? "done" : "todo" },
-    { key: "passes", title: "Passes", state: !d.passes ? "todo" : d.needing ? "attention" : "done",
-      line: !d.passes ? "Add the first pass" : d.needing ? `${d.needing} ${d.needing === 1 ? "pass needs" : "passes need"} something` : `${d.passes} ${d.passes === 1 ? "pass" : "passes"}, in run order` },
-    { key: "settings", title: "Schedule and day close", state: d.settingsChecked ? "done" : "todo", line: d.settingsChecked ? d.settings : `Defaults: ${d.settings}. Check them` },
-    { key: "simulation", title: "Simulation", state: d.simulation === "current" ? "done" : d.simulation === "stale" ? "attention" : "todo",
-      line: d.simulation === "current" ? "Up to date with the draft" : d.simulation === "stale" ? "The draft changed since: run it again" : "Run it over a recent day" },
-    { key: "submit", title: "Submit for approval", state: d.submitReason ? "todo" : "done", line: d.submitReason ?? "Ready for a config checker" },
-  ];
+export function stepReasons(d: {
+  loaded: boolean; sideProblem: string | null; passes: number; needs: readonly (readonly string[])[]; incomplete: string | null;
+  settingProblem: string | null; simulation: "none" | "stale" | "current"; running: boolean; submit: string | null;
+}): Record<SetupStep, string | null> {
+  const at = d.needs.findIndex((x) => x.length > 0);
+  return {
+    1: !d.loaded ? "The sides' sources are still loading." : d.sideProblem,
+    2: !d.passes ? "Add a pass first." : at >= 0 ? `Pass ${at + 1} needs: ${d.needs[at]!.join(", ").toLowerCase()}.` : d.incomplete,
+    3: d.settingProblem,
+    4: d.running ? "Wait for the simulation to finish." : d.simulation === "current" ? null
+      : d.simulation === "stale" ? "The draft changed since the last simulation. Run it again." : "Run a simulation of this draft first.",
+    5: d.submit,
+  };
 }

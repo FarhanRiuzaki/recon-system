@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
+import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -16,23 +16,21 @@ import { toast } from "@starterkit/ui/ui/toast";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconRunItemDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
-import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
+import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, draftProgress, type DraftStep, PASS_TEMPLATES, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
-  insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
+  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
-import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
+import { DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
-import { DraftSteps } from "./draft-steps";
-import { SideSummary } from "./spec-view";
+import { SpecView } from "./spec-view";
 import { saveQueue } from "./save-queue";
 import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation } from "./use-recons";
@@ -53,6 +51,8 @@ const problemText = (p: Place) =>
   `${p.pass !== undefined ? `Pass ${p.pass}${p.condition !== undefined ? `, condition ${p.condition + 1}` : p.key !== undefined ? `, matching key ${p.key + 1}` : ""}` : p.side !== undefined ? `Side ${p.side === 0 ? "A" : "B"}${p.filter !== undefined ? `, filter ${p.filter + 1}` : ""}` : p.setting}: ${p.text}`;
 
 type Selected = { k: "pass"; key: string } | { k: "side"; i: 0 | 1 } | { k: "settings" };
+/** The setup's five steps (owner, 22 Nov): Sources, Matching, Schedule, Test, Review and submit. */
+export type WizardStep = SetupStep;
 
 /** A warning or error under the settings strip, with its one-click fix (BUILDER-SPEC "States"). */
 function Banner({ tone, children, action }: { tone: "warn" | "error"; children: ReactNode; action?: ReactNode }) {
@@ -63,21 +63,6 @@ function Banner({ tone, children, action }: { tone: "warn" | "error"; children: 
       <p className="min-w-0 flex-1 basis-64">{children}</p>
       {action}
     </div>
-  );
-}
-
-/** A side card: the side's label, its source and kind, its filters. Selecting it opens the side in the inspector. */
-function SideCard({ i, spec, source, fields, selected, onSelect }: {
-  i: 0 | 1; spec: ReconSpec; source: SourceDto | undefined; fields: Fields; selected: boolean; onSelect: () => void;
-}) {
-  const s = spec.sides[i];
-  return (
-    <button type="button" aria-pressed={selected} onClick={onSelect}
-      className={cn("grid min-w-0 content-start rounded-lg border bg-card p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-        selected ? "border-fg shadow-sm" : "border-line")}>
-      {/* as the Configuration reads it (owner, 22 Nov: editing looks like the config that's settled) */}
-      <SideSummary i={i} side={s} source={source} fields={fields} />
-    </button>
   );
 }
 
@@ -135,8 +120,12 @@ function AddPassMenu({ fields, reason, onAdd }: { fields: Fields; reason: string
  * simulation bar, as on a version's page). Save sends the
  * whole spec (PATCH …/versions/{id}); the API's refusal lands on the place it names, its warnings above the passes.
  */
-export function Builder({ spaceId, recon, version, editable, canEdit, bar = true, onSaveState }: {
-  spaceId: string; recon: ReconDto; version: ReconVersionDto; editable: boolean; canEdit: boolean; bar?: boolean;
+export function Builder({ spaceId, recon, version, editable, canEdit, step, reached, onStep, exitHref, onSubmitted, onSaveState }: {
+  spaceId: string; recon: ReconDto; version: ReconVersionDto; editable: boolean; canEdit: boolean;
+  /** The step on screen and the furthest one reached (a draft of a live recon opens on Review: every step reached). */
+  step: WizardStep; reached: WizardStep; onStep: (n: WizardStep) => void;
+  /** Where Save and close goes (the recon's page); the draft stays saved. */
+  exitHref: string; onSubmitted: () => void;
   /** The autosave's state, for the page header's line (Saved / Saving… / Not saved with Retry). */
   onSaveState?: (s: SaveState) => void;
 }) {
@@ -214,7 +203,6 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     return () => { on = false; };
   }, [sortable, Sortable]);
   useEffect(() => { if (editable) void import("@starterkit/ui/ds/combobox-command"); }, [editable]);
-  const inspectorRef = useRef<HTMLDivElement>(null);
 
   const passIndex = sel.k === "pass" ? keys.indexOf(sel.key) : -1;
   const change = (next: ReconSpec) => { setSpec(next); setProblem(null); setSubmitError(null); };
@@ -241,12 +229,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   };
   const focusLater = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(id)?.focus()));
   const onPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
-  const select = (s: Selected) => {
-    if (s.k === "settings") { setSettingsSeen(true); try { localStorage.setItem(`recon-settings-seen:${saved.id}`, "1"); } catch { /* this session only */ } }
-    setSel(s);
-    if (onPhone() || view === "canvas") setSheet(true);
-    else requestAnimationFrame(() => { const h = inspectorRef.current?.querySelector<HTMLElement>("h2"); h?.setAttribute("tabindex", "-1"); h?.focus(); });
-  };
+  // a pass opens in the editor dialog (the step's page stays the list); a side and the schedule are edited on their own steps
+  const select = (s: Selected) => { setSel(s); setSheet(true); };
   /** Moves a pass; `announce` for Alt+↑/↓ and Move earlier/later (a drop is announced by dnd-kit). */
   const move = (from: number, to: number, announce = true) => {
     if (to < 0 || to >= keys.length || from === to) return;
@@ -332,6 +316,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setSaved(await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}/submit`), { method: "POST", body: "{}" }));
       toast(`Draft v${saved.version} of ${recon.name} sent for approval. A config checker approves or rejects it.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
+      onSubmitted();
     } catch (e) {
       setSubmitError(errorText(e));
     } finally {
@@ -339,7 +324,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     }
   }
 
-  const simOn = bar && saved.status === "draft";
+  const simOn = saved.status === "draft";
   const simulation = useSimulation(spaceId, recon.id, saved.id, simOn);
   const live = isLive(simulation.run);
   const [range, setRange] = useState<DateRange>(() => simulation.run ? { from: simulation.run.from, to: simulation.run.to } : defaultReplay());
@@ -424,155 +409,193 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setProblem(null);
     }, { id: `recon-undo-${undoSeq.current++}` });
   }
-  // the schedule and day close are checked once looked at (kept per draft in this browser), or when they aren't the
-  // defaults, or when the recon already runs (its settings were approved)
-  const seenKey = `recon-settings-seen:${saved.id}`;
-  const [settingsSeen, setSettingsSeen] = useState(() => { try { return localStorage.getItem(seenKey) === "1"; } catch { return false; } });
-  const markSeen = () => { setSettingsSeen(true); try { localStorage.setItem(seenKey, "1"); } catch { /* private window: this session only */ } };
-  const defaults = spec.grace_minutes === 30 && spec.carry_over_days === 1 && spec.close_at === "23:00" && spec.schedule.kind === "daily" && spec.schedule.at === "06:00";
-  const needing = spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null).length > 0);
-  const steps = draftProgress({
-    sides: fields[0] && fields[1] ? [spec.sides[0].label, spec.sides[1].label] : null,
-    passes: spec.passes.length, needing: needing.filter(Boolean).length,
-    // short: the strip under it says the rest
-    settings: `${spec.schedule.kind === "daily" ? `Daily at ${spec.schedule.at}` : `Every ${spec.schedule.every_minutes} min`} · closes ${spec.close_at}`,
-    settingsChecked: settingsSeen || !defaults || !!recon.published,
-    simulation: saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.specHash || dirty ? "stale" : "current",
-    submitReason: blocked,
-  });
-  const focusId = (domId: string) => requestAnimationFrame(() => { const el = document.getElementById(domId); el?.scrollIntoView({ block: "center" }); (el?.querySelector("button") ?? el)?.focus(); });
-  /** A step opens its place: a side, the first pass that needs something (else the first), the schedule, the simulation, the submit. */
-  const pickStep = (key: DraftStep["key"]) => {
-    if (key === "sides") select({ k: "side", i: 0 });
-    else if (key === "passes") { const at = Math.max(0, needing.indexOf(true)); if (keys[at]) select({ k: "pass", key: keys[at]! }); else focusId("draft-add-pass"); }
-    else if (key === "settings") { markSeen(); select({ k: "settings" }); }
-    else focusId(key === "simulation" ? "draft-simulate" : "draft-submit");
-  };
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
     document.getElementById(`pass-${sel.key}`)?.focus();
   };
 
+  // ---- the steps (owner, 22 Nov: one flow, the user knows where to start and what comes next) ----
+  const simulated: "none" | "stale" | "current" = saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.specHash || dirty ? "stale" : "current";
+  const why = stepReasons({
+    loaded: !!fields[0] && !!fields[1], sideProblem: placed?.side !== undefined ? `Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}` : null,
+    passes: spec.passes.length, needs: spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null)), incomplete,
+    settingProblem: placed?.setting ? `${placed.setting}: ${placed.text}` : null, simulation: simulated, running: live || starting, submit: blocked,
+  });
+  const STEP_LABEL: Record<WizardStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Test", 5: "Review and submit" };
+  const wizardSteps = ([1, 2, 3, 4, 5] as const).map((n) => ({
+    id: String(n), label: STEP_LABEL[n],
+    status: (n === step ? "current" : n < step || reached >= n ? (n < 5 && why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
+  }));
+  const go = (n: WizardStep) => { setSheet(false); onStep(n); };
+  const passList = (readOnly: boolean) => (
+    spec.passes.length ? (
+      Sortable && sortable && !readOnly ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
+        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, onRemove: undefined, needs: [] } : {})} />)}</ol>
+    ) : null
+  );
+  const addPass = (t: PassTemplate) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); };
+  const passLimit = spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null;
+
   return (
-    <div className="grid gap-section">
-      <p aria-live="polite" className="sr-only">{said}</p>
-      <span role="status" className="sr-only">{editable && failed ? "Not saved" : ""}</span>
-      {failed && problem && <p role="alert" className="text-body-sm text-down-ink">{placed ? problemText(placed) : problem.text}</p>}
-      {editable && <DraftSteps steps={steps} onPick={pickStep} />}
-      {simOn && (
-        <section aria-label="Simulation" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-lg border border-line bg-card p-4 shadow-xs">
-          <StatusChip health={sim.chip.health} label={sim.chip.label} />
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
-            {/* the live region is the state line only: the counts change with every poll */}
-            <span role="status" className="text-body-sm text-fg">{sim.line}{simulation.stalled ? ` · ${STALL_TEXT}` : ""}</span>
-            <span className={cn("text-caption text-fg-3 tabular", sim.dim && "opacity-60")}>
-              {totals ? countLine(totals, [spec.sides[0].label, spec.sides[1].label]) : `Matched ${DASH} · suggested ${DASH} · duplicate ${DASH} · waiting ${DASH} · match rate ${DASH}`}
-              {simulation.shown && <> · <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Show results</Link></>}
-            </span>
+    <Wizard title="Setup progress" steps={wizardSteps}>
+      <form noValidate aria-label="Recon setup" className="grid gap-section"
+        onSubmit={(e) => { e.preventDefault(); if (why[step] === null) { if (step === 5) void submit(); else go((step + 1) as WizardStep); } }}>
+        <h2 className="sr-only">Step {step} of 5 · {STEP_LABEL[step]}</h2>
+        <p aria-live="polite" className="sr-only">{said}</p>
+        <span role="status" className="sr-only">{editable && failed ? "Not saved" : ""}</span>
+        {failed && problem && <p role="alert" className="text-body-sm text-down-ink">{placed ? problemText(placed) : problem.text}</p>}
+        {conflict && (
+          <Banner tone="warn" action={<Button type="button" variant="secondary" size="sm" onClick={takeTheirs}>Load the saved draft</Button>}>
+            This draft was saved from another tab or by someone else. Your next change replaces that save.
+          </Banner>
+        )}
+
+        {step === 1 && (
+          // both sides side by side, in equal columns (symmetric); each its source, label, sign and filters
+          <div className="grid items-start gap-section md:grid-cols-2">
+            {([0, 1] as const).map((i) => (
+              <Panel key={i} title={`Side ${i === 0 ? "A" : "B"}`} description={sourceOf(i)?.name ?? "Loading the source…"}>
+                <fieldset disabled={!editable} className="contents">
+                  <SideEditor spec={spec} i={i} fields={fields} sourceName={sourceOf(i)?.name ?? "Loading…"} place={placed?.side === i ? placed : null}
+                    onChange={(x) => change({ ...spec, sides: i === 0 ? [x, spec.sides[1]] : [spec.sides[0], x] })}
+                    onRemoved={(message, restore) => offerUndo(message, null, (cur) => restore(cur))} />
+                </fieldset>
+              </Panel>
+            ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 max-md:w-full max-md:*:w-full">
-            {editable && <ReplayRange value={range} onChange={setRange} disabled={live || starting} />}
-            <BlockedButton id="draft-simulate" variant="secondary" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
-              {(live || starting) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Run simulation
-            </BlockedButton>
-            <BlockedButton id="draft-submit" reason={blocked} disabled={submitting} aria-busy={submitting || undefined} onClick={() => void submit()}>
-              {submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Submit for approval
-            </BlockedButton>
-          </div>
-          {submitError && <p role="alert" className="basis-full text-body-sm text-down-ink">{submitError}</p>}
-        </section>
-      )}
+        )}
 
-      <section aria-label="Schedule and day close" className="grid gap-3 rounded-lg border border-line bg-tray px-4 py-3 md:flex md:flex-wrap md:items-center md:gap-x-8">
-        <h2 className="text-label text-fg md:basis-full">Schedule and day close</h2>
-        <dl className="flex flex-1 flex-wrap gap-x-8 gap-y-2">
-          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", daysText(spec.carry_over_days)],
-            ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
-            <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
-          ))}
-        </dl>
-        <Button type="button" variant={editable ? "secondary" : "ghost"} onClick={() => select({ k: "settings" })}>{editable ? "Edit schedule and day close" : "Show settings"}</Button>
-      </section>
-
-      {conflict && (
-        <Banner tone="warn" action={<Button type="button" variant="secondary" size="sm" onClick={takeTheirs}>Load the saved draft</Button>}>
-          This draft was saved from another tab or by someone else. Your next change replaces that save.
-        </Banner>
-      )}
-      {editable && gaps.length > 0 && (
-        <Banner tone="error" action={<Button type="button" variant="secondary" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
-          onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
-      )}
-      {[...gates, ...pageWarnings].map((w) => {
-        const fix = editable ? carryOverFix(w) : null;
-        return (
-          <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days < fix
-            ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>
-        );
-      })}
-
-      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_minmax(28rem,40%)]")}>
-        <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}
-          actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
-          <div className="grid gap-0">
-            {view === "canvas" && (
-              <div className="mb-3 overflow-hidden rounded-md border border-line max-md:hidden">
-                <CanvasLoader spec={spec} keys={keys} counters={counters} dim={sim.dim} selectedId={selectedId} editable={editable}
-                  onSelect={(s) => select(s)} onMove={onCanvasMove} />
-              </div>
+        {step === 2 && (
+          <>
+            {editable && gaps.length > 0 && (
+              <Banner tone="error" action={<Button type="button" variant="secondary" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
+                onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
-            <div className={cn("grid gap-0", view === "canvas" && "md:hidden")}>
-            <div className="grid gap-3 md:grid-cols-2">
-              {([0, 1] as const).map((i) => <SideCard key={i} i={i} spec={spec} source={sourceOf(i)} fields={fields} selected={sel.k === "side" && sel.i === i} onSelect={() => select({ k: "side", i })} />)}
-            </div>
-            {placed?.side !== undefined && <div className="pt-2"><PlaceError text={`Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}`} /></div>}
-            <Connector text={counters ? connectorText(counters, spec, 0) : undefined} dim={sim.dim} />
-            {spec.passes.length ? (
-              Sortable && sortable ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
-                : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} />)}</ol>
-            ) : <p className="rounded-md border border-dashed border-line p-4 text-body-sm text-fg-2">No passes yet.</p>}
-            </div>
-            {editable && (
-              <span className="pb-3" id="draft-add-pass">
-                <AddPassMenu fields={fields} reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}
-                  onAdd={(t) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); }} />
-              </span>
-            )}
-            <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
-              <div className="grid gap-1 border-l-2 border-line pl-3">
-                <span className="text-label text-fg-2">Waiting · during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
-                <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over {daysText(spec.carry_over_days)}</span>
-              </div>
-              <div className="grid gap-1 border-l-2 border-line pl-3">
-                <span className="text-label text-fg-2">Break · at day close</span>
-                <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
-              </div>
-              {currency && (
-                <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>
-                  <span className="text-label text-down-ink">{CURRENCY_DIFFERS}</span>
-                  <span className="tabular">{currency} · break at day close</span>
+            {pageWarnings.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
+            {spec.passes.length === 0 ? (
+              // no pass yet: the ready passes as the way in (a blank one last)
+              <Panel title="Start with a pass" description="Each pass pairs the items the ones before it left. Pick one to start; you can change everything in it.">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {PASS_TEMPLATES.map((t) => {
+                    const reason = passLimit ?? templateReason(t.id, fields);
+                    return (
+                      <button key={t.id} type="button" disabled={!editable || !!reason} onClick={() => addPass(t.id)}
+                        className="grid gap-1 rounded-lg border border-line bg-card p-4 text-left hover:border-line-strong hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-primary">
+                        <span className="text-label text-fg">{t.label}</span>
+                        <span className="text-caption text-fg-3">{reason ?? t.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-          </div>
-        </Panel>
+              </Panel>
+            ) : (
+              <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it. Select a pass to change it." : "Select a pass to change it."}
+                actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
+                <div className="grid gap-3">
+                  {view === "canvas" && (
+                    <div className="overflow-hidden rounded-md border border-line max-md:hidden">
+                      <CanvasLoader spec={spec} keys={keys} counters={undefined} dim={false} selectedId={selectedId} editable={editable} onSelect={(x) => select(x)} onMove={onCanvasMove} />
+                    </div>
+                  )}
+                  <div className={cn(view === "canvas" && "md:hidden")}>{passList(false)}</div>
+                  {editable && <span><AddPassMenu fields={fields} reason={passLimit} onAdd={addPass} /></span>}
+                </div>
+              </Panel>
+            )}
+          </>
+        )}
 
-        <div ref={inspectorRef} onKeyDown={onInspectorKey} className={view === "canvas" ? "hidden" : "max-md:hidden"}>
-          <Panel title={title}>{!sheet && body}</Panel>
-        </div>
-      </div>
+        {step === 3 && (
+          <>
+            {gates.map((w) => {
+              const fix = editable ? carryOverFix(w) : null;
+              return <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days < fix
+                ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>;
+            })}
+            <Panel title="Schedule and day close" description="When the recon runs, how long it waits for the other side, and when a day's open items become breaks.">
+              <fieldset disabled={!editable} className="contents"><SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} /></fieldset>
+            </Panel>
+          </>
+        )}
+
+        {step === 4 && (
+          <>
+            <Panel title="Test the draft" description="Runs the draft over the dates you pick and shows what each pass pairs. Nothing is stored and no break is raised.">
+              <div className="grid gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <ReplayRange value={range} onChange={setRange} disabled={!editable || live || starting} />
+                  <BlockedButton type="button" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
+                    {(live || starting) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{simulated === "none" ? "Run simulation" : "Run it again"}
+                  </BlockedButton>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <StatusChip health={sim.chip.health} label={sim.chip.label} />
+                  <span role="status" className="text-body-sm text-fg">{sim.line}{simulation.stalled ? ` · ${STALL_TEXT}` : ""}</span>
+                  {simulation.shown && <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-body-sm text-fg underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Open the full results</Link>}
+                </div>
+                {totals && <span className={cn("text-caption text-fg-3 tabular", sim.dim && "opacity-60")}>{countLine(totals, [spec.sides[0].label, spec.sides[1].label])}</span>}
+              </div>
+            </Panel>
+            {spec.passes.length > 0 && (
+              <Panel title="What each pass pairs" description={counters ? "From the simulation above, in run order" : "Run the simulation to see each pass's pairs"}>
+                <div className="grid gap-3">
+                  {passList(true)}
+                  <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
+                    <div className="grid gap-1 border-l-2 border-line pl-3">
+                      <span className="text-label text-fg-2">Waiting during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
+                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over {daysText(spec.carry_over_days)}</span>
+                    </div>
+                    <div className="grid gap-1 border-l-2 border-line pl-3">
+                      <span className="text-label text-fg-2">Breaks at day close</span>
+                      <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                    </div>
+                    {currency && (
+                      <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>
+                        <span className="text-label text-down-ink">{CURRENCY_DIFFERS}</span>
+                        <span className="tabular">{currency} · break at day close</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Panel>
+            )}
+          </>
+        )}
+
+        {step === 5 && (
+          <>
+            {/* the whole draft as the Configuration will show it, each part with Edit back to its step */}
+            <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
+            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(4)}>Edit</Button> : undefined}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <StatusChip health={sim.chip.health} label={sim.chip.label} />
+                <span className="text-body-sm text-fg">{sim.line}</span>
+              </div>
+            </Panel>
+            {submitError && <p role="alert" className="text-body-sm text-down-ink">{submitError}</p>}
+          </>
+        )}
+
+        {editable && (
+          <FormFooter
+            primary={<BlockedButton type="submit" reason={why[step]} variant={why[step] === null ? "default" : "secondary"} disabled={step === 5 && submitting} aria-busy={(step === 5 && submitting) || undefined}>
+              {step === 5 && submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{step === 5 ? "Submit for approval" : `Next: ${STEP_LABEL[(step + 1) as WizardStep]}`}
+            </BlockedButton>}
+            back={step > 1 && <Button type="button" variant="secondary" onClick={() => go((step - 1) as WizardStep)}>Back</Button>}
+            cancel={<Button asChild variant="ghost"><Link href={exitHref}>Save and close</Link></Button>} />
+        )}
+      </form>
 
       {sheet && body && <InspectorSheet title={title} onClose={() => {
         setSheet(false);
-        // back where the choice was made: the node on the canvas (a desktop), else the pass in the list
         if (view === "canvas" && !onPhone() && selectedId) focusNode(selectedId);
         else if (sel.k === "pass") focusLater(`pass-${sel.key}`);
-      }}>{body}</InspectorSheet>}
+      }}><div onKeyDown={onInspectorKey}>{body}</div></InspectorSheet>}
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
           onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={failed ? `The last change wasn't saved: ${problem?.text ?? "the save failed"}` : `Draft v${saved.version} is still saving the last change.`}
           impact={["Changes not saved yet are discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
       )}
-    </div>
+    </Wizard>
   );
 }

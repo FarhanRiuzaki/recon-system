@@ -24,6 +24,12 @@ export const RECON_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[12, 300]] },
 ];
 
+/** A recon's setup (versions/new): the header, the step's panels beside the steps rail. */
+export const RECON_SETUP_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "panels", panels: [[12, 480]] },
+];
+
 /** A recon version: the header, its passes and settings, the decision. */
 export const RECON_VERSION_SHAPE: readonly Section[] = [
   { kind: "header", h: 68 },

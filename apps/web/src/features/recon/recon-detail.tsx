@@ -1,56 +1,46 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { Button } from "@starterkit/ui/ui/button";
 import { Failure, Notice, Panel, RouteTabs, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
 import type { ReconDto } from "@starterkit/shared/contracts/recon";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
-import { type HeaderAction, type HeaderConfirm, PageHeader } from "@/components/shell/page-header";
-import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
+import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
 import { useAuth } from "@/lib/client/auth-context";
-import { api, isNotFound } from "@/lib/client/api";
-import { ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
+import { isNotFound } from "@/lib/client/api";
 import { reconStatus } from "@/lib/shared/recon-status";
-import { Builder, type SaveState } from "./builder";
-import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
 import { ReconOverview } from "./recon-overview";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
-import { MAKER_REASON, reconApi, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
+import { useDraftEndings } from "./draft-actions";
+import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
 const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", history: "History" };
 
-/** A recon nobody submitted (DELETE …/recons/{id} takes it), for a config maker or a space admin (README row Plan 3). */
-export const discardable = (r: ReconDto, roles: readonly string[]) =>
-  (roles.includes("config_maker") || roles.includes("space_admin")) && r.publishedVersion === null && !!r.draft && !r.draft.submitterId && !r.draft.reviewComment;
+export { discardable } from "./draft-actions";
 
 /**
  * The line under the title: the open draft (by whom, when someone else made it) and what is live meanwhile
  * (BUILDER-SPEC "PageHeader"); the draft's autosave lives here only (ui-standard §1a): saved at, Saving…, Not saved.
  */
-function lineOf(r: ReconDto, by: string | null, save: SaveState["status"] = "saved"): string {
+function lineOf(r: ReconDto, by: string | null): string {
   const live = r.published ? `live v${r.published.version}${r.published.publishedAt ? ` since ${at(r.published.publishedAt)}` : ""}` : "no live version";
   if (!r.draft) return r.published ? `Version ${r.published.version} · ${live}` : live;
-  // "incomplete": a field is still being filled in; the field says what (nothing is sent until it is)
-  const saved = save === "saving" ? "Saving…" : save === "failed" || save === "incomplete" ? "Not saved" : `saved ${at(r.draft.updatedAt)}`;
+  const saved = `saved ${at(r.draft.updatedAt)}`;
   const what = r.draft.status === "in_review" ? `Version ${r.draft.version} in review` : `Draft v${r.draft.version} · ${saved}`;
   if (by) return `${what} · by ${by} · ${live}`;
   return `${what} · ${live}`;
 }
 
-/** "Edit recon": the open draft is this page; a version in review opens on its page; else a new draft from the published one. */
+/** "Edit recon": a new draft's setup; an open draft's setup ("Continue editing"); a version in review opens on its page. */
 function editAction(r: ReconDto, spaceId: string, maker: boolean, start: { busy: boolean; run: () => void }): HeaderAction | null {
   if (r.draft?.status === "in_review") return { label: `Open version ${r.draft.version}`, href: reconVersionHref(spaceId, r.id, r.draft.id) };
-  if (r.draft) return null;
+  if (r.draft) return maker ? { label: "Continue editing", href: reconEditHref(spaceId, r.id, 5) } : null;
   return maker ? { label: "Edit recon", onSelect: start.run, busy: start.busy } : { label: "Edit recon", reason: MAKER_REASON };
 }
 
@@ -63,15 +53,11 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const q = useRecon(spaceId, id);
   const roles = useSpaceRoles(spaceId);
   const start = useStartVersion(spaceId, id);
-  const [save, setSave] = useState<SaveState | null>(null);
-  const [cancelling, setCancelling] = useState(false);
-  const router = useRouter();
-  const qc = useQueryClient();
+  const endings = useDraftEndings(spaceId, q.data, roles);
   const skeleton = useDelayedFlag(!q.data && !q.error);
   const { user } = useAuth();
   const draftId = q.data?.draft?.id ?? "";
   const dq = useReconVersion(spaceId, id, draftId, !!draftId);
-  const building = q.data?.draft?.status === "draft";
 
   if (isNotFound(q.error)) return <DetailNotFound title="Recon" noun="recon" list={{ href: reconsHref(spaceId), label: "Recons" }} />;
   if (q.error && !q.data) return <div className="grid gap-section"><PageHeader title="Recon" /><Panel><Failure title="The draft couldn't be loaded." error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
@@ -83,52 +69,18 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const runner = roles.some((x) => x === "config_maker" || x === "space_admin" || x === "operator");
   const st = reconStatus(r);
   const edit = editAction(r, spaceId, maker, { busy: start.isPending, run: () => start.mutate() });
-  // Delete draft recon: an item of the header's ⋯ menu with its confirmation (ui-standard §1a)
-  const deleteRecon = discardConfirm(r.name, async () => {
-    await api(reconApi(spaceId, id), { method: "DELETE" });
-    toast(`Deleted the draft recon ${r.name}.`);
-    await qc.invalidateQueries({ queryKey: RECON_KEY });
-    router.push(reconsHref(spaceId));
-  });
-  // a live recon's open draft: discarded, the published version keeps running (owner, 22 Nov: Cancel while editing)
-  const draftOpen = maker && r.draft?.status === "draft";
-  const discardDraft: HeaderConfirm | null = draftOpen && r.published ? {
-    title: `Discard Draft v${r.draft!.version}?`,
-    description: `The changes since version ${r.published.version} are removed, with the draft's simulations. Version ${r.published.version} keeps running. This can't be undone.`,
-    onConfirm: async () => {
-      await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(r.draft!.id)}`), { method: "DELETE" });
-      toast(`Discarded Draft v${r.draft!.version}. Version ${r.published!.version} keeps running.`);
-      await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: ENGINE_KEY })]);
-      router.push(reconHref(spaceId, id));
-    },
-  } : null;
-  // Cancel editing: the draft goes (a live recon's), or the draft recon (one never submitted)
-  const cancel = discardDraft ?? (draftOpen && discardable(r, roles) ? deleteRecon : null);
-  const more: HeaderAction[] = [
-    ...(edit ? [edit] : []),
-    ...(discardDraft ? [{ label: `Discard draft v${r.draft!.version}`, destructive: true as const, confirm: discardDraft }] : []),
-    ...(discardable(r, roles) ? [{ label: "Delete draft recon", destructive: true as const, confirm: deleteRecon }] : []),
-  ];
+  const more: HeaderAction[] = [...(edit ? [edit] : []), ...endings];
   const makerId = r.draft?.makerId ?? null;
   const by = makerId && makerId !== user.id ? (dq.data?.people.find((p) => p.id === makerId)?.name ?? null) : null;
   const tabHref = (t: ReconTab) => (t === "overview" ? reconHref(spaceId, id) : `${reconHref(spaceId, id)}?tab=${t}`);
-  const shown = r.draft ?? r.published;
-  const editable = maker && r.draft?.status === "draft";
+  // the Configuration shows what runs (or, before the first approval, the draft); an open draft is continued in its setup
+  const shown = r.published ?? r.draft;
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by, editable ? save?.status : undefined)}
-        actions={(editable && save?.status === "failed") || (cancel && tab === "configuration") ? (
-          <>
-            {editable && save?.status === "failed" && <Button type="button" variant="secondary" onClick={save.retry}>Retry</Button>}
-            {cancel && tab === "configuration" && <Button type="button" variant="secondary" onClick={() => setCancelling(true)}>Cancel editing</Button>}
-          </>
-        ) : undefined} more={more.length ? more : undefined} />
-      {cancelling && cancel && (
-        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setCancelling(false); }} auditFields={false} reasons={[]} destructive
-          title={cancel.title} description={cancel.description} impact={[]} actionLabel={discardDraft ? "Discard draft" : "Delete draft recon"}
-          onConfirm={async () => { await cancel.onConfirm(); setCancelling(false); }} />
-      )}
+      <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by)}
+        actions={edit && "href" in edit && edit.href && r.draft?.status === "draft" ? <Button asChild><Link href={edit.href}>Continue editing</Link></Button> : undefined}
+        more={more.length ? more : undefined} />
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
       </RouteTabs>
@@ -141,8 +93,16 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this recon; showing the last loaded draft.</Notice>}
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
-            {building && shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
-            {!building && shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
+            {r.draft?.status === "draft" && (
+              // an open draft: where it stands and the way back into its setup
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-tray px-4 py-3">
+                <p className="min-w-0 flex-1 basis-64 text-body-sm text-fg">
+                  Draft v{r.draft.version} is open{r.published ? `; version ${r.published.version} keeps running until it is approved` : ""}.
+                </p>
+                {maker && <Button asChild variant="secondary" size="sm"><Link href={reconEditHref(spaceId, r.id, 5)}>Continue editing</Link></Button>}
+              </div>
+            )}
+            {shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
           </>
         )}
     </div>
