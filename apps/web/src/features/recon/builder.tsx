@@ -186,11 +186,21 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       setProblem(null);
     }, { id });
   };
+  // List or canvas (DEC-041): the same passes and actions; the view is in the URL (?view=canvas), a phone shows the list.
+  // The canvas takes the panel's full width (beside the inspector its text would shrink below reading size), so a
+  // node opens the inspector in the sheet, as on a phone; closing it returns to the node
+  const sp = useSearchParams(), pathname = usePathname();
+  const view: "list" | "canvas" = sp.get("view") === "canvas" ? "canvas" : "list";
+  const setView = (v: "list" | "canvas") => {
+    const next = new URLSearchParams(window.location.search);
+    if (v === "canvas") next.set("view", "canvas"); else next.delete("view");
+    window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
+  };
   const focusLater = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.getElementById(id)?.focus()));
   const onPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const select = (s: Selected) => {
     setSel(s);
-    if (onPhone()) setSheet(true);
+    if (onPhone() || view === "canvas") setSheet(true);
     else requestAnimationFrame(() => { const h = inspectorRef.current?.querySelector<HTMLElement>("h2"); h?.setAttribute("tabindex", "-1"); h?.focus(); });
   };
   /** Moves a pass; `announce` for Alt+↑/↓ and Move earlier/later (a drop is announced by dnd-kit). */
@@ -359,19 +369,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
   }));
-  // List or canvas (DEC-041): the same passes and actions; the view is in the URL (?view=canvas), a phone shows the list
-  const sp = useSearchParams(), pathname = usePathname();
-  const view: "list" | "canvas" = sp.get("view") === "canvas" ? "canvas" : "list";
-  const setView = (v: "list" | "canvas") => {
-    const next = new URLSearchParams(window.location.search);
-    if (v === "canvas") next.set("view", "canvas"); else next.delete("view");
-    window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
-  };
   const selectedId = sel.k === "side" ? (sel.i === 0 ? "side-a" : "side-b") : sel.k === "pass" ? sel.key : null;
+  const focusNode = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus()));
   const onCanvasMove = (from: number, to: number, byKey: boolean) => {
     const key = keys[from]!;
     move(from, to, true);
-    if (byKey) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(key)}"]`)?.focus()));
+    if (byKey) focusNode(key);
   };
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
@@ -434,7 +437,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         );
       })}
 
-      <div className="grid items-start gap-section xl:grid-cols-[minmax(0,1fr)_21.25rem]">
+      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_21.25rem]")}>
         <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}
           actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
           <div className="grid gap-0">
@@ -480,12 +483,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           </div>
         </Panel>
 
-        <div ref={inspectorRef} onKeyDown={onInspectorKey} className="max-md:hidden">
+        <div ref={inspectorRef} onKeyDown={onInspectorKey} className={view === "canvas" ? "hidden" : "max-md:hidden"}>
           <Panel title={title}>{!sheet && body}</Panel>
         </div>
       </div>
 
-      {sheet && body && <InspectorSheet title={title} onClose={() => { setSheet(false); if (sel.k === "pass") focusLater(`pass-${sel.key}`); }}>{body}</InspectorSheet>}
+      {sheet && body && <InspectorSheet title={title} onClose={() => {
+        setSheet(false);
+        // back where the choice was made: the node on the canvas (a desktop), else the pass in the list
+        if (view === "canvas" && !onPhone() && selectedId) focusNode(selectedId);
+        else if (sel.k === "pass") focusLater(`pass-${sel.key}`);
+      }}>{body}</InspectorSheet>}
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
           onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={failed ? `The last change wasn't saved: ${problem?.text ?? "the save failed"}` : `Draft v${saved.version} is still saving the last change.`}
