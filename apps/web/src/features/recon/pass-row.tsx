@@ -3,7 +3,7 @@
 import type { CSSProperties, KeyboardEvent, Ref } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { MenuIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { MenuIcon, RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { CARDINALITY_WORDS, conditionParts, type Fields, keysText } from "./spec-model";
 
@@ -25,6 +25,8 @@ export type PassRowProps = {
   notes?: readonly string[];
   /** The shown simulation: this pass's outcome, the connector under it, dimmed while out of date or running. */
   sim?: { outcome: Outcome[]; connector: string | null; dim: boolean };
+  /** Remove the pass from the card itself (owner, 22 Nov), with Undo as from the inspector; none read only. */
+  onRemove?: () => void;
 };
 /** A pass as text: its number and name, cardinality, when found, the matching keys and every condition. */
 export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
@@ -65,7 +67,7 @@ export type SortableBits = {
  * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
  * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, sortable }: PassRowProps & { sortable?: SortableBits }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, sortable }: PassRowProps & { sortable?: SortableBits }) {
   const dragging = !!sortable?.dragging;
   return (
     <li ref={sortable?.setNodeRef} style={sortable?.style}
@@ -82,6 +84,12 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
             className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <PassBody pass={pass} fields={fields} />
           </button>
+          {editable && onRemove && (
+            <button type="button" onClick={onRemove} aria-label={`Remove pass ${pass.no}${pass.name ? ` (${pass.name})` : ""}`} title="Remove pass"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-fg-3 hover:bg-tray hover:text-fg focus-visible:outline-2 focus-visible:outline-primary">
+              <Icon icon={RemoveIcon} />
+            </button>
+          )}
         </div>
         <div className={cn("grid content-start gap-3 rounded-md border border-dashed border-line p-3 text-caption text-fg-3", sim?.dim && "opacity-60")}>
           {sim?.outcome.length ? sim.outcome.map((o) => (

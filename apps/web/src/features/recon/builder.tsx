@@ -333,23 +333,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           onChange={(p) => change({ ...spec, passes: spec.passes.map((x, j) => (j === passIndex ? p : x)) })}
           onMove={(dir) => { move(passIndex, passIndex + dir); focusLater(`pass-${keys[passIndex]}`); }}
           onRemoved={(message, restore) => offerUndo(message, keys[passIndex]!, restore)}
-          onRemove={() => {
-            const pass = spec.passes[passIndex]!, key = keys[passIndex]!, at = passIndex;
-            const rest = keys.filter((_, j) => j !== passIndex);
-            change(removePass(spec, passIndex));
-            setKeys(rest);
-            setSel(rest[0] ? { k: "pass", key: rest[Math.min(passIndex, rest.length - 1)]! } : { k: "side", i: 0 });
-            setSheet(false);
-            // its rows' Undo can't apply any more: their toasts go
-            for (const id of rowToasts.current.get(key) ?? []) toast.dismiss(id);
-            rowToasts.current.delete(key);
-            toast.undo(`Removed pass ${at + 1}${pass.name ? ` (${pass.name})` : ""}.`, () => {
-              setSpec((cur) => restorePass(cur, pass, at));
-              setKeys((cur) => insertAt(cur, at, key));
-              setSel({ k: "pass", key });
-              setProblem(null);
-            }, { id: `recon-undo-${undoSeq.current++}` });
-          }} />
+          onRemove={() => removePassAt(passIndex)} />
         : null;
   // read only while it is sent for approval (an autosave never replaces what is being typed: it only records the save)
   const body = editor && <fieldset disabled={!editable || submitting} className="contents">{editor}</fieldset>;
@@ -360,7 +344,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
   const rows: PassRowProps[] = spec.passes.map((p, i) => ({
     id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
-    onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
+    onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!), onRemove: editable ? () => removePassAt(i) : undefined,
   }));
   const selectedId = sel.k === "side" ? (sel.i === 0 ? "side-a" : "side-b") : sel.k === "pass" ? sel.key : null;
   const focusNode = (id: string) => requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus()));
@@ -369,6 +353,24 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     move(from, to, true);
     if (byKey) focusNode(key);
   };
+  /** Removes pass `at` (from its card or the inspector), with Undo; the selection moves to the pass now in its place. */
+  function removePassAt(at: number) {
+    const pass = spec.passes[at]!, key = keys[at]!;
+    const rest = keys.filter((_, j) => j !== at);
+    change(removePass(spec, at));
+    setKeys(rest);
+    if (sel.k !== "pass" || sel.key === key) setSel(rest[0] ? { k: "pass", key: rest[Math.min(at, rest.length - 1)]! } : { k: "side", i: 0 });
+    setSheet(false);
+    // its rows' Undo can't apply any more: their toasts go
+    for (const id of rowToasts.current.get(key) ?? []) toast.dismiss(id);
+    rowToasts.current.delete(key);
+    toast.undo(`Removed pass ${at + 1}${pass.name ? ` (${pass.name})` : ""}.`, () => {
+      setSpec((cur) => restorePass(cur, pass, at));
+      setKeys((cur) => insertAt(cur, at, key));
+      setSel({ k: "pass", key });
+      setProblem(null);
+    }, { id: `recon-undo-${undoSeq.current++}` });
+  }
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
     document.getElementById(`pass-${sel.key}`)?.focus();
@@ -430,7 +432,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         );
       })}
 
-      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_25rem]")}>
+      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_minmax(28rem,40%)]")}>
         <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}
           actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
           <div className="grid gap-0">

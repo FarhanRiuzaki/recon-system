@@ -44,7 +44,8 @@ function FieldPick({ id, label, i, pair, op, fields, onPick }: {
   });
   return (
     <div className="grid min-w-0 gap-1">
-      <span className="text-caption text-fg-3">{label}</span>
+      {/* one line on both sides, so the two pickers stay level (symmetric); the whole name on hover */}
+      <span className="truncate text-caption text-fg-3" title={label}><span className="text-fg-2">{i === 0 ? "A" : "B"}</span> · {label}</span>
       <Combobox id={id} label={`${label} field`} value={[sideRef(pair, i)]} options={options} phone="sheet" placeholder="Choose a field" searchPlaceholder="Search fields"
         emptyText={fields[i] ? "No field matches." : "This side's source is still loading."} onValueChange={(v) => { if (v[0]) onPick(withSide(pair, i, v[0])); }} />
     </div>
