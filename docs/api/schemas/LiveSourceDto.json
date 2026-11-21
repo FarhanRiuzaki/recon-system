@@ -9,6 +9,14 @@
     "name": {
       "type": "string"
     },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "db_watermark",
+        "db_snapshot",
+        "file_inbox"
+      ]
+    },
     "health": {
       "anyOf": [
         {
@@ -101,6 +109,7 @@
   "required": [
     "id",
     "name",
+    "kind",
     "health",
     "rowsToday"
   ],

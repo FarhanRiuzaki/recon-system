@@ -70,6 +70,8 @@ export type MapNode = {
   running?: "queued" | "running"; runStartedAt?: string;
   /** A source whose records just grew (useArrivals): by how many. */
   arriving?: number;
+  /** A source's kind (its icon). */
+  kind?: LiveSourceDto["kind"];
 };
 export type MapEdge = {
   id: string; source: string; target: string; /** 1–4 px: the source's records today against the busiest source's. */ width: number;
@@ -88,7 +90,7 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string, arriving: 
   const first = (id: string) => { const i = t.recons.findIndex((r) => r.sides.some((x) => x.sourceId === id)); return i < 0 ? t.recons.length : i; };
   const ordered = [...t.sources].sort((a, b) => first(a.id) - first(b.id) || a.name.localeCompare(b.name));
   const nodes: MapNode[] = ordered.map((s) => ({
-    id: `src-${s.id}`, lane: 0, title: s.name, chip: sourceChip(s), arriving: arriving.get(s.id),
+    id: `src-${s.id}`, lane: 0, title: s.name, chip: sourceChip(s), arriving: arriving.get(s.id), kind: s.kind,
     line: `${sourceLag(s)}${s.rowsToday != null ? ` · ${formatNumber(s.rowsToday)} today` : ""}`,
   }));
   const edges: MapEdge[] = [];

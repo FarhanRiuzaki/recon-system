@@ -5,7 +5,8 @@ import { type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import type { LiveReconDto, LiveSourceDto, ReconRowDto } from "@starterkit/shared/contracts/recon";
 import { reconStatus } from "@/lib/shared/recon-status";
-import { useElapsed } from "./flow-parts";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { SOURCE_KIND_WORD, sourceKindIcon, useElapsed } from "./flow-parts";
 import { dayTotals, reconChip, sourceChip } from "./live-model";
 import { rateText } from "./run-model";
 import { reconHref } from "./use-recons";
@@ -59,6 +60,8 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
             return (
               <span key={i} className="flex min-w-0 items-center gap-2 text-body-sm">
                 <span className="w-3 shrink-0 text-caption text-fg-3">{i === 0 ? "A" : "B"}</span>
+                {/* how its data arrives (owner, 22 Nov: a database apart from a file at a glance); the word for a screen reader */}
+                {s && <span title={SOURCE_KIND_WORD[s.kind]} className="grid size-5 shrink-0 place-items-center rounded-sm bg-tray text-fg-2"><Icon icon={sourceKindIcon(s.kind)} size={12} /><span className="sr-only">{SOURCE_KIND_WORD[s.kind]}</span></span>}
                 <span className="truncate text-fg" title={s?.name ?? side.label}>{s?.name ?? side.label}</span>
                 {chip && chip.health !== "healthy" && <span className="shrink-0 text-caption text-degraded-ink">{chip.label}</span>}
               </span>

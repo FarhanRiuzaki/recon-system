@@ -13,6 +13,7 @@ import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatDuration } from "@starterkit/ui/lib/format";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
+import { DiskIcon, FileIcon } from "@starterkit/ui/ui/icons";
 
 /** The status colours an outcome or a marked node may carry (status colours are for health states only, AGENTS.md §6). */
 export type Accent = "healthy" | "degraded" | "down" | "stopped" | "primary" | null;
@@ -61,6 +62,10 @@ export function FlowCard({ icon, step, title, line, badge, accent = null, select
     </div>
   );
 }
+
+/** How a source's data arrives, as an icon: a database read or a file (the lists and the Space map tell them apart). */
+export const sourceKindIcon = (kind: "db_watermark" | "db_snapshot" | "file_inbox"): IconData => (kind === "file_inbox" ? FileIcon : DiskIcon);
+export const SOURCE_KIND_WORD: Record<"db_watermark" | "db_snapshot" | "file_inbox", string> = { db_watermark: "Database", db_snapshot: "Database snapshot", file_inbox: "File" };
 
 /** A small badge inside a card (a pass's Auto / Suggest). */
 export const FlowBadge = ({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "primary" }) => (

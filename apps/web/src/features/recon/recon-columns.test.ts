@@ -25,11 +25,14 @@ describe("the recons list's live columns (owner, 22 Nov: as the sources list)", 
     day: { date: "2026-11-22", passes: { 1: { matched: 90, suggested: 4, broken: 0, brokenRefs: 0 } }, open: { a: 6, b: 2 }, breaks: { a: 0, b: 0 }, items: { a: 100, b: 98 }, closed: false },
   };
   const health = (state: "healthy" | "down") => ({ state, businessDate: "2026-11-22", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null });
-  const index = { recons: new Map([["r1", live]]), sources: new Map([["a", { id: "a", name: "Core banking", health: health("healthy"), rowsToday: 100 }], ["b", { id: "b", name: "Switch settle", health: health("down"), rowsToday: 98 }]]) };
+  const index = { recons: new Map([["r1", live]]), sources: new Map([["a", { id: "a", name: "Core banking", kind: "db_watermark" as const, health: health("healthy"), rowsToday: 100 }], ["b", { id: "b", name: "Switch settle", kind: "file_inbox" as const, health: health("down"), rowsToday: 98 }]]) };
   const cell = (key: string, l: typeof index | null = index) => renderToStaticMarkup(createElement("div", null, reconColumns("s", l).find((c) => c.key === key)!.cell(row)));
   it("the sources with a bad one named, how often it runs, the day, match rate, waiting and open breaks", () => {
     expect(cell("sides")).toContain("Core banking");
     expect(cell("sides")).toContain("Down");
+    // a database apart from a file at a glance (owner, 22 Nov), its word for a screen reader
+    expect(cell("sides")).toContain("Database");
+    expect(cell("sides")).toContain("File");
     expect(cell("schedule")).toContain("Every 2 min");
     expect(cell("today")).toContain("Source down");
     expect(cell("rate")).toContain("90%");

@@ -4,7 +4,7 @@ import {
   AMOUNT_SIGNS, BREAK_REASONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
 } from "../recon";
-import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, toMinor, VERSION_STATUSES } from "../sources";
+import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMinor, VERSION_STATUSES } from "../sources";
 import { TargetActivityQuery } from "./audit";
 import { ListQuery, sortParam } from "./common";
 import { SourceHealthDto } from "./sources";
@@ -407,6 +407,8 @@ export const DAY_STATES = ["open", "closing", "closed"] as const;
 export const LiveSourceDto = z.object({
   id: z.string(),
   name: z.string(),
+  /** How its data arrives (a database read, a file): the lists' icon. */
+  kind: z.enum(SOURCE_KINDS),
   health: SourceHealthDto.nullable(),
   /** Records that count for its health's business date. */
   rowsToday: z.number().int().nullable(),

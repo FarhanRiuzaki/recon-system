@@ -247,7 +247,7 @@ export async function liveSources(tx: InTx, spaceId: string, ids: string[]): Pro
   const { states } = await readModel(tx, rows, spaceId);
   return rows.map(({ s }) => {
     const st = states.get(s.id);
-    return { id: s.id, name: s.name, health: st?.health ? omitInputs(st.health) : null, rowsToday: st?.rowsToday ?? null };
+    return { id: s.id, name: s.name, kind: s.kind as SourceKind, health: st?.health ? omitInputs(st.health) : null, rowsToday: st?.rowsToday ?? null };
   });
 }
 

@@ -4,7 +4,7 @@ import { dayCounters, dayTotals, reconChip, sourceLag, spaceMap } from "./live-m
 
 const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
   ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
-const src = (id: string, state: "healthy" | "degraded" | "down", rowsToday = 100): LiveSourceDto => ({ id, name: id.toUpperCase(), health: health(state), rowsToday });
+const src = (id: string, state: "healthy" | "degraded" | "down", rowsToday = 100): LiveSourceDto => ({ id, name: id.toUpperCase(), kind: "db_watermark", health: health(state), rowsToday });
 const recon = (id: string, a: string, b: string, o: Partial<LiveReconDto> = {}): LiveReconDto => ({
   id, name: `Recon ${id}`, sides: [{ label: "A", sourceId: a }, { label: "B", sourceId: b }], schedule: { kind: "interval", every_minutes: 2 },
   date: "2026-11-21", state: "open", runId: "r1", runAt: null, lastSuccessAt: null, stale: false, alertedAt: null, running: null, openBreaks: 3,

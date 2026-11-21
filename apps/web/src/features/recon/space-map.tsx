@@ -13,8 +13,8 @@ import { type KeyboardEvent, useMemo, useRef } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { BranchIcon, DiskIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
-import { type Accent, EDGE_TYPES, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useElapsed, useFitToCard, useHotNode } from "./flow-parts";
+import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { type Accent, EDGE_TYPES, sourceKindIcon, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useElapsed, useFitToCard, useHotNode } from "./flow-parts";
 import type { MapEdge, MapNode } from "./live-model";
 
 const W = 280, H = 68, GAP_X = 180, GAP_Y = 20;
@@ -29,7 +29,7 @@ function MapCard({ data }: NodeProps<Node<Data>>) {
   return (
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <FlowCard icon={data.lane === 0 ? DiskIcon : data.running === "running" ? SpinnerIcon : BranchIcon} title={data.title} accent={ACCENT[data.chip.health]} marked={hit}
+      <FlowCard icon={data.lane === 0 ? sourceKindIcon(data.kind ?? "db_watermark") : data.running === "running" ? SpinnerIcon : BranchIcon} title={data.title} accent={ACCENT[data.chip.health]} marked={hit}
         interactive={!!data.href} running={data.running === "running" || !!data.arriving}
         line={elapsed ? `Running for ${elapsed}` : data.arriving ? `+${formatNumber(data.arriving)} records just in` : hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}
         badge={data.running
