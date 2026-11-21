@@ -24,7 +24,7 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
-  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, type Secret, type SourceState,
+  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
@@ -194,6 +194,8 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string, admin = false)
     connection: connection ? { ...connectionDto(connection), ...(server ? { server } : {}) } : null,
     shares,
     usedBy: own ? await reconsUsingSource(tx, s.id) : [],
+    // the 14 business dates up to the one in progress (the Overview's volume chart); none without a published version
+    days: state?.health ? await sourceDays(tx, { spaceId: s.spaceId, sourceId: s.id }, state.health.businessDate) : [],
     published: published ? versionDto(published) : null,
     draft: open ? versionDto(open) : null,
   };

@@ -27,7 +27,7 @@ function countsOf(p: SourcePullDto): string {
     p.added ? `+${formatNumber(p.added)} ${p.added === 1 ? "record" : "records"}` : null,
     p.quarantined ? `${formatNumber(p.quarantined)} quarantined` : null,
     p.leftOut ? `${formatNumber(p.leftOut)} left out` : null,
-    p.rows ? `${formatNumber(p.rows)} rows read` : null,
+    p.rows ? `${formatNumber(p.rows)} ${p.rows === 1 ? "row" : "rows"} read` : null,
   ].filter(Boolean).join(" · ");
 }
 

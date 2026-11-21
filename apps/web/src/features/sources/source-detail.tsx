@@ -4,11 +4,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
-import { BlockedButton, CategoryChip, type Column, DataTable, Failure, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
+import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
+import { BlockedButton, CategoryChip, type Column, DataTable, Failure, LazyMount, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
 import { formatDate, formatDateTime, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { CheckIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, ColumnChartIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import type { DbEngine } from "@starterkit/shared/sources";
 import { BRAND } from "@starterkit/shared/brand";
@@ -136,6 +137,22 @@ function TodayTiles({ s }: { s: SourceDto }) {
   );
 }
 
+/**
+ * Records and quarantined lines per business date, the 14 dates up to the one in progress (owner, 21 Nov: a day that
+ * dropped or a quarantine that grew shows at a glance); a shared source's quarantined counts stay with its owner.
+ */
+function Volume({ s }: { s: SourceDto }) {
+  const total = s.days.reduce((n, d) => n + d.records, 0);
+  return (
+    <Panel icon={ColumnChartIcon} title="Last 14 days" description={`${formatNumber(total)} records by business date`}>
+      <LazyMount minHeight={CHART_HEIGHT.standard}>
+        <BarChart label="Records and quarantined lines per business date" categories={s.days.map((d) => day(d.date))} format={formatNumber} stacked
+          series={[{ label: "Records", values: s.days.map((d) => d.records), slot: 0 }, ...(s.owner ? [] : [{ label: "Quarantined", values: s.days.map((d) => d.quarantined), tone: "down" as const }])]} />
+      </LazyMount>
+    </Panel>
+  );
+}
+
 export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string; tab: SourceTab }) {
   const q = useSource(spaceId, id);
   const roles = useSpaceRoles(spaceId);
@@ -203,6 +220,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
           {s.status === "paused" && s.drift && <Drift s={s} spaceId={spaceId} edit={edit} />}
           {missing && <Notice tone="warn">{missingText(s)}</Notice>}
           {h && <TodayTiles s={s} />}
+          {s.days.length > 0 && <Volume s={s} />}
           {s.kind === "file_inbox" && <FilesTable spaceId={spaceId} id={id} />}
           {s.kind === "db_snapshot" && (
             <SnapshotsTable spaceId={spaceId} id={id} run={own ? { blocked, pending: run.isPending, onPull: (d) => run.mutate(d) } : null} />

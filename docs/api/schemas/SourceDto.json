@@ -312,6 +312,33 @@
         }
       ]
     },
+    "days": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "records": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "date",
+          "records",
+          "quarantined"
+        ],
+        "additionalProperties": false
+      }
+    },
     "usedBy": {
       "type": "array",
       "items": {
@@ -2194,6 +2221,7 @@
     "updatedAt",
     "nextRunAt",
     "drift",
+    "days",
     "usedBy",
     "connection",
     "shares",

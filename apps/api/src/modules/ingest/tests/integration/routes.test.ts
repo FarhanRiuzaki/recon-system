@@ -195,6 +195,13 @@ describe("the sources list and detail read model", () => {
     await db.transaction((tx) => recountDays(tx, A)); // rows written here, not by the pipeline
   });
 
+  it("the detail's 14 days end at the date in progress, every date listed, its counts on it (the volume chart)", async () => {
+    const d = await detail(A, FILE_SRC, t.op);
+    expect(d.days).toHaveLength(14);
+    expect(d.days.at(-1)).toEqual({ date: D(), records: 2, quarantined: 1 });
+    expect(d.days.slice(0, -1).every((x) => x.records === 0 || x.date !== D())).toBe(true);
+  });
+
   it("a quarantined line names the file it came in, with the file's version; a line of an unknown origin names none", async () => {
     const q = await json<Page<QuarantineRowDto>>(call("GET", path(A, FILE_SRC, "quarantine"), { token: t.op }));
     expect(q.items.map((r) => [r.line, r.file])).toEqual([[3, { name: "act-today.txt", version: 1 }], [12, null]]);

@@ -680,6 +680,19 @@ export function quarantinePage(ctx: Ctx, id: string, q: IngestListQuery): Promis
   });
 }
 
+/**
+ * Source `s`'s records and quarantined lines per business date, for the `days` dates up to `to` (the source detail's
+ * volume chart; the day counters, sourceDayCounts): every date listed, 0 where nothing came.
+ */
+export async function sourceDays(tx: InTx, s: Scope, to: string, days = 14): Promise<{ date: string; records: number; quarantined: number }[]> {
+  const dates = Array.from({ length: days }, (_, i) => new Date(Date.parse(`${to}T00:00:00Z`) - (days - 1 - i) * 86_400_000).toISOString().slice(0, 10));
+  const c = sourceDayCounts;
+  const rows = await tx.select({ date: c.businessDate, kind: c.kind, n: c.n }).from(c)
+    .where(and(eq(c.spaceId, s.spaceId), eq(c.sourceId, s.sourceId), inArray(c.businessDate, dates)));
+  const n = (date: string, kind: string) => rows.find((r) => r.date === date && r.kind === kind)?.n ?? 0;
+  return dates.map((date) => ({ date, records: n(date, "records"), quarantined: n(date, "quarantined") }));
+}
+
 /** GET …/pulls (the Pull history card): a watermark source's pulls of the last PULL_DAYS days, newest first; its own space only. */
 export function pullPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<SourcePullDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
