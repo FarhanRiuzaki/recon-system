@@ -559,7 +559,8 @@ export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<Con
 /**
  * POST …/sources/catalog and POST …/{sourceId}/connection/catalog (REC-F2a): what the source database lists for this
  * login, over the typed connection or the stored one: the databases it can open (Oracle: schemas), a page of the tables
- * and views it can SELECT, or one table's columns. Allowlisted catalog SQL only (connectors/dialect.ts), within the
+ * and views it can SELECT, one table's columns, or the columns a typed SELECT gives (as …/connection/columns: the
+ * query wrapped so it reads no row). Allowlisted catalog SQL only (connectors/dialect.ts), within the
  * interactive deadline; 429 past 60 lists a minute per user (apart from the tests); one log line per list, as a test's.
  * A connector failure is 400 with its fixed sentence.
  */
@@ -582,6 +583,7 @@ export async function sourceCatalog(ctx: Ctx, id: string | null, b: SourceCatalo
         return { list: "databases", items: d.names, truncated: d.truncated };
       }
       if (b.list === "columns") return { list: "columns", table: b.table, columns: (await x.introspect({ table: b.table })).map(columnDto) };
+      if (b.list === "query") return { list: "query", columns: (await x.introspect({ query: b.query, businessDate: b.businessDate ?? todayJakarta() })).map(columnDto) };
       const f = { ...(b.schema !== undefined ? { schema: b.schema } : {}), ...(b.q ? { q: b.q } : {}) };
       const page = await x.tables({ ...f, ...(b.after ? { after: b.after } : {}) });
       const n = await x.countTables(f, CATALOG_COUNT_CAP + 1);

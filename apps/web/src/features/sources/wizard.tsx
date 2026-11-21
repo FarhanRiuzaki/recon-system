@@ -575,7 +575,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               catalog={{
                 names, tables, stale: listsStale, tablesStale, free, onFree: (k, f) => setFree((x) => ({ ...x, [k]: f })), query: tableQuery, onQuery: setTableQuery,
                 schema, onSchema: setSchema, onPickDatabase: pickDatabase, onPickTable: (t) => void pickTable(t), onRetryNames: () => void loadNames(), onRetryTables: () => void loadTables(tableQuery),
-                columns: picked,
+                columns: picked, onCheckQuery: (query) => catalog<Extract<SourceCatalogDto, { list: "query" }>>({ list: "query", query }),
               }} />
           )}
           {step === 1 && (

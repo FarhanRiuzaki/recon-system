@@ -61,6 +61,8 @@
   --stopped-mark: #8a8a93;  --stopped-ink: #55555c;  --stopped-soft: #f1f1f3;
   --unknown-mark: #a1a1aa;  --unknown-ink: #55555c;  --unknown-soft: #f1f1f3;
   --on-crit: #ffffff;
+  /* SQL syntax (SqlEditor), after VS Code's Light+ / Dark+: text colours, each ≥ 4.5:1 on card and inset */
+  --code-keyword: #0000ff; --code-string: #a31515; --code-number: #097450; --code-comment: #00720a; --code-param: #795e26;
   /* categorical chart palette — fixed order (spec §3.3, CVD-validated) */
   --chart-1: #1a7cf0;
   --chart-2: #e8690c;
@@ -218,6 +220,7 @@
   --stopped-mark: #7d7d86;  --stopped-ink: #a8a8b1;  --stopped-soft: #2a2a2f;
   --unknown-mark: #5d5d66;  --unknown-ink: #a8a8b1;  --unknown-soft: #2a2a2f;
   --on-crit: #1f0a07;
+  --code-keyword: #569cd6; --code-string: #ce9178; --code-number: #b5cea8; --code-comment: #7ca668; --code-param: #dcdcaa;
   --chart-1: #3a8ff5;
   --chart-2: #d9692a;
   --chart-3: #1a9c86;

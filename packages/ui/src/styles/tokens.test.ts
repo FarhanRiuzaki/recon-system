@@ -48,6 +48,8 @@ const STATES = ["healthy", "degraded", "down", "stopped", "unknown"];
 const TEXT: [string, string][] = [
   ...INKS.flatMap((ink) => SURFACES.map((s) => [ink, s] as [string, string])),
   ...STATES.map((s) => [`${s}-ink`, `${s}-soft`] as [string, string]),
+  // SqlEditor's syntax colours on the field (card) and a disabled field (inset)
+  ...["keyword", "string", "number", "comment", "param"].flatMap((k) => [[`code-${k}`, "card"], [`code-${k}`, "inset"]] as [string, string][]),
   ...STATES.map((s) => ["fg", `${s}-soft`] as [string, string]),
   ["primary-foreground", "primary"], ["primary-foreground", "primary-hover"], ["action-fg", "action"], ["action-fg", "action-hover"], ["on-crit", "down-ink"],
   // Primary button label on both stops of its gradient, at rest and on hover; Danger button label on its hover fill.

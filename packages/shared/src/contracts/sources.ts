@@ -257,6 +257,8 @@ export const SourceCatalogBody = z.discriminatedUnion("list", [
     after: z.strictObject({ schema: catalogName, name: catalogName }).optional(),
   }),
   z.strictObject({ list: z.literal("columns"), connection: TypedConnection.optional(), table: z.string().regex(DB_TABLE_NAME) }),
+  // "Check query" in the wizard: the columns a SELECT gives, before the source is saved (no rows read)
+  z.strictObject({ list: z.literal("query"), connection: TypedConnection.optional(), query, businessDate: isoDate.optional() }),
 ]);
 export type SourceCatalogBody = z.infer<typeof SourceCatalogBody>;
 
@@ -271,6 +273,7 @@ export const SourceCatalogDto = z.discriminatedUnion("list", [
   z.object({ list: z.literal("databases"), items: z.array(z.string()), truncated: z.boolean() }),
   z.object({ list: z.literal("tables"), items: z.array(CatalogTableDto), total: z.number().int(), totalCapped: z.boolean(), next: z.object({ schema: z.string(), name: z.string() }).nullable() }),
   z.object({ list: z.literal("columns"), table: z.string(), columns: z.array(SourceColumnDto) }),
+  z.object({ list: z.literal("query"), columns: z.array(SourceColumnDto) }),
 ]);
 export type SourceCatalogDto = z.infer<typeof SourceCatalogDto>;
 

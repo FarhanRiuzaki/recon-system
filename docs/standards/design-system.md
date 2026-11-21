@@ -726,6 +726,11 @@ person searches, or longer than a short fixed set, is a `Combobox` (`ds/combobox
 `ok` = a check in Healthy mark, `bad` = a cross in Down mark with the reason (its description) in Down ink; a `bad`
 option that can't be chosen stays at full colour so the reason reads (`combobox.test.ts` "Combobox option tone"). The
 icon always comes with words: the label, and for `bad` the reason.
+A SQL field is `SqlEditor` (`ds/sql-editor.tsx`): the textarea's text coloured as SQL by a copy drawn under it, VS Code
+Light+ / Dark+ hues as `--code-keyword`, `--code-string`, `--code-number`, `--code-comment` (italic) and `--code-param`
+(`:name`), each ≥ 4.5:1 on card and inset (`tokens.test.ts`); its `action` (a secondary small "Check query") sits inside
+the box at the bottom right. A check's failure is the field's error; a pass is a Healthy-ink line under it
+(`sql-editor.test.ts`; shown on /ds/forms).
 
 ### 5.13 Empty, error, loading, stale (the five states)
 - **Loading**: shimmer skeletons in the final shape (§7.2): text bars 10 px radius 4, chart = gridlines + 3 ghost

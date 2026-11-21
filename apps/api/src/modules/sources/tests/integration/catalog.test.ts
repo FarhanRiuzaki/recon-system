@@ -83,6 +83,10 @@ describe("POST …/sources/catalog (a new source's typed values)", () => {
       { name: "updated_at", type: "timestamp with time zone", nullable: false, unique: false, indexed: false },
       { name: "ref", type: "text", nullable: true, unique: false, indexed: false },
     ] });
+    // Check query: the columns a typed SELECT gives, before the source exists; a broken one is 400 with its sentence
+    const q = await json<Extract<SourceCatalogDto, { list: "query" }>>(fresh({ list: "query", connection: probeLogin(), query: "select id, ref as reference from cat_src.bifast_tx" }));
+    expect([q.list, q.columns.map((c) => c.name)]).toEqual(["query", ["id", "reference"]]);
+    expect((await fresh({ list: "query", connection: probeLogin(), query: "select id, id from cat_src.bifast_tx" })).status).toBe(400);
     const hidden = await fresh({ list: "columns", connection: probeLogin(), table: "cat_src.no_grant" });
     expect([hidden.status, (await errOf(hidden)).message]).toEqual([400, "There is no table or view cat_src.no_grant that this user can read."]);
     // nothing stored, nothing recorded

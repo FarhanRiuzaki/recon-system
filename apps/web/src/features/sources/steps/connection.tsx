@@ -1,19 +1,19 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Field, Panel, Segmented, SqlEditor, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
-import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, type SourceKind } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
+import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { parseConnString } from "./conn-string";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, withEngine, withName } from "./model";
@@ -27,6 +27,8 @@ type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
 
 /** The pickers' lists and actions (REC-F2a), kept by the wizard. */
 export type CatalogProps = {
+  /** "Check query": the columns a SELECT gives over the connection on screen (POST …/catalog list query). */
+  onCheckQuery: (query: string) => Promise<{ columns: { name: string }[] }>;
   /** Databases (Oracle: schemas) the login can open, read after a passing test. */
   names: ListState<{ items: string[]; truncated: boolean }>;
   tables: ListState<TablesPage>;
@@ -419,9 +421,8 @@ function Data(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
         </div>
       ) : (
         <div className="grid gap-1">
-          <Field id={ctl("input.query")} label="Query" note="Only SELECT is allowed." error={err(ctl("input.query"))}>
-            <Textarea id={ctl("input.query")} value={i.query ?? ""} rows={6} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value } as Partial<WatermarkInput>)} />
-          </Field>
+          <QueryField note="Only SELECT is allowed." error={err(ctl("input.query"))} value={i.query ?? ""} rows={6} check={cat.onCheckQuery}
+            onChange={(query) => setInput({ query } as Partial<WatermarkInput>)} />
           <span><Button type="button" variant="link" size="sm" onClick={() => set((x) => ({ ...x, from: "table" }))}>Choose a table instead</Button></span>
         </div>
       ))}
@@ -445,10 +446,8 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   if (i.kind === "db_snapshot") {
     body = (
       <>
-        <Field id={ctl("input.query")} label="Query" error={err(ctl("input.query"))}
-          note="Only SELECT is allowed. :business_date is filled in for each run. A new snapshot becomes active only when the pull finishes; if it fails halfway, the active one stays.">
-          <Textarea id={ctl("input.query")} value={i.query} rows={8} className="font-mono" spellCheck={false} onChange={(e) => setInput({ query: e.target.value })} />
-        </Field>
+        <QueryField error={err(ctl("input.query"))} value={i.query} rows={8} check={p.catalog.onCheckQuery} onChange={(query) => setInput({ query })}
+          note="Only SELECT is allowed. :business_date is filled in for each run. A new snapshot becomes active only when the pull finishes; if it fails halfway, the active one stays." />
         <Field id={ctl("input.schedule")} label="Runs" error={err(ctl("input.schedule"))}
           note={`A cron expression in ${APP_TIME_ZONE_LABEL}: minute hour day month weekday. ${i.schedule.trim() ? `Now: ${scheduleText(i.schedule)}.` : ""}`}>
           <Input id={ctl("input.schedule")} value={i.schedule} className="font-mono" onChange={(e) => setInput({ schedule: e.target.value })} autoComplete="off" spellCheck={false} />
@@ -480,5 +479,37 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
       </div>
       {body}
     </Panel>
+  );
+}
+
+/**
+ * A source's SELECT (owner, 21 Nov): coloured as SQL, with "Check query" inside the box. A check reads the columns the
+ * query gives (no rows) over the connection on screen; its result belongs to the text it checked, so an edit clears it.
+ * A failure is the field's error (the sentence the API gives), a pass a green line naming the columns.
+ */
+function QueryField({ value, rows, note, error, onChange, check }: {
+  value: string; rows: number; note: string; error?: string | null; onChange: (query: string) => void; check: CatalogProps["onCheckQuery"];
+}) {
+  const [run, setRun] = useState<{ query: string; busy: boolean; ok?: string; failed?: string } | null>(null);
+  const mine = run && run.query === value ? run : null;
+  async function go() {
+    const query = value;
+    setRun({ query, busy: true });
+    try {
+      const r = await check(query);
+      setRun({ query, busy: false, ok: `${r.columns.length} ${r.columns.length === 1 ? "column" : "columns"}: ${r.columns.map((c) => c.name).join(", ")}.` });
+    } catch (e) {
+      setRun({ query, busy: false, failed: errorText(e) });
+    }
+  }
+  return (
+    <div className="grid gap-1.5">
+      <Field id={ctl("input.query")} label="Query" note={note} error={error || mine?.failed || undefined}>
+        <SqlEditor id={ctl("input.query")} value={value} rows={rows} onChange={(e) => onChange(e.target.value)}
+          action={<Button type="button" variant="secondary" size="sm" onClick={() => void go()} disabled={!value.trim() || !!mine?.busy} aria-busy={mine?.busy || undefined}>
+            {mine?.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Check query</Button>} />
+      </Field>
+      {mine?.ok && <p role="status" className="flex items-start gap-1.5 text-body-sm text-healthy-ink"><Icon icon={CheckIcon} className="mt-0.5 size-4 shrink-0" />{mine.ok}</p>}
+    </div>
   );
 }

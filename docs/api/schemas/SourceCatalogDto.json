@@ -164,6 +164,60 @@
         "columns"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "list": {
+          "type": "string",
+          "const": "query"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "nullable": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "unique": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "indexed": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "type",
+              "nullable",
+              "unique",
+              "indexed"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "list",
+        "columns"
+      ],
+      "additionalProperties": false
     }
   ]
 }
