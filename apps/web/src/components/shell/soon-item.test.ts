@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { NAV } from "@/lib/shared/nav";
 import { SoonCaption, SoonItem } from "./soon-item";
 
-const work = NAV.filter((n) => n.group === "work");
+const work = NAV.filter((n) => n.group === "work" && n.soon);
 
 describe("SoonItem", () => {
   it("one caption for the group; each item points at it and has no caption or tooltip text of its own", () => {
@@ -14,7 +14,7 @@ describe("SoonItem", () => {
     );
     expect(html.match(/id="cap"/g)).toHaveLength(1);
     expect(html.match(/aria-describedby="cap"/g)).toHaveLength(work.length);
-    expect(html.match(/Today, Breaks and Approvals arrive in a later release\./g)).toHaveLength(1);
+    expect(html.match(/Breaks and Approvals arrive in a later release\./g)).toHaveLength(1);
     expect(html).not.toContain("Arrives in a later release.");
   });
 

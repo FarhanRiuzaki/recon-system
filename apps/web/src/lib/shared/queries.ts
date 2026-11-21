@@ -175,6 +175,19 @@ export const reconRecordRuns = (spaceId: string, id: string) => ({
 export const reconRun = (spaceId: string, id: string, runId: string) => ({
   key: [...ENGINE_KEY, "run", spaceId, id, runId] as const, url: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}`,
 });
+/** Today (REC-F4): the space's recons' current days and their sources; the screens read it again every LIVE_POLL_MS. */
+export const spaceToday = (spaceId: string) => ({
+  key: [...ENGINE_KEY, "today", spaceId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/today` as const,
+});
+/** Live day: one recon's current day, polled as Today. */
+export const reconLive = (spaceId: string, id: string) => ({
+  key: [...ENGINE_KEY, "live", spaceId, id] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/live` as const,
+});
+/**
+ * How often Today and Live day read again while the tab is visible (plan 4 decision 2: a snapshot per read instead of
+ * SSE; a day's numbers move once per run, at most every minute).
+ */
+export const LIVE_POLL_MS = 15_000;
 export type RunItemFilters = { pass: string; status: string; side: string; date: string; reason: string };
 const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
   sorts: RECON_RUN_ITEM_SORTS, defaultSort: "businessDate",

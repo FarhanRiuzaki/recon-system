@@ -1,4 +1,4 @@
-import { NEW_RECON_SHAPE, RECON_RUN_SHAPE, RECON_SHAPE, RECON_VERSION_SHAPE, RECONS_SHAPE } from "@/features/recon/shapes";
+import { NEW_RECON_SHAPE, RECON_RUN_SHAPE, RECON_SHAPE, RECON_VERSION_SHAPE, RECONS_SHAPE, TODAY_SHAPE } from "@/features/recon/shapes";
 import { SOURCE_DETAIL_SHAPE, SOURCES_SHAPE, VERSION_SHAPE, WIZARD_SHAPE } from "@/features/sources/shapes";
 import { MEMBERS_SHAPE } from "@/features/spaces/shapes";
 import type { Section } from "./route-skeleton";
@@ -14,6 +14,7 @@ import type { Section } from "./route-skeleton";
 export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/sources": SOURCES_SHAPE,
   "/recons": RECONS_SHAPE,
+  "/today": TODAY_SHAPE,
   "/spaces/[spaceId]/members": MEMBERS_SHAPE,
   "/spaces/[spaceId]/sources": SOURCES_SHAPE,
   "/spaces/[spaceId]/sources/new": WIZARD_SHAPE,
@@ -21,6 +22,7 @@ export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/spaces/[spaceId]/sources/[sourceId]/versions/new": WIZARD_SHAPE,
   "/spaces/[spaceId]/sources/[sourceId]/versions/[versionId]": VERSION_SHAPE,
   "/spaces/[spaceId]/recons": RECONS_SHAPE,
+  "/spaces/[spaceId]/today": TODAY_SHAPE,
   "/spaces/[spaceId]/recons/new": NEW_RECON_SHAPE,
   "/spaces/[spaceId]/recons/[configId]": RECON_SHAPE,
   "/spaces/[spaceId]/recons/[configId]/versions/[versionId]": RECON_VERSION_SHAPE,

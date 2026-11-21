@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import type { LiveReconDto, LiveSourceDto, TodayDto } from "@starterkit/shared/contracts/recon";
+import { dayCounters, dayTotals, reconChip, sourceLag, spaceMap } from "./live-model";
+
+const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
+  ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
+const src = (id: string, state: "healthy" | "degraded" | "down", rowsToday = 100): LiveSourceDto => ({ id, name: id.toUpperCase(), health: health(state), rowsToday });
+const recon = (id: string, a: string, b: string, o: Partial<LiveReconDto> = {}): LiveReconDto => ({
+  id, name: `Recon ${id}`, sides: [{ label: "A", sourceId: a }, { label: "B", sourceId: b }], schedule: { kind: "interval", every_minutes: 2 },
+  date: "2026-11-21", state: "open", runId: "r1", runAt: null, lastSuccessAt: null, stale: false, alertedAt: null, running: null, openBreaks: 3,
+  day: { date: "2026-11-21", passes: { 1: { matched: 937, suggested: 0, broken: 30, brokenRefs: 10 }, 2: { matched: 0, suggested: 14, broken: 0, brokenRefs: 0 } }, open: { a: 24, b: 20 }, breaks: { a: 1, b: 2 }, items: { a: 1000, b: 990 }, closed: false },
+  ...o,
+});
+
+describe("Today and Live day model (REC-F4)", () => {
+  it("a Degraded or Down source marks every recon that reads it; a stale recon is Stale before that", () => {
+    const t: TodayDto = { capped: false, sources: [src("s1", "healthy", 400), src("s2", "down", 100), src("s3", "healthy", 0)],
+      recons: [recon("x", "s1", "s2"), recon("y", "s1", "s3"), recon("z", "s3", "s3", { stale: true })] };
+    const g = spaceMap(t, (id) => `/r/${id}`);
+    const node = (id: string) => g.nodes.find((n) => n.id === id)!;
+    expect([node("rec-x").chip, node("rec-x").affectedBy]).toEqual([{ health: "down", label: "Source down" }, ["S2"]]);
+    expect([node("rec-y").chip.label, node("rec-y").affectedBy]).toEqual(["Open", []]);
+    expect(node("rec-z").chip).toEqual({ health: "degraded", label: "Stale" });
+    // one edge per side (a recon reading one source twice draws it once), thicker for the busier source
+    expect(g.edges.filter((e) => e.target === "rec-z").length).toBe(1);
+    expect(g.edges.find((e) => e.id === "e-s1-x")!.width).toBe(4);
+    expect(g.edges.find((e) => e.id === "e-s3-y")!.width).toBe(1);
+    expect(node("rec-x").href).toBe("/r/x");
+  });
+  it("the day's totals and its counters for the pipeline; nothing before a run", () => {
+    const r = recon("x", "s1", "s2");
+    expect(dayTotals(r)).toEqual({ inItems: 1990, matched: 937, suggested: 14, waiting: 44, breaks: 33 });
+    expect(dayCounters(r)!.intake).toEqual({ a: 1000, b: 990 });
+    expect(dayTotals({ ...r, day: null })).toBeNull();
+    expect(dayCounters({ ...r, day: null })).toBeUndefined();
+  });
+  it("a source's lag: a pull's minutes behind, else what it is complete through", () => {
+    expect(sourceLag({ ...src("s", "healthy"), health: health("healthy", { lagSeconds: 1260 }) })).toBe("21 min behind");
+    expect(sourceLag({ ...src("s", "healthy"), health: null })).toBe("Not ingesting yet");
+    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map()).label).toBe("Closed");
+  });
+});

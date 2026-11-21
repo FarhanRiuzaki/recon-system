@@ -49,6 +49,7 @@ const renders = (xs: F[], tag: string) => xs.some(({ src }) => new RegExp(`<${ta
 /** Pages that render no screen of their own, with the reason. */
 const NO_SCREEN: Record<string, string> = {
   "/recons": "an entry: redirects to the recons of the remembered space (or /spaces)",
+  "/today": "an entry: redirects to Today of the remembered space (or /spaces)",
   "/sources": "an entry: redirects to the sources of the remembered space (or /spaces)",
   "/spaces": "an entry: redirects to a space's members; with no space at all, the shell's \"No space yet\" card (Figma Shell · No space yet)",
 };

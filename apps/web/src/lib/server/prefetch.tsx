@@ -15,7 +15,7 @@ import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  draftSimulations, reconActivity, reconLatestRuns, reconRecordRuns, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
+  draftSimulations, reconActivity, reconLatestRuns, reconRecordRuns, reconDetail, reconRun, reconLive, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions, spaceToday,
   sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
@@ -92,6 +92,8 @@ export const reads = {
   reconRecordRuns: (spaceId: string, id: string): Read => ({ key: reconRecordRuns(spaceId, id).key, path: reconRecordRuns(spaceId, id).url }),
   reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string }[]) =>
     table(reconRunItems(spaceId, id, runId, passes), sp, ReconRunItemQuery),
+  spaceToday: (spaceId: string): Read => ({ key: spaceToday(spaceId).key, path: spaceToday(spaceId).url }),
+  reconLive: (spaceId: string, id: string): Read => ({ key: reconLive(spaceId, id).key, path: reconLive(spaceId, id).url }),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
 };
 
