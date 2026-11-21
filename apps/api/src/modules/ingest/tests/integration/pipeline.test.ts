@@ -475,6 +475,30 @@ describe("final review: integrity of what a run keeps", () => {
 });
 
 // ------------------------------------------------------------------------------------------------ Review Focus 5
+describe("rows with no unique column (owner, 21 Nov): two equal rows are two transactions", () => {
+  it("a file keeps both equal lines; a corrected file sent again adds only its new line", async () => {
+    const k = await source(A, kseiSpec());
+    await put("act20261102.txt", [kseiLine(1), kseiLine(1), kseiLine(2)].join("\n") + "\n", new Date(Date.now() - 3_600_000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await current(k)).toBe(3);
+    // the same name with one line more: the next version of the file; the three lines it shares are stored already
+    await put("act20261102.txt", [kseiLine(1), kseiLine(1), kseiLine(2), kseiLine(1)].join("\n") + "\n");
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await current(k)).toBe(4);
+    await expectCounters(k);
+  });
+  it("a snapshot keeps equal rows across its pages, and a snapshot taken again keeps the same count", async () => {
+    const m = await source(A, medallionSpec());
+    await medallion(D, [1, 2]);
+    for (let i = 0; i < 3; i++) await src`insert into medallion (business_date, sid, sre) values (${D}::date, ${sid(1)}, 'TSTSRE001')`;
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect(await current(m, D)).toBe(5);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect(await current(m, D)).toBe(5);
+    await expectCounters(m);
+  });
+});
+
 describe("Review Focus 5: no leak between spaces, through the handlers too", () => {
   it("a job scoped to space B can't touch space A's source; the same file in two spaces is two files, each seen only in its space", async () => {
     const ka = await source(A, kseiSpec());

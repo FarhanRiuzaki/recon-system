@@ -8,7 +8,8 @@
 // out broken leaves nothing); a snapshot writes its rows page by page under a `loading` snapshot, and one last
 // transaction makes it active and supersedes the one before, so a date never has no active snapshot. A step of one
 // source waits for the step before it (sourceLock). Dedup (spec §8): raw_rows and records once per (row_hash,
-// business_date, snapshot), so a page or file sent again adds nothing.
+// business_date, snapshot), so a page or file sent again adds nothing; equal rows inside one file or snapshot are
+// numbered (Origin.seen), so two equal transactions stay two.
 //
 // A source whose columns no longer fit its spec (a field gone, a type changed since the first pull of the version, a
 // header of another width or with other names, a watermark that may be NULL) is paused with the reason and writes nothing until a new
@@ -128,6 +129,12 @@ type Origin = {
   fileName?: string; businessDate?: string;
   /** A line as quarantined text. */
   text: (cells: string[]) => string;
+  /**
+   * A file or snapshot (owner, 21 Nov: rows with no unique column): how often each row hash came so far, so the 2nd
+   * equal row is stored as its own record (hash of hash + "#2") instead of dropped as already stored. A pull has none:
+   * its lookback reads rows again on purpose, and the watermark's id column tells its rows apart.
+   */
+  seen?: Map<string, number>;
 };
 type Counts = { total: number; ok: number; added: number; quarantined: number };
 const newCounts = (): Counts => ({ total: 0, ok: 0, added: 0, quarantined: 0 });
@@ -152,6 +159,7 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
   const names = l.spec.fields.map((f) => f.name);
   const qDate = o.businessDate ?? (o.fileName ? fileDateOf(o.fileName) : null);
   const base = { spaceId: s.spaceId, sourceId: s.sourceId, origin: o.origin, originId: o.originId };
+  const nth = new Map<string, number>(); // this batch's counts, kept in o.seen once its rows are written
   for (const x of lines) {
     let reasons = x.ok ? null : x.reasons;
     const r = x.ok ? toRecord(x.raw, l.spec, { calendar: l.calendar, fileName: o.fileName, arrivedDate: o.businessDate }) : null;
@@ -166,6 +174,13 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
       continue;
     }
     const c = r.record;
+    if (o.seen) {
+      // ponytail: 32 hex of each hash per row of a file or snapshot in memory (~60 MB per million rows)
+      const k = c.row_hash.slice(0, 32);
+      const n = (nth.get(k) ?? o.seen.get(k) ?? 0) + 1;
+      nth.set(k, n);
+      if (n > 1) c.row_hash = new Bun.CryptoHasher("sha256").update(`${c.row_hash}#${n}`).digest("hex");
+    }
     raw.push({ id: Bun.randomUUIDv7(), ...base, snapshotId: o.snapshotId, lineNo: x.line, payload: x.raw, rowHash: c.row_hash, businessDate: c.business_date });
     recs.push({
       id: Bun.randomUUIDv7(), spaceId: s.spaceId, sourceId: s.sourceId, sourceVersionId: l.versionId, businessDate: c.business_date, bdayIndex: c.bday_index,
@@ -175,6 +190,8 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
     });
   }
   const { added, quarantined } = await insertBatch(tx, raw, recs, quarantine);
+  // after the write: a batch that rolls back (a month without partition) runs again with the same numbers
+  if (o.seen) for (const [k, n] of nth) o.seen.set(k, n);
   // a pulled line has no business date of its own: it counts on the day it arrived (as the read model always did)
   await tally(tx, s, "quarantined", byDate(quarantined.map((q) => q.businessDate ?? todayIn(q.createdAt))));
   counts.total += lines.length;
@@ -304,7 +321,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
   try {
     drift = await checkColumns(s, on, l, c, { query, businessDate }, []);
     if (drift) throw new ConnectorError("spec", null, drift.message);
-    const origin: Origin = { origin: "snapshot", originId: id, snapshotId: id, businessDate, text: (cells) => JSON.stringify(cells) };
+    const origin: Origin = { origin: "snapshot", originId: id, snapshotId: id, businessDate, text: (cells) => JSON.stringify(cells), seen: new Map() };
     let n = 0;
     for await (const page of c.pullSnapshot(query, businessDate, { columns: l.spec.fields.map((f) => f.name), chunk: SNAPSHOT_CHUNK })) {
       const lines = page.map((raw) => ({ line: ++n, ok: true as const, raw }));
@@ -408,7 +425,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
       }
       const [prev] = await tx.select({ id: sourceFiles.id, version: sourceFiles.version }).from(sourceFiles)
         .where(and(mine, eq(sourceFiles.name, f.name), eq(sourceFiles.status, "ingested"))).orderBy(desc(sourceFiles.version)).limit(1);
-      const origin: Origin = { origin: "file", originId: row.id, snapshotId: null, fileName: f.name, text: (cells) => cells.join(input.format.delimiter) };
+      const origin: Origin = { origin: "file", originId: row.id, snapshotId: null, fileName: f.name, text: (cells) => cells.join(input.format.delimiter), seen: new Map() };
       const counts = newCounts();
       const h = new Bun.CryptoHasher("sha256");
       let batch: Line[] = [];
