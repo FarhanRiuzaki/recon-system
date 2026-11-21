@@ -50,9 +50,10 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
         {pass.predicates.map((q, j) => {
           const c = conditionParts(q, fields);
           return (
-            <li key={j} className="grid gap-x-3 text-body-sm wrap-anywhere sm:grid-cols-[8rem_minmax(0,1fr)]">
-              <span className="text-fg">{c.field}</span>
-              <span className="text-fg-2">{c.rule}<span className="ml-2 font-mono text-caption text-fg-3">{c.columns}</span></span>
+            // the source columns on hover: the card stays two short columns beside the inspector (the Configuration shows them)
+            <li key={j} title={c.columns} className="grid gap-x-3 text-body-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+              <span className="truncate text-fg">{c.field}</span>
+              <span className="text-fg-2">{c.rule}</span>
             </li>
           );
         })}
