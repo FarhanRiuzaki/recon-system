@@ -91,7 +91,10 @@ export function buildSpec(d: Draft, drop: readonly string[] = []): SourceSpec {
   }
   // a derived value still being typed (no name or no expression) is left out until it has both
   const derive = Object.fromEntries(Object.entries(s.derive).filter(([k, v]) => k.trim() && v.trim()));
-  const out: SourceSpec = { ...s, mapping: { ...s.mapping, attrs }, derive, key_fields: s.key_fields.filter((k) => names.has(k)), input };
+  // a condition still being typed (no value) is left out until it has one
+  const keep = (s.keep ?? []).filter((c) => (!("value" in c) || c.value.trim()) && (!("values" in c) || c.values.length));
+  const out: SourceSpec = { ...s, mapping: { ...s.mapping, attrs }, derive, key_fields: s.key_fields.filter((k) => names.has(k)), input, keep };
+  if (!keep.length) delete out.keep;
   if (s.mapping.currency || !s.currency) delete out.currency; // a currency column wins over the fixed one
   return out;
 }

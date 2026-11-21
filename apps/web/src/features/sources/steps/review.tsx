@@ -2,6 +2,7 @@
 
 import { Panel, ReviewList, StatusChip } from "@starterkit/ui/ds";
 import { computeSteps, stepText } from "@starterkit/shared/compute";
+import { conditionText } from "./conditions";
 import type { ValueRef } from "@starterkit/shared/contracts/sources";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
@@ -86,6 +87,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
             if (k === "currency" && !r && s.currency) return [{ label, value: `${s.currency} for every row`, step: 1 }];
             return r ? [{ label, value: refText(r), step: 1 }] : [];
           }),
+          { label: "Rows to load", value: s.keep?.length ? s.keep.map((c) => conditionText(c, s)).join("; ") : "Every row", step: 1 },
           ...Object.entries(s.derive).map(([name, expr]) => {
             const b = computeSteps(expr);
             return { label: `Computed: ${name}`, value: b ? `${b.source}${b.steps.length ? ` → ${b.steps.map(stepText).join(" → ")}` : ""}` : `Expression ${expr}`, step: 1 };

@@ -90,3 +90,11 @@ describe("mappingProblem: a recon field reading a column that is gone", () => {
     expect(mappingProblem({ ...base, mapping: { ...base.mapping, ext_ref: { field: "ref" } } })).toBeNull();
   });
 });
+
+describe("buildSpec: rows to load", () => {
+  it("leaves out a condition still being typed, and the list when none is complete", () => {
+    const d = db({ spec: { ...emptySpec("db_watermark"), keep: [{ field: "status", op: "eq", value: " " }, { field: "status", op: "in", values: ["Successful"] }] } });
+    expect(buildSpec(d).keep).toEqual([{ field: "status", op: "in", values: ["Successful"] }]);
+    expect("keep" in buildSpec(db({ spec: { ...emptySpec("db_watermark"), keep: [{ field: "status", op: "eq", value: "" }] } }))).toBe(false);
+  });
+});

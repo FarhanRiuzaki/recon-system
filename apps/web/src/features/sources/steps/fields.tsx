@@ -17,6 +17,7 @@ import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-su
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows } from "./model";
 import { ComputedColumns } from "./computed";
+import { RowsToLoad } from "./conditions";
 import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
@@ -300,6 +301,7 @@ export function FieldsStep(p: FieldsStepProps) {
 
 
 
+      <RowsToLoad spec={s} setSpec={setSpec} err={err} examples={examples} />
       {s.input.kind === "db_watermark" && <WatermarkPanel {...p} />}
       {s.input.kind !== "db_snapshot" && (
         <Panel title="When a row changes" bodyClassName="grid gap-4">
@@ -569,7 +571,7 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
       {r && (
         <>
           <p role="status" className="text-body-sm text-fg">
-            {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records, {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the {file ? "file" : "pull"}.
+            {formatNumber(r.lines)} rows read: {formatNumber(r.ok)} become records,{r.skipped ? ` ${formatNumber(r.skipped)} left out by the conditions,` : ""} {formatNumber(r.quarantined)} go to quarantine. Quarantined rows don&apos;t stop the {file ? "file" : "pull"}.
           </p>
           {r.records.length > 0 && (() => {
             // every recon field the records carry, so each mapping (a computed column's too) can be checked here;
