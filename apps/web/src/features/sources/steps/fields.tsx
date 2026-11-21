@@ -133,9 +133,11 @@ export function FieldsStep(p: FieldsStepProps) {
               const ex = examples.get(n)?.[0];
               const fits = FITS[c.key];
               const bad = !!t && !!fits && !fits.includes(t);
+              // only text can hold a date or a number to retype; another type just isn't one
+              const why = !bad ? null : t === "string" ? `if it holds ${fits[0] === "integer" ? "numbers" : "dates"}, set its type in Columns` : `not ${fits[0] === "integer" ? "a number" : "a date"}`;
               return { value: `f:${n}`, label: n, tone: fits && t ? (bad ? "bad" : "ok") : undefined,
-                description: [t ? TYPE_LABEL[t] : "Derived value", ex ? `e.g. ${ex}` : null, bad ? `set its type to ${TYPE_LABEL[fits[0]!]} in Columns` : null].filter(Boolean).join(" · ") };
-            }),
+                description: [t ? TYPE_LABEL[t] : "Derived value", ex ? `e.g. ${ex}` : null, why].filter(Boolean).join(" · ") };
+            }).sort((a, b) => Number(a.tone === "bad") - Number(b.tone === "bad")),
             ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
           ];
           const field = (
