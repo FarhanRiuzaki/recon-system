@@ -15,6 +15,7 @@ import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
+import { useElapsed } from "./flow-parts";
 import { dayCounters, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
 import { LIVE_DAY_SHAPE } from "./shapes";
 import { useReconLive } from "./use-recons";
@@ -24,6 +25,7 @@ const fmt = (v: number) => formatNumber(Math.round(v));
 export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; spec: ReconSpec | null }) {
   const q = useReconLive(spaceId, id, !!spec);
   const skeleton = useDelayedFlag(!!spec && !q.data && !q.error);
+  const elapsed = useElapsed(q.data?.recon.running?.status === "running" ? q.data.recon.running.startedAt : null);
   const sp = useSearchParams(), pathname = usePathname();
   const view: "pipeline" | "list" = sp.get("view") === "list" ? "list" : "pipeline";
   const setView = (v: "pipeline" | "list") => {
@@ -41,7 +43,7 @@ export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; sp
   const keys = spec.passes.map((_, i) => `p${i}`);
   const src = r.sides.map((s) => byId.get(s.sourceId));
   const sourceLines = src.map((s) => (s ? `${sourceChip(s).label} · ${sourceLag(s)}` : "Not readable from this space")) as [string, string];
-  const run = r.running ? (r.running.status === "running" ? "A run is under way" : "A run is queued") : null;
+  const run = r.running ? (r.running.status === "running" ? `Running for ${elapsed}` : "A run is queued") : null;
 
   return (
     <div className="grid gap-section">

@@ -40,8 +40,22 @@
 /* the parts' card draws the node: React Flow's own node box stays invisible, its handles too (nothing connects by hand) */
 .recon-canvas .react-flow__node { border-radius: var(--radius-lg); }
 .recon-canvas .react-flow__handle { opacity: 0; }
-/* a running recon's edges flow in the primary colour (React Flow's dash animation); reduced motion: dashed, still */
-.recon-canvas .react-flow__edge.animated path.react-flow__edge-path { stroke: var(--primary); }
+/* live (flow-parts.tsx): a running card's primary sweep, on the shimmer keyframes (base.css), behind its content */
+.recon-canvas .flow-sweep { overflow: hidden; }
+.recon-canvas .flow-sweep::after {
+  content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--primary-soft) 50%, transparent);
+  animation: shimmer var(--dur-flash) linear infinite;
+}
+/* a packet travelling a live edge (SMIL along the edge's path) */
+.recon-canvas .flow-packet { fill: var(--primary); stroke: var(--card); stroke-width: 1.5; }
+.recon-canvas .react-flow__edge.is-live path.react-flow__edge-path { stroke: var(--primary); }
+/* a hovered or focused node's path at full strength, the rest dimmed (opacity only) */
+.recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: opacity var(--dur-fast) var(--ease-standard); }
+.recon-canvas .react-flow__node.is-dim, .recon-canvas .react-flow__edge.is-dim { opacity: 0.35; }
+.recon-canvas .react-flow__edge.is-lit path.react-flow__edge-path { stroke: var(--fg-2); }
+.recon-canvas .react-flow__edge.is-lit.is-live path.react-flow__edge-path { stroke: var(--primary); }
 @media (prefers-reduced-motion: reduce) {
-  .recon-canvas .react-flow__edge.animated path { animation: none; }
+  .recon-canvas .flow-sweep::after { display: none; }
+  .recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: none; }
 }

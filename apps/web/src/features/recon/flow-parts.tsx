@@ -3,9 +3,15 @@
 // The parts both canvases share (builder / Live day pipeline, Space map): a node card from DS tokens (an icon tile or
 // a step number, title, a badge, one line, an accent for an outcome's status), a lane title, the dotted board and the
 // fit: the graph always fits its card, on load, when it changes and when the card resizes.
-import { Background, BackgroundVariant, useReactFlow } from "@xyflow/react";
-import { type ReactNode, type RefObject, useEffect } from "react";
+// Live (owner, 21 Nov): a card whose run is under way sweeps (primary shimmer) with an indeterminate bar under it, and
+// flashes once when the run ends; an edge into it carries packets along its path (SMIL animateMotion on the edge's own
+// path, timed by DUR); hovering or focusing a node lights its whole path and dims the rest. Reduced motion: no sweep,
+// bar, packets or flash; the primary stroke and the words stay.
+import { Background, BackgroundVariant, BaseEdge, type Edge, type EdgeProps, getBezierPath, getSmoothStepPath, useReactFlow } from "@xyflow/react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
+import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
+import { formatDuration } from "@starterkit/ui/lib/format";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
 
 /** The status colours an outcome or a marked node may carry (status colours are for health states only, AGENTS.md §6). */
@@ -18,22 +24,34 @@ const TILE: Record<Exclude<Accent, null>, string> = {
   stopped: "bg-stopped-soft text-stopped-ink", primary: "bg-primary-soft text-primary",
 };
 
-/** A node's card. `step`: a pass's number in place of the icon. `marked`: a border in the accent (a recon a bad source feeds). */
-export function FlowCard({ icon, step, title, line, badge, accent = null, selected, marked, interactive }: {
+/**
+ * A node's card. `step`: a pass's number in place of the icon. `marked`: a border in the accent (a recon a bad source
+ * feeds). `running`: its run is under way (sweep, bar, the tile in primary); it flashes once when that ends.
+ */
+export function FlowCard({ icon, step, title, line, badge, accent = null, selected, marked, interactive, running }: {
   icon?: IconData; step?: number; title: string; line: string; badge?: ReactNode; accent?: Accent;
-  selected?: boolean; marked?: boolean; interactive?: boolean;
+  selected?: boolean; marked?: boolean; interactive?: boolean; running?: boolean;
 }) {
+  const done = useEnded(!!running);
   return (
     <div className={cn(
       "relative flex h-full items-center gap-3 overflow-hidden rounded-lg border bg-card pr-3 pl-3.5 shadow-xs",
-      selected ? "border-primary ring-2 ring-primary-soft" : marked && accent ? (accent === "down" ? "border-down-mark" : "border-degraded-mark") : "border-line",
+      selected ? "border-primary ring-2 ring-primary-soft" : running ? "border-primary" : marked && accent ? (accent === "down" ? "border-down-mark" : "border-degraded-mark") : "border-line",
       interactive && "cursor-pointer hover:border-line-strong hover:shadow-sm",
+      done && "motion-safe:animate-row-new",
     )}>
+      {running && <span aria-hidden="true" className="flow-sweep pointer-events-none absolute inset-0" />}
+      {running && (
+        <span aria-hidden="true" className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-primary-soft">
+          <span className="block h-full w-1/3 bg-primary animate-progress" />
+        </span>
+      )}
       {accent && <span aria-hidden="true" className={cn("absolute inset-y-0 left-0 w-1", BAR[accent])} />}
-      <span aria-hidden="true" className={cn("grid size-8 shrink-0 place-items-center rounded-md text-label tabular", accent ? TILE[accent] : "bg-tray text-fg-2")}>
+      <span aria-hidden="true" className={cn("relative grid size-8 shrink-0 place-items-center rounded-md text-label tabular",
+        running ? TILE.primary : accent ? TILE[accent] : "bg-tray text-fg-2")}>
         {step !== undefined ? step : icon ? <Icon icon={icon} size={16} /> : null}
       </span>
-      <span className="grid min-w-0 flex-1 gap-0.5">
+      <span className="relative grid min-w-0 flex-1 gap-0.5">
         <span className="flex min-w-0 items-center justify-between gap-2">
           <span className="truncate text-body-sm text-fg">{title}</span>
           {badge}
@@ -81,4 +99,89 @@ export function useFitToCard(wrap: RefObject<HTMLDivElement | null>, key: unknow
     obs.observe(el);
     return () => { obs.disconnect(); cancelAnimationFrame(frame); };
   }, [wrap, fitView]);
+}
+
+/** True for one flash after `on` turns false (a run that just ended). */
+function useEnded(on: boolean): boolean {
+  const was = useRef(on);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (was.current && !on) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), DUR.flash * 1000);
+      was.current = on;
+      return () => clearTimeout(t);
+    }
+    was.current = on;
+  }, [on]);
+  return flash;
+}
+
+/** Seconds since `iso`, ticking every second while set ("42 s", "3 min 5 s"); null without one. */
+export function useElapsed(iso: string | null | undefined): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!iso) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [iso]);
+  return iso ? formatDuration(Math.max(0, Math.round((now - Date.parse(iso)) / 1000))) : null;
+}
+
+/** An edge's live data: `live` = packets flow along it; `kind` step = a pass to the next, down its lane. */
+export type FlowEdgeData = { live?: boolean; kind?: "step" };
+
+/** The edge both canvases draw: its path, its label as a pill, and while live two packets travelling it (not under reduced motion). */
+export function FlowEdge(p: EdgeProps<Edge<FlowEdgeData>>) {
+  const reduced = usePrefersReducedMotion();
+  const [path, labelX, labelY] = p.data?.kind === "step"
+    ? getSmoothStepPath({ ...p, borderRadius: 12 })
+    : getBezierPath(p);
+  return (
+    <>
+      <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} label={p.label} labelX={labelX} labelY={labelY}
+        labelStyle={p.labelStyle} labelShowBg={p.labelShowBg} labelBgStyle={p.labelBgStyle} labelBgPadding={p.labelBgPadding} labelBgBorderRadius={p.labelBgBorderRadius} />
+      {p.data?.live && !reduced && [0, DUR.tween].map((at) => (
+        <circle key={at} r={3.5} className="flow-packet">
+          <animateMotion dur={`${DUR.flash}s`} begin={`-${at}s`} repeatCount="indefinite" path={path} />
+        </circle>
+      ))}
+    </>
+  );
+}
+export const EDGE_TYPES = { flow: FlowEdge };
+
+/**
+ * What a hovered or focused node lights: itself, every node upstream and downstream of it, and the edges between.
+ * Null = nothing hovered (everything at full strength).
+ */
+export function pathOf(id: string | null, edges: readonly { id: string; source: string; target: string }[]): { nodes: Set<string>; edges: Set<string> } | null {
+  if (!id) return null;
+  const nodes = new Set([id]), lit = new Set<string>();
+  for (const dir of ["down", "up"] as const) {
+    const queue = [id];
+    while (queue.length) {
+      const at = queue.shift()!;
+      for (const e of edges) {
+        const from = dir === "down" ? e.source : e.target, to = dir === "down" ? e.target : e.source;
+        if (from !== at || lit.has(e.id)) continue;
+        lit.add(e.id);
+        if (!nodes.has(to)) { nodes.add(to); queue.push(to); }
+      }
+    }
+  }
+  return { nodes, edges: lit };
+}
+
+/** The hovered or focused node of a canvas (mouse or keyboard), for pathOf. */
+export function useHotNode() {
+  const [hot, setHot] = useState<string | null>(null);
+  const idOf = (t: EventTarget | null) => (t as HTMLElement | null)?.closest?.(".react-flow__node")?.getAttribute("data-id") ?? null;
+  return {
+    hot,
+    onNodeMouseEnter: (_: unknown, n: { id: string }) => setHot(n.id),
+    onNodeMouseLeave: () => setHot(null),
+    onFocusCapture: (e: { target: EventTarget | null }) => setHot(idOf(e.target)),
+    onBlurCapture: () => setHot(null),
+  };
 }

@@ -11,9 +11,9 @@ import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "reac
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { DiskIcon, FilterIcon, SuccessIcon, SuggestedIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { dropIndex, type GNode, LANES, laneLayout, NODE_H, NODE_W, specGraph } from "./canvas-graph";
-import { type Accent, FIT, FlowBadge, FlowBoard, FlowCard, LaneTitle, useFitToCard } from "./flow-parts";
+import { type Accent, EDGE_TYPES, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useFitToCard, useHotNode } from "./flow-parts";
 
-type Data = { title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null; badge?: GNode["badge"]; interactive: boolean };
+type Data = { title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null; badge?: GNode["badge"]; interactive: boolean; running: boolean };
 export type CanvasProps = {
   spec: ReconSpec; keys: readonly string[]; counters?: ReconRunDto["counters"]; dim: boolean;
   /** The node open in the inspector: "side-a", "side-b" or a pass key. */
@@ -26,7 +26,7 @@ export type CanvasProps = {
   sourceLines?: readonly [string, string];
   /** Its accessible name (the builder's by default). */
   label?: string;
-  /** A run is under way (Live day): the edges flow (reduced motion: still, recon-canvas.css). */
+  /** A run is under way (Live day): packets travel every edge and the passes sweep (reduced motion: still, the stroke primary). */
   running?: boolean;
 };
 
@@ -42,7 +42,7 @@ function LaneNode({ data, selected }: NodeProps<Node<Data>>) {
   return (
     <>
       <Handle type="target" position={Position.Left} isConnectable={false} />
-      <FlowCard step={step ? Number(step[1]) : undefined} title={step ? step[2]! : data.title} line={data.line} selected={selected} interactive={data.interactive}
+      <FlowCard step={step ? Number(step[1]) : undefined} title={step ? step[2]! : data.title} line={data.line} selected={selected} interactive={data.interactive} running={data.running}
         icon={t?.icon ?? (data.lane === 0 ? DiskIcon : data.lane === 1 ? FilterIcon : undefined)} accent={t?.accent ?? null}
         badge={data.badge ? <FlowBadge tone={data.badge === "Auto" ? "primary" : "neutral"}>{data.badge}</FlowBadge> : undefined} />
       <Handle type="source" position={Position.Right} isConnectable={false} />
@@ -61,12 +61,12 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
     const p = pos.get(n.id)!;
     return {
       id: n.id, type: "lane", position: p, width: NODE_W, height: NODE_H, selected: n.id === selectedId,
-      data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n), badge: n.badge, interactive: !!(onSelect && n.select) },
+      data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n), badge: n.badge, interactive: !!(onSelect && n.select), running: !!running && n.lane === 2 },
       // a pass moves up and down its lane only: its x is pinned (REC-S6: 0 px sideways at 240 px of pointer)
       draggable: drag && n.lane === 2, extent: [[p.x, -FAR], [p.x + NODE_W, FAR]],
       ariaLabel: `${LANES[n.lane]}: ${n.title}. ${n.line}${n.lane === 2 && editable ? ". Alt+Up or Alt+Down moves it" : ""}`,
     };
-  }), [graph, pos, selectedId, drag, editable, onSelect]);
+  }), [graph, pos, selectedId, drag, editable, onSelect, running]);
   const [nodes, setNodes] = useState<Node<Data>[]>(place);
   // a new graph (a pass moved, renamed, a simulation) or selection: every node back in its lane slot (set while
   // rendering, React's pattern for state that follows a prop)
@@ -76,13 +76,17 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   // always fits its card: on load, when passes are added, removed or renamed, when the card resizes
   useFitToCard(wrap, `${graph.nodes.length}:${graph.edges.length}`);
 
-  const edges: Edge[] = useMemo(() => graph.edges.map((e) => ({
-    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: e.inLane ? "smoothstep" : "default",
+  const hover = useHotNode();
+  const lit = useMemo(() => pathOf(hover.hot, graph.edges), [hover.hot, graph.edges]);
+  const edges: Edge<FlowEdgeData>[] = useMemo(() => graph.edges.map((e) => ({
+    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: "flow", data: { live: !!running, kind: e.inLane ? "step" : undefined },
     sourceHandle: e.inLane ? "bottom" : undefined, targetHandle: e.inLane ? "top" : undefined, focusable: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: "var(--fg-4)", width: 14, height: 14 },
+    markerEnd: { type: MarkerType.ArrowClosed, color: running ? "var(--primary)" : "var(--fg-4)", width: 14, height: 14 },
     labelBgPadding: [8, 3] as [number, number], labelBgBorderRadius: 999,
-    labelStyle: dim ? { opacity: 0.6 } : undefined, animated: !!running,
-  })), [graph, dim, running]);
+    labelStyle: dim ? { opacity: 0.6 } : undefined,
+    className: [running && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
+  })), [graph, dim, running, lit]);
+  const shown = useMemo(() => (lit ? nodes.map((n) => ({ ...n, className: lit.nodes.has(n.id) ? undefined : "is-dim" })) : nodes), [nodes, lit]);
 
   const passIds = graph.nodes.filter((n) => n.lane === 2).map((n) => n.id);
   const focusNode = (id: string | undefined) => { if (id) wrap.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus(); };
@@ -127,8 +131,8 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   const height = Math.min(720, Math.max(360, tallest * (NODE_H + 24) + 140));
   const laneX = LANES.map((_, l) => pos.get(graph.nodes.find((n) => n.lane === l)?.id ?? "")?.x);
   return (
-    <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height }} onKeyDownCapture={onKeyDownCapture}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
+    <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height }} onKeyDownCapture={onKeyDownCapture} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
+      <ReactFlow nodes={shown} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} onNodeMouseEnter={hover.onNodeMouseEnter} onNodeMouseLeave={hover.onNodeMouseLeave} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
         onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select && onSelect) onSelect(g.select); }}
         nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={FIT} minZoom={0.25} maxZoom={1.5}
         proOptions={{ hideAttribution: true }} aria-label={label ?? "Passes as a canvas: sources, sides, passes in run order and their outcomes"}>

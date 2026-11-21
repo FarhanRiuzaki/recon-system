@@ -64,8 +64,8 @@ export type MapNode = {
   id: string; lane: 0 | 1; title: string; line: string; chip: { health: Health; label: string };
   /** A recon: its page; the names of its sources that are Degraded or Down. */
   href?: string; affectedBy?: string[];
-  /** A recon with a live run queued or under way. */
-  running?: "queued" | "running";
+  /** A recon with a live run queued or under way, and when it started. */
+  running?: "queued" | "running"; runStartedAt?: string;
 };
 export type MapEdge = {
   id: string; source: string; target: string; /** 1–4 px: the source's records today against the busiest source's. */ width: number;
@@ -88,7 +88,7 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string): { nodes: 
   for (const r of t.recons) {
     const bad = troubled(r, byId), tot = dayTotals(r);
     nodes.push({
-      id: `rec-${r.id}`, lane: 1, title: r.name, chip: reconChip(r, byId), href: hrefOf(r.id), affectedBy: bad.map((s) => s.name), running: r.running?.status,
+      id: `rec-${r.id}`, lane: 1, title: r.name, chip: reconChip(r, byId), href: hrefOf(r.id), affectedBy: bad.map((s) => s.name), running: r.running?.status, runStartedAt: r.running?.startedAt,
       line: tot ? `${formatNumber(tot.waiting)} waiting · ${formatNumber(r.openBreaks)} open breaks` : `No run yet · ${formatNumber(r.openBreaks)} open breaks`,
     });
     for (const [i, s] of r.sides.entries()) {
