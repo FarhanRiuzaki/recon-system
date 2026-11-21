@@ -14,7 +14,8 @@ import { StatusChip } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
-import { type Accent, EDGE_TYPES, sourceKindIcon, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useElapsed, useFitToCard, useHotNode } from "./flow-parts";
+import { type Accent, EDGE_TYPES, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useFitToCard, useHotNode } from "./flow-parts";
+import { sourceKindIcon, useElapsed } from "./live-hooks";
 import type { MapEdge, MapNode } from "./live-model";
 
 const W = 280, H = 68, GAP_X = 180, GAP_Y = 20;

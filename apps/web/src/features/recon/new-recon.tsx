@@ -4,7 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState } from "react";
-import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, useForm } from "@starterkit/ui/ds";
+import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, StatusChip, useForm } from "@starterkit/ui/ds";
+import { formatNumber } from "@starterkit/ui/lib/format";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -20,6 +21,8 @@ import { PageHeader } from "@/components/shell/page-header";
 import { ApiError, api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
+import { sourceStatus } from "@/lib/shared/source-status";
+import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { addPass, defaultSpec, type Fields, placeOf } from "./spec-model";
 import { NEW_RECON_REASON, reconApi, reconConfigHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
 
@@ -39,6 +42,23 @@ const newSourceHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId
 const NEW_SOURCE_REASON = "Only a source admin of this space adds sources.";
 
 /** A source as a side picker lists it; a source without an approved version can't be a side yet. */
+/** The chosen source at a glance: how its data arrives and what it reads, its health and its records today. */
+function SourceGlance({ s }: { s: SourceRowDto }) {
+  const st = sourceStatus(s);
+  return (
+    <div className="flex items-start gap-3 rounded-md border border-line bg-tray px-3 py-2.5">
+      <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md bg-card text-fg-2"><Icon icon={sourceKindIcon(s.kind)} size={16} /></span>
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <span className="flex min-w-0 items-center justify-between gap-2">
+          <span className="truncate text-body-sm text-fg">{SOURCE_KIND_WORD[s.kind]}{s.reads ? ` · ${s.reads}` : ""}</span>
+          <StatusChip health={st.health} label={st.label} />
+        </span>
+        <span className="text-caption text-fg-3">{s.rowsToday === null ? "Not ingesting yet" : `${formatNumber(s.rowsToday)} records today`}{s.usedByCount ? ` · read by ${formatNumber(s.usedByCount)} ${s.usedByCount === 1 ? "recon" : "recons"}` : ""}</span>
+      </span>
+    </div>
+  );
+}
+
 const optionText = (s: SourceRowDto) =>
   `${s.name}${s.owner ? ` · shared from ${s.owner.name}` : ""}${s.publishedVersion === null ? " · no approved version yet" : ""}`;
 
@@ -98,14 +118,21 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
     }
   })(event);
 
-  const pick = (k: "a" | "b") => (
-    <Field id={f.id(k)} label={k === "a" ? "Side A" : "Side B"} required error={f.error(k) ?? apiErr[k]}>
-      <Select id={f.id(k)} value={f.values[k]} className="w-full" onChange={(e) => { f.set(k, e.target.value); setApiErr((x) => ({ ...x, [k]: undefined })); }}>
-        <option value="">{sources.isPending ? "Loading sources…" : "Choose a source"}</option>
-        {items.map((s) => <option key={s.id} value={s.id} disabled={s.publishedVersion === null}>{optionText(s)}</option>)}
-      </Select>
-    </Field>
-  );
+  const pick = (k: "a" | "b") => {
+    const chosen = items.find((s) => s.id === f.values[k]);
+    return (
+      <div className="grid content-start gap-2">
+        <Field id={f.id(k)} label={k === "a" ? "Side A" : "Side B"} required error={f.error(k) ?? apiErr[k]}>
+          <Select id={f.id(k)} value={f.values[k]} className="w-full" onChange={(e) => { f.set(k, e.target.value); setApiErr((x) => ({ ...x, [k]: undefined })); }}>
+            <option value="">{sources.isPending ? "Loading sources…" : "Choose a source"}</option>
+            {items.map((s) => <option key={s.id} value={s.id} disabled={s.publishedVersion === null}>{optionText(s)}</option>)}
+          </Select>
+        </Field>
+        {/* what the chosen source is, in place (owner, 22 Nov: recognition over recall): kind, what it reads, health, today */}
+        {chosen && <SourceGlance s={chosen} />}
+      </div>
+    );
+  };
 
   return (
     <div className="grid gap-section">
@@ -121,10 +148,12 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
         </Panel>
       ) : (
       <Panel bodyClassName="md:p-6">
-        <form noValidate onSubmit={create} aria-label="New recon" className="grid max-w-xl gap-4">
+        <form noValidate onSubmit={create} aria-label="New recon" className="grid gap-4">
           {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}
           <fieldset disabled={busy || !maker} className="contents">
             <RequiredNote />
+            {/* two equal columns, as the sides under them (symmetric: labels and controls share a row) */}
+            <div className="grid items-start gap-4 md:grid-cols-2">
             <Field id={f.id("name")} label="Name" required error={f.error("name")}>
               <Input {...f.text("name")} autoComplete="off" onChange={(e) => { f.set("name", e.target.value); if (!codeTyped) f.set("code", codeOf(e.target.value)); }} />
             </Field>
@@ -132,7 +161,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
               <Input {...f.text("code")} className="font-mono" autoComplete="off" spellCheck={false}
                 onChange={(e) => { setCodeTyped(true); f.set("code", e.target.value); setApiErr((x) => ({ ...x, code: undefined })); }} />
             </Field>
-            <div className="grid gap-4 md:grid-cols-2">{pick("a")}{pick("b")}</div>
+            </div>
+            <div className="grid items-start gap-4 md:grid-cols-2">{pick("a")}{pick("b")}</div>
             {sources.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load this space&apos;s sources. {errorText(sources.error)}</p>}
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>

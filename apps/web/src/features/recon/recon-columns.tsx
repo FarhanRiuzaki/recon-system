@@ -6,7 +6,7 @@ import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import type { LiveReconDto, LiveSourceDto, ReconRowDto } from "@starterkit/shared/contracts/recon";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SOURCE_KIND_WORD, sourceKindIcon, useElapsed } from "./flow-parts";
+import { SOURCE_KIND_WORD, sourceKindIcon, useElapsed } from "./live-hooks";
 import { dayTotals, reconChip, sourceChip } from "./live-model";
 import { rateText } from "./run-model";
 import { reconHref } from "./use-recons";

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { grownSince, pathOf } from "./flow-parts";
+import { pathOf } from "./flow-parts";
+import { grownSince } from "./live-hooks";
 
 const e = (source: string, target: string) => ({ id: `${source}>${target}`, source, target });
 // src-a → side-a → p0 → p1 → out ; src-b → side-b → p0 ; p0 → matched

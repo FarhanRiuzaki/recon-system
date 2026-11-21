@@ -36,7 +36,7 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
           <StatTile label="Suggested" value={formatNumber(t.suggested)} caption="Open until someone accepts them" />
           <StatTile label="Waiting" value={formatNumber(t.waiting.a + t.waiting.b)} caption={`${formatNumber(t.waiting.a)} ${labels[0]} · ${formatNumber(t.waiting.b)} ${labels[1]}`} />
           <StatTile label="Breaks" value={formatNumber((t.breaks ? t.breaks.a + t.breaks.b : 0) + t.duplicate + t.ambiguous)}
-            caption={t.duplicate ? `${formatNumber(t.duplicate)} duplicate` : "Left open at day close"} />
+            caption={t.duplicate ? `${formatNumber(t.duplicate)} duplicate · need review` : "Need review"} />
         </StatTiles>
       )}
     </section>

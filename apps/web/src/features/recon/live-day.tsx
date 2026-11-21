@@ -16,7 +16,7 @@ import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
-import { useArrivals, useElapsed } from "./flow-parts";
+import { useArrivals, useElapsed } from "./live-hooks";
 import { dayCounters, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
 import { LIVE_DAY_SHAPE } from "./shapes";
 import { useReconLive } from "./use-recons";

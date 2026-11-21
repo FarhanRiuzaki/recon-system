@@ -20,7 +20,7 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
-import { useArrivals } from "./flow-parts";
+import { useArrivals } from "./live-hooks";
 import { reconHref, reconsHref, useToday } from "./use-recons";
 
 function MapShape() {
