@@ -18,6 +18,7 @@ import { sourceShares, sourceVersions, sources } from "../../../sources";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "../../schema";
+import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { gate, sourceSpec } from "../spec";
 
 const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
@@ -317,6 +318,12 @@ describe("a source version can't drop a field a published recon uses (A4)", () =
     await published(body({ code: "debit", name: "BI-FAST debit", spec: settle }), B);
     expect((await db.select().from(reconSourceUses).where(eq(reconSourceUses.sourceId, S1))).map((u) => u.field).sort())
       .toEqual(["amount_minor", "attrs.settlement_ref", "business_date", "currency", "currency", "ext_ref", "attrs.settlement_ref", "amount_minor", "business_date", "ext_ref"].sort());
+    // the source's detail lists both recons with the fields each reads, the other space's too (its Configuration tab)
+    const src = await json<SourceDto>(call("GET", `/v1/spaces/${A}/sources/${S1}`, { token: t.op }));
+    expect(src.usedBy.map((r) => [r.name, r.spaceId === A, r.fields])).toEqual([
+      ["BI-FAST credit", true, ["amount_minor", "attrs.settlement_ref", "business_date", "currency", "ext_ref"]],
+      ["BI-FAST debit", false, ["amount_minor", "attrs.settlement_ref", "business_date", "currency", "ext_ref"]],
+    ]);
 
     const s = sourceSpec(1);
     const dropped = SourceSpec.parse({ ...s, mapping: { ...s.mapping, attrs: {} } });

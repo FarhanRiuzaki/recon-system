@@ -448,6 +448,8 @@ export const SourceDto = SourceRowDto.extend({
     checkedAt: z.string(),
     columns: z.array(z.object({ column: z.string(), expected: z.string(), found: z.string().nullable(), effect: z.string() })),
   }).nullable(),
+  /** The published recons that read this source, with the fields each reads (the owner space only; [] through a share). */
+  usedBy: z.array(z.object({ id: z.string(), spaceId: z.string(), name: z.string(), fields: z.array(z.string()) })),
   connection: SourceConnectionDto.nullable(),
   shares: z.array(SourceShareDto),
   published: SourceVersionDto.nullable(),

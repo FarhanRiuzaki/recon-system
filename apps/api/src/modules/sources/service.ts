@@ -27,7 +27,7 @@ import {
   CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
-import { reconHealthInputs, reconsUsingFields } from "../recon";
+import { reconHealthInputs, reconsUsingFields, reconsUsingSource } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
 import { users } from "../users";
 import {
@@ -157,6 +157,7 @@ async function detailDto(tx: InTx, s: SourceRow, spaceId: string, admin = false)
     drift: state?.drift ?? null,
     connection: connection ? { ...connectionDto(connection), ...(server ? { server } : {}) } : null,
     shares,
+    usedBy: own ? await reconsUsingSource(tx, s.id) : [],
     published: published ? versionDto(published) : null,
     draft: open ? versionDto(open) : null,
   };

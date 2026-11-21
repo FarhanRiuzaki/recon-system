@@ -19,6 +19,7 @@ import { api, isNotFound } from "@/lib/client/api";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { discardConfirm } from "./discard-dialog";
 import type { PlainAction } from "@/components/shell/page-header";
+import { SourceConfig } from "./source-config";
 import { ActivityTable, FilesTable, QuarantineTable, RecordsTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
@@ -27,7 +28,7 @@ import { at, completeText, day, errorSentence, KIND_LABEL, lagText, missingText,
 import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
-const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "Records", quarantine: "Quarantine", versions: "Versions", activity: "Activity" };
+const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "Records", configuration: "Configuration", quarantine: "Quarantine", versions: "Versions", activity: "Activity" };
 
 /**
  * "Edit source" (Build notes 02): the open draft in the wizard, a version in review on its page, or a new draft made
@@ -189,6 +190,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
         </RouteTabs>
       )}
       {shown === "records" ? <RecordsTable spaceId={spaceId} id={id} />
+        : shown === "configuration" ? <SourceConfig s={s} spaceId={spaceId} />
         : shown === "quarantine" ? <QuarantineTable spaceId={spaceId} id={id} />
         : shown === "versions" ? <VersionsTable spaceId={spaceId} id={id} />
         : shown === "activity" ? <ActivityTable spaceId={spaceId} id={id} /> : (

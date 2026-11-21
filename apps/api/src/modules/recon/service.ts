@@ -396,6 +396,22 @@ export async function reconsUsingFields(tx: InTx, sourceId: string, fields: stri
 }
 
 /**
+ * For the sources module (the source's Configuration tab): the published recons that read source `sourceId`, each with
+ * the fields it reads, A–Z by name; only those `tx` can read (the owner space sees every space's, by drizzle/0021).
+ */
+export async function reconsUsingSource(tx: InTx, sourceId: string): Promise<{ id: string; spaceId: string; name: string; fields: string[] }[]> {
+  const rows = await tx.select({ id: reconSourceUses.configId, spaceId: reconSourceUses.spaceId, name: reconSourceUses.configName, field: reconSourceUses.field })
+    .from(reconSourceUses).where(eq(reconSourceUses.sourceId, sourceId));
+  const by = new Map<string, { id: string; spaceId: string; name: string; fields: string[] }>();
+  for (const r of rows) {
+    const x = by.get(r.id) ?? { id: r.id, spaceId: r.spaceId, name: r.name, fields: [] };
+    x.fields.push(r.field);
+    by.set(r.id, x);
+  }
+  return [...by.values()].map((x) => ({ ...x, fields: [...new Set(x.fields)].sort() })).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * The health inputs the published recons that read sources `sourceIds` set (Plan 2 carry-over): per source the
  * smallest grace and the earliest daily deadline (HH:MM) among them, the strictest. Only the configs `tx` can read
  * (its space's own, and every config of a source the space owns).

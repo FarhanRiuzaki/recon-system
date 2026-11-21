@@ -4,4 +4,4 @@
 export { reconController } from "./controller";
 export { checkReconSpec, usedFields } from "./rules";
 export { reconConfigs, reconConfigVersions, reconSourceUses } from "./schema";
-export { draftToSimulate, markSimulated, reconHealthInputs, reconsUsingFields } from "./service";
+export { draftToSimulate, markSimulated, reconHealthInputs, reconsUsingFields, reconsUsingSource } from "./service";

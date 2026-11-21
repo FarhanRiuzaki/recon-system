@@ -243,6 +243,36 @@
         }
       ]
     },
+    "usedBy": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "spaceId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "spaceId",
+          "name",
+          "fields"
+        ],
+        "additionalProperties": false
+      }
+    },
     "connection": {
       "anyOf": [
         {
@@ -2090,6 +2120,7 @@
     "updatedAt",
     "nextRunAt",
     "drift",
+    "usedBy",
     "connection",
     "shares",
     "published",
