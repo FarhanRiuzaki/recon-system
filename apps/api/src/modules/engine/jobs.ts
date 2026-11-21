@@ -15,6 +15,7 @@ import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { enqueue, type JobHandler, jobAlive, QUEUE_OPTIONS, type QueueName, QUEUES } from "../../kernel/jobs";
 import { tryConfigLock } from "../../kernel/locks";
+import { log } from "../../kernel/log";
 import { recordActivity } from "../audit";
 import { todayIn } from "../ingest";
 import type { Ctx } from "../auth";
@@ -214,7 +215,12 @@ export async function runAndRefresh(on: Tx, d: { spaceId: string; runId: string 
   try {
     await runner(on, d, signal);
   } finally {
-    if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
+    // a failure here is logged, never thrown: it must not replace the runner's own error (review T4)
+    try {
+      if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
+    } catch (e) {
+      log.warn({ err: e, runId: d.runId }, "run days not refreshed after the close");
+    }
   }
 }
 

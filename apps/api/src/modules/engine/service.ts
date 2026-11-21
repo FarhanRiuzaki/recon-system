@@ -568,8 +568,8 @@ export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { b
     // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
     // On the row's counters: a simulation stored its projection beside them.
     // Only on the first finalize: after the close (or later) the window's breaks are not the run's own any more, so a
-    // second min could only drift from what the run did; a run marked not finalized after a failed refresh had it already
-    // and taking the smaller value again leaves it as it is.
+    // second min could only drift from what the run did. A run marked not finalized after a failed refresh takes it once
+    // more: the same value unless breaks of its window were resolved in between (Plan 5), which can lower it.
     const counters = r.counters as RunCounters;
     if (!r.finalized) {
       for (const p of spec.passes) {
@@ -577,7 +577,8 @@ export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { b
         if (pc) pc.brokenRefs = Math.min(pc.brokenRefs ?? pc.broken, refs.get(p.no) ?? 0);
       }
     }
-    await tx.update(reconRuns).set({ counters, days, finalized: true }).where(mine);
+    // a success clears the backfill's failed attempts, so a later outage starts its own count (review T1)
+    await tx.update(reconRuns).set({ counters, days, finalized: true, finalizeAttempts: 0, finalizeError: null }).where(mine);
   }, on);
 }
 
@@ -647,7 +648,6 @@ async function membersOf(tx: InTx, spaceId: string, ids: string[], recordSpaces:
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
-/** GET …/runs/:runId. */
 /** Backfill jobs (finalizeRun) a run gets before GET stops queueing them, and the least time between two. */
 export const FINALIZE_ATTEMPTS_MAX = 3;
 const FINALIZE_RETRY_SECONDS = 300;
