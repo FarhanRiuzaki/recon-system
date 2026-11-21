@@ -27,6 +27,19 @@ describe("DataTable row actions", () => {
   });
 });
 
+/** Header help (design-system §5.7, owner 21 Nov): a column's meaning behind an ⓘ after its header, named for it. */
+describe("DataTable header help", () => {
+  it("renders an About button after a header that has help, and none without", () => {
+    const out = renderToStaticMarkup(h(DataTable<Row>, {
+      label: "Sessions", rows: [{ id: "a" }], rowKey: (r) => r.id,
+      columns: [{ key: "id", header: "ID", cell: (r) => r.id, help: "The session's id." }, { key: "n", header: "Name", cell: () => "x" }],
+      empty: { icon: SessionsIcon, title: "No sessions", description: "None yet." },
+    }));
+    expect(out).toContain('aria-label="About ID"');
+    expect(out).not.toContain('aria-label="About Name"');
+  });
+});
+
 /** R4: the highlight is opt-in and never on the first render (a page load is the baseline). */
 describe("DataTable highlightNew", () => {
   const withHighlight = (rows: Row[], highlightNew?: boolean) => renderToStaticMarkup(h(DataTable<Row>, {

@@ -673,6 +673,10 @@ implementation approval waits for review of the delivered revision.
 | Footer | 48 px: "1–25 of 312" fg-3 left · rows-per-page dropdown · pagination right (28 px square buttons radius 10, current = `--tray` fill without a line; `markup.test.ts` "Pagination: the current page is a tray fill without a line") |
 | Density | `data-density="compact"` → rows 36/44 |
 
+Header help (owner, 21 Nov): a column whose meaning isn't plain from its name gets an ⓘ after its header (`InfoTip`;
+`Column.help` in `DataTable`, an `InfoTip` inside `TableHead` in a plain `Table`). One or two sentences, written as
+copy-guide §4 "Help text" says. (`data-table.test.ts` "header help")
+
 Sideways scroll (owner, 21 Nov): a table wider than its card scrolls inside it, and each side with content hidden past
 it shows a 48 px fade from `--line` (the row divider) through `--tray` (the header row's surface) to clear, on while hidden content is there and off at that edge (the
 scroll position, re-read on resize), so a reader notices the table goes on. It is `Table`'s own (`ui/table.tsx`), so

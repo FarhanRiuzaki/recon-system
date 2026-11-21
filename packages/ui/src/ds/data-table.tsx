@@ -9,6 +9,7 @@ import { Select } from "../ui/select";
 import { Skeleton } from "../ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { pageCount } from "../lib/paging";
+import { InfoTip } from "./info-tip";
 import { Pagination } from "./pagination";
 import { EmptyState, ErrorState } from "./states";
 
@@ -16,6 +17,8 @@ export type Column<T> = {
   key: string; header: string; cell: (r: T) => ReactNode;
   /** Shown in the header cell instead of `header` (e.g. a select-all checkbox); `header` still names the column elsewhere. */
   headerCell?: ReactNode;
+  /** What the column means, behind an ⓘ after its header (one or two plain sentences; design-system §5.7). */
+  help?: ReactNode;
   /** Server-sorted column: the header button toggles `sort` (with `aria-sort`); the rows are never re-sorted here. */
   sortable?: boolean;
   align?: "left" | "right"; className?: string;
@@ -248,6 +251,7 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
                       {c.header}<Icon icon={sortIcon} className="size-3" />
                     </button>
                   ) : c.headerCell ?? c.header}
+                  {c.help && <InfoTip label={c.header}>{c.help}</InfoTip>}
                 </TableHead>
               );
             })}

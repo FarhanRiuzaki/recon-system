@@ -163,6 +163,13 @@ numbers from examples.
 - "New source" for anyone but a source admin: "Only a source admin of this space adds sources."; "Edit source" for
   anyone but a source admin or config maker: "Only a source admin or a config maker of this space changes a source."
 
+- Help text (an ⓘ beside a field label or a table header; owner, 21 Nov: short, plain, like a professional product):
+  one or two sentences, at most about 30 words. First what the thing is, in the reader's terms; then what it changes
+  or what happens when it is off ("A row whose value doesn't fit goes to quarantine with the reason."). One concrete
+  example when it helps ("such as yyyy-MM-dd"). No "This column…", no "Here you can…", no marketing words, no
+  internal names (CEL, row_hash, attrs). Example: Stored as: "The name the value is kept under with each record, so
+  recons can match and filter on it. Untick to leave the column out."
+
 ## 5. Glossary (use exactly these terms)
 
 | Use | Not | Notes |

@@ -226,8 +226,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                <TableHead>Column</TableHead><TableHead>Stored as</TableHead><TableHead>Example</TableHead><TableHead>Use as</TableHead><TableHead>Type</TableHead><TableHead>Format</TableHead>
-                <TableHead>Empty ok</TableHead>
+                {COLUMN_HEADS.map(([head, help]) => <TableHead key={head}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
               </TableRow></TableHeader>
               <TableBody>
                 {s.fields.map((f, i) => {
@@ -324,6 +323,19 @@ export function FieldsStep(p: FieldsStepProps) {
     </div>
   );
 }
+/**
+ * The Columns table's headers with what each means, behind an ⓘ (owner, 21 Nov: every column header says in one or two
+ * plain sentences what it is and what changing it does; design-system §5.7).
+ */
+const COLUMN_HEADS: readonly [string, string][] = [
+  ["Column", "The column's name in the source, as read from the table, the query or the file."],
+  ["Stored as", "The name the value is kept under with each record, so recons can match and filter on it. Untick to leave the column out."],
+  ["Example", "A value read from the source, to check the type and format at a glance."],
+  ["Use as", "The recon field this column fills, such as Business date or Amount. Each recon field takes one column. Leave it empty when the column is only stored."],
+  ["Type", "How the value is read: text, number, date, or date and time. A row whose value doesn't fit goes to quarantine with the reason."],
+  ["Format", "How a date or number is written in the source, such as yyyy-MM-dd or 2 decimal places, and the time zone of a date and time."],
+  ["Empty ok", "Allows rows where this column is empty. When off, such a row goes to quarantine."],
+];
 /** The Columns table as cards below 1280 px (a cell's height stays its content's: no fixed row height). */
 const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_tr]:grid-cols-2 max-xl:[&_tr]:gap-x-3 max-xl:[&_tr]:gap-y-3 max-xl:[&_tr]:border-b max-xl:[&_tr]:border-line max-xl:[&_tr]:px-4 max-xl:[&_tr]:py-3 max-xl:[&_td]:block max-xl:[&_td]:h-auto max-xl:[&_td]:border-0 max-xl:[&_td]:p-0 max-xl:[&_td]:whitespace-normal";
 
@@ -521,21 +533,23 @@ export function PreviewResult({ preview, file }: { preview: Preview; file: boole
               const exp = x.currency ? CURRENCY_EXPONENT[x.currency] : undefined;
               return exp === undefined ? x.amountMinor : `${x.currency} ${formatMinor(BigInt(x.amountMinor), exp)}`;
             };
-            const all: { head: string; cell: (x: (typeof rows)[number]) => string | null }[] = [
-              { head: "Business date", cell: (x) => x.businessDate },
-              { head: "Amount", cell: (x) => (x.amountMinor === null ? null : amount(x)) },
-              { head: "Currency", cell: (x) => x.currency },
-              { head: "Direction", cell: (x) => x.direction },
-              { head: "Event time", cell: (x) => x.eventTime },
-              { head: "Reference", cell: (x) => x.extRef },
-              { head: "Account", cell: (x) => x.accountRef },
-              { head: "Match key", cell: (x) => x.naturalKey?.replaceAll("\u001f", " · ") ?? null },
+            const all: { head: string; help: string; cell: (x: (typeof rows)[number]) => string | null }[] = [
+              { head: "Business date", help: "The day the record belongs to. Recons compare and close it on this day.", cell: (x) => x.businessDate },
+              { head: "Amount", help: "The amount as the recons compare it, in the row's currency.", cell: (x) => (x.amountMinor === null ? null : amount(x)) },
+              { head: "Currency", help: "The ISO code read for the row.", cell: (x) => x.currency },
+              { head: "Direction", help: "Debit or credit as read. A debit counts as negative.", cell: (x) => x.direction },
+              { head: "Event time", help: "When the transaction happened, stored in UTC.", cell: (x) => x.eventTime },
+              { head: "Reference", help: "The reference both sides share for the same transaction.", cell: (x) => x.extRef },
+              { head: "Account", help: "The account the row is posted to.", cell: (x) => x.accountRef },
+              { head: "Match key", help: "The columns that name the row. A newer row with the same match key replaces it.", cell: (x) => x.naturalKey?.replaceAll("\u001f", " · ") ?? null },
             ];
             const cols = all.filter((c) => rows.some((x) => c.cell(x) !== null));
             return (
               <Table aria-label="Preview records">
                 <TableHeader><TableRow>
-                  <TableHead>Row</TableHead>{cols.map((c) => <TableHead key={c.head}>{c.head}</TableHead>)}<TableHead>Stored columns</TableHead>
+                  <TableHead>Row<InfoTip label="Row">The row&apos;s position in the sample, so you can find it in the source.</InfoTip></TableHead>
+                  {cols.map((c) => <TableHead key={c.head}>{c.head}<InfoTip label={c.head}>{c.help}</InfoTip></TableHead>)}
+                  <TableHead>Stored columns<InfoTip label="Stored columns">Every column kept with the record, under its stored name. Recons can match on any of them.</InfoTip></TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
                   {rows.map((x) => (
