@@ -239,6 +239,13 @@
       "when": 1795222747311,
       "tag": "0033_engine_analyze_table",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795223862495,
+      "tag": "0034_engine_groups_days",
+      "breakpoints": true
     }
   ]
 }

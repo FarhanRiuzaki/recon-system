@@ -181,6 +181,21 @@ describe("runs and simulations through the API", () => {
     expect(done.days!.map((d) => [d.date, d.passes["1"]!.broken, d.passes["1"]!.brokenRefs])).toEqual([[D, 3, 1], [D1, 3, 1]]);
   });
 
+  it("live counts only the run's own dates, not the carry-over date before them", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "C1", amount: 100n, date: D }, { ref: "C2", amount: 200n, date: D1 }]);
+    await put(sb, [{ ref: "C1", amount: 100n, date: D }, { ref: "C2", amount: 200n, date: D1 }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));
+    await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D }));
+    await drain();
+    const second = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D1, to: D1 }));
+    await drain();
+    const done = await getRun(r.configId, second.id);
+    // its days hold D (carry over, the first run's pair) and D1; live only D1
+    expect(done.days!.map((d) => [d.date, d.passes["1"]!.matched])).toEqual([[D, 1], [D1, 1]]);
+    expect(done.live).toMatchObject({ matched: 1 });
+  });
+
   it("a group's members are capped at 50 with its member count", async () => {
     const [sa, sb] = await sides();
     await put(sa, [{ ref: "S", amount: 6000n, sref: "B1" }]);
@@ -418,6 +433,12 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     expect(days.every((d) => d.closed)).toBe(true);
     expect((await getRun(gate.configId, q.id)).live).toEqual({ matched: 937, suggested: 0, breaks: side(48), open: side(0) });
     expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
+    // a run from before 0032 has no stored days: the first GET computes the same ones and stores them
+    const asStored = await getRun(gate.configId, q.id);
+    await db.update(reconRuns).set({ days: null }).where(eq(reconRuns.id, q.id));
+    const [first, second] = await Promise.all([getRun(gate.configId, q.id), getRun(gate.configId, q.id)]);
+    expect([first.days, first.live, second.days]).toEqual([asStored.days, asStored.live, asStored.days]);
+    expect((await db.select({ days: reconRuns.days }).from(reconRuns).where(eq(reconRuns.id, q.id)))[0]!.days).toEqual(asStored.days);
     expect((await call("GET", `${base(gate.configId)}/runs`, { token: t.rv }).then((r) => r.json()) as Page<ReconRunDto>).items[0]!.days).toBeNull();
 
     const total = async (q2: string) => (await items(gate.configId, q.id, q2)).total;

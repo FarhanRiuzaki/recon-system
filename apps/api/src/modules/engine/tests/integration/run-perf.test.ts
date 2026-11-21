@@ -6,7 +6,9 @@
 //   PERF_ANALYZE_RECORDS=1 …   the records analyzed before the run (as autovacuum would have, some time after ingest)
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import { SQL } from "bun";
 import { eq, sql } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/bun-sql";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { truncateAll } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
@@ -16,7 +18,7 @@ import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import type { Ctx } from "../../../auth";
-import { classifyUnmatched, runDetail, runItemPage, runRecon } from "../../service";
+import { classifyUnmatched, refreshRunDays, runDetail, runItemPage, runRecon } from "../../service";
 
 const A = Bun.randomUUIDv7();
 const D = "2026-11-02";
@@ -46,6 +48,11 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
     await db.insert(spaces).values({ id: A, code: "a", name: "A" });
     await db.transaction((tx) => ensureMonthPartitions(tx, records, new Date(`${D}T00:00:00Z`), 1));
     probe = await appRoleDb();
+    // past 20,000 a side a step runs longer than the test pool's 30 s: the worker's own timeout (JOB_STATEMENT_TIMEOUT_MS)
+    if (SIZES.some((n) => n > 20_000)) {
+      await probe.$client.close();
+      probe = drizzle({ client: new SQL(process.env.DATABASE_URL!, { max: 4, connection: { role: "recon_app_probe", statement_timeout: 600_000, idle_in_transaction_session_timeout: 600_000 } }) });
+    }
   });
   afterAll(() => probe?.$client.close());
 
@@ -82,6 +89,14 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
         await read();
         console.log(`  ${name}: ${Math.round(performance.now() - t1)} ms`);
       }
+      // a run's days again (daysOf, as after a close), in the worker; and the groups' GROUP BY's plan
+      const t2 = performance.now();
+      await refreshRunDays(probe, A, run.runId);
+      console.log(`  daysOf (${n} groups-ish on one date): ${Math.round(performance.now() - t2)} ms`);
+      const plan = (await db.execute(sql`explain (analyze, buffers) select business_date, pass_no, count(*) from match_groups
+        where space_id = ${A} and config_id = ${configId} and sim_run_id is null and reversed_by is null and kind = 'auto'
+          and business_date between ${D}::date and ${D}::date group by 1, 2`)) as unknown as { "QUERY PLAN": string }[];
+      console.log(plan.map((x) => `    ${x["QUERY PLAN"]}`).join("\n"));
       const offs = Math.floor(n / 33);
       expect(run.counters.passes).toMatchObject({ 1: { matched: n - offs, suggested: 0, broken: 0 }, 2: { matched: 0, suggested: offs, broken: 0 } });
       // the near-miss classifier at its worst: no pass, every item open with a counterpart (day close, projection)

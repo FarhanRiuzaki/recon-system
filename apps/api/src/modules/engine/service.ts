@@ -285,6 +285,29 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       )).groupBy(reconItems.side);
       counters.open = { a: 0, b: 0 };
       for (const r of open) counters.open[r.side as "a" | "b"] = r.n;
+      // succeeded first (only while running, under the row lock), then what comes with it
+      await tx.update(reconRuns).set({ counters, status: "succeeded", finishedAt: sql`now()` }).where(and(mine, eq(reconRuns.status, "running")));
+      await o.finish?.(tx);
+      return counters;
+    });
+    if (counters === "over") return null;
+    // after the run, each in a short transaction of its own; a failure there is logged and never fails the run
+    const after = async (what: string, fn: (tx: InTx) => Promise<unknown>) => {
+      try {
+        await withSpace(scope, fn, on);
+      } catch (e) {
+        log.warn({ err: errorDetail(e), runId }, `recon run: ${what} failed`);
+      }
+    };
+    // the result screens read the groups right after: their statistics first
+    const groups = Object.values(counters.passes).reduce((n, p) => n + p.matched + p.suggested, 0);
+    const members = Object.values(counters.passes).reduce((n, p) => n + p.matchedItems.a + p.matchedItems.b + p.suggestedItems.a + p.suggestedItems.b, 0);
+    await after("statistics of match_groups", (tx) => one(tx, analyzeTableSql("match_groups", groups)));
+    await after("statistics of match_members", (tx) => one(tx, analyzeTableSql("match_members", members)));
+    // its days (left null on a failure: the first GET computes them) and its passes' references counted once
+    await after("days", async (tx) => {
+      const [r] = await tx.select().from(reconRuns).where(mine).for("update");
+      if (!r || r.days) return;
       const { days, refs } = await daysOf(tx, {
         spaceId, configId, simRunId, passes: spec.passes.map((p) => p.no), first, from: run.dateFrom, to,
         recordSpaces: [...new Set([spaceId, ...sides.map((x) => x.sourceSpaceId)])],
@@ -292,21 +315,15 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       // a reference broken on two dates of the run counts once: the steps counted it per date, the window's breaks count
       // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
       // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
+      // on the row's counters (a simulation stored its projection beside them since)
+      const stored = r.counters as RunCounters;
       for (const p of spec.passes) {
-        const pc = counters.passes[String(p.no)]!;
-        pc.brokenRefs = Math.min(pc.brokenRefs, refs.get(p.no) ?? 0);
+        const pc = stored.passes[String(p.no)];
+        if (pc) pc.brokenRefs = Math.min(pc.brokenRefs, refs.get(p.no) ?? 0);
+        counters.passes[String(p.no)]!.brokenRefs = pc?.brokenRefs ?? 0;
       }
-      // succeeded first (only while running, under the row lock), then what comes with it
-      await tx.update(reconRuns).set({ counters, days, status: "succeeded", finishedAt: sql`now()` }).where(and(mine, eq(reconRuns.status, "running")));
-      await o.finish?.(tx);
-      return counters;
+      await tx.update(reconRuns).set({ counters: stored, days }).where(mine);
     });
-    if (counters === "over") return null;
-    // the result screens read the groups right after: their statistics now, in short transactions of their own
-    const groups = Object.values(counters.passes).reduce((n, p) => n + p.matched + p.suggested, 0);
-    const members = Object.values(counters.passes).reduce((n, p) => n + p.matchedItems.a + p.matchedItems.b + p.suggestedItems.a + p.suggestedItems.b, 0);
-    await on.transaction((tx) => one(tx, analyzeTableSql("match_groups", groups)));
-    await on.transaction((tx) => one(tx, analyzeTableSql("match_members", members)));
     return { runId, counters };
   } catch (e) {
     if (e instanceof RunAborted) throw e;
@@ -447,8 +464,10 @@ export async function runRow(tx: InTx, spaceId: string, configId: string, runId:
   const run = await runOfConfig(tx, spaceId, configId, runId);
   const dto = (await runDtos(tx, spaceId, [run]))[0]!;
   if (!withDays) return dto;
-  const days = (run.days as RunDay[] | null) ?? null;
-  const sum = (f: (d: RunDay) => number) => (days ?? []).reduce((n, d) => n + f(d), 0);
+  const days = await storedDays(tx, run);
+  // the run's own dates only: the carry-over dates before them hold other runs' groups and breaks
+  const own = (days ?? []).filter((d) => d.date >= run.dateFrom && d.date <= run.dateTo);
+  const sum = (f: (d: RunDay) => number) => own.reduce((n, d) => n + f(d), 0);
   const passes = (d: RunDay, f: "matched" | "suggested") => Object.values(d.passes).reduce((n, p) => n + p[f], 0);
   return {
     ...dto, days,
@@ -461,7 +480,7 @@ export async function runRow(tx: InTx, spaceId: string, configId: string, runId:
 
 /**
  * A run's days (ReconRunDto.days) and its passes' distinct broken references, over its window `first`..`to` (its dates
- * and the carry over before them) as the items stand: matched groups and suggested ones whose items are still
+ * and the carry over before them) as the items stand when it is called (the run's end, or after its close): matched groups and suggested ones whose items are still
  * suggested per (date, pass), whether the day closed, breaks of time (grace, close: break_pass null) per (date, side), broken items per (date,
  * pass) with distinct references (per day: a reference broken on two dates counts on each), open items per (date, side);
  * and per pass the distinct references of the window's items it broke (each once). Run once, at the run's
@@ -520,14 +539,55 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
  * closes nothing) or a run not succeeded is left as it is.
  */
 export async function refreshRunDays(on: Tx, spaceId: string, runId: string): Promise<void> {
-  await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
-    const [run] = await tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))).for("update");
-    if (run?.status !== "succeeded" || run.mode === "simulation") return;
-    const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
-    const first = addDays(run.dateFrom, -spec.carry_over_days);
-    const { days } = await daysOf(tx, { spaceId, configId: run.configId, simRunId: null, passes: spec.passes.map((p) => p.no), first, from: run.dateFrom, to: run.dateTo, recordSpaces });
-    await tx.update(reconRuns).set({ days }).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
+  try {
+    await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
+      const [run] = await tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))).for("update");
+      if (run?.status !== "succeeded" || run.mode === "simulation") return;
+      await tx.update(reconRuns).set({ days: await daysNow(tx, run) }).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
+    }, on);
+  } catch (e) {
+    // the days stay as they were; the run and its close are done
+    log.warn({ err: errorDetail(e), runId }, "recon run: days after the close failed");
+  }
+}
+
+/** How many of run `runId`'s own dates are closed (recon_days); 0 for a run not found. */
+export async function closedDates(on: Tx, spaceId: string, runId: string): Promise<number> {
+  return withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
+    const [run] = await tx.select({ configId: reconRuns.configId, from: reconRuns.dateFrom, to: reconRuns.dateTo }).from(reconRuns)
+      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
+    if (!run) return 0;
+    const [r] = await tx.select({ n: count() }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId), eq(reconDays.configId, run.configId),
+      eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${run.from}::date and ${run.to}::date`));
+    return r?.n ?? 0;
   }, on);
+}
+
+/** Run `run`'s days as its items and groups stand when called (daysOf over its window, its own items for a simulation). */
+async function daysNow(tx: InTx, run: RunRow): Promise<RunDay[]> {
+  const { spec, recordSpaces } = await versionRead(tx, run.spaceId, run.configVersionId);
+  const { days } = await daysOf(tx, {
+    spaceId: run.spaceId, configId: run.configId, simRunId: run.mode === "simulation" ? run.id : null, passes: spec.passes.map((p) => p.no),
+    first: addDays(run.dateFrom, -spec.carry_over_days), from: run.dateFrom, to: run.dateTo, recordSpaces,
+  });
+  return days;
+}
+
+/**
+ * A succeeded run's stored days; a run from before 0032 has none (and one stored before `breaks`/`closed` existed, or
+ * whose days failed after it succeeded, none usable), so the first GET computes them once, with the worker's code,
+ * under the run row's lock (a second GET waiting on it finds them stored), and stores them.
+ */
+async function storedDays(tx: InTx, run: RunRow): Promise<RunDay[] | null> {
+  // stored before `breaks` / `closed` existed (8263dad) counts as none
+  const complete = (d: unknown): d is RunDay[] => Array.isArray(d) && d.every((x) => typeof (x as RunDay).closed === "boolean");
+  if (complete(run.days) || run.status !== "succeeded") return complete(run.days) ? run.days : null;
+  const mine = and(eq(reconRuns.spaceId, run.spaceId), eq(reconRuns.id, run.id));
+  const [locked] = await tx.select({ days: reconRuns.days }).from(reconRuns).where(mine).for("update");
+  if (complete(locked?.days)) return locked.days;
+  const days = await daysNow(tx, run);
+  await tx.update(reconRuns).set({ days }).where(mine);
+  return days;
 }
 
 /**
@@ -598,6 +658,8 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
     const run = await runOfConfig(tx, spaceId, configId, runId);
     const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
     const scopeI = run.mode === "simulation" ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId);
+    const inWindow = (c: typeof reconItems.businessDate | typeof matchGroups.businessDate) =>
+      sql`${c} between ${addDays(run.dateFrom, -spec.carry_over_days)}::date and ${run.dateTo}::date`;
     const scopeG = run.mode === "simulation" ? eq(matchGroups.simRunId, run.id) : isNull(matchGroups.simRunId);
     // the item's group now: a group of the run's scope it is a member of, not reversed. A plain join of members and
     // groups, so the planner joins it by hash or index (a correlated IN in the join condition compared every item with
@@ -614,8 +676,8 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
       // pass: its groups' members or the items it broke, one branch each
       q.pass ? inArray(reconItems.id, unionAll(
         tx.select({ id: matchMembers.itemId }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
-          .where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy), eq(matchGroups.passNo, q.pass))),
-        tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), scopeI, eq(reconItems.breakPass, q.pass))),
+          .where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy), eq(matchGroups.passNo, q.pass), inWindow(matchGroups.businessDate))),
+        tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), scopeI, eq(reconItems.breakPass, q.pass), inWindow(reconItems.businessDate))),
       )) : undefined,
       // the date it counts on: its group's (the latest member's, so its own is within carry over before it), else its own
       q.date ? and(sql`${reconItems.businessDate} between ${addDays(q.date, -spec.carry_over_days)}::date and ${q.date}::date`,

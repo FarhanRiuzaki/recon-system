@@ -167,6 +167,8 @@ export const matchGroups = pgTable("match_groups", {
 }, (t) => [
   unique("match_groups_space_id_id_key").on(t.spaceId, t.id),
   index("match_groups_config_date").on(t.spaceId, t.configId, t.businessDate),
+  // a run's days (service.ts daysOf): groups per date, pass and kind, read from the index alone once vacuum marks the pages
+  index("match_groups_days").on(t.spaceId, t.configId, t.simRunId, t.businessDate, t.passNo, t.kind).where(sql`${t.reversedBy} is null`),
   index("match_groups_run").on(t.spaceId, t.runId, t.passNo),
   index("match_groups_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "match_groups_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),

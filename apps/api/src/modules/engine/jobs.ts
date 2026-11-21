@@ -24,7 +24,7 @@ import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -206,11 +206,13 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => {
-  // a run, then its due dates closed (runScheduled), then its days read again so they show what the close made
+  // a run, then its due dates closed (runScheduled), then, when that closed one of its dates, its days read again so
+  // they show what the close made (a tick that closes nothing reads nothing again)
   const run = async ({ data, signal }: { data: unknown; signal?: AbortSignal }) => {
     const d = data as { spaceId: string; runId: string };
+    const before = d.runId ? await closedDates(on, d.spaceId, d.runId) : 0;
     await runScheduled(on, d, signal);
-    if (d.runId) await refreshRunDays(on, d.spaceId, d.runId);
+    if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
   };
   return {
     // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)

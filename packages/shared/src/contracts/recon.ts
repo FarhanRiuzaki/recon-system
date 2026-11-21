@@ -219,8 +219,8 @@ export type RunRangeBody = z.infer<typeof RunRangeBody>;
 const PerSide = z.object({ a: z.number().int(), b: z.number().int() });
 /**
  * What a pass did over a run: groups it matched, groups it suggested, items it broke as ambiguous (Duplicate) and their
- * distinct references (GET run: counted now over the run's window, so a reference broken on two dates counts once; a
- * list row: as its steps counted them); the items of each per side (a group pass pairs one item with n). A run before
+ * distinct references (counted when the run ended over its window, so a reference broken on two dates counts once;
+ * as its steps counted them until then); the items of each per side (a group pass pairs one item with n). A run before
  * these fields has the first three only.
  */
 export const PassCounters = z.object({
@@ -233,7 +233,8 @@ export type RunCounters = z.infer<typeof RunCounters>;
 /** How many pairs a simulation changes against the published version, per kind of change. */
 export const SimChangeCounts = z.object({ gained: z.number().int(), lost: z.number().int(), repaired: z.number().int(), kind: z.number().int() });
 /**
- * A business date of a run as it stands now (the run's own items for a simulation, the live ones otherwise): per pass,
+ * A business date of a run as it stood when the run and its close ended (the run's own items for a simulation, the live
+ * ones otherwise; not run-scoped: a carry-over date holds other runs' groups and breaks too): per pass,
  * groups matched and still suggested on that date (a group counts on its latest member's date) and items broken there with
  * their distinct references (per day: a reference broken on two dates counts on each); items still open per side on
  * their own date. Every date of the run, and a carry-over date
@@ -291,8 +292,9 @@ export const ReconRunDto = z.object({
   /** GET …/runs/{runId} only (a list answers null). */
   days: z.array(RunDay).nullable(),
   /**
-   * What stands now over the run's dates, the sums of `days` (GET run only; null without days): groups matched, groups
-   * still suggested, breaks of time per side, waiting items per side. `counters` stay what the run itself did.
+   * What stood over the run's own dates (from–to, not the carry over before them) when the run and its close ended, the
+   * sums of those `days` (GET run only; null without days): groups matched, groups still suggested, breaks of time per
+   * side, waiting items per side. `counters` stay what the run itself did.
    */
   live: z.object({ matched: z.number().int(), suggested: z.number().int(), breaks: PerSide, open: PerSide }).nullable(),
   /** A draft's simulation that succeeded: what day close would do with its waiting items (null otherwise). */

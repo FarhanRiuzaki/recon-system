@@ -1,0 +1,1 @@
+CREATE INDEX "match_groups_days" ON "match_groups" USING btree ("space_id","config_id","sim_run_id","business_date","pass_no","kind") WHERE "match_groups"."reversed_by" is null;

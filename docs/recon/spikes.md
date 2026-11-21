@@ -172,6 +172,11 @@ tepat setelah run (estimasi 1 baris → nested loop item × grup): item `pass=1`
 5.000/sisi. Perbaikan: `recon_analyze_table` (0033) di akhir run untuk kedua tabel itu, dan grup item lewat join biasa
 members × groups, bukan `IN` berkorelasi di kondisi join.
 
+200.000/sisi satu tanggal (review round 3 Task 3, pool worker tanpa batas 30 s, satu jalan): `daysOf` 192 ms atas ~194.000
+grup (GROUP BY grup: parallel seq scan 12 ms; index `match_groups_days`, 0034, tidak dipakai karena semua baris tabel
+milik config ini), `GET run` 5 ms, item `pass=1` 583 ms, `pass=2` halaman 2 1.208 ms, `date=` 187 ms (pool API 5 s).
+Run-nya sendiri 93,5 s. 31 hari pada volume S1 belum diukur (gerbang performa).
+
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
 Tanggal 2026-11-20. Semula `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)
