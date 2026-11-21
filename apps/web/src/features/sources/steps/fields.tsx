@@ -226,7 +226,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 1280 every control keeps its width and the table scrolls inside its card (fix round 2) */}
             <Table aria-label="Columns" className={CARDS}>
               <TableHeader className="max-xl:hidden"><TableRow>
-                {COLUMN_HEADS.map(([head, help]) => <TableHead key={head}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
+                {COLUMN_HEADS.map(([head, help], k) => <TableHead key={head} className={k === 0 ? STICK_HEAD : undefined}>{head}<InfoTip label={head}>{help}</InfoTip></TableHead>)}
               </TableRow></TableHeader>
               <TableBody>
                 {s.fields.map((f, i) => {
@@ -244,7 +244,7 @@ export function FieldsStep(p: FieldsStepProps) {
                   };
                   return (
                     <TableRow key={f.name}>
-                      <TableCell className="font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label">
+                      <TableCell className={`font-mono text-mono text-fg max-xl:col-span-2 max-xl:text-label ${STICK_CELL}`}>
                         {f.name}
                         {p.gone.gone.includes(f.name) && s.input.kind === "db_watermark" && (
                           <span className={`block max-w-56 whitespace-normal font-sans text-caption ${p.gone.used.includes(f.name) ? "text-down-ink" : "text-fg-3"}`}>{goneRowNote(s.input.table ?? "")}</span>
@@ -336,6 +336,13 @@ const COLUMN_HEADS: readonly [string, string][] = [
   ["Format", "How a date or number is written in the source, such as yyyy-MM-dd or 2 decimal places, and the time zone of a date and time."],
   ["Empty ok", "Allows rows where this column is empty. When off, such a row goes to quarantine."],
 ];
+/**
+ * The column's name stays at the left while the Columns table scrolls sideways (owner, 21 Nov: which column is being
+ * set stays in view), with a line on its right; a table (1280 px and up) only, as DataTable's title column.
+ */
+const STICK_ON = "xl:group-data-[scrolls=true]/scroll:sticky xl:group-data-[scrolls=true]/scroll:left-0 xl:group-data-[scrolls=true]/scroll:border-r xl:group-data-[scrolls=true]/scroll:border-r-line";
+const STICK_HEAD = `${STICK_ON} xl:group-data-[scrolls=true]/scroll:z-20 bg-tray`;
+const STICK_CELL = `${STICK_ON} xl:group-data-[scrolls=true]/scroll:z-1 xl:group-data-[scrolls=true]/scroll:bg-card xl:group-data-[scrolls=true]/scroll:group-hover/row:bg-tray`;
 /** The Columns table as cards below 1280 px (a cell's height stays its content's: no fixed row height). */
 const CARDS = "max-xl:block max-xl:[&_tbody]:block max-xl:[&_tr]:grid max-xl:[&_tr]:grid-cols-2 max-xl:[&_tr]:gap-x-3 max-xl:[&_tr]:gap-y-3 max-xl:[&_tr]:border-b max-xl:[&_tr]:border-line max-xl:[&_tr]:px-4 max-xl:[&_tr]:py-3 max-xl:[&_td]:block max-xl:[&_td]:h-auto max-xl:[&_td]:border-0 max-xl:[&_td]:p-0 max-xl:[&_td]:whitespace-normal";
 
