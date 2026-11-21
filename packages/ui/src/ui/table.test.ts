@@ -24,7 +24,8 @@ async function container() {
   await act(async () => root.render(h(Table, { "aria-label": "Recent activity" }, h("tbody", null))));
   const el = host.querySelector<HTMLElement>('[data-slot="table-container"]')!;
   const out = { tabIndex: el.getAttribute("tabindex"), role: el.getAttribute("role"), label: el.getAttribute("aria-label"),
-    scrolls: el.dataset.scrolls ?? null, overflow: el.className.includes("overflow-x-visible") ? "visible" : "auto" };
+    scrolls: el.dataset.scrolls ?? null, overflow: el.className.includes("overflow-x-visible") ? "visible" : "auto",
+    fades: [...host.querySelectorAll<HTMLElement>('[data-slot="table-fade"]')].map((f) => `${f.dataset.side}:${f.dataset.on ? "on" : "off"}`) };
   await act(async () => root.unmount());
   return out;
 }
@@ -32,10 +33,11 @@ async function container() {
 describe("Table container (scrolls sideways inside its card on a narrow screen)", () => {
   it("wider than its box: a named, focusable region, so a keyboard can scroll it (axe scrollable-region-focusable)", async () => {
     sizes(600, 358);
-    expect(await container()).toEqual({ tabIndex: "0", role: "region", label: "Recent activity", scrolls: "true", overflow: "auto" });
+    // at the start: the end fades (more to the right), the start doesn't
+    expect(await container()).toEqual({ tabIndex: "0", role: "region", label: "Recent activity", scrolls: "true", overflow: "auto", fades: ["start:off", "end:on"] });
   });
   it("fits: no extra tab stop, and no scroll container (overflow visible), so a sticky header sticks to the window", async () => {
     sizes(358, 358);
-    expect(await container()).toEqual({ tabIndex: null, role: null, label: null, scrolls: null, overflow: "visible" });
+    expect(await container()).toEqual({ tabIndex: null, role: null, label: null, scrolls: null, overflow: "visible", fades: [] });
   });
 });

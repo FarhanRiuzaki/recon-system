@@ -6,37 +6,56 @@ import { cn } from "../lib/cn";
 /**
  * True while the element is wider inside than its box (it scrolls sideways): such a box must be reachable by keyboard
  * (a named, focusable region; axe scrollable-region-focusable), and only then, so a table that fits adds no tab stop.
+ * `edges`: whether content is hidden past the start or the end right now (the scroll position), for the edge fades.
  */
-export function useScrollsX<T extends HTMLElement>(): [React.RefCallback<T>, boolean, boolean] {
+export function useScrollsX<T extends HTMLElement>(): [React.RefCallback<T>, boolean, boolean, { start: boolean; end: boolean }] {
   const [el, setEl] = React.useState<T | null>(null);
   const [scrolls, setScrolls] = React.useState(false);
   const [measured, setMeasured] = React.useState(false);
+  const [edges, setEdges] = React.useState({ start: false, end: false });
   React.useEffect(() => {
     if (!el) return;
-    const check = () => { setScrolls(el.scrollWidth > el.clientWidth); setMeasured(true); };
+    const check = () => {
+      const over = el.scrollWidth - el.clientWidth;
+      setScrolls(over > 0);
+      setMeasured(true);
+      // a pixel of slack: zoom and subpixel widths leave a fraction at the end
+      const start = Math.abs(el.scrollLeft) > 1, end = over - Math.abs(el.scrollLeft) > 1;
+      setEdges((e) => (e.start === start && e.end === end ? e : { start, end }));
+    };
     check();
-    if (typeof ResizeObserver === "undefined") return;
+    el.addEventListener("scroll", check, { passive: true });
+    if (typeof ResizeObserver === "undefined") return () => el.removeEventListener("scroll", check);
     const ro = new ResizeObserver(check);
     ro.observe(el);
     if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => ro.disconnect();
+    return () => { ro.disconnect(); el.removeEventListener("scroll", check); };
   }, [el]);
-  return [setEl, scrolls, measured];
+  return [setEl, scrolls, measured, edges];
 }
+
+/** The fade on a side of a sideways-scrolling box while content is hidden past it (owner, 21 Nov): grey to clear. */
+const FADE = "pointer-events-none absolute inset-y-0 z-20 w-10 from-line-strong to-transparent opacity-0 transition-opacity duration-(--dur-fast) data-[on]:opacity-100";
 
 /**
  * Table (spec §5.7): header 40 px on the tray tint, rows --row-h (44 / compact 36), 1 px dividers, no zebra, no vertical rules.
  * Wider than the screen (a phone), it scrolls sideways inside its card; the box is then a focusable region named after the table.
  * Once measured to fit, the box stops being a scroll container (overflow visible), so a sticky header sticks to the
  * window; `data-scrolls` (group `scroll`) lets cells stick to the box's sides while it scrolls sideways (DataTable).
+ * While it scrolls, each side with hidden content shows a fade (design-system §5.7), so the table reads as wider.
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
-  const [ref, scrolls, measured] = useScrollsX<HTMLDivElement>();
+  const [ref, scrolls, measured, edges] = useScrollsX<HTMLDivElement>();
   return (
-    <div ref={ref} data-slot="table-container" data-scrolls={scrolls || undefined}
-      className={cn("group/scroll relative w-full", measured && !scrolls ? "overflow-x-visible" : "scroll-quiet overflow-x-auto")}
-      {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": props["aria-label"] } : {})}>
-      <table data-slot="table" className={cn("w-full border-separate border-spacing-0 text-body", className)} {...props} />
+    <div data-slot="table-frame" className="relative w-full min-w-0">
+      <div ref={ref} data-slot="table-container" data-scrolls={scrolls || undefined}
+        className={cn("group/scroll relative w-full", measured && !scrolls ? "overflow-x-visible" : "scroll-quiet overflow-x-auto")}
+        {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": props["aria-label"] } : {})}>
+        <table data-slot="table" className={cn("w-full border-separate border-spacing-0 text-body", className)} {...props} />
+      </div>
+      {/* more to see on that side: a grey edge fading to clear, shown only while content is hidden past it */}
+      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="start" data-on={edges.start || undefined} className={cn(FADE, "left-0 bg-linear-to-r")} />}
+      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="end" data-on={edges.end || undefined} className={cn(FADE, "right-0 bg-linear-to-l")} />}
     </div>
   );
 }
