@@ -83,7 +83,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
     focus(col.reduce<MapNode | undefined>((b, x) => (!b || Math.abs(pos.get(x.id)!.y - y) < Math.abs(pos.get(b.id)!.y - y) ? x : b), undefined)?.id);
   };
   return (
-    <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height: Math.min(640, Math.max(320, tall + 120)) }} onKeyDownCapture={onKey} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
+    <div ref={wrap} className="recon-canvas" style={{ height: Math.min(640, Math.max(320, tall + 120)) }} onKeyDownCapture={onKey} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} onNodeMouseEnter={hover.onNodeMouseEnter} onNodeMouseLeave={hover.onNodeMouseLeave} nodesConnectable={false} nodesDraggable={false} elementsSelectable={false} edgesFocusable={false}
         onNodeClick={(_, n) => { const h = input.find((x) => x.id === n.id)?.href; if (h) router.push(h); }}
         fitView fitViewOptions={FIT} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}

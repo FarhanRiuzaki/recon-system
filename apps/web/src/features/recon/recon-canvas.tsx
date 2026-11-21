@@ -131,7 +131,7 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   const height = Math.min(720, Math.max(360, tallest * (NODE_H + 24) + 140));
   const laneX = LANES.map((_, l) => pos.get(graph.nodes.find((n) => n.lane === l)?.id ?? "")?.x);
   return (
-    <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height }} onKeyDownCapture={onKeyDownCapture} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
+    <div ref={wrap} className="recon-canvas" style={{ height }} onKeyDownCapture={onKeyDownCapture} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
       <ReactFlow nodes={shown} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} onNodeMouseEnter={hover.onNodeMouseEnter} onNodeMouseLeave={hover.onNodeMouseLeave} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
         onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select && onSelect) onSelect(g.select); }}
         nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={FIT} minZoom={0.25} maxZoom={1.5}

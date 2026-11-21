@@ -24,7 +24,7 @@ import { reconHref, reconsHref, useToday } from "./use-recons";
 
 function MapShape() {
   return (
-    <div className="grid h-80 grid-cols-2 gap-16 rounded-md border border-line p-6" aria-busy="true" aria-label="Loading the space map">
+    <div className="grid h-80 grid-cols-2 gap-16 p-6" aria-busy="true" aria-label="Loading the space map">
       {[3, 3].map((n, l) => <div key={l} className="grid content-center gap-4">{Array.from({ length: n }, (_, i) => <Skeleton key={i} className="h-19 rounded-md" />)}</div>)}
     </div>
   );
@@ -81,11 +81,11 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
           description="Today lists a recon once a config checker approves its first version." action={<Link className="text-primary underline-offset-4 hover:underline" href={reconsHref(spaceId)}>Open recons</Link>} /></Panel>
       ) : (
         <>
-          <Panel title="Space map" description={affected ? `${affected} ${affected === 1 ? "recon reads" : "recons read"} a source that is degraded or down` : "Sources and the recons that read them"}
+          <Panel flush title="Space map" description={affected ? `${affected} ${affected === 1 ? "recon reads" : "recons read"} a source that is degraded or down` : "Sources and the recons that read them"}
             actions={<span className="max-md:hidden"><Segmented label="Show the space map as" value={view} onChange={setView} options={[{ value: "map", label: "Map" }, { value: "list", label: "List" }]} /></span>}>
             {view === "map" && <div className="max-md:hidden"><ChunkBoundary><SpaceMap nodes={map.nodes} edges={map.edges} /></ChunkBoundary></div>}
             {/* a phone always reads the list (DEC-041) */}
-            <div className={view === "map" ? "md:hidden" : undefined}><MapList t={t} spaceId={spaceId} /></div>
+            <div className={view === "map" ? "p-4 md:hidden" : "p-4"}><MapList t={t} spaceId={spaceId} /></div>
           </Panel>
 
           <Panel flush title="Recons" count={t.recons.length} description="Each recon's current business date as its last run left it">

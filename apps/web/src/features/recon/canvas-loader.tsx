@@ -9,7 +9,7 @@ import type { CanvasProps } from "./recon-canvas";
 
 function CanvasShape() {
   return (
-    <div className="grid h-90 grid-cols-4 gap-8 rounded-md border border-line p-6" aria-busy="true" aria-label="Loading the canvas">
+    <div className="grid h-90 grid-cols-4 gap-8 p-6" aria-busy="true" aria-label="Loading the canvas">
       {[2, 2, 3, 4].map((n, l) => <div key={l} className="grid content-center gap-4">{Array.from({ length: n }, (_, i) => <Skeleton key={i} className="h-16 rounded-md" />)}</div>)}
     </div>
   );

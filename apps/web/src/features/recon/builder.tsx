@@ -442,7 +442,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
           actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
           <div className="grid gap-0">
             {view === "canvas" && (
-              <div className="pb-3 max-md:hidden">
+              <div className="mb-3 overflow-hidden rounded-md border border-line max-md:hidden">
                 <CanvasLoader spec={spec} keys={keys} counters={counters} dim={sim.dim} selectedId={selectedId} editable={editable}
                   onSelect={(s) => select(s)} onMove={onCanvasMove} />
               </div>

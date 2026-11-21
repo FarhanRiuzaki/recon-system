@@ -65,7 +65,7 @@ export function LiveDay({ spaceId, id, spec }: { spaceId: string; id: string; sp
         </StatTiles>
       </Panel>
 
-      <Panel title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
+      <Panel flush title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
         actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
         {view === "pipeline" && (
           <div className="max-md:hidden">
