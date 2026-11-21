@@ -57,6 +57,6 @@ describe("sources columns (Build notes 02 + owner 21 Nov: what it reads, last re
     expect(cell("rowsToday", shared)).not.toContain("quarantined");
     expect(cell("state")).toContain("Healthy");
     expect(cell("state", { ...S, status: "paused" })).toContain("Paused");
-    expect(cell("complete")).toBe("<span class=\"grid\"><span>Through 4 Nov</span></span>");
+    expect(cell("complete")).toBe("<span class=\"grid whitespace-nowrap\"><span>Through 4 Nov</span></span>");
   });
 });

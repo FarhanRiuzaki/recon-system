@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { ColumnsMenu, DataTable, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { Avatar, ColumnsMenu, DataTable, Notice, Panel, RelativeTime, StatusChip, Toolbar, Truncate } from "@starterkit/ui/ds";
 import { ActivityIcon, BranchIcon } from "@starterkit/ui/ui/icons";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type { ReconVersionRowDto } from "@starterkit/shared/contracts/recon";
@@ -51,13 +51,25 @@ export function VersionsTable({ spaceId, id }: { spaceId: string; id: string }) 
   );
 }
 
+/** The sentence without its actor in front (the User column names them): "Sent version 1 for approval." */
+function withoutActor(e: ActivityDto): string {
+  const s = activitySentence(e), name = `${e.actor.name} `;
+  return s.startsWith(name) ? s.charAt(name.length).toUpperCase() + s.slice(name.length + 1) : s;
+}
+
 /** The recon's own activity: one sentence per event, newest first. */
 export function ActivityTable({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => reconActivity(spaceId, id), [spaceId, id]);
   const t = useTableQuery<ActivityDto, TrailFilters>(def);
+  // as a source's Activity and the activity log read (owner, 22 Nov: one pattern in every module): time, user, what
   const columns = useMemo(() => [
-    { key: "event", header: "What happened", mobile: "title" as const, className: "whitespace-normal wrap-anywhere md:min-w-80 w-full", cell: (e: ActivityDto) => <span className="text-fg">{activitySentence(e)}</span> },
-    { key: "at", header: "When", mobile: "meta" as const, cell: (e: ActivityDto) => at(e.at) },
+    { key: "at", header: "Time", mobile: "meta" as const, className: "whitespace-nowrap", cell: (e: ActivityDto) => (
+      <span className="grid"><RelativeTime at={Date.parse(e.at)} touchDate={false} /><span className="font-mono text-caption text-fg-3">{at(e.at)}</span></span>
+    ) },
+    { key: "actor", header: "User", mobile: "meta" as const, className: "min-w-48", cell: (e: ActivityDto) => (
+      <span className="flex min-w-0 max-w-56 items-center gap-2.5"><Avatar name={e.actor.name} seed={e.actor.id} /><Truncate title={e.actor.name}>{e.actor.name}</Truncate></span>
+    ) },
+    { key: "event", header: "What happened", mobile: "title" as const, className: "whitespace-normal wrap-anywhere md:min-w-80 w-full", cell: (e: ActivityDto) => <span className="text-fg">{withoutActor(e)}</span> },
   ], []);
   return (
     <>

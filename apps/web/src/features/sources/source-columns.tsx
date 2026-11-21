@@ -74,12 +74,12 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
     } },
     { key: "complete", header: "Complete through", mobile: "meta", className: "md:max-xl:hidden", cell: (s) => {
       const lag = lagText(s);
-      return <span className="grid"><span>{completeText(s)}</span>{lag && <span className="text-caption text-fg-3">{lag}</span>}</span>;
+      return <span className="grid whitespace-nowrap"><span>{completeText(s)}</span>{lag && <span className="text-caption text-fg-3">{lag}</span>}</span>;
     } },
     { key: "lastRead", header: "Last read", mobile: "meta", className: "md:max-xl:hidden",
       help: "The last read that succeeded, what the last pull brought (rows added, rows the source's conditions left out) and when it reads next.", cell: (s) => (
       !s.health ? none : (
-        <span className="grid max-w-64">
+        <span className="grid max-w-64 whitespace-nowrap">
           {s.health.lastReadAt ? <RelativeTime at={Date.parse(s.health.lastReadAt)} touchDate={false} /> : <span className="text-fg-3">Not yet</span>}
           {s.health.lastError ? <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>
             : s.lastPull && <span className="text-caption text-fg-3">{pullText(s.lastPull)}</span>}
