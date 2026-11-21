@@ -31,6 +31,8 @@ type Multiple = Common & { multiple: true; value: readonly ComboOption[]; onChan
 
 const DEBOUNCE_MS = 250;
 const noSubscribe = () => () => {};
+/** Room kept under an opening list for a sticky form footer (FormFooter, 72 px). */
+const FOOTER_ROOM = 80;
 const CREATE = "\u0000create";
 
 /** Options matching `query` (label, case-insensitive), the matches that start with it first; all of them for no query. */
@@ -91,13 +93,17 @@ export function SearchCombobox(props: Single | Multiple) {
     const at = () => {
       // written to the list's style, not state: a scroll moves it without a render
       const r = boxRef.current?.getBoundingClientRect(), ul = listRef.current;
-      if (r && ul) Object.assign(ul.style, { position: "fixed", top: `${r.bottom + 4}px`, left: `${r.left}px`, width: `${r.width}px` });
+      if (!r || !ul) return;
+      // under the field, or above it when the space under it (a sticky form footer, the window's edge) is too short
+      const h = Math.min(ul.scrollHeight, 256), below = window.innerHeight - r.bottom - FOOTER_ROOM, above = r.top - 8;
+      const up = below < h && above > below;
+      Object.assign(ul.style, { position: "fixed", left: `${r.left}px`, width: `${r.width}px`, top: up ? `${Math.max(8, r.top - 4 - h)}px` : `${r.bottom + 4}px` });
     };
     at();
     window.addEventListener("scroll", at, true);
     window.addEventListener("resize", at);
     return () => { window.removeEventListener("scroll", at, true); window.removeEventListener("resize", at); };
-  }, [open, mounted]);
+  }, [open, mounted, text]);
   const query = typing ? text : "";
 
   // A single value chosen elsewhere: show its label while the user isn't typing.
