@@ -534,32 +534,33 @@ function ReadWhenField({ label, when, onChange }: { label: string; when: ReadWhe
   const every = when?.every_minutes ?? 1;
   const set = (w: ReadWhen) => onChange(w.every_minutes === 1 && !w.hours ? undefined : { ...(w.every_minutes !== 1 ? { every_minutes: w.every_minutes } : {}), ...(w.hours ? { hours: w.hours } : {}) });
   const hour = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  const on = !!when?.hours, hours = when?.hours ?? { from: 6, to: 22 };
+  const switchId = ctl("input.when.hours");
   return (
+    // two equal columns, as the choice cards above (owner rule, 21 Nov: symmetric): each a label row, then its control
+    // row, so labels and controls line up; the hours stay in place, off while the switch is, so nothing jumps
     <div className="grid gap-3">
-      <div className="grid gap-4 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+      <div className="grid gap-x-3 gap-y-4 md:grid-cols-2">
         <Field id={ctl("input.when.every_minutes")} label={`${label} every`} help="How often the source is read. A recon still matches what arrived; reading less often only delays it.">
           <Select id={ctl("input.when.every_minutes")} className="w-full min-w-0" value={String(every)} onChange={(e) => set({ every_minutes: Number(e.target.value), hours: when?.hours })}>
             {READ_EVERY.map((n) => <option key={n} value={n}>{n === 1 ? "Minute" : n === 60 ? "Hour" : `${n} minutes`}</option>)}
           </Select>
         </Field>
-        <div className="grid content-start gap-2">
-          <span className="inline-flex items-center gap-2">
-            <Switch id={ctl("input.when.hours")} checked={!!when?.hours} aria-label="Only between two hours"
-              onChange={(e) => set({ every_minutes: every, hours: e.target.checked ? { from: 6, to: 22 } : undefined })} />
-            <label htmlFor={ctl("input.when.hours")} className="text-body text-fg">Only between</label>
+        <div className="grid min-w-0 content-start gap-2">
+          <span className="flex min-w-0 items-center gap-1">
+            <label htmlFor={switchId} className="text-label text-fg">Only between</label>
             <InfoTip label="Only between">Read only in these hours, in {APP_TIME_ZONE_LABEL}, such as while the bank&apos;s system is up. A window past midnight wraps: 22:00 to 06:00 reads overnight.</InfoTip>
           </span>
-          {when?.hours && (
-            <span className="flex flex-wrap items-center gap-2">
-              <Select aria-label="From" className="w-28" value={String(when.hours.from)} onChange={(e) => set({ every_minutes: every, hours: { ...when.hours!, from: Number(e.target.value) } })}>
-                {HOURS.map((h) => <option key={h} value={h}>{hour(h)}</option>)}
-              </Select>
-              <span className="text-body-sm text-fg-2">to</span>
-              <Select aria-label="To" className="w-28" value={String(when.hours.to)} onChange={(e) => set({ every_minutes: every, hours: { ...when.hours!, to: Number(e.target.value) } })}>
-                {HOURS.map((h) => h + 1).map((h) => <option key={h} value={h}>{hour(h)}</option>)}
-              </Select>
-            </span>
-          )}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+            <Switch id={switchId} checked={on} onChange={(e) => set({ every_minutes: every, hours: e.target.checked ? hours : undefined })} />
+            <Select aria-label="From" className="w-full min-w-0" disabled={!on} value={String(hours.from)} onChange={(e) => set({ every_minutes: every, hours: { ...hours, from: Number(e.target.value) } })}>
+              {HOURS.map((h) => <option key={h} value={h}>{hour(h)}</option>)}
+            </Select>
+            <span className="text-body-sm text-fg-2">to</span>
+            <Select aria-label="To" className="w-full min-w-0" disabled={!on} value={String(hours.to)} onChange={(e) => set({ every_minutes: every, hours: { ...hours, to: Number(e.target.value) } })}>
+              {HOURS.map((h) => h + 1).map((h) => <option key={h} value={h}>{hour(h)}</option>)}
+            </Select>
+          </div>
         </div>
       </div>
       <p className="text-caption text-fg-3">Reads {readWhenText(when)}.</p>
