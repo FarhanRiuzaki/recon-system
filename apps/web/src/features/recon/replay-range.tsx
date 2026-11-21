@@ -19,6 +19,7 @@ export function ReplayRange({ value, onChange, disabled, label = "Replay" }: { v
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState<string | null>(null);
   const [today] = useState(() => appDate(Date.now()));
+  const what = label === "Replay" ? "Business dates to replay" : "Business dates to run";
   const pick = (d: string) => {
     if (!start || d < start) { setStart(d); return; }
     onChange({ from: start, to: d });
@@ -32,9 +33,9 @@ export function ReplayRange({ value, onChange, disabled, label = "Replay" }: { v
           {label} {rangeText(value.from, value.to)}<Icon icon={ChevronDownIcon} className="text-fg-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" aria-label="Business dates to replay" className="w-auto p-0">
+      <PopoverContent align="end" aria-label={what} className="w-auto p-0">
         <Suspense fallback={<p role="status" className="p-4 text-body-sm">Loading calendar…</p>}>
-          <Calendar className="rounded-none border-0" autoFocus label="Business dates to replay" initialMonth={value.to} showFooter={false}
+          <Calendar className="rounded-none border-0" autoFocus label={what} initialMonth={value.to} showFooter={false}
             range={start ? { from: start, to: start } : value} max={start ? replayEnd(start, today) : today} onValueChange={pick} />
         </Suspense>
         <p role="status" className="border-t border-line px-4 py-2 text-caption text-fg-3">{start ? `From ${rangeText(start, start)}: pick the last date.` : "Pick the first date."}</p>
