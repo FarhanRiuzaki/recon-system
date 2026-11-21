@@ -22,7 +22,7 @@ export const engineController = () =>
       const r = await requestRun(c.ctx, idParam(c.params.configId, "recon"), b);
       c.set.status = 202;
       return r;
-    }, { guard: { space: ["operator", "config_maker"] } })
+    }, { guard: { space: ["operator", "config_maker", "space_admin"] } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId", ({ ctx, params }) => runDetail(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run")), { guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId/items", ({ ctx, params, query }) =>
       runItemPage(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run"), query), { query: ReconRunItemQuery, guard: { space: SPACE_ROLES } })

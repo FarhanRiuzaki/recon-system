@@ -115,8 +115,8 @@ export async function dispatch(on: Tx, now = new Date()): Promise<string[]> {
 }
 
 /**
- * The job of a scheduled run (recon.tick / recon.daily, data { spaceId, runId }): the run (jobs.ts runJob), then, if it
- * succeeded, the closed dates just before it once more (sweepClosed: what their close skipped, what this run took in
+ * The job of a live run, scheduled or manual (recon.tick / recon.daily / recon.heavy, data { spaceId, runId }): the run
+ * (jobs.ts runJob), then, if it succeeded and isn't a simulation, the closed dates just before it once more (sweepClosed: what their close skipped, what this run took in
  * for them) and each of its dates whose close moment has passed, oldest first, until one waits or isn't due. Closes
  * judge under the published version (closeDay).
  */
@@ -125,7 +125,7 @@ export async function runScheduled(on: Tx, data: { spaceId: string; runId: strin
   await runJob(on, data, signal);
   const [run] = await withSpace({ spaceIds: [data.spaceId], userId: null },
     (tx) => tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, data.spaceId), eq(reconRuns.id, data.runId))), on);
-  if (run?.status !== "succeeded") return;
+  if (run?.status !== "succeeded" || run.mode === "simulation") return; // a simulation closes nothing
   const k = { spaceId: run.spaceId, configId: run.configId };
   const [v] = await withSpace({ spaceIds: [run.spaceId], userId: null },
     (tx) => tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId))), on);

@@ -23,7 +23,7 @@ import { withSpace } from "../spaces";
 import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
-import { reconRuns } from "./schema";
+import { reconDays, reconRuns } from "./schema";
 import { addDays, createRun, execRun, failRun, projectDayClose, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
@@ -36,6 +36,8 @@ import { changesSql } from "./sql/runs";
 /** The queue a run of `mode` goes to (spec §9 table): ticks and daily runs have their own (Task 6); the rest is heavy. */
 const queueOf = (mode: string): QueueName => (mode === "tick" ? QUEUES.reconTick : mode === "daily" ? QUEUES.reconDaily : QUEUES.reconHeavy);
 
+/** A manual run over a closed business date. */
+export const CLOSED_DAY = "Some of these dates are already closed. Run dates after the last closed day.";
 export const RUN_BUSY = "This recon is already running. Wait for that run to finish, then start another.";
 /** A run the reaper finds without a live job. */
 export const RUN_STOPPED = "The run stopped before it finished. Run it again.";
@@ -67,20 +69,23 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
 
 /**
  * The business dates of a request's body `b`: as given (checked before anything is read), or by default one day, the
- * last closed one within the last 30 days (spec §10), else today (Asia/Jakarta).
+ * day after the last closed one within the last 30 days (not past today), else today (Asia/Jakarta). A closed day is
+ * never run again from here (Captain: that is a rerun with approval, REC-FUT-16).
  */
 const rangeOf = (b: RunRangeBody) => {
   const given = b.from || b.to ? runRange(b.from, b.to) : null;
   return async (tx: InTx, spaceId: string, configId: string) => {
     if (given) return given;
     const today = todayIn(new Date());
-    return runRange(await lastClosedDay(tx, spaceId, configId, addDays(today, -LOOKBACK_DAYS)) ?? today, undefined);
+    const closed = await lastClosedDay(tx, spaceId, configId, addDays(today, -LOOKBACK_DAYS));
+    return runRange(closed && closed < today ? addDays(closed, 1) : today, undefined);
   };
 };
 
 /**
- * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (by default the last closed
- * day, rangeOf), queued. 404 recon, 409 no published version or a run under way, 400 range.
+ * POST …/recons/:configId/runs: a run of the published version over `b`'s business dates (rangeOf), queued; its job
+ * closes the dates past their close moment as a scheduled run does (runScheduled). 404 recon, 409 no published
+ * version, a closed date in the range or a run under way, 400 range.
  */
 export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): Promise<ReconRunDto> {
   const rangeIn = rangeOf(b);
@@ -91,6 +96,9 @@ export async function requestRun(ctx: Ctx, configId: string, b: RunRangeBody): P
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
     if (!p) throw new ApiError("invalid_state", "This recon has no published version yet. Approve one first.");
     const range = await rangeIn(tx, spaceId, configId);
+    const [shut] = await tx.select({ d: sql<string>`max(${reconDays.businessDate})::text` }).from(reconDays).where(and(eq(reconDays.spaceId, spaceId),
+      eq(reconDays.configId, configId), eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${range.from}::date and ${range.to}::date`));
+    if (shut?.d) throw new ApiError("invalid_state", CLOSED_DAY);
     await claimConfig(tx, spaceId, configId);
     const id = Bun.randomUUIDv7();
     await createRun(tx, { spaceId, configId, versionId: p.id, mode: "manual", ...range, status: "queued", id, jobId: id });
@@ -198,7 +206,8 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
 
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => ({
-  [QUEUES.reconHeavy]: ({ data, signal }) => runJob(on, data as { spaceId: string; runId: string }, signal),
+  // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)
+  [QUEUES.reconHeavy]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
   // the schedule's minute, and the runs it starts
   [QUEUES.reconSchedule]: async () => { await dispatch(on); },
   [QUEUES.reconTick]: ({ data, signal }) => runScheduled(on, data as { spaceId: string; runId: string }, signal),
