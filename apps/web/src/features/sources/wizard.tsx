@@ -566,7 +566,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
         more={deletable && admin ? [{ label: "Delete draft source", reason: working ? "Wait for the current step to finish." : null, destructive: true, confirm: discardConfirm(d.name.trim(), discard) }] : undefined} />
       <Wizard title="Setup progress" steps={steps}>
         <form noValidate aria-label={title} onSubmit={(e) => { e.preventDefault(); if (blocked === null && !working) void next(); }} className="grid gap-section">
-          <h2 ref={heading} tabIndex={-1} className="text-title-2 text-fg outline-none">Step {step + 1} of 3 · {STEPS[step]}</h2>
+          {/* the Setup progress rail shows the step (owner, 21 Nov): the heading stays for screen readers and as the focus target of a step change */}
+          <h2 ref={heading} tabIndex={-1} className="sr-only">Step {step + 1} of 3 · {STEPS[step]}</h2>
           {step === 0 && (
             <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
               connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}

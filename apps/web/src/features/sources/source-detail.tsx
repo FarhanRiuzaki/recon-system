@@ -126,7 +126,7 @@ function TodayTiles({ s }: { s: SourceDto }) {
         caption={s.quarantinedToday === null ? "Kept by the owning space" : s.quarantinedToday ? "See why in Quarantine" : "No line refused"} />
       <StatTile icon={CheckIcon} label="Complete through" value={complete} caption={waiting} />
       <StatTile icon={TimeIcon} label="Next read" value={s.nextRunAt ? formatTime(Date.parse(s.nextRunAt)) : "—"}
-        caption={s.nextRunAt ? `${formatDate(Date.parse(s.nextRunAt))} · WIB` : "Not while paused"} />
+        caption={s.nextRunAt ? formatDate(Date.parse(s.nextRunAt)) : "Not while paused"} />
     </StatTiles>
   );
 }

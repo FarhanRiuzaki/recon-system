@@ -397,6 +397,15 @@ details[open]::details-content { block-size: auto; opacity: 1; }
      Tailwind's composed shadow list would void the whole list, focus ring included. */
   :where([data-slot="input"], [data-slot="select"], [data-slot="textarea"], [data-slot="input-affix"], [data-slot="number-input"]) { box-shadow: var(--shadow-xs); }
   :where([data-slot="input-affix"], [data-slot="number-input"]) > :where([data-slot="input"]) { box-shadow: none; }
+  /* Native select: the browser's arrow sat on the right edge with no room (owner review 21 Nov). Drawn instead: a
+     10 x 5 chevron in --fg-3 from two token gradients, 12 px from the edge; ui/select.tsx keeps the text clear (pr-8). */
+  :where([data-slot="select"]) {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--fg-3) 50%), linear-gradient(135deg, var(--fg-3) 50%, transparent 50%);
+    background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
   /* Nesting (design-system §3.4): a button inside a radius-md field (number steppers, the password toggle, the date
      picker's calendar button; a trigger's data-slot replaces the Button's) sits one radius step down. */
   [data-slot="number-input"] > [data-slot="button"], [data-slot="input"] + [data-slot="button"][aria-pressed], [data-slot="date-picker"] > [data-slot="popover-trigger"] { border-radius: var(--radius-sm); }

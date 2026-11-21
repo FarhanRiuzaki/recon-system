@@ -1,7 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useRef } from "react";
-import { Checkbox, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
+import { Checkbox, Combobox, type ComboOption, Field, Notice, Panel, Segmented, Switch } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -16,6 +16,9 @@ import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProb
 import { coreNote, type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, NULLABLE_REASON, type Preview } from "./model";
+
+/** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
+const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
 
 type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
 const CORE: { key: Core; label: string; note?: string }[] = [
@@ -131,24 +134,25 @@ export function FieldsStep(p: FieldsStepProps) {
           const value = refValue(s.mapping[c.key]);
           const hinted = (k: Core, v: string) => { const h = k in p.coreHint ? p.coreHint[k as SuggestedCore] : undefined; return h && v === `f:${h}` ? coreNote(k as SuggestedCore, h) : null; };
           const extra = value.startsWith("x:") ? [value] : [];
+          // searchable (owner, 21 Nov): a source can have tens of columns; clearing the field = not used
+          const opts: ComboOption[] = [
+            ...(c.key === "business_date" && file ? [{ value: "c:file_date", label: "From the file name" }] : []),
+            ...names.map((n) => ({ value: `f:${n}`, label: n })),
+            ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
+          ];
           return (
             <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)}>
-              <Select className="w-full min-w-0" id={id} value={value} onChange={(e) => setCore(c.key, refOf(e.target.value))}>
-                <option value="">{c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}</option>
-                {c.key === "business_date" && file && <option value="c:file_date">From the file name</option>}
-                {names.map((n) => <option key={n} value={`f:${n}`}>{n}</option>)}
-                {extra.map((x) => <option key={x} value={x}>Expression: {x.slice(2)}</option>)}
-              </Select>
+              <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
+                placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
+                onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
             </Field>
           );
         })}
         {s.mapping.amount_minor && <AmountUnitField d={d} err={err} records={p.preview.result?.records ?? []} onUnit={setUnit} />}
         {!s.mapping.currency && (
           <Field id={ctl("currency")} label="Currency for every row" required={!!s.mapping.amount_minor} error={err(ctl("currency"))}>
-            <Select className="w-full min-w-0" id={ctl("currency")} value={s.currency ?? ""} onChange={(e) => setSpec((x) => ({ ...x, currency: e.target.value || undefined }))}>
-              <option value="">Pick a currency</option>
-              {Object.keys(CURRENCY_EXPONENT).map((c) => <option key={c} value={c}>{c}</option>)}
-            </Select>
+            <Combobox className="w-full min-w-0" id={ctl("currency")} label="Currency for every row" placeholder="Pick a currency" options={CURRENCIES}
+              value={CURRENCIES.find((o) => o.value === s.currency) ?? null} onChange={(o) => setSpec((x) => ({ ...x, currency: o?.value || undefined }))} />
           </Field>
         )}
         {s.input.kind !== "db_snapshot" && (
@@ -271,19 +275,18 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     if (s && i.watermark[key] === s) return key === "column" ? watermarkNote(s) : idNote(s);
     return key === "id_column" && !s && !i.watermark.id_column ? suggested.idWhy : null;
   };
+  const cols: ComboOption[] = options.map((c) => {
+    const empty = d.from === "table" && c.nullable === true;
+    return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty };
+  });
   const pick = (key: "column" | "id_column", label: string, plain: string) => {
     const note = said(key) ?? plain;
     return (
     <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))}>
-      <Select id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" value={i.watermark[key]} disabled={!canChangeReading}
-        onChange={(e) => set((x) => (x.spec.input.kind === "db_watermark"
-          ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, [key]: e.target.value } } } } : x))}>
-        <option value="">Pick a column</option>
-        {options.map((c) => {
-          const empty = d.from === "table" && c.nullable === true;
-          return <option key={c.name} value={c.name} disabled={empty}>{empty ? `${c.name} — ${NULLABLE_REASON}` : c.name}</option>;
-        })}
-      </Select>
+      <Combobox id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" label={label} placeholder="Pick a column" disabled={!canChangeReading}
+        options={cols} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
+        onChange={(o) => set((x) => (x.spec.input.kind === "db_watermark"
+          ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, [key]: o?.value ?? "" } } } } : x))} />
     </Field>
     );
   };

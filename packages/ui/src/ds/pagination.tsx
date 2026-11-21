@@ -28,7 +28,7 @@ export function Pagination({ label, page, pageSize, total, totalCapped, maxPage,
         {onPageSizeChange && pageSizes && (
           <label className="flex items-center gap-2 text-body-sm text-fg-3">
             Rows
-            <Select aria-label="Rows per page" className="h-7 px-1.5 text-body-sm" value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))}>
+            <Select aria-label="Rows per page" className="h-7 pr-7 pl-1.5 text-body-sm" value={pageSize} onChange={(e) => onPageSizeChange(Number(e.target.value))}>
               {pageSizes.map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
           </label>
