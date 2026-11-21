@@ -127,6 +127,20 @@ describe("forward (app/api/[...path])", () => {
     expect((await at("/api/roles", { method: "POST", headers: { "x-csrf-token": TEST_CSRF }, body: "x".repeat(64 * 1024) })).status).toBe(200);
   });
 
+  it("a source version's spec may be up to 512 KB; above it is 400 and never reaches the API", async () => {
+    const seen = fakeApi(ok);
+    await sealCookie(jar);
+    const id = "01a1f99d-6e49-73e0-b206-c1707b33b8c7";
+    const path = `/api/spaces/${id}/sources/${id}/versions/${id}`;
+    const send = (p: string, kb: number) => at(p, { method: "PATCH", headers: { "x-csrf-token": TEST_CSRF }, body: JSON.stringify({ x: "y".repeat(kb * 1024) }) });
+    expect((await send(path, 140)).status).toBe(200);
+    expect((await send(`${path}/preview`, 140)).status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect((await send(path, 600)).status).toBe(400);
+    expect((await send(`/api/spaces/${id}/sources/${id}`, 70)).status).toBe(400);
+    expect(seen).toHaveLength(2);
+  });
+
   it("CSV passes through with Content-Disposition", async () => {
     const csv = "﻿at,actor\n2026-10-20,Admin\n";
     fakeApi(() => new Response(csv, { headers: {

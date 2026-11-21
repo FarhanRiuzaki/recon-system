@@ -1,20 +1,21 @@
 import "server-only";
+import { BODY_MAX, bodyMaxFor } from "@starterkit/shared/body-limit";
 import { apiError, csrfFailed } from "./api";
 import { backend, relay, v1Path } from "./backend";
 import { CSRF_HEADER, csrfOk } from "./csrf";
 import { getSession } from "./session";
 
-/** The API refuses bigger bodies too (64 KB); checked here so they never cross. */
-const MAX_BODY = 64 * 1024;
-
-/** The request body, or null when it is over MAX_BODY (read chunk by chunk: a huge body is never held whole). */
-export async function bodyOf(req: Request): Promise<Blob | null> {
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BODY) return null;
+/**
+ * The request body, or null when it is over `max` (the API refuses bigger bodies too, so they never cross: 64 KB, a
+ * source version's spec 512 KB, bodyMaxFor); read chunk by chunk, so a huge body is never held whole.
+ */
+export async function bodyOf(req: Request, max = BODY_MAX): Promise<Blob | null> {
+  if (Number(req.headers.get("content-length") ?? 0) > max) return null;
   const chunks: Uint8Array<ArrayBuffer>[] = [];
   let size = 0;
   for await (const chunk of req.body ?? []) {
     size += chunk.byteLength;
-    if (size > MAX_BODY) return null;
+    if (size > max) return null;
     chunks.push(chunk);
   }
   return new Blob(chunks);
@@ -37,7 +38,7 @@ export async function forward(req: Request): Promise<Response> {
   const token = s.token && s.csrf ? s.token : null;
   const mutation = req.method !== "GET" && req.method !== "HEAD"; // Next answers HEAD with the GET handler
   if (mutation && token && !csrfOk(req.headers.get(CSRF_HEADER), s.csrf)) return csrfFailed();
-  const body = mutation ? await bodyOf(req) : null;
+  const body = mutation ? await bodyOf(req, bodyMaxFor(path)) : null;
   if (mutation && !body) return tooLarge();
   const sent = body?.size ? body : null;
   const res = await backend(path, {

@@ -138,6 +138,18 @@ describe("app", () => {
     expect(await code(res)).toBe("bad_request");
   });
 
+  it("a source version's spec may be up to 512 KB (tables of 200+ columns); any other path stays at 64 KB", async () => {
+    const id = "01a1f99d-6e49-73e0-b206-c1707b33b8c7";
+    const path = `/v1/spaces/${id}/sources/${id}/versions/${id}`;
+    const app = createApp().patch(path, (c) => body(c, z.unknown())).post(`${path}/preview`, (c) => body(c, z.unknown()))
+      .patch(`/v1/spaces/${id}/sources/${id}`, (c) => body(c, z.unknown()));
+    const send = (p: string, kb: number, method = "PATCH") => request(app, p, { method, headers: { ...auth, "Content-Type": "application/json" }, body: JSON.stringify({ x: "y".repeat(kb * 1024) }) });
+    expect((await send(path, 140)).status).toBe(200);
+    expect((await send(`${path}/preview`, 140, "POST")).status).toBe(200);
+    expect((await send(path, 600)).status).toBe(400);
+    expect((await send(`/v1/spaces/${id}/sources/${id}`, 70)).status).toBe(400);
+  });
+
   it("a body over 64 KB is 400 bad_request", async () => {
     const app = createApp().post("/v1/echo", (c) => body(c, z.unknown()));
     const big = JSON.stringify({ x: "y".repeat(70 * 1024) });

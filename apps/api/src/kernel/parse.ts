@@ -1,11 +1,13 @@
 import type { ZodType } from "zod";
+import { bodyMaxFor } from "@starterkit/shared/body-limit";
 import { ApiError, notFound } from "./errors";
 
-/** The largest request body accepted (64 KB). */
-export const BODY_MAX = 64 * 1024;
+/** The largest request body accepted (64 KB; a source version's spec up to SPEC_BODY_MAX: bodyMaxFor). */
+export { BODY_MAX, bodyMaxFor } from "@starterkit/shared/body-limit";
 
-/** The body as text, read up to BODY_MAX bytes; more is 400 bad_request. */
+/** The body as text, read up to its path's limit (bodyMaxFor); more is 400 bad_request. */
 async function readText(r: Request): Promise<string> {
+  const max = bodyMaxFor(new URL(r.url).pathname);
   if (!r.body) return "";
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -13,7 +15,7 @@ async function readText(r: Request): Promise<string> {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > BODY_MAX) {
+    if (size > max) {
       await reader.cancel();
       throw new ApiError("bad_request");
     }
