@@ -738,7 +738,10 @@ that table; else the columns of the tables the query names), each with a kind le
 A field whose name is a technical term (watermark, id column, business date) passes `help` to `Field`: an `InfoTip` ⓘ
 (28 px ghost, "About <label>") beside the label, outside it, opens a popover with the term in plain words and one
 example, by click, tap or keyboard, never hover only. The note under the field stays for what to pick; the ⓘ explains
-why (progressive disclosure: the form stays short, the meaning is one press away). (`info-tip.test.ts`)
+why (progressive disclosure: the form stays short, the meaning is one press away). (`info-tip.test.ts`) A value the system
+filled from the data passes `suggested`: a ✦ in `--chart-1` blue and "Suggested" (fg-2) beside the label, so the note
+under the field stays free for what to pick. A Combobox's clear ✕ and a chip's remove ✕ are in Down mark (ink on
+hover, Down soft fill): removing reads as removing.
 
 ### 5.13 Empty, error, loading, stale (the five states)
 - **Loading**: shimmer skeletons in the final shape (§7.2): text bars 10 px radius 4, chart = gridlines + 3 ghost

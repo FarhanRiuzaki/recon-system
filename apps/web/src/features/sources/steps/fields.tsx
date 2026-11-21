@@ -141,7 +141,7 @@ export function FieldsStep(p: FieldsStepProps) {
             ...extra.map((x) => ({ value: x, label: `Expression: ${x.slice(2)}` })),
           ];
           const field = (
-            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={hinted(c.key, value) ?? c.note} error={err(id)} help={c.help}>
+            <Field key={c.key} id={id} label={c.label} required={c.key === "business_date"} note={c.note} suggested={!!hinted(c.key, value)} error={err(id)} help={c.help}>
               <Combobox className="w-full min-w-0" id={id} label={c.label} options={opts} value={opts.find((o) => o.value === value) ?? null}
                 placeholder={c.key === "business_date" ? "Pick a field" : c.key === "amount_minor" ? "This source has no amount" : "Not used"}
                 onChange={(o) => setCore(c.key, refOf(o?.value ?? ""))} />
@@ -337,9 +337,12 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty, tone };
   });
   const pick = (key: "column" | "id_column", label: string, plain: string, help: string) => {
-    const note = said(key) ?? plain;
+    // "Suggested" is shown beside the label; any other sentence (why no id was suggested) stays the note
+    const hint = said(key);
+    const suggested = hint === watermarkNote("") || hint === idNote("");
+    const note = (!suggested && hint) || plain;
     return (
-    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} error={err(ctl(`input.watermark.${key}`))} help={help}>
+    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} suggested={suggested} error={err(ctl(`input.watermark.${key}`))} help={help}>
       <Combobox id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" label={label} placeholder="Pick a column" disabled={!canChangeReading}
         options={cols} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
         onChange={(o) => set((x) => (x.spec.input.kind === "db_watermark"

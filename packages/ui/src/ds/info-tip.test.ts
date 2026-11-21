@@ -10,4 +10,9 @@ describe("Field help (InfoTip)", () => {
     expect(out).toMatch(/<\/label><button/);
     expect(renderToStaticMarkup(h(Field, { id: "x", label: "Name", children: h("input", { id: "x" }) }))).not.toContain("About");
   });
+  it("suggested: a blue mark and the word Suggested beside the label, not under the field", () => {
+    const out = renderToStaticMarkup(h(Field, { id: "bd", label: "Business date", suggested: true, note: "Pick a date column.", children: h("input", { id: "bd" }) }));
+    expect(out).toMatch(/<\/label>.*text-chart-1.*Suggested<\/span><\/span>/);
+    expect(out).toContain("Pick a date column.");
+  });
 });

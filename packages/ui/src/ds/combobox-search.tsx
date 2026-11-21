@@ -184,7 +184,7 @@ export function SearchCombobox(props: Single | Multiple) {
           <span key={c.value} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm bg-tray pr-0.5 pl-2 text-body-sm text-fg">
             <span className="truncate">{c.label}</span>
             <button type="button" aria-label={`Remove ${c.label}`} onClick={() => remove(c.value)}
-              className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-3 outline-none after:absolute after:-inset-1 hover:bg-line hover:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-primary">
+              className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-down-mark outline-none after:absolute after:-inset-1 hover:bg-down-soft hover:text-down-ink focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-primary">
               <Icon icon={CloseIcon} className="size-3.5" />
             </button>
           </span>
@@ -197,7 +197,7 @@ export function SearchCombobox(props: Single | Multiple) {
           className="h-6 min-w-24 flex-1 bg-transparent px-1 text-body text-fg outline-none placeholder:text-fg-3" />
         {!multiple && single && !disabled
           ? <button type="button" aria-label={`Clear ${label}`} onClick={clear}
-              className="inline-grid size-6 shrink-0 cursor-pointer place-items-center rounded-xs text-fg-3 hover:text-fg"><Icon icon={CloseIcon} className="size-3.5" /></button>
+              className="inline-grid size-6 shrink-0 cursor-pointer place-items-center rounded-xs text-down-mark hover:bg-down-soft hover:text-down-ink"><Icon icon={CloseIcon} className="size-3.5" /></button>
           : <Icon icon={ChevronDownIcon} className="mr-1 size-4 shrink-0 text-fg-3" />}
       </div>
       <ul id={listId} role="listbox" aria-label={label} aria-multiselectable={multiple || undefined} hidden={!open}

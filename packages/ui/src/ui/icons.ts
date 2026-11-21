@@ -11,6 +11,7 @@ export {
   CubeIcon as FleetIcon, // Fleet, a managed item (palette result, empty states)
   ComputerTerminal01Icon as SessionsIcon, // Sessions, session lists, "No sessions"
   SparklesIcon as AiUsageIcon,
+  SparklesIcon as SuggestedIcon, // a value the system suggested (a form field filled from the data, Field `suggested`)
   Globe02Icon as InternetIcon, // Internet, internet access (tile, chart panels, empty states)
   Analytics01Icon as ReportsIcon, // Usage reports
   HierarchySquare01Icon as InfraIcon, // Infra, topology
