@@ -188,6 +188,8 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
       try { business_date = localDate(r.v, r.f.format?.timezone ?? DEFAULT_TIMEZONE); } catch { fail("business_date", `unknown time zone "${r.f.format?.timezone}"`); }
     }
     else if (typeof r.v === "string" && ISO_DATE.test(r.v) && realIso(r.v)) business_date = r.v;
+    // an ISO date and time from an expression (a JSON value): its date in Asia/Jakarta
+    else if (typeof r.v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(r.v) && !Number.isNaN(Date.parse(r.v))) business_date = localDate(new Date(r.v).toISOString(), DEFAULT_TIMEZONE);
     else if (r.v === "" && "cel" in m.business_date && m.business_date.cel.includes("file_date") && !fileDate) fail("business_date", "the file name has no date (yyyymmdd)");
     else fail("business_date", r.v === null || r.v === "" ? "is empty" : `not a date (${JSON.stringify(String(r.v))})`);
   }

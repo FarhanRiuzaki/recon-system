@@ -169,3 +169,16 @@ export function amountProblems(s: SourceSpec): { id: string; reason: string }[] 
 
 /** The nullable reason of a watermark or id column option (ruling 4): rows with no value would never be pulled. */
 export const NULLABLE_REASON = "can be empty";
+
+/**
+ * How many rows share their value with another row (`keyOf` null = no value, not counted): a key that should tell rows
+ * apart (the watermark with its id, a match key) and repeats in the preview (owner, 21 Nov: ids that reset monthly,
+ * third-party ids that collide).
+ */
+export function repeatedRows<T>(rows: readonly T[], keyOf: (r: T) => string | null): number {
+  const n = new Map<string, number>();
+  for (const r of rows) { const k = keyOf(r); if (k !== null) n.set(k, (n.get(k) ?? 0) + 1); }
+  let out = 0;
+  for (const c of n.values()) if (c > 1) out += c;
+  return out;
+}

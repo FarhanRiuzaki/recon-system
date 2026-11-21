@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, codeOf, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, codeOf, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -71,5 +71,12 @@ describe("values the form derives (REC-F2b)", () => {
     const atFolder = { ...f, spec: { ...f.spec, input: { ...f.spec.input, path: "/inbox/ksei" } as typeof f.spec.input } };
     expect(connectionProblems(atFolder, { created: true, replace: false })).toEqual([]);
     expect(pullProblems(atFolder).map((p) => p.id)).toEqual(["src-input-pattern"]);
+  });
+});
+
+describe("repeatedRows (a key that repeats in the preview)", () => {
+  it("counts every row whose key another row has; no value is not counted", () => {
+    expect(repeatedRows(["a", "b", "a", "c", "a", null, null], (x) => x)).toBe(3);
+    expect(repeatedRows(["a", "b"], (x) => x)).toBe(0);
   });
 });

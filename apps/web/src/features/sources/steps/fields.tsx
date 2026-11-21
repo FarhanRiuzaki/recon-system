@@ -15,7 +15,7 @@ import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_
 import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
+import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows } from "./model";
 import { ComputedColumns } from "./computed";
 import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
@@ -110,6 +110,9 @@ export function FieldsStep(p: FieldsStepProps) {
     return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
   });
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
+
+  // a match key that repeats in the preview replaces rows that are other transactions (ids reset monthly, shared ids)
+  const keyRepeats = s.mutable ? repeatedRows(p.preview.result?.records ?? [], (r) => r.naturalKey) : 0;
 
   // Add computed column shimmers until first used, and the card it adds takes the focus (design-system §7.9)
   const [computedNew, computedUsed] = useFirstUse("source.computed-column");
@@ -316,6 +319,12 @@ export function FieldsStep(p: FieldsStepProps) {
                 value={s.key_fields.map((k) => ({ value: k, label: k }))} onChange={(v) => setSpec((x) => ({ ...x, key_fields: v.map((o) => o.value) }))} />
             </Field>
           )}
+          {s.mutable && keyRepeats > 0 && (
+            <Notice tone="warn">
+              {formatNumber(keyRepeats)} rows in the preview share a match key, so a newer row would replace an earlier one that may be another transaction.
+              Add a column that tells them apart, such as the business date for ids that start again each month.
+            </Notice>
+          )}
         </Panel>
       )}
       <PreviewPanel {...p} />
@@ -355,7 +364,7 @@ function Cap({ children, inline }: { children: string; inline?: boolean }) {
  * How new rows are found (ruling 4): the watermark and id columns, from the columns read. A column that can be empty is
  * offered disabled with the reason; a SELECT can't say, so a warning says it. A source admin's: anyone else sees it.
  */
-function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: FieldsStepProps) {
+function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, preview }: FieldsStepProps) {
   const i = d.spec.input;
   if (i.kind !== "db_watermark") return null;
   const options = columns ?? d.spec.fields.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable }));
@@ -372,6 +381,16 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     const tone = d.from !== "table" || c.nullable === undefined ? undefined : empty ? "bad" as const : "ok" as const;
     return { value: c.name, label: c.name, description: empty ? NULLABLE_REASON : undefined, disabled: empty, tone };
   });
+  // what the table's catalog says (a table only): an unindexed watermark makes every pull scan the table; an id that
+  // isn't unique on its own may tie with another row of the same watermark
+  const meta = new Map((columns ?? []).map((c) => [c.name, c]));
+  const hintOf = (key: "column" | "id_column", name: string): string | null => {
+    const c = d.from === "table" ? meta.get(name) : undefined;
+    if (!c) return null;
+    if (key === "column") return c.indexed === false ? "no index" : c.indexed ? "indexed" : null;
+    return c.unique === false ? "not unique" : c.unique ? "unique" : null;
+  };
+  const slowWm = d.from === "table" && meta.get(i.watermark.column)?.indexed === false;
   const pick = (key: "column" | "id_column", label: string, plain: string, help: string) => {
     // "Suggested" is shown beside the label; any other sentence (why no id was suggested) stays the note
     const hint = said(key);
@@ -380,12 +399,16 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
     return (
     <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} suggested={suggested} error={err(ctl(`input.watermark.${key}`))} help={help}>
       <Combobox id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" label={label} placeholder="Pick a column" disabled={!canChangeReading}
-        options={cols} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
+        options={cols.map((o) => ({ ...o, description: [o.description, hintOf(key, o.value)].filter(Boolean).join(" · ") || undefined }))} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
         onChange={(o) => set((x) => (x.spec.input.kind === "db_watermark"
           ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, [key]: o?.value ?? "" } } } } : x))} />
     </Field>
     );
   };
+  // the watermark with its id must name one row; rows of the preview that share both are skipped or read twice by a pull
+  const wmKey = storedName(d.spec, i.watermark.column), idKey = storedName(d.spec, i.watermark.id_column);
+  const recs = preview.result?.records ?? [];
+  const tied = wmKey && idKey ? repeatedRows(recs, (r) => (r.attrs[wmKey] == null || r.attrs[idKey] == null ? null : `${r.attrs[wmKey]}\u001f${r.attrs[idKey]}`)) : 0;
   return (
     <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table?.trim() || "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
       {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>}
@@ -395,6 +418,17 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested }: F
         {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.",
           "Puts rows with the same watermark value in a fixed order, such as many rows written in the same second. With it, a pull that stops between them goes on at the right row: none is skipped or read twice. Usually the primary key.")}
       </div>
+      {slowWm && (
+        <Notice tone="warn">
+          {i.watermark.column} has no index in the source database, so every pull reads the whole table to find new rows. Ask the database owner for an index on it, or pick an indexed column.
+        </Notice>
+      )}
+      {tied > 0 && (
+        <Notice tone="warn">
+          {formatNumber(tied)} rows in the preview share the same watermark and id, so a pull that stops between them can skip or repeat rows.
+          Pick an id that is unique for each watermark value, such as the primary key. A source with no unique column is safer read as a daily snapshot.
+        </Notice>
+      )}
     </Panel>
   );
 }

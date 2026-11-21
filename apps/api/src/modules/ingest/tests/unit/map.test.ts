@@ -38,6 +38,14 @@ describe("KSEI fixture through parse + toRecord", () => {
 });
 
 describe("business_date sources", () => {
+  it("a value inside a JSON column: an ISO date and time gives its Jakarta date; a decimal text is the amount", () => {
+    const s = { ...ksei(), currency: "IDR", fields: [...ksei().fields, { name: "payload", type: "string" as const, nullable: false, trim: true }],
+      mapping: { ...ksei().mapping, business_date: { cel: 'json_value(row.payload, "data.at")' }, amount_minor: { cel: 'json_value(row.payload, "data.amount")', unit: "major" as const } } };
+    const raw = { ...Object.fromEntries(ksei().fields.map((f) => [f.name, "v"])), payload: JSON.stringify({ data: { at: "2026-11-03T18:30:00Z", amount: "1500.50" } }) };
+    const r = toRecord(raw, s, ctx);
+    if (!r.ok) throw new Error(JSON.stringify(r.reasons));
+    expect([r.record.business_date, r.record.amount_minor]).toEqual(["2026-11-04", 150050n]); // 18:30Z = 01:30 on the 4th in Jakarta
+  });
   it("a source without a date: the day it arrived (a snapshot's date), else today in Jakarta", () => {
     const s = { ...ksei(), mapping: { ...ksei().mapping, business_date: { cel: "arrived_date" } } };
     const raw = Object.fromEntries(ksei().fields.map((f) => [f.name, "v"]));
