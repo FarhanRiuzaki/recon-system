@@ -124,7 +124,8 @@ export function RecordsTable({ spaceId, id }: { spaceId: string; id: string }) {
     { key: "accountRef", header: "Account", mobile: "meta", cell: (r) => (r.accountRef ? mono(r.accountRef) : none) },
     { key: "origin", header: "From", mobile: "meta", help: "The file the record was read from, or a pull or a snapshot of the database.", cell: (r) => (r.origin.file ? mono(r.origin.file) : <span className="text-fg-2">{r.origin.kind === "pull" ? "Pull" : "Snapshot"}</span>) },
     { key: "attrs", header: "Stored columns", mobile: "meta", className: "max-w-96", help: "Every column kept with the record, under its stored name. Recons can match on any of them.",
-      cell: (r) => <span className="block truncate font-mono text-mono text-fg-2" title={attrsText(r)}>{attrsText(r) || none}</span> },
+      // one line, cut with an ellipsis (a table cell wraps a .truncate by default): every column is in the title
+      cell: (r) => <span className="block max-w-96 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-mono text-fg-2" title={attrsText(r)}>{attrsText(r) || none}</span> },
   ];
   return (
     <>

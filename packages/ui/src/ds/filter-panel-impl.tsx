@@ -23,8 +23,10 @@ export function FilterPanelContent({ top, scrollDismissedRef, active, open, phon
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
   const restore = useRef(true);
-  return <DialogContent showCloseButton={false} data-slot="floating-filters" aria-modal={phone || undefined} style={phone ? undefined : { top }}
-    className="grid-rows-[minmax(0,1fr)] bg-card p-0 md:right-4 md:bottom-4 md:left-auto md:h-auto md:max-h-none md:w-80 md:max-w-80 md:translate-x-0 md:translate-y-0"
+  return <DialogContent showCloseButton={false} data-slot="floating-filters" aria-modal={phone || undefined} style={phone ? undefined : { top, maxHeight: `calc(100dvh - ${top}px - 1rem)` }}
+    // as tall as its fields (owner, 21 Nov: one search field filled the whole height), at most down to 1 rem above the
+    // window's bottom; the fields scroll inside past that
+    className="grid-rows-[minmax(0,1fr)] bg-card p-0 md:right-4 md:bottom-auto md:left-auto md:h-auto md:w-80 md:max-w-80 md:translate-x-0 md:translate-y-0"
     onOpenAutoFocus={e => { e.preventDefault(); scrollDismissedRef.current = false; restore.current = true; const target = focusIdRef.current ? document.getElementById(focusIdRef.current) : null; (target ?? heading.current)?.focus({ preventScroll: true }); focusIdRef.current = null; }}
     onPointerDownOutside={() => { if (!phone) restore.current = false; }}
     onFocusOutside={() => { if (!phone) restore.current = false; }}

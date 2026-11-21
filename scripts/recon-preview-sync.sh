@@ -45,6 +45,10 @@ gate() {
     if ! git -C "$REPO" diff --quiet "$OLD" "$NEW" -- packages/shared packages/ui/src/lib 2>/dev/null; then
       touch "$PREVIEW/apps/api/src/index.ts" "$PREVIEW/apps/api/src/worker.ts"
     fi
+    # A new migration: applied in the app container (its database is the stack's own), before the health check
+    if ! git -C "$REPO" diff --quiet "$OLD" "$NEW" -- apps/api/drizzle 2>/dev/null; then
+      docker exec recon-dev-app-1 sh -c 'cd apps/api && bun run db:migrate' >>"$LOG" 2>&1 || echo "$(date '+%F %T') migrate failed for $S" >> "$LOG"
+    fi
   fi
   # Health after the reload: poll until both answer or the wait runs out.
   T=0; WEB=000; API=000
