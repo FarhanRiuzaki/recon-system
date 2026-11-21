@@ -23,7 +23,7 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakCounts, breakLabel, dayPasses, dayTotals, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays, sidesText, standingTotals } from "./run-model";
+import { amountText, breakCounts, breakLabel, breakPair, dayPasses, dayTotals, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays, sidesText, standingTotals } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
@@ -188,8 +188,16 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
             {pass && <span className="text-body-sm text-fg-2">Pass {pass.no} · {pass.name}{status === "suggested" ? " · open until someone accepts them" : ""}</span>}
             {breaksTab && <span className="text-body-sm text-fg-2">Duplicates from the passes; the rest left open at day close.</span>}
             {breaksTab && reasons.length > 1 && (
-              <Segmented label="Reason" value={s.reason || "all"} options={reasons.map((o) => ({ ...o, value: o.value || "all" }))}
-                onChange={(v) => t.set({ reason: v === "all" ? "" : v })} />
+              <>
+                {/* from 768 px a Segmented; on a phone a select like the date and pass ones (it would push the card wider) */}
+                <span className="max-md:hidden">
+                  <Segmented label="Reason" value={s.reason || "all"} options={reasons.map((o) => ({ ...o, value: o.value || "all" }))}
+                    onChange={(v) => t.set({ reason: v === "all" ? "" : v })} />
+                </span>
+                <Select aria-label="Reason" value={s.reason} onChange={(e) => t.set({ reason: e.target.value })} className="w-full md:hidden">
+                  {reasons.map((o) => <option key={o.value || "all"} value={o.value}>Reason · {o.label} {formatNumber(o.count)}</option>)}
+                </Select>
+              </>
             )}
             {statusOptions.length > 1 && (
               <Segmented label={`Pass ${pass!.no} outcome`} value={status} options={statusOptions}
@@ -225,8 +233,9 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
 /** What differs in a break's pair: its suggested group's evidence, else its proposed pair's amount and date (B − A). */
 function breakDifference(r: ReconRunItemDto): string {
   if (r.group) return differenceText(r.group.evidence, r.currency);
-  if (!r.proposed) return "";
-  return r.side === "a" ? pairDifference(r, r.proposed) : pairDifference(r.proposed, r);
+  const p = breakPair(r);
+  if (!p) return "";
+  return r.side === "a" ? pairDifference(r, p) : pairDifference(p, r);
 }
 
 /** The table's columns for the tab: a pass's pairs (both sides' amounts, what differs) or items (side, amount, why). */
@@ -234,7 +243,8 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
   const pairs = !(s.status === "open" || s.status === "break");
   return useMemo((): Column<ReconRunItemDto>[] => {
     const ref: Column<ReconRunItemDto> = { key: "ref", header: "Reference", mobile: "title", className: "font-mono text-mono", cell: (r) => r.extRef ?? none };
-    const date: Column<ReconRunItemDto> = { key: "businessDate", header: "Business date", sortable: true, mobile: "meta", cell: (r) => dateText(r.group?.businessDate ?? r.businessDate) };
+    // a pair row counts on its group's date (the later member's); an item list shows the item's own (re-check 5, B3)
+    const date: Column<ReconRunItemDto> = { key: "businessDate", header: "Business date", sortable: true, mobile: "meta", cell: (r) => dateText(pairs ? (r.group?.businessDate ?? r.businessDate) : r.businessDate) };
     if (pairs) {
       const side = (k: "a" | "b") => (r: ReconRunItemDto) => {
         const ms = r.group?.members ?? [], more = r.group ? r.group.memberCount - ms.length : 0;
@@ -260,8 +270,8 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
       const label = (k: "a" | "b") => (k === "a" ? labels[0] : labels[1]);
       return [ref, date, sideCol, { key: "reason", header: "Reason", mobile: "meta", cell: (r) => r.breakReason ?? none }, ...amount,
         { key: "difference", header: "Difference", mobile: "meta", cell: (r) => breakDifference(r) || none },
-        { key: "proposed", header: "Proposed pair", mobile: "meta", cell: (r) => (r.proposed
-          ? <span><span className="font-mono text-mono">{r.proposed.extRef ?? "—"}</span> · {label(r.proposed.side)} · pass {r.proposed.passNo}</span> : none) }];
+        { key: "proposed", header: "Proposed pair", mobile: "meta", cell: (r) => { const p = breakPair(r); return p
+          ? <span><span className="font-mono text-mono">{p.extRef ?? "—"}</span> · {label(p.side)} · pass {p.passNo}</span> : none; } }];
     }
     return [ref, sideCol, date, ...amount];
   }, [pairs, s.status, labels]);

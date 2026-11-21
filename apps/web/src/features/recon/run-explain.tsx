@@ -37,6 +37,8 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
     const p = item.proposed, by = p ? spec.passes.find((x) => x.no === p.passNo) : undefined;
     const a = item.side === "a" ? item : p, b = item.side === "a" ? p : item;
     const diff = p && a && b ? pairDifference(a, b) : "";
+    // a pass broke it (Duplicate, Ambiguous): the other side wasn't compared; the reason goes under the cards (B4)
+    const passBroke = item.breakReason === "Duplicate" || item.breakReason === "Ambiguous";
     const differs = { amount: !!p && p.amountMinor !== item.amountMinor, date: !!p && p.businessDate !== item.businessDate, ccy: !!p && p.currency !== item.currency };
     const card = (side: "a" | "b") => {
       const r = side === item.side ? item : p;
@@ -46,7 +48,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
           // the other side: a dashed card, nothing to compare
           <section key={side} aria-label={name} className="grid content-start gap-2 rounded-md border border-dashed border-line p-3">
             <h3 className="text-caption text-fg-3">{name}</h3>
-            <p className="text-fg-2">{lonePairText(item, spec.carry_over_days)}</p>
+            <p className="text-fg-2">{passBroke ? "Not compared." : lonePairText(item, spec.carry_over_days)}</p>
           </section>
         );
       }
@@ -72,6 +74,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
           </DialogHeader>
           <div className="grid gap-3 px-6 py-5 text-body-sm">
             <div className="grid gap-3 md:grid-cols-2">{card("a")}{card("b")}</div>
+            {passBroke && !p && <p className="text-fg-2">{lonePairText(item, spec.carry_over_days)}</p>}
             {/* where day close looked: only for a reason it found by the carry-over window */}
             {!p && !["Duplicate", "Ambiguous", "Unconfirmed suggestion"].includes(item.breakReason ?? "") && <p className="text-fg-2">{carryOverText(item.businessDate, spec.carry_over_days)}</p>}
           </div>
@@ -92,7 +95,12 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
       <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
         <DialogHeader>
           <DialogTitle>Pass {g.passNo}{pass ? ` · ${pass.name}` : ""}</DialogTitle>
-          <DialogDescription>{[KIND[g.kind] ?? g.kind, rangeText(g.businessDate, g.businessDate), ev.chosen ? CHOSEN[ev.chosen] ?? "" : ""].filter(Boolean).join(" · ")}</DialogDescription>
+          <DialogDescription>
+            {item.status === "break"
+              // a suggestion day close broke (re-check 5, B2): what it is now, not what it was
+              ? `Break · ${rangeText(item.businessDate, item.businessDate)} · suggested by pass ${g.passNo}, not accepted by day close`
+              : [KIND[g.kind] ?? g.kind, rangeText(g.businessDate, g.businessDate), ev.chosen ? CHOSEN[ev.chosen] ?? "" : ""].filter(Boolean).join(" · ")}
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 px-6 py-5 text-body-sm">
           {/* the two records side by side, as the break page compares them (Figma 174:20748); side B's differing values marked */}

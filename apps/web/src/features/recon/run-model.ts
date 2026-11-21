@@ -3,7 +3,7 @@
 // difference. Pure: the builder, the simulation bar and the run page read the same numbers from here.
 import { APP_TIME_ZONE_LABEL, appDate, appDayStart, formatDate, formatDecimal, formatMinor, formatNumber, formatTime, shiftDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
-import type { PassSpec, ReconRunDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
+import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
 import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
@@ -130,6 +130,17 @@ export function reasonOptions(byReason: Readonly<Record<string, PerSide>>): { va
 }
 
 type Rec = { amountMinor: string | null; currency: string | null; businessDate: string };
+/** A break's pair as the Breaks tab and Explain show it. */
+export type BreakPair = { side: "a" | "b"; extRef: string | null; passNo: number; amountMinor: string | null; currency: string | null; businessDate: string };
+/**
+ * One source for a break's pair (designer re-check 5, B2): its proposal (DEC-047), else the other side of the
+ * suggestion it still holds (a suggestion day close broke keeps its group); null without either.
+ */
+export function breakPair(r: Pick<ReconRunItemDto, "side" | "proposed" | "group">): BreakPair | null {
+  if (r.proposed) return r.proposed;
+  const m = r.group?.members.find((x) => x.side !== r.side);
+  return m && r.group ? { side: m.side, extRef: m.extRef, passNo: r.group.passNo, amountMinor: m.amountMinor, currency: m.currency, businessDate: m.businessDate } : null;
+}
 /**
  * What differs between side A's record and side B's (B − A) when no evidence was stored (a proposed pair, DEC-047):
  * "IDR vs USD" when the currencies differ, else "Amount +500.00" and/or "Date +1 day"; "" when nothing does.

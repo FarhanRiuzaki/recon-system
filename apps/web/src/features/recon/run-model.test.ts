@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -202,5 +202,14 @@ describe("run-model", () => {
     expect(lonePairText(item, 1)).toBe("No item with reference TSTREF000983 on 3–4 Nov 2026.");
     expect(lonePairText({ ...item, extRef: "TSTREF000966", breakReason: "Duplicate", breakPass: 1 }, 1)).toBe("Reference TSTREF000966 is on more than one item of a side, so pass 1 paired none of them.");
     expect(lonePairText({ ...item, breakReason: "Currency differs" }, 1)).toBe("An item with reference TSTREF000983 on 3–4 Nov 2026 is in another currency.");
+  });
+
+  it("one source for a break's pair: its proposal, else the other side of the suggestion it still holds (re-check 5, B2)", () => {
+    const member = (side: "a" | "b", extRef: string, businessDate: string) => ({ side, recordId: side, extRef, amountMinor: "2678483", currency: "IDR", businessDate });
+    const group = { id: "g", passNo: 3, kind: "suggested" as const, businessDate: "2026-11-03", evidence: {}, memberCount: 2, members: [member("a", "TSTREF000957", "2026-11-02"), member("b", "TSTREF000957", "2026-11-03")] };
+    expect(breakPair({ side: "a", proposed: null, group })).toEqual({ side: "b", extRef: "TSTREF000957", passNo: 3, amountMinor: "2678483", currency: "IDR", businessDate: "2026-11-03" });
+    const proposed = { itemId: "i", side: "b" as const, passNo: 2, extRef: "TSTREF000942", amountMinor: "2609698", currency: "IDR", businessDate: "2026-11-02" };
+    expect(breakPair({ side: "a", proposed, group })?.passNo).toBe(2);
+    expect(breakPair({ side: "a", proposed: null, group: null })).toBeNull();
   });
 });
