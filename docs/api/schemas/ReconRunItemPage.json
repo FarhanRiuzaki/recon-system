@@ -52,6 +52,64 @@
               }
             ]
           },
+          "proposed": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "type": "string",
+                    "enum": [
+                      "a",
+                      "b"
+                    ]
+                  },
+                  "passNo": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "extRef": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "amountMinor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "businessDate": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "itemId",
+                  "side",
+                  "passNo",
+                  "extRef",
+                  "amountMinor",
+                  "currency",
+                  "businessDate"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "extRef": {
             "type": [
               "string",
@@ -175,6 +233,7 @@
           "businessDate",
           "breakReason",
           "breakPass",
+          "proposed",
           "extRef",
           "amountMinor",
           "currency",

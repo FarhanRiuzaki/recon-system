@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_SIGNS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
+  AMOUNT_SIGNS, BREAK_REASONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, toMinor, VERSION_STATUSES } from "../sources";
@@ -246,6 +246,13 @@ export const RunDay = z.object({
   open: PerSide,
   /** Items broken by time on that date (grace or day close; no pass broke them), per side; a pass's Duplicate stays under it. */
   breaks: PerSide,
+  /**
+   * Current records on that date per side (taken in, less those whose record was replaced): a match rate's denominator.
+   * Always sent by GET run (older stored days are read again); optional so a client's own fixtures stay valid.
+   */
+  items: PerSide.optional(),
+  /** Break items on that date per reason and side (a pass's Duplicate included); optional as `items`. */
+  breakReasons: z.record(z.string(), PerSide).optional(),
   /** The day closed (a live run's; a simulation closes nothing). */
   closed: z.boolean(),
 });
@@ -294,9 +301,12 @@ export const ReconRunDto = z.object({
   /**
    * What stood over the run's own dates (from–to, not the carry over before them) when the run and its close ended, the
    * sums of those `days` (GET run only; null without days): groups matched, groups still suggested, breaks of time per
-   * side, waiting items per side. `counters` stay what the run itself did.
+   * side, waiting items per side, current records per side (the cumulative match rate's denominator). `counters` stay what the run itself did.
    */
-  live: z.object({ matched: z.number().int(), suggested: z.number().int(), breaks: PerSide, open: PerSide }).nullable(),
+  live: z.object({ matched: z.number().int(), suggested: z.number().int(), breaks: PerSide, open: PerSide, items: PerSide.optional(),
+    /** Break items over the run's own dates per reason and side. */
+    breakReasons: z.record(z.string(), PerSide).optional(),
+  }).nullable(),
   /** A draft's simulation that succeeded: what day close would do with its waiting items (null otherwise). */
   projection: RunProjection.nullable(),
 });
@@ -319,6 +329,10 @@ export const ReconRunItemQuery = ListQuery.omit({ q: true }).extend({
   status: z.enum(ITEM_STATUSES).optional(),
   side: z.enum(["a", "b"]).optional(),
   date: isoDate.optional(),
+  /** Break items with this reason. */
+  reason: z.enum(BREAK_REASONS).optional(),
+  /** "1": the run's own dates only (from–to), without the carry-over dates before them. */
+  own: z.literal("1").optional(),
 });
 export type ReconRunItemQuery = z.infer<typeof ReconRunItemQuery>;
 
@@ -349,6 +363,14 @@ export const ReconRunItemDto = z.object({
   breakReason: z.string().nullable(),
   /** The pass that broke it (Duplicate / Ambiguous); null otherwise. */
   breakPass: z.number().int().nullable(),
+  /**
+   * A break a later suggesting pass paired (DEC-047): the item it proposes as the pair and that pass; the pair's amount
+   * and date give the difference (a proposal stores no evidence). Null otherwise.
+   */
+  proposed: z.object({
+    itemId: z.string(), side: z.enum(["a", "b"]), passNo: z.number().int(), extRef: z.string().nullable(), amountMinor: z.string().nullable(),
+    currency: z.string().nullable(), businessDate: z.string(),
+  }).nullable(),
   extRef: z.string().nullable(),
   amountMinor: z.string().nullable(),
   currency: z.string().nullable(),

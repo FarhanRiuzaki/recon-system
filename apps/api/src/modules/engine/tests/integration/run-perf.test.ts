@@ -22,7 +22,8 @@ import { classifyUnmatched, refreshRunDays, runDetail, runItemPage, runRecon } f
 
 const A = Bun.randomUUIDv7();
 const D = "2026-11-02";
-const SIZES = process.env.PERF_ENGINE_ROWS ? [Number(process.env.PERF_ENGINE_ROWS)] : [5000, 20000];
+// PERF_ENGINE_CONFIGS=3: that many configs of PERF_ENGINE_ROWS each on the same date (a table shared by several configs)
+const SIZES = process.env.PERF_ENGINE_ROWS ? Array.from({ length: Number(process.env.PERF_ENGINE_CONFIGS ?? 1) }, () => Number(process.env.PERF_ENGINE_ROWS)) : [5000, 20000];
 let probe: Awaited<ReturnType<typeof appRoleDb>>;
 
 const spec = {
@@ -56,8 +57,8 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
   });
   afterAll(() => probe?.$client.close());
 
-  for (const n of SIZES) {
-    it(`${n} records per side`, async () => {
+  for (const [k, n] of SIZES.entries()) {
+    it(`${n} records per side (config ${k + 1})`, async () => {
       const [a, b] = [await side(n, false), await side(n, true)];
       const configId = Bun.randomUUIDv7(), versionId = Bun.randomUUIDv7();
       const ccyEq = { op: "eq", field: "currency" };

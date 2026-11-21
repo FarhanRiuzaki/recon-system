@@ -1,0 +1,1 @@
+ALTER TABLE "recon_runs" ADD COLUMN "finalized" boolean DEFAULT false NOT NULL;

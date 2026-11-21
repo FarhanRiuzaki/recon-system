@@ -48,6 +48,11 @@ export const reconRuns = pgTable("recon_runs", {
   /** Per business date and pass what the run left (ReconRunDto.days), written when it succeeds; null before (and for runs before 0032). */
   days: jsonb("days"),
   /**
+   * Its days and its passes' references-once fix are written (finalizeRun): false until then, and again when a refresh
+   * after its close failed. A GET of a succeeded run not finalized answers no days and queues finalizeRun.
+   */
+  finalized: boolean("finalized").notNull().default(false),
+  /**
    * Per business date and side, the source's complete_through read just before that side's intake of the date
    * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close
    * judges completeness on it, never on the cursor now (records that came after the intake are not items yet).

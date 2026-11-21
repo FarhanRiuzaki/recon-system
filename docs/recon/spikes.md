@@ -177,6 +177,11 @@ grup (GROUP BY grup: parallel seq scan 12 ms; index `match_groups_days`, 0034, t
 milik config ini), `GET run` 5 ms, item `pass=1` 583 ms, `pass=2` halaman 2 1.208 ms, `date=` 187 ms (pool API 5 s).
 Run-nya sendiri 93,5 s. 31 hari pada volume S1 belum diukur (gerbang performa).
 
+Tiga config × 70.000/sisi pada tanggal yang sama (~68.000 grup per config, ~204.000 di tabel; review round 4 Task 3,
+satu jalan): config ketiga `daysOf` 105 ms, GROUP BY grup memakai Index Only Scan `match_groups_days` (12 ms); config
+pertama/kedua (tabel masih didominasi satu/dua config) parallel seq scan 7–10 ms, `daysOf` 82–88 ms. Index 0034 dipertahankan.
+Item `pass=1` 355–420 ms, `pass=2` halaman 2 466–510 ms, `date=` 159–233 ms, `GET run` 2–5 ms.
+
 ### rowsToday daftar dan detail source (Plan 2, review akhir)
 
 Tanggal 2026-11-20. Semula `rowsToday` di daftar dan detail source (`sourceStates`, `apps/api/src/modules/ingest/service.ts`)

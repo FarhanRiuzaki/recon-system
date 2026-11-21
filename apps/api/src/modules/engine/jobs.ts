@@ -24,7 +24,7 @@ import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, closedDates, createRun, execRun, failRun, finalizeRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -209,7 +209,9 @@ export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> =
   // a run, then its due dates closed (runScheduled), then, when that closed one of its dates, its days read again so
   // they show what the close made (a tick that closes nothing reads nothing again)
   const run = async ({ data, signal }: { data: unknown; signal?: AbortSignal }) => {
-    const d = data as { spaceId: string; runId: string };
+    const d = data as { spaceId: string; runId: string; finalize?: boolean };
+    // a GET found a succeeded run's days missing (before 0032, failed, older shape): write them (runDetail)
+    if (d.finalize) return finalizeRun(on, d.spaceId, d.runId);
     const before = d.runId ? await closedDates(on, d.spaceId, d.runId) : 0;
     await runScheduled(on, d, signal);
     if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);

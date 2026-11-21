@@ -140,7 +140,7 @@ describe("runs and simulations through the API", () => {
     const done = await getRun(r.configId, q.id);
     expect([done.status, done.doneThrough, done.error, done.counters.passes]).toMatchObject(["succeeded", D, null, { 1: { matched: 2, suggested: 0, broken: 0 } }]);
     // R3 and R9 waited when the run ended (its counters); the job closed the date since (past its close): breaks now
-    expect([done.counters.open, done.live]).toEqual([{ a: 1, b: 1 }, { matched: 2, suggested: 0, breaks: { a: 1, b: 1 }, open: { a: 0, b: 0 } }]);
+    expect([done.counters.open, done.live]).toEqual([{ a: 1, b: 1 }, { matched: 2, suggested: 0, breaks: { a: 1, b: 1 }, open: { a: 0, b: 0 }, items: { a: 3, b: 3 }, breakReasons: { "No counterpart": { a: 1, b: 1 } } }]);
     expect(done.days!.map((d) => [d.date, d.closed])).toEqual([[D, true]]);
     const list = await json<Page<ReconRunDto>>(call("GET", `${base(r.configId)}/runs`, { token: t.rv }));
     expect(list.items.map((x) => x.id)).toEqual([q.id]);
@@ -179,6 +179,15 @@ describe("runs and simulations through the API", () => {
     const done = await getRun(r.configId, q.id);
     expect(done.counters.passes["1"]).toMatchObject({ broken: 6, brokenRefs: 1, brokenItems: { a: 4, b: 2 } });
     expect(done.days!.map((d) => [d.date, d.passes["1"]!.broken, d.passes["1"]!.brokenRefs])).toEqual([[D, 3, 1], [D1, 3, 1]]);
+    // a GET between the success and the finalize (days not written, references still the steps' sum) changes nothing:
+    // the finalize then writes both
+    const c = (await db.select({ counters: reconRuns.counters }).from(reconRuns).where(eq(reconRuns.id, q.id)))[0]!.counters as ReconRunDto["counters"];
+    c.passes["1"]!.brokenRefs = 2;
+    await db.update(reconRuns).set({ days: null, finalized: false, counters: c }).where(eq(reconRuns.id, q.id));
+    expect((await getRun(r.configId, q.id)).days).toBeNull();
+    await drain();
+    const again = await getRun(r.configId, q.id);
+    expect([again.counters.passes["1"]!.brokenRefs, again.days]).toEqual([1, done.days]);
   });
 
   it("live counts only the run's own dates, not the carry-over date before them", async () => {
@@ -194,6 +203,21 @@ describe("runs and simulations through the API", () => {
     // its days hold D (carry over, the first run's pair) and D1; live only D1
     expect(done.days!.map((d) => [d.date, d.passes["1"]!.matched])).toEqual([[D, 1], [D1, 1]]);
     expect(done.live).toMatchObject({ matched: 1 });
+  });
+
+  it("DEC-047: a break a later run's suggesting pass pairs shows the proposed pair", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "P1", amount: 100n, date: D }]);
+    await put(sb, [{ ref: "P1", amount: 101n, date: D1 }]);
+    const near = { no: 2, name: "Near", cardinality: "1:1", blocking: ["ext_ref"], accept: "suggest", on_ambiguous: "suggest", predicates: [{ op: "amount_abs_tol", field: "amount_minor", tolerance: { IDR: "1.00" } }, ccyEq] };
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact, near], 1));
+    await json<ReconRunDto>(startRun(t.op, r.configId, { from: D, to: D }));
+    await drain(); // D closes: side A's P1 is a No counterpart break
+    const q = await json<ReconRunDto>(startRun(t.op, r.configId, { from: D1, to: D1 }));
+    await drain();
+    const [row] = (await items(r.configId, q.id, "status=break&side=a")).items;
+    expect([row!.extRef, row!.breakReason, row!.proposed]).toEqual(["P1", "No counterpart", { itemId: expect.any(String), side: "b", passNo: 2, extRef: "P1", amountMinor: "101", currency: "IDR", businessDate: D1 }]);
+    expect((await items(r.configId, q.id, "side=b")).items[0]!.proposed).toBeNull();
   });
 
   it("a group's members are capped at 50 with its member count", async () => {
@@ -431,14 +455,27 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     ]);
     // every day closed: per side 48 breaks of time (3 currency + 1 amount + 20 no counterpart + 24 unconfirmed), nothing waits
     expect(days.every((d) => d.closed)).toBe(true);
-    expect((await getRun(gate.configId, q.id)).live).toEqual({ matched: 937, suggested: 0, breaks: side(48), open: side(0) });
+    expect((await getRun(gate.configId, q.id)).live).toEqual({
+      matched: 937, suggested: 0, breaks: side(48), open: side(0), items: side(1000),
+      breakReasons: { "Amount differs": side(15), "Currency differs": side(3), "Date differs": side(10), Duplicate: side(15), "No counterpart": side(20) },
+    });
+    // the Breaks tab: one reason, the run's own dates only; a reason the engine never writes is refused
+    expect((await items(gate.configId, q.id, "reason=No%20counterpart&own=1")).total).toBe(40);
+    expect((await call("GET", `${base(gate.configId)}/runs/${q.id}/items?reason=Gone`, { token: t.rv })).status).toBe(400);
     expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
-    // a run from before 0032 has no stored days: the first GET computes the same ones and stores them
+    // a run whose days are missing (before 0032, or failed): GET answers 200 without them (it never aggregates on the
+    // API's pool) and queues the worker's finalize; the next GET has the same days
     const asStored = await getRun(gate.configId, q.id);
-    await db.update(reconRuns).set({ days: null }).where(eq(reconRuns.id, q.id));
-    const [first, second] = await Promise.all([getRun(gate.configId, q.id), getRun(gate.configId, q.id)]);
-    expect([first.days, first.live, second.days]).toEqual([asStored.days, asStored.live, asStored.days]);
-    expect((await db.select({ days: reconRuns.days }).from(reconRuns).where(eq(reconRuns.id, q.id)))[0]!.days).toEqual(asStored.days);
+    await db.update(reconRuns).set({ days: null, finalized: false }).where(eq(reconRuns.id, q.id));
+    const missing = await call("GET", `${base(gate.configId)}/runs/${q.id}`, { token: t.rv });
+    expect([missing.status, ((await missing.json()) as ReconRunDto).days, (await getRun(gate.configId, q.id)).live]).toEqual([200, null, null]);
+    await drain();
+    expect([(await getRun(gate.configId, q.id)).days, (await getRun(gate.configId, q.id)).live]).toEqual([asStored.days, asStored.live]);
+    // days of an older shape (no `items`) count as missing the same way
+    await db.update(reconRuns).set({ days: asStored.days!.map(({ items: _, ...d }) => d) }).where(eq(reconRuns.id, q.id));
+    expect((await getRun(gate.configId, q.id)).days).toBeNull();
+    await drain();
+    expect((await getRun(gate.configId, q.id)).days).toEqual(asStored.days);
     expect((await call("GET", `${base(gate.configId)}/runs`, { token: t.rv }).then((r) => r.json()) as Page<ReconRunDto>).items[0]!.days).toBeNull();
 
     const total = async (q2: string) => (await items(gate.configId, q.id, q2)).total;

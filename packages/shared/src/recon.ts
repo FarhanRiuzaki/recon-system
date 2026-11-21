@@ -61,6 +61,14 @@ export type GroupKind = (typeof GROUP_KINDS)[number];
  */
 export const SIM_CHANGES = ["gained", "lost", "repaired", "kind"] as const;
 export type SimChange = (typeof SIM_CHANGES)[number];
+/**
+ * Why an item is a break, as the engine writes it: a pass's ambiguity ("Duplicate", "Ambiguous"), the near-miss
+ * classifier at grace and day close ("Currency differs", "Amount differs", "Date differs", "No counterpart") and day
+ * close for an unconfirmed suggestion (its pass's reason or "Unconfirmed suggestion"). A unit test in the engine keeps
+ * this list equal to what it writes.
+ */
+export const BREAK_REASONS = ["Duplicate", "Ambiguous", "Currency differs", "Amount differs", "Date differs", "No counterpart", "Unconfirmed suggestion"] as const;
+export type BreakReason = (typeof BREAK_REASONS)[number];
 /** Members a run's screens get per group (RunGroupDto.members); `memberCount` tells how many it has. */
 export const GROUP_MEMBERS_MAX = 50;
 /** The most business dates one run or simulation covers. */

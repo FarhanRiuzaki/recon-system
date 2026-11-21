@@ -23,11 +23,12 @@ import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
-import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
-import { unionAll } from "drizzle-orm/pg-core";
+import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
 import { log } from "../../kernel/log";
+import { enqueue, QUEUES } from "../../kernel/jobs";
 import { configLock } from "../../kernel/locks";
 import { one as countOne, pageQuery, sortSql } from "../../kernel/pagination";
 import { ensureMonthPartitions } from "../../kernel/partitions";
@@ -292,9 +293,9 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     });
     if (counters === "over") return null;
     // after the run, each in a short transaction of its own; a failure there is logged and never fails the run
-    const after = async (what: string, fn: (tx: InTx) => Promise<unknown>) => {
+    const after = async (what: string, fn: () => Promise<unknown>) => {
       try {
-        await withSpace(scope, fn, on);
+        await fn();
       } catch (e) {
         log.warn({ err: errorDetail(e), runId }, `recon run: ${what} failed`);
       }
@@ -302,29 +303,12 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     // the result screens read the groups right after: their statistics first
     const groups = Object.values(counters.passes).reduce((n, p) => n + p.matched + p.suggested, 0);
     const members = Object.values(counters.passes).reduce((n, p) => n + p.matchedItems.a + p.matchedItems.b + p.suggestedItems.a + p.suggestedItems.b, 0);
-    await after("statistics of match_groups", (tx) => one(tx, analyzeTableSql("match_groups", groups)));
-    await after("statistics of match_members", (tx) => one(tx, analyzeTableSql("match_members", members)));
-    // its days (left null on a failure: the first GET computes them) and its passes' references counted once
-    await after("days", async (tx) => {
-      const [r] = await tx.select().from(reconRuns).where(mine).for("update");
-      if (!r || r.days) return;
-      const { days, refs } = await daysOf(tx, {
-        spaceId, configId, simRunId, passes: spec.passes.map((p) => p.no), first, from: run.dateFrom, to,
-        recordSpaces: [...new Set([spaceId, ...sides.map((x) => x.sourceSpaceId)])],
-      });
-      // a reference broken on two dates of the run counts once: the steps counted it per date, the window's breaks count
-      // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
-      // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
-      // on the row's counters (a simulation stored its projection beside them since)
-      const stored = r.counters as RunCounters;
-      for (const p of spec.passes) {
-        const pc = stored.passes[String(p.no)];
-        if (pc) pc.brokenRefs = Math.min(pc.brokenRefs, refs.get(p.no) ?? 0);
-        counters.passes[String(p.no)]!.brokenRefs = pc?.brokenRefs ?? 0;
-      }
-      await tx.update(reconRuns).set({ counters: stored, days }).where(mine);
-    });
-    return { runId, counters };
+    await after("statistics of match_groups", () => withSpace(scope, (tx) => one(tx, analyzeTableSql("match_groups", groups)), on));
+    await after("statistics of match_members", () => withSpace(scope, (tx) => one(tx, analyzeTableSql("match_members", members)), on));
+    // its days and references counted once (left not finalized on a failure: the next GET queues finalizeRun)
+    await after("finalize", () => finalizeRun(on, spaceId, runId));
+    const [done] = await withSpace(scope, (tx) => tx.select({ counters: reconRuns.counters }).from(reconRuns).where(mine), on);
+    return { runId, counters: withoutProjection(done?.counters ?? counters) };
   } catch (e) {
     if (e instanceof RunAborted) throw e;
     // a person reads `error`: an ApiError's sentence, never a query's text (Drizzle's message holds the SQL and its values)
@@ -459,12 +443,22 @@ async function runOfConfig(tx: InTx, spaceId: string, configId: string, runId: s
   return r;
 }
 
+/**
+ * A run's stored days when it is finalized and they have today's shape (`items`, `closed`, `breakReasons`: older ones
+ * count as none);
+ * null otherwise (GET run then queues finalizeRun, runDetail).
+ */
+function finalizedDays(run: RunRow): RunDay[] | null {
+  const ok = run.finalized && Array.isArray(run.days) && (run.days as RunDay[]).every((d) => typeof d.closed === "boolean" && !!d.items && !!d.breakReasons);
+  return ok ? (run.days as RunDay[]) : null;
+}
+
 /** The run as answered (also the answer of a run or simulation request); `withDays` adds its stored `days` (GET run). */
 export async function runRow(tx: InTx, spaceId: string, configId: string, runId: string, withDays = false): Promise<ReconRunDto> {
   const run = await runOfConfig(tx, spaceId, configId, runId);
   const dto = (await runDtos(tx, spaceId, [run]))[0]!;
   if (!withDays) return dto;
-  const days = await storedDays(tx, run);
+  const days = finalizedDays(run);
   // the run's own dates only: the carry-over dates before them hold other runs' groups and breaks
   const own = (days ?? []).filter((d) => d.date >= run.dateFrom && d.date <= run.dateTo);
   const sum = (f: (d: RunDay) => number) => own.reduce((n, d) => n + f(d), 0);
@@ -473,7 +467,12 @@ export async function runRow(tx: InTx, spaceId: string, configId: string, runId:
     ...dto, days,
     live: days && {
       matched: sum((d) => passes(d, "matched")), suggested: sum((d) => passes(d, "suggested")),
-      breaks: { a: sum((d) => d.breaks?.a ?? 0), b: sum((d) => d.breaks?.b ?? 0) }, open: { a: sum((d) => d.open.a), b: sum((d) => d.open.b) },
+      breaks: { a: sum((d) => d.breaks.a), b: sum((d) => d.breaks.b) }, open: { a: sum((d) => d.open.a), b: sum((d) => d.open.b) },
+      items: { a: sum((d) => d.items?.a ?? 0), b: sum((d) => d.items?.b ?? 0) },
+      breakReasons: own.reduce<Record<string, { a: number; b: number }>>((m, d) => {
+        for (const [reason, n] of Object.entries(d.breakReasons ?? {})) m[reason] = { a: (m[reason]?.a ?? 0) + n.a, b: (m[reason]?.b ?? 0) + n.b };
+        return m;
+      }, {}),
     },
   };
 }
@@ -481,7 +480,8 @@ export async function runRow(tx: InTx, spaceId: string, configId: string, runId:
 /**
  * A run's days (ReconRunDto.days) and its passes' distinct broken references, over its window `first`..`to` (its dates
  * and the carry over before them) as the items stand when it is called (the run's end, or after its close): matched groups and suggested ones whose items are still
- * suggested per (date, pass), whether the day closed, breaks of time (grace, close: break_pass null) per (date, side), broken items per (date,
+ * suggested per (date, pass), whether the day closed, breaks of time (grace, close: break_pass null) and current records
+ * (items not closed) per (date, side), broken items per (date,
  * pass) with distinct references (per day: a reference broken on two dates counts on each), open items per (date, side);
  * and per pass the distinct references of the window's items it broke (each once). Run once, at the run's
  * end in the worker, and stored with the run (recon_runs.days): a GET never scans the groups of 31 days (S1: ~200k a day).
@@ -507,14 +507,19 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.breakPass);
   const open = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
     .where(and(itemsIn, eq(reconItems.status, "open"))).groupBy(reconItems.businessDate, reconItems.side);
+  // the records the date counts per side (intake − replaced: an item of a replaced record is closed)
+  const current = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
+    .where(and(itemsIn, ne(reconItems.status, "closed"))).groupBy(reconItems.businessDate, reconItems.side);
   // breaks of time (grace, day close: no pass broke them); a pass's Duplicate stays under its pass
   const timed = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
     .where(and(itemsIn, eq(reconItems.status, "break"), isNull(reconItems.breakPass))).groupBy(reconItems.businessDate, reconItems.side);
+  const reasons = await tx.select({ d: reconItems.businessDate, side: reconItems.side, reason: reconItems.breakReason, n: count() }).from(reconItems)
+    .where(and(itemsIn, eq(reconItems.status, "break"))).groupBy(reconItems.businessDate, reconItems.side, reconItems.breakReason);
   const closed = w.simRunId ? [] : await tx.select({ d: reconDays.businessDate }).from(reconDays).where(and(eq(reconDays.spaceId, w.spaceId), eq(reconDays.configId, w.configId),
     eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
   const dates = new Set<string>();
   for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
-  for (const r of [...matched, ...suggested, ...broken, ...open, ...timed]) dates.add(r.d);
+  for (const r of [...matched, ...suggested, ...broken, ...open, ...timed, ...current]) dates.add(r.d);
   const perSide = (rows: { d: string; side: string; n: number }[], date: string) => ({
     a: rows.find((o) => o.d === date && o.side === "a")?.n ?? 0, b: rows.find((o) => o.d === date && o.side === "b")?.n ?? 0,
   });
@@ -528,26 +533,57 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     }])),
     open: perSide(open, date),
     breaks: perSide(timed, date),
+    items: perSide(current, date),
+    breakReasons: Object.fromEntries([...new Set(reasons.filter((r) => r.d === date).map((r) => r.reason ?? ""))].sort().map((reason) => [reason, {
+      a: reasons.find((r) => r.d === date && (r.reason ?? "") === reason && r.side === "a")?.n ?? 0,
+      b: reasons.find((r) => r.d === date && (r.reason ?? "") === reason && r.side === "b")?.n ?? 0,
+    }])),
     closed: closed.some((c) => c.d === date),
   }));
   return { days, refs: new Map(refs.map((r) => [r.pass!, r.refs])) };
 }
 
 /**
- * After a live run's job closed its dates (schedule.ts runScheduled): its stored `days` read again, so the run page
- * shows the breaks the close made, not the waiting items and suggestions before it (`counters` stay what the run did). A simulation (it
- * closes nothing) or a run not succeeded is left as it is.
+ * Writes a succeeded run's days (daysOf over its window, as its items stand) and its passes' broken references counted
+ * once, and marks it finalized, under its row's lock; idempotent (the references take the smaller of the stored value
+ * and the window's distinct count, which a second pass leaves as it is). Called by the worker after a run and again
+ * after its close, and by the backfill job a GET queues (pre-0032 runs, failed or old-shape days).
+ */
+export async function finalizeRun(on: Tx, spaceId: string, runId: string): Promise<void> {
+  const mine = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId));
+  await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
+    const [r] = await tx.select().from(reconRuns).where(mine).for("update");
+    if (r?.status !== "succeeded") return;
+    const { spec, recordSpaces } = await versionRead(tx, spaceId, r.configVersionId);
+    const { days, refs } = await daysOf(tx, {
+      spaceId, configId: r.configId, simRunId: r.mode === "simulation" ? r.id : null, passes: spec.passes.map((p) => p.no),
+      first: addDays(r.dateFrom, -spec.carry_over_days), from: r.dateFrom, to: r.dateTo, recordSpaces,
+    });
+    // a reference broken on two dates of the run counts once: the steps counted it per date, the window's breaks count
+    // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
+    // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
+    // On the row's counters: a simulation stored its projection beside them.
+    const counters = r.counters as RunCounters;
+    for (const p of spec.passes) {
+      const pc = counters.passes?.[String(p.no)];
+      if (pc) pc.brokenRefs = Math.min(pc.brokenRefs ?? pc.broken, refs.get(p.no) ?? 0);
+    }
+    await tx.update(reconRuns).set({ counters, days, finalized: true }).where(mine);
+  }, on);
+}
+
+/**
+ * After a live run's job closed its dates (schedule.ts runScheduled): finalized again, so its days show the breaks
+ * the close made (`counters` stay what the run did). On a failure the run is marked not finalized, so the next GET
+ * queues the backfill instead of showing the picture from before the close for good.
  */
 export async function refreshRunDays(on: Tx, spaceId: string, runId: string): Promise<void> {
   try {
-    await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
-      const [run] = await tx.select().from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))).for("update");
-      if (run?.status !== "succeeded" || run.mode === "simulation") return;
-      await tx.update(reconRuns).set({ days: await daysNow(tx, run) }).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId)));
-    }, on);
+    await finalizeRun(on, spaceId, runId);
   } catch (e) {
-    // the days stay as they were; the run and its close are done
     log.warn({ err: errorDetail(e), runId }, "recon run: days after the close failed");
+    await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => tx.update(reconRuns).set({ finalized: false })
+      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))), on).catch((x: unknown) => log.warn({ err: errorDetail(x), runId }, "recon run: marking it for the backfill failed"));
   }
 }
 
@@ -561,33 +597,6 @@ export async function closedDates(on: Tx, spaceId: string, runId: string): Promi
       eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${run.from}::date and ${run.to}::date`));
     return r?.n ?? 0;
   }, on);
-}
-
-/** Run `run`'s days as its items and groups stand when called (daysOf over its window, its own items for a simulation). */
-async function daysNow(tx: InTx, run: RunRow): Promise<RunDay[]> {
-  const { spec, recordSpaces } = await versionRead(tx, run.spaceId, run.configVersionId);
-  const { days } = await daysOf(tx, {
-    spaceId: run.spaceId, configId: run.configId, simRunId: run.mode === "simulation" ? run.id : null, passes: spec.passes.map((p) => p.no),
-    first: addDays(run.dateFrom, -spec.carry_over_days), from: run.dateFrom, to: run.dateTo, recordSpaces,
-  });
-  return days;
-}
-
-/**
- * A succeeded run's stored days; a run from before 0032 has none (and one stored before `breaks`/`closed` existed, or
- * whose days failed after it succeeded, none usable), so the first GET computes them once, with the worker's code,
- * under the run row's lock (a second GET waiting on it finds them stored), and stores them.
- */
-async function storedDays(tx: InTx, run: RunRow): Promise<RunDay[] | null> {
-  // stored before `breaks` / `closed` existed (8263dad) counts as none
-  const complete = (d: unknown): d is RunDay[] => Array.isArray(d) && d.every((x) => typeof (x as RunDay).closed === "boolean");
-  if (complete(run.days) || run.status !== "succeeded") return complete(run.days) ? run.days : null;
-  const mine = and(eq(reconRuns.spaceId, run.spaceId), eq(reconRuns.id, run.id));
-  const [locked] = await tx.select({ days: reconRuns.days }).from(reconRuns).where(mine).for("update");
-  if (complete(locked?.days)) return locked.days;
-  const days = await daysNow(tx, run);
-  await tx.update(reconRuns).set({ days }).where(mine);
-  return days;
 }
 
 /**
@@ -630,7 +639,19 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 /** GET …/runs/:runId. */
-export const runDetail = (ctx: Ctx, configId: string, runId: string) => inSpace(ctx, (tx, spaceId) => runRow(tx, spaceId, configId, runId, true));
+/**
+ * GET …/runs/:runId. Reads only (the API's 5 s pool never aggregates a run's days): a succeeded run not finalized
+ * answers days and live null and queues finalizeRun on the worker (recon.heavy, one job per run), which the screen's
+ * next poll then reads.
+ */
+export async function runDetail(ctx: Ctx, configId: string, runId: string): Promise<ReconRunDto> {
+  const dto = await inSpace(ctx, (tx, spaceId) => runRow(tx, spaceId, configId, runId, true));
+  if (dto.status === "succeeded" && dto.days === null) {
+    await enqueue(QUEUES.reconHeavy, { spaceId: ctx.space!.id, runId, finalize: true }, { key: `finalize:${runId}` })
+      .catch((e: unknown) => log.warn({ err: errorDetail(e), runId }, "recon run: queueing its days failed"));
+  }
+  return dto;
+}
 
 /** GET …/runs: the config's runs and draft simulations, newest first unless `sort` says otherwise. */
 export function runPage(ctx: Ctx, configId: string, q: ReconRunListQuery): Promise<Page<ReconRunDto>> {
@@ -671,8 +692,9 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
     const where = and(
       eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId),
       scopeI,
-      sql`${reconItems.businessDate} between ${addDays(run.dateFrom, -spec.carry_over_days)}::date and ${run.dateTo}::date`,
+      sql`${reconItems.businessDate} between ${q.own ? run.dateFrom : addDays(run.dateFrom, -spec.carry_over_days)}::date and ${run.dateTo}::date`,
       q.status ? eq(reconItems.status, q.status) : undefined, q.side ? eq(reconItems.side, q.side) : undefined,
+      q.reason ? and(eq(reconItems.status, "break"), eq(reconItems.breakReason, q.reason)) : undefined,
       // pass: its groups' members or the items it broke, one branch each
       q.pass ? inArray(reconItems.id, unionAll(
         tx.select({ id: matchMembers.itemId }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
@@ -684,9 +706,17 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
         sql`coalesce(${cur.businessDate}, ${reconItems.businessDate}) = ${q.date}::date`) : undefined,
     );
     const record = and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
+    // a proposal's item and its record (DEC-047): joined once for the page, as the item's own
+    const pi = alias(reconItems, "pi"), pr = alias(records, "pr");
     const page = await pageQuery({
-      rows: tx.select({ i: reconItems, g: { id: cur.id, passNo: cur.passNo, kind: cur.kind, businessDate: cur.businessDate, evidence: cur.evidence }, ref: records.extRef, amount: records.amountMinor, ccy: records.currency })
-        .from(reconItems).leftJoin(cur, eq(cur.itemId, reconItems.id)).leftJoin(records, record).where(where).$dynamic(),
+      rows: tx.select({
+        i: reconItems, g: { id: cur.id, passNo: cur.passNo, kind: cur.kind, businessDate: cur.businessDate, evidence: cur.evidence }, ref: records.extRef, amount: records.amountMinor, ccy: records.currency,
+        p: { id: pi.id, side: pi.side, date: pi.businessDate, ref: pr.extRef, amount: pr.amountMinor, ccy: pr.currency },
+      })
+        .from(reconItems).leftJoin(cur, eq(cur.itemId, reconItems.id)).leftJoin(records, record)
+        .leftJoin(pi, and(eq(pi.spaceId, reconItems.spaceId), eq(pi.id, reconItems.proposedItemId)))
+        .leftJoin(pr, and(inArray(pr.spaceId, recordSpaces), eq(pr.id, pi.recordId), eq(pr.businessDate, pi.businessDate)))
+        .where(where).$dynamic(),
       count: tx.select(countOne).from(reconItems).leftJoin(cur, eq(cur.itemId, reconItems.id)).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate }, "businessDate", reconItems.id),
       query: q, on: tx, map: (r) => r,
@@ -694,9 +724,12 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
     const members = await membersOf(tx, spaceId, [...new Set(page.items.flatMap((r) => (r.g ? [r.g.id] : [])))], recordSpaces);
     return {
       ...page,
-      items: page.items.map(({ i, g, ref, amount, ccy }): ReconRunItemDto => ({
+      items: page.items.map(({ i, g, ref, amount, ccy, p }): ReconRunItemDto => ({
         id: i.id, recordId: i.recordId, side: i.side as "a" | "b", status: i.status as ItemStatus, businessDate: i.businessDate, breakReason: i.breakReason,
         breakPass: i.breakPass, extRef: ref, amountMinor: amount?.toString() ?? null, currency: ccy,
+        proposed: p?.id && p.date && i.proposedPass !== null ? {
+          itemId: p.id, side: p.side as "a" | "b", passNo: i.proposedPass, extRef: p.ref, amountMinor: p.amount?.toString() ?? null, currency: p.ccy, businessDate: p.date,
+        } : null,
         group: g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, businessDate: g.businessDate, evidence: g.evidence, members: members.get(g.id)?.members ?? [], memberCount: members.get(g.id)?.count ?? 0 } : null,
       })),
     };
