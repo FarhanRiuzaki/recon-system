@@ -662,7 +662,7 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   const rows = await overConnection(conn, (c) => input.kind === "db_snapshot"
     ? c.sample({ query: input.query, businessDate: b.businessDate ?? todayJakarta() }, columns, PREVIEW_PULL_ROWS)
     : c.sample(input.table !== undefined ? { table: input.table } : { query: input.query! }, columns, PREVIEW_PULL_ROWS));
-  return previewRows(spec, rows, cal);
+  return previewRows(spec, rows, cal, input.kind === "db_snapshot" ? b.businessDate ?? todayJakarta() : undefined);
 }
 
 /**

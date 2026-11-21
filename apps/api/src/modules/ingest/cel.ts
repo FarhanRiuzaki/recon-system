@@ -23,13 +23,14 @@ export const SAFE_PATTERNS: Record<string, RegExp> = {
 };
 
 /** What an expression can read: `row` (the raw columns after trim/case, then earlier derived values), the file's name and its date (yyyy-mm-dd, "" when the name has none). */
-export type DeriveVars = { row: Record<string, string>; file_name: string; file_date: string };
+export type DeriveVars = { row: Record<string, string>; file_name: string; file_date: string; arrived_date: string };
 export type Compiled = { readonly run: ParseResult };
 
 const base = new Environment({ limits: LIMITS })
   .registerVariable("row", "map")
   .registerVariable("file_name", "string")
   .registerVariable("file_date", "string")
+  .registerVariable("arrived_date", "string")
   .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v));
 // computed columns' steps, from the one table the wizard previews with; a CEL int arrives as a bigint
 const env = Object.entries(COMPUTE_FUNCTIONS).reduce((e, [fn, f]) => e.registerFunction(

@@ -11,6 +11,8 @@ export const TYPE_LABEL: Record<FieldType, string> = {
 };
 /** The expression a business date taken from the file name is (CEL variable `file_date`). */
 export const FILE_DATE = { cel: "file_date" } satisfies ValueRef;
+/** A business date for rows that carry none: the day they arrive (a snapshot's own date; CEL variable `arrived_date`). */
+export const ARRIVED_DATE = { cel: "arrived_date" } satisfies ValueRef;
 
 const colName = (i: number, n: number) => `col_${String(i + 1).padStart(Math.max(2, String(n).length), "0")}`;
 
@@ -104,7 +106,7 @@ export function fieldError(message: string): { path: string; reason: string } | 
   return m ? { path: m[1]!, reason: m[2]! } : null;
 }
 
-const refText = (r: ValueRef | undefined): string | null => (!r ? null : "field" in r ? r.field : r.cel === FILE_DATE.cel ? "the file name's date" : `expression ${r.cel}`);
+const refText = (r: ValueRef | undefined): string | null => (!r ? null : "field" in r ? r.field : r.cel === FILE_DATE.cel ? "the file name's date" : r.cel === ARRIVED_DATE.cel ? "the day it arrives" : `expression ${r.cel}`);
 /** A field as the diff reads it: "Decimal, 2 places, never empty". */
 export function fieldText(f: FieldSpec): string {
   const fmt = f.format;

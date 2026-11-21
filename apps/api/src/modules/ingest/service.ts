@@ -154,7 +154,7 @@ async function writeLines(tx: InTx, s: Scope, l: Loaded, o: Origin, lines: Line[
   const base = { spaceId: s.spaceId, sourceId: s.sourceId, origin: o.origin, originId: o.originId };
   for (const x of lines) {
     let reasons = x.ok ? null : x.reasons;
-    const r = x.ok ? toRecord(x.raw, l.spec, { calendar: l.calendar, fileName: o.fileName }) : null;
+    const r = x.ok ? toRecord(x.raw, l.spec, { calendar: l.calendar, fileName: o.fileName, arrivedDate: o.businessDate }) : null;
     if (r && !r.ok) reasons = r.reasons;
     else if (r?.ok && o.businessDate && r.record.business_date !== o.businessDate) {
       reasons = { business_date: `business_date: ${r.record.business_date} is not the snapshot's date ${o.businessDate}` };

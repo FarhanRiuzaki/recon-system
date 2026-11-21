@@ -38,6 +38,15 @@ describe("KSEI fixture through parse + toRecord", () => {
 });
 
 describe("business_date sources", () => {
+  it("a source without a date: the day it arrived (a snapshot's date), else today in Jakarta", () => {
+    const s = { ...ksei(), mapping: { ...ksei().mapping, business_date: { cel: "arrived_date" } } };
+    const raw = Object.fromEntries(ksei().fields.map((f) => [f.name, "v"]));
+    const r = toRecord(raw, s, { ...ctx, arrivedDate: "2026-11-04" });
+    expect(r.ok && r.record.business_date).toBe("2026-11-04");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date());
+    const r2 = toRecord(raw, s, { calendar: ctx.calendar });
+    expect(r2.ok && r2.record.business_date).toBe(today);
+  });
   const base = (): SourceSpec => ({
     fields: [
       { name: "ref", type: "string", nullable: false, trim: true },

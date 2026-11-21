@@ -26,7 +26,11 @@ import { coerce, DEFAULT_SCALE, DEFAULT_TIMEZONE, formatScaled, localDate, type 
 
 export type Calendar = { bdayIndex(date: string): number };
 export type CalendarData = { weekend: number[]; holidays: string[] };
-export type MapContext = { calendar: Calendar; fileName?: string };
+/**
+ * `arrivedDate`: the business date of the pull, file or snapshot the row came in (CEL `arrived_date`), for a source
+ * whose rows carry no date (owner, 21 Nov); a snapshot's own date, else today in Asia/Jakarta when left out.
+ */
+export type MapContext = { calendar: Calendar; fileName?: string; arrivedDate?: string };
 export type CoreRecord = {
   business_date: string;
   bday_index: number;
@@ -145,7 +149,10 @@ export function toRecord(raw: Record<string, string | null>, spec: SourceSpec, c
   if (Object.keys(reasons).length) return { ok: false, reasons };
 
   const fileDate = ctx.fileName ? fileDateOf(ctx.fileName) : null;
-  const vars = () => ({ row, file_name: ctx.fileName ?? "", file_date: fileDate ?? "" });
+  // ponytail: a pull or file is dated the day it is mapped, so a row mapped after midnight lands on the next day; a
+  // source that needs the day before uses a snapshot (dated by its run) or a date column
+  const arrived = ctx.arrivedDate ?? localDate(new Date().toISOString(), DEFAULT_TIMEZONE);
+  const vars = () => ({ row, file_name: ctx.fileName ?? "", file_date: fileDate ?? "", arrived_date: arrived });
   for (const [name, c] of p.derive) {
     const r = runDerive(c, vars());
     if (!r.ok) { reasons[name] = `${name}: ${r.reason}`; continue; }

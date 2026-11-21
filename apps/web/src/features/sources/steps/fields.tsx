@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
-import { attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
+import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview } from "./model";
@@ -133,6 +133,7 @@ export function FieldsStep(p: FieldsStepProps) {
   const refLabel = (r: ValueRef) => {
     if ("field" in r) return r.field;
     if (r.cel === FILE_DATE.cel) return "the file name";
+    if (r.cel === ARRIVED_DATE.cel) return s.input.kind === "db_snapshot" ? "the snapshot's date" : "the day it arrives";
     const b = computeSteps(r.cel);
     return b?.steps.length === 1 && b.steps[0]!.type === "json" ? `${b.source} › ${b.steps[0]!.args[0]}` : `expression ${r.cel}`;
   };
@@ -588,7 +589,7 @@ function ReconFields({ d, p, err, refLabel, setSpec, setCore, setUnit }: {
           const set = !!r && (!("field" in r) || !!r.field);
           const why = err(id);
           const hint = c.key in p.coreHint ? p.coreHint[c.key as SuggestedCore] : undefined;
-          const typed = set && r && "cel" in r && r.cel !== FILE_DATE.cel;
+          const typed = set && r && "cel" in r && r.cel !== FILE_DATE.cel && r.cel !== ARRIVED_DATE.cel;
           return (
             <div key={c.key} id={id} tabIndex={-1} className="grid min-w-0 content-start gap-1.5 rounded-md">
               <span className="flex min-w-0 items-center gap-1 text-label text-fg">
@@ -601,11 +602,22 @@ function ReconFields({ d, p, err, refLabel, setSpec, setCore, setUnit }: {
                   <Icon icon={CheckIcon} className="size-4 shrink-0 text-healthy-mark" />
                   <span className="min-w-0 truncate font-mono text-mono text-fg">{refLabel(r)}</span>
                   {typed && <Button type="button" variant="link" size="sm" onClick={() => setCore(c.key, undefined)}>Stop using it</Button>}
-                </> : <span className="text-fg-3">{c.key === "business_date" ? "Not set: pick it in Use as" : "Not used"}</span>}
+                </> : <span className="text-fg-3">{c.key === "business_date" ? "Not set: pick a column in Use as" : "Not used"}</span>}
               </span>
-              {file && c.key === "business_date" && (
-                <Checkbox label="From the file name" checked={!!r && "cel" in r && r.cel === FILE_DATE.cel}
-                  onToggle={() => setCore(c.key, r && "cel" in r && r.cel === FILE_DATE.cel ? undefined : FILE_DATE)} />
+              {/* rows that carry no date of their own (owner, 21 Nov): the file name's date, or the day they arrive */}
+              {c.key === "business_date" && (
+                <Segmented label="Business date comes from" value={r && "cel" in r && (r.cel === FILE_DATE.cel || r.cel === ARRIVED_DATE.cel) ? r.cel : "column"}
+                  onChange={(v) => setCore(c.key, v === FILE_DATE.cel ? FILE_DATE : v === ARRIVED_DATE.cel ? ARRIVED_DATE : r && "field" in r ? r : undefined)}
+                  options={[
+                    { value: "column", label: "A column" },
+                    ...(file ? [{ value: FILE_DATE.cel, label: "The file name" }] : []),
+                    { value: ARRIVED_DATE.cel, label: s.input.kind === "db_snapshot" ? "The snapshot's date" : "The day it arrives" },
+                  ]} />
+              )}
+              {c.key === "business_date" && r && "cel" in r && r.cel === ARRIVED_DATE.cel && (
+                <span className="text-caption text-fg-3">{s.input.kind === "db_snapshot"
+                  ? "Every row gets the business date the snapshot is taken for."
+                  : "Every row gets the date it is read on (Jakarta time), so a row read after midnight belongs to the next day."}</span>
               )}
               {c.key === "currency" && !r && (
                 <Combobox className="w-full min-w-0 md:max-w-64" id={ctl("currency")} label="Or one currency for every row" placeholder="Or one currency for every row" options={CURRENCIES}

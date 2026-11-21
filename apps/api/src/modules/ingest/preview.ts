@@ -12,7 +12,7 @@ export const PREVIEW_LIST = 100;
 
 type Line = { line: number; ok: true; raw: Record<string, string | null> } | { line: number; ok: false; cells: string[]; reasons: Record<string, string> };
 
-function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileName?: string): SourcePreviewDto {
+function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileName?: string, arrivedDate?: string): SourcePreviewDto {
   const cal = makeCalendar(calendar);
   const names = spec.fields.map((f) => f.name);
   const cells = (raw: Record<string, string | null>) => names.map((n) => raw[n] ?? "");
@@ -23,7 +23,7 @@ function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileNa
   };
   for (const l of lines) {
     if (!l.ok) { quarantine(l.line, l.cells, l.reasons); continue; }
-    const r = toRecord(l.raw, spec, { calendar: cal, fileName });
+    const r = toRecord(l.raw, spec, { calendar: cal, fileName, arrivedDate });
     if (!r.ok) { quarantine(l.line, cells(l.raw), r.reasons); continue; }
     out.ok++;
     const x = r.record;
@@ -43,6 +43,7 @@ export async function previewSample(spec: SourceSpec, sample: string, calendar: 
 }
 
 /** Rows a connector pulled (line = position in the sample, from 1). */
-export function previewRows(spec: SourceSpec, rows: Row[], calendar: CalendarData): SourcePreviewDto {
-  return preview(spec, rows.map((raw, i) => ({ line: i + 1, ok: true, raw })), calendar);
+/** `arrivedDate`: a snapshot's business date (its rows are dated by it). */
+export function previewRows(spec: SourceSpec, rows: Row[], calendar: CalendarData, arrivedDate?: string): SourcePreviewDto {
+  return preview(spec, rows.map((raw, i) => ({ line: i + 1, ok: true, raw })), calendar, undefined, arrivedDate);
 }

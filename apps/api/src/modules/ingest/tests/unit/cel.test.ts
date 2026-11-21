@@ -7,7 +7,7 @@ const ok = (expr: string) => {
   if ("error" in c) throw new Error(c.error);
   return c;
 };
-const vars = (row: Record<string, string>) => ({ row, file_name: "act20261102.txt", file_date: "2026-11-02" });
+const vars = (row: Record<string, string>) => ({ row, file_name: "act20261102.txt", file_date: "2026-11-02", arrived_date: "2026-11-03" });
 
 describe("compileDerive", () => {
   it("rejects matches(), macros, other functions, long and deep expressions", () => {
@@ -67,7 +67,7 @@ describe("computed columns (@starterkit/shared/compute): ingest's CEL = the wiza
       const c = compileDerive(expr);
       if ("error" in c) throw new Error(`${expr}: ${c.error}`);
       for (const remark of REMARKS) {
-        const r = runDerive(c, { row: { remark }, file_name: "", file_date: "" });
+        const r = runDerive(c, { row: { remark }, file_name: "", file_date: "", arrived_date: "" });
         expect([expr, remark, r]).toEqual([expr, remark, { ok: true, value: applySteps(remark, steps) }]);
       }
     }

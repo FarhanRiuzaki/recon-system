@@ -34,7 +34,7 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   return [
     { ...arrive, ready: true },
     ...table,
-    { check: "Core fields", ready: true, details: `Business date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
+    { check: "Core fields", ready: true, details: `Business date from ${"field" in bd ? bd.field : bd.cel === "file_date" ? "the file name" : bd.cel === "arrived_date" ? "the day it arrives" : `expression ${bd.cel}`} · ${s.mapping.amount_minor ? `amount from ${"field" in s.mapping.amount_minor ? s.mapping.amount_minor.field : "an expression"}${s.mapping.amount_minor.unit ? ` in ${UNIT_LABEL[s.mapping.amount_minor.unit].toLowerCase()}` : ""}` : "no amount"}` },
     // a match key matters only for rows that can change (the newest per key counts); a source whose rows never change has none
     ...(!s.mutable ? [] : [s.key_fields.length
       ? { check: "Match key", ready: true, details: `${s.key_fields.join(" + ")}, never empty` }
@@ -79,7 +79,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
         <ReviewList onChange={onEdit} rows={[
           ...(canConnect ? [{ label: "Comes from", value: i.kind === "file_inbox" ? `File inbox · ${i.path} · ${i.pattern}` : KIND_LABEL[d.kind], step: 0 }] : []),
           { label: "Columns", value: `${s.fields.length} · ${stored.length} stored${s.key_fields.length ? ` · match key ${s.key_fields.join(" + ")}` : ""}`, step: 1 },
-          { label: "Business date", value: "field" in s.mapping.business_date ? s.mapping.business_date.field : "From the file name", step: 1 },
+          { label: "Business date", value: "field" in s.mapping.business_date ? s.mapping.business_date.field : s.mapping.business_date.cel === "arrived_date" ? "The day it arrives" : "From the file name", step: 1 },
           // every other recon field and computed column as set in step 2 (what was given, shown once more before submit)
           ...MAPPED.flatMap(([k, label]) => {
             const r = s.mapping[k];
