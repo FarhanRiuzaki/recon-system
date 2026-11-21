@@ -64,7 +64,7 @@ export type FieldsStepProps = {
   businessDate: string;
   onBusinessDate: (d: string) => void;
   preview: Preview;
-  /** A database source previews on demand (each preview pulls from the source database); a file source live. */
+  /** Pulls the database source's rows again (Preview again); null for a file source. Both preview by themselves. */
   onPreview: (() => void) | null;
   /** The source's columns as read (nullability for the watermark pickers); null when not read here. */
   columns: Column[] | null;
@@ -201,8 +201,7 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       ) : null}
 
-      {/* a database's examples come from Preview rows (each pulls from the bank's database: on demand only), offered
-          here where the examples are read, before the mapping that needs them */}
+      {/* the examples come from the preview, which runs by itself; Show examples reads them again after a failure */}
       <Panel flush title="Columns" description={`${s.fields.length} columns${!file ? ` from ${s.input.kind === "db_watermark" && s.input.table?.trim() ? s.input.table.trim() : "the query"}` : ""} · check each type and what the recons use it as`}
         actions={(s.fields.length > 0 || (!file && p.canRead && hasSource)) && (
           <span className="flex flex-wrap gap-2">
@@ -534,7 +533,7 @@ function PreviewPanel(p: FieldsStepProps) {
   const r = p.preview.result;
   const file = p.d.spec.input.kind === "file_inbox";
   return (
-    <Panel flush title="Preview" description={file ? `${p.fileName || "the sample"} · updates as you change columns · not stored` : "Pulled from the source on demand · not stored"}>
+    <Panel flush title="Preview" description={file ? `${p.fileName || "the sample"} · updates as you change columns · not stored` : "Up to 200 rows of the source · updates as you change things · not stored"}>
       <div className="grid gap-3 p-4">
         {p.d.spec.input.kind === "db_snapshot" && (
           <div className="max-w-xs">
@@ -546,14 +545,14 @@ function PreviewPanel(p: FieldsStepProps) {
         {p.onPreview && (
           <span>
             <Button type="button" variant="secondary" onClick={p.onPreview} disabled={p.preview.pending} aria-busy={p.preview.pending || undefined}>
-              {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{p.preview.result ? "Preview again" : "Preview rows"}
+              {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{p.preview.result ? "Pull the rows again" : "Preview rows"}
             </Button>
           </span>
         )}
         <PreviewResult preview={p.preview} file={file} />
         {!r && !p.preview.error && !p.preview.pending && (
           <p className="text-body-sm text-fg-3">{p.onPreview
-            ? "Preview rows pulls up to 200 rows from the source."
+            ? "The preview pulls up to 200 rows from the source and updates as you change things."
             : "The preview appears once the columns are read and the business date is mapped."}</p>
         )}
       </div>

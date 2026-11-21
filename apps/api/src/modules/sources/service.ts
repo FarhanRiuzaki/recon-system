@@ -24,7 +24,7 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
-  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, scheduleSource, type Secret, type SourceState,
+  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, type Secret, type SourceState,
   sourceStates, specCelError, within,
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields } from "../recon";
@@ -409,6 +409,24 @@ export const INTERACTIVE_SECONDS = 8;
 /** Rows a database preview pulls at most. */
 export const PREVIEW_PULL_ROWS = 200;
 
+/** How long a preview's pulled sample answers the same reading again, and how many samples are held. */
+export const SAMPLE_TTL_MS = 120_000;
+const SAMPLE_MAX = 20;
+// ponytail: per API process (another process pulls once more), at most SAMPLE_MAX samples of PREVIEW_PULL_ROWS rows
+// of bank data, each dropped after SAMPLE_TTL_MS; a shared cache only if previews ever run on many processes
+const samples = new Map<string, { at: number; rows: Row[] }>();
+/** The rows `pull` gives for `key`, from the sample held for it when it is younger than SAMPLE_TTL_MS (unless `fresh`). */
+export async function sampleOf(key: string, fresh: boolean, pull: () => Promise<Row[]>, now = Date.now): Promise<Row[]> {
+  for (const [k, v] of samples) if (now() - v.at >= SAMPLE_TTL_MS) samples.delete(k);
+  const held = samples.get(key);
+  if (held && !fresh) return held.rows;
+  const rows = await pull();
+  samples.delete(key);
+  samples.set(key, { at: now(), rows });
+  while (samples.size > SAMPLE_MAX) samples.delete(samples.keys().next().value!);
+  return rows;
+}
+
 type StoredConnection = { engine: string; options: unknown; secretEnc: string };
 
 /** The source's stored connection with its credential (only ever decrypted into a connector); null when none is set. */
@@ -639,7 +657,7 @@ export async function queryColumns(ctx: Ctx, id: string, b: QueryColumnsBody): P
  * a version in any state with a spec.
  */
 export async function previewVersion(ctx: Ctx, id: string, versionId: string, b: PreviewSourceBody): Promise<SourcePreviewDto> {
-  const { spec, cal, conn } = await inSpace(ctx, async (tx, spaceId) => {
+  const { spec, cal, conn, sourceId } = await inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
     const v = await versionOf(tx, s, versionId);
     if (b.spec) {
@@ -652,7 +670,7 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
     if (spec === null) throw new ApiError("bad_request", "This version has no fields and mapping yet. Save them, then preview.");
     const [cal] = await tx.select({ weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars).where(eq(calendars.code, spec.calendar));
     if (!cal) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
-    return { spec, cal, conn: spec.input.kind === "file_inbox" ? null : await storedConnection(tx, s) };
+    return { spec, cal, conn: spec.input.kind === "file_inbox" ? null : await storedConnection(tx, s), sourceId: s.id };
   });
   const input = spec.input;
   if (input.kind === "file_inbox") {
@@ -662,9 +680,13 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   if ("sample" in b) throw new ApiError("bad_request", "A database source previews rows pulled through its connection: send no sample.");
   if (!conn) throw noConnection();
   const columns = spec.fields.map((f) => f.name);
-  const rows = await overConnection(conn, (c) => input.kind === "db_snapshot"
-    ? c.sample({ query: input.query, businessDate: b.businessDate ?? todayJakarta() }, columns, PREVIEW_PULL_ROWS)
-    : c.sample(input.table !== undefined ? { table: input.table } : { query: input.query! }, columns, PREVIEW_PULL_ROWS));
+  const day = b.businessDate ?? todayJakarta();
+  // the same reading (connection, table or query, columns, day) answers from the sample of the last 2 minutes, so a
+  // preview after each mapping change maps those rows again instead of querying the bank's database again
+  const key = JSON.stringify([sourceId, Bun.hash(conn.secretEnc).toString(), input.kind === "db_snapshot" ? [input.query, day] : [input.table ?? null, input.query ?? null], [...columns].sort()]);
+  const rows = await sampleOf(key, "fresh" in b && b.fresh === true, () => overConnection(conn, (c) => input.kind === "db_snapshot"
+    ? c.sample({ query: input.query, businessDate: day }, columns, PREVIEW_PULL_ROWS)
+    : c.sample(input.table !== undefined ? { table: input.table } : { query: input.query! }, columns, PREVIEW_PULL_ROWS)));
   return previewRows(spec, rows, cal, input.kind === "db_snapshot" ? b.businessDate ?? todayJakarta() : undefined);
 }
 

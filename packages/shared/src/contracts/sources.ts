@@ -219,7 +219,8 @@ export type UpdateSourceVersionBody = z.infer<typeof UpdateSourceVersionBody>;
  */
 export const PreviewSourceBody = z.union([
   z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional(), spec: SourceSpec.optional() }),
-  z.strictObject({ businessDate: isoDate.optional(), spec: SourceSpec.optional() }),
+  /** `fresh`: pull the rows again instead of the sample read in the last 2 minutes (Preview again). */
+  z.strictObject({ businessDate: isoDate.optional(), spec: SourceSpec.optional(), fresh: z.boolean().optional() }),
 ]);
 export type PreviewSourceBody = z.infer<typeof PreviewSourceBody>;
 

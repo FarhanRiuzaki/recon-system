@@ -1523,6 +1523,9 @@
             "input"
           ],
           "additionalProperties": false
+        },
+        "fresh": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false

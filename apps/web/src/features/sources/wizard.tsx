@@ -503,12 +503,14 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const previewable = !mappingProblem(spec) && (!file || !!sample.text.trim());
   const seq = useRef(0);
   /** One preview of the spec on screen (a file's sample, or rows pulled from the source database); the latest wins. */
-  const runPreview = async () => {
-    if (!ids || !previewable) return;
+  /** `fresh`: pull the rows again (Preview again) instead of the sample the API read in the last 2 minutes. */
+  const runPreview = async (fresh = false) => {
+    // a database source previews even before the mapping is complete: a refused spec still gives the examples
+    if (!ids || (file && !previewable)) return;
     const n = ++seq.current;
     setPreview((p) => ({ ...p, pending: true }));
     try {
-      const body = file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}) };
+      const body = file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}), ...(fresh ? { fresh } : {}) };
       const result = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify(body) });
       if (n !== seq.current) return;
       setFieldErr(null);
@@ -550,18 +552,21 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       setPreview({ result: columns, columnsOnly: !!columns, error: named ? `The preview stopped: ${fieldMessage(named, spec.fields)}` : errorText(e), pending: false });
     }
   };
-  // a file's preview is live (ruling 2): a moment after the last change. A database source's pulls from the bank's
-  // database, so it runs on demand only (Preview rows; fix round 1).
+  // The preview is live in step 2 (owner, 21 Nov: no click needed): a moment after the last change, at once when the
+  // step opens or the columns were just read. A database source's rows come from the sample the API keeps for 2
+  // minutes per reading, so an edit maps the same rows again and never queries the bank's database again.
   useEffect(() => {
-    if (step !== 1 || !file || !ids || !previewable) return;
-    const t = setTimeout(() => void runPreview(), 600);
+    if (step !== 1 || !ids || (file && !previewable)) return;
+    const first = !file && autoPreview.current;
+    const t = setTimeout(() => { autoPreview.current = false; void runPreview(); }, first ? 0 : file ? 600 : 800);
     return () => clearTimeout(t);
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId]);
+  }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId, businessDate]);
 
   useEffect(() => {
-    if (step < 1 || file || !autoPreview.current || !previewable || !ids) return;
+    // Review & submit opened directly (a reload there): its Preview check needs one preview
+    if (step !== 2 || file || !autoPreview.current || !previewable || !ids) return;
     autoPreview.current = false;
     void runPreview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -712,8 +717,8 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             <FieldsStep d={d} set={set} err={err} engine={file ? null : (source?.s.connection?.engine ?? d.conn.engine)} native={native} canRead={admin && !!ids}
               reading={busy === "columns"} onReadColumns={() => void readColumns()} sample={sample.text} sampleCut={sample.cut} fileName={fileName}
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
-              businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable ? preview : { result: null, error: null, pending: false }}
-              onPreview={file ? null : () => void runPreview()} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
+              businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable || !file ? preview : { result: null, error: null, pending: false }}
+              onPreview={file ? null : () => void runPreview(true)} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
               gone={gone} suggested={suggested} coreHint={d.hint ?? {}}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
