@@ -15,7 +15,7 @@ import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
-  draftSimulations, reconActivity, reconLatestRuns, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
+  draftSimulations, reconActivity, reconLatestRuns, reconRecordRuns, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
   sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
@@ -86,6 +86,7 @@ export const reads = {
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
   reconLatestRuns: (spaceId: string, id: string): Read => ({ key: reconLatestRuns(spaceId, id).key, path: reconLatestRuns(spaceId, id).url }),
+  reconRecordRuns: (spaceId: string, id: string): Read => ({ key: reconRecordRuns(spaceId, id).key, path: reconRecordRuns(spaceId, id).url }),
   reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string }[]) =>
     table(reconRunItems(spaceId, id, runId, passes), sp, ReconRunItemQuery),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
@@ -111,16 +112,18 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
 const sourceReads = (spaceId: string, sides: { source_id: string }[] = []) => [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
 
 /**
- * A published recon's Overview: its latest runs and the detail of its headline run (pickLastRuns: the newest real run
- * that took in records), so the Overview's line is the run page's line on first paint.
+ * A published recon's Overview: its runs with records (runs?records=1), its latest runs, and the detail of the headline
+ * (pickLastRuns), so the Overview's line is the run page's line on first paint.
  */
 export async function lastRunReads(spaceId: string, configId: string): Promise<Read[]> {
   const s = await getSession();
-  const path = v1Path(reconLatestRuns(spaceId, configId).url);
-  if (!s.token || !path) return [];
-  const { data } = await backendJson<{ items?: { id: string; mode: string; counters: { intake: { a: number; b: number } } }[] }>(path, { token: s.token, req: { headers: await headers() } });
-  const { headline } = pickLastRuns(data?.items ?? []);
-  return [reads.reconLatestRuns(spaceId, configId), ...(headline ? [reads.reconRun(spaceId, configId, headline.id)] : [])];
+  const recordsPath = v1Path(reconRecordRuns(spaceId, configId).url), latestPath = v1Path(reconLatestRuns(spaceId, configId).url);
+  if (!s.token || !recordsPath || !latestPath) return [];
+  type Rows = { items?: { id: string; mode: string; startedAt: string }[] };
+  const init = { token: s.token, req: { headers: await headers() } };
+  const [withRecords, latest] = await Promise.all([backendJson<Rows>(recordsPath, init), backendJson<Rows>(latestPath, init)]);
+  const { headline } = pickLastRuns(withRecords.data?.items ?? [], latest.data?.items ?? []);
+  return [reads.reconRecordRuns(spaceId, configId), reads.reconLatestRuns(spaceId, configId), ...(headline ? [reads.reconRun(spaceId, configId, headline.id)] : [])];
 }
 
 /**

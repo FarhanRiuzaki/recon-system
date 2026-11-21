@@ -9,11 +9,9 @@ type Status = { health: Health; label: string; description: string };
  * while its draft waits for a config checker; paused =
  * stopped on purpose, otherwise Live. Matching results get their own states once the engine runs (Plan 3 Task 3).
  */
-export function reconStatus(r: Pick<ReconRowDto, "status" | "publishedVersion"> & { draft?: { status: VersionStatus } | null; draftStatus?: VersionStatus | null }): Status {
-  // a recon not live yet whose draft waits for a checker reads "In review": the recon's page knows its draft, a list
-  // row its draftStatus (one mapping for both)
-  const draft = r.draftStatus ?? r.draft?.status ?? null;
-  if (r.publishedVersion === null) return draft === "in_review" ? RECON_LEGEND[1]! : RECON_LEGEND[0]!;
+export function reconStatus(r: Pick<ReconRowDto, "status" | "publishedVersion" | "draftStatus">): Status {
+  // a recon not live yet whose open version waits for a checker reads "In review", in the list and on its page alike
+  if (r.publishedVersion === null) return r.draftStatus === "in_review" ? RECON_LEGEND[1]! : RECON_LEGEND[0]!;
   return r.status === "paused" ? RECON_LEGEND[3]! : RECON_LEGEND[2]!;
 }
 

@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { pickLastRuns } from "./recon-runs";
 
-const row = (id: string, mode: string, records: number) => ({ id, mode, counters: { intake: { a: records, b: records } } });
+const row = (id: string, mode: string, startedAt: string) => ({ id, mode, startedAt });
+const gate = row("gate", "manual", "2026-11-21T01:00:00Z");
 
 describe("pickLastRuns: a recon's Overview headline (R6-1)", () => {
-  it("the newest real run that took in records; a newer empty run is the small line, never the headline", () => {
-    const rows = [row("sim", "simulation", 5), row("empty", "daily", 0), row("gate", "manual", 1000), row("older", "manual", 10)];
-    const { headline, newer } = pickLastRuns(rows);
-    expect(headline?.id).toBe("gate");
-    expect(newer?.id).toBe("empty");
+  it("the newest run with records; a newer real run without records is the small line, never the headline", () => {
+    const latest = [row("sim", "simulation", "2026-11-21T09:00:00Z"), row("empty", "daily", "2026-11-21T08:55:00Z"), gate];
+    expect(pickLastRuns([gate], latest)).toEqual({ headline: gate, newer: latest[1] });
   });
   it("the newest run is the one with records: no small line", () => {
-    expect(pickLastRuns([row("gate", "manual", 1000), row("empty", "daily", 0)])).toMatchObject({ headline: { id: "gate" }, newer: null });
+    expect(pickLastRuns([gate], [gate])).toEqual({ headline: gate, newer: null });
   });
-  it("no run took in records yet: the last run, as before; no runs: nothing", () => {
-    expect(pickLastRuns([row("e2", "daily", 0), row("e1", "daily", 0)])).toMatchObject({ headline: { id: "e2" }, newer: null });
-    expect(pickLastRuns([row("sim", "simulation", 5)])).toEqual({ headline: null, newer: null });
+  it("no run took in records yet: the last real run, as before; no runs: nothing", () => {
+    const empty = row("empty", "daily", "2026-11-21T08:55:00Z");
+    expect(pickLastRuns([], [row("sim", "simulation", "2026-11-21T09:00:00Z"), empty])).toEqual({ headline: empty, newer: null });
+    expect(pickLastRuns([], [])).toEqual({ headline: null, newer: null });
   });
 });
