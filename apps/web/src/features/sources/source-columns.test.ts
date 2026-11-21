@@ -28,7 +28,8 @@ describe("sources columns (Build notes 02: Source · Kind · State · Complete t
     // a category chip per input kind, the same slot in every row; a shared source neutral (Figma 02 v1.0.6)
     expect(cell("kind")).toContain('data-slot="category-chip"');
     expect(cell("kind")).toContain("bg-chart-1");
-    expect(cell("kind", { ...S, kind: "db_watermark" })).toContain("bg-chart-2");
+    expect(cell("kind", { ...S, kind: "db_watermark" })).toContain("bg-chart-4");
+    expect(cell("kind", { ...S, kind: "db_snapshot" })).toContain("bg-chart-4");
     expect(cell("kind", shared)).toContain("bg-fg-4");
     expect(cell("state")).toContain('data-status="healthy"');
     expect(cell("state")).toContain("border-transparent");

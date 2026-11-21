@@ -8,7 +8,11 @@ import { sourceHref } from "./use-sources";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const none = <span className="text-fg-3">—</span>;
-const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 2, db_snapshot: 3 };
+/**
+ * The kind chip's hue says how data arrives: a file (blue) or a database (violet); the label says the mode. Slots 2, 3
+ * and 5 (orange, teal, ochre) are left out: beside the state chip they read as Degraded or Healthy.
+ */
+const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 4, db_snapshot: 4 };
 
 /** A source's state chip with the API's reason (or last error) as its description. */
 export function SourceStatusChip({ s }: { s: SourceRowDto }) {
@@ -34,7 +38,7 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="truncate text-caption text-fg-3">{sourceCaption(s)}</span>
       </span>
     ) },
-    // one categorical slot per input kind, so a kind reads the same in every row (Figma 02 v1.0.6); a shared source neutral
+    // KIND_SLOT per kind, the same in every row (Figma 02 v1.0.6); a shared source neutral
     { key: "kind", header: "Kind", mobile: "meta", cell: (s) => <CategoryChip slot={s.owner ? "neutral" : KIND_SLOT[s.kind]} label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} /> },
     { key: "state", header: "State", mobile: "meta", cell: (s) => <SourceStatusChip s={s} /> },
     { key: "complete", header: "Complete through", mobile: "meta", className: "md:max-xl:hidden", cell: (s) => {
