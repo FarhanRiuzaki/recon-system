@@ -8,6 +8,8 @@ import { sourceHref } from "./use-sources";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const none = <span className="text-fg-3">—</span>;
+/** One line cut with an ellipsis (a table cell wraps `.truncate` on purpose, so it is spelled out); the title holds it all. */
+const ONE_LINE = "block max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-mono text-caption";
 /**
  * The kind chip's hue says how data arrives: a file (blue) or a database (violet); the label says the mode. Slots 2, 3
  * and 5 (orange, teal, ochre) are left out: beside the state chip they read as Degraded or Healthy.
@@ -47,8 +49,8 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
     { key: "kind", header: "Reads", mobile: "meta", className: "min-w-56", help: "How the data arrives, from which engine and table or folder; the server it connects to shows for a source admin.", cell: (s) => (
       <span className="grid min-w-0 max-w-80 justify-items-start gap-1">
         <CategoryChip slot={s.owner ? "neutral" : KIND_SLOT[s.kind]} label={s.owner ? `Shared from ${s.owner.name}` : `${KIND_LABEL[s.kind]}${s.engine ? ` · ${ENGINE[s.engine]}` : ""}`} />
-        {s.reads && <span className="max-w-full truncate font-mono text-caption text-fg-2" title={s.reads}>{s.reads}</span>}
-        {s.server && <span className="max-w-full truncate font-mono text-caption text-fg-3" title={s.server}>{s.server}</span>}
+        {s.reads && <span className={`${ONE_LINE} text-fg-2`} title={s.reads}>{s.reads}</span>}
+        {s.server && <span className={`${ONE_LINE} text-fg-3`} title={s.server}>{s.server}</span>}
       </span>
     ) },
     { key: "state", header: "State", mobile: "meta", cell: (s) => <SourceStatusChip s={s} /> },
@@ -60,7 +62,7 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
       !s.health ? none : (
         <span className="grid max-w-64">
           {s.health.lastReadAt ? <RelativeTime at={Date.parse(s.health.lastReadAt)} touchDate={false} /> : <span className="text-fg-3">Not yet</span>}
-          {s.health.lastError && <span className="truncate text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>}
+          {s.health.lastError && <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>}
         </span>
       )
     ) },
