@@ -5,7 +5,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { MenuIcon, RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
-import { CARDINALITY_WORDS, conditionParts, type Fields, keysText } from "./spec-model";
+import { conditionParts, type Fields, keysText } from "./spec-model";
 
 export const DASH = "—";
 
@@ -32,35 +32,53 @@ export type PassRowProps = {
   /** An example of what it paired in the shown simulation, under its outcome. */
   example?: ReactNode;
 };
-/** A pass as text: its number and name, cardinality, when found, the matching keys and every condition. */
+/** A labelled part of a pass card: a small heading, then its content; a line between parts. */
+const Part = ({ label, children }: { label: string; children: ReactNode }) => (
+  <span className="grid gap-1 border-t border-line pt-2">
+    <span className="eyebrow text-fg-3">{label}</span>
+    {children}
+  </span>
+);
+
+/**
+ * A pass as a card reads it (owner, 22 Nov: clear sections): its number and name, then Pairs when (each condition as
+ * field | rule), Then (what happens to a pair, its shape, a tie) and Compares (every open item, or only the same …),
+ * in the editor's order and words.
+ */
 export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
   return (
     <>
       <span className="flex items-center gap-2">
         <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-fg text-caption text-bg tabular">{pass.no}</span>
-        <span className="min-w-0 truncate text-label text-fg">{pass.name}</span>
+        <span className="min-w-0 truncate text-label text-fg">{pass.name || "Untitled pass"}</span>
       </span>
-      <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
-        <span className="rounded-sm bg-tray px-1.5 py-0.5">{CARDINALITY_WORDS[pass.cardinality]}</span>
-        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</span>
-        {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Looks at the same {keysText(pass.blocking)}</span>}
-      </span>
-      {/* each condition in people's words, its source column after it (owner, 22 Nov: clear, not the engine's words) */}
-      <ul className="grid gap-0.5">
-        {pass.predicates.map((q, j) => {
-          const c = conditionParts(q, fields);
-          return (
-            // the source columns on hover: the card stays two short columns beside the inspector (the Configuration shows them)
-            <li key={j} title={c.columns} className="grid gap-x-3 text-body-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
-              <span className="truncate text-fg">{c.field}</span>
-              <span className="text-fg-2">{c.rule}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <Part label="Pairs when">
+        <ul className="grid gap-0.5">
+          {pass.predicates.map((q, j) => {
+            const c = conditionParts(q, fields);
+            return (
+              // the source columns on hover: two short columns beside the inspector (the Configuration shows them)
+              <li key={j} title={c.columns} className="grid gap-x-3 text-body-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+                <span className="truncate text-fg">{c.field}</span>
+                <span className="text-fg-2">{c.rule}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </Part>
+      <Part label="Then">
+        <span className="text-body-sm text-fg-2">
+          <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
+          {" · "}{CARD_SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit raise a break" : "several that fit are suggested"}
+        </span>
+      </Part>
+      <Part label="Compares">
+        <span className="text-body-sm text-fg-2">{pass.blocking.length ? `Only items with the same ${keysText(pass.blocking)}` : "Every open item"}</span>
+      </Part>
     </>
   );
 }
+const CARD_SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
 
 /** What dnd-kit's useSortable adds to a row once the sortable list has loaded (sortable-passes.tsx). */
 export type SortableBits = {

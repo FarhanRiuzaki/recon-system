@@ -9,11 +9,13 @@ import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { CARDINALITY_WORDS, conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
+import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { useSideSource } from "./use-recons";
 
 
 /** A small word chip in a pass's head. */
+const SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
+
 const Chip = ({ children, primary }: { children: string; primary?: boolean }) => (
   <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-caption", primary ? "bg-primary-soft text-primary" : "bg-tray text-fg-2")}>{children}</span>
 );
@@ -40,13 +42,9 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
       <div className={cn("grid min-w-0 gap-3 rounded-lg border border-line bg-card p-4", !last && "mb-3")}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="min-w-0 truncate text-label text-fg"><span className="sr-only">Pass {step}: </span>{pass.name || "Untitled pass"}</h3>
-          <Chip primary={pass.accept === "auto"}>{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</Chip>
-          <Chip>{CARDINALITY_WORDS[pass.cardinality]}</Chip>
+          <Chip primary={pass.accept === "auto"}>{pass.accept === "auto" ? "Matches" : "Suggests"}</Chip>
         </div>
         <dl className="grid gap-3">
-          <Row label="Looks at">
-            <span className="text-body-sm text-fg">{pass.blocking.length ? `Items with the same ${keysText(pass.blocking)}` : "Every item still open"}</span>
-          </Row>
           <Row label="Pairs when">
             <ul className="grid gap-1.5">
               {pass.predicates.map((q, j) => {
@@ -63,8 +61,14 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
               })}
             </ul>
           </Row>
-          <Row label="Several fit">
-            <span className="text-body-sm text-fg-2">{pass.on_ambiguous === "break" ? "Raise a break for someone to review" : "Suggest them for review"}</span>
+          <Row label="Then">
+            <span className="text-body-sm text-fg-2">
+              <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
+              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit raise a break" : "several that fit are suggested"}
+            </span>
+          </Row>
+          <Row label="Compares">
+            <span className="text-body-sm text-fg-2">{pass.blocking.length ? `Only items with the same ${keysText(pass.blocking)}` : "Every open item"}</span>
           </Row>
         </dl>
       </div>

@@ -482,3 +482,47 @@ export function passNeeds(spec: ReconSpec, i: number, gaps: readonly number[], r
   if (refusal) out.push(refusal);
   return out;
 }
+
+/** A field's name in a pass's words: "Reference", "Amount", "Business date", or a stored attribute's name. */
+const fieldWord = (ref: string) => readerLabel(ref);
+
+/** The fields both sides hold that a pass's conditions don't use yet, core ones first (one click adds "the same on both sides"). */
+export function suggestedConditions(p: PassSpec, fields: Fields): string[] {
+  const used = new Set(p.predicates.flatMap((q) => [sideRef(q.field, 0), sideRef(q.field, 1)]));
+  return AUTO_FIELDS.filter((f) => fields[0]?.has(f) && fields[1]?.has(f) && !used.has(f));
+}
+
+/** The field to compare by when a pass compares every item yet asks for the same reference: one click narrows it. */
+export function suggestedKey(p: PassSpec, fields: Fields): string | null {
+  if (p.blocking.length) return null;
+  const sameRef = p.predicates.some((q) => q.op === "eq" && sideRef(q.field, 0) === "ext_ref" && sideRef(q.field, 1) === "ext_ref");
+  return sameRef && fields[0]?.has("ext_ref") && fields[1]?.has("ext_ref") ? "ext_ref" : null;
+}
+
+/**
+ * A name from what a pass checks (offered while it keeps a placeholder name "Pass N"): the rule that isn't "the same"
+ * ("Amount within a tolerance", "Business date within 1 day"), else the fields it wants the same ("Same reference and
+ * amount").
+ */
+export function suggestedName(p: PassSpec): string | null {
+  const loose = p.predicates.find((q) => q.op !== "eq" && q.op !== "eq_normalized");
+  if (loose) {
+    const what = fieldWord(sideRef(loose.field, 0));
+    switch (loose.op) {
+      case "amount_abs_tol": case "amount_pct_tol": return `${what} within a tolerance`;
+      case "date_window": return `${what} within ${plural(loose.days, "day")}`;
+      case "bday_window": return `${what} within ${plural(loose.days, "business day")}`;
+      case "contains": return `${what} contains the other side's`;
+      case "similarity": return `Similar ${what.toLowerCase()}`;
+      case "eq_sum": return `Sums of ${what.toLowerCase()} match`;
+    }
+  }
+  // currency rides along in most passes: named only when it is the only field
+  const same = [...new Set(p.predicates.map((q) => sideRef(q.field, 0)))];
+  const named = same.length > 1 ? same.filter((f) => f !== CURRENCY) : same;
+  if (!named.length) return null;
+  const words = named.map((f, i) => (i === 0 ? fieldWord(f) : fieldWord(f).toLowerCase()));
+  return `Same ${words.length > 1 ? `${words.slice(0, -1).join(", ").toLowerCase()} and ${words.at(-1)}` : words[0]!.toLowerCase()}`;
+}
+/** A name the builder gave and the user hasn't changed ("Pass 3", or none). */
+export const placeholderName = (name: string) => !name.trim() || /^Pass \d+$/.test(name.trim());

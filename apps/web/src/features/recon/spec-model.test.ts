@@ -267,3 +267,22 @@ describe("ready passes and what a pass still needs (owner, 22 Nov)", () => {
     expect(templateReason("blank", [null, null])).toBeNull();
   });
 });
+
+import { placeholderName, suggestedConditions, suggestedKey, suggestedName } from "./spec-model";
+describe("what the pass editor suggests (owner, 22 Nov: the user knows what to do next)", () => {
+  const side = new Map([["ext_ref", { from: "ref", kind: "text" as const }], ["amount_minor", { from: "amount", kind: "decimal" as const }], ["business_date", { from: "d", kind: "date" as const }], ["currency", { from: "ccy", kind: "text" as const }]]);
+  const fields = [side, side] as unknown as Parameters<typeof suggestedConditions>[1];
+  const pass = (predicates: unknown[], blocking: string[] = []) => ({ no: 1, name: "Pass 1", cardinality: "1:1", blocking, accept: "auto", on_ambiguous: "break", predicates }) as unknown as Parameters<typeof suggestedName>[0];
+  it("the fields both sides hold that the conditions don't use yet; the reference to compare by once it must be the same", () => {
+    expect(suggestedConditions(pass([{ op: "eq", field: "ext_ref" }]), fields)).toEqual(["currency", "amount_minor", "business_date"]);
+    expect(suggestedKey(pass([{ op: "eq", field: "ext_ref" }]), fields)).toBe("ext_ref");
+    expect(suggestedKey(pass([{ op: "eq", field: "ext_ref" }], ["ext_ref"]), fields)).toBeNull();
+    expect(suggestedKey(pass([{ op: "eq", field: "amount_minor" }]), fields)).toBeNull();
+  });
+  it("a name from what it checks; currency left out unless alone; only while the name is a placeholder", () => {
+    expect(suggestedName(pass([{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, { op: "eq", field: "currency" }]))).toBe("Same reference and Amount".replace("Amount", "amount"));
+    expect(suggestedName(pass([{ op: "amount_abs_tol", field: "amount_minor", tolerance: {} }]))).toBe("Amount within a tolerance");
+    expect(suggestedName(pass([{ op: "date_window", field: "business_date", days: 1 }]))).toBe("Business date within 1 day");
+    expect([placeholderName("Pass 3"), placeholderName(""), placeholderName("Exact")]).toEqual([true, true, false]);
+  });
+});

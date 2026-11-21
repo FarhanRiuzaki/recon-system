@@ -11,9 +11,9 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
-import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
+import { type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, CARDINALITY_WORDS, CURRENCIES, keysText, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -22,6 +22,35 @@ import {
 
 // the searchable field list (cmdk) loads on first render, outside the route's first load (AGENTS §9)
 const Combobox = dynamic(() => import("@starterkit/ui/ds/combobox-command").then((m) => m.CommandCombobox), { ssr: false, loading: () => <Skeleton className="h-8 w-full" /> });
+
+/** A step's number, the same marker the passes' rail uses. */
+const StepNo = ({ n }: { n: number }) => (
+  <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full bg-tray text-caption text-fg-2 tabular">{n}</span>
+);
+/**
+ * A step of the pass editor: its number, its label (a required one with the red asterisk, as every form's), an aside
+ * on the right; `htmlFor` makes the label the control's.
+ */
+function Step({ n, label, required, aside, htmlFor, children }: { n: number; label: string; required?: boolean; aside?: string; htmlFor?: string; children: ReactNode }) {
+  const Label = htmlFor ? "label" : "span";
+  return (
+    <div className="grid gap-2">
+      <span className="flex items-center gap-2">
+        <StepNo n={n} />
+        <Label {...(htmlFor ? { htmlFor } : {})} className="text-label text-fg">{label}{required && <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>}</Label>
+        {aside && <span className="ml-auto text-caption text-fg-3">{aside}</span>}
+      </span>
+      {children}
+    </div>
+  );
+}
+/** A suggestion from the data the user takes in one click (a name, a condition, a field to compare by). */
+const Suggest = ({ onUse, children }: { onUse: () => void; children: ReactNode }) => (
+  <button type="button" onClick={onUse}
+    className="justify-self-start rounded-full border border-dashed border-line px-2.5 py-0.5 text-caption text-fg-2 hover:border-primary hover:text-primary focus-visible:outline-2 focus-visible:outline-primary">
+    {children}
+  </button>
+);
 
 /** An API sentence under the control it names (Down ink with an icon, never colour alone). */
 export function PlaceError({ id, text }: { id?: string; text: string | null | undefined }) {
@@ -134,28 +163,27 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
   const id = (s: string) => `rp-${i}-${s}`;
   const setPred = (j: number, q: Predicate) => onChange({ ...p, predicates: p.predicates.map((x, k) => (k === j ? q : x)) });
   const sums = p.predicates.filter((q) => q.op === "eq_sum").length;
+  const suggestName = placeholderName(p.name) ? suggestedName(p) : null;
+  const moreFields = suggestedConditions(p, fields);
+  const key = suggestedKey(p, fields);
+  const addCondition = (ref: string) => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", ref)] });
   return (
-    <div className="grid gap-5">
+    // the steps in the order a pass is thought through (owner, 22 Nov): what it is called, what makes a pair, what
+    // happens to a pair, its shape, a tie; then the optional narrowing. Required steps carry the red asterisk.
+    <div className="grid gap-6">
       {place && place.condition === undefined && place.key === undefined && <PlaceError text={place.text} />}
-      <Field id={id("name")} label="Name">
-        <Input id={id("name")} value={p.name} maxLength={64} onChange={(e) => onChange({ ...p, name: e.target.value })} autoComplete="off" />
-      </Field>
-      <div className="grid gap-2">
-        <span className="text-label text-fg">Pairs <span className="text-caption text-fg-3">{la} to {lb}</span></span>
-        <Segmented label="Pairs" value={p.cardinality} options={CARDINALITIES.map((c) => ({ value: c, label: CARDINALITY_WORDS[c] }))} onChange={(c) => onChange(withCardinality(p, c, fields))} />
-      </div>
-      <div className="grid gap-2">
-        <span className="text-label text-fg">When it pairs</span>
-        <Segmented label="When it pairs" value={p.accept} onChange={(accept) => onChange({ ...p, accept })}
-          options={group ? [{ value: "auto", label: "Match automatically" }] : [{ value: "auto", label: "Match automatically" }, { value: "suggest", label: "Suggest for review" }]} />
-      </div>
+      <Step n={1} label="Name" required htmlFor={id("name")}>
+        <Input id={id("name")} value={p.name} maxLength={64} aria-required onChange={(e) => onChange({ ...p, name: e.target.value })} autoComplete="off" />
+        {suggestName && suggestName !== p.name && (
+          <Suggest onUse={() => onChange({ ...p, name: suggestName })}>Use “{suggestName}”</Suggest>
+        )}
+      </Step>
 
-
-      <fieldset className="grid gap-3">
-        <legend className="mb-2 text-label text-fg">Pairs when <span className="text-caption text-fg-3">every condition holds</span></legend>
+      <Step n={2} label="Pair two items when" required aside="every condition holds">
+        <div className="grid gap-3">
         {p.predicates.map((q, j) => (
           <PairRow key={j} error={place?.condition === j ? place.text : null} removeLabel={`Remove condition ${j + 1}`}
-            removeReason={p.predicates.length === 1 ? "A pass needs at least one condition." : group && q.op === "eq_sum" && sums === 1 ? "A 1:N or N:1 pass needs one group sum condition." : null}
+            removeReason={p.predicates.length === 1 ? "A pass needs at least one condition." : group && q.op === "eq_sum" && sums === 1 ? "A pass with several items on one side needs a condition on their sums." : null}
             onRemove={() => { onChange({ ...p, predicates: p.predicates.filter((_, k) => k !== j) }); onRemoved(`Removed condition ${j + 1}.`, (cur, at) => restoreCondition(cur, at, q, j)); }}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`cond-${j}-a`)} label={la} i={0} pair={q.field} op={q.op} fields={fields} onPick={(field) => setPred(j, { ...q, field })} />
@@ -169,43 +197,61 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
               onToleranceRemoved={(code, v) => onRemoved(`Removed the ${code} tolerance.`, (cur, at) => restoreTolerance(cur, at, j, code, v))} />
           </PairRow>
         ))}
-        <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
-          onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}>Add condition</BlockedButton></span>
-      </fieldset>
+          <div className="flex flex-wrap items-center gap-2">
+            <BlockedButton type="button" variant="ghost" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
+              onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}>Add condition</BlockedButton>
+            {/* the fields both sides hold that no condition uses yet: one click adds "the same on both sides" */}
+            {p.predicates.length < 20 && moreFields.map((f) => <Suggest key={f} onUse={() => addCondition(f)}>+ {keysText([f])}</Suggest>)}
+          </div>
+        </div>
+      </Step>
 
-      {/* optional, after the conditions (owner, 22 Nov: what pairs first, how to narrow it second); its summary names the
-          fields, so a folded section still says what it does; open for a group pass, which needs a key */}
-      <details open={group || undefined} className="group/keys grid gap-3 rounded-md border border-line px-3 py-2">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-1 text-label text-fg [&::-webkit-details-marker]:hidden">
+      <Step n={3} label="When a pair is found" required>
+        <Segmented label="When a pair is found" value={p.accept} onChange={(accept) => onChange({ ...p, accept })}
+          options={group ? [{ value: "auto", label: "Match it" }] : [{ value: "auto", label: "Match it" }, { value: "suggest", label: "Suggest it for review" }]} />
+      </Step>
+
+      <Step n={4} label="Each pair has" required>
+        <Segmented label="Each pair has" value={p.cardinality} onChange={(c) => onChange(withCardinality(p, c, fields))}
+          options={[{ value: "1:1", label: "1 on each side" }, { value: "1:N", label: "1 on A, several on B" }, { value: "N:1", label: "Several on A, 1 on B" }]} />
+      </Step>
+
+      <Step n={5} label="If more than one item fits" required htmlFor={id("ambiguous")}>
+        <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} aria-required className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
+          {!group && <option value="suggest">Suggest them for review</option>}
+          <option value="break">Raise a break</option>
+        </Select>
+      </Step>
+
+      {/* optional and folded; its summary says what it does now, so folded it still reads; open for a pass with several
+          items on one side, which needs a field to group by */}
+      <details open={group || undefined} className="group/keys grid rounded-md border border-line px-3 py-2">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-2 py-1 [&::-webkit-details-marker]:hidden">
           <span className="grid gap-0.5">
-            Narrow the candidates
-            <span className="text-caption text-fg-3">{p.blocking.length ? `Looks only at items with the same ${keysText(p.blocking)}` : "Looks at every item still open"}</span>
+            <span className="flex items-center gap-2 text-label text-fg"><StepNo n={6} />Only compare items with the same…<span className="font-normal text-fg-3">(optional)</span></span>
+            <span className="text-caption text-fg-3">{p.blocking.length ? `Compares only items with the same ${keysText(p.blocking)}` : "Compares every open item"}</span>
           </span>
           <Icon icon={ChevronDownIcon} className="shrink-0 text-fg-3 motion-safe:transition-transform motion-safe:duration-(--dur-fast) group-open/keys:rotate-180" />
         </summary>
-        <fieldset className="mt-2 grid gap-3">
-          <legend className="sr-only">Looks at items with the same</legend>
+        <fieldset className="mt-3 grid gap-3">
+          <legend className="sr-only">Only compare items with the same</legend>
         {p.blocking.map((f, j) => (
-          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
-            removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
-            onRemove={() => { onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }); onRemoved(`Removed matching key ${j + 1}.`, (cur, at) => restoreKey(cur, at, f, j)); }}>
+          <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove compare field ${j + 1}`}
+            removeReason={group && p.blocking.length === 1 ? "A pass with several items on one side groups them by one of these fields." : null}
+            onRemove={() => { onChange({ ...p, blocking: p.blocking.filter((_, k) => k !== j) }); onRemoved(`Removed compare field ${j + 1}.`, (cur, at) => restoreKey(cur, at, f, j)); }}>
             <div className="grid gap-2 sm:grid-cols-2">
               <FieldPick id={id(`key-${j}-a`)} label={la} i={0} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
               <FieldPick id={id(`key-${j}-b`)} label={lb} i={1} pair={f} op="key" fields={fields} onPick={(x) => onChange({ ...p, blocking: p.blocking.map((y, k) => (k === j ? x : y)) })} />
             </div>
           </PairRow>
         ))}
-        <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass has at most 5 matching keys." : null}
-          onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add a field to look at</BlockedButton></span>
+          <div className="flex flex-wrap items-center gap-2">
+            <BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass compares by at most 5 fields." : null}
+              onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add field</BlockedButton>
+          </div>
         </fieldset>
       </details>
-
-      <Field id={id("ambiguous")} label="When several fit">
-        <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
-          {!group && <option value="suggest">Suggest them for review</option>}
-          <option value="break">Raise a break for someone to review</option>
-        </Select>
-      </Field>
+      {key && <Suggest onUse={() => onChange({ ...p, blocking: [key] })}>Compare only items with the same {keysText([key])}</Suggest>}
 
       <div className="flex flex-wrap gap-2">
         <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, -1)} onClick={() => onMove(-1)}>Move earlier</BlockedButton>
