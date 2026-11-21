@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
-import { formatNumber } from "@starterkit/ui/lib/format";
+import { formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Select } from "@starterkit/ui/ui/select";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -98,10 +98,12 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const columns = useColumns(t.state, labels);
 
   const title = run?.mode === "simulation" ? `Simulation of draft v${run.version}` : run ? `Run of version ${run.version}` : "Recon run";
+  // the breadcrumb names the run by its time (Captain): "Run 21 Nov, 01:40" (WIB), "Simulation 21 Nov, 01:40"
+  const crumb = run ? `${run.mode === "simulation" ? "Simulation" : "Run"} ${formatDateTime(Date.parse(run.finishedAt ?? run.startedAt))}` : undefined;
   const trail = recon ? [{ label: recon.name, href: reconHref(spaceId, id) }] : [];
   if (isNotFound(rq.error)) return <DetailNotFound title="Recon run" noun="run" list={{ href: reconsHref(spaceId), label: "Recons" }} />;
   if ((rq.error && !run) || (vq.error && !spec)) {
-    return <div className="grid gap-section"><PageHeader title={title} trail={trail} /><Panel><Failure title="The run couldn't be loaded." error={rq.error ?? vq.error} source={BRAND.name} onRetry={() => { void rq.refetch(); void vq.refetch(); }} /></Panel></div>;
+    return <div className="grid gap-section"><PageHeader title={title} crumb={crumb} trail={trail} /><Panel><Failure title="The run couldn't be loaded." error={rq.error ?? vq.error} source={BRAND.name} onRetry={() => { void rq.refetch(); void vq.refetch(); }} /></Panel></div>;
   }
   if (!run || !spec || !recon || skeleton) return <LoadingShape sections={RECON_RUN_SHAPE} shown={skeleton} />;
 
@@ -135,7 +137,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={title} trail={trail} description={`${recon.name} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
+      <PageHeader title={title} crumb={crumb} trail={trail} description={`${recon.name} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={NetworkIcon} title="Results per pass"

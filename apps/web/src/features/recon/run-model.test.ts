@@ -145,6 +145,12 @@ describe("run-model", () => {
     // without days or live (a run before them, or days that couldn't be read): what the run itself did
     expect(standingTotals({ counters: gate, days: null, live: null, from: "2026-11-02", to: "2026-11-05" }, spec)).toMatchObject({ matched: 937, suggested: 24, waiting: { a: 24, b: 24 }, breaks: null });
     expect(standingTotals({ counters: gate, days: [], live: null, from: "2026-11-02", to: "2026-11-05" }, spec).suggested).toBe(24);
+    // a run with no new records still shows its dates' match rate when the API counts the records there (live.items)
+    const quiet = { ...gate, intake: { a: 0, b: 0 } };
+    expect(standingTotals({ ...run, counters: quiet }, spec).rate).toBeNull();
+    expect(standingTotals({ ...run, counters: quiet, live: { ...live, items: { a: 1000, b: 1000 } } }, spec).rate).toBeCloseTo(0.937);
+    const n1Spec = { ...spec, passes: [{ ...spec.passes[0]!, cardinality: "N:1" }, ...spec.passes.slice(1)] } as ReconSpec;
+    expect(standingTotals({ ...run, live: { ...live, items: { a: 2000, b: 1000 } } }, n1Spec).rate).toBe(runTotals(gate, n1Spec).rate);
     expect(itemsText(0)).toBe("no new records");
     expect(itemsText(2000)).toBe("2,000 items");
   });

@@ -86,14 +86,19 @@ export type Totals = ReturnType<typeof runTotals>;
  * them (suggestions confirmed or broken since, breaks of time per side, waiting items), else what the run itself did
  * (`counters`). Items taken in, references and the pass split stay the run's own.
  */
-export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "live" | "from" | "to">, spec: ReconSpec): Totals {
+/** `live.items` (current records per side over the run's dates): added by the runs agent; optional until it lands. */
+type Live = NonNullable<ReconRunDto["live"]> & { items?: PerSide };
+export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "from" | "to"> & { live: Live | null }, spec: ReconSpec): Totals {
   const own = runTotals(run.counters, spec);
   if (!run.live || !run.days) return own;
   let duplicate = 0, ambiguous = 0;
   for (const d of runDays(run)) { const t = dayTotals(d, spec); duplicate += t.duplicate; ambiguous += t.ambiguous; }
-  // ponytail: one side A item per matched group; an N:1 pass that matched leaves the rate to the run's own counters
+  // the match rate of the run's business dates as they stand (Captain): side A items matched / side A records now
+  // (live.items), so a run that took in nothing new still has one. ponytail: one side A item per matched group; an N:1
+  // pass that matched, or a run without live.items, keeps the run's own rate
   const n1 = spec.passes.some((p) => p.cardinality === "N:1" && run.counters.passes[String(p.no)]?.matched);
-  const rate = n1 ? own.rate : own.in.a > 0 ? run.live.matched / own.in.a : null;
+  const items = run.live.items;
+  const rate = n1 || !items ? own.rate : items.a > 0 ? run.live.matched / items.a : null;
   return { ...own, matched: run.live.matched, suggested: run.live.suggested, duplicate, ambiguous, waiting: run.live.open, breaks: run.live.breaks, rate };
 }
 
