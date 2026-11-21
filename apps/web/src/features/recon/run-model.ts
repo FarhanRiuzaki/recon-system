@@ -119,6 +119,37 @@ export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">
 }
 const sumSides = (xs: readonly PerSide[]) => xs.reduce((t, x) => ({ a: t.a + x.a, b: t.b + x.b }), { a: 0, b: 0 });
 
+/** A real run's breaks per side (every reason, a pass's Duplicate included) and the duplicates among them. */
+export type Breaks = { breaks: PerSide; duplicate: PerSide };
+/** Breaks and duplicates from a by-reason count (a run's own dates, or one day); null without one. */
+export function breaksOf(byReason: Readonly<Record<string, PerSide>> | null | undefined): Breaks | null {
+  if (!byReason) return null;
+  return { breaks: sumSides(Object.values(byReason)), duplicate: byReason.Duplicate ?? { a: 0, b: 0 } };
+}
+/**
+ * Breaks as every screen of a real run says them (Captain: one definition, Duplicate is a break reason): "63 breaks
+ * per side (15 duplicate per side)", or the sides named when they differ ("63 src1 r2 · 62 src2 r2b breaks (15 src1 r2
+ * · 14 src2 r2b duplicate)"); no brackets without duplicates. `noun` false drops "breaks" (the Breaks tab's title).
+ */
+export function breaksText(x: Breaks, labels: readonly [string, string], noun = true): string {
+  const main = noun ? sidesText(x.breaks, labels, "breaks") : x.breaks.a === x.breaks.b ? `${formatNumber(x.breaks.a)} per side` : `${formatNumber(x.breaks.a)} ${labels[0]} · ${formatNumber(x.breaks.b)} ${labels[1]}`;
+  return x.duplicate.a || x.duplicate.b ? `${main} (${sidesText(x.duplicate, labels, "duplicate")})` : main;
+}
+
+/**
+ * A run's count line: a real run with its live totals reads what stands now with breaks by the one definition ("937
+ * matched · 63 breaks per side (15 duplicate per side) · match rate 93.7%"; suggested and waiting when there are any);
+ * a simulation, or a run before live totals, keeps the run's own counts (countLine: duplicates by their pass).
+ */
+export function runLine(run: Pick<ReconRunDto, "mode" | "counters" | "days" | "live" | "from" | "to">, spec: ReconSpec, labels: readonly [string, string]): string {
+  const t = standingTotals(run, spec);
+  const b = run.mode === "simulation" ? null : breaksOf(run.live?.breakReasons);
+  if (!b) return countLine(t, labels);
+  return [`${formatNumber(t.matched)} matched`, ...(t.suggested ? [`${formatNumber(t.suggested)} suggested (open)`] : []),
+    ...(t.waiting.a || t.waiting.b ? [sidesText(t.waiting, labels, "waiting")] : []), ...(b.breaks.a || b.breaks.b ? [breaksText(b, labels)] : []),
+    `match rate ${rateText(t.rate)}`].join(" · ");
+}
+
 /**
  * The Breaks tab's reason filter (designer, Figma 205:6752): "All 126", then each reason that has items, in day close's
  * order, with its items on both sides ("Duplicate 30"). `value` "" = all.

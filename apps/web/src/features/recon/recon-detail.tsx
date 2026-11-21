@@ -22,10 +22,10 @@ import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
 import { RunControl } from "./run-control";
-import { RunSummary } from "./run-summary";
+import { LastRun } from "./run-summary";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
-import { MAKER_REASON, reconApi, reconHref, reconsHref, reconRunHref, reconVersionHref, useLastRun, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
+import { MAKER_REASON, reconApi, reconHref, reconsHref, reconVersionHref, useLastRun, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
 const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", versions: "Versions", activity: "Activity" };
 
@@ -114,8 +114,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
             {building && shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
             {!building && r.published && runner && <RunControl spaceId={spaceId} id={id} spec={r.published.spec} />}
-            {!building && last && r.published && <RunSummary run={last} spec={r.published.spec}
-              labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} action={<Button asChild variant="secondary"><Link href={reconRunHref(spaceId, id, last.id)}>Open run</Link></Button>} />}
+            {!building && last.headline && r.published && <LastRun spaceId={spaceId} id={id} run={last.headline} newer={last.newer} spec={r.published.spec}
+              labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} />}
             {!building && shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
           </>
         )}

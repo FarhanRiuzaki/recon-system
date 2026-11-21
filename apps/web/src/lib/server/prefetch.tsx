@@ -19,6 +19,7 @@ import {
   sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, SOURCES, sourceSnapshots, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
+import { pickLastRuns } from "@/lib/shared/recon-runs";
 import { readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
@@ -110,16 +111,16 @@ export async function reconSourceReads(spaceId: string, configId: string, versio
 const sourceReads = (spaceId: string, sides: { source_id: string }[] = []) => [...new Set(sides.map((x) => x.source_id))].map((id) => reads.source(spaceId, id));
 
 /**
- * A published recon's Overview: its latest runs and the detail of the newest one that isn't a simulation (its days and
- * live totals, as its run page shows them), so the Overview's last-run line is the run page's line on first paint.
+ * A published recon's Overview: its latest runs and the detail of its headline run (pickLastRuns: the newest real run
+ * that took in records), so the Overview's line is the run page's line on first paint.
  */
 export async function lastRunReads(spaceId: string, configId: string): Promise<Read[]> {
   const s = await getSession();
   const path = v1Path(reconLatestRuns(spaceId, configId).url);
   if (!s.token || !path) return [];
-  const { data } = await backendJson<{ items?: { id: string; mode: string }[] }>(path, { token: s.token, req: { headers: await headers() } });
-  const last = data?.items?.find((r) => r.mode !== "simulation");
-  return [reads.reconLatestRuns(spaceId, configId), ...(last ? [reads.reconRun(spaceId, configId, last.id)] : [])];
+  const { data } = await backendJson<{ items?: { id: string; mode: string; counters: { intake: { a: number; b: number } } }[] }>(path, { token: s.token, req: { headers: await headers() } });
+  const { headline } = pickLastRuns(data?.items ?? []);
+  return [reads.reconLatestRuns(spaceId, configId), ...(headline ? [reads.reconRun(spaceId, configId, headline.id)] : [])];
 }
 
 /**

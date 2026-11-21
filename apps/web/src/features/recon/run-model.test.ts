@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -211,5 +211,20 @@ describe("run-model", () => {
     const proposed = { itemId: "i", side: "b" as const, passNo: 2, extRef: "TSTREF000942", amountMinor: "2609698", currency: "IDR", businessDate: "2026-11-02" };
     expect(breakPair({ side: "a", proposed, group })?.passNo).toBe(2);
     expect(breakPair({ side: "a", proposed: null, group: null })).toBeNull();
+  });
+
+  it("one line for a real run's breaks, Duplicate included (Captain): gate after close", () => {
+    const L = ["src1 r2", "src2 r2b"] as const;
+    const byReason = { Duplicate: { a: 15, b: 15 }, "Date differs": { a: 10, b: 10 }, "Amount differs": { a: 15, b: 15 }, "No counterpart": { a: 20, b: 20 }, "Currency differs": { a: 3, b: 3 } };
+    const live = { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 }, items: { a: 1000, b: 1000 }, breakReasons: byReason };
+    const run = { mode: "manual" as const, counters: gate, days: [], live, from: "2026-11-02", to: "2026-11-05" };
+    expect(runLine(run, spec, L)).toBe("937 matched · 63 breaks per side (15 duplicate per side) · match rate 93.7%");
+    expect(breaksText({ breaks: { a: 63, b: 62 }, duplicate: { a: 15, b: 14 } }, L)).toBe("63 src1 r2 · 62 src2 r2b breaks (15 src1 r2 · 14 src2 r2b duplicate)");
+    expect(breaksText({ breaks: { a: 48, b: 48 }, duplicate: { a: 0, b: 0 } }, L)).toBe("48 breaks per side");
+    expect(breaksText(breaksOf(byReason)!, L, false)).toBe("63 per side (15 duplicate per side)");
+    // a simulation keeps its own counts: duplicates by their pass, never relabeled as breaks
+    expect(runLine({ ...run, mode: "simulation" as const }, spec, L)).toBe(countLine(standingTotals(run, spec), L));
+    // a run before live totals: its own counts
+    expect(runLine({ ...run, live: null }, spec, L)).toBe("937 matched · 24 suggested (open) · 30 duplicate · 24 waiting per side · match rate 93.7%");
   });
 });

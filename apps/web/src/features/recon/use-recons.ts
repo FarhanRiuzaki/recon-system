@@ -8,6 +8,7 @@ import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sourc
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { draftSimulations, RECON_KEY, reconLatestRuns, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { pickLastRuns } from "@/lib/shared/recon-runs";
 import { isLive } from "./run-model";
 
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
@@ -77,12 +78,11 @@ export function useStartVersion(spaceId: string, id: string) {
 /** The recon's last real run (null: none yet), read while `enabled`. */
 export function useLastRun(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconLatestRuns(spaceId, id);
-  // ponytail: the newest real run among the last 50 runs; a `mode=real` filter on GET …/runs when simulations crowd it out
-  const list = useQuery({ queryKey: key, queryFn: () => api<Page<ReconRunDto>>(url), enabled, select: (p) => p.items.find((r) => r.mode !== "simulation") ?? null });
-  // its detail, the run page's own query: a list row has no days or live totals, so the line would read the run's own
-  // counts while the run page reads what stands now (re-check B7)
-  const run = useRun(spaceId, id, enabled ? (list.data?.id ?? null) : null);
-  return run.data ?? null;
+  const list = useQuery({ queryKey: key, queryFn: () => api<Page<ReconRunDto>>(url), enabled, select: (p) => pickLastRuns(p.items) });
+  // the headline's detail, the run page's own query: a list row has no days or live totals, so the line would read the
+  // run's own counts while the run page reads what stands now (re-check B7)
+  const run = useRun(spaceId, id, enabled ? (list.data?.headline?.id ?? null) : null);
+  return { headline: run.data ?? null, newer: list.data?.newer ?? null };
 }
 
 /** How often a queued or running run is read again. */

@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
+import { Button } from "@starterkit/ui/ui/button";
 import { formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { countLine, isLive, itemsText, projectionText, rangeText, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
-import { STALL_TEXT } from "./use-recons";
+import { isLive, itemsText, projectionText, rangeText, runLine, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
+import { dayTilesOf, RunDayTiles } from "./run-days";
+import { reconRunHref, STALL_TEXT } from "./use-recons";
 
 /** A run in one strip (the run page's head, the recon's last run on its Overview): its state, dates, counts and what day close does; `action` ends the strip. */
 export function RunSummary({ run, spec, labels, stalled = false, action }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled?: boolean; action?: ReactNode }) {
@@ -25,10 +28,42 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
         <span role="status" className="text-body-sm text-fg">
           {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${itemsText(t.items)}${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
         </span>
-        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{countLine(t, labels)}</span>}
+        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{runLine(run, spec, labels)}</span>}
         {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
       </div>
       {action}
+    </section>
+  );
+}
+
+/**
+ * A published recon's Overview headline (Captain, R6-1): the last run that took in records, by the run page's own line
+ * ("Run 2–5 Nov · 937 matched · 63 breaks per side (15 duplicate per side) · match rate 93.7%"), its date strip (each
+ * tile opens that date of the run) and Open run; a newer run without records is one small line under it, never the
+ * headline. A headline that is running, stopped or took in nothing reads as a run's strip (RunSummary).
+ */
+export function LastRun({ spaceId, id, run, newer, spec, labels }: {
+  spaceId: string; id: string; run: ReconRunDto; newer: ReconRunDto | null; spec: ReconSpec; labels: readonly [string, string];
+}) {
+  const href = reconRunHref(spaceId, id, run.id);
+  const open = <Button asChild variant="secondary"><Link href={href}>Open run</Link></Button>;
+  const t = standingTotals(run, spec);
+  const settled = run.status === "succeeded" && t.items > 0;
+  const tiles = dayTilesOf(run, spec);
+  return (
+    <section aria-label="Last run" className="grid gap-3">
+      {settled ? (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-card p-4 shadow-xs">
+          <span className="min-w-0 flex-1 basis-64 text-body-sm text-fg tabular">Run {rangeText(run.from, run.to).replace(/ \d{4}$/, "")} · {runLine(run, spec, labels)}</span>
+          {open}
+        </div>
+      ) : <RunSummary run={run} spec={spec} labels={labels} action={open} />}
+      {settled && tiles.length > 1 && <RunDayTiles tiles={tiles} labels={labels} link={(date) => ({ href: date ? `${href}?date=${date}` : href })} />}
+      {newer && (
+        <Link href={reconRunHref(spaceId, id, newer.id)} className="justify-self-start rounded-xs text-caption text-fg-3 hover:text-fg focus-visible:outline-2 focus-visible:outline-primary">
+          Last run {formatTime(Date.parse(newer.finishedAt ?? newer.startedAt))} · {isLive(newer) ? "running" : newer.status === "failed" ? "stopped" : "no new records"}
+        </Link>
+      )}
     </section>
   );
 }

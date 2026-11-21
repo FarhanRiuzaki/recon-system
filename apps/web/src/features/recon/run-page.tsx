@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { cn } from "@starterkit/ui/lib/cn";
 import { formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Select } from "@starterkit/ui/ui/select";
@@ -23,8 +22,9 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakCounts, breakLabel, breakPair, dayPasses, dayTotals, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays, sidesText, standingTotals } from "./run-model";
+import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays } from "./run-model";
 import { RunSummary } from "./run-summary";
+import { dayTilesOf, RunDayTiles, tileOption } from "./run-days";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
 import { reconHref, reconRunHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
@@ -121,9 +121,12 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const href = (patch: Partial<RunItemFilters>) => { const q = writeTable(s, patch, def.spec); return q?.size ? `${path}?${q}` : path; };
   const go = (patch: Partial<RunItemFilters>) => (e: React.MouseEvent) => { e.preventDefault(); t.set(patch); };
   const breaks = breakCounts(run);
+  // breaks by the one definition (Duplicate included) over the run's own dates: the tab's title and the All dates tile
+  const real = run.mode !== "simulation";
+  const allBreaks = real ? breaksOf(run.live?.breakReasons) : null;
   const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, label: passLabel(p, counts[String(p.no)]), pass: p.no })),
     { key: "waiting", label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const },
-    ...(breaks ? [{ key: "breaks", label: `Breaks · ${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`, status: "break" as const }] : [])];
+    ...(breaks ? [{ key: "breaks", label: `Breaks · ${allBreaks ? breaksText(allBreaks, labels, false) : `${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`}`, status: "break" as const }] : [])];
   const tabKey = waiting ? "waiting" : breaksTab ? "breaks" : `p${passNo}`;
   const x = pass ? counts[String(pass.no)] : undefined;
   const own = pass?.accept === "suggest" ? "suggested" : "matched";
@@ -135,8 +138,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   ] : [];
   const items = status === "open" || status === "break";
   const strip = run.days ?? [];
-  const dayTiles = [{ date: "", t: { ...standingTotals(run, spec), closed: false } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
-  const dayLabel = (date: string) => (date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates");
+  const dayTiles = dayTilesOf(run, spec);
   const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "", reason: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "", reason: "" });
   // the Breaks tab's reasons, on the picked date or over the run's own dates
   const byReason = (day ? day.breakReasons : run.live?.breakReasons) ?? null;
@@ -156,7 +158,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           <div className="grid gap-2 md:hidden">
             {strip.length > 0 && (
               <Select aria-label="Business date" value={s.date} onChange={(e) => t.set({ date: e.target.value })} className="w-full">
-                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)}{d.closed ? " · closed" : ""} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.breaks && (d.breaks.a || d.breaks.b) ? ` · ${sidesText(d.breaks, labels, "breaks")}` : ""}</option>)}
+                {dayTiles.map((x) => <option key={x.date || "all"} value={x.date}>{tileOption(x, labels)}</option>)}
               </Select>
             )}
             <Select aria-label="Pass" value={tabKey} onChange={(e) => { const tab = tabs.find((x) => x.key === e.target.value); if (tab) t.set(tabPatch(tab)); }} className="w-full">
@@ -164,18 +166,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
             </Select>
           </div>
           {strip.length > 0 && (
-            <div role="group" aria-label="Business dates" className="grid gap-2 max-md:hidden md:grid-cols-3 xl:grid-cols-5">
-              {dayTiles.map(({ date, t: d }) => (
-                <Link key={date || "all"} href={href({ date })} onClick={go({ date })} aria-current={s.date === date ? "true" : undefined}
-                  className={cn("grid gap-0.5 rounded-md border bg-card p-2.5 text-left text-caption text-fg-3 tabular focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
-                    s.date === date ? "border-fg shadow-sm" : "border-line hover:bg-tray")}>
-                  <span className="text-label text-fg">{dayLabel(date)}{d.closed ? " · closed" : ""}</span>
-                  <span>{formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.duplicate ? ` · ${formatNumber(d.duplicate)} duplicate` : ""}</span>
-                  <span>{sidesText(d.waiting, labels, "waiting")}</span>
-                  {d.breaks && (d.breaks.a > 0 || d.breaks.b > 0) && <span>{sidesText(d.breaks, labels, "breaks")}</span>}
-                </Link>
-              ))}
-            </div>
+            <RunDayTiles tiles={dayTiles} labels={labels} className="max-md:hidden" link={(date) => ({ href: href({ date }), onClick: go({ date }), current: s.date === date })} />
           )}
           <RouteTabs aria-label="Passes" className="max-md:hidden">
             {tabs.map((tab) => {

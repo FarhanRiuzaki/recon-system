@@ -183,17 +183,18 @@ it("raw exact Activity filters retain invalid presence so SSR never prefetches a
 });
 
 describe("a published recon's Overview reads its last run as the run page does (re-check B7)", () => {
-  it("the newest run that isn't a simulation, by its detail (days and live totals), beside the list", async () => {
+  it("the newest real run that took in records (R6-1), by its detail (days and live totals), beside the list", async () => {
     const space = "0199f0a0-0000-7000-8000-00000000000a", recon = "0199f0a0-0000-7000-8000-00000000000b";
-    const sim = "0199f0a0-0000-7000-8000-00000000000c", run = "0199f0a0-0000-7000-8000-00000000000d";
-    fakeApi(() => Response.json({ items: [{ id: sim, mode: "simulation" }, { id: run, mode: "manual" }], total: 2, page: 1, pageSize: 50 }));
+    const sim = "0199f0a0-0000-7000-8000-00000000000c", run = "0199f0a0-0000-7000-8000-00000000000d", empty = "0199f0a0-0000-7000-8000-00000000000e";
+    const intake = (n: number) => ({ intake: { a: n, b: n } });
+    fakeApi(() => Response.json({ items: [{ id: sim, mode: "simulation", counters: intake(9) }, { id: empty, mode: "daily", counters: intake(0) }, { id: run, mode: "manual", counters: intake(1000) }], total: 3, page: 1, pageSize: 50 }));
     await sealCookie(jar);
     const rs = await lastRunReads(space, recon);
     expect(rs.map((r) => r.key)).toEqual([reconLatestRuns(space, recon).key, reconRun(space, recon, run).key]);
   });
 
   it("no real run yet: the list only", async () => {
-    fakeApi(() => Response.json({ items: [{ id: "0199f0a0-0000-7000-8000-00000000000c", mode: "simulation" }], total: 1, page: 1, pageSize: 50 }));
+    fakeApi(() => Response.json({ items: [{ id: "0199f0a0-0000-7000-8000-00000000000c", mode: "simulation", counters: { intake: { a: 1, b: 1 } } }], total: 1, page: 1, pageSize: 50 }));
     await sealCookie(jar);
     expect(await lastRunReads("0199f0a0-0000-7000-8000-00000000000a", "0199f0a0-0000-7000-8000-00000000000b")).toHaveLength(1);
   });
