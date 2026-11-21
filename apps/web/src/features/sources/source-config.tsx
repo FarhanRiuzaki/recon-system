@@ -9,6 +9,7 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { computeSteps, stepText } from "@starterkit/shared/compute";
 import type { SourceDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+import { readWhenText } from "@starterkit/shared/sources";
 import { scheduleText } from "./source-text";
 import { ARRIVED_DATE, FILE_DATE, fieldText, storedName, UNIT_LABEL } from "./spec-draft";
 import { conditionText } from "./steps/conditions";
@@ -87,11 +88,13 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
         <Rows items={i.kind === "file_inbox" ? [
           ["Folder", i.path], ["File name pattern", i.pattern],
           ["Format", `${i.format.delimiter === "\t" ? "Tab" : `"${i.format.delimiter}"`} separated, ${i.format.header ? "first row is a header" : "no header row"}, ${i.format.encoding}`],
+          ["Checked", readWhenText(i.when)],
           ["A file is complete", i.completion.kind === "marker_file" ? "once its marker file is there" : `once it hasn't changed for ${i.completion.seconds} s`],
         ] : i.kind === "db_snapshot" ? [
           ["Query", i.query], ["Schedule", scheduleText(i.schedule)],
         ] : [
           [i.table !== undefined ? "Table" : "Query", i.table ?? i.query], ["Watermark column", i.watermark.column], ["Id column", i.watermark.id_column],
+          ["Pulled", readWhenText(i.when)],
           ["Looks back", i.lookback_seconds ? `${formatNumber(i.lookback_seconds)} s` : "No"], ["Rows per page", formatNumber(i.chunk)],
         ]} />
       </Panel>

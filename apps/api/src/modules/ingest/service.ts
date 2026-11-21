@@ -19,7 +19,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type {
   IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
-import type { DbEngine, SourceKind, SourceStatus } from "@starterkit/shared/sources";
+import { type DbEngine, readCron, type SourceKind, type SourceStatus } from "@starterkit/shared/sources";
 import { and, count, desc, eq, exists, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { loadWorkerConfig } from "../../kernel/config";
 import { decryptSecret } from "../../kernel/crypto";
@@ -58,7 +58,6 @@ const SNAPSHOT_CHUNK = 5000;
 /** Lines of a file written per batch. */
 const FILE_BATCH = 1000;
 /** A watermark and file inbox source runs every minute (pg-boss's finest cron); a recon's own interval reads what is there. */
-const EVERY_MINUTE = "* * * * *";
 
 /**
  * Seams of later plans and tests. onRecordChanged: records of a mutable source just replaced (Plan 3 reverses their
@@ -501,7 +500,8 @@ export async function runSource(s: Scope, on: Tx, now = new Date()): Promise<voi
 
 /** Schedules source `s`'s runs (queue ingest.pull, keyed by the source): a snapshot source on its cron, others every minute. */
 export async function scheduleSource(s: Scope, spec: SourceSpec): Promise<void> {
-  await scheduleEvery(QUEUES.ingestPull, s.sourceId, spec.input.kind === "db_snapshot" ? spec.input.schedule : EVERY_MINUTE, s);
+  // "When to read" (owner, 21 Nov): a pulled or folder source every N minutes, between its hours; a snapshot on its cron
+  await scheduleEvery(QUEUES.ingestPull, s.sourceId, spec.input.kind === "db_snapshot" ? spec.input.schedule : readCron(spec.input.when), s);
 }
 
 /** maintenance.partitions: this month and the next two of raw_rows and records, so ingest never has to make one. */
@@ -582,7 +582,7 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
   const rows = new Map(counted.filter((r) => r.kind === "records").map((r) => [r.id, r.n]));
   const quarantined = new Map(counted.filter((r) => r.kind === "quarantined").map((r) => [r.id, r.n]));
   for (const { x, c, health } of judged) {
-    const cron = x.spec.input.kind === "db_snapshot" ? x.spec.input.schedule : EVERY_MINUTE;
+    const cron = x.spec.input.kind === "db_snapshot" ? x.spec.input.schedule : readCron(x.spec.input.when);
     out.set(x.id, {
       health,
       rowsToday: rows.get(x.id) ?? 0,

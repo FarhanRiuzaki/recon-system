@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_UNITS, ATTR_NAME, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  AMOUNT_UNITS, ATTR_NAME, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -64,6 +64,12 @@ const Mapping = z.strictObject({
 });
 
 /** A DB table or SELECT pulled by keyset `(column, id_column) > (watermark, id)`, `lookback_seconds` back, `chunk` rows at a time. */
+/** When a pulled or folder source is read (ReadWhen in ../sources): every N minutes, only between whole hours. */
+const ReadWhenSchema = z.strictObject({
+  every_minutes: z.number().int().refine((n) => (READ_EVERY as readonly number[]).includes(n), { message: `Read every ${READ_EVERY.join(", ")} minutes` }).optional(),
+  hours: z.strictObject({ from: z.number().int().min(0).max(23), to: z.number().int().min(1).max(24) })
+    .refine((h) => h.from !== h.to % 24, { message: "The hours start and end at the same time; leave them out to read all day" }).optional(),
+});
 const DbWatermarkInput = z.strictObject({
   kind: z.literal("db_watermark"),
   table: name.optional(),
@@ -71,6 +77,7 @@ const DbWatermarkInput = z.strictObject({
   watermark: z.strictObject({ column: name, id_column: name }),
   lookback_seconds: z.number().int().min(0).max(7 * 86_400),
   chunk: z.number().int().min(1).max(100_000),
+  when: ReadWhenSchema.optional(),
 });
 /** A whole position per business date: `query` takes the `:business_date` parameter; `schedule` is a cron (Asia/Jakarta). */
 const DbSnapshotInput = z.strictObject({ kind: z.literal("db_snapshot"), query, schedule: z.string().trim().min(1).max(100) });
@@ -87,6 +94,7 @@ const FileInboxInput = z.strictObject({
   ]),
   format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) })
     .refine((f) => f.quote !== f.delimiter, { message: "The quote character can't be the delimiter", path: ["quote"] }),
+  when: ReadWhenSchema.optional(),
 });
 
 /**

@@ -11,7 +11,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { CheckIcon, ColumnChartIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
-import type { DbEngine } from "@starterkit/shared/sources";
+import { type DbEngine, readWhenText } from "@starterkit/shared/sources";
 import { BRAND } from "@starterkit/shared/brand";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -71,7 +71,7 @@ function summary(s: SourceDto): string {
     s.publishedVersion ? `Version ${s.publishedVersion}` : "No approved version yet",
     KIND_LABEL[s.kind],
     s.connection ? ENGINE[s.connection.engine] : null,
-    input?.kind === "file_inbox" ? `files ${input.pattern}, checked every minute` : input?.kind === "db_snapshot" ? scheduleText(input.schedule) : input ? "pulled every minute" : null,
+    input?.kind === "file_inbox" ? `files ${input.pattern}, checked ${readWhenText(input.when)}` : input?.kind === "db_snapshot" ? scheduleText(input.schedule) : input ? `pulled ${readWhenText(input.when)}` : null,
   ].filter(Boolean).join(" · ");
 }
 
@@ -228,7 +228,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
           {s.kind === "db_watermark" && h && (
             // the Pull card and its history side by side, the history as tall as the card (owner, 21 Nov)
             <div className="grid items-stretch gap-section xl:grid-cols-2">
-            <Panel icon={NetworkIcon} title="Pull" description="By watermark, every minute">
+            <Panel icon={NetworkIcon} title="Pull" description={`By watermark, ${readWhenText(s.published?.spec?.input.kind === "db_watermark" ? s.published.spec.input.when : undefined)}`}>
               {/* what the tiles above don't say (complete through and the next read are there): what it reads, how the
                   last pull went and how its lag is judged */}
               <Rows items={[

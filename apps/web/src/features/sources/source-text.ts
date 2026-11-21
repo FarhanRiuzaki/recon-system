@@ -1,5 +1,6 @@
 // Words the source screens show for what the API answers (Figma page 02, Build notes 02 "Final copy"). Display only:
 // health, lag and completeness come judged from the API (sourceHealth); nothing here decides a state.
+import { readWhenText } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL, appDayStart, formatDate, formatDateTime, formatDuration } from "@starterkit/ui/lib/format";
 import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
@@ -84,11 +85,12 @@ export function keptSnapshot(rows: readonly SourceSnapshotDto[]): string | null 
  * the next scheduled pull or Pull now; a file inbox is checked every minute) and, while Degraded with a deadline,
  * when it turns Down.
  */
-export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt">): string {
+export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt"> & { published?: SourceDto["published"] }): string {
   const h = s.health!;
   const out = [`${missingLabel(s.kind, h.missingDate ?? h.businessDate)}.`];
   if (h.lastError) out.push(`The last run failed. ${errorSentence(h.lastError)}`);
-  if (s.kind === "file_inbox") out.push("The folder is checked every minute.");
+  const input = s.published?.spec?.input;
+  if (s.kind === "file_inbox") out.push(`The folder is checked ${readWhenText(input?.kind === "file_inbox" ? input.when : undefined)}.`);
   else if (s.nextRunAt) out.push(`The next scheduled pull is at ${at(s.nextRunAt)}. Pull now to retry sooner.`);
   if (h.state === "degraded" && h.deadline) out.push(`Degraded until ${h.deadline} ${APP_TIME_ZONE_LABEL}, the daily deadline, then Down.`);
   return out.join(" ");

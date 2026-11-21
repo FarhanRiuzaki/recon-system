@@ -1069,6 +1069,37 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 100000
+                            },
+                            "when": {
+                              "type": "object",
+                              "properties": {
+                                "every_minutes": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    },
+                                    "to": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 24
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
                             }
                           },
                           "required": [
@@ -1202,6 +1233,37 @@
                                 "header",
                                 "encoding"
                               ],
+                              "additionalProperties": false
+                            },
+                            "when": {
+                              "type": "object",
+                              "properties": {
+                                "every_minutes": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    },
+                                    "to": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 24
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
                               "additionalProperties": false
                             }
                           },
@@ -1934,6 +1996,37 @@
                               "type": "integer",
                               "minimum": 1,
                               "maximum": 100000
+                            },
+                            "when": {
+                              "type": "object",
+                              "properties": {
+                                "every_minutes": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    },
+                                    "to": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 24
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
+                              "additionalProperties": false
                             }
                           },
                           "required": [
@@ -2067,6 +2160,37 @@
                                 "header",
                                 "encoding"
                               ],
+                              "additionalProperties": false
+                            },
+                            "when": {
+                              "type": "object",
+                              "properties": {
+                                "every_minutes": {
+                                  "type": "integer",
+                                  "minimum": -9007199254740991,
+                                  "maximum": 9007199254740991
+                                },
+                                "hours": {
+                                  "type": "object",
+                                  "properties": {
+                                    "from": {
+                                      "type": "integer",
+                                      "minimum": 0,
+                                      "maximum": 23
+                                    },
+                                    "to": {
+                                      "type": "integer",
+                                      "minimum": 1,
+                                      "maximum": 24
+                                    }
+                                  },
+                                  "required": [
+                                    "from",
+                                    "to"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              },
                               "additionalProperties": false
                             }
                           },

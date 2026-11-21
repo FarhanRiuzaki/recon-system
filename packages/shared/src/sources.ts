@@ -108,3 +108,31 @@ export const DEFAULT_CALENDAR = "id-default";
 export const DB_TABLE_NAME = /^[A-Za-z_][A-Za-z0-9_$#]{0,127}(\.[A-Za-z_][A-Za-z0-9_$#]{0,127})?$/;
 /** A stored attribute's name (`attrs.<name>` of a record): a-z, 0-9 and _, starting with a letter, at most 63 characters. */
 export const ATTR_NAME = /^[a-z][a-z0-9_]{0,62}$/;
+
+/** How often a watermark source is pulled, or a file inbox's folder checked (owner, 21 Nov: "When to read"). */
+export const READ_EVERY = [1, 5, 15, 30, 60] as const;
+export type ReadEvery = (typeof READ_EVERY)[number];
+/**
+ * When a pulled or folder source is read: every `every_minutes` (1 when left out), only between the whole hours
+ * `hours.from` and `hours.to` (Asia/Jakarta; `to` past midnight wraps, 22 → 6 reads 22:00–05:59) when set.
+ */
+export type ReadWhen = { every_minutes?: number; hours?: { from: number; to: number } };
+
+/** The cron of `w` (Asia/Jakarta): "* * * * *" every minute; "*\/5 6-21 * * *" every 5 minutes from 06:00 to 22:00. */
+export function readCron(w: ReadWhen | undefined): string {
+  const every = w?.every_minutes ?? 1;
+  const minute = every === 1 ? "*" : every === 60 ? "0" : `*/${every}`;
+  const h = w?.hours;
+  if (!h) return `${minute} * * * *`;
+  const end = (h.to + 23) % 24; // the last hour read
+  const hour = h.from <= end ? (h.from === end ? `${h.from}` : `${h.from}-${end}`) : `${h.from}-23,0-${end}`;
+  return `${minute} ${hour} * * *`;
+}
+
+/** `w` in words: "every minute", "every 15 minutes, 06:00–22:00", "every hour, 22:00–06:00". */
+export function readWhenText(w: ReadWhen | undefined): string {
+  const every = w?.every_minutes ?? 1;
+  const often = every === 1 ? "every minute" : every === 60 ? "every hour" : `every ${every} minutes`;
+  const two = (n: number) => `${String(n % 24).padStart(2, "0")}:00`;
+  return w?.hours ? `${often}, ${two(w.hours.from)}–${two(w.hours.to)}` : often;
+}

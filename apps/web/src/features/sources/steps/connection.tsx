@@ -1,7 +1,7 @@
 "use client";
 
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, Panel, Segmented, SqlEditor, type SqlSuggest, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Field, InfoTip, Panel, Segmented, SqlEditor, type SqlSuggest, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -10,7 +10,7 @@ import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, type SourceKind } from "@starterkit/shared/sources";
+import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, READ_EVERY, type ReadWhen, readWhenText, type SourceKind } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
@@ -197,6 +197,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
             <Switch id={ctl("input.format.header")} checked={i.format.header} onChange={(e) => setInput({ format: { ...i.format, header: e.target.checked } })} aria-label="First row is a header" />
             <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
           </span>
+          <ReadWhenField label="Check the folder" when={i.when} onChange={(when) => setInput({ when })} />
           <Advanced summary={`${completion} · ${i.format.encoding.toUpperCase()}`} open={!!err(ctl("input.completion.seconds"))}>
             <Field id={ctl("input.completion")} label="File is complete when"
               note="The same content sent again is rejected; new content under the same name is the next version.">
@@ -460,6 +461,8 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
   } else if (i.kind === "db_watermark") {
     const w = i as WatermarkInput;
     body = (
+      <>
+      <ReadWhenField label="Pull" when={w.when} onChange={(when) => setInput({ when } as Partial<WatermarkInput>)} />
       <Advanced summary={`Look back ${formatNumber(w.lookback_seconds)} s · ${formatNumber(w.chunk)} rows per page`}>
         <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
           <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
@@ -470,6 +473,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
             onChange={(e) => setInput({ chunk: Math.max(1, Math.min(100_000, Number(e.target.value.replace(/\D/g, "")) || 1)) } as Partial<WatermarkInput>)} />
         </Field>
       </Advanced>
+      </>
     );
   }
   return (
@@ -516,6 +520,48 @@ function QueryField({ value, rows, note, error, onChange, check, suggest, params
             {mine?.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Check query</Button>} />
       </Field>
       {mine?.ok && <p role="status" className="flex items-start gap-1.5 text-body-sm text-healthy-ink"><Icon icon={CheckIcon} className="mt-0.5 size-4 shrink-0" />{mine.ok}</p>}
+    </div>
+  );
+}
+
+const HOURS = Array.from({ length: 24 }, (_, h) => h);
+/**
+ * When to read (owner, 21 Nov): how often a pull runs or the folder is checked, and optionally only between two whole
+ * hours (Asia/Jakarta; a window past midnight wraps). Read every minute, all day, when left as it starts.
+ */
+function ReadWhenField({ label, when, onChange }: { label: string; when: ReadWhen | undefined; onChange: (w: ReadWhen | undefined) => void }) {
+  const every = when?.every_minutes ?? 1;
+  const set = (w: ReadWhen) => onChange(w.every_minutes === 1 && !w.hours ? undefined : { ...(w.every_minutes !== 1 ? { every_minutes: w.every_minutes } : {}), ...(w.hours ? { hours: w.hours } : {}) });
+  const hour = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  return (
+    <div className="grid gap-3">
+      <div className="grid gap-4 md:grid-cols-[minmax(0,16rem)_minmax(0,1fr)]">
+        <Field id={ctl("input.when.every_minutes")} label={`${label} every`} help="How often the source is read. A recon still matches what arrived; reading less often only delays it.">
+          <Select id={ctl("input.when.every_minutes")} className="w-full min-w-0" value={String(every)} onChange={(e) => set({ every_minutes: Number(e.target.value), hours: when?.hours })}>
+            {READ_EVERY.map((n) => <option key={n} value={n}>{n === 1 ? "Minute" : n === 60 ? "Hour" : `${n} minutes`}</option>)}
+          </Select>
+        </Field>
+        <div className="grid content-start gap-2">
+          <span className="inline-flex items-center gap-2">
+            <Switch id={ctl("input.when.hours")} checked={!!when?.hours} aria-label="Only between two hours"
+              onChange={(e) => set({ every_minutes: every, hours: e.target.checked ? { from: 6, to: 22 } : undefined })} />
+            <label htmlFor={ctl("input.when.hours")} className="text-body text-fg">Only between</label>
+            <InfoTip label="Only between">Read only in these hours, in {APP_TIME_ZONE_LABEL}, such as while the bank&apos;s system is up. A window past midnight wraps: 22:00 to 06:00 reads overnight.</InfoTip>
+          </span>
+          {when?.hours && (
+            <span className="flex flex-wrap items-center gap-2">
+              <Select aria-label="From" className="w-28" value={String(when.hours.from)} onChange={(e) => set({ every_minutes: every, hours: { ...when.hours!, from: Number(e.target.value) } })}>
+                {HOURS.map((h) => <option key={h} value={h}>{hour(h)}</option>)}
+              </Select>
+              <span className="text-body-sm text-fg-2">to</span>
+              <Select aria-label="To" className="w-28" value={String(when.hours.to)} onChange={(e) => set({ every_minutes: every, hours: { ...when.hours!, to: Number(e.target.value) } })}>
+                {HOURS.map((h) => h + 1).map((h) => <option key={h} value={h}>{hour(h)}</option>)}
+              </Select>
+            </span>
+          )}
+        </div>
+      </div>
+      <p className="text-caption text-fg-3">Reads {readWhenText(when)}.</p>
     </div>
   );
 }
