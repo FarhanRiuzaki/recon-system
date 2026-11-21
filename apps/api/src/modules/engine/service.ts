@@ -23,7 +23,7 @@ import { recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
-import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, countDistinct, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail, notFound } from "../../kernel/errors";
@@ -505,24 +505,26 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.businessDate, reconItems.breakPass);
   const refs = await tx.select({ pass: reconItems.breakPass, refs: countDistinct(records.extRef) }).from(reconItems)
     .leftJoin(records, brokenRecord).where(isBroken).groupBy(reconItems.breakPass);
-  const open = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
-    .where(and(itemsIn, eq(reconItems.status, "open"))).groupBy(reconItems.businessDate, reconItems.side);
-  // the records the date counts per side (intake − replaced: an item of a replaced record is closed)
-  const current = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
-    .where(and(itemsIn, ne(reconItems.status, "closed"))).groupBy(reconItems.businessDate, reconItems.side);
-  // breaks of time (grace, day close: no pass broke them); a pass's Duplicate stays under its pass
-  const timed = await tx.select({ d: reconItems.businessDate, side: reconItems.side, n: count() }).from(reconItems)
-    .where(and(itemsIn, eq(reconItems.status, "break"), isNull(reconItems.breakPass))).groupBy(reconItems.businessDate, reconItems.side);
-  const reasons = await tx.select({ d: reconItems.businessDate, side: reconItems.side, reason: reconItems.breakReason, n: count() }).from(reconItems)
-    .where(and(itemsIn, eq(reconItems.status, "break"))).groupBy(reconItems.businessDate, reconItems.side, reconItems.breakReason);
+  // per (date, side, reason) in one pass over the window's items: waiting, current records (intake − replaced: an item
+  // of a replaced record is closed), breaks of time (grace, day close: no pass broke them; a pass's Duplicate stays
+  // under its pass) and breaks
+  const states = await tx.select({
+    d: reconItems.businessDate, side: reconItems.side, reason: reconItems.breakReason,
+    open: sql<number>`count(*) filter (where ${reconItems.status} = 'open')`.mapWith(Number),
+    current: sql<number>`count(*) filter (where ${reconItems.status} <> 'closed')`.mapWith(Number),
+    timed: sql<number>`count(*) filter (where ${reconItems.status} = 'break' and ${reconItems.breakPass} is null)`.mapWith(Number),
+    breaks: sql<number>`count(*) filter (where ${reconItems.status} = 'break')`.mapWith(Number),
+  }).from(reconItems).where(itemsIn).groupBy(reconItems.businessDate, reconItems.side, reconItems.breakReason);
   const closed = w.simRunId ? [] : await tx.select({ d: reconDays.businessDate }).from(reconDays).where(and(eq(reconDays.spaceId, w.spaceId), eq(reconDays.configId, w.configId),
     eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
   const dates = new Set<string>();
   for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
-  for (const r of [...matched, ...suggested, ...broken, ...open, ...timed, ...current]) dates.add(r.d);
-  const perSide = (rows: { d: string; side: string; n: number }[], date: string) => ({
-    a: rows.find((o) => o.d === date && o.side === "a")?.n ?? 0, b: rows.find((o) => o.d === date && o.side === "b")?.n ?? 0,
-  });
+  for (const r of [...matched, ...suggested, ...broken, ...states.filter((x) => x.current > 0 || x.open > 0)]) dates.add(r.d);
+  const perSide = (date: string, f: "open" | "current" | "timed") => {
+    const n = (side: string) => states.filter((x) => x.d === date && x.side === side).reduce((t, x) => t + x[f], 0);
+    return { a: n("a"), b: n("b") };
+  };
+  const reasonsOn = (date: string) => states.filter((x) => x.d === date && x.breaks > 0);
   const days = [...dates].sort().map((date): RunDay => ({
     date,
     passes: Object.fromEntries(w.passes.map((no) => [String(no), {
@@ -531,12 +533,12 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
       broken: broken.find((b) => b.d === date && b.pass === no)?.n ?? 0,
       brokenRefs: broken.find((b) => b.d === date && b.pass === no)?.refs ?? 0,
     }])),
-    open: perSide(open, date),
-    breaks: perSide(timed, date),
-    items: perSide(current, date),
-    breakReasons: Object.fromEntries([...new Set(reasons.filter((r) => r.d === date).map((r) => r.reason ?? ""))].sort().map((reason) => [reason, {
-      a: reasons.find((r) => r.d === date && (r.reason ?? "") === reason && r.side === "a")?.n ?? 0,
-      b: reasons.find((r) => r.d === date && (r.reason ?? "") === reason && r.side === "b")?.n ?? 0,
+    open: perSide(date, "open"),
+    breaks: perSide(date, "timed"),
+    items: perSide(date, "current"),
+    breakReasons: Object.fromEntries([...new Set(reasonsOn(date).map((r) => r.reason ?? ""))].sort().map((reason) => [reason, {
+      a: reasonsOn(date).find((r) => (r.reason ?? "") === reason && r.side === "a")?.breaks ?? 0,
+      b: reasonsOn(date).find((r) => (r.reason ?? "") === reason && r.side === "b")?.breaks ?? 0,
     }])),
     closed: closed.some((c) => c.d === date),
   }));
@@ -545,15 +547,17 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
 
 /**
  * Writes a succeeded run's days (daysOf over its window, as its items stand) and its passes' broken references counted
- * once, and marks it finalized, under its row's lock; idempotent (the references take the smaller of the stored value
- * and the window's distinct count, which a second pass leaves as it is). Called by the worker after a run and again
+ * once, and marks it finalized, under its row's lock; idempotent. `backfill`: the job a GET queued, which leaves a run
+ * already finalized as it is. Called by the worker after a run and again
  * after its close, and by the backfill job a GET queues (pre-0032 runs, failed or old-shape days).
  */
-export async function finalizeRun(on: Tx, spaceId: string, runId: string): Promise<void> {
+export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { backfill?: boolean } = {}): Promise<void> {
   const mine = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId));
   await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
     const [r] = await tx.select().from(reconRuns).where(mine).for("update");
     if (r?.status !== "succeeded") return;
+    // a backfill a GET queued finds it done already (a second GET, or the worker got there first)
+    if (o.backfill && finalizedDays(r)) return;
     const { spec, recordSpaces } = await versionRead(tx, spaceId, r.configVersionId);
     const { days, refs } = await daysOf(tx, {
       spaceId, configId: r.configId, simRunId: r.mode === "simulation" ? r.id : null, passes: spec.passes.map((p) => p.no),
@@ -563,10 +567,15 @@ export async function finalizeRun(on: Tx, spaceId: string, runId: string): Promi
     // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
     // across dates and the window also holds breaks of earlier runs (record the run on the item if that matters).
     // On the row's counters: a simulation stored its projection beside them.
+    // Only on the first finalize: after the close (or later) the window's breaks are not the run's own any more, so a
+    // second min could only drift from what the run did; a run marked not finalized after a failed refresh had it already
+    // and taking the smaller value again leaves it as it is.
     const counters = r.counters as RunCounters;
-    for (const p of spec.passes) {
-      const pc = counters.passes?.[String(p.no)];
-      if (pc) pc.brokenRefs = Math.min(pc.brokenRefs ?? pc.broken, refs.get(p.no) ?? 0);
+    if (!r.finalized) {
+      for (const p of spec.passes) {
+        const pc = counters.passes?.[String(p.no)];
+        if (pc) pc.brokenRefs = Math.min(pc.brokenRefs ?? pc.broken, refs.get(p.no) ?? 0);
+      }
     }
     await tx.update(reconRuns).set({ counters, days, finalized: true }).where(mine);
   }, on);
@@ -639,6 +648,27 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
 /** GET …/runs/:runId. */
+/** Backfill jobs (finalizeRun) a run gets before GET stops queueing them, and the least time between two. */
+export const FINALIZE_ATTEMPTS_MAX = 3;
+const FINALIZE_RETRY_SECONDS = 300;
+
+/**
+ * The backfill job a GET queued (recon.heavy, data { finalize }): finalizeRun; a failure is counted and its error
+ * (name and code, never a query's text) kept on the run, so GET stops queueing after FINALIZE_ATTEMPTS_MAX. The job
+ * itself completes (no pg-boss retry: the next GET's queues the next attempt).
+ */
+export async function backfillRun(on: Tx, spaceId: string, runId: string): Promise<void> {
+  try {
+    await finalizeRun(on, spaceId, runId, { backfill: true });
+  } catch (e) {
+    const d = errorDetail(e);
+    log.warn({ err: d, runId }, "recon run: backfill of its days failed");
+    await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => tx.update(reconRuns)
+      .set({ finalizeAttempts: sql`${reconRuns.finalizeAttempts} + 1`, finalizeError: [d.name, d.code].filter(Boolean).join(" ") })
+      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))), on);
+  }
+}
+
 /**
  * GET …/runs/:runId. Reads only (the API's 5 s pool never aggregates a run's days): a succeeded run not finalized
  * answers days and live null and queues finalizeRun on the worker (recon.heavy, one job per run), which the screen's
@@ -647,8 +677,13 @@ const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
 export async function runDetail(ctx: Ctx, configId: string, runId: string): Promise<ReconRunDto> {
   const dto = await inSpace(ctx, (tx, spaceId) => runRow(tx, spaceId, configId, runId, true));
   if (dto.status === "succeeded" && dto.days === null) {
-    await enqueue(QUEUES.reconHeavy, { spaceId: ctx.space!.id, runId, finalize: true }, { key: `finalize:${runId}` })
-      .catch((e: unknown) => log.warn({ err: errorDetail(e), runId }, "recon run: queueing its days failed"));
+    const [r] = await inSpace(ctx, (tx, spaceId) => tx.select({ attempts: reconRuns.finalizeAttempts }).from(reconRuns)
+      .where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))));
+    // at most one job per run in FINALIZE_RETRY_SECONDS, and none after FINALIZE_ATTEMPTS_MAX failures (days stay null)
+    if ((r?.attempts ?? 0) < FINALIZE_ATTEMPTS_MAX) {
+      await enqueue(QUEUES.reconHeavy, { spaceId: ctx.space!.id, runId, finalize: true }, { key: `finalize:${runId}`, singletonSeconds: FINALIZE_RETRY_SECONDS })
+        .catch((e: unknown) => log.warn({ err: errorDetail(e), runId }, "recon run: queueing its days failed"));
+    }
   }
   return dto;
 }
@@ -727,7 +762,8 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
       items: page.items.map(({ i, g, ref, amount, ccy, p }): ReconRunItemDto => ({
         id: i.id, recordId: i.recordId, side: i.side as "a" | "b", status: i.status as ItemStatus, businessDate: i.businessDate, breakReason: i.breakReason,
         breakPass: i.breakPass, extRef: ref, amountMinor: amount?.toString() ?? null, currency: ccy,
-        proposed: p?.id && p.date && i.proposedPass !== null ? {
+        // a proposal stands for a break only (one taken up since is the item's history, not a pair to accept)
+        proposed: i.status === "break" && p?.id && p.date && i.proposedPass !== null ? {
           itemId: p.id, side: p.side as "a" | "b", passNo: i.proposedPass, extRef: p.ref, amountMinor: p.amount?.toString() ?? null, currency: p.ccy, businessDate: p.date,
         } : null,
         group: g ? { id: g.id, passNo: g.passNo, kind: g.kind as GroupKind, businessDate: g.businessDate, evidence: g.evidence, members: members.get(g.id)?.members ?? [], memberCount: members.get(g.id)?.count ?? 0 } : null,

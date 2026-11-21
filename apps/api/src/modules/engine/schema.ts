@@ -52,6 +52,9 @@ export const reconRuns = pgTable("recon_runs", {
    * after its close failed. A GET of a succeeded run not finalized answers no days and queues finalizeRun.
    */
   finalized: boolean("finalized").notNull().default(false),
+  /** Backfill jobs that failed (service.ts backfillRun) and the last one's error (name and code): GET stops at 3. */
+  finalizeAttempts: integer("finalize_attempts").notNull().default(0),
+  finalizeError: text("finalize_error"),
   /**
    * Per business date and side, the source's complete_through read just before that side's intake of the date
    * ({ "2026-11-02": { "a": iso | null, "b": iso | null } }): what the run's items are complete through. Day close

@@ -117,11 +117,14 @@ async function syncQueues(b: PgBoss, options: Record<QueueName, QueueOptions>): 
 /**
  * Queues a job of `queue` under `key` (its config, source, file…), to start no sooner than `startAfter`; `id` = the
  * job's id when the caller keeps it (a recon run's id); `tx` = the transaction to write the job in, so it commits (or
- * not) with the caller's rows. Null when a job with that key is already queued: the two are merged (one queued and one
+ * not) with the caller's rows; `singletonSeconds` = at most one job of that key in each such slot of time. Null when a
+ * job with that key is already queued: the two are merged (one queued and one
  * active per key, never two of either).
  */
-export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date; id?: string; tx?: InTx }): Promise<string | null> {
-  return (await boss()).send(queue, data, { singletonKey: opts.key, startAfter: opts.startAfter, id: opts.id, ...(opts.tx ? { db: fromDrizzle(opts.tx, sql) } : {}) });
+export async function enqueue(queue: QueueName, data: object, opts: { key: string; startAfter?: Date; id?: string; tx?: InTx; singletonSeconds?: number }): Promise<string | null> {
+  return (await boss()).send(queue, data, {
+    singletonKey: opts.key, startAfter: opts.startAfter, id: opts.id, singletonSeconds: opts.singletonSeconds, ...(opts.tx ? { db: fromDrizzle(opts.tx, sql) } : {}),
+  });
 }
 
 /**

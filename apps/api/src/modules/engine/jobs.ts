@@ -24,7 +24,7 @@ import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
 import { dispatch, runScheduled } from "./schedule";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, closedDates, createRun, execRun, failRun, finalizeRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
+import { addDays, backfillRun, closedDates, createRun, execRun, failRun, projectDayClose, refreshRunDays, RUN_INTERNAL_ERROR, RunAborted, type RunMode, runRange, runRow } from "./service";
 
 /**
  * How long a run without a job (run in process: runRecon, a test) counts as under way: the longest a job may run.
@@ -204,17 +204,28 @@ export async function runJob(on: Tx, data: { spaceId: string; runId: string }, s
   }
 }
 
+/**
+ * A run's job (runScheduled: the run, then its due dates closed) and, when that closed one of its dates, its days read
+ * again so they show what the close made, also when runScheduled throws after closing some (a tick that closes nothing
+ * reads nothing again). `runner` = runScheduled (a test passes its own).
+ */
+export async function runAndRefresh(on: Tx, d: { spaceId: string; runId: string }, signal?: AbortSignal, runner: typeof runScheduled = runScheduled): Promise<void> {
+  const before = d.runId ? await closedDates(on, d.spaceId, d.runId) : 0;
+  try {
+    await runner(on, d, signal);
+  } finally {
+    if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
+  }
+}
+
 /** The engine's job handlers, on the worker's pool (src/worker.ts). */
 export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> => {
-  // a run, then its due dates closed (runScheduled), then, when that closed one of its dates, its days read again so
-  // they show what the close made (a tick that closes nothing reads nothing again)
+  // a run and its due dates closed, its days read again when that closed one (runAndRefresh); or a GET's backfill
   const run = async ({ data, signal }: { data: unknown; signal?: AbortSignal }) => {
     const d = data as { spaceId: string; runId: string; finalize?: boolean };
     // a GET found a succeeded run's days missing (before 0032, failed, older shape): write them (runDetail)
-    if (d.finalize) return finalizeRun(on, d.spaceId, d.runId);
-    const before = d.runId ? await closedDates(on, d.spaceId, d.runId) : 0;
-    await runScheduled(on, d, signal);
-    if (d.runId && (await closedDates(on, d.spaceId, d.runId)) > before) await refreshRunDays(on, d.spaceId, d.runId);
+    if (d.finalize) return backfillRun(on, d.spaceId, d.runId);
+    await runAndRefresh(on, d, signal);
   };
   return {
     // a manual run closes its due dates as a scheduled one does (Captain: day close doesn't depend on what started the run)

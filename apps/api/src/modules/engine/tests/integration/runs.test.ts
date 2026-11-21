@@ -22,9 +22,9 @@ import { ingestHandlers, records } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { engineHandlers, runJob } from "../../jobs";
-import { RunAborted } from "../../service";
-import { matchGroups, reconItems, reconRuns } from "../../schema";
+import { engineHandlers, runAndRefresh, runJob } from "../../jobs";
+import { backfillRun, RunAborted } from "../../service";
+import { matchGroups, reconDays, reconItems, reconRuns } from "../../schema";
 import { ccyEq, D, D1, gateSource, gateSpec, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
 
 type Probe = Awaited<ReturnType<typeof appRoleDb>>;
@@ -218,6 +218,56 @@ describe("runs and simulations through the API", () => {
     const [row] = (await items(r.configId, q.id, "status=break&side=a")).items;
     expect([row!.extRef, row!.breakReason, row!.proposed]).toEqual(["P1", "No counterpart", { itemId: expect.any(String), side: "b", passNo: 2, extRef: "P1", amountMinor: "101", currency: "IDR", businessDate: D1 }]);
     expect((await items(r.configId, q.id, "side=b")).items[0]!.proposed).toBeNull();
+    // a proposal stands for a break only: the same item no longer a break shows none
+    await db.update(reconItems).set({ status: "open" }).where(eq(reconItems.id, row!.id));
+    expect((await items(r.configId, q.id, "side=a")).items[0]!.proposed).toBeNull();
+  });
+
+  it("the backfill job: leaves a finalized run alone, and stops after 3 failures with days null", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "B1", amount: 100n }]);
+    await put(sb, [{ ref: "B1", amount: 100n }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
+    const q = await json<ReconRunDto>(startRun(t.op, r.configId));
+    await drain();
+    const done = await getRun(r.configId, q.id);
+    // S1: a backfill finds it finalized with days of today's shape and changes nothing (even days that differ)
+    const marked = done.days!.map((d) => ({ ...d, open: { a: 7, b: 7 } }));
+    await db.update(reconRuns).set({ days: marked }).where(eq(reconRuns.id, q.id));
+    await backfillRun(probe, A, q.id);
+    expect((await getRun(r.configId, q.id)).days).toEqual(marked);
+    // S2: a run whose days can't be written (its version gone): GET is 200 without them, queues one job per 5 minutes,
+    // counts each failure and stops queueing after the third
+    await db.update(reconRuns).set({ days: null, finalized: false, configVersionId: Bun.randomUUIDv7() }).where(eq(reconRuns.id, q.id));
+    const b = await boss();
+    const queued = async () => (await b.findJobs(QUEUES.reconHeavy, { key: `finalize:${q.id}` })).filter((j) => j.state === "created").length;
+    expect([(await getRun(r.configId, q.id)).days, (await getRun(r.configId, q.id)).days, await queued()]).toEqual([null, null, 1]);
+    await drain();
+    await backfillRun(probe, A, q.id);
+    await backfillRun(probe, A, q.id);
+    const [failed] = await db.select({ n: reconRuns.finalizeAttempts, error: reconRuns.finalizeError }).from(reconRuns).where(eq(reconRuns.id, q.id));
+    expect([failed!.n, failed!.error && !/select|from/i.test(failed!.error)]).toEqual([3, true]);
+    await b.deleteAllJobs(QUEUES.reconHeavy); // the 5-minute slot gone too: only the count can stop it now
+    expect([(await getRun(r.configId, q.id)).days, await queued()]).toEqual([null, 0]);
+    await db.update(reconRuns).set({ finalizeAttempts: 2 }).where(eq(reconRuns.id, q.id));
+    await getRun(r.configId, q.id);
+    expect(await queued()).toBe(1);
+    await b.deleteAllJobs(QUEUES.reconHeavy);
+  });
+
+  it("S3: a run's job that throws after closing a date still reads its days again", async () => {
+    const [sa, sb] = await sides();
+    await put(sa, [{ ref: "T9", amount: 100n }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
+    const q = await json<ReconRunDto>(startRun(t.op, r.configId));
+    await (await boss()).cancel(QUEUES.reconHeavy, q.id);
+    const e = await runAndRefresh(probe, { spaceId: A, runId: q.id }, undefined, async (on, d) => {
+      await runJob(on, d);
+      await db.insert(reconDays).values({ spaceId: A, configId: r.configId, businessDate: D, status: "closed", closedAt: new Date() });
+      throw new Error("boom");
+    }).catch((x: Error) => x.message);
+    expect(e).toBe("boom");
+    expect((await getRun(r.configId, q.id)).days!.map((d) => [d.date, d.closed])).toEqual([[D, true]]);
   });
 
   it("a group's members are capped at 50 with its member count", async () => {
@@ -473,6 +523,7 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     expect([(await getRun(gate.configId, q.id)).days, (await getRun(gate.configId, q.id)).live]).toEqual([asStored.days, asStored.live]);
     // days of an older shape (no `items`) count as missing the same way
     await db.update(reconRuns).set({ days: asStored.days!.map(({ items: _, ...d }) => d) }).where(eq(reconRuns.id, q.id));
+    await (await boss()).deleteAllJobs(QUEUES.reconHeavy); // past the 5-minute slot of the job before
     expect((await getRun(gate.configId, q.id)).days).toBeNull();
     await drain();
     expect((await getRun(gate.configId, q.id)).days).toEqual(asStored.days);
