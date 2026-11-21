@@ -34,8 +34,8 @@ export function useScrollsX<T extends HTMLElement>(): [React.RefCallback<T>, boo
   return [setEl, scrolls, measured, edges];
 }
 
-/** The fade on a side of a sideways-scrolling box while content is hidden past it (owner, 21 Nov): the tray grey (the header row's and the panel's surface) to clear. */
-const FADE = "pointer-events-none absolute inset-y-0 z-20 w-10 from-tray via-tray/60 to-transparent opacity-0 transition-opacity duration-(--dur-fast) data-[on]:opacity-100";
+/** The fade on a side of a sideways-scrolling box while content is hidden past it (owner, 21 Nov): the row divider's --line through the tray surface to clear: DS surfaces only, visible on a white card. */
+const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tray to-transparent opacity-0 transition-opacity duration-(--dur-fast) data-[on]:opacity-100";
 
 /**
  * Table (spec §5.7): header 40 px on the tray tint, rows --row-h (44 / compact 36), 1 px dividers, no zebra, no vertical rules.
