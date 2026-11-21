@@ -11,6 +11,8 @@ describe("activitySentence", () => {
     expect(activitySentence(e("recon.version_approve", { version: 2, specHash: "h", retired: 1 }))).toBe("Dimas Arya approved version 2; version 1 retired.");
     expect(activitySentence(e("recon.version_reject", { version: 2, comment: "Add pass 3" }))).toBe("Dimas Arya sent version 2 back: “Add pass 3”");
     expect(activitySentence(e("recon.discard", null, { code: "x", name: "X" }))).toBe("Dimas Arya deleted the draft recon.");
+    expect(activitySentence(e("recon.run", { runId: "r", version: 1, from: "2026-11-02", to: "2026-11-05" }))).toBe("Dimas Arya ran version 1 for 2–5 Nov 2026.");
+    expect(activitySentence(e("recon.simulate", { runId: "r", version: 2, specHash: "h", from: "2026-11-02", to: "2026-11-02" }))).toBe("Dimas Arya simulated draft v2 for 2 Nov 2026.");
   });
 });
 

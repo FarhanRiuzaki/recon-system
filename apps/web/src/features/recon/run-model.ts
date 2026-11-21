@@ -106,6 +106,24 @@ export function standingTotals(run: Pick<ReconRunDto, "counters" | "days" | "fro
 export const runDays = <D extends { date: string }>(run: { days: readonly D[] | null; from: string; to: string }): D[] =>
   (run.days ?? []).filter((d) => d.date >= run.from && d.date <= run.to);
 
+/**
+ * The Breaks tab's count: every item broken over the run, per side: breaks of time (grace, day close: `live.breaks`)
+ * and the items passes broke (their per-side counts). Null for a simulation (nothing closes, no Breaks tab) or a run
+ * whose live totals the API hasn't read.
+ */
+export function breakCounts(run: Pick<ReconRunDto, "mode" | "counters" | "live">): PerSide | null {
+  if (run.mode === "simulation" || !run.live) return null;
+  const out = { ...run.live.breaks };
+  for (const x of Object.values(run.counters.passes)) { out.a += x.brokenItems?.a ?? 0; out.b += x.brokenItems?.b ?? 0; }
+  return out;
+}
+
+/**
+ * Where a break without a counterpart could have found one (Explain): the other side's dates the item met in the
+ * pool, its own date ± carry over ("2–4 Nov 2026" for 3 Nov with 1 day).
+ */
+export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), shiftDate(date, carry));
+
 /** "2,000 items", or the one fact that the run found nothing new to take in. */
 export const itemsText = (n: number) => (n ? `${formatNumber(n)} items` : "no new records");
 
@@ -113,13 +131,21 @@ export const itemsText = (n: number) => (n ? `${formatNumber(n)} items` : "no ne
 export const rateText = (rate: number | null) => (rate === null ? "—" : `${formatDecimal(rate * 100, 1)}%`);
 
 /**
- * "937 matched · 24 suggested (open) · 30 duplicate · 24 · 24 waiting · match rate 93.7%" (BUILDER-SPEC count line);
- * breaks per side after waiting once there are any ("48 · 48 breaks").
+ * A count per side, named as the tiles name it: "7 src1 r2 · 8 src2 r2b waiting", or one number when both sides agree:
+ * "24 waiting per side" (designer re-check 4: a pair never borrows the "·" between counts).
  */
-export function countLine(t: Totals): string {
-  const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [`${formatNumber(t.breaks.a)} · ${formatNumber(t.breaks.b)} breaks`] : [];
+export function sidesText(x: PerSide, labels: readonly [string, string], noun: string): string {
+  return x.a === x.b ? `${formatNumber(x.a)} ${noun} per side` : `${formatNumber(x.a)} ${labels[0]} · ${formatNumber(x.b)} ${labels[1]} ${noun}`;
+}
+
+/**
+ * "937 matched · 24 suggested (open) · 30 duplicate · 24 waiting per side · match rate 93.7%" (BUILDER-SPEC count
+ * line, sides named per R4-1); breaks per side after waiting once there are any ("48 breaks per side").
+ */
+export function countLine(t: Totals, labels: readonly [string, string]): string {
+  const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [sidesText(t.breaks, labels, "breaks")] : [];
   return [`${formatNumber(t.matched)} matched`, `${formatNumber(t.suggested)} suggested (open)`, `${formatNumber(t.duplicate)} duplicate`,
-    ...(t.ambiguous ? [`${formatNumber(t.ambiguous)} ambiguous`] : []), `${formatNumber(t.waiting.a)} · ${formatNumber(t.waiting.b)} waiting`, ...breaks, `match rate ${rateText(t.rate)}`].join(" · ");
+    ...(t.ambiguous ? [`${formatNumber(t.ambiguous)} ambiguous`] : []), sidesText(t.waiting, labels, "waiting"), ...breaks, `match rate ${rateText(t.rate)}`].join(" · ");
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -273,6 +299,8 @@ export function dayPasses(days: readonly Pick<RunDay, "passes">[]): RunDay["pass
 
 /** Day close's reason for a pair that only the currency keeps apart: a card of its own in the builder (BUILDER-SPEC). */
 export const CURRENCY_DIFFERS = "Currency differs";
+/** Day close's reason for an item nothing on the other side could pair. */
+export const NO_COUNTERPART = "No counterpart";
 /** Day close's reasons in the order they read best (day close's classifier, engine sql/breaks.ts NEAR_MISS). */
 const REASON_TEXT: readonly (readonly [string, string])[] = [
   ["Currency differs", "currency differs"], ["Amount differs", "amount outside tolerance"], ["Date differs", "date differs"], ["No counterpart", "no counterpart"],

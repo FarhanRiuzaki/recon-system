@@ -37,14 +37,14 @@ export function RunControl({ spaceId, id, spec }: { spaceId: string; id: string;
       setBusy(false);
     }
   };
-  const days = (n: number) => `${n} ${n === 1 ? "day is" : "days are"}`;
+  const days = (n: number) => (n === 1 ? "1 day is past close; its open items become breaks." : `${n} days are past close; their open items become breaks.`);
   return (
     <section aria-label="Run recon" className="flex flex-wrap items-center justify-end gap-2">
       <ReplayRange label="Dates" value={range} onChange={setRange} disabled={busy} />
       <Button type="button" disabled={busy} onClick={() => (past ? setAsking(true) : void start())}>Run recon</Button>
       {asking && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setAsking(false); }} auditFields={false} reasons={[]}
-          title="Run this recon?" description={`Runs ${rangeText(range.from, range.to)}. ${days(past)} past close; their open items become breaks.`}
+          title="Run this recon?" description={`Runs ${rangeText(range.from, range.to)}. ${days(past)}`}
           impact={[]} actionLabel="Run recon" onConfirm={async () => { setAsking(false); await start(); }} />
       )}
     </section>

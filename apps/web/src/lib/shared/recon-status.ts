@@ -5,17 +5,20 @@ import type { VersionStatus } from "@starterkit/shared/sources";
 type Status = { health: Health; label: string; description: string };
 
 /**
- * One mapping for a recon's chip on every recon screen: no published version yet = Draft (nothing runs), paused =
+ * One mapping for a recon's chip on every recon screen: no published version yet = Draft (nothing runs), or In review
+ * while its draft waits for a config checker; paused =
  * stopped on purpose, otherwise Live. Matching results get their own states once the engine runs (Plan 3 Task 3).
  */
-export function reconStatus(r: Pick<ReconRowDto, "status" | "publishedVersion">): Status {
-  if (r.publishedVersion === null) return RECON_LEGEND[0]!;
-  return r.status === "paused" ? RECON_LEGEND[2]! : RECON_LEGEND[1]!;
+export function reconStatus(r: Pick<ReconRowDto, "status" | "publishedVersion"> & { draft?: { status: VersionStatus } | null }): Status {
+  // a recon not live yet whose draft waits for a checker reads "In review" (the list's rows don't carry the draft: Draft)
+  if (r.publishedVersion === null) return r.draft?.status === "in_review" ? RECON_LEGEND[1]! : RECON_LEGEND[0]!;
+  return r.status === "paused" ? RECON_LEGEND[3]! : RECON_LEGEND[2]!;
 }
 
 /** The legend of a card that shows recon states (Panel `legend`). */
 export const RECON_LEGEND: readonly Status[] = [
   { health: "stopped", label: "Draft", description: "No approved version yet, so it never runs." },
+  { health: "unknown", label: "In review", description: "No approved version yet; its first version waits for a config checker." },
   { health: "healthy", label: "Live", description: "A version is approved; it runs on its schedule." },
   { health: "stopped", label: "Paused", description: "Stopped on purpose; nothing runs until it is resumed." },
 ];

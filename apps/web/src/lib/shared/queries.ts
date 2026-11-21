@@ -169,13 +169,15 @@ type PassLike = { accept: string; cardinality: string };
 /**
  * A run's items as its results tabs ask for them: a pass tab (`pass`, the first when no tab is chosen) shows its pairs,
  * one row per group from the group's single side (`status` matched or suggested, the pass's own by default), or the
- * items it broke (`status` break, both sides); the Waiting tab is `status` open. `date` = the day the strip picked.
+ * items it broke (`status` break with its `pass`, both sides); the Waiting tab is `status` open, the Breaks tab `status`
+ * break without a pass. `date` = the day the strip picked.
  * `passes` = the run version's passes (their accept and cardinality decide the defaults).
  */
 export const reconRunItems = (spaceId: string, id: string, runId: string, passes: readonly PassLike[] = []): TableDef<RunItemFilters> => ({
   key: ENGINE_KEY[0], path: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}/items`, spec: RUN_ITEMS_SPEC,
   params: (f) => {
-    if (f.status === "open" && !f.pass) return f;
+    // Waiting (open) and Breaks (break, every pass and day close) are tabs of their own, without a pass
+    if ((f.status === "open" || f.status === "break") && !f.pass) return f;
     const pass = f.pass || "1", p = passes[Number(pass) - 1];
     const status = f.status || (p?.accept === "suggest" ? "suggested" : "matched");
     return { ...f, pass, status, side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };

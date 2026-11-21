@@ -54,7 +54,10 @@ describe("reconRunItems: the request a results tab sends", () => {
   });
   it("the items a pass broke: both sides unless one is picked", () => {
     expect(params({ pass: "1", status: "break" })).toEqual({ pass: "1", status: "break", side: "", date: "" });
-    expect(params({ status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "" });
+    expect(params({ pass: "1", status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "" });
+  });
+  it("Breaks is every break item of the run, no pass", () => {
+    expect(params({ status: "break" })).toEqual({ pass: "", status: "break", side: "", date: "" });
   });
   it("Waiting is the open items, with no pass; the date passes through", () => {
     expect(params({ status: "open", side: "a", date: "2026-11-04" })).toEqual({ pass: "", status: "open", side: "a", date: "2026-11-04" });

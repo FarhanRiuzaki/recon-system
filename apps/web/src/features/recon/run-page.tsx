@@ -23,7 +23,7 @@ import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
 import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakLabel, dayPasses, dayTotals, runDays, differenceText, isLive, rangeText, standingTotals } from "./run-model";
+import { amountText, breakCounts, breakLabel, dayPasses, dayTotals, NO_COUNTERPART, runDays, sidesText, differenceText, isLive, rangeText, standingTotals } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
@@ -46,7 +46,7 @@ function sideAmount(ms: readonly RunGroupMember[], more = 0): { text: string; cc
   return { text: `${amountText(sum.toString(), ccy)}${ms.length > 1 ? ` (${ms.length} items)` : ""}`, ccy };
 }
 
-type Tab = { key: string; label: string; pass?: number; status?: "open" };
+type Tab = { key: string; label: string; pass?: number; status?: "open" | "break" };
 /** A pass tab's label: what it did ("Pass 1 · 937 matched · 30 duplicate"); counts of the picked day when one is. */
 function passLabel(p: PassSpec, x: { matched: number; suggested: number; broken: number } | undefined) {
   const parts = [`Pass ${p.no}`];
@@ -97,19 +97,20 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
   const columns = useColumns(t.state, labels);
 
-  const title = run?.mode === "simulation" ? `Simulation of draft v${run.version}` : run ? `Run of version ${run.version}` : "Recon run";
-  // the breadcrumb names the run by its time (Captain): "Run 21 Nov, 01:40" (WIB), "Simulation 21 Nov, 01:40"
-  const crumb = run ? `${run.mode === "simulation" ? "Simulation" : "Run"} ${formatDateTime(Date.parse(run.finishedAt ?? run.startedAt))}` : undefined;
+  // a run is named by its time, in the title and the last crumb alike (Captain, R4-5): "Run 21 Nov, 01:40" (WIB)
+  const title = run ? `${run.mode === "simulation" ? "Simulation" : "Run"} ${formatDateTime(Date.parse(run.finishedAt ?? run.startedAt))}` : "Recon run";
   const trail = recon ? [{ label: recon.name, href: reconHref(spaceId, id) }] : [];
   if (isNotFound(rq.error)) return <DetailNotFound title="Recon run" noun="run" list={{ href: reconsHref(spaceId), label: "Recons" }} />;
   if ((rq.error && !run) || (vq.error && !spec)) {
-    return <div className="grid gap-section"><PageHeader title={title} crumb={crumb} trail={trail} /><Panel><Failure title="The run couldn't be loaded." error={rq.error ?? vq.error} source={BRAND.name} onRetry={() => { void rq.refetch(); void vq.refetch(); }} /></Panel></div>;
+    return <div className="grid gap-section"><PageHeader title={title} trail={trail} /><Panel><Failure title="The run couldn't be loaded." error={rq.error ?? vq.error} source={BRAND.name} onRetry={() => { void rq.refetch(); void vq.refetch(); }} /></Panel></div>;
   }
   if (!run || !spec || !recon || skeleton) return <LoadingShape sections={RECON_RUN_SHAPE} shown={skeleton} />;
 
   const s = t.state;
   const waiting = s.status === "open" && !s.pass;
-  const passNo = waiting ? 0 : Number(s.pass || "1");
+  // the Breaks tab: every break item of the run (a real run's; a simulation closes nothing)
+  const breaksTab = s.status === "break" && !s.pass;
+  const passNo = waiting || breaksTab ? 0 : Number(s.pass || "1");
   const pass = spec.passes[passNo - 1];
   const day = s.date ? run.days?.find((d) => d.date === s.date) : undefined;
   // as they stand now once the API has the run's days (live), else what the run itself did
@@ -119,11 +120,14 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const path = reconRunHref(spaceId, id, runId);
   const href = (patch: Partial<RunItemFilters>) => { const q = writeTable(s, patch, def.spec); return q?.size ? `${path}?${q}` : path; };
   const go = (patch: Partial<RunItemFilters>) => (e: React.MouseEvent) => { e.preventDefault(); t.set(patch); };
+  const breaks = breakCounts(run);
   const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, label: passLabel(p, counts[String(p.no)]), pass: p.no })),
-    { key: "waiting", label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const }];
+    { key: "waiting", label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const },
+    ...(breaks ? [{ key: "breaks", label: `Breaks · ${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`, status: "break" as const }] : [])];
+  const tabKey = waiting ? "waiting" : breaksTab ? "breaks" : `p${passNo}`;
   const x = pass ? counts[String(pass.no)] : undefined;
   const own = pass?.accept === "suggest" ? "suggested" : "matched";
-  const status = waiting ? "open" : s.status || own;
+  const status = waiting ? "open" : breaksTab ? "break" : s.status || own;
   const statusOptions = pass ? [
     ...(pass.accept === "auto" || x?.matched ? [{ value: "matched", label: "Matched", count: x?.matched ?? 0 }] : []),
     ...(pass.accept === "suggest" || x?.suggested ? [{ value: "suggested", label: "Suggested", count: x?.suggested ?? 0 }] : []),
@@ -133,25 +137,26 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const strip = run.days ?? [];
   const dayTiles = [{ date: "", t: { ...standingTotals(run, spec), closed: false } }, ...strip.map((d) => ({ date: d.date, t: dayTotals(d, spec) }))];
   const dayLabel = (date: string) => (date ? rangeText(date, date).replace(/ \d{4}$/, "") : "All dates");
-  const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: "open", side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" });
+  const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "" });
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={title} crumb={crumb} trail={trail} description={`${recon.name} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
+      <PageHeader title={title} trail={trail}
+        description={`${recon.name} · ${run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={NetworkIcon} title="Results per pass"
-        description={run.mode === "simulation" ? "Not stored: after a real run the same pairs wait in Breaks" : undefined}
+        description={run.mode === "simulation" ? "Not stored: after a real run these become breaks at day close." : undefined}
         toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
         <div className="grid gap-3 px-3 pb-3">
           {/* from 768 px: a tile per business date and a tab per pass; on a phone the same choices as two selects */}
           <div className="grid gap-2 md:hidden">
             {strip.length > 0 && (
               <Select aria-label="Business date" value={s.date} onChange={(e) => t.set({ date: e.target.value })} className="w-full">
-                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)}{d.closed ? " · closed" : ""} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.breaks && (d.breaks.a || d.breaks.b) ? ` · ${formatNumber(d.breaks.a)} · ${formatNumber(d.breaks.b)} breaks` : ""}</option>)}
+                {dayTiles.map(({ date, t: d }) => <option key={date || "all"} value={date}>{dayLabel(date)}{d.closed ? " · closed" : ""} · {formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.breaks && (d.breaks.a || d.breaks.b) ? ` · ${sidesText(d.breaks, labels, "breaks")}` : ""}</option>)}
               </Select>
             )}
-            <Select aria-label="Pass" value={waiting ? "waiting" : `p${passNo}`} onChange={(e) => { const tab = tabs.find((x) => x.key === e.target.value); if (tab) t.set(tabPatch(tab)); }} className="w-full">
+            <Select aria-label="Pass" value={tabKey} onChange={(e) => { const tab = tabs.find((x) => x.key === e.target.value); if (tab) t.set(tabPatch(tab)); }} className="w-full">
               {tabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
             </Select>
           </div>
@@ -163,8 +168,8 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
                     s.date === date ? "border-fg shadow-sm" : "border-line hover:bg-tray")}>
                   <span className="text-label text-fg">{dayLabel(date)}{d.closed ? " · closed" : ""}</span>
                   <span>{formatNumber(d.matched)} matched · {formatNumber(d.suggested)} suggested{d.duplicate ? ` · ${formatNumber(d.duplicate)} duplicate` : ""}</span>
-                  <span>{formatNumber(d.waiting.a)} {labels[0]} · {formatNumber(d.waiting.b)} {labels[1]} waiting</span>
-                  {d.breaks && (d.breaks.a > 0 || d.breaks.b > 0) && <span>{formatNumber(d.breaks.a)} {labels[0]} · {formatNumber(d.breaks.b)} {labels[1]} breaks</span>}
+                  <span>{sidesText(d.waiting, labels, "waiting")}</span>
+                  {d.breaks && (d.breaks.a > 0 || d.breaks.b > 0) && <span>{sidesText(d.breaks, labels, "breaks")}</span>}
                 </Link>
               ))}
             </div>
@@ -172,15 +177,16 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           <RouteTabs aria-label="Passes" className="max-md:hidden">
             {tabs.map((tab) => {
               const patch = tabPatch(tab);
-              const current = tab.status ? waiting : !waiting && passNo === tab.pass;
+              const current = tab.key === tabKey;
               return <Link key={tab.key} href={href(patch)} onClick={go(patch)} aria-current={current ? "page" : undefined}>{tab.label}</Link>;
             })}
           </RouteTabs>
           <div className="flex flex-wrap items-center gap-3">
             {pass && <span className="text-body-sm text-fg-2">Pass {pass.no} · {pass.name}{status === "suggested" ? " · open until someone accepts them" : ""}</span>}
+            {breaksTab && <span className="text-body-sm text-fg-2">Breaks · left open at day close</span>}
             {statusOptions.length > 1 && (
               <Segmented label={`Pass ${pass!.no} outcome`} value={status} options={statusOptions}
-                onChange={(v) => t.set({ status: v === own ? "" : v, side: "" })} />
+                onChange={(v) => t.set({ status: v === own ? "" : v, side: "", pass: v === "break" || pass!.no !== 1 ? String(pass!.no) : "" })} />
             )}
             {items && (
               <Segmented label="Side" value={s.side || "both"} options={[{ value: "both", label: "Both sides" }, { value: "a", label: labels[0] }, { value: "b", label: labels[1] }]}
@@ -189,8 +195,8 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           </div>
         </div>
         <DataTable label="Items" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
-          rowActions={items ? undefined : (r) => {
-            if (!r.group) return null;
+          rowActions={(r) => {
+            if (!r.group && !(breaksTab && r.breakReason === NO_COUNTERPART)) return null;
             const busy = explainBusy && explain?.id === r.id;
             return (
               <Button type="button" variant="secondary" size="sm" aria-label={`Explain ${r.extRef ?? "this pair"}`} aria-busy={busy || undefined}
@@ -198,10 +204,11 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
             );
           }}
           error={t.loadError ? { title: "Couldn't load the items", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-          empty={{ icon: NetworkIcon, title: isLive(run) ? "Nothing here yet" : "No items here",
-            description: isLive(run) ? "Items appear here once the run is over." : "Pick another pass, outcome or date to see its items." }} />
+          empty={breaksTab && !isLive(run) ? { icon: NetworkIcon, title: "No breaks on these dates.", description: "Breaks appear here when a date closes with items nothing paired." }
+            : { icon: NetworkIcon, title: isLive(run) ? "Nothing here yet" : "No items here",
+              description: isLive(run) ? "Items appear here once the run is over." : "Pick another pass, outcome or date to see its items." }} />
       </Panel>
-      {explain?.group && <RunExplain item={explain} spec={spec} fields={fields} labels={labels} onShown={() => setShown(true)}
+      {explain && <RunExplain item={explain} spec={spec} fields={fields} labels={labels} onShown={() => setShown(true)}
         returnFocus={() => opener.current?.isConnected && opener.current.focus()} onClose={() => setExplain(null)} />}
     </div>
   );
@@ -228,12 +235,16 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
         { key: "difference", header: "Difference", mobile: "meta", cell: (r) => differenceText(r.group?.evidence, side("a")(r).ccy) || none },
       ];
     }
-    return [ref,
-      { key: "side", header: "Side", mobile: "meta", cell: (r) => (r.side === "a" ? labels[0] : labels[1]) },
-      date,
+    const sideCol: Column<ReconRunItemDto> = { key: "side", header: "Side", mobile: "meta", cell: (r) => (r.side === "a" ? labels[0] : labels[1]) };
+    const amount: Column<ReconRunItemDto>[] = [
       { key: "amount", header: "Amount", align: "right", mobile: "meta", cell: (r) => amountText(r.amountMinor, r.currency) },
       { key: "currency", header: "Currency", mobile: "meta", cell: (r) => r.currency ?? none },
-      ...(s.status === "break" ? [{ key: "reason", header: "Reason", mobile: "meta" as const, cell: (r: ReconRunItemDto) => r.breakReason ?? none }] : []),
     ];
+    if (s.status === "break") {
+      // Breaks (designer copy): Reference, Business date, Side, Reason, Amount, Currency, Difference
+      return [ref, date, sideCol, { key: "reason", header: "Reason", mobile: "meta", cell: (r) => r.breakReason ?? none }, ...amount,
+        { key: "difference", header: "Difference", mobile: "meta", cell: (r) => differenceText(r.group?.evidence, r.currency) || none }];
+    }
+    return [ref, sideCol, date, ...amount];
   }, [pairs, s.status, labels]);
 }

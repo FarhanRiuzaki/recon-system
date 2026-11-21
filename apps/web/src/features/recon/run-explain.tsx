@@ -5,7 +5,7 @@ import { StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, differenceText, evidenceOf, rangeText } from "./run-model";
+import { amountText, counterpartWindow, differenceText, evidenceOf, rangeText } from "./run-model";
 import { conditionText, type Fields, pairText } from "./spec-model";
 
 const KIND: Record<string, string> = { auto: "Matched", suggested: "Suggested", manual: "Matched by hand", force: "Forced" };
@@ -30,7 +30,32 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
   onClose: () => void;
 }) {
   useEffect(() => { onShown(); }, [onShown]);
-  const g = item.group!;
+  const close = { onOpenChange: (o: boolean) => { if (!o) onClose(); } };
+  const focusBack = (e: Event) => { e.preventDefault(); returnFocus(); };
+  if (!item.group) {
+    // a break with no counterpart (designer): its own record, and where the other side had nothing; no conditions
+    const own = item.side === "a" ? labels[0] : labels[1], other = item.side === "a" ? labels[1] : labels[0];
+    return (
+      <Dialog open {...close}>
+        <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
+          <DialogHeader>
+            <DialogTitle>{item.breakReason ?? "Break"}</DialogTitle>
+            <DialogDescription>{own} · {rangeText(item.businessDate, item.businessDate)}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 px-6 py-5 text-body-sm md:grid-cols-2">
+            <section aria-label={own} className="grid content-start gap-2 rounded-md border border-line bg-card p-3">
+              <h3 className="text-caption text-fg-3">{own}</h3>
+              <span className="text-title-2 tabular text-fg">{amountText(item.amountMinor, item.currency)} {item.currency}</span>
+              <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span>
+              <span className="text-fg-2">{rangeText(item.businessDate, item.businessDate)}</span>
+            </section>
+            <p className="self-center text-fg-2">No {other} item with reference <span className="font-mono text-mono text-fg">{item.extRef ?? "—"}</span> on {counterpartWindow(item.businessDate, spec.carry_over_days)}.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+  const g = item.group;
   const pass = spec.passes.find((p) => p.no === g.passNo);
   const ev = evidenceOf(g.evidence);
   const ccy = g.members[0]?.currency ?? null;
@@ -39,8 +64,8 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
   const moved = (ops: readonly string[]) => preds.some((x) => ops.includes(x.op) && x.delta !== null && x.delta !== undefined && Number(x.delta) !== 0);
   const diff = { amount: moved(["amount_abs_tol", "amount_pct_tol", "eq_sum"]), date: moved(["date_window", "bday_window"]), text: differenceText(g.evidence, ccy) };
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-160" onCloseAutoFocus={(e) => { e.preventDefault(); returnFocus(); }}>
+    <Dialog open {...close}>
+      <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
         <DialogHeader>
           <DialogTitle>Pass {g.passNo}{pass ? ` · ${pass.name}` : ""}</DialogTitle>
           <DialogDescription>{[KIND[g.kind] ?? g.kind, rangeText(g.businessDate, g.businessDate), ev.chosen ? CHOSEN[ev.chosen] ?? "" : ""].filter(Boolean).join(" · ")}</DialogDescription>

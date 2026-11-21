@@ -345,7 +345,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
             {/* the live region is the state line only: the counts change with every poll */}
             <span role="status" className="text-body-sm text-fg">{sim.line}{simulation.stalled ? ` · ${STALL_TEXT}` : ""}</span>
             <span className={cn("text-caption text-fg-3 tabular", sim.dim && "opacity-60")}>
-              {totals ? countLine(totals) : `Matched ${DASH} · suggested ${DASH} · duplicate ${DASH} · waiting ${DASH} · match rate ${DASH}`}
+              {totals ? countLine(totals, [spec.sides[0].label, spec.sides[1].label]) : `Matched ${DASH} · suggested ${DASH} · duplicate ${DASH} · waiting ${DASH} · match rate ${DASH}`}
               {simulation.shown && <> · <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-fg underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Show results</Link></>}
             </span>
           </div>

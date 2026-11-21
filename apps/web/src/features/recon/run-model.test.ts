@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, simView, standingTotals } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, counterpartWindow } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -39,7 +39,8 @@ describe("run-model", () => {
   it("totals the gate run as the answer key: 937 matched, 24 suggested, 30 duplicate, 24 · 24 waiting, 93.7%", () => {
     const t = runTotals(gate, spec);
     expect(t).toMatchObject({ matched: 937, suggested: 24, duplicate: 30, ambiguous: 0, waiting: { a: 24, b: 24 }, items: 2000 });
-    expect(countLine(t)).toBe("937 matched · 24 suggested (open) · 30 duplicate · 24 · 24 waiting · match rate 93.7%");
+    expect(countLine(t, ["source1", "source2"])).toBe("937 matched · 24 suggested (open) · 30 duplicate · 24 waiting per side · match rate 93.7%");
+    expect(countLine({ ...t, waiting: { a: 7, b: 8 } }, ["source1", "source2"])).toBe("937 matched · 24 suggested (open) · 30 duplicate · 7 source1 · 8 source2 waiting · match rate 93.7%");
   });
 
   it("has no match rate when an N:1 pass matched (side A items per group unknown)", () => {
@@ -134,7 +135,7 @@ describe("run-model", () => {
     const run = { counters: gate, days, live, from: "2026-11-02", to: "2026-11-05" };
     const t = standingTotals(run, spec);
     expect(t).toMatchObject({ matched: 937, suggested: 0, duplicate: 30, waiting: { a: 0, b: 0 }, breaks: { a: 48, b: 48 }, items: 2000 });
-    expect(countLine(t)).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 · 0 waiting · 48 · 48 breaks · match rate 93.7%");
+    expect(countLine(t, ["source1", "source2"])).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 waiting per side · 48 breaks per side · match rate 93.7%");
     expect(dayPasses(days)["1"]).toMatchObject({ matched: 937, broken: 30 });
     expect(dayTotals(days[0]!, spec)).toMatchObject({ breaks: { a: 12, b: 13 }, closed: true });
     // a carry-over date before the run (1 Nov) is a tile of its own and never counts in the totals or the pass tabs
@@ -153,5 +154,25 @@ describe("run-model", () => {
     expect(standingTotals({ ...run, live: { ...live, items: { a: 2000, b: 1000 } } }, n1Spec).rate).toBe(runTotals(gate, n1Spec).rate);
     expect(itemsText(0)).toBe("no new records");
     expect(itemsText(2000)).toBe("2,000 items");
+  });
+
+  it("names the sides in a per-side count, one number when both agree (R4-1)", () => {
+    const L = ["src1 r2", "src2 r2b"] as const;
+    expect(sidesText({ a: 48, b: 48 }, L, "breaks")).toBe("48 breaks per side");
+    expect(sidesText({ a: 7, b: 8 }, L, "waiting")).toBe("7 src1 r2 · 8 src2 r2b waiting");
+  });
+
+  it("counts the Breaks tab per side: breaks of time and the items passes broke; no tab for a simulation", () => {
+    const side = (n: number) => ({ a: n, b: n });
+    const counters = { ...gate, passes: { ...gate.passes, 1: { matched: 937, suggested: 0, broken: 30, brokenItems: side(15), matchedItems: side(937), suggestedItems: side(0) } } };
+    const live = { matched: 937, suggested: 0, breaks: side(48), open: side(0) };
+    expect(breakCounts({ mode: "manual", counters, live })).toEqual({ a: 63, b: 63 });
+    expect(breakCounts({ mode: "simulation", counters, live })).toBeNull();
+    expect(breakCounts({ mode: "manual", counters, live: null })).toBeNull();
+  });
+
+  it("says where a lone break could have found its counterpart: its date ± carry over", () => {
+    expect(counterpartWindow("2026-11-03", 1)).toBe("2–4 Nov 2026");
+    expect(counterpartWindow("2026-11-03", 0)).toBe("3 Nov 2026");
   });
 });

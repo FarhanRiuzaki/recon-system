@@ -25,7 +25,7 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
         <span role="status" className="text-body-sm text-fg">
           {run.status === "failed" ? stoppedLine(run) : `${what} · ${rangeText(run.from, run.to)} · ${itemsText(t.items)}${at}`}{stalled ? ` · ${STALL_TEXT}` : ""}
         </span>
-        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{countLine(t)}</span>}
+        {run.status !== "failed" && <span className={cn("text-caption text-fg-3 tabular", live && "opacity-60")}>{countLine(t, labels)}</span>}
         {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
       </div>
       {action}
