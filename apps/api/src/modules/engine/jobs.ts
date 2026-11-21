@@ -19,7 +19,7 @@ import { log } from "../../kernel/log";
 import { recordActivity } from "../audit";
 import { todayIn } from "../ingest";
 import type { Ctx } from "../auth";
-import { draftToSimulate, markSimulated, reconConfigs, reconConfigVersions } from "../recon";
+import { discardDraft, draftToSimulate, markSimulated, reconConfigs, reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { lastClosedDay } from "./breaks";
 import { LOOKBACK_DAYS } from "./rules";
@@ -123,6 +123,21 @@ export async function requestSimulation(ctx: Ctx, configId: string, versionId: s
     await recordActivity(tx, ctx, { action: "recon.simulate", target: { type: "recon", id: c.id, label: c.name }, after: { runId: id, version: v.version, specHash: v.specHash, ...range } });
     await send(tx, spaceId, configId, id, "simulation");
     return runRow(tx, spaceId, configId, id);
+  });
+}
+
+/**
+ * DELETE …/versions/:versionId (owner, 22 Nov: Cancel while editing a live recon): the draft's simulations (their
+ * baselines, items and groups go with them, cascade), then the draft itself (recon's discardDraft, its activity entry),
+ * in one transaction. 409 while one of its simulations is queued or running.
+ */
+export function discardDraftVersion(ctx: Ctx, configId: string, versionId: string): Promise<void> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const sims = and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.configId, configId), eq(reconRuns.configVersionId, versionId), eq(reconRuns.mode, "simulation"));
+    const busy = await tx.select({ id: reconRuns.id }).from(reconRuns).where(and(sims, inArray(reconRuns.status, ["queued", "running"])));
+    if (busy.length) throw new ApiError("invalid_state", "A simulation of this draft is under way. Discard it once the simulation ends.");
+    await tx.delete(reconRuns).where(sims);
+    await discardDraft(tx, ctx, configId, versionId);
   });
 }
 

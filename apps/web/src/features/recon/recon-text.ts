@@ -37,6 +37,7 @@ export function activitySentence(e: Entry): string {
     case "recon.version_approve": { const retired = field(e.after, "retired"); return `${who} approved version ${v}${retired ? `; version ${String(retired)} retired` : ""}.`; }
     case "recon.version_reject": return `${who} sent version ${v} back: “${String(field(e.after, "comment") ?? "")}”`;
     case "recon.discard": return `${who} deleted the draft recon.`;
+    case "recon.version_discard": return `${who} discarded Draft v${String(field(e.before, "version") ?? "")}; the live version kept running.`;
     case "recon.run": return `${who} ran version ${v}${dates(e.after)}.`;
     case "recon.simulate": return `${who} simulated draft v${v}${dates(e.after)}.`;
     default: return `${who} changed the recon.`;

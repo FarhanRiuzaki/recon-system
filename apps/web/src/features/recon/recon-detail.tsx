@@ -12,10 +12,11 @@ import { BRAND } from "@starterkit/shared/brand";
 import type { ReconDto } from "@starterkit/shared/contracts/recon";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
-import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
+import { type HeaderAction, type HeaderConfirm, PageHeader } from "@/components/shell/page-header";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, isNotFound } from "@/lib/client/api";
-import { RECON_KEY } from "@/lib/shared/queries";
+import { ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { Builder, type SaveState } from "./builder";
 import { discardConfirm } from "./discard-dialog";
@@ -63,6 +64,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const roles = useSpaceRoles(spaceId);
   const start = useStartVersion(spaceId, id);
   const [save, setSave] = useState<SaveState | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const router = useRouter();
   const qc = useQueryClient();
   const skeleton = useDelayedFlag(!q.data && !q.error);
@@ -82,14 +84,30 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const st = reconStatus(r);
   const edit = editAction(r, spaceId, maker, { busy: start.isPending, run: () => start.mutate() });
   // Delete draft recon: an item of the header's ⋯ menu with its confirmation (ui-standard §1a)
+  const deleteRecon = discardConfirm(r.name, async () => {
+    await api(reconApi(spaceId, id), { method: "DELETE" });
+    toast(`Deleted the draft recon ${r.name}.`);
+    await qc.invalidateQueries({ queryKey: RECON_KEY });
+    router.push(reconsHref(spaceId));
+  });
+  // a live recon's open draft: discarded, the published version keeps running (owner, 22 Nov: Cancel while editing)
+  const draftOpen = maker && r.draft?.status === "draft";
+  const discardDraft: HeaderConfirm | null = draftOpen && r.published ? {
+    title: `Discard Draft v${r.draft!.version}?`,
+    description: `The changes since version ${r.published.version} are removed, with the draft's simulations. Version ${r.published.version} keeps running. This can't be undone.`,
+    onConfirm: async () => {
+      await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(r.draft!.id)}`), { method: "DELETE" });
+      toast(`Discarded Draft v${r.draft!.version}. Version ${r.published!.version} keeps running.`);
+      await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: ENGINE_KEY })]);
+      router.push(reconHref(spaceId, id));
+    },
+  } : null;
+  // Cancel editing: the draft goes (a live recon's), or the draft recon (one never submitted)
+  const cancel = discardDraft ?? (draftOpen && discardable(r, roles) ? deleteRecon : null);
   const more: HeaderAction[] = [
     ...(edit ? [edit] : []),
-    ...(discardable(r, roles) ? [{ label: "Delete draft recon", destructive: true as const, confirm: discardConfirm(r.name, async () => {
-      await api(reconApi(spaceId, id), { method: "DELETE" });
-      toast(`Deleted the draft recon ${r.name}.`);
-      await qc.invalidateQueries({ queryKey: RECON_KEY });
-      router.push(reconsHref(spaceId));
-    }) }] : []),
+    ...(discardDraft ? [{ label: `Discard draft v${r.draft!.version}`, destructive: true as const, confirm: discardDraft }] : []),
+    ...(discardable(r, roles) ? [{ label: "Delete draft recon", destructive: true as const, confirm: deleteRecon }] : []),
   ];
   const makerId = r.draft?.makerId ?? null;
   const by = makerId && makerId !== user.id ? (dq.data?.people.find((p) => p.id === makerId)?.name ?? null) : null;
@@ -100,7 +118,17 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   return (
     <div className="grid gap-section">
       <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by, editable ? save?.status : undefined)}
-        actions={editable && save?.status === "failed" ? <Button type="button" variant="secondary" onClick={save.retry}>Retry</Button> : undefined} more={more.length ? more : undefined} />
+        actions={(editable && save?.status === "failed") || (cancel && tab === "configuration") ? (
+          <>
+            {editable && save?.status === "failed" && <Button type="button" variant="secondary" onClick={save.retry}>Retry</Button>}
+            {cancel && tab === "configuration" && <Button type="button" variant="secondary" onClick={() => setCancelling(true)}>Cancel editing</Button>}
+          </>
+        ) : undefined} more={more.length ? more : undefined} />
+      {cancelling && cancel && (
+        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setCancelling(false); }} auditFields={false} reasons={[]} destructive
+          title={cancel.title} description={cancel.description} impact={[]} actionLabel={discardDraft ? "Discard draft" : "Delete draft recon"}
+          onConfirm={async () => { await cancel.onConfirm(); setCancelling(false); }} />
+      )}
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
       </RouteTabs>

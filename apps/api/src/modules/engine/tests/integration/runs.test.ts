@@ -446,6 +446,32 @@ describe("runs and simulations through the API", () => {
   });
 });
 
+describe("discarding a draft (owner, 22 Nov: Cancel while editing)", () => {
+  it("a config maker discards an open draft with its simulations; the published version runs on; review, only version and others refused", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]));
+    const v2 = await json<ReconVersionDto>(call("POST", `${base(r.configId)}/versions`, { token: t.mk }));
+    const sim = await json<ReconRunDto>(simulate(t.mk, r.configId, v2.id));
+    await drain();
+    const del = (token: string, v = v2.id, cfg = r.configId) => call("DELETE", `${base(cfg)}/versions/${v}`, { token });
+    expect((await del(t.op)).status).toBe(403);
+    expect((await del(t.mk, Bun.randomUUIDv7())).status).toBe(404);
+    expect((await del(t.mk)).status).toBe(204);
+    expect(await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.id, v2.id))).toEqual([]);
+    expect(await db.select().from(reconRuns).where(eq(reconRuns.id, sim.id))).toEqual([]);
+    expect(await db.select().from(reconRuns).where(eq(reconRuns.baselineOf, sim.id))).toEqual([]);
+    expect((await db.select({ status: reconConfigVersions.status }).from(reconConfigVersions).where(eq(reconConfigVersions.configId, r.configId))).map((x) => x.status)).toEqual(["published"]);
+    const [entry] = await db.select().from(activity).where(eq(activity.action, "recon.version_discard"));
+    expect(entry).toMatchObject({ targetId: r.configId, before: { version: v2.version } });
+    // a version in review waits for its checker; a recon never approved is deleted whole instead
+    const v3 = await json<ReconVersionDto>(call("POST", `${base(r.configId)}/versions`, { token: t.mk }));
+    await db.update(reconConfigVersions).set({ status: "in_review" }).where(eq(reconConfigVersions.id, v3.id));
+    expect((await del(t.mk, v3.id)).status).toBe(409);
+    const only = await recon(A, spec(sa.sourceId, sb.sourceId, [exact]), "draft");
+    expect((await del(t.mk, only.versionId, only.configId)).status).toBe(409);
+  });
+});
+
 describe("the Plan 3 gate through POST …/runs and the worker's handler", () => {
   let gate: Awaited<ReturnType<typeof recon>>;
   beforeAll(async () => {

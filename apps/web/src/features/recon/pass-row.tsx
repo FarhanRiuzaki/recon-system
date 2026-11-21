@@ -5,7 +5,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { MenuIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
-import { conditionParts, type Fields, keysText } from "./spec-model";
+import { CARDINALITY_WORDS, conditionParts, type Fields, keysText } from "./spec-model";
 
 export const DASH = "—";
 
@@ -35,7 +35,7 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
         <span className="min-w-0 truncate text-label text-fg">{pass.name}</span>
       </span>
       <span className="flex flex-wrap gap-1.5 text-caption text-fg-2">
-        <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.cardinality}</span>
+        <span className="rounded-sm bg-tray px-1.5 py-0.5">{CARDINALITY_WORDS[pass.cardinality]}</span>
         <span className="rounded-sm bg-tray px-1.5 py-0.5">{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</span>
         {pass.blocking.length > 0 && <span className="rounded-sm bg-tray px-1.5 py-0.5">Looks at the same {keysText(pass.blocking)}</span>}
       </span>
@@ -44,8 +44,9 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
         {pass.predicates.map((q, j) => {
           const c = conditionParts(q, fields);
           return (
-            <li key={j} className="text-body-sm text-fg-2 wrap-anywhere">
-              <span className="text-fg">{c.field}</span> {c.rule}<span className="ml-2 font-mono text-caption text-fg-3">{c.columns}</span>
+            <li key={j} className="grid gap-x-3 text-body-sm wrap-anywhere sm:grid-cols-[8rem_minmax(0,1fr)]">
+              <span className="text-fg">{c.field}</span>
+              <span className="text-fg-2">{c.rule}<span className="ml-2 font-mono text-caption text-fg-3">{c.columns}</span></span>
             </li>
           );
         })}

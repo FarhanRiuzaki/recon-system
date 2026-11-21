@@ -334,6 +334,25 @@ export function discardRecon(ctx: Ctx, id: string): Promise<void> {
   });
 }
 
+/**
+ * Discards draft `versionId` of a recon with a published version (owner, 22 Nov: Cancel while editing): the published
+ * version keeps running. Under the config's lock; only an open draft (not in review), never a recon's only version (a
+ * recon never approved is deleted whole: discardRecon). `recon.version_discard` in the caller's transaction (the engine
+ * deletes the draft's simulations in it first). Answers the version number.
+ */
+export async function discardDraft(tx: InTx, ctx: Ctx, configId: string, versionId: string): Promise<number> {
+  const spaceId = ctx.space!.id;
+  const c = await configOf(tx, spaceId, configId, true);
+  const vs = await tx.select().from(reconConfigVersions).where(ofConfig(c));
+  const v = vs.find((x) => x.id === versionId);
+  if (!v) throw notFound("version");
+  if (v.status !== "draft") throw wrongState(v.status === "in_review" ? "This version is waiting for a config checker. It can be discarded once they send it back." : "Only a draft can be discarded.");
+  if (!vs.some((x) => x.status === "published")) throw wrongState("This recon has no approved version to go back to. Delete the draft recon instead.");
+  await tx.delete(reconConfigVersions).where(and(ofConfig(c), eq(reconConfigVersions.id, versionId)));
+  await recordActivity(tx, ctx, { action: "recon.version_discard", target: target(c), before: { version: v.version } });
+  return v.version;
+}
+
 /** The names of `ids` (one query); a deleted user has none. */
 async function namesOf(tx: InTx, ids: (string | null)[]): Promise<Map<string, string>> {
   const wanted = [...new Set(ids.filter((x): x is string => !!x))];

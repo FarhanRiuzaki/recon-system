@@ -126,6 +126,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "recon.version_approve": ["recon", "–", "`{ version, specHash, retired }` (`retired` = the version it replaced, or null)"],
   "recon.version_reject": ["recon", "–", "`{ version, comment }`"],
   "recon.discard": ["recon", "`{ code, name }`", "–"],
+  "recon.version_discard": ["recon", "`{ version }`", "–"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

@@ -34,15 +34,16 @@ export const fieldRefs = (fields: SideFields): string[] =>
 
 /** The operators a condition may take, as the inspector names them; `group` = only in a 1:N or N:1 pass. */
 export const OPS: readonly { op: Operator; label: string; group?: true }[] = [
-  { op: "eq", label: "equals" },
-  { op: "eq_normalized", label: "equals, ignoring case and symbols" },
-  { op: "amount_abs_tol", label: "within ± (amount)" },
-  { op: "amount_pct_tol", label: "within ± % (amount)" },
-  { op: "date_window", label: "within … days" },
-  { op: "bday_window", label: "within … business days" },
-  { op: "contains", label: "contains" },
-  { op: "similarity", label: "is similar to" },
-  { op: "eq_sum", label: "sum equals", group: true },
+  // the words the Configuration reads them in (conditionParts), so editing and reading say the same (owner, 22 Nov)
+  { op: "eq", label: "the same on both sides" },
+  { op: "eq_normalized", label: "the same, ignoring case and symbols" },
+  { op: "amount_abs_tol", label: "within ± an amount" },
+  { op: "amount_pct_tol", label: "within ± a percentage" },
+  { op: "date_window", label: "within some days" },
+  { op: "bday_window", label: "within some business days" },
+  { op: "contains", label: "side A's contains side B's" },
+  { op: "similarity", label: "similar" },
+  { op: "eq_sum", label: "the sums match", group: true },
 ];
 const NEEDS: Partial<Record<Operator, [FieldKind, string]>> = {
   eq_normalized: ["text", "Text matching compares text"], contains: ["text", "Text matching compares text"], similarity: ["text", "Text matching compares text"],
@@ -427,3 +428,6 @@ export function keysText(keys: readonly FieldPair[]): string {
   const l = keys.map((k) => { const a = sideRef(k, 0), b = sideRef(k, 1); return a === b ? readerLabel(a) : `${readerLabel(a)} ↔ ${readerLabel(b)}`; });
   return l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l.at(-1)}` : (l[0] ?? "");
 }
+
+/** A pass's cardinality in people's words (the Configuration, the builder's cards and inspector). */
+export const CARDINALITY_WORDS: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one" };

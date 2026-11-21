@@ -9,10 +9,9 @@ import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
+import { CARDINALITY_WORDS, conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { useSideSource } from "./use-recons";
 
-const CARDINALITY: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one" };
 
 /** A small word chip in a pass's head. */
 const Chip = ({ children, primary }: { children: string; primary?: boolean }) => (
@@ -42,7 +41,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="min-w-0 truncate text-label text-fg"><span className="sr-only">Pass {step}: </span>{pass.name || "Untitled pass"}</h3>
           <Chip primary={pass.accept === "auto"}>{pass.accept === "auto" ? "Matches automatically" : "Suggests for review"}</Chip>
-          <Chip>{CARDINALITY[pass.cardinality]}</Chip>
+          <Chip>{CARDINALITY_WORDS[pass.cardinality]}</Chip>
         </div>
         <dl className="grid gap-3">
           <Row label="Looks at">
@@ -73,6 +72,30 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
   );
 }
 
+/** A side as a reader scans it (the Configuration's Sides and the builder's side cards): how its data arrives, the source, its filter. */
+export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: ReconSpec["sides"][number]; source: SourceDto | undefined; fields: Fields }) {
+  return (
+    <span className="flex min-w-0 items-start gap-3">
+      <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-md bg-tray text-fg-2">
+        {source ? <Icon icon={sourceKindIcon(source.kind)} size={18} /> : null}
+      </span>
+      <span className="grid min-w-0 gap-1">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span>
+          <span className="truncate text-label text-fg">{side.label}</span>
+        </span>
+        <span className="truncate text-body-sm text-fg-2">
+          {source ? [source.name, SOURCE_KIND_WORD[source.kind], source.publishedVersion ? null : "no approved version", source.owner ? `shared from ${source.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}
+        </span>
+        <span className="text-caption text-fg-3">
+          {side.filter.length ? `Only ${side.filter.map((f) => filterText(f, fields[i])).join(", and ")}` : "Every record"}
+          {side.amount_sign === "negate" ? " · amounts with the opposite sign" : ""}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 /**
  * A recon version's spec as text (ui-standard §1a "Version": values as text, never disabled inputs, no inspector): the
  * settings, the two sides, and the passes in run order as steps (owner, 22 Nov: tidy and clear for a reader).
@@ -95,29 +118,9 @@ export function SpecView({ spaceId, spec }: { spaceId: string; spec: ReconSpec }
 
       <Panel title="Sides" description="What each side reads">
         <div className="grid gap-3 md:grid-cols-2">
-          {([0, 1] as const).map((i) => {
-            const s = spec.sides[i], src = sources[i];
-            return (
-              <div key={i} className="flex min-w-0 items-start gap-3 rounded-lg border border-line bg-card p-4">
-                <span aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-md bg-tray text-fg-2">
-                  {src ? <Icon icon={sourceKindIcon(src.kind)} size={18} /> : null}
-                </span>
-                <span className="grid min-w-0 gap-1">
-                  <span className="flex min-w-0 items-baseline gap-2">
-                    <span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span>
-                    <span className="truncate text-label text-fg">{s.label}</span>
-                  </span>
-                  <span className="truncate text-body-sm text-fg-2">
-                    {src ? [src.name, SOURCE_KIND_WORD[src.kind], src.owner ? `shared from ${src.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}
-                  </span>
-                  <span className="text-caption text-fg-3">
-                    {s.filter.length ? `Only ${s.filter.map((f) => filterText(f, fields[i])).join(", and ")}` : "Every record"}
-                    {s.amount_sign === "negate" ? " · amounts with the opposite sign" : ""}
-                  </span>
-                </span>
-              </div>
-            );
-          })}
+          {([0, 1] as const).map((i) => (
+            <div key={i} className="min-w-0 rounded-lg border border-line bg-card p-4"><SideSummary i={i} side={spec.sides[i]} source={sources[i]} fields={fields} /></div>
+          ))}
         </div>
       </Panel>
 

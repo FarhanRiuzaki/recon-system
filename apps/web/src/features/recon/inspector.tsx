@@ -13,7 +13,7 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { CARDINALITIES, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, CURRENCIES, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, CARDINALITY_WORDS, CURRENCIES, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -140,17 +140,17 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
         <Input id={id("name")} value={p.name} maxLength={64} onChange={(e) => onChange({ ...p, name: e.target.value })} autoComplete="off" />
       </Field>
       <div className="grid gap-2">
-        <span className="text-label text-fg">Cardinality ({la} : {lb})</span>
-        <Segmented label="Cardinality" value={p.cardinality} options={CARDINALITIES.map((c) => ({ value: c, label: c }))} onChange={(c) => onChange(withCardinality(p, c, fields))} />
+        <span className="text-label text-fg">Pairs <span className="text-caption text-fg-3">{la} to {lb}</span></span>
+        <Segmented label="Pairs" value={p.cardinality} options={CARDINALITIES.map((c) => ({ value: c, label: CARDINALITY_WORDS[c] }))} onChange={(c) => onChange(withCardinality(p, c, fields))} />
       </div>
       <div className="grid gap-2">
-        <span className="text-label text-fg">When found</span>
-        <Segmented label="When found" value={p.accept} onChange={(accept) => onChange({ ...p, accept })}
-          options={group ? [{ value: "auto", label: "Auto-accept" }] : [{ value: "auto", label: "Auto-accept" }, { value: "suggest", label: "Suggest" }]} />
+        <span className="text-label text-fg">When it pairs</span>
+        <Segmented label="When it pairs" value={p.accept} onChange={(accept) => onChange({ ...p, accept })}
+          options={group ? [{ value: "auto", label: "Match automatically" }] : [{ value: "auto", label: "Match automatically" }, { value: "suggest", label: "Suggest for review" }]} />
       </div>
 
       <fieldset className="grid gap-3">
-        <legend className="mb-2 text-label text-fg">Find candidates by</legend>
+        <legend className="mb-2 text-label text-fg">Looks at items with the same</legend>
         {p.blocking.map((f, j) => (
           <PairRow key={j} error={place?.key === j ? place.text : null} removeLabel={`Remove matching key ${j + 1}`}
             removeReason={group && p.blocking.length === 1 ? "A 1:N or N:1 pass groups records by a matching key." : null}
@@ -162,11 +162,11 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           </PairRow>
         ))}
         <span><BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass has at most 5 matching keys." : null}
-          onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add matching key</BlockedButton></span>
+          onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add a field to look at</BlockedButton></span>
       </fieldset>
 
       <fieldset className="grid gap-3">
-        <legend className="mb-2 text-label text-fg">Conditions (all must pass)</legend>
+        <legend className="mb-2 text-label text-fg">Pairs when <span className="text-caption text-fg-3">every condition holds</span></legend>
         {p.predicates.map((q, j) => (
           <PairRow key={j} error={place?.condition === j ? place.text : null} removeLabel={`Remove condition ${j + 1}`}
             removeReason={p.predicates.length === 1 ? "A pass needs at least one condition." : group && q.op === "eq_sum" && sums === 1 ? "A 1:N or N:1 pass needs one group sum condition." : null}
@@ -187,10 +187,10 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}>Add condition</BlockedButton></span>
       </fieldset>
 
-      <Field id={id("ambiguous")} label="When several candidates fit">
+      <Field id={id("ambiguous")} label="When several fit">
         <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
           {!group && <option value="suggest">Suggest them for review</option>}
-          <option value="break">Raise a break</option>
+          <option value="break">Raise a break for someone to review</option>
         </Select>
       </Field>
 

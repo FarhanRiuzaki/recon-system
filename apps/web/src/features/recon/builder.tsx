@@ -16,20 +16,20 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
-import type { SourceKind } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addPass, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, filterText, graceText, measureText, moved, movePass,
+  addCurrencyCondition, addPass, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, measureText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, scheduleText, submitReason,
 } from "./spec-model";
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
+import { SideSummary } from "./spec-view";
 import { saveQueue } from "./save-queue";
 import { connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation } from "./use-recons";
@@ -48,7 +48,6 @@ const SAVE_DELAY_MS = 800;
 /** "Pass 2, condition 1: …" for the status line: the place and the API's sentence. */
 const problemText = (p: Place) =>
   `${p.pass !== undefined ? `Pass ${p.pass}${p.condition !== undefined ? `, condition ${p.condition + 1}` : p.key !== undefined ? `, matching key ${p.key + 1}` : ""}` : p.side !== undefined ? `Side ${p.side === 0 ? "A" : "B"}${p.filter !== undefined ? `, filter ${p.filter + 1}` : ""}` : p.setting}: ${p.text}`;
-const KIND: Record<SourceKind, string> = { file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot" };
 
 type Selected = { k: "pass"; key: string } | { k: "side"; i: 0 | 1 } | { k: "settings" };
 
@@ -71,16 +70,10 @@ function SideCard({ i, spec, source, fields, selected, onSelect }: {
   const s = spec.sides[i];
   return (
     <button type="button" aria-pressed={selected} onClick={onSelect}
-      className={cn("grid min-w-0 content-start gap-1.5 rounded-md border bg-card p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+      className={cn("grid min-w-0 content-start rounded-lg border bg-card p-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         selected ? "border-fg shadow-sm" : "border-line")}>
-      <span className="flex min-w-0 items-baseline gap-2"><span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span><span className="truncate text-label text-fg">{s.label}</span></span>
-      <span className="truncate text-caption text-fg-2">
-        {source ? [source.name, KIND[source.kind], source.publishedVersion ? `v${source.publishedVersion}` : "no approved version", source.owner ? `shared from ${source.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}
-      </span>
-      <span className="grid gap-0.5 font-mono text-mono text-fg-3 wrap-anywhere">
-        {s.filter.length ? s.filter.map((f, j) => <span key={j}>{filterText(f, fields[i])}</span>) : <span>no filter</span>}
-        {s.amount_sign === "negate" && <span>amount with the opposite sign</span>}
-      </span>
+      {/* as the Configuration reads it (owner, 22 Nov: editing looks like the config that's settled) */}
+      <SideSummary i={i} side={s} source={source} fields={fields} />
     </button>
   );
 }
@@ -437,7 +430,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
         );
       })}
 
-      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_21.25rem]")}>
+      <div className={cn("grid items-start gap-section", view === "list" && "xl:grid-cols-[minmax(0,1fr)_25rem]")}>
         <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}
           actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
           <div className="grid gap-0">

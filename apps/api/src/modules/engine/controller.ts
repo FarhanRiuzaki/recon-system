@@ -9,7 +9,7 @@ import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { requestRun, requestSimulation } from "./jobs";
+import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
 
@@ -36,6 +36,11 @@ export const engineController = () =>
       runItemPage(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run"), query), { query: ReconRunItemQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId/changes", ({ ctx, params, query }) =>
       simChangePage(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run"), query), { query: ReconSimChangeQuery, guard: { space: SPACE_ROLES } })
+    /** Discards a recon's open draft (the published version keeps running): its simulations, then the draft. */
+    .delete("/v1/spaces/:spaceId/recons/:configId/versions/:versionId", async ({ ctx, params, set }) => {
+      await discardDraftVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version"));
+      set.status = 204;
+    }, { guard: { space: ["config_maker"] } })
     /** A simulation of a draft over business dates, queued; its job also simulates the published version and compares. */
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/simulate", async (c) => {
       const b = await body(c, RunRangeBody);
