@@ -3,8 +3,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, Panel, StatusChip } from "@starterkit/ui/ds";
+import { BlockedButton, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -28,6 +29,7 @@ import {
 import { Connector, DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
+import { CanvasLoader } from "./canvas-loader";
 import { saveQueue } from "./save-queue";
 import { connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation } from "./use-recons";
@@ -357,6 +359,20 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!),
   }));
+  // List or canvas (DEC-041): the same passes and actions; the view is in the URL (?view=canvas), a phone shows the list
+  const sp = useSearchParams(), pathname = usePathname();
+  const view: "list" | "canvas" = sp.get("view") === "canvas" ? "canvas" : "list";
+  const setView = (v: "list" | "canvas") => {
+    const next = new URLSearchParams(window.location.search);
+    if (v === "canvas") next.set("view", "canvas"); else next.delete("view");
+    window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
+  };
+  const selectedId = sel.k === "side" ? (sel.i === 0 ? "side-a" : "side-b") : sel.k === "pass" ? sel.key : null;
+  const onCanvasMove = (from: number, to: number, byKey: boolean) => {
+    const key = keys[from]!;
+    move(from, to, true);
+    if (byKey) requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(key)}"]`)?.focus()));
+  };
   const onInspectorKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Escape" || sel.k !== "pass" || (e.target as HTMLElement).closest("[data-slot=popover-content],[role=dialog]")) return;
     document.getElementById(`pass-${sel.key}`)?.focus();
@@ -419,8 +435,16 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
       })}
 
       <div className="grid items-start gap-section xl:grid-cols-[minmax(0,1fr)_21.25rem]">
-        <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}>
+        <Panel title="Passes in run order" description={editable && spec.passes.length > 1 ? "Drag a pass or press Alt+↑/↓ to move it" : undefined}
+          actions={<span className="max-md:hidden"><Segmented label="Show the passes as" value={view} onChange={setView} options={[{ value: "list", label: "List" }, { value: "canvas", label: "Canvas" }]} /></span>}>
           <div className="grid gap-0">
+            {view === "canvas" && (
+              <div className="pb-3 max-md:hidden">
+                <CanvasLoader spec={spec} keys={keys} counters={counters} dim={sim.dim} selectedId={selectedId} editable={editable}
+                  onSelect={(s) => select(s)} onMove={onCanvasMove} />
+              </div>
+            )}
+            <div className={cn("grid gap-0", view === "canvas" && "md:hidden")}>
             <div className="grid gap-3 md:grid-cols-2">
               {([0, 1] as const).map((i) => <SideCard key={i} i={i} spec={spec} source={sourceOf(i)} fields={fields} selected={sel.k === "side" && sel.i === i} onSelect={() => select({ k: "side", i })} />)}
             </div>
@@ -430,6 +454,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, bar = true
               Sortable && sortable ? <Sortable rows={rows} onMove={(from, to) => move(from, to, false)} />
                 : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} />)}</ol>
             ) : <p className="rounded-md border border-dashed border-line p-4 text-body-sm text-fg-2">No passes yet.</p>}
+            </div>
             {editable && (
               <span className="pb-3">
                 <BlockedButton type="button" variant="secondary" reason={spec.passes.length >= 20 ? "A recon has at most 20 passes." : !fields[0] || !fields[1] ? "The sides' sources are still loading." : null}

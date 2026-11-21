@@ -1,0 +1,135 @@
+"use client";
+
+// The builder canvas (DEC-041, REC-S6 verdict "go with changes"): React Flow over fixed lanes (canvas-graph.ts, no
+// ELK), the same data and actions as the list: choosing a side or a pass opens it in the inspector, a pass moves by
+// drag (up and down its lane only) or Alt+↑/↓, and the simulation's counts sit on the edges, dimmed while the draft
+// differs from what was simulated. Loaded on demand (canvas-loader.tsx); never on a phone (the list is, DEC-041).
+import { Background, Controls, Handle, MarkerType, type Edge, type Node, type NodeChangeset, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
+import "@xyflow/react/dist/base.css";
+import "./recon-canvas.css";
+import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
+import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
+import { cn } from "@starterkit/ui/lib/cn";
+import { dropIndex, type GNode, LANES, laneLayout, NODE_H, NODE_W, specGraph } from "./canvas-graph";
+
+type Data = { title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null };
+export type CanvasProps = {
+  spec: ReconSpec; keys: readonly string[]; counters?: ReconRunDto["counters"]; dim: boolean;
+  /** The node open in the inspector: "side-a", "side-b" or a pass key. */
+  selectedId: string | null; editable: boolean;
+  onSelect: (s: NonNullable<GNode["select"]>) => void;
+  /** A pass moved from `from` to `to` (0-based); `byKey` when the keyboard moved it (the builder announces and refocuses). */
+  onMove: (from: number, to: number, byKey: boolean) => void;
+};
+
+const TONE_DOT: Record<NonNullable<Data["tone"]>, string> = { matched: "bg-healthy-mark", suggested: "bg-chart-1", break: "bg-degraded-mark", waiting: "bg-fg-4" };
+const toneOf = (n: GNode): Data["tone"] => (n.lane !== 3 ? null : n.title === "Matched" ? "matched" : n.title === "Suggested" ? "suggested" : n.id === "out-unmatched" ? "waiting" : "break");
+
+function LaneNode({ data, selected }: NodeProps<Node<Data>>) {
+  return (
+    <div className={cn("grid h-full content-center gap-0.5 rounded-md border bg-card px-3 shadow-xs", selected ? "border-fg" : "border-line")}>
+      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <span className="flex min-w-0 items-center gap-2 text-body-sm text-fg">
+        {data.tone && <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-full", TONE_DOT[data.tone])} />}
+        <span className="truncate">{data.title}</span>
+      </span>
+      <span className="truncate text-caption text-fg-3">{data.line}</span>
+      <Handle type="source" position={Position.Right} isConnectable={false} />
+      {data.lane === 2 && <><Handle id="top" type="target" position={Position.Top} isConnectable={false} /><Handle id="bottom" type="source" position={Position.Bottom} isConnectable={false} /></>}
+    </div>
+  );
+}
+const NODE_TYPES = { lane: LaneNode };
+const FAR = 1e6;
+
+function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove }: CanvasProps) {
+  const graph = useMemo(() => specGraph(spec, keys, counters), [spec, keys, counters]);
+  const pos = useMemo(() => laneLayout(graph), [graph]);
+  const drag = editable && spec.passes.length > 1;
+  const place = useCallback((): Node<Data>[] => graph.nodes.map((n) => {
+    const p = pos.get(n.id)!;
+    return {
+      id: n.id, type: "lane", position: p, width: NODE_W, height: NODE_H, selected: n.id === selectedId,
+      data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n) },
+      // a pass moves up and down its lane only: its x is pinned (REC-S6: 0 px sideways at 240 px of pointer)
+      draggable: drag && n.lane === 2, extent: [[p.x, -FAR], [p.x + NODE_W, FAR]],
+      ariaLabel: `${LANES[n.lane]}: ${n.title}. ${n.line}${n.lane === 2 && editable ? ". Alt+Up or Alt+Down moves it" : ""}`,
+    };
+  }), [graph, pos, selectedId, drag, editable]);
+  const [nodes, setNodes] = useState<Node<Data>[]>(place);
+  // a new graph (a pass moved, renamed, a simulation) or selection: every node back in its lane slot (set while
+  // rendering, React's pattern for state that follows a prop)
+  const [placedBy, setPlacedBy] = useState(() => place);
+  if (placedBy !== place) { setPlacedBy(() => place); setNodes(place()); }
+  const wrap = useRef<HTMLDivElement>(null);
+
+  const edges: Edge[] = useMemo(() => graph.edges.map((e) => ({
+    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: e.inLane ? "smoothstep" : "default",
+    sourceHandle: e.inLane ? "bottom" : undefined, targetHandle: e.inLane ? "top" : undefined, focusable: false,
+    markerEnd: { type: MarkerType.ArrowClosed, color: "var(--line-strong)" },
+    labelStyle: dim ? { opacity: 0.6 } : undefined,
+  })), [graph, dim]);
+
+  const passIds = graph.nodes.filter((n) => n.lane === 2).map((n) => n.id);
+  const focusNode = (id: string | undefined) => { if (id) wrap.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus(); };
+  /** Alt+↑/↓ moves a pass (as the list); ↑/↓ moves the focus in a lane, ←/→ to the nearest node of the next lane; Enter opens it. */
+  const onKeyDownCapture = (e: KeyboardEvent<HTMLDivElement>) => {
+    const id = (e.target as HTMLElement).closest(".react-flow__node")?.getAttribute("data-id");
+    const node = graph.nodes.find((n) => n.id === id);
+    if (!node) return;
+    if (e.key === "Enter" || e.key === " ") {
+      if (node.select) { e.preventDefault(); onSelect(node.select); }
+      return;
+    }
+    if (!e.key.startsWith("Arrow")) return;
+    e.preventDefault();
+    e.stopPropagation(); // React Flow would nudge the selected node 5 px: no meaning in a locked lane
+    if (e.altKey && node.lane === 2 && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      if (!editable) return;
+      const from = passIds.indexOf(node.id), to = from + (e.key === "ArrowUp" ? -1 : 1);
+      if (to >= 0 && to < passIds.length) onMove(from, to, true);
+      return;
+    }
+    const inLane = (l: number) => graph.nodes.filter((n) => n.lane === l);
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const col = inLane(node.lane), i = col.indexOf(node);
+      return focusNode(col[i + (e.key === "ArrowUp" ? -1 : 1)]?.id);
+    }
+    const y = pos.get(node.id)!.y;
+    const col = inLane(node.lane + (e.key === "ArrowLeft" ? -1 : 1));
+    focusNode(col.reduce<GNode | undefined>((best, n) => (!best || Math.abs(pos.get(n.id)!.y - y) < Math.abs(pos.get(best.id)!.y - y) ? n : best), undefined)?.id);
+  };
+
+  const onNodesChange = useCallback((c: NodeChangeset<Node<Data>>) => setNodes((ns) => c.applyTo(ns)), []); // v13: a changeset
+  /** A drop in the Passes lane takes the slot nearest its middle; anywhere else it goes back to its slot. */
+  const onNodeDragStop = useCallback((_: unknown, n: Node<Data>) => {
+    const from = passIds.indexOf(n.id), to = dropIndex(graph, pos, n.position.y);
+    if (from < 0 || from === to) { setNodes(place()); return; }
+    onMove(from, to, false);
+  }, [passIds, graph, pos, place, onMove]);
+
+  const tallest = Math.max(...LANES.map((_, l) => graph.nodes.filter((n) => n.lane === l).length));
+  // as tall as its tallest lane, within a screen
+  const height = Math.min(720, Math.max(360, tallest * (NODE_H + 24) + 140));
+  const laneX = LANES.map((_, l) => pos.get(graph.nodes.find((n) => n.lane === l)?.id ?? "")?.x);
+  return (
+    <div ref={wrap} className="recon-canvas rounded-md border border-line" style={{ height }} onKeyDownCapture={onKeyDownCapture}>
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
+        onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select) onSelect(g.select); }}
+        nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.25} maxZoom={1.5}
+        proOptions={{ hideAttribution: true }} aria-label="Passes as a canvas: sources, sides, passes in run order and their outcomes">
+        <Background gap={24} />
+        <Controls showInteractive={false} />
+        <ViewportPortal>
+          {laneX.map((x, l) => x !== undefined && (
+            <div key={l} className="absolute text-label text-fg-2" style={{ transform: `translate(${x}px, -32px)` }}>{LANES[l]}</div>
+          ))}
+        </ViewportPortal>
+      </ReactFlow>
+    </div>
+  );
+}
+
+export function ReconCanvas(p: CanvasProps) {
+  return <ReactFlowProvider><Canvas {...p} /></ReactFlowProvider>;
+}

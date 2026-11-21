@@ -1,0 +1,39 @@
+/* React Flow's --xy-* variables mapped onto the theme tokens (light, dark and every palette follow). */
+.recon-canvas .react-flow {
+  --xy-background-color: var(--bg);
+  --xy-background-pattern-color: var(--grid);
+  --xy-edge-stroke: var(--line-strong);
+  --xy-edge-stroke-selected: var(--fg-2);
+  --xy-edge-stroke-width: 1.5;
+  --xy-edge-label-background-color: var(--card);
+  --xy-edge-label-color: var(--fg-2);
+  --xy-connectionline-stroke: var(--primary);
+  --xy-node-color: var(--fg);
+  --xy-node-background-color: var(--card);
+  --xy-node-border: 1px solid var(--line);
+  --xy-node-border-selected: 1px solid var(--fg);
+  --xy-node-boxshadow-selected: none;
+  --xy-handle-background-color: var(--line-strong);
+  --xy-handle-border-color: var(--card);
+  --xy-controls-button-background-color: var(--card);
+  --xy-controls-button-background-color-hover: var(--tray);
+  --xy-controls-button-color: var(--fg-2);
+  --xy-controls-button-color-hover: var(--fg);
+  --xy-controls-button-border-color: var(--line);
+  --xy-controls-box-shadow: none;
+  --xy-selection-background-color: var(--primary-soft);
+  --xy-selection-border: 1px solid var(--primary);
+  --xy-attribution-background-color: var(--card);
+}
+.recon-canvas .react-flow__attribution a { color: var(--fg-3); }
+.recon-canvas .react-flow__node:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-md); }
+.recon-canvas .react-flow__edge-textbg { fill: var(--card); }
+.recon-canvas .react-flow__edge-text { fill: var(--fg-2); }
+/* base.css leaves the Controls buttons unstyled (style.css would style them with its own greys). */
+.recon-canvas .react-flow__controls { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.recon-canvas .react-flow__controls-button { background: var(--card); color: var(--fg-2); border-bottom: 1px solid var(--line); }
+.recon-canvas .react-flow__controls-button:hover { background: var(--tray); color: var(--fg); }
+/* a selected node shows by its border (the inspector beside it says which); React Flow's own selection shadow is off */
+.recon-canvas .react-flow__node.selected, .recon-canvas .react-flow__node:focus { box-shadow: none; }
+.recon-canvas .react-flow__node.draggable { cursor: grab; }
+.recon-canvas .react-flow__node.dragging { cursor: grabbing; }
