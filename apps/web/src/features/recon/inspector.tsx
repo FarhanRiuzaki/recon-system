@@ -70,12 +70,12 @@ function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: 
             {[code, ...free].map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Input id={`${id}-${code}`} aria-label={`${code} tolerance`} inputMode="decimal" value={v} className="min-w-0 flex-1 tabular" placeholder={(0).toFixed(currencyDecimals(code))}
-            aria-invalid={(left.has(code) && !!toleranceProblem(v)) || undefined} aria-describedby={left.has(code) && toleranceProblem(v) ? `${id}-${code}-error` : undefined}
+            aria-invalid={(left.has(code) && !!toleranceProblem(v, code)) || undefined} aria-describedby={left.has(code) && toleranceProblem(v, code) ? `${id}-${code}-error` : undefined}
             onBlur={() => setLeft((s) => new Set(s).add(code))} onChange={(e) => onChange({ ...value, [code]: e.target.value.trim() })} />
           <Button type="button" variant="ghost" size="icon-sm" aria-label={`Remove the ${code} tolerance`} onClick={() => { onChange(removeCurrency(value, code)); onRemoved?.(code, v); }}><Icon icon={CloseIcon} /></Button>
         </div>
       ))}
-      {rows.map(([code, v]) => (left.has(code) ? <PlaceError key={code} id={`${id}-${code}-error`} text={toleranceProblem(v)} /> : null))}
+      {rows.map(([code, v]) => (left.has(code) ? <PlaceError key={code} id={`${id}-${code}-error`} text={toleranceProblem(v, code)} /> : null))}
       {free.length > 0 && <span><Button type="button" variant="ghost" size="sm" onClick={add}>Add currency</Button></span>}
     </div>
   );

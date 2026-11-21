@@ -220,11 +220,16 @@ describe("a tolerance row still being filled in (autosave waits; the field says 
     expect(incompleteField(withTol({ IDR: "" }))).toBe("Fill in the IDR tolerance in pass 2.");
     expect(incompleteField(withTol({ IDR: "1,000" }))).toBe("Fill in the IDR tolerance in pass 2.");
     expect(incompleteField(withTol({ IDR: "1000.00" }))).toBeNull();
+    expect(incompleteField(withTol({ IDR: "1000.123" }))).toBe("Fill in the IDR tolerance in pass 2.");
     expect(incompleteField(withTol({}))).toBeNull();
   });
   it("the field's own error once left", () => {
-    expect(toleranceProblem("")).toBe("Enter a tolerance such as 1000.00, or remove the currency.");
-    expect(toleranceProblem("abc")).toBe("Write the tolerance as a number such as 1000.00");
-    expect(toleranceProblem("1000.5")).toBeNull();
+    expect(toleranceProblem("", "IDR")).toBe("Enter a tolerance such as 1000.00, or remove the currency.");
+    expect(toleranceProblem("abc", "IDR")).toBe("Write the tolerance as a number such as 1000.00");
+    expect(toleranceProblem("1000.5", "IDR")).toBeNull();
+    // the currency's own decimals, as the API checks them (IDR 2, JPY 0)
+    expect(toleranceProblem("1000.123", "IDR")).toBe("IDR takes at most 2 decimals, such as 1000.00.");
+    expect(toleranceProblem("1000.12", "IDR")).toBeNull();
+    expect(toleranceProblem("1000.5", "JPY")).toBe("JPY takes no decimals, such as 1000.");
   });
 });

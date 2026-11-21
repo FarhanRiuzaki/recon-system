@@ -149,10 +149,18 @@ export function addCurrency(t: Record<string, string>): Record<string, string> {
 }
 /** A tolerance value as the API takes it (contracts/recon.ts Tolerance): a number with up to 6 decimals. */
 export const TOLERANCE_VALUE = /^\d{1,15}(\.\d{1,6})?$/;
-/** Why a tolerance row can't be saved yet, or null (shown on the field when it is left). */
-export function toleranceProblem(v: string): string | null {
+/**
+ * Why a tolerance row of currency `code` can't be saved yet, or null (shown on the field when it is left): empty, not a
+ * number, or more decimals than the currency has (CURRENCY_EXPONENT, as the API checks: IDR 2).
+ */
+export function toleranceProblem(v: string, code: string): string | null {
   if (v === "") return "Enter a tolerance such as 1000.00, or remove the currency.";
-  return TOLERANCE_VALUE.test(v) ? null : "Write the tolerance as a number such as 1000.00";
+  if (!TOLERANCE_VALUE.test(v)) return "Write the tolerance as a number such as 1000.00";
+  const decimals = currencyDecimals(code);
+  if ((v.split(".")[1] ?? "").length > decimals) {
+    return decimals ? `${code} takes at most ${decimals} decimals, such as ${(1000).toFixed(decimals)}.` : `${code} takes no decimals, such as 1000.`;
+  }
+  return null;
 }
 /**
  * The first field of the spec still being filled in (a tolerance row added but empty or not a number yet), or null:
@@ -162,7 +170,7 @@ export function incompleteField(spec: ReconSpec): string | null {
   for (const p of spec.passes) {
     for (const q of p.predicates) {
       if (q.op !== "amount_abs_tol" && q.op !== "eq_sum") continue;
-      const code = Object.entries(q.tolerance).find(([, v]) => toleranceProblem(v))?.[0];
+      const code = Object.entries(q.tolerance).find(([c, v]) => toleranceProblem(v, c))?.[0];
       if (code) return `Fill in the ${code} tolerance in pass ${p.no}.`;
     }
   }
