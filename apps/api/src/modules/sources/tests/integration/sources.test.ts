@@ -293,6 +293,20 @@ describe("PUT connection", () => {
 });
 
 describe("versions: draft, submit, approve, reject", () => {
+  it("autosaves of one person within 15 minutes are one 'edited' entry; after a pause, or by someone else, a new one", async () => {
+    const s = await made();
+    const v = (await (await draft(t.both, s.id)).json()) as SourceVersionDto;
+    await adminSetsReading(v.id, ksei());
+    const edits = () => acts().then((x) => x.filter((e) => e.action === "source.version_update").length);
+    for (const n of [1, 2, 3]) expect((await patch(t.both, s.id, v.id, { ...ksei(), derive: { d: `"${n}"` } })).status).toBe(200);
+    expect(await edits()).toBe(1);
+    await db.update(sourceVersions).set({ updatedAt: new Date(Date.now() - 16 * 60_000) }).where(eq(sourceVersions.id, v.id));
+    expect((await patch(t.both, s.id, v.id, { ...ksei(), derive: { d: '"4"' } })).status).toBe(200);
+    expect(await edits()).toBe(2);
+    expect((await patch(t.mk, s.id, v.id, { ...ksei(), derive: { d: '"5"' } })).status).toBe(200);
+    expect(await edits()).toBe(3);
+  });
+
   it("a maker drafts, edits and submits; a checker who is not the maker publishes; the maker can't (409 self_approval)", async () => {
     const s = await made();
     const r = await draft(t.both, s.id);

@@ -384,6 +384,9 @@ async function sameReading(tx: InTx, ctx: Ctx, s: SourceRow, v: VersionRow, next
  * Saves a draft's whole spec; the caller becomes its maker (who last wrote the spec) and a contributor. The spec's input
  * must be of the source's kind and its calendar must exist (400). The same spec again: the version as it is, no entry.
  */
+/** Saves of one person closer together than this are one editing session: one activity entry. */
+export const EDIT_SESSION_MS = 15 * 60_000;
+
 export function updateVersion(ctx: Ctx, id: string, versionId: string, b: UpdateSourceVersionBody): Promise<SourceVersionDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await ownSource(tx, spaceId, id);
@@ -395,7 +398,12 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     if (hash === v.specHash) return versionDto(v);
     const [row] = await tx.update(sourceVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
       .where(eq(sourceVersions.id, v.id)).returning() as [VersionRow];
-    await recordActivity(tx, ctx, { action: "source.version_update", target: target(s), before: { version: v.version, specHash: v.specHash }, after: { version: v.version, specHash: hash } });
+    // one entry per editing session (owner, 21 Nov: the wizard autosaves, and every save filled the activity with
+    // "edited version 2"): the same person's saves within EDIT_SESSION_MS of their last one add none; the entry of
+    // the session's first save stands, and submit records the spec it ends with
+    // (a draft never edited yet, updated_at still its creation, logs its first edit)
+    const sameSession = v.makerId === ctx.user.id && v.updatedAt.getTime() > v.createdAt.getTime() && Date.now() - v.updatedAt.getTime() < EDIT_SESSION_MS;
+    if (!sameSession) await recordActivity(tx, ctx, { action: "source.version_update", target: target(s), before: { version: v.version, specHash: v.specHash }, after: { version: v.version, specHash: hash } });
     return versionDto(row);
   });
 }

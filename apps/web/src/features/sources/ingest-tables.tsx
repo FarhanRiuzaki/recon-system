@@ -67,6 +67,9 @@ function Table<T>({ def, title, description, icon, legendItems, columns, rowKey,
 }
 
 /** Files the inbox picked up (Figma 95:8429): a resend of the same content is listed as Rejected, never counted. */
+/** A file's rows its source's conditions left out: what is neither a record nor quarantined. */
+export const leftOut = (f: SourceFileDto) => Math.max(0, f.rowsTotal - f.rowsOk - f.rowsQuarantined);
+
 export function FilesTable({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => sourceFiles(spaceId, id), [spaceId, id]);
   return (
@@ -79,6 +82,10 @@ export function FilesTable({ spaceId, id }: { spaceId: string; id: string }) {
         // the records this file added (Figma 95:8429: a version 2 adds 2; the rest were stored already)
         { key: "rowsNew", header: "Records", mobile: "meta", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsNew) : none) },
         { key: "rowsQuarantined", header: "Quarantined", mobile: "meta", align: "right", cell: (f) => (f.status === "ingested" ? formatNumber(f.rowsQuarantined) : none) },
+        // rows the source's conditions left out (Rows to load): neither records nor quarantined, only in the total
+        ...(rows.some((f) => leftOut(f) > 0) ? [{ key: "leftOut", header: "Left out", mobile: "meta" as const, align: "right" as const,
+          help: "Rows the source's conditions (Rows to load) don't load: not stored and not quarantined.",
+          cell: (f: SourceFileDto) => (f.status === "ingested" ? formatNumber(leftOut(f)) : none) }] : []),
         { key: "result", header: "Result", mobile: "meta", className: `${WRAP} min-w-64 w-full`, cell: (f) => result(FILE_STATUS[f.status], fileResult(f, rows.find((r) => r.id === f.versionOf))) },
       ]} />
   );

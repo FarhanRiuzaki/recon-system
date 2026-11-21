@@ -118,7 +118,10 @@ function TodayTiles({ s }: { s: SourceDto }) {
   // the value is what is complete (a date, or a moment for a watermark); the caption what is still awaited or how late
   const ct = h.completeThrough ? Date.parse(h.completeThrough) : null;
   const complete = ct === null ? "None yet" : s.kind === "db_watermark" ? formatDateTime(ct) : formatDate(ct - 1);
-  const waiting = h.missingDate ? `Waiting for ${day(h.missingDate)}` : lagText(s) ?? "Up to date";
+  // a watermark source without a grace: its lag is shown but not judged (a table with no new rows lags too), so the
+  // status can say Healthy beside a long lag; the caption says why
+  const unjudged = s.kind === "db_watermark" && !h.graceMinutes && !!lagText(s);
+  const waiting = h.missingDate ? `Waiting for ${day(h.missingDate)}` : unjudged ? `${lagText(s)} · not judged: no grace set` : lagText(s) ?? "Up to date";
   return (
     <StatTiles>
       <StatTile icon={DiskIcon} label="Records today" value={s.rowsToday === null ? "—" : formatNumber(s.rowsToday)} caption={`Business date ${day(h.businessDate)}`} />
@@ -205,7 +208,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
               <Rows items={[
                 { label: "Complete through", value: completeText(s) },
                 { label: "Behind by", value: lagText(s) ?? "–" },
-                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min` : "Not set" },
+                { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
                 { label: "Last error", value: h.lastError ? errorSentence(h.lastError) : "None" },
                 { label: "Next pull", value: s.nextRunAt ? at(s.nextRunAt) : "None while paused" },
               ]} />
