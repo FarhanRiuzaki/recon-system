@@ -28,6 +28,8 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const tab = SOURCE_TABS.find((t) => t === sp.get("tab")) ?? "overview";
   const tables = [
     reads.sourceFiles(spaceId, sourceId, sp), reads.sourceSnapshots(spaceId, sourceId, sp),
+    // the Pull history card's first page (a watermark source's; any other answers an empty page)
+    ...(tab === "overview" ? [reads.sourcePulls(spaceId, sourceId)] : []),
     ...(tab === "records" ? [reads.sourceRecords(spaceId, sourceId, sp)] : []),
     ...(tab === "quarantine" ? [reads.sourceQuarantine(spaceId, sourceId, sp)] : []),
     ...(tab === "versions" ? [reads.sourceVersions(spaceId, sourceId, sp)] : []),

@@ -2,7 +2,7 @@
 // a source is shared to may read, the run now (queued once, activity entry, day_closed, paused).
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { QuarantineRowDto, SourceDto, SourceFileDto, SourceRecordDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
+import type { QuarantineRowDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -14,7 +14,7 @@ import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { makeCalendar } from "../../map";
 import { previousBusinessDay, todayIn } from "../../rules";
-import { quarantineRows, records, sourceCursors, sourceFiles, sourceSnapshots } from "../../schema";
+import { quarantineRows, records, sourceCursors, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
 import { ensureIngestPartitions } from "../../service";
 import { ingestHooks, recountDays } from "../../service";
 import { idDefault, ksei } from "../unit/fixtures";
@@ -119,6 +119,17 @@ describe("GET records (the Records tab)", () => {
     expect((await page("", t.other, B)).total).toBe(3);
     expect((await call("GET", path(A, FILE_SRC, "records"), { token: t.other })).status).toBe(403);
     expect((await call("GET", `${path(A, FILE_SRC, "records")}?businessDate=2026-13-01`)).status).toBe(400);
+  });
+});
+
+describe("GET pulls (the Pull history card)", () => {
+  it("a source's pulls newest first, paged; through a share 404", async () => {
+    const at = (m: number) => new Date(Date.UTC(2026, 10, 21, 1, m));
+    await db.insert(sourcePulls).values([1, 2, 3].map((m) => ({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: FILE_SRC, startedAt: at(m), finishedAt: at(m),
+      status: m === 2 ? "failed" : "new", rows: m, added: m, error: m === 2 ? "Can't reach the source database." : null })));
+    const page = await json<Page<SourcePullDto>>(call("GET", `${path(A, FILE_SRC, "pulls")}?pageSize=15`, { token: t.op }));
+    expect(page.items.map((p) => [p.status, p.rows, p.error])).toEqual([["new", 3, null], ["failed", 2, "Can't reach the source database."], ["new", 1, null]]);
+    expect((await call("GET", path(B, FILE_SRC, "pulls"), { token: t.other })).status).toBe(404);
   });
 });
 

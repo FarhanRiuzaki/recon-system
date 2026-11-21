@@ -19,6 +19,7 @@ import { api, isNotFound } from "@/lib/client/api";
 import { SOURCES_KEY } from "@/lib/shared/queries";
 import { discardConfirm } from "./discard-dialog";
 import type { PlainAction } from "@/components/shell/page-header";
+import { PullHistory } from "./pull-history";
 import { SourceConfig } from "./source-config";
 import { ActivityTable, FilesTable, QuarantineTable, RecordsTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
 import { SourceStatusChip } from "./source-columns";
@@ -207,6 +208,8 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
             <SnapshotsTable spaceId={spaceId} id={id} run={own ? { blocked, pending: run.isPending, onPull: (d) => run.mutate(d) } : null} />
           )}
           {s.kind === "db_watermark" && h && (
+            // the Pull card and its history side by side, the history as tall as the card (owner, 21 Nov)
+            <div className="grid items-stretch gap-section xl:grid-cols-2">
             <Panel icon={NetworkIcon} title="Pull" description="By watermark, every minute">
               <Rows items={[
                 { label: "Complete through", value: completeText(s) },
@@ -216,6 +219,8 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 { label: "Next pull", value: s.nextRunAt ? at(s.nextRunAt) : "None while paused" },
               ]} />
             </Panel>
+            {own && <PullHistory spaceId={spaceId} id={id} />}
+            </div>
           )}
           {s.connection && (
             <Panel icon={KeyIcon} title="Connection" description="The credential is stored encrypted and never shown">

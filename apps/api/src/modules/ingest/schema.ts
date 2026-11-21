@@ -68,6 +68,30 @@ export const sourceCursors = pgTable("source_cursors", {
   foreignKey({ name: "source_cursors_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
 ]);
 
+/**
+ * One watermark pull (owner, 21 Nov: the source's Pull history): when it ran, how it ended and what it brought. `status`:
+ * `new` (records added), `nothing_new`, `failed` (a connection or read error, in `error`), `paused` (the table no longer
+ * fits the version). `rows` read, `added` new records, `quarantined` lines, `left_out` by the conditions; `watermark`
+ * the position it reached. Each source keeps PULL_DAYS days (pullSource drops older rows of its own source).
+ */
+export const sourcePulls = pgTable("source_pulls", {
+  id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }).notNull(),
+  status: text("status").notNull(),
+  rows: integer("rows").notNull().default(0),
+  added: integer("added").notNull().default(0),
+  quarantined: integer("quarantined").notNull().default(0),
+  leftOut: integer("left_out").notNull().default(0),
+  watermark: text("watermark"),
+  error: text("error"),
+}, (t) => [
+  index("source_pulls_source_started").on(t.spaceId, t.sourceId, t.startedAt.desc()),
+  foreignKey({ name: "source_pulls_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
+]);
+
 /** A snapshot pull of one business date: at most one loading and one active per date; replaced ones stay, superseded. */
 export const sourceSnapshots = pgTable("source_snapshots", {
   id: uuid("id").primaryKey(),

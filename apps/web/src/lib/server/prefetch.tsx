@@ -16,7 +16,7 @@ import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
   ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
   draftSimulations, reconActivity, reconLatestRuns, reconRecordRuns, reconDetail, reconRun, reconRunItems, RECONS, reconVersion, reconVersions, sideSourceOptions,
-  sourceActivity, sourceDetail, sourceFiles, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions,
+  sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
 } from "@/lib/shared/queries";
 import { pickLastRuns } from "@/lib/shared/recon-runs";
@@ -76,6 +76,7 @@ export const reads = {
   sourceFiles: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceFiles(spaceId, id), sp, IngestListQuery),
   sourceSnapshots: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceSnapshots(spaceId, id), sp, IngestListQuery),
   sourceQuarantine: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceQuarantine(spaceId, id), sp, IngestListQuery),
+  sourcePulls: (spaceId: string, id: string): Read => ({ key: sourcePullsFirst(spaceId, id).key, path: sourcePullsFirst(spaceId, id).url }),
   sourceRecords: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceRecords(spaceId, id), sp, RecordListQuery),
   sourceVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceVersions(spaceId, id), sp, SourceVersionListQuery),
   sourceActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceActivity(spaceId, id), sp, IngestListQuery),

@@ -504,6 +504,20 @@ export type IngestListQuery = z.infer<typeof IngestListQuery>;
  */
 export const RecordListQuery = ListQuery.omit({ sort: true }).extend({ businessDate: isoDate.optional() });
 export type RecordListQuery = z.infer<typeof RecordListQuery>;
+/** One watermark pull (GET …/pulls, newest first): how it ended and what it brought. */
+export const SourcePullDto = z.object({
+  id: z.string(),
+  startedAt: z.string(),
+  finishedAt: z.string(),
+  status: z.enum(["new", "nothing_new", "failed", "paused"]),
+  rows: z.number().int(),
+  added: z.number().int(),
+  quarantined: z.number().int(),
+  leftOut: z.number().int(),
+  watermark: z.string().nullable(),
+  error: z.string().nullable(),
+});
+export type SourcePullDto = z.infer<typeof SourcePullDto>;
 /** A stored record: its recon fields, its stored columns and where it came from (a file by name, a pull, a snapshot). */
 export const SourceRecordDto = z.object({
   id: z.string(),

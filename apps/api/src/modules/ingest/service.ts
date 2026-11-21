@@ -17,7 +17,7 @@
 // A source of an archived space is not run at all (load answers null).
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
+  IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
 import type { DbEngine, SourceKind, SourceStatus } from "@starterkit/shared/sources";
 import { and, count, desc, eq, exists, inArray, isNull, max, or, sql } from "drizzle-orm";
@@ -42,7 +42,7 @@ import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
 import { type Baseline, completeThroughOf, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, nextRunOf, previousBusinessDay, todayIn } from "./rules";
-import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourceSnapshots } from "./schema";
+import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
 export type Scope = { spaceId: string; sourceId: string };
@@ -266,17 +266,23 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
   const input = l.spec.input;
   const from: From = input.table !== undefined ? { table: input.table } : { query: input.query! };
   const wm = input.watermark;
-  const c = ingestHooks.connect(l.conn);
+  // the pull's history row (source_pulls), written however it ends, a connection that can't even open included
+  const started = new Date();
+  const counts = newCounts();
+  let reached: string | null = l.cursor?.watermark ?? null;
+  let outcome: { status: "new" | "nothing_new" | "failed" | "paused"; error: string | null } = { status: "failed", error: "The pull stopped on an unexpected error." };
+  let c: Connector | null = null;
   try {
+    c = ingestHooks.connect(l.conn);
     const drift = await checkColumns(s, on, l, c, from, [wm.column, wm.id_column]);
     if (drift) {
       await inScope(s, on, (tx) => pause(tx, s, drift.message, drift.columns));
+      outcome = { status: "paused", error: drift.message };
       return "paused";
     }
     const wmField = l.spec.fields.find((f) => f.name === wm.column);
     const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, id: l.cursor.watermarkId } : null;
     const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
-    const counts = newCounts();
     let n = 0;
     for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookbackSeconds: input.lookback_seconds, chunk: input.chunk })) {
       const last = page[page.length - 1]!;
@@ -287,14 +293,33 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
         await writeLines(tx, s, l, origin, lines, counts);
         await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, input.lookback_seconds, wmField));
       }));
+      reached = mark.watermark;
     }
     if (!n) await inScope(s, on, (tx) => setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }));
+    outcome = { status: counts.added ? "new" : "nothing_new", error: null };
     return "pulled";
   } catch (e) {
-    return connectorFailed(s, on, e);
+    const r = await connectorFailed(s, on, e);
+    outcome = { status: r, error: e instanceof ConnectorError ? e.message : null };
+    return r;
   } finally {
-    await c.close();
+    await c?.close();
+    await recordPull(s, on, { started, counts, reached, ...outcome }).catch(() => {}); // the history never fails the pull
   }
+}
+
+/** How long a source's pull history is kept (source_pulls). */
+export const PULL_DAYS = 30;
+/** Writes one pull's history row and drops this source's rows older than PULL_DAYS (a few per pull at most). */
+async function recordPull(s: Scope, on: Tx, p: { started: Date; counts: Counts; reached: string | null; status: string; error: string | null }): Promise<void> {
+  await inScope(s, on, async (tx) => {
+    await tx.insert(sourcePulls).values({
+      id: Bun.randomUUIDv7(), ...s, startedAt: p.started, finishedAt: new Date(), status: p.status, rows: p.counts.total, added: p.counts.added,
+      quarantined: p.counts.quarantined, leftOut: Math.max(0, p.counts.total - p.counts.ok - p.counts.quarantined), watermark: p.reached, error: p.error,
+    });
+    await tx.delete(sourcePulls).where(and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.sourceId),
+      sql`${sourcePulls.startedAt} < now() - make_interval(days => ${PULL_DAYS})`));
+  });
 }
 
 /**
@@ -650,6 +675,22 @@ export function quarantinePage(ctx: Ctx, id: string, q: IngestListQuery): Promis
       map: ({ r, name, version }) => ({
         id: r.id, origin: r.origin as QuarantineRowDto["origin"], originId: r.originId, file: name === null ? null : { name, version }, line: r.lineNo, raw: r.raw,
         reasons: r.reasons as Record<string, string>, businessDate: day(r.businessDate), createdAt: r.createdAt.toISOString(),
+      }),
+    });
+  });
+}
+
+/** GET …/pulls (the Pull history card): a watermark source's pulls of the last PULL_DAYS days, newest first; its own space only. */
+export function pullPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<SourcePullDto>> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await readable(tx, spaceId, id, true);
+    const where = and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.id));
+    return pageQuery({
+      rows: tx.select().from(sourcePulls).where(where).$dynamic(), count: tx.select(one).from(sourcePulls).where(where).$dynamic(),
+      orderBy: [desc(sourcePulls.startedAt), desc(sourcePulls.id)], query: q, on: tx,
+      map: (p) => ({
+        id: p.id, startedAt: p.startedAt.toISOString(), finishedAt: p.finishedAt.toISOString(), status: p.status as SourcePullDto["status"],
+        rows: p.rows, added: p.added, quarantined: p.quarantined, leftOut: p.leftOut, watermark: p.watermark, error: p.error,
       }),
     });
   });

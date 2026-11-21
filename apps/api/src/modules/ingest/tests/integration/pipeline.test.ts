@@ -19,7 +19,7 @@ import { db } from "../../../../kernel/db";
 import { calendars, sourceConnections, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { type Connector, ConnectorError, type Row, type Secret } from "../../connectors";
-import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourceSnapshots } from "../../schema";
+import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
 import { currentRecord, ensureIngestPartitions, ingestFile, ingestHooks, type InboxFile, pullSource, scanSource, snapshotSource } from "../../service";
 import { KSEI_FILE, ksei } from "../unit/fixtures";
 
@@ -307,6 +307,24 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     expect(c).toMatchObject({ lastError: null, watermark: `2026-11-19T01:00:05.${ms}000Z` });
     expect(c!.completeThrough!.toISOString()).toBe(`2026-11-19T00:58:05.${ms}Z`); // watermark − lookback
     expect((await expectCounters(s)).reduce((n, x) => n + Number(x.split(" ")[2]), 0)).toBe(rows);
+  });
+
+  it("each pull leaves its history row: new with its counts, nothing new, failed with the reason (source_pulls)", async () => {
+    const { a } = synthPair({ ...DEFAULTS, rows: 5, seed: 3, date: "2026-11-19" });
+    for (const [i, r] of a.entries()) {
+      await src`insert into bifast (updated_at, ext_ref, account_ref, amount, event_time)
+        values (${`2026-11-19T01:00:0${i}Z`}::timestamptz, ${r.ext_ref}, ${r.account_ref}, ${(Number(r.amount_minor) / 100).toFixed(2)}::numeric, ${r.event_time.toISOString()}::timestamptz)`;
+    }
+    const s = await source(A, bifastSpec({ lookback: 0 }));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    ingestHooks.connect = () => { throw new ConnectorError("host", null, "Can't reach the source database."); };
+    expect(await pullSource(scope(s), probe)).toBe("failed");
+    const pulls = await db.select().from(sourcePulls).where(eq(sourcePulls.sourceId, s.sourceId)).orderBy(asc(sourcePulls.startedAt), asc(sourcePulls.id));
+    expect(pulls.map((p) => [p.status, p.rows, p.added, p.quarantined, p.error])).toEqual([
+      ["new", 5, 5, 0, null], ["nothing_new", 0, 0, 0, null], ["failed", 0, 0, 0, "Can't reach the source database."],
+    ]);
+    expect(pulls[0]!.watermark).toBe(pulls[2]!.watermark); // the position reached stays through a failure
   });
 
   it("a page the connector sends twice before it gives up (\"did not move\") is stored once; the source pauses with the reason", async () => {

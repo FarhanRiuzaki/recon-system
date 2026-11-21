@@ -112,6 +112,11 @@ const ingestTable = (what: "files" | "snapshots" | "quarantine") => (spaceId: st
 export const sourceFiles = ingestTable("files");
 export const sourceSnapshots = ingestTable("snapshots");
 export const sourceQuarantine = ingestTable("quarantine");
+/** A watermark source's newest pulls, the Pull history card's first page (older pages load as it scrolls). */
+export const PULL_PAGE = 25;
+export const sourcePullsFirst = (spaceId: string, id: string) => ({
+  key: [INGEST_KEY[0], "pulls", spaceId, id, "first"] as const, url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/pulls?page=1&pageSize=${PULL_PAGE}`,
+});
 /** A source's current records (the Records tab): `q` the start of a reference or account, `businessDate` one date. */
 export type RecordFilters = { q: string; businessDate: string };
 const RECORDS_SPEC: TableSpec<RecordFilters> = { sorts: [], defaultSort: "", search: ["q"], filters: { q: text(200), businessDate: isoDate } };
