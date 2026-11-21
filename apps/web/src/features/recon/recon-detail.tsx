@@ -21,6 +21,7 @@ import { Builder, type SaveState } from "./builder";
 import { discardConfirm } from "./discard-dialog";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
+import { RunControl } from "./run-control";
 import { RunSummary } from "./run-summary";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
@@ -77,6 +78,8 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   if (!r || skeleton) return <LoadingShape sections={RECON_SHAPE} shown={skeleton} />;
 
   const maker = roles.includes("config_maker");
+  // who may start a run of the published version (POST …/runs)
+  const runner = roles.some((x) => x === "config_maker" || x === "space_admin" || x === "operator");
   const st = reconStatus(r);
   const edit = editAction(r, spaceId, maker, { busy: start.isPending, run: () => start.mutate() });
   // Delete draft recon: an item of the header's ⋯ menu with its confirmation (ui-standard §1a)
@@ -109,6 +112,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
             {building && shown && <Builder key={shown.id} spaceId={spaceId} recon={r} version={shown} editable={editable} canEdit={maker} onSaveState={setSave} />}
+            {!building && r.published && runner && <RunControl spaceId={spaceId} id={id} spec={r.published.spec} />}
             {!building && last.data && r.published && <RunSummary run={last.data} spec={r.published.spec}
               labels={[r.published.spec.sides[0].label, r.published.spec.sides[1].label]} action={<Button asChild variant="secondary"><Link href={reconRunHref(spaceId, id, last.data.id)}>Open run</Link></Button>} />}
             {!building && shown && <SpecView spaceId={spaceId} spec={shown.spec} />}

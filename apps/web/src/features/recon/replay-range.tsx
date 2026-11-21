@@ -12,10 +12,10 @@ import { rangeText, replayEnd } from "./run-model";
 const Calendar = lazy(() => import("@starterkit/ui/ds/calendar").then((m) => ({ default: m.Calendar })));
 
 /**
- * The business dates a simulation replays (BUILDER-SPEC "Replay select"): one day or a range of at most 31 dates, none
+ * The business dates a simulation replays or a run covers (BUILDER-SPEC "Replay select"; `label` names it): one day or a range of at most 31 dates, none
  * after today. The first pick starts the range, the second ends it (an earlier day starts it again) and closes.
  */
-export function ReplayRange({ value, onChange, disabled }: { value: DateRange; onChange: (r: DateRange) => void; disabled?: boolean }) {
+export function ReplayRange({ value, onChange, disabled, label = "Replay" }: { value: DateRange; onChange: (r: DateRange) => void; disabled?: boolean; label?: string }) {
   const [open, setOpen] = useState(false);
   const [start, setStart] = useState<string | null>(null);
   const [today] = useState(() => appDate(Date.now()));
@@ -29,7 +29,7 @@ export function ReplayRange({ value, onChange, disabled }: { value: DateRange; o
     <Popover open={open} onOpenChange={(o) => { setOpen(o); setStart(null); }}>
       <PopoverTrigger asChild>
         <Button type="button" variant="secondary" disabled={disabled} className="justify-between gap-2 max-md:w-full">
-          Replay {rangeText(value.from, value.to)}<Icon icon={ChevronDownIcon} className="text-fg-3" />
+          {label} {rangeText(value.from, value.to)}<Icon icon={ChevronDownIcon} className="text-fg-3" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" aria-label="Business dates to replay" className="w-auto p-0">

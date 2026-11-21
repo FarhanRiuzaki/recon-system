@@ -24,6 +24,20 @@ export function rangeText(from: string, to: string): string {
 }
 
 /** The replay range before any simulation: the day before today (the last day a daily run covers). */
+/**
+ * How many of business dates `from`..`to` are past their close moment at `now` (as the API's closeMoment: a daily
+ * recon's date closes at its run time on the date `business_date_offset` days later, else at `close_at`, WIB): a run
+ * over them makes their open items breaks.
+ */
+export function pastClose(spec: Pick<ReconSpec, "close_at" | "schedule">, r: DateRange, now = Date.now()): number {
+  let n = 0;
+  for (let d = r.from; d <= r.to; d = shiftDate(d, 1)) {
+    const [day, at] = spec.schedule.kind === "daily" ? [shiftDate(d, spec.schedule.business_date_offset), spec.schedule.at] : [d, spec.close_at];
+    if (Date.parse(`${day}T${at}:00+07:00`) <= now) n++;
+  }
+  return n;
+}
+
 export const defaultReplay = (now = Date.now()): DateRange => { const d = shiftDate(appDate(now), -1); return { from: d, to: d }; };
 /** The last business date a replay starting on `from` may end on (RUN_RANGE_MAX_DAYS dates, none after today). */
 export function replayEnd(from: string, today: string): string {
