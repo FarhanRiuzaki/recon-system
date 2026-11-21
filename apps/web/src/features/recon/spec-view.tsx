@@ -81,8 +81,8 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
       </span>
       <span className="grid min-w-0 gap-1">
         <span className="flex min-w-0 items-baseline gap-2">
-          <span className="text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span>
-          <span className="truncate text-label text-fg">{side.label}</span>
+          <span className="shrink-0 whitespace-nowrap text-caption text-fg-3">Side {i === 0 ? "A" : "B"}</span>
+          <span className="min-w-0 truncate text-label text-fg" title={side.label}>{side.label}</span>
         </span>
         <span className="truncate text-body-sm text-fg-2">
           {source ? [source.name, SOURCE_KIND_WORD[source.kind], source.publishedVersion ? null : "no approved version", source.owner ? `shared from ${source.owner.name}` : null].filter(Boolean).join(" · ") : "Loading the source…"}
