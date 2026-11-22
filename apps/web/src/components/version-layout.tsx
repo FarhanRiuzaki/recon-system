@@ -3,7 +3,7 @@
 import { type ChangeEvent, type ReactNode, useState } from "react";
 import { BlockedButton, Field, Panel } from "@starterkit/ui/ds";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { ErrorIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { REVIEW_COMMENT_MAX } from "@starterkit/shared/sources";
 import { errorText } from "@/lib/client/api";
@@ -93,8 +93,8 @@ export function VersionDecision({ id, version, mine, approveWhy, rejectWhy, effe
         <BlockedButton reason={approveWhy} disabled={busy !== null} aria-busy={busy === "approve" || undefined} onClick={() => void decide("approve")}>
           {busy === "approve" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Approve version {version}
         </BlockedButton>
-        <BlockedButton variant="secondary" reason={rejectWhy} disabled={busy !== null} aria-busy={busy === "reject" || undefined} onClick={() => void decide("reject")}>
-          {busy === "reject" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Reject
+        <BlockedButton variant="caution" reason={rejectWhy} disabled={busy !== null} aria-busy={busy === "reject" || undefined} onClick={() => void decide("reject")}>
+          <Icon icon={busy === "reject" ? SpinnerIcon : ErrorIcon} className={busy === "reject" ? "motion-safe:animate-spin" : undefined} />Reject
         </BlockedButton>
         <p className="max-w-[72ch] text-caption text-fg-3">{effect}</p>
       </div>

@@ -14,10 +14,11 @@ import { Pagination } from "./pagination";
 const html = (el: ReturnType<typeof h>) => renderToStaticMarkup(el);
 
 describe("Panel (tray + card)", () => {
-  it("tray holds the header (title-2, count, caption) and one card with the content", () => {
+  it("tray holds the header (title-3 600, fg-2 icon, count, caption) and one card with the content", () => {
     const out = html(h(Panel, { title: "Sessions", count: 312, description: "Newest first", icon: UsersIcon, children: h("p", null, "body") }));
     expect(out).toMatch(/^<section class="[^"]*rounded-xl[^"]*bg-tray[^"]*p-tray/);
-    expect(out).toContain('<h2 class="text-title-2 text-fg">Sessions</h2>');
+    expect(out).toContain('<h2 class="text-title-3 text-fg">Sessions</h2>');
+    expect(out).toMatch(/<svg[^>]*class="[^"]*size-4 shrink-0 text-fg-2/);
     expect(out).toMatch(/data-slot="count-badge"[^>]*>312</);
     expect(out).toContain("Newest first");
     expect(out).toMatch(/<div class="[^"]*rounded-lg border border-line bg-card p-4[^"]*"><p>body<\/p><\/div>/);
@@ -29,6 +30,14 @@ describe("Panel (tray + card)", () => {
   it("description: after a middot on the title row; on a phone its own line, no middot", () => {
     const out = html(h(Panel, { title: "Users", description: "Select rows", children: "x" }));
     expect(out).toMatch(/<p class="min-w-0 grow basis-48 text-body-sm text-fg-3 max-md:order-last max-md:basis-full"><span aria-hidden="true" class="mr-2 text-fg-4 max-md:hidden">·<\/span>Select rows<\/p>/);
+  });
+  it("tone quiet (history): no tray fill, the title in fg-2, the card unchanged", () => {
+    const out = html(h(Panel, { title: "Run history", tone: "quiet", children: "x" }));
+    const tray = /^<section class="([^"]*)"/.exec(out)![1]!.split(" ");
+    expect(tray).toEqual(expect.arrayContaining(["bg-transparent", "border-line"]));
+    expect(tray).not.toContain("bg-tray");
+    expect(out).toContain('<h2 class="text-title-3 text-fg-2">Run history</h2>');
+    expect(out).toContain("bg-card");
   });
   it("flat: card only, no tray; cards: no inner card wrapper", () => {
     expect(html(h(Panel, { variant: "flat", children: "x" }))).not.toContain("bg-tray");

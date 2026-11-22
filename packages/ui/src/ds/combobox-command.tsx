@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Icon } from "../ui/icon";
-import { CheckIcon, ChevronDownIcon, SearchIcon } from "../ui/icons";
+import { CheckIcon, ChevronDownIcon, RefreshIcon, SearchIcon } from "../ui/icons";
 import { Skeleton } from "../ui/skeleton";
 
 export type CommandOption = {
@@ -74,7 +74,7 @@ export function CommandCombobox({
         <CommandList aria-label={label} className={sheet ? "max-md:max-h-none max-md:flex-1" : undefined}>
           {loading ? <div className="grid gap-1 p-1"><p role="status" className="sr-only">{loadingText ?? "Searching…"}</p>
             {[0, 1, 2].map((i) => <div key={i} aria-hidden="true" className="grid gap-1.5 px-2 py-2"><Skeleton className="h-3.5 w-2/3" /><Skeleton className="h-3 w-1/3" /></div>)}</div>
-            : error ? <div role="alert" className="grid gap-2 p-4 text-body-sm"><p>{error}</p>{onRetry && <Button type="button" variant="secondary" disabled={retryDisabled} onClick={onRetry}>Retry</Button>}</div> : <>
+            : error ? <div role="alert" className="grid gap-2 p-4 text-body-sm"><p>{error}</p>{onRetry && <Button type="button" variant="secondary" disabled={retryDisabled} onClick={onRetry}><Icon icon={RefreshIcon} />Retry</Button>}</div> : <>
               <CommandEmpty>{emptyText ?? "No matching options."}</CommandEmpty>
               {grouped(options).map(([g, os]) => (g === null ? os.map(item) : <CommandGroup key={g} heading={g}>{os.map(item)}</CommandGroup>))}
             </>}

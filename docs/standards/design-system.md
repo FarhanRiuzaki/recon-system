@@ -157,7 +157,7 @@ All colours are CSS custom properties in `packages/ui/src/styles/tokens.css`, ma
 |---|---|---|---|
 | `--bg` | `#f1f1f3` | App background, sidebar | — |
 | `--sheet` | `#ffffff` | Content sheet | — |
-| `--tray` | `#f4f4f6` | Tray, table header, segmented track, KPI group | fg-3 on tray 4.87:1 |
+| `--tray` | `#eeeef2` | Tray, table header, segmented track, KPI group (one step deeper than `--bg` so a panel reads as a frame) | fg-3 on tray 4.62:1, degraded ink 4.56:1 |
 | `--card` | `#ffffff` | Inner card, table rows, chart surface | — |
 | `--inset` | `#f4f4f5` | Inset well inside a card (sparkline wells, code) | fg-3 4.59:1 |
 | `--raised` | `#ffffff` | Menus, popovers, dialogs (with shadow) | — |
@@ -167,7 +167,7 @@ All colours are CSS custom properties in `packages/ui/src/styles/tokens.css`, ma
 | `--grid` | `#ececee` | Chart gridlines (dashed) | non-text |
 | `--fg` | `#151518` | Primary text, KPI values | 18.2:1 on card |
 | `--fg-2` | `#4a5263` | Secondary text, labels, panel titles' icons (cool grey, from Airform's ink family) | 7.84:1 card, 6.95:1 stopped-soft |
-| `--fg-3` | `#636b7c` | Muted text, captions, axis ticks, denominators | 5.35:1 card, 5.00:1 tray, 4.74:1 stopped-soft |
+| `--fg-3` | `#636b7c` | Muted text, captions, axis ticks, denominators | 5.35:1 card, 4.62:1 tray, 4.74:1 stopped-soft |
 | `--fg-4` | `#a1a1aa` | Disabled, placeholder glyphs only — never information | decorative |
 | `--primary` | `#0d1530` | Brand navy: selection, links, focus ring, checkbox, active tab underline. Links are always underlined: navy is 1.01:1 against `--fg` | 17.99:1 card, 16.23:1 bg |
 | `--primary-hover` | `#1b2547` | | white on it 14.98:1 |
@@ -188,12 +188,12 @@ and a soft (chip bg):
 | State | Mark | Ink | Soft | Shape |
 |---|---|---|---|---|
 | Healthy | `#16a05a` | `#117a46` | `#e9f7ef` | filled circle-check |
-| Degraded | `#c96a05` | `#b25309` | `#fff2e6` | triangle |
+| Degraded | `#c96a05` | `#ae5109` | `#fff2e6` | triangle |
 | Down | `#e5303a` | `#c8262f` | `#feeced` | circle-x |
 | Stopped | `#8a8a93` | `#55555c` | `#f1f1f3` | square |
 | Unknown | `#a1a1aa` (dashed ring) | `#55555c` | `#f1f1f3` | dashed circle |
 
-Contrast verified: Healthy ink on soft 4.88:1, Degraded 4.62:1, Down 4.88:1, Stopped ink on soft 5.54:1;
+Contrast verified: Healthy ink on soft 4.88:1, Degraded 4.80:1 (ink `#ae5109`, one step darker than `#b25309` so it keeps 4.5:1 on the deeper tray), Down 4.88:1, Stopped ink on soft 5.54:1;
 marks ≥ 3:1 on white (3.38 / 3.79 / 4.36) except Stopped/Unknown, which are always paired with their label.
 `--down-soft-hover` `#fde3e5` (dark `#4d2024`) is the Danger button's hover fill, one step stronger than Down soft:
 Down ink on it 4.58:1 (dark 5.39:1), pinned by `tokens.test.ts` "text down-ink on down-soft-hover ≥ 4.5:1".

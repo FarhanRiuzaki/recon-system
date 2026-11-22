@@ -24,6 +24,8 @@ import { RECON_VERSION_SHAPE } from "./shapes";
 import { SimChanges } from "./sim-changes";
 import { SpecView } from "./spec-view";
 import { MAKER_REASON, reconApi, reconEditHref, reconHref, reconsHref, useRecon, useReconVersion, useSpaceRoles } from "./use-recons";
+import { EditIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
 
 const nameOf = (v: ReconVersionDetailDto, id: string | null) => (id ? (v.people.find((p) => p.id === id)?.name ?? "a removed user") : null);
 
@@ -73,8 +75,8 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const published = r.published && r.published.id !== v.id && v.status !== "retired" ? r.published.version : null;
   const st = reconVersionChip(v);
   const edit = v.status === "draft" && r.draft?.id === v.id && (maker
-    ? <Button asChild><Link href={reconEditHref(spaceId, id, 6)}>Edit version {v.version}</Link></Button>
-    : <BlockedButton reason={MAKER_REASON}>Edit version {v.version}</BlockedButton>);
+    ? <Button asChild><Link href={reconEditHref(spaceId, id, 6)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
+    : <BlockedButton reason={MAKER_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
     await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });

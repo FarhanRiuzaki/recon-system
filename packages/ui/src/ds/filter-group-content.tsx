@@ -3,7 +3,7 @@
 import { type ReactNode, useContext, useId, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
-import { ChevronDownIcon } from "../ui/icons";
+import { ChevronDownIcon, RefreshIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
 import { formatNumber } from "../lib/format";
 import { FILTER_SELECTION_MAX, selectionState, selectionValues } from "../lib/filter-selection";
@@ -54,7 +54,7 @@ export function FilterChecksContent({ label, value, options, onChange, search }:
           onChange={e => { if (search) search.onChange(e.target.value); else setTerm(e.target.value); }} />
       </label>}
       {search?.loading && <p role="status" className="text-body-sm text-fg-2">Loading options…</p>}
-      {search?.error && <div className="grid gap-2"><p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load options. Your selections are kept.</p><Button type="button" variant="secondary" onClick={search.onRetry}>Retry options</Button></div>}
+      {search?.error && <div className="grid gap-2"><p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load options. Your selections are kept.</p><Button type="button" variant="secondary" onClick={search.onRetry}><Icon icon={RefreshIcon} />Retry options</Button></div>}
       {choices.map(option => {
         const checked = selected.includes(option.value);
         // the list's rows with this value (its facet), when the screen passes them

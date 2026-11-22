@@ -7,7 +7,7 @@ import { CountBadge } from "./badges";
 import { cn } from "../lib/cn";
 import { useDelayedFlag } from "../motion/use-delayed-flag";
 import { Icon } from "../ui/icon";
-import { FilterIcon, SidebarCollapseIcon } from "../ui/icons";
+import { FilterIcon, RefreshIcon, SidebarCollapseIcon } from "../ui/icons";
 
 const panel = deferredOverlay("dialog", "filter-panel-trigger", () => import("./filter-panel-impl"));
 const Content = panel.part("FilterPanelContent");
@@ -82,7 +82,7 @@ export function FilterPanel({ anchor, active, open, onOpenChange, description, c
           </Button>
         </panel.Trigger>
         {load && <span role={load === "failed" ? "alert" : "status"} className="text-caption text-fg-2 md:sr-only">{load === "failed" ? "Couldn't load filters. Try again." : "Loading filters…"}</span>}
-        {load === "failed" && <Button variant="link" size="sm" onClick={() => trigger.current?.click()}>Retry filters</Button>}
+        {load === "failed" && <Button variant="link" size="sm" onClick={() => trigger.current?.click()}><Icon icon={RefreshIcon} />Retry filters</Button>}
         <Content top={top} scrollDismissedRef={scrollDismissedRef} active={active} open={open} phone={phone} focusIdRef={focusIdRef} description={description} clear={clear} canClear={canClear} onSubmit={onSubmit}
           restoreFocus={() => trigger.current?.focus({ preventScroll: true })}>{children}</Content>
       </panel.Root>

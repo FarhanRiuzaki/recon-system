@@ -8,7 +8,7 @@ import { HEALTH, type Health } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, CloseIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, ExportIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -39,7 +39,7 @@ export function ComponentsSections() {
         <Panel title="Buttons and inputs" className="col-span-12 md:col-span-6">
           <div className="grid gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button>Create user</Button><Button variant="secondary">Export CSV</Button><Button variant="ghost">Clear filters</Button>
+              <Button>Create user</Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button variant="ghost">Clear filters</Button>
               <Button variant="destructive">Delete 2 users</Button><Button variant="secondary" disabled>Unlock</Button>
               <Button size="sm" variant="secondary">Compact 28</Button><Button size="icon" variant="secondary" aria-label="Refresh now"><Icon icon={RefreshIcon} /></Button>
               <Button variant="link">Forgot password?</Button>

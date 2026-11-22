@@ -10,7 +10,7 @@ import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { Textarea } from "@starterkit/ui/ui/textarea";
@@ -89,8 +89,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const maker = roles.includes("source_admin") || roles.includes("config_maker");
   // the open draft opens in the wizard (a sent-back one included); a role that can't change sources gets the reason
   const edit = v.status === "draft" && s.draft?.id === v.id && (maker
-    ? <Button asChild><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}>Edit version {v.version}</Link></Button>
-    : <BlockedButton reason={EDIT_REASON}>Edit version {v.version}</BlockedButton>);
+    ? <Button asChild><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
+    : <BlockedButton reason={EDIT_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
     await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });

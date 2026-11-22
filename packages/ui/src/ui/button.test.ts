@@ -35,6 +35,11 @@ describe("Button variants", () => {
     expect(c).toEqual(expect.arrayContaining(["border-line", "bg-card", "shadow-xs"]));
     expect(c).not.toContain("border-line-strong");
   });
+  it("caution (a negative decision: Reject, Turn off, Cancel request): transparent, Down ink, --line edge, soft Down on hover and press", () => {
+    const c = classes(markup("caution"));
+    expect(c).toEqual(expect.arrayContaining(["border-line", "bg-transparent", "text-down-ink", "hover:bg-down-soft", "active:bg-down-soft-hover"]));
+    for (const gone of ["bg-down-soft", "bg-card", "shadow-xs"]) expect(c).not.toContain(gone);
+  });
   it("destructive: a soft Down fill with Down ink and no border or shadow", () => {
     const c = classes(markup("destructive"));
     expect(c).toEqual(expect.arrayContaining(["border-transparent", "bg-down-soft", "text-down-ink", "hover:bg-down-soft-hover"]));

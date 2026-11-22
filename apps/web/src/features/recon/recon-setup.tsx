@@ -7,7 +7,7 @@ import { EmptyState, Failure, Panel } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { DeniedIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { DeniedIcon, RefreshIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { BRAND } from "@starterkit/shared/brand";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -92,7 +92,7 @@ export function ReconSetup({ spaceId, id, step: urlStep }: { spaceId: string; id
   return (
     <div className="grid gap-section">
       <PageHeader title={title} description={line} trail={trail}
-        actions={status === "failed" && save ? <Button type="button" variant="secondary" onClick={save.retry}>Retry</Button> : undefined}
+        actions={status === "failed" && save ? <Button type="button" variant="secondary" onClick={save.retry}><Icon icon={RefreshIcon} />Retry</Button> : undefined}
         more={endings.length ? endings : undefined} />
       <Builder key={r.draft.id} spaceId={spaceId} recon={r} version={r.draft} editable={maker} canEdit={maker}
         step={step} reached={reached} onStep={onStep} exitHref={reconHref(spaceId, id)}

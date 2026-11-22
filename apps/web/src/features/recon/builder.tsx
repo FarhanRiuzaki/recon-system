@@ -10,7 +10,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ChevronDownIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { ChevronDownIcon, EditIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
@@ -590,7 +590,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           <>
             {/* the whole draft as the Configuration will show it, each part with Edit back to its step */}
             <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
-            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button> : undefined}>
+            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(5)}><Icon icon={EditIcon} />Edit</Button> : undefined}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <StatusChip health={sim.chip.health} label={sim.chip.label} />
                 <span className="text-body-sm text-fg">{sim.line}</span>

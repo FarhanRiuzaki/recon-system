@@ -8,7 +8,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AlertsIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AlertsIcon, ErrorIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -147,10 +147,10 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       {b.request && (
         <Panel title={REQUEST_TITLE[b.request.status]} description={[APPROVAL_KIND_LABEL[b.request.kind], b.request.workflowName, b.request.ruleName && !["Default", "Otherwise"].includes(b.request.ruleName) ? `rule “${b.request.ruleName}”` : null].filter(Boolean).join(" · ")}
           toolbar={b.request.status === "pending" ? <Toolbar end={<>
-            {b.request.canCancel && <Button type="button" variant="ghost" disabled={!!busy} onClick={() => void decide("cancel", {}, "Request cancelled.").catch(() => {})}>Cancel request</Button>}
+            {b.request.canCancel && <Button type="button" variant="caution" disabled={!!busy} onClick={() => void decide("cancel", {}, "Request cancelled.").catch(() => {})}><Icon icon={ErrorIcon} />Cancel request</Button>}
             {b.request.canOverride && <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Override the approval chain", description: "As Superadmin you approve every level left at once. Your reason is recorded with the request.", action: "Approve by override", placeholder: "Why it can't wait for the chain", onSubmit: async (reason) => { await decide("override", { reason }, "Approved by override."); setDialog(null); } })}>Override</Button>}
             {!b.request.blocked && <>
-              <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the item goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
+              <Button type="button" variant="caution" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the item goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}><Icon icon={ErrorIcon} />Reject</Button>
               <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve level ${b.request!.currentLevel + 1} of ${b.request!.levels.length}`, description: b.request!.currentLevel + 1 < b.request!.levels.length ? "The request moves to the next level." : DONE_TEXT[b.request!.kind], action: "Approve", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await decide("approve", note ? { note } : {}, "Approved."); setDialog(null); } })}>Approve</Button>
             </>}
           </>}>{null}</Toolbar> : undefined}>

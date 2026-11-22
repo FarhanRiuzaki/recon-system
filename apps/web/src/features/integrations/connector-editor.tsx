@@ -68,7 +68,7 @@ function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: Connec
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="button" onClick={() => void go()} disabled={busy} aria-busy={busy || undefined}>
+          <Button type="button" variant="destructive" onClick={() => void go()} disabled={busy} aria-busy={busy || undefined}>
             {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Turn off connector
           </Button>
         </DialogFooter>

@@ -5,7 +5,7 @@ import { Checkbox, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Textarea } from "@starterkit/ui/ui/textarea";
@@ -102,7 +102,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
               <span className="text-body-sm text-fg">{SECRET_LABEL[k]}</span>
               <span className="flex items-center gap-2">
                 <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? (settings.verifyTls ? "Server's certificates" : "Not used") : "Not set"} />
-                {canEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setReplace(k)}>Replace</Button>}
+                {canEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setReplace(k)}><Icon icon={EditIcon} />Replace</Button>}
               </span>
             </li>
           ))}

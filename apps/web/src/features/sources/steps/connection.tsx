@@ -6,7 +6,7 @@ import { ChoiceCard, Field, InfoTip, Panel, Segmented, type SqlSuggest, Switch }
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
@@ -125,7 +125,7 @@ export function ConnectionStep(p: ConnectionStepProps) {
             {!created && <><span aria-hidden="true">·</span><Button type="button" variant="link" size="sm" className="text-caption" onClick={() => {
               setCodeOpen(true);
               requestAnimationFrame(() => document.getElementById("src-code")?.focus());
-            }}>Edit<span className="sr-only"> code</span></Button></>}
+            }}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button></>}
           </p>
         )}
       </Panel>

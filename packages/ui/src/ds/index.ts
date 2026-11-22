@@ -68,6 +68,7 @@ export { SetupChecklist, type SetupAction, type SetupGroup, type SetupTask } fro
 export { FormWizard, ReviewList, type WizardStep } from "./form-wizard";
 export { InfoTip } from "./info-tip";
 export { focusNew, useFirstUse } from "./first-use";
+export { INTENTS, type Intent } from "./intent";
 export { ScrollFade } from "./scroll-fade";
 export { type SqlContext, SqlEditor, type SqlSuggest, type SqlSuggestion, sqlContext, sqlTokens } from "./sql-editor";
 

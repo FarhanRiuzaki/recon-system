@@ -9,7 +9,7 @@ import { rules } from "@starterkit/ui/lib/validate";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { KeyIcon, SecureIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { ErrorIcon, KeyIcon, SecureIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -169,7 +169,7 @@ function TwoFactorCard({ user }: { user: MeDto }) {
         {user.connected.length > 0 && <p className="text-body-sm text-fg-3">Signing in with Google or Apple doesn&apos;t ask for the code: the provider checks you.</p>}
         <div>
           {user.twoFactorEnabled
-            ? <Button variant="secondary" onClick={() => setDisabling(true)}>Turn off two-factor authentication</Button>
+            ? <Button variant="caution" onClick={() => setDisabling(true)}><Icon icon={ErrorIcon} />Turn off two-factor authentication</Button>
             : <BlockedButton onClick={() => void start()} disabled={starting} aria-busy={starting || undefined}
                 reason={oauth ? "You sign in with Google or Apple, which checks you itself: sign-in never asks for a code." : null}>
               {starting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Turn on two-factor authentication</BlockedButton>}

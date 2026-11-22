@@ -18,6 +18,8 @@ import { activityEntryHref } from "@/lib/shared/activity-links";
 import { activityEntry, projectDetail, userDetail } from "@/lib/shared/queries";
 import { activitySummary } from "./activity-summary";
 import { EntryDialog } from "./entry-dialog";
+import { RefreshIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
 
 const currentEntry = (id: string) => window.location.pathname === "/audit/activity" && new URLSearchParams(window.location.search).get("entry")?.toLowerCase() === id.toLowerCase();
 const status = (error: unknown) => error instanceof ApiError ? error.status : null;
@@ -63,7 +65,7 @@ function RecordCheck({ read, href, noun, entryId }: { read: { key: readonly stri
   if (query.isFetching || query.isPending) content = <span role="status" className="text-body-sm text-fg-3">Checking record availability…</span>;
   else if (status(query.error) === 404) content = <span className="text-body-sm text-fg-3">Record unavailable.</span>;
   else if (status(query.error) === 403) content = <span className="text-body-sm text-fg-3">Record access unavailable.</span>;
-  else if (query.error) content = <div className="grid gap-2"><p className="text-body-sm text-fg-3">Couldn&apos;t check record availability.</p><div><Button variant="secondary" size="sm" onClick={event => { if (!currentEntry(entryId)) return; event.currentTarget.closest<HTMLElement>('[role="dialog"]')?.focus(); void query.refetch(); }}>Retry check</Button></div></div>;
+  else if (query.error) content = <div className="grid gap-2"><p className="text-body-sm text-fg-3">Couldn&apos;t check record availability.</p><div><Button variant="secondary" size="sm" onClick={event => { if (!currentEntry(entryId)) return; event.currentTarget.closest<HTMLElement>('[role="dialog"]')?.focus(); void query.refetch(); }}><Icon icon={RefreshIcon} />Retry check</Button></div></div>;
   else content = <Button asChild variant="secondary" size="sm"><Link href={href} onClick={event => { if (!currentEntry(entryId)) event.preventDefault(); }}>Open {noun}</Link></Button>;
   return <div className="flex min-h-8 items-center">{content}</div>;
 }
@@ -87,14 +89,14 @@ export function ActivityEntryDialog({ id, onClose, returnFocus, onInvestigate }:
     const title = missing ? "Activity entry not found" : forbidden ? "Access denied" : query.error ? "Couldn't load this activity entry" : "Loading activity entry…";
     const summary = missing ? "This entry isn't available. Check the link or return to the activity log." : forbidden ? "You don't have permission to view activity entries." : undefined;
     return <EntryDialog title={title} summary={summary} rows={[]} onClose={onClose} returnFocus={returnFocus}>
-      {!missing && !forbidden && (query.error ? <div className="grid gap-3"><p role="alert" className="text-body-sm text-fg-2">{errorText(query.error)}</p><div><Button variant="secondary" onClick={event => retry(event.currentTarget)}>Retry</Button></div></div> : <div role="status" aria-label="Loading activity entry" className="grid gap-3"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-48 w-full" /></div>)}
+      {!missing && !forbidden && (query.error ? <div className="grid gap-3"><p role="alert" className="text-body-sm text-fg-2">{errorText(query.error)}</p><div><Button variant="secondary" onClick={event => retry(event.currentTarget)}><Icon icon={RefreshIcon} />Retry</Button></div></div> : <div role="status" aria-label="Loading activity entry" className="grid gap-3"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-48 w-full" /></div>)}
     </EntryDialog>;
   }
   const actorReason = ACTIVITY_ID_PATTERN.test(entry.actor.id) ? null : "An exact actor ID wasn't recorded for this entry.";
   const targetReason = entry.target.id.length > ACTIVITY_TARGET_ID_MAX ? "This recorded target ID is too long to use as an exact filter." : !entry.target.type || entry.target.type.length > ACTIVITY_TARGET_TYPE_MAX || !entry.target.id || entry.target.type.includes("\0") || entry.target.id.includes("\0") ? "An exact target isn't available for this entry." : null;
   return <EntryDialog title={actionLabel(entry.action)} summary={activitySummary(entry)} onClose={onClose} returnFocus={returnFocus}
     beforeRows={<>
-      {query.error && <Notice tone="warn" live>Couldn&apos;t refresh this activity entry; showing the last loaded details. <Button variant="ghost" size="sm" onClick={event => retry(event.currentTarget)}>Retry</Button></Notice>}
+      {query.error && <Notice tone="warn" live>Couldn&apos;t refresh this activity entry; showing the last loaded details. <Button variant="ghost" size="sm" onClick={event => retry(event.currentTarget)}><Icon icon={RefreshIcon} />Retry</Button></Notice>}
       <CopyEntryLink id={entry.id} />
     </>}
     rows={[

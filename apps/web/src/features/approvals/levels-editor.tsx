@@ -6,7 +6,7 @@ import { Combobox, type ComboOption } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ArrowDownIcon, ArrowUpIcon, CloseIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
+import { ArrowDownIcon, ArrowUpIcon, CloseIcon, EditIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
@@ -99,7 +99,7 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
               <div className="grid min-w-0 gap-1.5 pt-0.5">
                 <span className="flex items-center justify-between gap-2">
                   <span className="text-label text-fg">{title}</span>
-                  {!disabled && <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${i + 1}`} onClick={() => setOpen(i)}>Edit</Button>}
+                  {!disabled && <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${i + 1}`} onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>}
                 </span>
                 {l.groups.map((g, gi) => (
                   <span key={gi} className="grid gap-1">

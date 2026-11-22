@@ -7,7 +7,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Failure, Notice, Panel, RelativeTime, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { FolderIcon } from "@starterkit/ui/ui/icons";
+import { EditIcon, FolderIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -19,6 +19,7 @@ import { activityHistoryHref } from "@/lib/shared/activity-links";
 import { projectDetail } from "@/lib/shared/queries";
 import { PROJECT_DETAIL_SHAPE } from "./shapes";
 import { PROJECT_LEGEND, projectPage, PROJECTS_KEY, projectStatus, projectUrl, useProjectDetail } from "./use-projects";
+import { Icon } from "@starterkit/ui/ui/icon";
 
 const LIST = { href: "/projects", label: "Projects" };
 
@@ -66,7 +67,7 @@ export function ProjectDetail({ id }: { id: string }) {
     <div className="grid gap-section">
       <PageHeader title={p.name} status={<StatusChip health={s.health} label={s.label} />} description="A project and its status."
         actions={<>
-          {can("project.edit") && <Button asChild variant="secondary"><Link href={`${projectPage(id)}/edit`}>Edit project</Link></Button>}
+          {can("project.edit") && <Button asChild variant="secondary"><Link href={`${projectPage(id)}/edit`}><Icon icon={EditIcon} />Edit project</Link></Button>}
           {can("audit.view") && <div className="grid gap-1"><Button asChild variant="secondary"><Link href={activityHistoryHref("project", p.id)}>View history</Link></Button><span className="text-caption text-fg-3">Activity · Last 90 days</span></div>}
         </>}
         more={can("project.delete") ? [{ label: "Delete project", destructive: true, confirm: {

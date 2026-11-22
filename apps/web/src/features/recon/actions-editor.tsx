@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, EditIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
 import type { ConnectorOperationsDto } from "@starterkit/shared/contracts/integrations";
 import type { ActionSpec } from "@starterkit/shared/contracts/recon";
 import { type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
@@ -64,7 +64,7 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
                 : <StatusChip health="healthy" label="Every field mapped" />)}
               {!disabled && (
                 <span className="flex shrink-0 items-center gap-1">
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(i)}>Edit</Button>
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>
                   <Button type="button" variant="remove" size="icon" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
                 </span>
               )}

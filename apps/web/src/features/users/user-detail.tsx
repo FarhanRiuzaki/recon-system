@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ActionMenu, BlockedButton, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
 import { Stagger, StaggerItem, useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { ActivityIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { ActivityIcon, EditIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { RoleChips } from "@/components/role-chips";
@@ -28,6 +28,7 @@ import { UserStatusChip } from "./user-columns";
 import { patchUserCache, USERS_KEY, protection, rankBlock, useLastSuperadminId, userGone, useUserDetail } from "./use-users";
 import { USER_DETAIL_SHAPE } from "./shapes";
 import { UserSpaces } from "./user-spaces";
+import { Icon } from "@starterkit/ui/ui/icon";
 
 const PROVIDER = { google: "Google", apple: "Apple" } as const;
 
@@ -110,8 +111,8 @@ export function UserDetail({ id }: { id: string }) {
     <div className="grid gap-section">
       <PageHeader title={u.name} status={<UserStatusChip user={u} />} description={`${u.username} · ${u.email}`}
         actions={can("user.edit") && (rank
-          ? <BlockedButton variant="secondary" reason={rank}>Edit user</BlockedButton>
-          : <Button asChild variant="secondary"><Link href={`/users/${id}/edit`}>Edit user</Link></Button>)}
+          ? <BlockedButton variant="secondary" reason={rank}><Icon icon={EditIcon} />Edit user</BlockedButton>
+          : <Button asChild variant="secondary"><Link href={`/users/${id}/edit`}><Icon icon={EditIcon} />Edit user</Link></Button>)}
         more={[
           ...(can("user.edit") && !(activating ? !u.isActive : u.isActive) ? [{ label: "Activate user", reason: rank, busy: activating, onSelect: () => void setActive(true) }] : []),
           ...(can("user.edit") ? [

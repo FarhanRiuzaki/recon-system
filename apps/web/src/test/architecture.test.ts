@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { pagePerm } from "@/lib/shared/nav";
 import { VIEW_PAGES } from "@/lib/shared/prefs";
 import { BRAND } from "@starterkit/shared/brand";
+import { INTENTS } from "@starterkit/ui/ds";
 import { importsIn, importsOf, read, REPO, repoRel, scan, SHARED_SRC, strip, UI_SRC, WEB_SRC } from "./scan";
 
 type F = { r: string; src: string; imp: string[] };
@@ -29,13 +30,20 @@ const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")
 /**
  * Intents (owner 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a Button named "Remove …" (aria-label
  * or text) is `variant="remove"`; a quiet Button (ghost, link, secondary) whose text starts with "Add" is `variant="add"`.
- * The page's main create action stays default; a confirm dialog's "Remove …" is destructive.
+ * The page's main create action stays default; a confirm dialog's "Remove …" is destructive. From `INTENTS`
+ * (`ds/intent.ts`): a Button or BlockedButton labelled with a caution action (Reject, Turn off, Cancel request) is
+ * `variant="caution"` (or destructive, a confirm dialog's), and one labelled with an intent whose icon is `required`
+ * (Edit, Replace, Export, Retry …) renders an `<Icon>`.
  */
+const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")})\\b`);
+const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
+const CAUTION_VARIANTS: readonly string[] = INTENTS.caution.variant;
+const ICON_LABEL = startsWith(Object.values(INTENTS).filter((i) => "required" in i && i.required && i.variant !== "add").flatMap((i) => i.actions));
 function intentViolations(fs: F[]): string[] {
   const out: string[] = [];
   for (const { r, src } of fs) {
     if (!r.endsWith(".tsx") || r.startsWith(VENDORED)) continue;
-    for (const m of src.matchAll(/<(Button|button)(?=[\s>])/g)) {
+    for (const m of src.matchAll(/<(BlockedButton|Button|button)(?=[\s>])/g)) {
       // the opening tag: braces counted (an onClick's arrow holds ">"), quoted text skipped (title="a > b")
       let i = m.index! + m[0].length, depth = 0, quote = "";
       for (; i < src.length; i++) {
@@ -52,6 +60,12 @@ function intentViolations(fs: F[]): string[] {
         continue;
       }
       const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
+      // the label: the children up to the closing tag, without their tags and expressions ("Edit<span> code</span>")
+      const close = src.indexOf(`</${m[1]}>`, i), inner = close < 0 ? "" : src.slice(i + 1, close);
+      const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
+      if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
+      if (ICON_LABEL.test(label) && !inner.includes("<Icon")) out.push(`${r}: ${label} without its icon`);
+      if (m[1] === "BlockedButton") continue;
       if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: Remove … is variant="${variant}"`);
       if (/^Add\b/.test(text) && ["ghost", "link", "secondary", "outline"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
     }
@@ -394,7 +408,7 @@ describe("architecture", () => {
   it("only the flow layer imports @xyflow/react (the canvases' parts live in the design system)", () => {
     expect(files.filter(({ r, imp }) => imp.some((i) => i.startsWith("@xyflow/react")) && !r.startsWith(`${UI}flow/`)).map((f) => f.r)).toEqual([]);
   });
-  it("add and remove buttons say their intent by colour: variant add (blue) and remove (red)", () => {
+  it("every button says its intent: add (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
     expect(intentViolations(files)).toEqual([]);
   });
   it("a dialog with a footer holds its content in DialogBody (owner, 22 Nov: modals tidy and symmetric)", () => {
@@ -479,6 +493,15 @@ describe("architecture checkers (fixtures)", () => {
       f(`${WEB}features/x/e.tsx`, `<Button variant="outline" title="a > b" onClick={() => a()}>Add a column</Button>`),
     ])).toEqual([`${WEB}features/x/a.tsx: Remove … is variant="ghost"`, `${WEB}features/x/b.tsx: Add … is variant="link"`,
       `${WEB}features/x/d.tsx: raw Remove button without text-down-ink`, `${WEB}features/x/e.tsx: Add … is variant="outline"`]);
+  });
+  it("intents: a negative decision not variant caution, an Edit / Replace / Export / Retry without its icon", () => {
+    expect(intentViolations([
+      f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="secondary" onClick={() => open({ a: 1 })}>Reject</Button><BlockedButton variant="ghost" reason={r}>Cancel request</BlockedButton>`),
+      f(`${WEB}features/x/b.tsx`, `<Button variant="caution" onClick={() => x()}><Icon icon={ErrorIcon} />Reject</Button><Button variant="destructive">Turn off connector</Button><Button>Turn the page</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button><Button asChild variant="secondary"><Link href={\`/u/\${id}/edit\`}>Edit user</Link></Button><Button variant="secondary" onClick={retry}>Retry</Button>`),
+      f(`${WEB}features/x/d.tsx`, `<Button variant="ghost" onClick={() => go()}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button><Button asChild variant="secondary"><Link href="/e"><Icon icon={EditIcon} />Edit user</Link></Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button>Editor settings</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Reject is variant="secondary", not caution`, `${WEB}features/x/a.tsx: Cancel request is variant="ghost", not caution`,
+      `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`, `${WEB}features/x/c.tsx: Retry without its icon`]);
   });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([
@@ -572,7 +595,8 @@ describe("architecture checkers (fixtures)", () => {
     expect(runtimeViolations([
       g(`${WEB}lib/server/a.ts`, `import { SQL } from "bun";\nimport { Database } from "bun:sqlite";\nimport { Pool } from "pg";`),
       g(`${WEB}lib/server/b.ts`, `import { createApp } from "@starterkit/api/app";\nimport { sql } from "../../../../api/src/db/client";`),
-      g(`${WEB}lib/server/ok.ts`, `import { randomUUID } from "node:crypto";\nimport { z } from "zod";\nimport { BRAND } from "@starterkit/shared/brand";\nimport x from "bunyan";`),
+      g(`${WEB}lib/server/ok.ts`, `import { randomUUID } from "node:crypto";\nimport { z } from "zod";\nimport { BRAND } from "@starterkit/shared/brand";
+import { INTENTS } from "@starterkit/ui/ds";\nimport x from "bunyan";`),
       g(`${UI}lib/c.ts`, `import { SQL } from "bun";`),
     ])).toEqual([
       `${WEB}lib/server/a.ts → bun`, `${WEB}lib/server/a.ts → bun:sqlite`, `${WEB}lib/server/a.ts → pg`,

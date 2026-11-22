@@ -7,8 +7,10 @@ import { type LegendItem, StatusLegend } from "./status-legend";
 
 /**
  * Panel = tray + card, the v3 signature (spec §5.4).
- * - Tray: radius 20, --tray, 1 px line, padding 4. Header on the tray: 44 px, padding 0 12, optional 16 px fg-3
- *   icon, `title-2` title, optional count pill, caption (`description`) after a middot, actions right.
+ * - Tray: radius 20, --tray, 1 px line, padding 4. Header on the tray: 44 px, padding 0 12, optional 16 px fg-2
+ *   icon, `title-3` (600) title, optional count pill, caption (`description`) after a middot, actions right.
+ * - `tone="quiet"`: a history region (run history, activity, past decisions) that should read after the page's
+ *   summary and actions: no tray fill (the 1 px line stays), the title in fg-2. The card inside is unchanged.
  * - Card: radius 16, --card, 1 px line, padding 16 (`flush` = no padding, e.g. a table: the table is
  *   the card, its header row sits on the tray tint). The card grows (`flex-1`) so siblings in a row share height.
  * - `footnote`: caption under the card (StaleNote, sources), padding 8 12.
@@ -20,15 +22,16 @@ import { type LegendItem, StatusLegend } from "./status-legend";
  * - `toolbar`: a list's search and filters (`Toolbar`) on the title row, right of "Users 51" (ui-standard §1 item 4);
  *   it wraps under the title when the row is narrow, and the description moves to its own line under them.
  */
-export function Panel({ title, description, actions, children, flush, className, icon, count, footnote, variant = "tray", cards, bodyClassName, legend, toolbar }: {
+export function Panel({ title, description, actions, children, flush, className, icon, count, footnote, variant = "tray", tone, cards, bodyClassName, legend, toolbar }: {
   title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
   icon?: IconData; count?: number | string; footnote?: ReactNode; variant?: "tray" | "flat"; cards?: boolean; bodyClassName?: string;
-  legend?: readonly LegendItem[]; toolbar?: ReactNode;
+  legend?: readonly LegendItem[]; toolbar?: ReactNode; tone?: "quiet";
 }) {
+  const quiet = tone === "quiet";
   const header = (title || actions || legend || toolbar) && (
     <header className={cn("flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1", variant === "tray" ? "px-3 py-1.5" : "px-4 pt-3")}>
-      {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-3" />}
-      {title && <h2 className="text-title-2 text-fg">{title}</h2>}
+      {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-2" />}
+      {title && <h2 className={cn("text-title-3", quiet ? "text-fg-2" : "text-fg")}>{title}</h2>}
       {count != null && <CountBadge inTray={variant === "tray"}>{count}</CountBadge>}
       {/* Phone: the description takes its own line under the title row, without the middot. Wider: it wraps inside
           its own box (from 12rem) before it pushes the actions or the legend button onto a line of their own. */}
@@ -51,5 +54,5 @@ export function Panel({ title, description, actions, children, flush, className,
       </section>
     );
   }
-  return <CardSurface header={header} footer={foot} className={className} bodyClassName={bodyClassName} flush={flush} cards={cards}>{children}</CardSurface>;
+  return <CardSurface header={header} footer={foot} className={cn(quiet && "bg-transparent", className)} bodyClassName={bodyClassName} flush={flush} cards={cards}>{children}</CardSurface>;
 }

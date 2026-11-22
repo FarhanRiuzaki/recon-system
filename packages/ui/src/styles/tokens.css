@@ -13,7 +13,7 @@
   /* surfaces */
   --bg: #f1f1f3;
   --sheet: #ffffff;
-  --tray: #f4f4f6;
+  --tray: #eeeef2;
   --card: #ffffff;
   --inset: #f4f4f5;
   --raised: #ffffff;
@@ -55,7 +55,7 @@
   --seg-active: #ffffff;
   /* status: mark (icon/dot, ≥ 3:1), ink (text, ≥ 4.5:1 on soft and on every surface), soft (chip bg) */
   --healthy-mark: #16a05a;  --healthy-ink: #117a46;  --healthy-soft: #e9f7ef;
-  --degraded-mark: #c96a05; --degraded-ink: #b25309; --degraded-soft: #fff2e6;
+  --degraded-mark: #c96a05; --degraded-ink: #ae5109; --degraded-soft: #fff2e6;
   --down-mark: #e5303a;     --down-ink: #c8262f;     --down-soft: #feeced;
   --down-soft-hover: #fde3e5; /* Danger button hover: Down ink on it 4.58:1 (dark 5.39:1) */
   /* the Add intent (owner 22 Nov: add blue, remove red, so the eye knows what to press); Remove is the Down ink */

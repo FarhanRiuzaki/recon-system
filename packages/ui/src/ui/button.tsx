@@ -8,7 +8,7 @@ import { Slot } from "radix-ui";
  * hover fill 150 ms, disabled 0.4. `default` = the one primary per page (--action under a top-lit gradient with a lit
  * edge and a ring, drawn by base.css on `.bg-action[data-variant="default"]`; near-black / near-white); `secondary` =
  * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `add` / `remove` =
- * the intents (blue / red ink, their soft fill on hover).
+ * the intents (blue / red ink, their soft fill on hover); `caution` = a negative decision (Down ink, --line edge).
  * `outline` is kept as an alias of secondary for older callers.
  */
 const buttonVariants = cva(
@@ -27,6 +27,9 @@ const buttonVariants = cva(
         // remove = takes one out of a list (an X or bin icon that removes is red; an X that closes stays ghost)
         add: "border-transparent bg-transparent text-add-ink hover:bg-add-soft active:bg-add-soft-hover",
         remove: "border-transparent bg-transparent text-down-ink hover:bg-down-soft active:bg-down-soft-hover",
+        // caution = a negative decision that changes data but is not a removal (Reject, Turn off, Cancel request): Down
+        // ink on a --line edge, so it reads as a button beside a primary without shouting like Danger (ds/intent.ts)
+        caution: "border-line bg-transparent text-down-ink hover:bg-down-soft active:bg-down-soft-hover",
       },
       size: {
         sm: "h-7 px-2.5 text-body-sm [&_svg:not([class*='size-'])]:size-3.5",
