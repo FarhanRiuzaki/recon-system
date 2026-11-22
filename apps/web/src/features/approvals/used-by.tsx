@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useMemo } from "react";
-import { type Column, ColumnsMenu, DataTable, Panel, Toolbar } from "@starterkit/ui/ds";
+import { type Column, DataTable, Panel } from "@starterkit/ui/ds";
 import { RankedListIcon } from "@starterkit/ui/ui/icons";
 import type { UsedByRowDto } from "@starterkit/shared/contracts/workflows";
 import { TRIGGER_LABEL } from "@starterkit/shared/workflows";
-import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { usedByTable } from "@/lib/shared/queries-recon";
@@ -22,7 +21,7 @@ const columns = (spaceId: string): Column<UsedByRowDto>[] => [
   ) },
   { key: "change", header: "Change", mobile: "meta", cell: (r) => TRIGGER_LABEL[r.change] },
   { key: "rules", header: "Rules", mobile: "meta", cell: (r) => r.rules.join(", ") },
-  { key: "pinned", header: "Uses", mobile: "meta", hideable: false, className: "whitespace-nowrap", cell: (r) => (r.outdated
+  { key: "pinned", header: "Uses", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.outdated
     ? <span className="text-body-sm text-degraded-ink">Version {r.pinned}, an older one</span>
     : <span className="text-body-sm text-fg-3">Version {r.pinned}</span>) },
 ];
@@ -36,9 +35,8 @@ export function UsedBy({ spaceId, id }: { spaceId: string; id: string }) {
   const COLUMNS = useMemo(() => columns(spaceId), [spaceId]);
   const t = useTableQuery<UsedByRowDto, Record<string, never>>(def);
   return (
-    <Panel flush icon={RankedListIcon} title="Used by" count={t.count}
-      toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
-      <DataTable label="Recons using this workflow" columns={COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(r) => `${r.reconId}:${r.reconVersion}:${r.change}`}
+    <Panel flush icon={RankedListIcon} title="Used by" count={t.count}>
+      <DataTable label="Recons using this workflow" columns={COLUMNS} rows={t.rows} rowKey={(r) => `${r.reconId}:${r.reconVersion}:${r.change}`}
         loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
         error={t.loadError ? { title: "Couldn't load where it is used", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
         empty={{ icon: RankedListIcon, title: "No recon uses it yet", description: "A row appears once a recon's approval setup picks this workflow. Publishing a new version doesn't move a recon: it keeps the version it picked." }} />

@@ -3,9 +3,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Failure, Field, Notice, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
+import { BlockedButton, Failure, Field, Notice, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { formatDateTime } from "@starterkit/ui/lib/format";
+import { formatTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { CheckIcon, EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -63,6 +63,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
   const complete = !!name.trim() && levels.length > 0 && levels.every((l) => l.groups.every((g) => g.spaceRoles.length + g.globalRoles.length + g.users.length > 0));
 
   const [save, setSave] = useState<Save>({ state: "idle" });
+  const saving = useDelayedFlag(save.state === "saving");
   const [savedBody, setSavedBody] = useState<string | null>(null);
   const body = JSON.stringify({ spec: { ...spec, name: spec.name.trim() } });
   const pending = editing && view === "open" && unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }));
@@ -121,15 +122,25 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
     <div className="grid gap-section">
       <PageHeader title={(!readOnly && name.trim()) || w.name}
         description={`${levels.length} ${levels.length === 1 ? "level" : "levels"} · approves in order, every group in a level must approve`}
-        status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
+        status={<>
+          <StatusChip health={status.health} label={status.label} />
+          {!readOnly && (
+            <span role="status" className="text-caption text-fg-3">
+              {saving ? "Saving…"
+                : save.state === "saved" ? <span key={save.at} className="inline-flex items-center gap-1 animate-pop"><Icon icon={CheckIcon} className="text-healthy-ink" />Saved {formatTime(save.at!)}</span>
+                  : save.state === "error" ? <span className="text-down-ink">Not saved: {save.error}</span> : "Changes save as you go"}
+            </span>
+          )}
+        </>} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
               <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit workflow
             </Button>
           : draft && w.canEdit
-            ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending || !complete} aria-busy={busy === "submit" || undefined}>
+            ? <BlockedButton type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending} aria-busy={busy === "submit" || undefined}
+                reason={complete ? null : "Name the workflow and pick who approves every group to send it."}>
                 {busy === "submit" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Send for approval
-              </Button>
+              </BlockedButton>
             : undefined} />
 
       {draft?.reviewComment && <Notice tone="warn">Sent back by {draft.decidedBy?.name ?? "a reviewer"}: “{draft.reviewComment}”</Notice>}
@@ -140,21 +151,13 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
 
       <div className="grid items-start gap-section xl:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
         <div className="grid min-w-0 gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {w.open && w.published ? (
-              <Segmented label="Version shown" value={view} onChange={setView}
-                options={[{ value: "open", label: w.open.status === "draft" ? `Draft ${w.open.version}` : `Version ${w.open.version}` }, { value: "live", label: `Live · ${w.published.version}` }]} />
-            ) : <span />}
-            {!readOnly && (
-              <span role="status" className="text-caption text-fg-3">
-                {save.state === "saving" ? "Saving…" : save.state === "saved" ? <span key={save.at} className="inline-flex items-center gap-1 animate-pop"><Icon icon={CheckIcon} className="text-healthy-ink" />Saved {formatDateTime(save.at!)}</span> : save.state === "error" ? <span className="text-down-ink">Not saved: {save.error}</span> : "Changes save as you go"}
-              </span>
-            )}
-          </div>
+          {w.open && w.published && (
+            <Segmented label="Version shown" value={view} onChange={setView}
+              options={[{ value: "open", label: w.open.status === "draft" ? `Draft ${w.open.version}` : `Version ${w.open.version}` }, { value: "live", label: `Live · ${w.published.version}` }]} />
+          )}
           <Field id="wf-name" label="Name" required>
             <Input id="wf-name" value={name} maxLength={RULE_NAME_MAX} disabled={readOnly} onChange={(e) => setName(e.target.value)} placeholder="Treasury head" className="md:max-w-md" />
           </Field>
-          {!readOnly && !complete && <span role="status" className="text-caption text-down-ink">Name the workflow and pick who approves every group to save.</span>}
           <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} />
         </div>
         <div className="min-w-0 xl:sticky xl:top-(--topbar-h)">
