@@ -3,7 +3,7 @@
 import { Button } from "@starterkit/ui/ui/button";
 import { Combobox, type ComboOption, InfoTip, Panel } from "@starterkit/ui/ds";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { RemoveIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { FieldSpec, SourceCondition, SourceSpec } from "@starterkit/shared/contracts/sources";
@@ -60,7 +60,7 @@ export function RowsToLoad({ spec, setSpec, err, examples }: {
   };
   return (
     <Panel title="Rows to load" description={keep.length ? "Only rows that meet every condition are loaded" : "Every row is loaded"}
-      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="add" size="sm" onClick={add}>Add a condition</Button>}
+      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="add" size="sm" onClick={add}><Icon icon={AddIcon} />Add a condition</Button>}
       bodyClassName="grid gap-3">
       <p className="flex items-center gap-1 text-body-sm text-fg-2">
         {spec.mutable

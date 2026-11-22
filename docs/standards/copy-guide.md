@@ -107,7 +107,7 @@ State the real thresholds from `packages/ui/src/lib/status.ts` (the glossary is 
 numbers from examples.
 
 **Source wizard and versions** (Figma page 02, Build notes 02; `apps/web/src/features/sources/`). Steps: "Connection",
-"Fields & mapping", "Review & submit"; Next reads "Next: fields & mapping", "Next: review", "Submit for approval".
+"Fields and mapping", "Review and submit"; Next reads "Next: fields and mapping", "Next: review", "Submit for approval".
 - Step 1 (Figma 02 v1.0.5) runs in stages: Server → Sign in → **Connect** → Data (database and table). The stage's
   action is "Connect" (a file inbox: "Check folder"); Enter runs it. While it runs: "Connecting…". After it passes,
   Server and Sign in fold into one line with "Change server": "PostgreSQL 18.6 · recon_ro@db.bank.local:5432 ·

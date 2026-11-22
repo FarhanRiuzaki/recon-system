@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { EmptyState, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
+import { CategoryChip, EmptyState, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
 import type { Health } from "@starterkit/ui/lib/status";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -14,12 +14,17 @@ import { INGEST_KEY, PULL_PAGE, sourcePullsFirst } from "@/lib/shared/queries";
 import { at } from "./source-text";
 import { sourceApi } from "./use-sources";
 
-const STATUS: Record<SourcePullDto["status"], { health: Health; label: string; description: string }> = {
-  new: { health: "healthy", label: "New rows", description: "The pull read rows and stored new records." },
-  nothing_new: { health: "unknown", label: "Nothing new", description: "The table had no row past the last watermark." },
+/** A pull that read (new rows, nothing new) is an event: a neutral chip; a failed or paused one is the source's health (P4). */
+const STATUS: Record<SourcePullDto["status"], { health: Health | null; label: string; description: string }> = {
+  new: { health: null, label: "New rows", description: "The pull read rows and stored new records." },
+  nothing_new: { health: null, label: "Nothing new", description: "The table had no row past the last watermark." },
   failed: { health: "down", label: "Failed", description: "The pull couldn't read the source; the next one tries again." },
   paused: { health: "stopped", label: "Paused", description: "The table no longer fits the source's version; pulls wait for a new version." },
 };
+function PullChip({ status }: { status: SourcePullDto["status"] }) {
+  const c = STATUS[status];
+  return c.health ? <StatusChip health={c.health} label={c.label} description={c.description} /> : <CategoryChip slot="neutral" label={c.label} />;
+}
 
 /** "+12 records · 3 quarantined · 2 left out · 15 rows read", the parts that aren't zero. */
 function countsOf(p: SourcePullDto): string {
@@ -71,13 +76,19 @@ export function PullHistory({ spaceId, id }: { spaceId: string; id: string }) {
           {pulls.map((p) => (
             <li key={p.id} className="grid gap-1 border-b border-line px-4 py-2.5 last:border-b-0">
               <span className="flex flex-wrap items-center gap-2">
-                <StatusChip health={STATUS[p.status].health} label={STATUS[p.status].label} description={STATUS[p.status].description} />
+                <PullChip status={p.status} />
                 <RelativeTime at={Date.parse(p.startedAt)} touchDate={false} />
                 <span className="ml-auto font-mono text-caption text-fg-3 tabular">{at(p.startedAt)} · {formatNumber(Math.max(0, Date.parse(p.finishedAt) - Date.parse(p.startedAt)))} ms</span>
               </span>
               {countsOf(p) && <span className="text-body-sm text-fg-2">{countsOf(p)}</span>}
               {p.error && <span className="text-body-sm wrap-anywhere text-down-ink">{p.error}</span>}
-              {p.watermark && <span className="font-mono text-caption wrap-anywhere text-fg-3">Watermark {p.watermark}</span>}
+              {/* the raw watermark is a machine value: behind a disclosure (P10) */}
+              {p.watermark && (
+                <details className="text-caption text-fg-3">
+                  <summary className="w-fit cursor-pointer rounded-xs outline-none hover:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary">Technical details</summary>
+                  <span className="font-mono wrap-anywhere">Watermark {p.watermark}</span>
+                </details>
+              )}
             </li>
           ))}
           {hasNextPage && <li ref={end} className="flex items-center gap-2 px-4 py-3 text-caption text-fg-3">{isFetchingNextPage && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Loading older pulls</li>}

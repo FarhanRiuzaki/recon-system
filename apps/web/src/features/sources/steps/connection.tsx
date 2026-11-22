@@ -150,10 +150,10 @@ export function ConnectionStep(p: ConnectionStepProps) {
   );
 }
 
-/** The stage's primary action: "Connect", "Connecting…" with a spinner while it runs; the fields stay editable. */
+/** The stage's action: "Connect", "Connecting…" with a spinner while it runs; the fields stay editable. Secondary: Next is the one primary, lit once the connect succeeds (P6). */
 function ActionButton({ testing, onTest, label, busy }: { testing: boolean; onTest: () => void; label: string; busy: string }) {
   return (
-    <Button id="src-connect-button" type="button" className="w-full md:w-48" onClick={() => { if (!testing) onTest(); }} aria-disabled={testing || undefined} aria-busy={testing || undefined}>
+    <Button id="src-connect-button" type="button" variant="secondary" className="w-full md:w-48" onClick={() => { if (!testing) onTest(); }} aria-disabled={testing || undefined} aria-busy={testing || undefined}>
       {testing && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{testing ? busy : label}
     </Button>
   );
@@ -185,7 +185,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
   return (
     <Panel title="Folder" bodyClassName="grid gap-4">
       <div className="grid gap-4" onKeyDown={enterRuns(check)}>
-        <Field id={ctl("input.path")} label="Folder" error={err(ctl("input.path"))}>
+        <Field id={ctl("input.path")} label="Folder" required error={err(ctl("input.path"))}>
           <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
         </Field>
         <div className="grid gap-2">
@@ -344,10 +344,10 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
           </Select>
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-4 md:grid-cols-[minmax(0,1fr)_9rem]">
-          <Field id="src-host" label="Host" note={note} error={err("src-host")}>
+          <Field id="src-host" label="Host" required={!p.stored} note={note} error={err("src-host")}>
             <Input id="src-host" value={c.host} className="font-mono" onChange={(e) => setConn({ host: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
-          <Field id="src-port" label="Port" error={err("src-port")}>
+          <Field id="src-port" label="Port" required={!p.stored} error={err("src-port")}>
             <Input id="src-port" value={c.port} inputMode="numeric" className="font-mono" onChange={(e) => setConn({ port: e.target.value.replace(/\D/g, "") })} autoComplete="off" />
           </Field>
         </div>
@@ -366,16 +366,16 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
         )}
 
         {(oracle || (!p.listed && dbShown)) && (
-          <Field id="src-database" label={oracle ? "Service name" : "Database"} note={note ?? (oracle ? undefined : DATABASE_NOTE)} error={err("src-database")}>
+          <Field id="src-database" label={oracle ? "Service name" : "Database"} required={oracle && !p.stored} note={note ?? (oracle ? undefined : DATABASE_NOTE)} error={err("src-database")}>
             <Input id="src-database" value={c.database} className="font-mono" onChange={(e) => setConn({ database: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
         )}
         <h3 className="pt-2 text-title-3 text-fg">Sign in</h3>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field id="src-user" label="Username" error={err("src-user")} note={`Use a read-only account.${note ? ` ${note}` : ""}`}>
+          <Field id="src-user" label="Username" required={!p.stored} error={err("src-user")} note={`Use a read-only account.${note ? ` ${note}` : ""}`}>
             <Input id="src-user" value={c.user} className="font-mono" onChange={(e) => setConn({ user: e.target.value })} autoComplete="off" spellCheck={false} />
           </Field>
-          <Field id="src-password" label="Password" note={note} error={err("src-password")}>
+          <Field id="src-password" label="Password" required={!p.stored} note={note} error={err("src-password")}>
             <PasswordInput id="src-password" value={c.password} onChange={(e) => setConn({ password: e.target.value })} autoComplete="off" />
           </Field>
         </div>

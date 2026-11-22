@@ -6,7 +6,7 @@ import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice,
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, CloseIcon, SpinnerIcon, SuggestedIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CheckIcon, CloseIcon, SpinnerIcon, SuggestedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
@@ -94,7 +94,7 @@ export type FieldsStepProps = {
 };
 
 /**
- * Step 2, Fields & mapping (Figma 23:6254, 25:6736, phone 29:7871): the columns as detected (a sample of the file, or
+ * Step 2, Fields and mapping (Figma 23:6254, 25:6736, phone 29:7871): the columns as detected (a sample of the file, or
  * the source table), each typed by the user from that guess; the core record's values; derived values; and the
  * preview of what a sample becomes, updated as things change. Nothing here is saved until Next.
  */
@@ -233,7 +233,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
             )}
             {/* a value made from another column (the remark's first word as the reference): set with the columns */}
-            <Button type="button" variant="secondary" size="sm" onClick={addComputed}><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
+            <Button type="button" variant="add" size="sm" onClick={addComputed}><Icon icon={AddIcon} /><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
           </span>
         )}>
         {/* where the columns come from, when they can't be read here (the panel "Columns of the source" folded in) */}
