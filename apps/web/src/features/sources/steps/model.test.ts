@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, codeOf, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -96,5 +96,45 @@ describe("buildSpec: rows to load", () => {
     const d = db({ spec: { ...emptySpec("db_watermark"), keep: [{ field: "status", op: "eq", value: " " }, { field: "status", op: "in", values: ["Successful"] }] } });
     expect(buildSpec(d).keep).toEqual([{ field: "status", op: "in", values: ["Successful"] }]);
     expect("keep" in buildSpec(db({ spec: { ...emptySpec("db_watermark"), keep: [{ field: "status", op: "eq", value: "" }] } }))).toBe(false);
+  });
+});
+
+describe("Save and close keeps what was entered (owner rule: a wizard never loses data)", () => {
+  const stored = { ...EMPTY_CONN, host: "db1", user: "u", database: "core" };
+  const edited = db({ conn: { ...stored, host: "db2" } });
+  const passed = (d: Draft) => ({ result: { ok: true, version: "16" } as never, key: connKey(d) });
+
+  it("a connection as stored, or a file source, has nothing to store", () => {
+    expect(closeConnection(db({ conn: stored }), { stored: true, base: stored, tested: null })).toEqual({ kind: "none" });
+    expect(closeConnection({ ...db(), kind: "file_inbox", spec: emptySpec("file_inbox") }, { stored: true, base: stored, tested: null })).toEqual({ kind: "none" });
+  });
+  it("an edited host is checked as Next checks it: the missing password and a connect not run yet hold the close", () => {
+    const c = closeConnection(edited, { stored: true, base: stored, tested: null });
+    expect(c.kind).toBe("blocked");
+    if (c.kind !== "blocked") return;
+    expect(c.problems.map((p) => p.id)).toEqual(["src-password"]);
+    const typed = db({ conn: { ...edited.conn, password: "p" } });
+    const untested = closeConnection(typed, { stored: true, base: stored, tested: null });
+    expect(untested).toEqual({ kind: "blocked", problems: [], reason: "Connect with the changed values, then save and close." });
+    // a pass over other values counts no more
+    expect(closeConnection(typed, { stored: true, base: stored, tested: passed(edited) })).toMatchObject({ kind: "blocked", reason: "The connection changed since you connected. Connect again." });
+    expect(closeConnection(typed, { stored: true, base: stored, tested: passed(typed) })).toEqual({ kind: "commit" });
+  });
+  it("stores the connection, then saves the spec waiting to autosave, then leaves; any refusal stays on the page", async () => {
+    const calls: string[] = [];
+    const run = (commit: boolean, flush: boolean) => ({
+      commit: async () => { calls.push("commit"); return commit; }, flush: async () => { calls.push("flush"); return flush; },
+      leave: () => calls.push("leave"), blocked: () => calls.push("blocked"),
+    });
+    expect(await saveAndClose({ kind: "commit" }, run(true, true))).toBe(true);
+    expect(calls.splice(0)).toEqual(["commit", "flush", "leave"]);
+    expect(await saveAndClose({ kind: "none" }, run(true, true))).toBe(true);
+    expect(calls.splice(0)).toEqual(["flush", "leave"]);
+    expect(await saveAndClose({ kind: "commit" }, run(false, true))).toBe(false);
+    expect(calls.splice(0)).toEqual(["commit"]);
+    expect(await saveAndClose({ kind: "none" }, run(true, false))).toBe(false);
+    expect(calls.splice(0)).toEqual(["flush"]);
+    expect(await saveAndClose({ kind: "blocked", problems: [], reason: "x" }, run(true, true))).toBe(false);
+    expect(calls.splice(0)).toEqual(["blocked"]);
   });
 });

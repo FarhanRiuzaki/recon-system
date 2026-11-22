@@ -27,8 +27,8 @@ import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListSta
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import {
-  amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
-  type Tested, watermarkProblems,
+  amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
+  saveAndClose, type Tested, watermarkProblems,
 } from "./steps/model";
 import { discardConfirm } from "./discard-dialog";
 import {
@@ -180,7 +180,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [tested, setTested] = useState<Tested | null>(null);
   /** The server's short version from the last passing connect (the folded Server line). */
   const [version, setVersion] = useState<string | null>(null);
-  const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit">(null);
+  const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit" | "close">(null);
   const [columns, setColumns] = useState<Column[] | null>(null);
   const [sample, setSample] = useState({ text: "", cut: false });
   const [fileName, setFileName] = useState("");
@@ -218,8 +218,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const detect = useRef<Set<string>>(new Set());
   const heading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
-  // once the draft exists its edits are kept (autosave and the browser's copy): only a source not made yet can lose them
-  const guard = useLeaveGuard(edited && !ids && !done && busy !== "submit");
+  // once the draft exists its spec is kept (autosave and the browser's copy); a source not made yet, or a connection
+  // that differs from the stored one (stored only at Next or Save and close), can still lose what was typed
+  const connPending = !!ids && d.kind !== "file_inbox" && (!stored || connChanged(d.conn, base));
+  const guard = useLeaveGuard(((edited && !ids) || connPending) && !done && busy !== "submit" && busy !== "close");
 
   // A new source, before it exists (owner rule, 21 Nov: what was entered never goes away): the browser keeps step 1 per
   // space, without the password (never stored in the browser), restored on the next open of …/new and dropped once
@@ -580,13 +582,17 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, file, previewable, ids, specKey]);
 
+  /** The server's spec hash the draft was last saved over (the autosave below keeps it). */
+  const serverHash = useRef<string | null>(source?.v.specHash ?? null);
   /** Saves the spec when it changed since the last save; a refused field is shown and focused. */
   async function save(): Promise<boolean> {
     if (!ids) return false;
     if (saved.current === specKey) return true;
     try {
-      await api<SourceVersionDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}`), { method: "PATCH", body: JSON.stringify({ spec }) });
+      const v = await api<SourceVersionDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}`), { method: "PATCH", body: JSON.stringify({ spec }) });
       saved.current = specKey;
+      serverHash.current = v.specHash;
+      dropLocal(ids.versionId);
       return true;
     } catch (e) {
       fail(e, true);
@@ -598,7 +604,6 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   // saved as soon as the step changes, else 800 ms after the last edit. Until the server takes it (a spec it refuses
   // mid-edit: "Rows can change" before its match key), the browser keeps a copy per draft version, restored on the next
   // open while the server's draft is still the one the copy was made over. Quiet: Next still saves and reports.
-  const serverHash = useRef<string | null>(source?.v.specHash ?? null);
   const savedStep = useRef(step);
   // the copy kept by an earlier visit, once, after mount (localStorage is the browser's: never in the server render);
   // declared first, and the save below skips that first commit, so the server's spec never overwrites the copy
@@ -680,6 +685,25 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     }
   }
 
+  /** Save and close really saves: a changed connection as Next stores it, then the spec the autosave still waits on. */
+  async function close() {
+    if (!ids) return;
+    setFormError(null);
+    setFieldErr(null);
+    setBusy("close");
+    const left = await saveAndClose(closeConnection(d, { stored, base, tested }), {
+      commit: async () => !!(await commitConnection()),
+      flush: save,
+      leave: () => { setDone(true); router.push(sourceHref(spaceId, ids.sourceId)); },
+      blocked: (c) => {
+        if (step !== 0) setStep(0);
+        setFormError(c.reason);
+        if (show(c.problems)) requestAnimationFrame(() => document.getElementById("src-connect-button")?.focus());
+      },
+    });
+    if (!left) setBusy(null);
+  }
+
   const tableNow = d.spec.input.kind === "db_watermark" ? (d.spec.input.table ?? "") : "";
   // step 1: Next opens once the connect (or folder check) of the values on screen passed and a table is picked, with no
   // sentence (docs/recon/ux-form-rules.md, exception to ui-standard §5b); step 2: a field whose column is gone
@@ -739,8 +763,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             </BlockedButton>}
             back={step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
             close={ids
-              // the draft exists and saves itself (autosave below); before that nothing is made yet, so it is Cancel
-              ? <Button asChild variant="ghost"><Link href={sourceHref(spaceId, ids.sourceId)}>Save and close</Link></Button>
+              // the draft exists: its connection and spec are saved first (close above); before that nothing is made yet, so it is Cancel
+              ? <Button type="button" variant="ghost" disabled={working} aria-busy={busy === "close" || undefined} onClick={() => void close()}>
+                {busy === "close" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Save and close
+              </Button>
               : <Button asChild variant="ghost"><Link href={sourcesHref(spaceId)} onClick={dropNew}>Cancel</Link></Button>} />
         </form>
       </Wizard>

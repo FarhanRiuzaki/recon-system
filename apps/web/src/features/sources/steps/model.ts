@@ -126,6 +126,29 @@ export function connectionProblems(d: Draft, o: { created: boolean; replace: boo
   return out;
 }
 
+/** What Save and close does with the connection on screen: nothing to store, store it, or stay (the reason why). */
+export type CloseConnection = { kind: "none" } | { kind: "commit" } | { kind: "blocked"; problems: { id: string; reason: string }[]; reason: string };
+/**
+ * Save and close of a source that exists (owner rule: a wizard never loses what was entered): a database connection
+ * that differs from the stored one is stored as Next stores it (every field, its database, a passing connect of these
+ * values), else the close is held with the reason. A file source's folder is in the spec (autosaved).
+ */
+export function closeConnection(d: Draft, o: { stored: boolean; base: Conn; tested: Tested | null }): CloseConnection {
+  if (d.kind === "file_inbox" || (o.stored && !connChanged(d.conn, o.base))) return { kind: "none" };
+  const problems = [...connectionProblems(d, { created: true, replace: true }), ...pullProblems(d, { replace: true }).filter((p) => p.id === "src-database")];
+  if (problems.length) return { kind: "blocked", problems, reason: "Complete the connection, or put back the stored values, then save and close." };
+  if (o.tested?.result.ok && o.tested.key === connKey(d)) return { kind: "commit" };
+  return { kind: "blocked", problems: [], reason: o.tested?.result.ok ? "The connection changed since you connected. Connect again." : "Connect with the changed values, then save and close." };
+}
+/** Save and close in order: the connection (when it changed), then the spec waiting to autosave, then away; a refusal stays. */
+export async function saveAndClose(c: CloseConnection, run: { commit: () => Promise<boolean>; flush: () => Promise<boolean>; leave: () => void; blocked: (c: Extract<CloseConnection, { kind: "blocked" }>) => void }): Promise<boolean> {
+  if (c.kind === "blocked") { run.blocked(c); return false; }
+  if (c.kind === "commit" && !(await run.commit())) return false;
+  if (!(await run.flush())) return false;
+  run.leave();
+  return true;
+}
+
 /**
  * Why step 1 can't go on yet once the test passed (checked on Next): a connection to store needs its database, the pull
  * its query or table; the watermark is step 2's.
