@@ -7,6 +7,7 @@ import {
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMinor, VERSION_STATUSES } from "../sources";
 import { TargetActivityQuery } from "./audit";
 import { ListQuery, sortParam } from "./common";
+import { OPS } from "../conditions";
 import { SourceHealthDto } from "./sources";
 
 export { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS };
@@ -97,6 +98,34 @@ export type PassSpec = z.infer<typeof PassSpec>;
 
 const clock = z.string().regex(CLOCK_TIME, "Use HH:MM, 00:00–23:59");
 
+/** One clause of a rule: a catalog field (conditions.ts buildCatalog), a comparison, a value or several. */
+const Clause = z.strictObject({
+  field: z.string().regex(/^(break|recon|side_a|side_b)\.[a-z0-9_.]{1,80}$/),
+  op: z.enum(OPS),
+  value: z.union([z.string().max(64), z.array(z.string().max(64)).min(1).max(50)]).optional(),
+});
+const group = <T extends z.ZodType>(item: T) => z.union([z.strictObject({ all: z.array(item).min(1).max(20) }), z.strictObject({ any: z.array(item).min(1).max(20) })]);
+const count = (c: unknown): number => (c && typeof c === "object" && ("all" in c || "any" in c) ? ((c as { all?: unknown[]; any?: unknown[] }).all ?? (c as { any: unknown[] }).any).reduce<number>((n, x) => n + count(x), 0) : 1);
+/** A rule's condition: a group of clauses and at most one more level of groups; 20 clauses at most (design §4.3). */
+export const Condition = group(z.union([Clause, group(Clause)])).refine((c) => count(c) <= 20, "A rule checks at most 20 things.");
+export type ConditionBody = z.infer<typeof Condition>;
+/** A workflow of the recon's space at one version (pinned: a newer version applies once the recon is published again). */
+export const WorkflowRef = z.strictObject({ id: z.uuid(), version: z.number().int().min(1) });
+export type WorkflowRef = z.infer<typeof WorkflowRef>;
+const ChangeApproval = z.strictObject({
+  workflow: z.strictObject({
+    /** null = the default chain (1 of Reviewer or Space admin). */
+    default: WorkflowRef.nullable(),
+    /** Checked in order; the first whose condition holds picks its workflow. */
+    rules: z.array(z.strictObject({ name: z.string().trim().min(1, "Name the rule.").max(80), when: Condition, workflow: WorkflowRef })).max(20),
+  }),
+});
+/** A recon version's approval setup (DEC-052 rev 2 §4.4, stage 1: who approves each change). */
+export const ReconApprovalSpec = z.strictObject({
+  changes: z.strictObject({ force_match: ChangeApproval.optional(), unmatch: ChangeApproval.optional(), write_off: ChangeApproval.optional() }),
+});
+export type ReconApprovalSpec = z.infer<typeof ReconApprovalSpec>;
+
 /**
  * A recon version's `spec` (spec §10): exactly two sides (a, then b), the passes in order, an optional measure, the
  * day's grace, carry over and close, and the schedule (Asia/Jakarta). Field names, operator kinds, pass numbers and the
@@ -115,6 +144,8 @@ export const ReconSpec = z.strictObject({
     z.strictObject({ kind: z.literal("interval"), every_minutes: z.number().int().min(1).max(1440) }),
     z.strictObject({ kind: z.literal("daily"), at: clock, business_date_offset: z.number().int().min(0).max(7) }),
   ]),
+  /** Who approves each change of this recon's breaks (DEC-052 rev 2); absent = the default chain for every change. */
+  approvals: ReconApprovalSpec.optional(),
 });
 export type ReconSpec = z.infer<typeof ReconSpec>;
 
