@@ -21,7 +21,10 @@ drawn with the stage 4 design pass (approval actions and posting), which also br
 pointed to on 22 Nov (lanes per actor, the waiting node highlighted, Approve / Reject on the node). Stage 4 shipped in code
 on 22 Nov without that pass: the Approval step's actions, variants and field mapper, the Accounts and lookup tables
 panel, the break page's Posting panel, Work → Posting and the Today posting line exist in code only too; "06 … v1.0.4"
-(actions + mapper + swimlane) and "07 Open API · v1.0.0" stay owed.
+(actions + mapper + swimlane) and "07 Open API · v1.0.0" stay owed. Also code-only since 22 Nov (owner's UI pass): the stronger separation tokens (`--line`
+#dedee3, `--line-strong` #c9c9d1, `--bg` #f1f1f3, `--tray` #f4f4f6; dark lines #38383f / #4a4a52), the Add and
+Remove button intents (`--add-ink` #1d5fcc, `--add-soft`), `SectionHeading`, `FullScreenEditor` and the flow layer's
+`TableNode` / `MapEdge` (design-system.md §5.18); the Figma variables and these masters are owed with that pass.
 
 ## Naming and page order
 

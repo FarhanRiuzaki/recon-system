@@ -3,7 +3,9 @@
 import { FormActions } from "@starterkit/ui/ds/form-controls";
 
 import { useRef, useState } from "react";
-import { Field, FormErrorSummary, InputAffix, NumberInput, Panel, Wizard } from "@starterkit/ui/ds";
+import { Field, FormErrorSummary, InputAffix, NumberInput, Panel, SectionHeading, Wizard } from "@starterkit/ui/ds";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Button } from "@starterkit/ui/ui/button";
 import { formatNumber } from "@starterkit/ui/lib/format";
@@ -22,6 +24,12 @@ export function FormSectionGallery() {
     requestAnimationFrame(() => heading.current?.focus());
   }
   return <div className="grid gap-section">
+    <Panel title="Numbered sections" description="SectionHeading: the order to fill a long editor in, each part's purpose under its title">
+      <div className="grid gap-5">
+        <SectionHeading n={1} level={3} title="Who approves" description="The workflow every request goes through" />
+        <SectionHeading n={2} level={3} title="What is sent to the bank" description="Actions that run on approval" actions={<Button variant="add"><Icon icon={AddIcon} />Add an action</Button>} />
+      </div>
+    </Panel>
     <Panel title="Form controls" description="Shared sizing, baseline alignment and accessible descriptions">
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
         <Field id="affix-prefix" label="Monthly budget" note="Currency: USD"><InputAffix id="affix-prefix" prefix="USD" defaultValue="2,500" inputMode="decimal" /></Field>

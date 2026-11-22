@@ -8,7 +8,7 @@ import { HEALTH, type Health } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { InfoIcon, RefreshIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -43,6 +43,13 @@ export function ComponentsSections() {
               <Button variant="destructive">Delete 2 users</Button><Button variant="secondary" disabled>Unlock</Button>
               <Button size="sm" variant="secondary">Compact 28</Button><Button size="icon" variant="secondary" aria-label="Refresh now"><Icon icon={RefreshIcon} /></Button>
               <Button variant="link">Forgot password?</Button>
+            </div>
+            {/* intents (owner 22 Nov): add is blue, remove is red, whether a bin or an X; an X that closes stays ghost */}
+            <div className="flex flex-wrap items-center gap-2" aria-label="Add and remove intents" role="group">
+              <Button variant="add"><Icon icon={AddIcon} />Add a condition</Button>
+              <Button variant="remove" size="icon" aria-label="Remove condition 1"><Icon icon={RemoveIcon} /></Button>
+              <Button variant="remove" size="icon" aria-label="Remove change 1"><Icon icon={CloseIcon} /></Button>
+              <Button variant="ghost" size="icon" aria-label="Close panel"><Icon icon={CloseIcon} /></Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5"><label htmlFor="ds-email" className="text-label text-fg-2">Email</label><Input id="ds-email" defaultValue="alex@example.com" /><span className="text-body-sm text-fg-3">Used to sign in and to reset the password.</span></div>

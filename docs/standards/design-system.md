@@ -878,6 +878,28 @@ set up, in named groups, with the progress as a count and a bar. Written for the
 
 ---
 
+### 5.18 Numbered sections, the full-screen editor and the field map (owner, 22 Nov)
+
+- **SectionHeading** (`ds/form-layout.tsx`; /ds/forms "Numbered sections"): a long editor's parts in the order to fill
+  them, a solid primary marker (`--primary` / `--primary-foreground`, decorative: the heading names the part), title
+  `title-3`, what the part is for in `body-sm` fg-3, actions on the right. Parts are divided by a `--line-strong`
+  hairline. Use it where a page or panel holds two parts or more that a person fills in order; never as decoration.
+- **FullScreenEditor** (`ds/full-screen-editor.tsx`, loaded on demand): one record too big for a dialog (an approval
+  action). A modal over the page, 12 px inside the window from 768 px (full screen below), header with title,
+  description and actions (View, Cancel, Done), a settings rail (18–20 rem), the work area, an inspector (22 rem, only
+  while something is open in it) and a dock under the work area; each a labelled region with its own quiet scroll and
+  a `--line-strong` edge. Escape asks the caller, which keeps it open while there are unsaved edits. Header padding is
+  equal top and bottom; the safe-area inset is added on a phone only.
+- **Flow layer** (`packages/ui/src/flow`, `@starterkit/ui/flow`, layer 2 beside charts; the only importer of
+  `@xyflow/react`): the canvases' theme (`flow.css` under `.flow-canvas`, imported by the parts themselves) and parts.
+  `TableNode` / `TableCard` is an ERD table: a `--tray` header (title, caption, row count) and one 32 px row per field
+  with its type (and a limit such as `≤ 34`) as a mono chip and an example value; a row that takes a line has a
+  10 px handle on the table's side (right on a source, left on the target) that is not clipped; states in words and
+  colour: required red `*`, "Not mapped" in Down ink on a faint Down fill, Fixed / Auto generated muted, mapped =
+  a primary handle. `MapEdge` is a bezier over the tables (z above nodes) with a halo in `--card`, its label (the
+  changes, "template") a pill; selected = primary, 2.5 px. Every canvas has a list view (DEC-041) and on a phone the
+  list only.
+
 ## 6. Charts
 
 Built with Recharts 3.8 via `@starterkit/ui/charts`; every chart sits in a Panel card, height from `CHART_HEIGHT`
