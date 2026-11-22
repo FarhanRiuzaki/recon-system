@@ -31,7 +31,8 @@ import { facetsRequest, historyMode, preserveTableParams, readTable, type SortSt
  * - `count` = the Panel count ("12,345", "100,000+"); rows, loading and errors come from `tableView` (table-state.ts).
  * - On a list page (`VIEW_PAGES`) the view (filters, sort, rows per page; not the page or the search) is remembered in
  *   the prefs cookie, and the navigation links reopen it (`viewHref`). So are the columns the viewer hid: `hidden` and
- *   `setHidden` plug into ColumnsMenu and DataTable `hidden`.
+ *   `setHidden` plug into ColumnsMenu and DataTable `hidden`; until the viewer chooses, `hidden` is undefined and the
+ *   table's `Column.defaultHidden` columns start hidden.
  */
 const NONE: readonly string[] = [];
 
@@ -94,9 +95,13 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
     onPageSizeChange: (size: number) => set({ pageSize: size as PageSize } as Partial<TableState<F>>),
   } satisfies DataTablePaging;
 
-  const hidden = (listPage && prefs.hidden[listPage]) || NONE;
-  const setHidden = useCallback((keys: string[]) => {
-    if (listPage) update({ hidden: { ...prefs.hidden, [listPage]: keys } });
+  // undefined = the viewer has not chosen: DataTable and ColumnsMenu hide the `defaultHidden` columns (`hiddenColumns`)
+  const hidden: readonly string[] | undefined = listPage ? prefs.hidden[listPage] : undefined;
+  /** `null` = back to the default columns (ColumnsMenu "Reset to default"); `[]` = every column shown. */
+  const setHidden = useCallback((keys: string[] | null) => {
+    if (!listPage) return;
+    const { [listPage]: _, ...rest } = prefs.hidden;
+    update({ hidden: keys ? { ...rest, [listPage]: keys } : rest });
   }, [listPage, prefs.hidden, update]);
 
   return {

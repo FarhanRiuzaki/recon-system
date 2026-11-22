@@ -10,7 +10,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import { canHide, type Column, mobileRoles } from "./data-table";
+import { canHide, type Column, hiddenColumns, mobileRoles } from "./data-table";
 import { FilterSheet, InFilterSheet } from "./filter-sheet";
 
 /**
@@ -85,8 +85,11 @@ export function FilterMenu<T extends string>({ label, value, options, onChange }
  * (mobile title) and `hideable: false` ones are listed ticked and disabled; the row checkbox is not listed. Keyboard: the menu's own (arrows, Space
  * toggles, Esc closes). The page keeps the choice (`hidden`, per viewer in the prefs cookie) and passes it to DataTable.
  */
-export function ColumnsMenu<T>({ columns, hidden, onChange }: { columns: readonly Column<T>[]; hidden: readonly string[]; onChange: (hidden: string[]) => void }) {
+/** `hidden` undefined = no choice saved (the `defaultHidden` columns are off); "Reset to default" sends `null`. */
+export function ColumnsMenu<T>({ columns, hidden: saved, onChange }: { columns: readonly Column<T>[]; hidden: readonly string[] | undefined; onChange: (hidden: string[] | null) => void }) {
   const roles = mobileRoles(columns);
+  const hidden = hiddenColumns(saved, columns), defaults = hiddenColumns(undefined, columns);
+  const isDefault = hidden.length === defaults.length && hidden.every((k) => defaults.includes(k));
   // Every column but the row checkbox; the ones that can't be hidden are listed ticked and disabled (Carbon).
   const listed = columns.map((c, i) => ({ c, fixed: !canHide(c, roles[i]!) })).filter((_, i) => roles[i] !== "lead");
   if (!listed.some((x) => !x.fixed)) return null;
@@ -107,7 +110,7 @@ export function ColumnsMenu<T>({ columns, hidden, onChange }: { columns: readonl
             onCheckedChange={(on) => onChange(on ? hidden.filter((k) => k !== c.key) : [...hidden, c.key])}>{c.header}</DropdownMenuCheckboxItem>
         ))}
         <DropdownMenuSeparator />
-        <DropdownMenuItem disabled={!off} onSelect={() => onChange([])}>Reset to default</DropdownMenuItem>
+        <DropdownMenuItem disabled={isDefault} onSelect={() => onChange(null)}>Reset to default</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

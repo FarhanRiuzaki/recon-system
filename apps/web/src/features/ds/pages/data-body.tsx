@@ -43,7 +43,7 @@ export function DataSections() {
   const [role, setRole] = useState("");
   const [server, setServer] = useState({ page: 1, pageSize: 15, sort: { key: "name", dir: "asc" as SortDir } });
   const [perms, setPerms] = useState<ReadonlySet<string>>(() => new Set(MATRIX_START));
-  const [hidden, setHidden] = useState<string[]>([]);
+  const [hidden, setHidden] = useState<string[] | undefined>(undefined);
   const [count, setCount] = useState(3), [confirm, setConfirm] = useState(false);
   const [region, setRegion] = useState<(typeof REGION_STATES)[number]>("data");
   const [parts, setParts] = useState<(typeof REGION_STATES)[number]>("data"), [step, setStep] = useState(0);
@@ -76,7 +76,7 @@ export function DataSections() {
         </>}>
       {({ summary }) => <Panel flush icon={UsersIcon} title="Users" count="12,345" legend={LEGEND}
         description="Sample data; live filters with selected-option badges and removable chips"
-        toolbar={<Toolbar end={<><ColumnsMenu columns={columns} hidden={hidden} onChange={setHidden} /></>}>{null}</Toolbar>}>
+        toolbar={<Toolbar end={<><ColumnsMenu columns={columns} hidden={hidden} onChange={(h) => setHidden(h ?? undefined)} /></>}>{null}</Toolbar>}>
         {summary}
         <DataTable label="Sample users" rowHeight="identity" columns={columns} hidden={hidden} rows={rows.slice(0, server.pageSize)} rowKey={(r) => r.id}
           isSelected={(r) => r.id === "row-2"} empty={EMPTY} sort={server.sort} onSortChange={(sort) => setServer((s) => ({ ...s, page: 1, sort }))}

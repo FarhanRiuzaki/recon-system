@@ -278,7 +278,8 @@ export function countLine(t: Totals, labels: readonly [string, string]): string 
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-export type SimView = { chip: { health: "healthy" | "degraded" | "unknown" | "down"; label: string }; line: string; counts: Run | null; dim: boolean };
+/** `chip`: a StatusChip (`health`) while something needs attention or runs; a neutral CategoryChip once simulated. */
+export type SimView = { chip: { health: "degraded" | "unknown" | "down"; label: string } | { slot: "neutral"; label: string }; line: string; counts: Run | null; dim: boolean };
 /** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
 export const STOPPED_CHIP = { health: "down" as const, label: "Stopped" };
 export function stoppedLine(r: { mode: string; error: string | null }): string {
@@ -302,7 +303,7 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   }
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;
   const at = shown.finishedAt ? ` · ${formatTime(Date.parse(shown.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
-  return { chip: { health: "healthy", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
+  return { chip: { slot: "neutral", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
 }
 
 /** Why Submit for approval waits on a simulation that is running (BUILDER-SPEC), before submitReason's own reasons. */

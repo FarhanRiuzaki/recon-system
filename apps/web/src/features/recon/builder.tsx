@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, CategoryChip, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -34,10 +34,14 @@ import { CanvasLoader } from "./canvas-loader";
 import { ApprovalStep } from "./approval-step";
 import { SpecView } from "./spec-view";
 import { saveQueue } from "./save-queue";
-import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
+import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView, type SimView } from "./run-model";
 import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useReplayDefault, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
+
+/** The simulation bar's chip: health while it runs or needs a rerun, neutral once simulated (run-model `simView`). */
+const SimChip = ({ chip }: { chip: SimView["chip"] }) =>
+  "health" in chip ? <StatusChip health={chip.health} label={chip.label} /> : <CategoryChip slot={chip.slot} label={chip.label} />;
 
 /** The builder's copy of an unsaved spec (rule 12), or null: `base` = the server spec hash it was made over. */
 function readKept(key: string): { base: string; spec: ReconSpec } | null {
@@ -553,7 +557,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                   </p>
                 )}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <StatusChip health={sim.chip.health} label={sim.chip.label} />
+                  <SimChip chip={sim.chip} />
                   <span role="status" className="text-body-sm text-fg">{sim.line}{simulation.stalled ? ` · ${STALL_TEXT}` : ""}</span>
                   {simulation.shown && <Link href={reconRunHref(spaceId, recon.id, simulation.shown.id)} className="text-body-sm text-fg underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-primary">Open the full results</Link>}
                 </div>
@@ -592,7 +596,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
             <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
             <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(5)}><Icon icon={EditIcon} />Edit</Button> : undefined}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <StatusChip health={sim.chip.health} label={sim.chip.label} />
+                <SimChip chip={sim.chip} />
                 <span className="text-body-sm text-fg">{sim.line}</span>
               </div>
             </Panel>

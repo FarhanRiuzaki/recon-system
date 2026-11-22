@@ -61,6 +61,9 @@ describe("remembered table views", () => {
     const c = prefsCookie({ ...DEFAULT_PREFS, hidden: { "/users": ["type", "createdAt"] } }, false);
     expect(parsePrefs(value(c)).hidden).toEqual({ "/users": ["type", "createdAt"] });
     expect(parsePrefs("cols:/users=type,../x,a b,createdAt&cols:/nope=type").hidden).toEqual({ "/users": ["type", "createdAt"] });
+    // an empty choice (every column shown, defaultHidden ones too) is kept apart from no choice
+    expect(parsePrefs(value(prefsCookie({ ...DEFAULT_PREFS, hidden: { "/users": [] } }, false))).hidden).toEqual({ "/users": [] });
+    expect(parsePrefs("sidebar=expanded&cols:/roles=../x").hidden).toEqual({});
     expect(parsePrefs(`cols:/roles=${Array.from({ length: 30 }, (_, i) => `c${i}`).join(",")}`).hidden["/roles"]).toHaveLength(20);
   });
 });

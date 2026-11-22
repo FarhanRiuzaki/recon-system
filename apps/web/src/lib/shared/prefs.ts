@@ -4,7 +4,7 @@ import { canonicalFilterQuery } from "@starterkit/shared/filter-selection";
  * `views`: the last table view (filters, sort, rows per page) of each list page, so the navigation reopens a list
  * as it was left (the server reads the cookie, so the page renders filtered on first paint). Never the page number or
  * the search text: those belong to one visit. `hidden`: the columns each list page's viewer hid (ColumnsMenu), so the
- * table renders without them on first paint. `keys`: single-key shortcuts ("G then a letter", "?") on or off (WCAG 2.1.4:
+ * table renders without them on first paint; no entry = no choice (the table's `defaultHidden` columns), `[]` = all shown. `keys`: single-key shortcuts ("G then a letter", "?") on or off (WCAG 2.1.4:
  * a character-key shortcut can be turned off); ⌘K has a modifier and stays. `space`: the last space opened (per browser).
  */
 export type Prefs = {
@@ -50,8 +50,9 @@ export function parsePrefs(raw: string | undefined): Prefs {
   for (const p of VIEW_PAGES) {
     const v = savedView(new URLSearchParams(q.get(`view:${p}`) ?? ""), [], p);
     if (v && v.length <= VIEW_MAX) views[p] = v;
-    const h = hiddenKeys(q.get(`cols:${p}`));
-    if (h.length) hidden[p] = h;
+    // `cols:<page>=` (empty) is a choice too: every column shown, `defaultHidden` ones included
+    const raw = q.get(`cols:${p}`), h = hiddenKeys(raw);
+    if (h.length || raw === "") hidden[p] = h;
   }
   return {
     sidebar: q.get("sidebar") === "collapsed" ? "collapsed" : "expanded",
@@ -67,7 +68,7 @@ export function prefsCookie(p: Prefs, secure: boolean): string {
   const q = new URLSearchParams({ sidebar: p.sidebar, density: p.density, keys: p.keys });
   if (p.space) q.set("space", p.space); // parsePrefs drops anything but a UUID
   for (const [page, raw] of Object.entries(p.views)) { const v = page === "/audit/activity" ? viewParams(page, raw ?? "").toString() : raw ?? ""; if (v && isViewPage(page) && v.length <= VIEW_MAX) q.set(`view:${page}`, v); }
-  for (const [page, h] of Object.entries(p.hidden)) { const keys = hiddenKeys(h?.join(",") ?? null); if (keys.length && isViewPage(page)) q.set(`cols:${page}`, keys.join(",")); }
+  for (const [page, h] of Object.entries(p.hidden)) { if (h && isViewPage(page)) q.set(`cols:${page}`, hiddenKeys(h.join(",")).join(",")); }
   return `${PREFS_COOKIE}=${encodeURIComponent(q.toString())}; Path=/; Max-Age=31536000; SameSite=Strict${secure ? "; Secure" : ""}`;
 }
 

@@ -30,7 +30,13 @@ export type Column<T> = {
   mobile?: MobileRole;
   /** `false`: the viewer can't hide it (ColumnsMenu). The phone card's title and lead never can. */
   hideable?: boolean;
+  /** Off until the viewer turns it on in ColumnsMenu (P11: at most 7 columns show at 1440 px; the rest start here). */
+  defaultHidden?: boolean;
 };
+
+/** The columns to hide: the viewer's saved choice, or (`undefined`, nothing saved) the `defaultHidden` ones. */
+export const hiddenColumns = <T,>(saved: readonly string[] | undefined, columns: readonly Column<T>[]): readonly string[] =>
+  saved ?? columns.filter((c) => c.defaultHidden).map((c) => c.key);
 
 /** Whether ColumnsMenu may hide this column: not the identity (mobile title), not the row checkbox (lead), not `hideable: false`. */
 export const canHide = <T,>(c: Column<T>, role: MobileRole) => c.hideable !== false && role !== "title" && role !== "lead";
@@ -119,7 +125,8 @@ type Props<T> = {
   highlightScope?: string;
   /** Skeleton rows while loading (default 8; `server` paging uses its page size): match the loaded row count, no layout shift. */
   skeletonRows?: number;
-  /** Column keys the viewer hid (ColumnsMenu); a column that can't be hidden (`canHide`) stays. */
+  /** Column keys the viewer hid (ColumnsMenu); a column that can't be hidden (`canHide`) stays. `undefined` = no
+   *  choice saved: the `defaultHidden` columns are hidden. */
   hidden?: readonly string[];
 };
 
@@ -142,7 +149,8 @@ type Props<T> = {
 export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error, empty, sort, onSortChange, rowActions, paging, isSelected, rowHeight = "default", highlightNew = false, highlightScope, skeletonRows, hidden }: Props<T>) {
   const fresh = useNewKeys(rows.map(rowKey), { enabled: highlightNew, scope: highlightScope });
   const allRoles = mobileRoles(all);
-  const keep = all.map((c, i) => !hidden?.includes(c.key) || !canHide(c, allRoles[i]!));
+  const hide = hiddenColumns(hidden, all);
+  const keep = all.map((c, i) => !hide.includes(c.key) || !canHide(c, allRoles[i]!));
   const columns = all.filter((_, i) => keep[i]);
   const roles = allRoles.filter((_, i) => keep[i]);
   // While scrolling sideways the row's first column (after the row checkbox, if any) sticks: it says which row this is.
