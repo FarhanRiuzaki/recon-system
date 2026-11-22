@@ -583,3 +583,16 @@ dari workflow yang dipilih dan menyimpan salinannya. Keputusan builder yang dite
 dihitung bila anggota aktif space request (termasuk lewat role aplikasi); ganti nama workflow lewat draft yang
 direview; publish tidak diblok bila satu space kekurangan orang (ditandai di Used by, request di space itu tetap
 ditolak saat dibuka); Used by memperlihatkan semua space kepada pemegang izin workflow.
+
+**Amandemen 2, 22 November 2026 (pemilik; menggantikan library global dan approval rules per space):** desain
+`docs/superpowers/specs/2026-11-22-recon-approval-and-posting-design.md`, keputusan O1–O10. Workflow **milik space**
+(O1; space admin space itu atau pemegang `workflow.manage` yang mengubah, orang lain yang mem-publish). Siapa yang
+menyetujui sebuah perubahan diatur **di versi config recon** (O3, `spec.approvals`): per perubahan (force match,
+unmatch, write-off) workflow default dan aturan berkondisi di atas katalog field versi itu (field break, kode recon,
+field record sisi A/B), aturan pertama yang cocok menang, tanpa setup = rantai default. Workflow disematkan
+`{id, version}`: publish versi baru tidak memindahkan recon (Used by menandai yang tertinggal). Mengubah approval saja
+tidak menuntut simulasi ulang (`matching_hash` = hash spec tanpa `approvals`). Submit dan approve versi recon menolak
+workflow yang hilang, beda space, diarsipkan atau versi yang tak pernah publish, dan field aturan yang tak lagi dibaca;
+saat simpan hal itu peringatan. Arsip workflow ditolak selama versi recon (live atau terbuka) memakainya. Tabel
+`approval_bindings` dihapus (migrasi 0050). Tahap 3–5 (connector Open API, aksi posting per level, mode grup; O2, O4–O10
+dan keputusan builder §10) menyusul dengan rencana sendiri.
