@@ -104,6 +104,8 @@ export const ConnectorDetailDto = z.object({
   id: z.string(), name: z.string(), published: ConnectorVersionDto.nullable(), open: ConnectorVersionDto.nullable(),
   secrets: z.object({ dev: SecretFlags, prod: SecretFlags }),
   disabled: z.object({ at: z.string(), reason: z.string(), by: Person.nullable() }).nullable(),
+  /** Recons, in every space, whose live version has an action that calls it (as the list row). */
+  usedBy: z.number().int(),
   ...reviewFields,
 });
 export type ConnectorDetailDto = z.infer<typeof ConnectorDetailDto>;

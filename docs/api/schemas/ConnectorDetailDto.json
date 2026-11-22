@@ -967,6 +967,11 @@
         }
       ]
     },
+    "usedBy": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
     "canEdit": {
       "type": "boolean"
     },
@@ -987,6 +992,7 @@
     "open",
     "secrets",
     "disabled",
+    "usedBy",
     "canEdit",
     "reviewBlocked",
     "overrideOnly"

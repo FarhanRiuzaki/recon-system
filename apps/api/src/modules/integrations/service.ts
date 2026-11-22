@@ -117,6 +117,7 @@ async function detail(tx: InTx, ctx: Ctx, id: string): Promise<ConnectorDetailDt
     open: open ? versionDto<ConnectorSpec>(open as VersionRow, n) as ConnectorVersionDto : null,
     secrets: flags,
     disabled: c.disabledAt ? { at: c.disabledAt.toISOString(), reason: c.disabledReason ?? "", by: c.disabledBy ? { id: c.disabledBy, name: n.get(c.disabledBy) ?? null } : null } : null,
+    usedBy: (await usedByCounts([id])).get(id) ?? 0,
     canEdit: canEdit(ctx), reviewBlocked: blocked, overrideOnly,
   };
 }

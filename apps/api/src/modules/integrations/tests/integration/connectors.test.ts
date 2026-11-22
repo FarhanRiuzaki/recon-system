@@ -106,7 +106,7 @@ describe("connectors", () => {
   });
 });
 
-describe("the connectors list: bank link and used by (audit §5.8)", () => {
+describe("the connectors list and detail: bank link and used by (audit §5.8, C2)", () => {
   it("the active environment's last call result from its circuit, and how many recons' live versions call it, across spaces", async () => {
     const c = await create(t.m1);
     await publish(c.id, t.m1, t.m2);
@@ -131,5 +131,7 @@ describe("the connectors list: bank link and used by (audit §5.8)", () => {
       await db.insert(reconConfigVersions).values({ id: Bun.randomUUIDv7(), configId: cfg, spaceId: sp, version: 1, status, spec: posting, specHash: "h", matchingHash: "h", makerId: Bun.randomUUIDv7() });
     }
     expect((await row()).usedBy).toBe(2);
+    // the detail says it too: Turn off connector names how many recons use it (audit C2)
+    expect((await json<ConnectorDetailDto>(call("GET", `${C}/${c.id}`, { token: t.viewer }))).usedBy).toBe(2);
   });
 });

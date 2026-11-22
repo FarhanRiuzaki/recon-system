@@ -1,5 +1,6 @@
 import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
 import { fieldPaths, OPERATIONS_MAX, type SpecOperation, TIMEOUT_DEFAULT_MS } from "@starterkit/shared/integrations";
+import { formatNumber } from "@starterkit/ui/lib/format";
 
 // A connector draft's operations as the editor changes them (DEC-053), pure: a field renamed carries what points to it,
 // what points to a field that is gone is dropped before saving, and an operation is changed by its place in the list.
@@ -31,6 +32,11 @@ export function prune(op: OperationSpec): OperationSpec {
     reference: op.reference && res.has(op.reference) ? op.reference : null,
   };
 }
+
+/** What turning a connector off does to the `usedBy` recons that call it (audit C2). */
+export const turnOffSentence = (usedBy: number) => (usedBy
+  ? `Used by ${formatNumber(usedBy)} ${usedBy === 1 ? "recon: what it" : "recons: what they"} would send through it is marked not sent until it is on again.`
+  : "No recon uses it: nothing is sent through it until it is on again.");
 
 /** `list` with the item at `i` replaced. */
 export const replaceAt = <T>(list: readonly T[], i: number, v: T): T[] => list.map((x, j) => (j === i ? v : x));

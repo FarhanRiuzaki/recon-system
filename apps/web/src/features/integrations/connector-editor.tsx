@@ -25,7 +25,7 @@ import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { unsaved } from "@/lib/shared/autosave";
 import { connectorDetail, INTEGRATIONS_KEY } from "@/lib/shared/queries";
-import { prune, replaceAt } from "./connector-model";
+import { prune, replaceAt, turnOffSentence } from "./connector-model";
 import { EnvironmentCard } from "./environment-card";
 import { SpecPasteDialog } from "./spec-paste-dialog";
 import { OperationEditor } from "./operation-editor";
@@ -44,7 +44,7 @@ const newOperation = (n: number): OperationSpec => ({
   key: `operation_${n}`, name: `Operation ${n}`, method: "POST", path: "/", timeoutMs: TIMEOUT_DEFAULT_MS, request: [], response: [], success: null, reference: null, masked: [], presets: {}, auto: {},
 });
 
-function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: ConnectorDetailDto) => void; onClose: () => void }) {
+function TurnOffDialog({ id, usedBy, onDone, onClose }: { id: string; usedBy: number; onDone: (d: ConnectorDetailDto) => void; onClose: () => void }) {
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +59,7 @@ function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: Connec
       <DialogContent phone="top">
         <DialogHeader>
           <DialogTitle>Turn off connector</DialogTitle>
-          <DialogDescription>Nothing is sent through it until it is turned on again. Recons keep matching; the approved changes they would send through it are marked not sent.</DialogDescription>
+          <DialogDescription>{turnOffSentence(usedBy)} Matching goes on.</DialogDescription>
         </DialogHeader>
         <DialogBody>
         <Field id="off-reason" label="Reason" required error={error}>
@@ -265,7 +265,7 @@ export function ConnectorEditor({ id }: { id: string }) {
 
       {tab === "try" && <TryPanel id={c.id} operations={spec.operations} />}
       {pasting && <SpecPasteDialog spec={spec} onClose={() => setPasting(false)} onApply={(next, note) => { setPasting(false); set(next); toast(note); }} />}
-      {turnOff && <TurnOffDialog id={c.id} onClose={() => setTurnOff(false)} onDone={(next) => { setTurnOff(false); took(next, "Connector turned off."); }} />}
+      {turnOff && <TurnOffDialog id={c.id} usedBy={c.usedBy} onClose={() => setTurnOff(false)} onDone={(next) => { setTurnOff(false); took(next, "Connector turned off."); }} />}
     </div>
   );
 }

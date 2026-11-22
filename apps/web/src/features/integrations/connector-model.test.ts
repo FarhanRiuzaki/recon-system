@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { mergeSpecOperations, prune, renamePath, replaceAt } from "./connector-model";
+import { mergeSpecOperations, prune, renamePath, replaceAt, turnOffSentence } from "./connector-model";
 
 const op: OperationSpec = {
   key: "post", name: "Post", method: "POST", path: "/", timeoutMs: 30000,
@@ -77,5 +77,13 @@ describe("auto values in the draft", () => {
       { rqMsgId: { kind: "external_id" }, "DE48.Cur": { kind: "now", format: "yyyy" } },
       { rqMsgId: { kind: "external_id" } },
     ]);
+  });
+});
+
+describe("Turn off connector (audit C2): says how many recons use it", () => {
+  it("one recon, many, none", () => {
+    expect(turnOffSentence(1)).toBe("Used by 1 recon: what it would send through it is marked not sent until it is on again.");
+    expect(turnOffSentence(3)).toBe("Used by 3 recons: what they would send through it is marked not sent until it is on again.");
+    expect(turnOffSentence(0)).toBe("No recon uses it: nothing is sent through it until it is on again.");
   });
 });
