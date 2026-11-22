@@ -378,7 +378,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const projection = counters ? (simulation.shown?.projection ?? null) : null;
   const currency = projection ? reasonCount(projection, CURRENCY_DIFFERS, [spec.sides[0].label, spec.sides[1].label]) : null;
   const rows: PassRowProps[] = spec.passes.map((p, i) => ({
-    id: keys[i]!, pass: p, fields, editable, selected: sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
+    id: keys[i]!, pass: p, fields, editable, selected: sheet && sel.k === "pass" && sel.key === keys[i], notes: notes(p.no),
     sim: counters ? { outcome: passOutcome(counters, spec, p), connector: connectorText(counters, spec, i + 1), dim: sim.dim } : undefined,
     onSelect: () => select({ k: "pass", key: keys[i]! }), onKey: onPassKey(i, keys[i]!), onRemove: editable ? () => removePassAt(i) : undefined,
     needs: editable ? passNeeds(spec, i, gaps, placed?.pass === i + 1 ? placed.text : null) : [],
