@@ -21,7 +21,7 @@ import { ENVIRONMENT_LABEL, ENVIRONMENTS, type OpField, OPERATIONS_MAX, PROFILE_
 import { DetailNotFound } from "@/components/detail-not-found";
 import { ReviewPanel } from "@/components/review-panel";
 import { LoadingShape } from "@/components/route-skeleton";
-import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
+import { type HeaderAction, PageHeader, returnToMore } from "@/components/shell/page-header";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { unsaved } from "@/lib/shared/autosave";
 import { connectorDetail, INTEGRATIONS_KEY } from "@/lib/shared/queries";
@@ -56,7 +56,7 @@ function TurnOffDialog({ id, usedBy, onDone, onClose }: { id: string; usedBy: nu
   }
   return (
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
-      <DialogContent phone="top">
+      <DialogContent phone="top" onCloseAutoFocus={returnToMore}>
         <DialogHeader>
           <DialogTitle>Turn off connector</DialogTitle>
           <DialogDescription>{turnOffSentence(usedBy)} Matching goes on.</DialogDescription>

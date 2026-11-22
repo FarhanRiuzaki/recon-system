@@ -22,13 +22,25 @@ type Base = { label: string; reason?: string | null; busy?: boolean };
  * A secondary header action: a link (`href`) or a command (`onSelect`); `reason` blocks it and says why; `busy` while
  * it runs. A destructive one (deletes, deactivates, revokes, resets, retires: ui-standard §1a) is always an item of the
  * ⋯ menu, at every width, and runs only through its confirmation: `confirm` (the shared dialog) or, when the
- * confirmation asks for more than a yes (Turn off connector asks why), `onSelect` opening the caller's own dialog.
+ * confirmation asks for more than a yes (Turn off connector asks why), `onSelect` opening the caller's own dialog,
+ * whose `onCloseAutoFocus` is `returnToMore`.
  */
 export type HeaderAction = PlainAction | DestructiveAction;
 type DestructiveAction = Base & { destructive: true } & ({ confirm: HeaderConfirm; onSelect?: never } | { confirm?: never; onSelect: () => void });
 type Confirmed = Extract<DestructiveAction, { confirm: HeaderConfirm }>;
 /** A header action that is not destructive: a link or a command. */
 export type PlainAction = Base & { destructive?: false; href?: string; onSelect?: () => void };
+
+/**
+ * A dialog opened from a ⋯ item returns focus to the ⋯ trigger when it closes (pass as `onCloseAutoFocus`): the item it
+ * came from is gone with the menu, and Radix would otherwise drop focus on the body.
+ */
+export function returnToMore(e: Event) {
+  const more = document.querySelector<HTMLElement>("[data-slot=page-header] [data-more-actions]");
+  if (!more) return;
+  e.preventDefault();
+  more.focus();
+}
 
 /** From 768 px: a non-destructive action as a secondary button, a BlockedButton when a rule blocks it. */
 function ActionButton({ a }: { a: HeaderAction }) {
@@ -50,7 +62,7 @@ function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="icon" aria-label="More actions" className={danger ? undefined : "md:hidden"}><Icon icon={MoreIcon} /></Button>
+        <Button variant="secondary" size="icon" aria-label="More actions" data-more-actions className={danger ? undefined : "md:hidden"}><Icon icon={MoreIcon} /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         {[...actions.filter((a) => !a.destructive), ...actions.filter((a) => a.destructive)].map((a) => {
@@ -103,7 +115,7 @@ export function PageHeader({ title, crumb, status, actions, more, description, t
       {asking && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setAsking(null); }} auditFields={false} reasons={[]} destructive
           title={asking.confirm.title} description={asking.confirm.description} impact={asking.confirm.impact ?? []}
-          actionLabel={asking.confirm.actionLabel ?? asking.label} onConfirm={async () => asking.confirm.onConfirm()} />
+          actionLabel={asking.confirm.actionLabel ?? asking.label} onConfirm={async () => asking.confirm.onConfirm()} onCloseAutoFocus={returnToMore} />
       )}
     </header>
   );
