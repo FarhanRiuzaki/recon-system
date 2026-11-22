@@ -1,7 +1,7 @@
 // /v1/integrations/connectors (DEC-053): integration.view reads; integration.manage edits, publishes another's
 // version and replaces credentials.
 import { Elysia } from "elysia";
-import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody, SaveConnectorBody } from "@starterkit/shared/contracts/integrations";
+import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
 import { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
 import type { ZodType } from "zod";
 import { $ZodError } from "zod/v4/core";
@@ -9,7 +9,8 @@ import { ApiError } from "../../kernel/errors";
 import { body as parseBody, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  connectorDetail, connectorPage, createConnector, disableConnector, discardDraft, enableConnector, replaceSecrets, reviewDraft, saveDraft, startDraft, submitDraft,
+  connectorDetail, connectorPage, createConnector, disableConnector, discardDraft, enableConnector, replaceSecrets, reviewDraft, saveDraft, startDraft, submitDraft, tokenCheck,
+  tryOperation,
 } from "./service";
 
 /** A body the contract refused: 400 with the first reason written for a person ("Use an https:// address."). */
@@ -47,4 +48,13 @@ export const integrationsController = () => new Elysia().use(guard)
     const b = await body(c, DisableConnectorBody);
     return disableConnector(c.ctx, idParam(c.params.id, "connector"), b);
   }, { guard: "integration.manage" })
-  .post("/v1/integrations/connectors/:id/enable", ({ ctx, params }) => enableConnector(ctx, idParam(params.id, "connector")), { guard: "integration.manage" });
+  .post("/v1/integrations/connectors/:id/enable", ({ ctx, params }) => enableConnector(ctx, idParam(params.id, "connector")), { guard: "integration.manage" })
+  // a new token from the bank: tells whether the environment's credentials work (writes only the token cache)
+  .post("/v1/integrations/connectors/:id/token-check", async (c) => {
+    const b = await body(c, TokenCheckBody);
+    return tokenCheck(c.ctx, idParam(c.params.id, "connector"), b);
+  }, { guard: "integration.manage" })
+  .post("/v1/integrations/connectors/:id/try", async (c) => {
+    const b = await body(c, TryBody);
+    return tryOperation(c.ctx, idParam(c.params.id, "connector"), b);
+  }, { guard: "integration.manage" });

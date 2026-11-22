@@ -3,22 +3,23 @@
 // per environment, encrypted; answers and activity say which are set, never their values.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  ConnectorDetailDto, ConnectorListQuery, ConnectorRowDto, ConnectorSpec, ConnectorVersionDto, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody,
+  ConnectorDetailDto, ConnectorListQuery, TokenCheckBody, TokenCheckDto, TryBody, TryDto, ConnectorRowDto, ConnectorSpec, ConnectorVersionDto, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody,
   SaveConnectorBody,
 } from "@starterkit/shared/contracts/integrations";
 import { ConnectorSpec as SpecSchema } from "@starterkit/shared/contracts/integrations";
 import type { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
-import { ENVIRONMENTS, type Environment } from "@starterkit/shared/integrations";
+import { ENVIRONMENTS, type Environment, maskTree, readPath } from "@starterkit/shared/integrations";
 import { and, eq, ilike, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import { db, type InTx } from "../../kernel/db";
-import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
+import { ApiError, isUniqueViolation, notFound, tooManyAttempts } from "../../kernel/errors";
 import { likeEscape, pageQuery, sortSql } from "../../kernel/pagination";
 import { reviewRule, userNames, type VersionRow, versionDto, versionPeople } from "../approvals";
 import { recordActivity } from "../audit";
-import type { Ctx } from "../auth";
+import { type Ctx, RateLimiter, retryText } from "../auth";
 import { publicKeyPem } from "./profile";
 import { connectors, connectorSecrets, connectorVersions } from "./schema";
+import { accessToken, NotSent, sendOperation } from "./transport";
 
 const EDITORS = "an Open API manager";
 const canEdit = (ctx: Ctx) => ctx.perms.has("integration.manage");
@@ -240,4 +241,50 @@ export async function liveOperation(tx: InTx, connectorId: string, key: string) 
   const spec = v.spec as ConnectorSpec;
   const op = spec.operations.find((o) => o.key === key);
   return op ? { connector: spec, version: v.version, op, disabled: !!c.disabledAt } : null;
+}
+
+const tries = new RateLimiter("integration-try", 20, 60_000);
+/** The version being worked on (open, else live): what Try it and Get token use. */
+async function workingSpec(tx: InTx, id: string): Promise<{ name: string; spec: ConnectorSpec; disabled: string | null }> {
+  const c = await connectorOf(tx, id);
+  const { published, open } = await versionsOf(tx, id);
+  return { name: c.name, spec: (open ?? published)!.spec as ConnectorSpec, disabled: c.disabledAt ? c.disabledReason ?? "" : null };
+}
+
+/** POST …/{id}/token-check: asks the environment's bank for a new token. The bank's text is never echoed. */
+export async function tokenCheck(ctx: Ctx, id: string, b: TokenCheckBody): Promise<TokenCheckDto> {
+  const wait = await tries.hit(ctx.user.id);
+  if (wait !== null) throw tooManyAttempts(wait, retryText(wait));
+  const { spec, secrets } = await db.transaction(async (tx) => ({ ...(await workingSpec(tx, id)), secrets: await secretsOf(tx, id, b.environment) }));
+  try {
+    const t = await accessToken(id, b.environment, spec.environments[b.environment], secrets ?? {}, true);
+    return { ok: true, expiresIn: t.expiresIn, message: `The bank gave a token that lasts ${t.expiresIn} s.` };
+  } catch (e) {
+    if (e instanceof NotSent) return { ok: false, expiresIn: null, message: e.message };
+    throw e;
+  }
+}
+
+/**
+ * POST …/{id}/try: one operation of the version being worked on, to the dev environment only, with the typed body
+ * (fixed values filled in). The answer is masked; the activity keeps the operation, outcome, status and external id.
+ */
+export async function tryOperation(ctx: Ctx, id: string, b: TryBody): Promise<TryDto> {
+  const wait = await tries.hit(ctx.user.id);
+  if (wait !== null) throw tooManyAttempts(wait, retryText(wait));
+  const w = await db.transaction(async (tx) => ({ ...(await workingSpec(tx, id)), secrets: await secretsOf(tx, id, "dev") }));
+  const op = w.spec.operations.find((o) => o.key === b.operation);
+  if (!op) throw new ApiError("bad_request", "This connector has no such operation. Pick one of its operations.");
+  const r = w.disabled !== null
+    ? { outcome: "not_sent" as const, status: null, externalId: null, ms: 0, json: null, raw: null, message: `This connector is turned off: ${w.disabled}` }
+    : await sendOperation({ connectorId: id, env: "dev", op, settings: w.spec.environments.dev, secrets: w.secrets, body: b.body });
+  const success = r.json !== null && op.success ? String(readPath(r.json, op.success.field) ?? "") === op.success.equals : r.json !== null ? true : null;
+  const ref = r.json !== null && op.reference ? readPath(r.json, op.reference) : null;
+  await db.transaction((tx) => recordActivity(tx, ctx, {
+    action: "integration.try", target: target(id, w.name), after: { operation: op.key, outcome: r.outcome, status: r.status, externalId: r.externalId },
+  }));
+  return {
+    ok: r.outcome === "ok" && success !== false, outcome: r.outcome, status: r.status, ms: r.ms, externalId: r.externalId, success,
+    reference: ref === null || ref === undefined ? null : String(ref), response: r.json === null ? null : maskTree(r.json, op.masked), raw: r.raw, message: r.message,
+  };
 }

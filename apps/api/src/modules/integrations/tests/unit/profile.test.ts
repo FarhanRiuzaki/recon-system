@@ -1,16 +1,11 @@
 // The Bank Mega Open API security profile 2.1: the signature against an independent HMAC (openssl), the wire format
 // round trip as the bank reads it (RSA private key → AES key and IV → body → signature), the response, the public key.
 import { describe, expect, it } from "bun:test";
-import { constants, createDecipheriv, createHash, createHmac, createCipheriv, generateKeyPairSync, privateDecrypt } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac, generateKeyPairSync } from "node:crypto";
+import { bankDecrypt } from "../../../../../test/helpers/fake-bank";
 import { openResponse, publicKeyPem, sealRequest, signature, signedPath, timestamp } from "../../profile";
 
 const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
-/** RSA PKCS#1 v1.5 decryption as the bank does it (the runtime refuses that padding for private decryption). */
-export function bankDecrypt(privateKey: string, data: Buffer): Buffer {
-  const raw = privateDecrypt({ key: privateKey, padding: constants.RSA_NO_PADDING }, data);
-  if (raw[0] !== 0 || raw[1] !== 2) throw new Error("not PKCS#1 v1.5");
-  return raw.subarray(raw.indexOf(0, 2) + 1);
-}
 const pair = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
 
 describe("signature", () => {
