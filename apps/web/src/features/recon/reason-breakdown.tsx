@@ -7,12 +7,12 @@ import { reasonParts } from "./live-model";
 import { useReconReasons } from "./use-recons";
 
 /**
- * A recon's open unmatch items by reason (audit R2, Needs action): the queue's reason counts for this recon, coloured as
- * the reason chips. Loaded after the page (recon-overview.tsx), its counts prefetched with it.
+ * A recon's open unmatch items by reason (audit R2, Needs action): the queue's reason counts for this recon, one series
+ * colour per part in order of size, the items without a reason included, so the parts add up to its unmatch. Loaded after the page (recon-overview.tsx), its counts prefetched with it.
  */
 export function ReasonBreakdown({ spaceId, id }: { spaceId: string; id: string }) {
   const q = useReconReasons(spaceId, id, true);
-  const parts = reasonParts(q.data?.reason);
+  const parts = reasonParts(q.data);
   const state = q.isPending ? "loading" : q.error ? (q.data ? "stale" : "error") : parts.length ? "data" : "empty";
   return (
     <BreakdownCard className="h-full" icon={WarningIcon} title="Unmatch by reason" description="Open items, every date" unit="items" max={5}

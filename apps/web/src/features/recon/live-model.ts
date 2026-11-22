@@ -50,12 +50,16 @@ export function nextRunText(s: LiveReconDto["schedule"], lastScheduledAt: string
   return next > now ? `Next run due at ${formatTime(next)} ${APP_TIME_ZONE_LABEL}` : "Next run due now";
 }
 
-/** A recon's open unmatch per reason (the queue's facets) as BreakdownCard parts, each in its reason chip's slot. */
-export function reasonParts(byReason: Readonly<Record<string, number>> | undefined): BreakdownPart[] {
-  return Object.entries(byReason ?? {}).map(([label, value]) => {
-    const slot = categoryChip("reason", label);
-    return slot === "neutral" ? { label, value } : { label, value, slot: slot - 1 };
-  });
+/**
+ * A recon's open unmatch per reason (the queue's facets) as BreakdownCard parts that add up to its unmatch: largest
+ * first, so each takes its own series slot in order of size (two reasons may share a reason chip's colour, never a
+ * part's), then the items without a reason, which the reason facet leaves out (the state facet counts every item).
+ */
+export function reasonParts(facets: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined): BreakdownPart[] {
+  const parts = Object.entries(facets?.reason ?? {}).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+  const total = Object.values(facets?.state ?? {}).reduce((n, v) => n + v, 0);
+  const rest = total - parts.reduce((n, p) => n + p.value, 0);
+  return rest > 0 ? [...parts, { label: "No reason", value: rest }] : parts;
 }
 
 /** A day's totals: items in, groups matched and suggested, waiting and broken items (both sides), side A's match rate. */

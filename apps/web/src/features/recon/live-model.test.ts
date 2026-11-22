@@ -95,11 +95,14 @@ describe("the Run card's next run (audit R5)", () => {
   });
 });
 
-describe("unmatch by reason (audit R2): the queue's reason counts as breakdown parts, coloured as the reason chips", () => {
-  it("each reason with its chip's slot (0-based); a neutral reason takes the card's free slot; none read yet is no part", () => {
-    expect(reasonParts({ "No counterpart": 30, "Amount differs": 4, Duplicate: 2 })).toEqual([
-      { label: "No counterpart", value: 30 }, { label: "Amount differs", value: 4, slot: 1 }, { label: "Duplicate", value: 2, slot: 5 },
-    ]);
+describe("unmatch by reason (audit R2): the queue's reason counts as breakdown parts that add up to the unmatch", () => {
+  it("largest first, so each part takes its own series slot in order of size; items without a reason are a part of their own", () => {
+    const facets = { state: { new: 30, assigned: 10 }, reason: { Duplicate: 2, "No counterpart": 30, "Amount differs": 4 } };
+    const parts = reasonParts(facets);
+    expect(parts).toEqual([{ label: "No counterpart", value: 30 }, { label: "Amount differs", value: 4 }, { label: "Duplicate", value: 2 }, { label: "No reason", value: 4 }]);
+    expect(parts.reduce((n, p) => n + p.value, 0)).toBe(40);
+    expect(parts.some((p) => "slot" in p)).toBe(false);
+    expect(reasonParts({ state: { new: 3 }, reason: { Duplicate: 3 } })).toEqual([{ label: "Duplicate", value: 3 }]);
     expect(reasonParts(undefined)).toEqual([]);
   });
 });
