@@ -21,9 +21,12 @@ type Base = { label: string; reason?: string | null; busy?: boolean };
 /**
  * A secondary header action: a link (`href`) or a command (`onSelect`); `reason` blocks it and says why; `busy` while
  * it runs. A destructive one (deletes, deactivates, revokes, resets, retires: ui-standard §1a) is always an item of the
- * ⋯ menu, at every width, and runs only through its confirmation.
+ * ⋯ menu, at every width, and runs only through its confirmation: `confirm` (the shared dialog) or, when the
+ * confirmation asks for more than a yes (Turn off connector asks why), `onSelect` opening the caller's own dialog.
  */
-export type HeaderAction = PlainAction | (Base & { destructive: true; confirm: HeaderConfirm });
+export type HeaderAction = PlainAction | DestructiveAction;
+type DestructiveAction = Base & { destructive: true } & ({ confirm: HeaderConfirm; onSelect?: never } | { confirm?: never; onSelect: () => void });
+type Confirmed = Extract<DestructiveAction, { confirm: HeaderConfirm }>;
 /** A header action that is not destructive: a link or a command. */
 export type PlainAction = Base & { destructive?: false; href?: string; onSelect?: () => void };
 
@@ -42,7 +45,7 @@ function ActionButton({ a }: { a: HeaderAction }) {
  * The "More actions" menu (a deferred overlay), last in the header: below 768 px every action, from 768 px only the
  * destructive ones (the others are buttons there). A blocked or running item is off, with its reason.
  */
-function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: (a: Extract<HeaderAction, { destructive: true }>) => void }) {
+function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: (a: Confirmed) => void }) {
   const danger = actions.some((a) => a.destructive);
   return (
     <DropdownMenu>
@@ -53,7 +56,7 @@ function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: 
         {[...actions.filter((a) => !a.destructive), ...actions.filter((a) => a.destructive)].map((a) => {
           const off = !!a.reason || !!a.busy;
           const body = <span className="grid min-w-0"><span>{a.label}</span>{a.reason && <span className="text-caption text-fg-3">{a.reason}</span>}</span>;
-          if (a.destructive) return <DropdownMenuItem key={a.label} disabled={off} onSelect={() => onConfirm(a)} variant="destructive">{body}</DropdownMenuItem>;
+          if (a.destructive) return <DropdownMenuItem key={a.label} disabled={off} onSelect={() => (a.confirm ? onConfirm(a) : a.onSelect?.())} variant="destructive">{body}</DropdownMenuItem>;
           return a.href && !off
             ? <DropdownMenuItem key={a.label} asChild className="md:hidden"><Link href={a.href}>{body}</Link></DropdownMenuItem>
             : <DropdownMenuItem key={a.label} disabled={off} onSelect={a.onSelect} className="md:hidden">{body}</DropdownMenuItem>;
@@ -78,7 +81,7 @@ export function PageHeader({ title, crumb, status, actions, more, description, t
 }) {
   usePublishTrail(usePathname(), [...trail, { label: crumb ?? title }]);
   const extra = more?.length ? more : null;
-  const [asking, setAsking] = useState<Extract<HeaderAction, { destructive: true }> | null>(null);
+  const [asking, setAsking] = useState<Confirmed | null>(null);
   return (
     <header data-slot="page-header" className="flex flex-wrap items-start gap-x-3 gap-y-3">
       <div className="grid min-w-0 gap-1">
