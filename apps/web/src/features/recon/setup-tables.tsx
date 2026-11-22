@@ -29,7 +29,7 @@ function LookupEditor({ l, onChange, onRemove, disabled }: { l: Lookups[number];
       <span className="flex items-center gap-2">
         <Input aria-label="Lookup name" value={l.name} disabled={disabled} className="h-8 font-mono md:w-64" onChange={(e) => onChange({ ...l, name: keyOf(e.target.value) })} />
         <span className="text-caption text-fg-3">{l.rows.length} rows</span>
-        {!disabled && <Button type="button" variant="ghost" size="icon" aria-label={`Remove lookup ${l.name}`} className="ml-auto" onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
+        {!disabled && <Button type="button" variant="remove" size="icon" aria-label={`Remove lookup ${l.name}`} className="ml-auto" onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
       </span>
       <Textarea aria-label={`${l.name}: rows, one key,value per line`} rows={4} value={text} disabled={disabled} className="font-mono" placeholder={"M0001,1234567890\nM0002,9876543210"}
         onChange={(e) => { setText(e.target.value); onChange({ ...l, rows: rowsOf(e.target.value) }); }} />
@@ -51,11 +51,11 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
               <Field id={`acc-label-${i}`} label="Name"><Input id={`acc-label-${i}`} value={a.label} disabled={disabled} maxLength={80} onChange={(e) => setAccount(i, { ...a, label: e.target.value })} /></Field>
               <Field id={`acc-num-${i}`} label="Number"><Input id={`acc-num-${i}`} value={a.number} disabled={disabled} maxLength={40} className="font-mono" onChange={(e) => setAccount(i, { ...a, number: e.target.value })} /></Field>
               <Field id={`acc-ccy-${i}`} label="Currency"><Input id={`acc-ccy-${i}`} value={a.currency} disabled={disabled} maxLength={3} className="font-mono uppercase" onChange={(e) => setAccount(i, { ...a, currency: e.target.value.toUpperCase() })} /></Field>
-              {!disabled ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove account ${a.label || a.key}`} onClick={() => onChange(accounts.filter((_, j) => j !== i), lookups)}><Icon icon={RemoveIcon} /></Button> : <span />}
+              {!disabled ? <Button type="button" variant="remove" size="icon" aria-label={`Remove account ${a.label || a.key}`} onClick={() => onChange(accounts.filter((_, j) => j !== i), lookups)}><Icon icon={RemoveIcon} /></Button> : <span />}
             </div>
           ))}
           {!disabled && accounts.length < 50 && (
-            <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={() => onChange([...accounts, { key: `account_${accounts.length + 1}`, label: "", number: "", currency: "IDR" }], lookups)}>Add an account</Button>
+            <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange([...accounts, { key: `account_${accounts.length + 1}`, label: "", number: "", currency: "IDR" }], lookups)}>Add an account</Button>
           )}
         </div>
         <div className="grid gap-2">
@@ -65,7 +65,7 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
             <LookupEditor key={i} l={l} disabled={disabled} onChange={(n) => onChange(accounts, lookups.map((x, j) => (j === i ? n : x)))} onRemove={() => onChange(accounts, lookups.filter((_, j) => j !== i))} />
           ))}
           {!disabled && lookups.length < 20 && (
-            <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={() => onChange(accounts, [...lookups, { name: `lookup_${lookups.length + 1}`, rows: [] }])}>Add a lookup table</Button>
+            <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange(accounts, [...lookups, { name: `lookup_${lookups.length + 1}`, rows: [] }])}>Add a lookup table</Button>
           )}
         </div>
       </div>

@@ -159,7 +159,7 @@ function ActionPanel({ initial, onDone, onCancel, ops, catalog, setup, preview }
             </li>
           ))}
           {a.variants.length < 20 && (
-            <li><Button type="button" size="sm" variant="ghost" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: { all: [{ field: "", op: "eq", value: "" }] }, mapping: {} } as VariantSpec] }); setVi(a.variants.length); }}>Add a variant</Button></li>
+            <li><Button type="button" size="sm" variant="add" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: { all: [{ field: "", op: "eq", value: "" }] }, mapping: {} } as VariantSpec] }); setVi(a.variants.length); }}>Add a variant</Button></li>
           )}
         </ul>
       </div>
@@ -171,7 +171,7 @@ function ActionPanel({ initial, onDone, onCancel, ops, catalog, setup, preview }
           <span className="flex">
             <Button type="button" variant="ghost" size="icon" aria-label="Move this variant earlier" disabled={vi === 0} onClick={() => { const vs = [...a.variants]; [vs[vi - 1], vs[vi]] = [vs[vi]!, vs[vi - 1]!]; setA({ ...a, variants: vs }); setVi(vi - 1); }}><Icon icon={ArrowUpIcon} /></Button>
             <Button type="button" variant="ghost" size="icon" aria-label="Move this variant later" disabled={vi === a.variants.length - 1} onClick={() => { const vs = [...a.variants]; [vs[vi + 1], vs[vi]] = [vs[vi]!, vs[vi + 1]!]; setA({ ...a, variants: vs }); setVi(vi + 1); }}><Icon icon={ArrowDownIcon} /></Button>
-            <Button type="button" variant="ghost" size="icon" aria-label="Remove this variant" disabled={a.variants.length === 1} onClick={() => { setA({ ...a, variants: a.variants.filter((_, j) => j !== vi) }); setVi(0); }}><Icon icon={RemoveIcon} /></Button>
+            <Button type="button" variant="remove" size="icon" aria-label="Remove this variant" disabled={a.variants.length === 1} onClick={() => { setA({ ...a, variants: a.variants.filter((_, j) => j !== vi) }); setVi(0); }}><Icon icon={RemoveIcon} /></Button>
           </span>
         </div>
         <span className="flex flex-wrap items-center gap-2 text-body-sm text-fg-2">
@@ -248,7 +248,7 @@ export function ActionsEditor({ kind, actions, onChange, spaceId, configId, vers
                 {!disabled && (
                   <span className="flex shrink-0">
                     <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(i)}>Edit</Button>
-                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
+                    <Button type="button" variant="remove" size="icon" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
                   </span>
                 )}
               </div>

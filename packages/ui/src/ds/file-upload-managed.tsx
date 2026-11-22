@@ -128,7 +128,7 @@ export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize,
                 {it.status === "error" && it.error !== undefined && !fileProblem(it.file, { accept, maxSize }, acceptLabel) && (
                   <Button type="button" size="icon-sm" variant="ghost" aria-label={`Try ${it.file.name} again`} onClick={() => send(it)}><Icon icon={RefreshIcon} /></Button>
                 )}
-                {it.status !== "uploading" && <Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove ${it.file.name}`} onClick={() => remove(it)}><Icon icon={RemoveIcon} /></Button>}
+                {it.status !== "uploading" && <Button type="button" size="icon-sm" variant="remove" aria-label={`Remove ${it.file.name}`} onClick={() => remove(it)}><Icon icon={RemoveIcon} /></Button>}
               </div>
             </li>
           ))}

@@ -58,6 +58,10 @@
   --degraded-mark: #c96a05; --degraded-ink: #b25309; --degraded-soft: #fff2e6;
   --down-mark: #e5303a;     --down-ink: #c8262f;     --down-soft: #feeced;
   --down-soft-hover: #fde3e5; /* Danger button hover: Down ink on it 4.58:1 (dark 5.39:1) */
+  /* the Add intent (owner 22 Nov: add blue, remove red, so the eye knows what to press); Remove is the Down ink */
+  --add-ink: #1d5fcc;
+  --add-soft: #ebf2fe;
+  --add-soft-hover: #dde9fd;
   --stopped-mark: #8a8a93;  --stopped-ink: #55555c;  --stopped-soft: #f1f1f3;
   --unknown-mark: #a1a1aa;  --unknown-ink: #55555c;  --unknown-soft: #f1f1f3;
   --on-crit: #ffffff;
@@ -217,6 +221,9 @@
   --degraded-mark: #ea7a3a; --degraded-ink: #ee8548; --degraded-soft: #3a2614;
   --down-mark: #ff6b70;     --down-ink: #ff7a7f;     --down-soft: #3d1a1d;
   --down-soft-hover: #4d2024;
+  --add-ink: #7aaeff;
+  --add-soft: #172540;
+  --add-soft-hover: #1e3156;
   --stopped-mark: #7d7d86;  --stopped-ink: #a8a8b1;  --stopped-soft: #2a2a2f;
   --unknown-mark: #5d5d66;  --unknown-ink: #a8a8b1;  --unknown-soft: #2a2a2f;
   --on-crit: #1f0a07;

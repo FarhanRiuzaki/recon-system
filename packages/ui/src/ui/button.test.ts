@@ -10,6 +10,13 @@ const classes = (out: string) => /class="([^"]*)"/.exec(out)![1]!.split(" ");
 
 /** The affectUI look (design-system.md §3.7): what the class string carries; the gradient itself is base.css. */
 describe("Button variants", () => {
+  it("intents (owner 22 Nov): add = blue ink, soft blue on hover; remove = red ink, soft red on hover; neither draws a box at rest", () => {
+    const add = renderToStaticMarkup(h(Button, { variant: "add" }, "Add a condition"));
+    expect(add).toMatch(/data-variant="add"/);
+    expect(add).toMatch(/text-add-ink/); expect(add).toMatch(/hover:bg-add-soft/); expect(add).toMatch(/border-transparent bg-transparent/);
+    const rm = renderToStaticMarkup(h(Button, { variant: "remove", size: "icon", "aria-label": "Remove condition 1" }));
+    expect(rm).toMatch(/text-down-ink/); expect(rm).toMatch(/hover:bg-down-soft/); expect(rm).toMatch(/border-transparent bg-transparent/);
+  });
   it("default: --action under the gradient, a transparent border for the lit edge, disabled at 0.4", () => {
     const out = markup();
     expect(out).toContain('data-slot="button"');

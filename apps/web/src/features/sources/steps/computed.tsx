@@ -67,7 +67,7 @@ export function ComputedColumns({ spec, setSpec, err, examples, renderUseAs }: P
                 </Field>
               ) : <span />}
               <div className="grid min-w-0 content-start gap-2"><span className="text-label text-fg">Use as</span>{renderUseAs(name, i)}</div>
-              <Button type="button" variant="ghost" size="icon" className="justify-self-end" aria-label={`Remove ${name || "this computed column"}`}
+              <Button type="button" variant="remove" size="icon" className="justify-self-end" aria-label={`Remove ${name || "this computed column"}`}
                 onClick={() => setSpec((x) => { const { [name]: _drop, ...rest } = x.derive; return { ...x, derive: rest }; })}><Icon icon={RemoveIcon} /></Button>
             </div>
 
@@ -84,7 +84,7 @@ export function ComputedColumns({ spec, setSpec, err, examples, renderUseAs }: P
                       <li key={j} className="flex flex-wrap items-center gap-3 rounded-md bg-tray px-3 py-2 text-body-sm text-fg">
                         <span aria-hidden="true" className="grid size-5 shrink-0 place-items-center rounded-full bg-card text-caption text-fg-2 tabular">{j + 1}</span>
                         <StepEditor step={st} onChange={(next) => set(built.source, built.steps.map((x, k) => (k === j ? next : x)))} />
-                        <Button type="button" variant="ghost" size="icon-sm" className="ml-auto" aria-label={`Remove step ${j + 1}`}
+                        <Button type="button" variant="remove" size="icon-sm" className="ml-auto" aria-label={`Remove step ${j + 1}`}
                           onClick={() => set(built.source, built.steps.filter((_, k) => k !== j))}><Icon icon={RemoveIcon} /></Button>
                       </li>
                     ))}

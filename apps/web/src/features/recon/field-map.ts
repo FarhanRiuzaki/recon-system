@@ -2,7 +2,7 @@ import type { CatalogField } from "@starterkit/shared/conditions";
 import type { OpField } from "@starterkit/shared/integrations";
 import { type Source, templateParts } from "@starterkit/shared/mapping";
 
-// The action workspace's field map as a graph (owner 22 Nov: "seperti setup ERD"), pure: the recon's fields as source
+// The action editor's field map as a graph (owner 22 Nov: "seperti setup ERD"), pure: the recon's fields as source
 // tables, the operation's request as the target table, an edge per field a mapping reads, and what a drag from a row
 // to a request field writes.
 

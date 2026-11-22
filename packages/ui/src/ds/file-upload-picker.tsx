@@ -36,7 +36,7 @@ export function FileItem({ name, size, rows, state = "selected", progress, error
       {state !== "error" && <span role="status" className="sr-only">{uploading ? `Uploading ${name}` : state === "success" ? `Upload complete: ${name}` : `Selected: ${name}`}</span>}
     </div>
     {state === "success" && <Icon icon={SuccessIcon} className="size-4 shrink-0 text-healthy-ink" />}
-    {uploading ? onCancel && <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={`Cancel upload of ${name}`} onClick={onCancel}><Icon icon={CloseIcon} /></Button> : onRemove && <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={`Remove ${name}`} onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
+    {uploading ? onCancel && <Button type="button" variant="ghost" size="icon" disabled={disabled} aria-label={`Cancel upload of ${name}`} onClick={onCancel}><Icon icon={CloseIcon} /></Button> : onRemove && <Button type="button" variant="remove" size="icon" disabled={disabled} aria-label={`Remove ${name}`} onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
   </div>;
 }
 

@@ -555,7 +555,15 @@ ancestors fg-2 (links). Header controls share a 32 px drawn height, radius 10 an
 | Secondary | `--card` | fg | 1 px `--line` + `--shadow-xs` | 32 |
 | Ghost | transparent → `--tray` on hover | fg-2 | none | 32 |
 | Danger | `--down-soft` → `--down-soft-hover` on hover | Down ink | none, no shadow; disabled: 1 px `--down-mark` | 32 |
+| Add (intent) | transparent → `--add-soft` on hover, `--add-soft-hover` pressed | `--add-ink` (`#1d5fcc`, dark `#7aaeff`) | none | 32 (28 sm, icon 32/28) |
+| Remove (intent) | transparent → `--down-soft` on hover, `--down-soft-hover` pressed | Down ink | none | 32 (icon 32/28) |
 Padding 0 12, icon 16 + 6 gap, radius 10, `label`→ `body` 14/500. Press: scale 0.97 (`--press-scale`, §7.5).
+Intents (owner, 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a quiet button that adds a row,
+a condition or an item is `variant="add"` (blue); one that takes an item out of a list is `variant="remove"` (red),
+whether it shows a bin or an X. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses
+nothing. The page's main create action stays Primary; a confirm dialog's "Remove …" stays Danger. Pinned by
+`architecture.test.ts` "add and remove buttons say their intent by colour"; `--add-ink` ≥ 4.5:1 on every surface and on
+its soft fills (`tokens.test.ts`).
 Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. One
 primary per page. The primary's gradient, edge and ring are drawn by `base.css` on
 `.bg-action[data-variant="default"]` (under an `asChild` trigger the `data-slot` is the trigger's, so the rule keys on

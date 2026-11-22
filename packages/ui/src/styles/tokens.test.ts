@@ -43,7 +43,8 @@ function hueSat(hex: string): [number, number] {
 }
 
 const SURFACES = ["bg", "sheet", "tray", "card", "inset", "raised", "row-selected", "primary-soft"];
-const INKS = ["fg", "fg-2", "fg-3", "primary", "primary-ink", "healthy-ink", "degraded-ink", "down-ink", "stopped-ink", "unknown-ink"];
+// add-ink: the Add intent's blue (owner 22 Nov: add blue, remove red, so the eye knows what to press)
+const INKS = ["fg", "fg-2", "fg-3", "primary", "primary-ink", "healthy-ink", "degraded-ink", "down-ink", "stopped-ink", "unknown-ink", "add-ink"];
 const STATES = ["healthy", "degraded", "down", "stopped", "unknown"];
 const TEXT: [string, string][] = [
   ...INKS.flatMap((ink) => SURFACES.map((s) => [ink, s] as [string, string])),
@@ -58,6 +59,8 @@ const TEXT: [string, string][] = [
   // ds/segmented.tsx never uses fg-3 inside the active segment.
   ["fg", "seg-active"], ["fg-2", "seg-active"],
   ["tip-fg", "tip"], ["tip-2", "tip"],
+  // the Add and Remove intents' hover fills under their inks
+  ["add-ink", "add-soft"], ["add-ink", "add-soft-hover"], ["down-ink", "down-soft"],
 ];
 const MARKS: [string, string][] = [
   ...["healthy-mark", "degraded-mark", "down-mark"].flatMap((m) => [[m, "card"], [m, "sheet"]] as [string, string][]),

@@ -83,14 +83,14 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, values, disable
               <Checkbox label={`${path || "Field"}: required`} checked={f.required} readOnly={disabled} onToggle={() => set(i, { ...f, required: !f.required })} />
               <Checkbox label={`${path || "Field"}: mask`} checked={masked.includes(path)} readOnly={disabled} onToggle={() => onMask(path, !masked.includes(path))} />
               {values && !has(f.type) ? <ValueCell path={path} values={values} disabled={disabled} label={label} /> : <span />}
-              {!disabled ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${path || "field"}`} onClick={() => onChange(fields.filter((_, j) => j !== i))}><Icon icon={CloseIcon} /></Button> : <span />}
+              {!disabled ? <Button type="button" variant="remove" size="icon" aria-label={`Remove ${path || "field"}`} onClick={() => onChange(fields.filter((_, j) => j !== i))}><Icon icon={CloseIcon} /></Button> : <span />}
             </div>
             {has(f.type) && (
               <Rows fields={f.children ?? []} prefix={`${path}.`} depth={depth + 1} masked={masked} onMask={onMask} values={values} disabled={disabled} label={label}
                 onChange={(children, rename) => set(i, { ...f, children }, rename)} />
             )}
             {has(f.type) && !disabled && (
-              <Button type="button" variant="link" size="sm" className="justify-self-start px-0" style={{ marginLeft: `${(depth + 1) * 1.25}rem` }}
+              <Button type="button" variant="add" size="sm" className="justify-self-start px-0" style={{ marginLeft: `${(depth + 1) * 1.25}rem` }}
                 onClick={() => set(i, { ...f, children: [...(f.children ?? []), { name: "", type: "string", required: false }] })}>Add a field to {f.name || "this group"}</Button>
             )}
           </li>
@@ -150,7 +150,7 @@ export function FieldTree({ title, fields, onChange, masked, onMask, values, onS
         ? <Rows fields={fields} prefix="" depth={0} onChange={onChange} masked={masked} onMask={onMask} values={values} disabled={disabled} label={title} />
         : <p className="text-body-sm text-fg-3">No fields yet. Paste them from the spec or add one.</p>}
       {!disabled && (
-        <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={() => onChange([...fields, { name: "", type: "string", required: false }])}>Add a field</Button>
+        <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange([...fields, { name: "", type: "string", required: false }])}>Add a field</Button>
       )}
     </section>
   );

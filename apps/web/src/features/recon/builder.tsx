@@ -96,7 +96,7 @@ function AddPassMenu({ fields, reason, onAdd }: { fields: Fields; reason: string
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="secondary">Add pass<Icon icon={ChevronDownIcon} /></Button>
+        <Button type="button" variant="add">Add pass<Icon icon={ChevronDownIcon} /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80">
         {PASS_TEMPLATES.map((t) => {
@@ -479,7 +479,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         {step === 2 && (
           <>
             {editable && gaps.length > 0 && (
-              <Banner tone="error" action={<Button type="button" variant="secondary" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
+              <Banner tone="error" action={<Button type="button" variant="add" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
                 onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
             {pageWarnings.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}

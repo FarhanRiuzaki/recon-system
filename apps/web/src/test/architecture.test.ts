@@ -26,6 +26,31 @@ const resolveSpec = (fromRel: string, spec: string): string | null =>
     : null;
 const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")[4] ?? null : null);
 
+/**
+ * Intents (owner 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a Button named "Remove …" (aria-label
+ * or text) is `variant="remove"`; a quiet Button (ghost, link, secondary) whose text starts with "Add" is `variant="add"`.
+ * The page's main create action stays default; a confirm dialog's "Remove …" is destructive.
+ */
+function intentViolations(fs: F[]): string[] {
+  const out: string[] = [];
+  for (const { r, src } of fs) {
+    if (!r.endsWith(".tsx") || r.startsWith(VENDORED)) continue;
+    let at = 0;
+    while ((at = src.indexOf("<Button", at)) >= 0) {
+      // the opening tag, braces counted (an onClick's arrow holds ">")
+      let i = at + 7, depth = 0;
+      for (; i < src.length; i++) { const c = src[i]; if (c === "{") depth++; else if (c === "}") depth--; else if (c === ">" && depth === 0) break; }
+      const tag = src.slice(at, i + 1), text = src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
+      const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
+      const named = /aria-label=\{?[`"']Remove\b/.test(tag) || /^Remove\b/.test(text);
+      if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: Remove … is variant="${variant}"`);
+      if (/^Add\b/.test(text) && ["ghost", "link", "secondary"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
+      at = i;
+    }
+  }
+  return out;
+}
+
 function layerViolations(fs: F[]): string[] {
   return fs.flatMap(({ r, imp }) => {
     const me = layer(r);
@@ -361,6 +386,9 @@ describe("architecture", () => {
   it("only the flow layer imports @xyflow/react (the canvases' parts live in the design system)", () => {
     expect(files.filter(({ r, imp }) => imp.some((i) => i.startsWith("@xyflow/react")) && !r.startsWith(`${UI}flow/`)).map((f) => f.r)).toEqual([]);
   });
+  it("add and remove buttons say their intent by colour: variant add (blue) and remove (red)", () => {
+    expect(intentViolations(files)).toEqual([]);
+  });
   it("only charts imports recharts", () => {
     expect(files.filter(({ r, imp }) => imp.includes("recharts") && !r.startsWith(`${UI}charts/`)).map((f) => f.r)).toEqual([]);
   });
@@ -428,6 +456,13 @@ describe("architecture", () => {
 describe("architecture checkers (fixtures)", () => {
   const f = (r: string, src: string): F => ({ r, src, imp: [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!) });
 
+  it("intents: a Remove button not variant remove, a quiet Add button not variant add", () => {
+    expect(intentViolations([
+      f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="ghost" size="icon" aria-label={\`Remove \${n}\`} onClick={() => go()}><Icon icon={RemoveIcon} /></Button>`),
+      f(`${WEB}features/x/b.tsx`, `<Button type="button" variant="link" onClick={() => add()}>Add a condition</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="add" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button onClick={() => a()}>Add user</Button><Button variant="destructive">Remove member</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Remove … is variant="ghost"`, `${WEB}features/x/b.tsx: Add … is variant="link"`]);
+  });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([
       f(`${UI}ui/a.tsx`, `<b className="outline-none focus-visible:outline-2 focus-visible:outline-primary" />`),

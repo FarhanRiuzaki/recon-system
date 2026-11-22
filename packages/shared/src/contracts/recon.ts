@@ -190,7 +190,11 @@ export type ReconApprovalSpec = z.infer<typeof ReconApprovalSpec>;
 /** The setup as a draft may hold it (actions, accounts and lookups left out before stage 4). */
 export type ReconApprovalInput = z.input<typeof ReconApprovalSpec>;
 /** POST …/recons/{id}/versions/{versionId}/actions/preview: what an action would send for a real break (stage 4). */
-export const PreviewActionBody = z.strictObject({ change: z.enum(["force_match", "unmatch", "write_off"]), action: z.number().int().min(0).max(ACTIONS_MAX - 1), itemId: z.uuid() });
+export const PreviewActionBody = z.strictObject({
+  change: z.enum(["force_match", "unmatch", "write_off"]), action: z.number().int().min(0).max(ACTIONS_MAX - 1), itemId: z.uuid(),
+  /** The action as it is being edited (the editor, before Done): previewed in place of action `action`. */
+  draft: Action.optional(),
+});
 export type PreviewActionBody = z.infer<typeof PreviewActionBody>;
 export const ActionPreviewDto = z.object({
   variant: z.string().nullable(), payload: z.unknown().nullable(), sources: z.record(z.string(), z.string()),

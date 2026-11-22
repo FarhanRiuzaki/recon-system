@@ -244,7 +244,7 @@ export function ConnectorEditor({ id }: { id: string }) {
                 <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => setPasting(true)}>Paste a whole spec</Button>
               )}
               {!readOnly && spec.operations.length < OPERATIONS_MAX && (
-                <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => {
+                <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => {
                   let n = spec.operations.length + 1;
                   while (spec.operations.some((o) => o.key === `operation_${n}`)) n++;
                   set({ ...spec, operations: [...spec.operations, newOperation(n)] }); go({ op: String(spec.operations.length) });
@@ -253,7 +253,7 @@ export function ConnectorEditor({ id }: { id: string }) {
             </div>
           </Panel>
           {op ? (
-            <Panel title={op.name || "Operation"} actions={!readOnly ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((_, j) => j !== at) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
+            <Panel title={op.name || "Operation"} actions={!readOnly ? <Button type="button" variant="remove" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((_, j) => j !== at) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
               <OperationEditor key={at} op={op} onChange={setOp} disabled={readOnly} />
             </Panel>
           ) : (

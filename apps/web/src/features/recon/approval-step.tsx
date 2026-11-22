@@ -97,7 +97,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
                       <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? "Done" : "Edit"}</Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
+                      <Button type="button" variant="remove" size="icon" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
                     </span>
                   )}
                 </div>

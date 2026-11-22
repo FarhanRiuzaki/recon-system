@@ -60,7 +60,7 @@ export function RowsToLoad({ spec, setSpec, err, examples }: {
   };
   return (
     <Panel title="Rows to load" description={keep.length ? "Only rows that meet every condition are loaded" : "Every row is loaded"}
-      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="secondary" size="sm" onClick={add}>Add a condition</Button>}
+      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="add" size="sm" onClick={add}>Add a condition</Button>}
       bodyClassName="grid gap-3">
       <p className="flex items-center gap-1 text-body-sm text-fg-2">
         {spec.mutable
@@ -95,7 +95,7 @@ export function RowsToLoad({ spec, setSpec, err, examples }: {
                       placeholder={kind === "day" ? "yyyy-MM-dd or today-1" : kind === "number" ? "1500.00" : seen[0]?.value ?? "Successful"}
                       onChange={(e) => setAt(i, { ...c, value: e.target.value })} autoComplete="off" spellCheck={false} />
                   ) : null}
-                  <Button type="button" variant="ghost" size="icon-sm" className="ml-auto" aria-label={`Remove condition ${i + 1}`} onClick={() => setAt(i, null)}><Icon icon={RemoveIcon} /></Button>
+                  <Button type="button" variant="remove" size="icon-sm" className="ml-auto" aria-label={`Remove condition ${i + 1}`} onClick={() => setAt(i, null)}><Icon icon={RemoveIcon} /></Button>
                 </div>
                 {why && <p role="alert" className="text-caption text-down-ink">{why}</p>}
               </li>

@@ -116,7 +116,7 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
                   <span className="flex shrink-0">
                     <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}><Icon icon={ArrowUpIcon} /></Button>
                     <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} down`} disabled={i === levels.length - 1} onClick={() => move(i, 1)}><Icon icon={ArrowDownIcon} /></Button>
-                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove level ${i + 1}`} disabled={levels.length === 1} onClick={() => remove(i)}><Icon icon={RemoveIcon} /></Button>
+                    <Button type="button" variant="remove" size="icon" aria-label={`Remove level ${i + 1}`} disabled={levels.length === 1} onClick={() => remove(i)}><Icon icon={RemoveIcon} /></Button>
                   </span>
                 </div>
                 {l.groups.map((g, gi) => (
@@ -128,7 +128,7 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
                       <ApproverPicker g={g} disabled={false} options={options} label={`Level ${i + 1}, group ${gi + 1}: approvers`}
                         onChange={(ng) => setLevel(i, { ...l, groups: l.groups.map((x, j) => (j === gi ? ng : x)) })} />
                       {l.groups.length > 1 && (
-                        <Button type="button" variant="ghost" size="icon" aria-label={`Remove group ${gi + 1} of level ${i + 1}`}
+                        <Button type="button" variant="remove" size="icon" aria-label={`Remove group ${gi + 1} of level ${i + 1}`}
                           onClick={() => setLevel(i, { ...l, groups: l.groups.filter((_, j) => j !== gi) })}><Icon icon={CloseIcon} /></Button>
                       )}
                     </div>
@@ -136,7 +136,7 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
                 ))}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   {l.groups.length < GROUPS_MAX
-                    ? <Button type="button" variant="link" size="sm" className="px-0" onClick={() => setLevel(i, { ...l, groups: [...l.groups, newGroup()] })}>Add a group that must also approve</Button>
+                    ? <Button type="button" variant="add" size="sm" className="px-0" onClick={() => setLevel(i, { ...l, groups: [...l.groups, newGroup()] })}>Add a group that must also approve</Button>
                     : <span />}
                   <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(null)}>Done</Button>
                 </div>
@@ -148,7 +148,7 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
       {!disabled && levels.length < LEVELS_MAX && (
         <li className="grid grid-cols-[28px_1fr] items-center gap-x-3">
           <span aria-hidden="true" className="relative z-1 grid size-7 place-items-center rounded-full border border-dashed border-line-strong bg-card text-label text-fg-3">+</span>
-          <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => { onChange([...levels, newLevel()]); setOpen(levels.length); }}>
+          <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => { onChange([...levels, newLevel()]); setOpen(levels.length); }}>
             Add level {levels.length + 1}
           </Button>
         </li>

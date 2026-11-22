@@ -5,14 +5,14 @@ import { Dialog as D } from "radix-ui";
 import { cn } from "../lib/cn";
 
 /**
- * A full-screen editor (owner 22 Nov: "full screen workspace"): a modal dialog over the page with a header (title,
+ * A full-screen editor (owner 22 Nov: "full screen editor"): a modal dialog over the page with a header (title,
  * description, the actions: View as list, Cancel, Done), a settings rail on the left, the work area in the middle (a
  * canvas), an inspector on the right and a dock under the work area (a preview). Each part is a labelled region with
  * its own scroll and a clear edge (--line-strong). From 768 px it floats 12 px inside the window on the page's
  * background; below, it fills the screen and the parts stack in one scroll. Escape asks `onOpenChange(false)`: the
  * caller decides (unsaved changes may keep it open). Load it on demand (next/dynamic) with what it holds.
  */
-export function Workspace({ open, onOpenChange, title, description, actions, rail, inspector, dock, children }: {
+export function FullScreenEditor({ open, onOpenChange, title, description, actions, rail, inspector, dock, children }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; actions: ReactNode;
   rail?: ReactNode; inspector?: ReactNode; dock?: ReactNode; children: ReactNode;
 }) {
@@ -20,7 +20,7 @@ export function Workspace({ open, onOpenChange, title, description, actions, rai
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
         <D.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-(--dur-enter) data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-(--dur-exit)" />
-        <D.Content data-slot="workspace"
+        <D.Content data-slot="full-screen-editor"
           className={cn(
             "fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg text-fg outline-none md:inset-3 md:rounded-xl md:border md:border-line-strong md:shadow-overlay",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98 data-[state=open]:duration-(--dur-slow) data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-(--dur-exit)",
@@ -32,7 +32,7 @@ export function Workspace({ open, onOpenChange, title, description, actions, rai
             </span>
             <span className="flex flex-wrap items-center gap-2">{actions}</span>
           </header>
-          <div className={cn("grid min-h-0 flex-1 max-md:overflow-y-auto",
+          <div className={cn("scroll-quiet grid min-h-0 flex-1 max-md:overflow-y-auto",
             rail && inspector ? "md:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_22rem]" : rail ? "md:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]" : inspector ? "xl:grid-cols-[minmax(0,1fr)_22rem]" : "")}>
             {rail && (
               <aside aria-label="Settings" className="scroll-quiet min-h-0 border-line-strong bg-sheet p-5 max-md:border-b md:overflow-y-auto md:border-r">{rail}</aside>

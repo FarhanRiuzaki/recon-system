@@ -7,7 +7,8 @@ import { Slot } from "radix-ui";
  * Buttons (spec §5.3): radius 10, 32 px (28 sm), padding 0 12, 14/500, icon 16 + 6 gap; press scale 0.97 (100 ms),
  * hover fill 150 ms, disabled 0.4. `default` = the one primary per page (--action under a top-lit gradient with a lit
  * edge and a ring, drawn by base.css on `.bg-action[data-variant="default"]`; near-black / near-white); `secondary` =
- * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border).
+ * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `add` / `remove` =
+ * the intents (blue / red ink, their soft fill on hover).
  * `outline` is kept as an alias of secondary for older callers.
  */
 const buttonVariants = cva(
@@ -21,6 +22,11 @@ const buttonVariants = cva(
         ghost: "border-transparent bg-transparent text-fg-2 hover:bg-tray hover:text-fg",
         destructive: "border-transparent bg-down-soft text-down-ink hover:bg-down-soft-hover",
         link: "h-auto border-transparent px-0 text-primary-ink underline underline-offset-4 hover:decoration-2 press-static",
+        // intents (owner 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): what a press does, by colour
+        // and word together. add = adds a row, a condition, an item (never the page's main create action, which is default);
+        // remove = takes one out of a list (an X or bin icon that removes is red; an X that closes stays ghost)
+        add: "border-transparent bg-transparent text-add-ink hover:bg-add-soft active:bg-add-soft-hover",
+        remove: "border-transparent bg-transparent text-down-ink hover:bg-down-soft active:bg-down-soft-hover",
       },
       size: {
         sm: "h-7 px-2.5 text-body-sm [&_svg:not([class*='size-'])]:size-3.5",

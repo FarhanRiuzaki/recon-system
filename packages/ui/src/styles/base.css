@@ -34,6 +34,9 @@
   --color-degraded-mark: var(--degraded-mark); --color-degraded-ink: var(--degraded-ink); --color-degraded-soft: var(--degraded-soft);
   --color-down-mark: var(--down-mark);         --color-down-ink: var(--down-ink);         --color-down-soft: var(--down-soft);
   --color-down-soft-hover: var(--down-soft-hover);
+  --color-add-ink: var(--add-ink);
+  --color-add-soft: var(--add-soft);
+  --color-add-soft-hover: var(--add-soft-hover);
   --color-stopped-mark: var(--stopped-mark);   --color-stopped-ink: var(--stopped-ink);   --color-stopped-soft: var(--stopped-soft);
   --color-unknown-mark: var(--unknown-mark);   --color-unknown-ink: var(--unknown-ink);   --color-unknown-soft: var(--unknown-soft);
   --color-on-crit: var(--on-crit);
