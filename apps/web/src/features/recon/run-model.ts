@@ -39,6 +39,33 @@ export function pastClose(spec: Pick<ReconSpec, "close_at" | "schedule">, r: Dat
 }
 
 export const defaultReplay = (now = Date.now()): DateRange => { const d = shiftDate(appDate(now), -1); return { from: d, to: d }; };
+/** The business dates a source has records on, among the 7 its list row counts (`recent`, oldest first, up to its health's date). */
+export function recordDates(row: { recent: readonly number[]; health: { businessDate: string } | null } | undefined): string[] {
+  if (!row?.health || !row.recent.length) return [];
+  const last = row.health.businessDate, n = row.recent.length;
+  return row.recent.flatMap((c, i) => (c > 0 ? [shiftDate(last, i - (n - 1))] : []));
+}
+/**
+ * The replay a simulation starts with (owner, 22 Nov: never a date without data): the latest date before `today` on
+ * which both sides have records (a closed day, spec §10), else the latest such date at all (today, still open), else
+ * the latest date either side has, else yesterday (defaultReplay). `a`/`b` = recordDates of each side; null while loading.
+ */
+export function suggestedReplay(a: readonly string[] | null, b: readonly string[] | null, today: string): DateRange | null {
+  if (!a || !b) return null;
+  const both = a.filter((d) => b.includes(d) && d <= today).sort();
+  const before = both.filter((d) => d < today);
+  const d = before.at(-1) ?? both.at(-1) ?? [...a, ...b].filter((x) => x <= today).sort().at(-1);
+  return d ? { from: d, to: d } : null;
+}
+/** Why a replay finds nothing: the dates in it with no records on a side, said with where records are; null when both have some. */
+export function replayGap(r: DateRange, sides: readonly { label: string; dates: readonly string[] }[]): string | null {
+  const empty = sides.filter((s) => !s.dates.some((d) => d >= r.from && d <= r.to));
+  if (!empty.length) return null;
+  const known = sides.flatMap((s) => s.dates).sort();
+  const span = r.from === r.to ? formatDate(Date.parse(`${r.from}T00:00:00+07:00`)) : "these dates";
+  const where = known.length ? ` Records are on ${[...new Set(known)].slice(-3).map((d) => formatDate(Date.parse(`${d}T00:00:00+07:00`))).join(", ")}.` : "";
+  return `${empty.map((s) => s.label).join(" and ")} ${empty.length > 1 ? "have" : "has"} no records on ${span}.${where}`;
+}
 /** The last business date a replay starting on `from` may end on (RUN_RANGE_MAX_DAYS dates, none after today). */
 export function replayEnd(from: string, today: string): string {
   const last = shiftDate(from, RUN_RANGE_MAX_DAYS - 1);

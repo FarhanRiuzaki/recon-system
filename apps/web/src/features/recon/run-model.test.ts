@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, replayEnd, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -228,3 +228,24 @@ describe("run-model", () => {
     expect(runLine({ ...run, live: null }, spec, L)).toBe("937 matched · 24 suggested (open) · 30 duplicate · 24 waiting per side · match rate 93.7%");
   });
 });
+
+describe("the replay a simulation starts with (owner, 22 Nov: never a date without data)", () => {
+  const row = (last: string, recent: number[]) => ({ recent, health: { businessDate: last } });
+  it("reads a source's record dates from its 7-date trend", () => {
+    expect(recordDates(row("2026-11-22", [0, 0, 0, 0, 0, 3, 5]))).toEqual(["2026-11-21", "2026-11-22"]);
+    expect(recordDates({ recent: [], health: null })).toEqual([]);
+  });
+  it("the latest closed date both sides have, else today, else what one side has", () => {
+    expect(suggestedReplay(["2026-11-20", "2026-11-21", "2026-11-22"], ["2026-11-21", "2026-11-22"], "2026-11-22")).toEqual({ from: "2026-11-21", to: "2026-11-21" });
+    expect(suggestedReplay(["2026-11-22"], ["2026-11-22", "2026-11-23"], "2026-11-22")).toEqual({ from: "2026-11-22", to: "2026-11-22" });
+    expect(suggestedReplay(["2026-11-20"], [], "2026-11-22")).toEqual({ from: "2026-11-20", to: "2026-11-20" });
+    expect(suggestedReplay([], [], "2026-11-22")).toBeNull();
+    expect(suggestedReplay(null, ["2026-11-22"], "2026-11-22")).toBeNull();
+  });
+  it("says which side has nothing on the dates picked and where records are", () => {
+    const sides = [{ label: "Core banking", dates: ["2026-11-22"] }, { label: "BI-FAST switch", dates: ["2026-11-22", "2026-11-23"] }];
+    expect(replayGap({ from: "2026-11-21", to: "2026-11-21" }, sides)).toMatch(/^Core banking and BI-FAST switch have no records on .+\. Records are on .+\.$/);
+    expect(replayGap({ from: "2026-11-22", to: "2026-11-22" }, sides)).toBeNull();
+  });
+});
+
