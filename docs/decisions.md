@@ -573,3 +573,13 @@ Jawaban pemilik atas empat pertanyaan desain:
 
 Yang masih terbuka (desain §9): template global lintas space, perilaku saat tidak ada aturan cocok (usulan: rantai
 default), ambang nominal per mata uang tanpa konversi kurs, dan cakupan "360 derajat".
+
+**Amandemen 22 November 2026 (pemilik):** workflow jadi modul tersendiri yang bisa di-binding dari modul lain
+(desain `docs/superpowers/specs/2026-11-22-workflow-library-and-bindings-design.md`). Workflow = **library global**
+(rantai level bernama, berversi); hanya pemegang `workflow.manage` yang membuat dan mengubahnya, orang lain yang
+mem-publish. Tiap space punya **approval rules** per pemicu (force match, unmatch, write-off; fase B menambah pemicu):
+aturan berkondisi yang memilih workflow, lalu `otherwise` (kosong = rantai default). Request memakai versi live terbaru
+dari workflow yang dipilih dan menyimpan salinannya. Keputusan builder yang diterima bersama desain: approver hanya
+dihitung bila anggota aktif space request (termasuk lewat role aplikasi); ganti nama workflow lewat draft yang
+direview; publish tidak diblok bila satu space kekurangan orang (ditandai di Used by, request di space itu tetap
+ditolak saat dibuka); Used by memperlihatkan semua space kepada pemegang izin workflow.

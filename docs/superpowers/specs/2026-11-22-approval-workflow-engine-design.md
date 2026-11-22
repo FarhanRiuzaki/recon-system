@@ -247,7 +247,9 @@ maker-checker DEC-051 saat fase A rilis); **Q2 → space admin + izin global `wo
   di inbox. Dicek di :3000: draft dibuat → aturan, kondisi, dan 2 level → "Who approves" memilih aturan untuk 25 jt →
   draft dibuang; request write-off → timeline "Level 1 · Checker, menunggu Default Approver" → dibatalkan.
 - Seed lokal: `maker` + operator, `approver` + reviewer (supaya rantai default punya approver selain Superadmin).
-- **Figma: belum.** Server Figma MCP perlu login ulang. Halaman "06 Approval workflows · v1.0.0" dibuat setelah
-  login.
+- **Figma:** halaman "06 Approval workflows · v1.0.0" (Draft, 22 Nov), lalu v1.0.1 untuk revisi library + rules.
+- **Revisi 22 Nov (amandemen DEC-052):** workflow jadi library global, space memakai approval rules yang memilih
+  workflow. §4.2–§4.3 dan §5 di atas digantikan oleh `2026-11-22-workflow-library-and-bindings-design.md`; migrasi
+  0049, `approvals/{library,rules,versions}.ts`, web Workflows (Access) dan Space → Approval rules.
 - Fase B dan C: belum.
 
