@@ -293,7 +293,7 @@ export async function tryOperation(ctx: Ctx, id: string, b: TryBody): Promise<Tr
   const op = w.spec.operations.find((o) => o.key === b.operation);
   if (!op) throw new ApiError("bad_request", "This connector has no such operation. Pick one of its operations.");
   const r = w.disabled !== null
-    ? { outcome: "not_sent" as const, status: null, externalId: null, ms: 0, json: null, raw: null, message: `This connector is turned off: ${w.disabled}` }
+    ? { outcome: "not_sent" as const, status: null, externalId: null, ms: 0, json: null, raw: null, message: `This connector is turned off: ${w.disabled}`, filled: {} }
     : await sendOperation({ connectorId: id, env: "dev", op, settings: w.spec.environments.dev, secrets: w.secrets, body: b.body });
   const success = r.json !== null && op.success ? String(readPath(r.json, op.success.field) ?? "") === op.success.equals : r.json !== null ? true : null;
   const ref = r.json !== null && op.reference ? readPath(r.json, op.reference) : null;
@@ -303,5 +303,6 @@ export async function tryOperation(ctx: Ctx, id: string, b: TryBody): Promise<Tr
   return {
     ok: r.outcome === "ok" && success !== false, outcome: r.outcome, status: r.status, ms: r.ms, externalId: r.externalId, success,
     reference: ref === null || ref === undefined ? null : String(ref), response: r.json === null ? null : maskTree(r.json, op.masked), raw: r.raw, message: r.message,
+    filled: r.filled,
   };
 }

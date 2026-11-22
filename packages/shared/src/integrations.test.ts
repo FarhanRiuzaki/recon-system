@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConnectorSpec } from "./contracts/integrations";
-import { completeNames, fieldsFromOpenApi, fieldsFromSample, fieldsFromTable, maskTree, maskValue, operationsFromSpec, readSpecPaste, withPresets } from "./integrations";
+import { completeNames, formatNow, suggestAuto, withAuto, fieldsFromOpenApi, fieldsFromSample, fieldsFromTable, maskTree, maskValue, operationsFromSpec, readSpecPaste, withPresets } from "./integrations";
 
 describe("field trees", () => {
   it("reads a sample JSON into a field tree", () => {
@@ -78,7 +78,7 @@ describe("a field table pasted from a bank's spec", () => {
       "pageSize                          O       Integer          5          Rows per page.",
       "amount\tM\tNumeric\t16,2\tAmount in rupiah",
     ].join("\n");
-    expect(fieldsFromTable(table)).toEqual({ fields: [
+    expect(fieldsFromTable(table)).toMatchObject({ fields: [
       { name: "fromDate", type: "string", maxLength: 25, required: true },
       { name: "pageSize", type: "numeric", maxLength: 5, required: false },
       { name: "amount", type: "numeric", maxLength: 16, required: true },
@@ -96,7 +96,7 @@ describe("a field table pasted from a bank's spec", () => {
       "note String A plain field after the groups",
       "DE48.TraceID M String 12 Trace",
     ].join("\n");
-    expect(fieldsFromTable(table).fields).toEqual([
+    expect(fieldsFromTable(table).fields).toMatchObject([
       { name: "responseHeader", type: "object", required: false, children: [
         { name: "rsCode", type: "string", required: false }, { name: "rsHasMore", type: "string", required: false }, { name: "rsTotal", type: "numeric", required: false },
       ] },
@@ -110,7 +110,7 @@ describe("a field table pasted from a bank's spec", () => {
   });
   it("tells a pasted sample, an OpenAPI file and a table apart", () => {
     expect(readSpecPaste('{ "ResponseCode": "00" }', "/x", "POST", "response")).toEqual({ fields: [{ name: "ResponseCode", type: "string", required: false }], from: "sample" });
-    expect(readSpecPaste("code M String 2 Code", "/x", "POST", "request")).toEqual({ fields: [{ name: "code", type: "string", maxLength: 2, required: true }], from: "table" });
+    expect(readSpecPaste("code M String 2 Code", "/x", "POST", "request")).toMatchObject({ fields: [{ name: "code", type: "string", maxLength: 2, required: true }], from: "table" });
     expect(readSpecPaste('{ "openapi": "3.0.0", "paths": {} }', "/x", "POST", "request")).toBe("This file has no POST /x.");
     expect(readSpecPaste("just words", "/x", "POST", "request")).toBe("No fields were found. Paste the field table, a sample JSON or an OpenAPI file from the spec.");
   });
@@ -163,7 +163,7 @@ describe("a whole spec pasted at once: one operation per section", () => {
       ["balance_inquiry", "Balance Inquiry", "POST", "/openapi/v1.0/demo/balance-inquiry"],
       ["fund_status", "Fund Status", "GET", "/openapi/v1.0/demo/fund-status?type=a"],
     ]);
-    expect(r.operations[0]!.request).toEqual([{ name: "accountNo", type: "string", maxLength: 16, required: true }]);
+    expect(r.operations[0]!.request).toMatchObject([{ name: "accountNo", type: "string", maxLength: 16, required: true }]);
     expect(r.operations[0]!.response.map((f) => f.name)).toEqual(["header", "balance"]);
     // no table: the sample answers the fields
     expect(r.operations[1]!.response).toEqual([{ name: "ResponseCode", type: "string", required: false }, { name: "Status", type: "string", required: false }]);
@@ -195,7 +195,7 @@ describe("tables as banks really lay them out", () => {
     "footer                                     String           After the groups",
   ].join("\n");
   it("roman numbering, no space after the dot, three levels, and a name wrapped onto the next line", () => {
-    expect(fieldsFromTable(table).fields).toEqual([
+    expect(fieldsFromTable(table).fields).toMatchObject([
       { name: "responseSearch", type: "object", required: false, children: [
         { name: "bankCode", type: "string", required: false },
         { name: "sendTransaction", type: "object", required: false, children: [
@@ -212,10 +212,70 @@ describe("tables as banks really lay them out", () => {
   it("a name cut short in the table is completed from the sample JSON beside it", () => {
     const cut = "detail Object\n1. totalCreditTransferWithP Numeric Count\n2. bankCode String Code";
     const sample = { detail: { totalCreditTransferWithProxyVol: 1, bankCode: "X" } };
-    expect(completeNames(fieldsFromTable(cut).fields, sample)).toEqual([
+    expect(completeNames(fieldsFromTable(cut).fields, sample)).toMatchObject([
       { name: "detail", type: "object", required: false, children: [
         { name: "totalCreditTransferWithProxyVol", type: "numeric", required: false }, { name: "bankCode", type: "string", required: false },
       ] },
     ]);
+  });
+});
+
+describe("values the system fills (auto generated)", () => {
+  it("keeps each row's description, wrapped lines joined", () => {
+    const t = [
+      "Field                                      Data Type         Description",
+      "rqMsgId                                    String            System generated message id. Format:",
+      "                                                             yyyyMMdd + sequence number",
+      "rqMsgDate                                  String            Request message date time. Format:",
+      "                                                             dd/MM/yyyy HH:mm:ss",
+      "accountNo                                  String            Account to read",
+    ].join("\n");
+    expect(fieldsFromTable(t).fields.map((f) => f.description)).toEqual([
+      "System generated message id. Format: yyyyMMdd + sequence number", "Request message date time. Format: dd/MM/yyyy HH:mm:ss", "Account to read",
+    ]);
+  });
+  it("suggests auto values from what the spec says of a request field", () => {
+    const fields = [
+      { name: "header", type: "object" as const, required: false, children: [
+        { name: "rqMsgId", type: "string" as const, required: true, description: "System generated message id. Format: yyyyMMdd + sequence number (12 digits)" },
+        { name: "rqMsgDate", type: "string" as const, required: true, description: "Request message date time. Format: dd/MM/yyyy HH:mm:ss" },
+        { name: "trxDate", type: "string" as const, required: true, description: "Tanggal transaksi, diisi otomatis. Format: yyyy-MM-dd" },
+      ] },
+      { name: "accountNo", type: "string" as const, required: true, description: "Account to read" },
+    ];
+    expect(suggestAuto(fields)).toEqual({
+      "header.rqMsgId": { kind: "external_id" },
+      "header.rqMsgDate": { kind: "now", format: "dd/MM/yyyy HH:mm:ss" },
+      "header.trxDate": { kind: "now", format: "yyyy-MM-dd" },
+    });
+  });
+  it("formats the current time in Asia/Jakarta", () => {
+    const at = new Date("2026-11-22T03:04:05.678Z");
+    expect(formatNow("dd/MM/yyyy HH:mm:ss", at)).toBe("22/11/2026 10:04:05");
+    expect(formatNow("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", at)).toBe("2026-11-22T10:04:05.678+07:00");
+    expect(formatNow("yyyyMMdd", at)).toBe("20261122");
+  });
+  it("fills auto values over what the body has, inside groups too, and says what it filled", () => {
+    const r = withAuto({ header: { rqMsgId: "typed" }, a: 1 }, { "header.rqMsgId": { kind: "external_id" }, "header.rqMsgDate": { kind: "now", format: "yyyyMMdd" } }, { externalId: "20261122000000000007", now: new Date("2026-11-22T03:00:00Z") });
+    expect(r).toEqual({ body: { header: { rqMsgId: "20261122000000000007", rqMsgDate: "20261122" }, a: 1 }, filled: { "header.rqMsgId": "20261122000000000007", "header.rqMsgDate": "20261122" } });
+  });
+});
+
+describe("auto values in the contract", () => {
+  const env = { baseUrl: "", host: "", partnerId: "", channelId: "" };
+  const op = { key: "a", name: "A", method: "POST", path: "/", timeoutMs: 30000, request: [{ name: "rqMsgId", type: "string", required: true, description: "System generated" }, { name: "cur", type: "string", required: false }], response: [], success: null, reference: null, masked: [], presets: {} };
+  const spec = (o: object) => ({ name: "X", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...op, ...o }] });
+  it("an operation saved before auto values reads as none; a request field may be auto", () => {
+    expect(ConnectorSpec.parse(spec({})).operations[0]!.auto).toEqual({});
+    expect(ConnectorSpec.safeParse(spec({ auto: { rqMsgId: { kind: "external_id" } } })).success).toBe(true);
+  });
+  it("refuses an auto value on a field the request doesn't have, or on one with a fixed value", () => {
+    const issue = (o: object) => ConnectorSpec.safeParse(spec(o)).error?.issues.map((i) => i.message);
+    expect(issue({ auto: { nope: { kind: "external_id" } } })).toContain("An auto value is for a request field.");
+    expect(issue({ presets: { cur: "IDR" }, auto: { cur: { kind: "now", format: "yyyy" } } })).toContain("A field is either fixed or auto, not both.");
+  });
+  it("a whole spec suggests auto values for its request fields", () => {
+    const r = operationsFromSpec("1. Ping\nMethod POST\nPath /p\nRequest\nrqMsgId M String 20 System generated. Format: yyyyMMdd + sequence\nnote O String 10 Note");
+    expect(r.operations[0]!.auto).toEqual({ rqMsgId: { kind: "external_id" } });
   });
 });

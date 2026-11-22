@@ -41,7 +41,7 @@ const asTab = (v: string | null): Tab => (v === "operations" || v === "try" ? v 
 const named = (fs: readonly OpField[]): OpField[] => fs.filter((f) => f.name.trim()).map((f) => (f.children ? { ...f, children: named(f.children) } : f));
 const savable = (s: ConnectorSpec): ConnectorSpec => ({ ...s, name: s.name.trim(), operations: s.operations.map((o) => prune({ ...o, request: named(o.request), response: named(o.response) })) });
 const newOperation = (n: number): OperationSpec => ({
-  key: `operation_${n}`, name: `Operation ${n}`, method: "POST", path: "/", timeoutMs: TIMEOUT_DEFAULT_MS, request: [], response: [], success: null, reference: null, masked: [], presets: {},
+  key: `operation_${n}`, name: `Operation ${n}`, method: "POST", path: "/", timeoutMs: TIMEOUT_DEFAULT_MS, request: [], response: [], success: null, reference: null, masked: [], presets: {}, auto: {},
 });
 
 function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: ConnectorDetailDto) => void; onClose: () => void }) {

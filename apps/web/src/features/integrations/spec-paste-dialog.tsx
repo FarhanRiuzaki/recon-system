@@ -50,7 +50,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
                     </span>
                     <span className="font-mono text-caption text-fg-2">{o.method} {o.path}</span>
                     <span className="text-caption text-fg-3">
-                      {fieldPaths(o.request).length} request fields · {fieldPaths(o.response).length} response fields{o.success ? ` · success when ${o.success.field} is ${o.success.equals} (suggested)` : ""}
+                      {fieldPaths(o.request).length} request fields{Object.keys(o.auto).length ? ` (${Object.keys(o.auto).length} auto generated)` : ""} · {fieldPaths(o.response).length} response fields{o.success ? ` · success when ${o.success.field} is ${o.success.equals} (suggested)` : ""}
                     </span>
                   </li>
                 ))}

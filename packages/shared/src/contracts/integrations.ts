@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CONNECTOR_SORTS } from "../paging";
-import { ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
+import { DESCRIPTION_MAX, ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
 import { ListQuery, sortParam } from "./common";
 import { Person, reviewFields, versionFields } from "./workflows";
 
@@ -12,6 +12,8 @@ const OpField: z.ZodType<OpFieldT> = z.lazy(() => z.strictObject({
   type: z.enum(FIELD_TYPES),
   maxLength: z.number().int().min(1).max(10000).optional(),
   required: z.boolean(),
+  /** What the spec says of the field (kept from a paste; shown, and read for auto values). */
+  description: z.string().max(DESCRIPTION_MAX).optional(),
   children: z.array(OpField).max(FIELDS_MAX).optional(),
 }));
 const count = (fs: readonly OpFieldT[]): number => fs.reduce((n, f) => n + 1 + (f.children ? count(f.children) : 0), 0);
@@ -33,12 +35,21 @@ export const OperationSpec = z.strictObject({
   masked: z.array(DotPath).max(FIELDS_MAX),
   /** Fixed values of request fields (dot path → value). */
   presets: z.record(DotPath, z.string().max(500)),
+  /** Request fields the system fills on every call (dot path → how): never typed, shown as "Auto generated". */
+  auto: z.record(DotPath, z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("external_id") }),
+    z.strictObject({ kind: z.literal("now"), format: z.string().trim().min(1).max(60) }),
+  ])).default({}),
 }).superRefine((o, ctx) => {
   if (count(o.request) + count(o.response) > FIELDS_MAX) ctx.addIssue({ code: "custom", message: `An operation has at most ${FIELDS_MAX} fields.` });
   const res = new Set(fieldPaths(o.response)), req = new Set(fieldPaths(o.request));
   if (o.success && !res.has(o.success.field)) ctx.addIssue({ code: "custom", path: ["success", "field"], message: "Pick a response field for success." });
   if (o.reference && !res.has(o.reference)) ctx.addIssue({ code: "custom", path: ["reference"], message: "Pick a response field for the reference." });
   for (const p of Object.keys(o.presets)) if (!req.has(p)) ctx.addIssue({ code: "custom", path: ["presets", p], message: "A fixed value is for a request field." });
+  for (const p of Object.keys(o.auto)) {
+    if (!req.has(p)) ctx.addIssue({ code: "custom", path: ["auto", p], message: "An auto value is for a request field." });
+    else if (p in o.presets) ctx.addIssue({ code: "custom", path: ["auto", p], message: "A field is either fixed or auto, not both." });
+  }
 });
 export type OperationSpec = z.infer<typeof OperationSpec>;
 
@@ -112,5 +123,7 @@ export const TryDto = z.object({
   ok: z.boolean(), outcome: z.enum(["ok", "rejected", "not_sent", "timeout"]), status: z.number().int().nullable(), ms: z.number().int(),
   externalId: z.string().nullable(), success: z.boolean().nullable(), reference: z.string().nullable(), response: z.unknown().nullable(), raw: z.string().nullable(),
   message: z.string(),
+  /** The auto values the system filled for this call (dot path → value). */
+  filled: z.record(z.string(), z.string()),
 });
 export type TryDto = z.infer<typeof TryDto>;

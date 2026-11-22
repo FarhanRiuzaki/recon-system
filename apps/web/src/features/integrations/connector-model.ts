@@ -12,6 +12,7 @@ export function renamePath(op: OperationSpec, from: string, to: string): Operati
   return {
     ...op,
     presets: Object.fromEntries(Object.entries(op.presets).map(([k, v]) => [moved(k, from, to), v])),
+    auto: Object.fromEntries(Object.entries(op.auto ?? {}).map(([k, v]) => [moved(k, from, to), v])),
     masked: op.masked.map((p) => moved(p, from, to)),
     success: op.success ? { ...op.success, field: moved(op.success.field, from, to) } : null,
     reference: op.reference ? moved(op.reference, from, to) : null,
@@ -24,6 +25,7 @@ export function prune(op: OperationSpec): OperationSpec {
   return {
     ...op,
     presets: Object.fromEntries(Object.entries(op.presets).filter(([k]) => req.has(k))),
+    auto: Object.fromEntries(Object.entries(op.auto ?? {}).filter(([k]) => req.has(k) && !(k in op.presets))),
     masked: op.masked.filter((p) => req.has(p) || res.has(p)),
     success: op.success && res.has(op.success.field) ? op.success : null,
     reference: op.reference && res.has(op.reference) ? op.reference : null,
@@ -45,7 +47,9 @@ export function mergeSpecOperations(spec: ConnectorSpec, pasted: { operations: r
     const i = operations.findIndex((o) => o.key === p.key);
     if (i >= 0) {
       const o = operations[i]!;
-      operations[i] = prune({ ...o, name: p.name, method: p.method, path: p.path, request: p.request, response: p.response, success: o.success ?? p.success });
+      // what the operation set stays; the spec's suggestions fill only fields it has no fixed or auto value for
+      const suggested = Object.fromEntries(Object.entries(p.auto).filter(([k]) => !(k in o.presets)));
+      operations[i] = prune({ ...o, name: p.name, method: p.method, path: p.path, request: p.request, response: p.response, success: o.success ?? p.success, auto: { ...suggested, ...o.auto } });
       updated++;
     } else if (operations.length < OPERATIONS_MAX) {
       operations.push({ ...p, timeoutMs: TIMEOUT_DEFAULT_MS, reference: null, masked: [], presets: {} });

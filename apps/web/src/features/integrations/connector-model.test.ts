@@ -6,7 +6,7 @@ const op: OperationSpec = {
   key: "post", name: "Post", method: "POST", path: "/", timeoutMs: 30000,
   request: [{ name: "Currency", type: "string", required: false }, { name: "DE48", type: "object", required: false, children: [{ name: "Cur", type: "string", required: false }] }],
   response: [{ name: "ResponseCode", type: "string", required: false }, { name: "Ref", type: "string", required: false }],
-  success: { field: "ResponseCode", equals: "00" }, reference: "Ref", masked: ["DE48.Cur", "Ref"], presets: { Currency: "IDR", "DE48.Cur": "IDR" },
+  success: { field: "ResponseCode", equals: "00" }, reference: "Ref", masked: ["DE48.Cur", "Ref"], presets: { Currency: "IDR", "DE48.Cur": "IDR" }, auto: {},
 };
 
 describe("a connector's draft (final review I2, I3)", () => {
@@ -34,8 +34,8 @@ describe("operations pasted from a whole spec", () => {
   const pasted = {
     baseUrl: "https://api.bank.local:15000",
     operations: [
-      { key: "fund_status", name: "Fund Status", method: "GET" as const, path: "/openapi/fund", request: [{ name: "Currency", type: "string" as const, required: false }], response: [], success: null },
-      { key: "balance", name: "Balance", method: "POST" as const, path: "/openapi/balance", request: [], response: [{ name: "rsResponseCode", type: "string" as const, required: false }], success: { field: "rsResponseCode", equals: "00" } },
+      { key: "fund_status", name: "Fund Status", method: "GET" as const, path: "/openapi/fund", request: [{ name: "Currency", type: "string" as const, required: false }], response: [], success: null, auto: {} },
+      { key: "balance", name: "Balance", method: "POST" as const, path: "/openapi/balance", request: [], response: [{ name: "rsResponseCode", type: "string" as const, required: false }], success: { field: "rsResponseCode", equals: "00" }, auto: {} },
     ],
   };
   it("updates an operation of the same key (keeping its time limit and what still applies) and adds the new ones", () => {
@@ -55,5 +55,27 @@ describe("operations pasted from a whole spec", () => {
     const many = { baseUrl: null, operations: Array.from({ length: 60 }, (_, i) => ({ ...pasted.operations[1]!, key: `op_${i}` })) };
     const r = mergeSpecOperations({ ...spec, operations: [] }, many, false);
     expect([r.spec.operations.length, r.added, r.skipped]).toEqual([50, 50, 10]);
+  });
+});
+
+describe("auto values in the draft", () => {
+  const withAuto: OperationSpec = { ...op, auto: { "DE48.Cur": { kind: "now", format: "yyyy" } }, presets: { Currency: "IDR" } };
+  // (presets drop DE48.Cur: a field is fixed or auto, not both)
+  it("move with a renamed field and go with a removed one", () => {
+    expect(renamePath(withAuto, "DE48", "DE49").auto).toEqual({ "DE49.Cur": { kind: "now", format: "yyyy" } });
+    expect(prune({ ...withAuto, request: [withAuto.request[0]!] }).auto).toEqual({});
+  });
+  it("a pasted spec brings its suggested auto values; an existing operation keeps the ones it set", () => {
+    const env = { baseUrl: "", host: "", partnerId: "", channelId: "" };
+    const spec: ConnectorSpec = { name: "B", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...withAuto, key: "same" }] };
+    const field = { name: "rqMsgId", type: "string" as const, required: true };
+    const r = mergeSpecOperations(spec, { baseUrl: null, operations: [
+      { key: "same", name: "S", method: "POST", path: "/s", request: [...withAuto.request, field], response: [], success: null, auto: { rqMsgId: { kind: "external_id" }, "DE48.Cur": { kind: "external_id" } } },
+      { key: "new", name: "N", method: "POST", path: "/n", request: [field], response: [], success: null, auto: { rqMsgId: { kind: "external_id" } } },
+    ] }, false);
+    expect(r.spec.operations.map((o) => o.auto)).toEqual([
+      { rqMsgId: { kind: "external_id" }, "DE48.Cur": { kind: "now", format: "yyyy" } },
+      { rqMsgId: { kind: "external_id" } },
+    ]);
   });
 });

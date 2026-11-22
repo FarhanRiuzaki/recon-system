@@ -4,7 +4,7 @@
 // not_sent (it never left: credentials, certificate, network, token), timeout (sent, no readable answer in time: its
 // effect at the bank is unknown). Never logs or answers a secret, a token or a payload.
 import type { EnvironmentSettings, OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { type Environment, withPresets } from "@starterkit/shared/integrations";
+import { type Environment, withAuto, withPresets } from "@starterkit/shared/integrations";
 import { and, eq, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
@@ -16,7 +16,11 @@ import { connectorExternalIds, connectorTokens } from "./schema";
 import type { Secrets } from "./service";
 
 export type Outcome = "ok" | "rejected" | "not_sent" | "timeout";
-export type SendResult = { outcome: Outcome; status: number | null; externalId: string | null; ms: number; json: unknown | null; raw: string | null; message: string };
+export type SendResult = {
+  outcome: Outcome; status: number | null; externalId: string | null; ms: number; json: unknown | null; raw: string | null; message: string;
+  /** The auto values the system filled (dot path → value): ids and times, never a secret. */
+  filled: Record<string, string>;
+};
 /** A call that never left: credentials, certificate, network or token, in words. */
 export class NotSent extends Error {}
 
@@ -71,7 +75,8 @@ export async function nextExternalId(connectorId: string, now = new Date()): Pro
 /** One call of `op` to the environment: signed, encrypted, within the operation's time. Never throws for the bank. */
 export async function sendOperation(i: { connectorId: string; env: Environment; op: OperationSpec; settings: EnvironmentSettings; secrets: Secrets | null; body: unknown }): Promise<SendResult> {
   const start = Date.now();
-  const done = (r: Omit<SendResult, "ms">): SendResult => ({ ...r, ms: Date.now() - start });
+  let filled: Record<string, string> = {};
+  const done = (r: Omit<SendResult, "ms" | "filled">): SendResult => ({ ...r, ms: Date.now() - start, filled });
   const s = i.secrets ?? {};
   if (!i.settings.baseUrl) return done({ outcome: "not_sent", status: null, externalId: null, json: null, raw: null, message: "Enter this environment's address first." });
   if (!s.clientId || !s.clientSecret || !s.publicKey) {
@@ -84,8 +89,11 @@ export async function sendOperation(i: { connectorId: string; env: Environment; 
     if (e instanceof NotSent) return done({ outcome: "not_sent", status: null, externalId: null, json: null, raw: null, message: e.message });
     throw e;
   }
-  const json = i.op.method === "GET" ? "" : JSON.stringify(withPresets(i.body, i.op.presets));
   const externalId = await nextExternalId(i.connectorId);
+  // fixed values where the body leaves them out, then the auto values over whatever it has
+  const auto = withAuto(withPresets(i.body, i.op.presets), i.op.auto ?? {}, { externalId, now: new Date() });
+  filled = auto.filled;
+  const json = i.op.method === "GET" ? "" : JSON.stringify(auto.body);
   const sealed = sealRequest({ method: i.op.method, path: i.op.path, json, accessToken: token, clientSecret: s.clientSecret, publicKey: s.publicKey, now: new Date() });
   let res: Response;
   try {

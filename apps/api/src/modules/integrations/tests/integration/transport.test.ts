@@ -20,7 +20,9 @@ async function connector(o: { devUrl?: string; prodUrl?: string; secret?: string
   const env = (url: string) => ({ baseUrl: url, host: "localhost", partnerId: "P1", channelId: "C1" });
   const spec = { name: `Bank ${Bun.randomUUIDv7().slice(-6)}`, profile: "bank_mega_openapi_2_1", active: "dev",
     environments: { dev: env(o.devUrl ?? bank.url), prod: env(o.prodUrl ?? bank.url) },
-    operations: [op("ok", "/ok"), op("html", "/html"), op("slow", "/slow", { timeoutMs: 1000 })] };
+    operations: [op("ok", "/ok"), op("html", "/html"), op("slow", "/slow", { timeoutMs: 1000 }),
+      op("auto", "/ok", { request: [{ name: "Amount", type: "string", required: true }, { name: "Currency", type: "string", required: false }, { name: "rqMsgId", type: "string", required: true }, { name: "rqMsgDate", type: "string", required: true }],
+        auto: { rqMsgId: { kind: "external_id" }, rqMsgDate: { kind: "now", format: "yyyyMMdd" } } })] };
   const c = await json<ConnectorDetailDto>(call("POST", C, { token: t, body: { spec } }));
   for (const environment of ["dev", "prod"]) {
     await call("PUT", `${C}/${c.id}/secrets`, { token: t, body: { environment, clientId: bank.clientId, clientSecret: o.secret ?? bank.clientSecret, publicKey: bank.publicKey, ...(o.ca === false ? {} : { caBundle: bank.cert }) } });
@@ -84,6 +86,14 @@ describe("Try it against dev", () => {
     const b = await tryIt(id, "ok");
     expect(BigInt(b.externalId!.slice(8))).toBe(BigInt(a.externalId!.slice(8)) + 1n);
     expect((await tryIt(id, "ok", { Amount: "1", fail: true })).success).toBe(false);
+  });
+
+  it("auto values are filled by the system over what the body has, and Try it says what it filled", async () => {
+    const r = await tryIt(await connector(), "auto", { Amount: "1", rqMsgId: "typed by hand" });
+    const echo = (r.response as { Echo: Record<string, string> }).Echo;
+    expect(echo.rqMsgId).toBe(r.externalId!);
+    expect(echo.rqMsgDate).toMatch(/^\d{8}$/);
+    expect(r.filled).toEqual({ rqMsgId: r.externalId!, rqMsgDate: echo.rqMsgDate! });
   });
 
   it("an answer that isn't encrypted is shown, never a 500", async () => {

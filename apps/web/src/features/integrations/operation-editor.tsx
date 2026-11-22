@@ -41,7 +41,19 @@ export function OperationEditor({ op, onChange, disabled }: { op: OperationSpec;
 
       <FieldTree title="Request fields" fields={op.request} disabled={disabled} openApi={{ path: op.path, method: op.method, side: "request" }}
         onChange={(request, r) => onChange(r ? renamePath({ ...op, request }, r[0], r[1]) : { ...op, request })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })}
-        presets={op.presets} onPreset={(p, v) => { const { [p]: _, ...rest } = op.presets; onChange({ ...op, presets: v ? { ...rest, [p]: v } : rest }); }} />
+        values={{
+          presets: op.presets, auto: op.auto ?? {},
+          onChange: (path, v) => {
+            const { [path]: _p, ...presets } = op.presets;
+            const { [path]: _a, ...auto } = op.auto ?? {};
+            onChange(v.kind === "fixed" ? { ...op, presets: { ...presets, [path]: v.value }, auto } : v.kind === "typed" ? { ...op, presets, auto } : { ...op, presets, auto: { ...auto, [path]: v } });
+          },
+        }}
+        onSuggest={(request, suggested) => {
+          const paths = new Set(fieldPaths(request));
+          const kept = Object.fromEntries(Object.entries(op.auto ?? {}).filter(([k]) => paths.has(k)));
+          onChange({ ...op, request, auto: Object.fromEntries(Object.entries({ ...suggested, ...kept }).filter(([k]) => !(k in op.presets))) });
+        }} />
       <FieldTree title="Response fields" fields={op.response} disabled={disabled} openApi={{ path: op.path, method: op.method, side: "response" }}
         onChange={(response, r) => onChange(r ? renamePath({ ...op, response }, r[0], r[1]) : { ...op, response })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })} />
 

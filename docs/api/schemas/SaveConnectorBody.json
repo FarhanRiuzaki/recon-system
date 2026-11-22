@@ -195,6 +195,51 @@
                   "type": "string",
                   "maxLength": 500
                 }
+              },
+              "auto": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 300
+                },
+                "additionalProperties": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "external_id"
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "now"
+                        },
+                        "format": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 60
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "format"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
               }
             },
             "required": [
@@ -254,6 +299,10 @@
         },
         "required": {
           "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 500
         },
         "children": {
           "maxItems": 400,

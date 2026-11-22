@@ -66,6 +66,15 @@
     },
     "message": {
       "type": "string"
+    },
+    "filled": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -78,7 +87,8 @@
     "reference",
     "response",
     "raw",
-    "message"
+    "message",
+    "filled"
   ],
   "additionalProperties": false
 }
