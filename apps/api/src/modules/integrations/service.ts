@@ -3,7 +3,7 @@
 // per environment, encrypted; answers and activity say which are set, never their values.
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  ConnectorDetailDto, ConnectorListQuery, TokenCheckBody, TokenCheckDto, TryBody, TryDto, ConnectorRowDto, ConnectorSpec, ConnectorVersionDto, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody,
+  ConnectorDetailDto, ConnectorListQuery, ConnectorOperationsDto, TokenCheckBody, TokenCheckDto, TryBody, TryDto, ConnectorRowDto, ConnectorSpec, ConnectorVersionDto, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody,
   SaveConnectorBody,
 } from "@starterkit/shared/contracts/integrations";
 import { ConnectorSpec as SpecSchema } from "@starterkit/shared/contracts/integrations";
@@ -321,4 +321,25 @@ export async function connectorFacts(tx: InTx, ids: readonly string[]) {
     }])) });
   }
   return out;
+}
+
+/**
+ * GET /v1/spaces/{spaceId}/connector-operations: the connectors' versions published once (newest first, the live one
+ * marked) and their operations, as a recon's action picks them. No settings, no secrets.
+ */
+export function connectorOperations(): Promise<ConnectorOperationsDto> {
+  return db.transaction(async (tx) => {
+    const cs = await tx.select().from(connectors).orderBy(sql`lower(${connectors.name})`);
+    const vs = cs.length ? await tx.select({ connectorId: connectorVersions.connectorId, version: connectorVersions.version, status: connectorVersions.status, spec: connectorVersions.spec }).from(connectorVersions)
+      .where(and(inArray(connectorVersions.connectorId, cs.map((c) => c.id)), inArray(connectorVersions.status, ["published", "retired"]))) : [];
+    return {
+      items: cs.filter((c) => vs.some((v) => v.connectorId === c.id)).map((c) => ({
+        id: c.id, name: c.name, disabled: !!c.disabledAt,
+        versions: vs.filter((v) => v.connectorId === c.id).sort((a, b) => b.version - a.version).map((v) => ({
+          version: v.version, live: v.status === "published",
+          operations: (v.spec as ConnectorSpec).operations.map((o) => ({ key: o.key, name: o.name, method: o.method, path: o.path, request: o.request, fixed: Object.keys(o.presets), auto: Object.keys(o.auto ?? {}) })),
+        })),
+      })),
+    };
+  });
 }

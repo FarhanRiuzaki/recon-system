@@ -132,3 +132,15 @@ export const TryDto = z.object({
   filled: z.record(z.string(), z.string()),
 });
 export type TryDto = z.infer<typeof TryDto>;
+
+/** GET /spaces/{spaceId}/connector-operations: what a recon's action may pick (stage 4): connectors, versions published once, operations. */
+export const ConnectorOperationsDto = z.object({
+  items: z.array(z.object({
+    id: z.string(), name: z.string(), disabled: z.boolean(),
+    versions: z.array(z.object({
+      version: z.number().int(), live: z.boolean(),
+      operations: z.array(z.object({ key: z.string(), name: z.string(), method: z.string(), path: z.string(), request: z.array(OpField), fixed: z.array(z.string()), auto: z.array(z.string()) })),
+    })),
+  })),
+});
+export type ConnectorOperationsDto = z.infer<typeof ConnectorOperationsDto>;

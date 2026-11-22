@@ -12,7 +12,7 @@ import { ApiError } from "../../kernel/errors";
 import { body as parseBody, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
-  connectorDetail, connectorPage, createConnector, disableConnector, discardDraft, enableConnector, replaceSecrets, reviewDraft, saveDraft, startDraft, submitDraft, tokenCheck,
+  connectorDetail, connectorOperations, connectorPage, createConnector, disableConnector, discardDraft, enableConnector, replaceSecrets, reviewDraft, saveDraft, startDraft, submitDraft, tokenCheck,
   tryOperation,
 } from "./service";
 
@@ -23,6 +23,8 @@ const body = <T>(c: { request: Request }, schema: ZodType<T>): Promise<T> => par
 });
 export const integrationsController = () => new Elysia().use(guard)
   // the space's approval action runs (stage 4): any role of the space reads them
+  // what a recon's action may pick: the connectors' published versions and operations (no settings, no secrets)
+  .get("/v1/spaces/:spaceId/connector-operations", () => connectorOperations(), { guard: { space: SPACE_ROLES } })
   .get("/v1/spaces/:spaceId/action-runs", ({ ctx, query }) => actionRunPage(ctx, query), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
   .get("/v1/integrations/connectors", ({ query }) => connectorPage(query), { query: ConnectorListQuery, guard: "integration.view" })
   .post("/v1/integrations/connectors", async (c) => {
