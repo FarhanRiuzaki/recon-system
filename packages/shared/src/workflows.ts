@@ -1,14 +1,17 @@
-// Approval workflows (DEC-052, docs/superpowers/specs/2026-11-22-approval-workflow-engine-design.md), zod-free: the
-// actions a workflow binds to, the attributes its rules read, the limits, and the pure evaluation the API and the
-// editor's "Who approves" share. A workflow = ordered rules; the first whose conditions all hold gives the chain of
-// levels; a level passes when every group in it has its approvals (any / all / N of its eligible people).
+// Approval workflows (DEC-052; docs/superpowers/specs/2026-11-22-workflow-library-and-bindings-design.md), zod-free:
+// the triggers approval rules bind, the attributes their conditions read, the limits, and the pure evaluation the API
+// and the editors' "Who approves" share. A workflow (global library) = named chain of levels; a level passes when every
+// group in it has its approvals (any / all / N of its eligible people). A space's approval rules for a trigger = ordered
+// rules, the first whose conditions all hold picks the workflow; none holds = `otherwise` (null = the default chain).
 import type { SpaceRole } from "./spaces";
 
-/** Phase A: the changes of a break. Phase B adds versions, sign-off, reopen and rerun. */
-export const WORKFLOW_ACTIONS = ["force_match", "unmatch", "write_off"] as const;
-export type WorkflowAction = (typeof WORKFLOW_ACTIONS)[number];
-export const WORKFLOW_ACTION_LABEL: Record<WorkflowAction, string> = { force_match: "Force match", unmatch: "Unmatch", write_off: "Write-off" };
-export const WORKFLOW_ACTION_TEXT: Record<WorkflowAction, string> = {
+/** What approval rules bind: phase A the changes of a break; phase B adds versions, sign-off, reopen and rerun. */
+export const TRIGGERS = ["force_match", "unmatch", "write_off"] as const;
+export type Trigger = (typeof TRIGGERS)[number];
+export const TRIGGER_LABEL: Record<Trigger, string> = { force_match: "Force match", unmatch: "Unmatch", write_off: "Write-off" };
+/** The module whose change a trigger is, for grouping on the approval rules page. */
+export const TRIGGER_MODULE: Record<Trigger, "Breaks"> = { force_match: "Breaks", unmatch: "Breaks", write_off: "Breaks" };
+export const TRIGGER_TEXT: Record<Trigger, string> = {
   force_match: "Matching a break across a difference in totals",
   unmatch: "Undoing a break's match",
   write_off: "Closing a break as written off",
@@ -36,14 +39,17 @@ export type Condition = { attr: Attr; op: Op; value: string | string[] };
 export type Need = { kind: "any" } | { kind: "all" } | { kind: "count"; n: number };
 export type Group = { spaceRoles: SpaceRole[]; globalRoles: string[]; users: string[]; need: Need };
 export type Level = { name: string; groups: Group[] };
-export type Rule = { name: string; when: Condition[]; levels: Level[] };
-export type WorkflowSpecShape = { rules: Rule[] };
+/** A library workflow's content. */
+export type Chain = { name: string; levels: Level[] };
+/** One approval rule: when its conditions all hold, the request takes `workflowId`'s live version. */
+export type BindingRule = { name: string; when: Condition[]; workflowId: string };
+export type BindingSpecShape = { rules: BindingRule[]; otherwise: string | null };
 /** The attributes of one request (amount as a decimal string of minor units: bigint-safe over JSON). */
 export type Attributes = { amount?: string; currency?: string | null; recon?: string; ageDays?: number };
 
-/** The chain a break change takes when its space has no published workflow, or no rule matches: today's rule (DEC-052). */
+/** The chain a request takes when its space has no published approval rules, or they end in the default: today's rule. */
 export const DEFAULT_LEVELS: Level[] = [{ name: "Checker", groups: [{ spaceRoles: ["reviewer", "space_admin"], globalRoles: [], users: [], need: { kind: "any" } }] }];
-export const DEFAULT_RULE: Rule = { name: "Default", when: [], levels: DEFAULT_LEVELS };
+export const DEFAULT_CHAIN: Chain = { name: "Default", levels: DEFAULT_LEVELS };
 
 const num = (v: string | number | undefined | null): bigint | null => {
   if (v === undefined || v === null || v === "") return null;
@@ -62,10 +68,14 @@ export function holds(c: Condition, a: Attributes): boolean {
   if (x === null || y === null) return false;
   return c.op === "gte" ? x >= y : c.op === "gt" ? x > y : c.op === "lte" ? x <= y : c.op === "lt" ? x < y : x === y;
 }
-/** The rule a request takes: the first whose conditions all hold, else the default (DEC-052 Q4 default). */
-export function pickRule(spec: WorkflowSpecShape | null, a: Attributes): { rule: Rule; index: number | null } {
-  const i = spec ? spec.rules.findIndex((r) => r.when.every((c) => holds(c, a))) : -1;
-  return i >= 0 ? { rule: spec!.rules[i]!, index: i } : { rule: DEFAULT_RULE, index: null };
+/**
+ * The workflow approval rules give a request: the first rule whose conditions all hold, else `otherwise`; no rules at
+ * all = the default chain (workflowId null).
+ */
+export function pickBinding(spec: BindingSpecShape | null, a: Attributes): { index: number | null; ruleName: string; workflowId: string | null } {
+  if (!spec) return { index: null, ruleName: "Default", workflowId: null };
+  const i = spec.rules.findIndex((r) => r.when.every((c) => holds(c, a)));
+  return i >= 0 ? { index: i, ruleName: spec.rules[i]!.name, workflowId: spec.rules[i]!.workflowId } : { index: null, ruleName: "Otherwise", workflowId: spec.otherwise };
 }
 
 /**

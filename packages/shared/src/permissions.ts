@@ -8,7 +8,7 @@ export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project
   { key: "project", actions: ["view", "create", "edit", "delete"] },
   /** `space.view` lists every space; `space.manage` creates spaces and manages any space's members (no data access, recon spec §11). */
   { key: "space", actions: ["view", "manage"] },
-  /** `workflow.manage` edits any space's approval workflows (DEC-052; a space admin edits its own space's). */
+  /** `workflow.view` reads the workflow library; `workflow.manage` creates and edits it and any space's approval rules (DEC-052; a space admin edits its own space's rules). */
   { key: "workflow", actions: ["view", "manage"] },
 ];
 
