@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useState } from "react";
@@ -46,11 +47,21 @@ export function SecurityPage({ providers }: { providers: Record<ConnectionProvid
     <div className="grid gap-section">
       {header}
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh your settings; showing the last loaded values.</Notice>}
-      <div className="grid items-start gap-section md:grid-cols-2">
-        <PasswordCard user={u} />
-        <TwoFactorCard user={u} />
-        <ConnectionsCard user={u} providers={providers} />
-      </div>
+      {u.mustChangePassword ? (
+        // a password an admin set: the user's own before anything else (the API refuses the rest meanwhile)
+        <div className="grid items-start gap-section md:grid-cols-2">
+          <div className="grid gap-section">
+            <Notice tone="warn">Your administrator set this password. Set your own to continue.</Notice>
+            <PasswordCard user={u} />
+          </div>
+        </div>
+      ) : (
+        <div className="grid items-start gap-section md:grid-cols-2">
+          <PasswordCard user={u} />
+          <TwoFactorCard user={u} />
+          <ConnectionsCard user={u} providers={providers} />
+        </div>
+      )}
     </div>
   );
 }
@@ -63,6 +74,7 @@ const PASSWORD_SCHEMA = {
 
 function PasswordCard({ user }: { user: MeDto }) {
   const qc = useQueryClient();
+  const router = useRouter();
   const f = useForm({ initial: { current: "", next: "", again: "" }, schema: PASSWORD_SCHEMA, idPrefix: "pw" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +86,8 @@ function PasswordCard({ user }: { user: MeDto }) {
     try {
       await api("/api/me/password", { method: "POST", body: JSON.stringify({ current, next }) });
       f.reset();
+      // the first password of one's own opens the app: the server parts read the account again, then the dashboard
+      if (user.mustChangePassword) { router.refresh(); router.push("/"); return; }
       toast("Password changed. Your other sessions were signed out.");
       void qc.invalidateQueries({ queryKey: ME_KEY }); // your session list (under "me") lost the other sessions
     } catch (err) {

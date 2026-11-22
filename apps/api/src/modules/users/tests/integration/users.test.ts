@@ -194,6 +194,26 @@ describe("GET /v1/users/roles", () => {
   });
 });
 
+describe("a password an admin set (owner, 22 Nov: the user sets their own first)", () => {
+  it("allows only the account, the password change and sign-out until then; a reset sets it again", async () => {
+    const admin = await signIn("admin");
+    const dto = (await (await create(NEW, admin)).json()) as UserDto;
+    const t = await signIn("new.person", NEW.password);
+    for (const [m, path] of [["GET", "/v1/users"], ["GET", "/v1/me/sessions"], ["GET", "/v1/spaces"], ["PATCH", "/v1/me"]] as const) {
+      const r = await call(m, path, { token: t, body: m === "PATCH" ? { name: "X" } : undefined });
+      expect([path, r.status, await code(r)]).toEqual([path, 403, "password_change_required"]);
+    }
+    expect((await call("GET", "/v1/me", { token: t })).status).toBe(200);
+    expect((await call("GET", "/v1/auth/context", { token: t })).status).toBe(200);
+    expect((await call("GET", "/v1/users")).status).toBe(401); // no session stays 401 first
+    expect((await call("POST", "/v1/me/password", { token: t, body: { current: NEW.password, next: "My-Own-Pass-22!" } })).status).toBe(200);
+    expect((await call("GET", "/v1/me/sessions", { token: t })).status).toBe(200);
+    const reset = (await (await call("POST", `/v1/users/${dto.id}/reset-password`, { token: admin })).json()) as { temporaryPassword: string };
+    const t2 = await signIn("new.person", reset.temporaryPassword);
+    expect(await code(await call("GET", "/v1/me/sessions", { token: t2 }))).toBe("password_change_required");
+  });
+});
+
 describe("POST /v1/users", () => {
   it("viewer gets 403 and the store is unchanged", async () => {
     const r = await create(NEW, await signIn("viewer"));
@@ -206,12 +226,14 @@ describe("POST /v1/users", () => {
     const r = await create(NEW, await signIn("admin"));
     expect(r.status).toBe(201);
     const dto = (await r.json()) as UserDto;
-    expect(dto).toMatchObject({ username: "new.person", roles: ["Viewer"], isActive: true, isLdap: false });
+    // a password an admin set: the user sets their own before anything else (password_change_required)
+    expect(dto).toMatchObject({ username: "new.person", roles: ["Viewer"], isActive: true, isLdap: false, mustChangePassword: true });
     expect(JSON.stringify(dto)).not.toMatch(/passwordHash|Brand-New/);
     expect(await verifyPassword(NEW.password, (await userRow(dto.id)).password_hash)).toBe(true);
     const a = await acts();
     expect(a).toHaveLength(1);
-    expect(a[0]).toMatchObject({ action: "user.create", targetId: dto.id, after: { ...dto, invited: false } });
+    // the activity snapshot masks every field named like a password, this flag too (audit rules)
+    expect(a[0]).toMatchObject({ action: "user.create", targetId: dto.id, after: { ...dto, mustChangePassword: "••••", invited: false } });
     expect(JSON.stringify(a)).not.toMatch(/Brand-New|passwordHash/);
     expect(sentMail()).toHaveLength(0);
   });

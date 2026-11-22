@@ -5,7 +5,7 @@ import { protection, rankBlock, skipReason, userGone } from "./use-users";
 
 const ADMIN = new Set<PermissionName>(PERMISSIONS.filter((p) => !p.startsWith("role.") && !p.startsWith("permission.")));
 const row = (id: string, permissions: readonly PermissionName[]) => ({
-  id, name: id, username: id, email: `${id}@x.test`, avatarUrl: null, isActive: true, isLdap: false, twoFactorEnabled: false,
+  id, name: id, username: id, email: `${id}@x.test`, avatarUrl: null, isActive: true, isLdap: false, twoFactorEnabled: false, mustChangePassword: false,
   roles: [], connected: [], lastLoginAt: null, createdAt: "2026-01-01T00:00:00.000Z", permissions: [...permissions],
 });
 

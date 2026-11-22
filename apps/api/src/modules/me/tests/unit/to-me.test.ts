@@ -5,7 +5,7 @@ import { toMe } from "../../service";
 const row: UserRow = {
   id: "01a157f3-5cd2-775d-8c0e-776380fdaa33", name: "Admin User", username: "admin", email: "admin@example.com", avatarUrl: null,
   isActive: true, isLdap: false, passwordHash: "$argon2id$hash", totpSecret: "v1:secret", pendingTotpSecret: "v1:pending", totpLastStep: 7,
-  twoFactorEnabled: true, roles: ["Admin"], connected: ["google"], lastLoginAt: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z",
+  twoFactorEnabled: true, mustChangePassword: false, roles: ["Admin"], connected: ["google"], lastLoginAt: null, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z",
 };
 
 describe("toMe", () => {

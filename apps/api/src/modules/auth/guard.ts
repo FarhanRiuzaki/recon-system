@@ -26,12 +26,20 @@ export type Ctx = AuthUser & { client: Client; requestId: string; space?: { id: 
 export const bearer = (header: string | null | undefined): string | undefined => /^Bearer (\S+)$/i.exec(header ?? "")?.[1];
 
 /**
+ * What a user whose password an admin set may still do (403 password_change_required for the rest, after the 401 and
+ * before the permission check): read their account and the app's context, change the password, sign out.
+ */
+const BEFORE_OWN_PASSWORD = new Set(["GET /v1/auth/context", "GET /v1/me", "POST /v1/me/password", "POST /v1/auth/logout"]);
+
+/**
  * A bearer token → a live session (else 401 `unauthenticated`) → `perm` held (else 403 `forbidden`), before anything
  * else is read. `null` = any signed-in user. CSRF is checked by Next, not here.
  */
-export async function authenticate(token: string | undefined, perm: PermissionName | null): Promise<AuthUser> {
+export async function authenticate(token: string | undefined, perm: PermissionName | null, route?: string): Promise<AuthUser> {
   const auth = token ? await resolveSession(token) : null;
   if (!auth) throw new ApiError("unauthenticated");
+  // a password an admin set: the user's own first (`route` = "METHOD /path"; without one, as for OAuth linking, it's due too)
+  if (auth.user.mustChangePassword && !(route && BEFORE_OWN_PASSWORD.has(route))) throw new ApiError("password_change_required");
   if (perm && !auth.perms.has(perm)) throw new ApiError("forbidden");
   return auth;
 }
@@ -44,8 +52,8 @@ const READS = new Set(["GET", "HEAD"]);
  * The roles are read per request, so a removed member is out on the next one. A Superadmin holds every space role in
  * every space that exists (owner rule, 22 Nov: isSuperadmin); a space that doesn't is 403 as for anyone.
  */
-async function authenticateInSpace(token: string | undefined, g: SpaceGuard, spaceId: string | undefined, method: string): Promise<Pick<Ctx, keyof AuthUser | "space">> {
-  const auth = await authenticate(token, null);
+async function authenticateInSpace(token: string | undefined, g: SpaceGuard, spaceId: string | undefined, method: string, route: string): Promise<Pick<Ctx, keyof AuthUser | "space">> {
+  const auth = await authenticate(token, null, route);
   const id = idParam(spaceId, "space");
   const roles = isSuperadmin(auth.user.roles) ? (await spaceExists(db, id) ? [...SPACE_ROLES] : []) : await spaceRolesOf(db, auth.user.id, id);
   if (!roles.some((r) => g.space.includes(r)) && !(g.or && auth.perms.has(g.or))) throw new ApiError("forbidden");
@@ -63,7 +71,8 @@ export const guard = new Elysia({ name: "auth.guard" }).use(context).macro({
   guard: (g: PermissionName | null | SpaceGuard) => ({
     resolve: async ({ request, client, requestId, params }) => {
       const token = bearer(request.headers.get("authorization"));
-      const auth = g !== null && typeof g === "object" ? await authenticateInSpace(token, g, (params as Record<string, string | undefined>).spaceId, request.method) : await authenticate(token, g);
+      const route = `${request.method} ${new URL(request.url).pathname}`;
+      const auth = g !== null && typeof g === "object" ? await authenticateInSpace(token, g, (params as Record<string, string | undefined>).spaceId, request.method, route) : await authenticate(token, g, route);
       return { ctx: { ...auth, client, requestId } satisfies Ctx as Ctx };
     },
   }),

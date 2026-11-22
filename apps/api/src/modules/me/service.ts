@@ -75,7 +75,7 @@ export async function changePassword(ctx: Ctx, b: ChangePasswordBody): Promise<v
   const hash = await hashPassword(b.next);
   await db.transaction(async (tx) => {
     await lockAccount(tx, ctx);
-    await updateUser(tx, u.id, { passwordHash: hash });
+    await updateUser(tx, u.id, { passwordHash: hash, mustChangePassword: false });
     await endUserSessions(tx, u.id, ctx.sid);
     await deleteUserTokens(tx, u.id);
     await recordActivity(tx, ctx, { action: "me.password", target: target(u) });

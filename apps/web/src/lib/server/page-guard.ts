@@ -18,11 +18,16 @@ import { authContext, getSession } from "./session";
  * no hint that the page exists. Returns what the shell needs: the user, permissions, and the CSRF token. The user and
  * permissions come from authContext (one API call per request, shared with the layout and the title).
  */
+/** Where a user whose password an admin set goes first: Security, with the password form. */
+export const OWN_PASSWORD_PAGE = "/me/security";
+
 export async function requirePagePermission(
   perm: PermissionName | null,
 ): Promise<{ user: UserDto; perms: PermissionName[]; csrf: string }> {
   const ctx = await authContext();
   if (!ctx) redirect(signInHref((await headers()).get("x-pathname")));
+  // a password an admin set: the user sets their own first (the API refuses the rest, password_change_required)
+  if (ctx.user.mustChangePassword && ((await headers()).get("x-pathname") ?? "/").split("?")[0] !== OWN_PASSWORD_PAGE) redirect(OWN_PASSWORD_PAGE);
   if (perm && !ctx.perms.includes(perm)) notFound();
   return { user: ctx.user, perms: ctx.perms, csrf: (await getSession()).csrf! };
 }

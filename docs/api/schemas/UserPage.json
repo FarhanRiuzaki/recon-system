@@ -35,6 +35,9 @@
           "twoFactorEnabled": {
             "type": "boolean"
           },
+          "mustChangePassword": {
+            "type": "boolean"
+          },
           "roles": {
             "type": "array",
             "items": {
@@ -76,6 +79,7 @@
           "isActive",
           "isLdap",
           "twoFactorEnabled",
+          "mustChangePassword",
           "roles",
           "connected",
           "lastLoginAt",

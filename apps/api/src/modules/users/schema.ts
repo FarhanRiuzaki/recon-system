@@ -12,6 +12,11 @@ export const users = pgTable("users", {
   isActive: boolean("is_active").notNull().default(true),
   isLdap: boolean("is_ldap").notNull().default(false),
   passwordHash: text("password_hash"),
+  /**
+   * The password was set by an admin (Create user with a password, Reset password): every route but signing out,
+   * reading the account and changing the password answers 403 password_change_required until the user sets their own.
+   */
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   /** Encrypted (v1:…); not null = two-factor on. */
   totpSecret: text("totp_secret"),
   /** Encrypted; set by POST /me/2fa until PUT confirms a code. */

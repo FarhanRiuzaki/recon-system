@@ -13,6 +13,8 @@ export const UserDto = z.object({
   isActive: z.boolean(),
   isLdap: z.boolean(),
   twoFactorEnabled: z.boolean(),
+  /** The password was set by an admin; the user sets their own before anything else (403 password_change_required). */
+  mustChangePassword: z.boolean(),
   roles: z.array(z.string()),
   connected: z.array(z.enum(["google", "apple"])),
   lastLoginAt: z.string().nullable(),

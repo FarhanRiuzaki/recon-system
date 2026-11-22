@@ -16,7 +16,7 @@ import { sessions } from "./schema";
 export type UserRow = {
   id: string; name: string; username: string; email: string; avatarUrl: string | null; isActive: boolean; isLdap: boolean;
   passwordHash: string | null; totpSecret: string | null; pendingTotpSecret: string | null; totpLastStep: number | null;
-  twoFactorEnabled: boolean; roles: string[]; connected: ("google" | "apple")[];
+  twoFactorEnabled: boolean; mustChangePassword: boolean; roles: string[]; connected: ("google" | "apple")[];
   lastLoginAt: string | null; createdAt: string; updatedAt: string;
 };
 
@@ -34,7 +34,7 @@ export function toUserRow(r: typeof users.$inferSelect & { roles: string[]; conn
   return {
     id: r.id, name: r.name, username: r.username, email: r.email, avatarUrl: r.avatarUrl, isActive: r.isActive, isLdap: r.isLdap,
     passwordHash: r.passwordHash, totpSecret: r.totpSecret, pendingTotpSecret: r.pendingTotpSecret, totpLastStep: r.totpLastStep,
-    twoFactorEnabled: r.totpSecret !== null, roles: r.roles, connected: r.connected,
+    twoFactorEnabled: r.totpSecret !== null, mustChangePassword: r.mustChangePassword, roles: r.roles, connected: r.connected,
     lastLoginAt: r.lastLoginAt?.toISOString() ?? null, createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
   };
 }

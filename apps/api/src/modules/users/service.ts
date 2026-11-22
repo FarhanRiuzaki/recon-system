@@ -51,14 +51,14 @@ export async function duplicateOf(tx: Tx, username: string | undefined, email: s
 
 /** Name, username, email, password hash and/or status, and `updated_at` stamped. */
 export async function updateUser(
-  tx: Tx, id: string, v: { name?: string; username?: string; email?: string; passwordHash?: string; isActive?: boolean },
+  tx: Tx, id: string, v: { name?: string; username?: string; email?: string; passwordHash?: string; mustChangePassword?: boolean; isActive?: boolean },
 ): Promise<void> {
   await tx.update(users).set({ ...v, updatedAt: NOW }).where(eq(users.id, id));
 }
 
-/** The password hash and nothing else (a reset or invitation link). */
+/** The password hash the user chose (a reset or invitation link): no change is due any more. */
 export async function setPassword(tx: Tx, id: string, hash: string): Promise<void> {
-  await tx.update(users).set({ passwordHash: hash }).where(eq(users.id, id));
+  await tx.update(users).set({ passwordHash: hash, mustChangePassword: false }).where(eq(users.id, id));
 }
 
 /** `last_login_at` = now (a full sign-in). */
@@ -290,7 +290,7 @@ export async function createUser(ctx: Ctx, b: CreateUserBody): Promise<UserDto> 
     if (!rs) throw UNKNOWN_ROLE();
     roleGrantDenied(await actorPermissions(tx, ctx.user.id), rs);
     const id = Bun.randomUUIDv7();
-    const made = await tx.insert(users).values({ id, name: b.name, username: b.username, email: b.email, isActive: b.isActive, isLdap: b.isLdap, passwordHash: hash })
+    const made = await tx.insert(users).values({ id, name: b.name, username: b.username, email: b.email, isActive: b.isActive, isLdap: b.isLdap, passwordHash: hash, mustChangePassword: hash !== null })
       .onConflictDoNothing().returning({ id: users.id });
     if (!made.length) throw DUPLICATE();
     await grantRoles(tx, id, rs.map((r) => r.id));
@@ -439,7 +439,7 @@ export async function resetUserPassword(ctx: Ctx, id: string): Promise<string> {
     if (u.id === ctx.user.id) throw new ApiError("self_action"); // the reset would end the actor's own sessions; use Security
     const stop = checkPasswordOp(u);
     if (stop) throw new ApiError(stop);
-    await updateUser(tx, id, { passwordHash: hash });
+    await updateUser(tx, id, { passwordHash: hash, mustChangePassword: true });
     await endUserSessions(tx, id);
     await deleteUserTokens(tx, id);
     await recordActivity(tx, ctx, { action: "user.reset_password", target: { type: "user", id, label: u.name } });

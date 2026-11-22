@@ -302,6 +302,13 @@
       "when": 1795320586910,
       "tag": "0042_source_day_closed",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795320918574,
+      "tag": "0043_must_change_password",
+      "breakpoints": true
     }
   ]
 }
