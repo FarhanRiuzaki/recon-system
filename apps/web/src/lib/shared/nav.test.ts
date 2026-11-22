@@ -47,7 +47,7 @@ describe("navFor", () => {
     expect(crumbs("/breaks", new Set(PERMISSIONS))).toEqual([]);
     expect(SOON_REASON).toBe("Arrives in a later release.");
     const sections = navFor(new Set());
-    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Arrives in a later release.", null, null, null]);
+    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Breaks arrives in a later release.", null, null, null]);
     expect(soonCaption([soon[0]!, { ...soon[0]!, label: "Approvals" }])).toBe("Breaks and Approvals arrive in a later release.");
   });
 
