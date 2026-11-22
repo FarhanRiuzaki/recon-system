@@ -1,28 +1,12 @@
 import type { Metadata } from "next";
-import { cookies, headers } from "next/headers";
-import { redirect } from "next/navigation";
-import type { Page as Paged } from "@starterkit/shared/contracts/common";
-import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
-import { backendJson, v1Path } from "@/lib/server/backend";
+import { LibraryPage } from "@/features/approvals/library-page";
 import { guardedTitle, requirePagePermission } from "@/lib/server/page-guard";
-import { getSession } from "@/lib/server/session";
-import { spaceEntry } from "@/lib/shared/nav";
-import { PREFS_COOKIE, parsePrefs, viewHref } from "@/lib/shared/prefs";
-import { spaceOptions } from "@/lib/shared/queries";
+import { Prefetch, reads, type SearchParams, toSearch } from "@/lib/server/prefetch";
 
 export const generateMetadata = (): Promise<Metadata> => guardedTitle("Workflows");
 
-/**
- * The Workflows entry (the navigation's "Workflows"): the remembered space while the caller holds a role there, else
- * their first such space (name A–Z), at its approval workflows (DEC-052). They are a space's, so a
- * space seen through space.view alone doesn't count; with none → /spaces (it explains or opens members).
- */
-export default async function Page() {
-  await requirePagePermission(null);
-  const { token } = await getSession();
-  const { status, data } = await backendJson<Paged<SpaceRowDto>>(v1Path(spaceOptions().url)!, { token, req: { headers: await headers() } });
-  if (status !== 200 || !data) throw new Error(`GET /v1/spaces answered ${status}`);
-  const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);
-  const to = spaceEntry("workflows", data.items, prefs.space);
-  redirect(to ? viewHref(to, prefs) : "/spaces");
+/** The global workflow library (DEC-052 revision): workflow.view reads it, workflow.manage creates and edits. */
+export default async function Page({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const { perms } = await requirePagePermission("workflow.view");
+  return <Prefetch reads={[reads.library(toSearch(await searchParams))]}><LibraryPage canManage={perms.includes("workflow.manage")} /></Prefetch>;
 }

@@ -9,18 +9,18 @@ const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s
 
 describe("navFor", () => {
   it("user.view sees Dashboard, the coming-soon items, Members, Users, Profile only", () => {
-    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Profile"]);
+    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Approval rules", "Users", "Profile"]);
   });
 
   it("no permissions: items without a permission only; empty groups disappear", () => {
     const sections = navFor(new Set());
     expect(sections.map((s) => s.id)).toEqual(["main", "work", "setup", "space", "personal"]);
-    expect(labels(new Set())).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Profile"]);
+    expect(labels(new Set())).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Approval rules", "Profile"]);
   });
 
   it("all permissions: every item but the hidden template pages, groups in the designed order", () => {
     const all = NAV.filter((n) => !n.hidden).map((n) => n.label);
-    expect(all).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Profile"]);
+    expect(all).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Approval rules", "Users", "Roles", "Permissions", "Workflows", "Activity log", "Sign-in log", "Profile"]);
     expect(labels(new Set(PERMISSIONS))).toEqual(all);
     expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "space", "access", "audit", "personal"]);
   });
@@ -95,9 +95,9 @@ describe("space group", () => {
     expect(pagesFor(new Set(), true).map((n) => n.label)).not.toContain("Recons");
   });
 
-  it("Members and Workflows are in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {
+  it("Members and Approval rules are in the Space group for every signed-in user and is active below /spaces/<id>/members", () => {
     const s = navFor(new Set()).find((x) => x.label === "Space");
-    expect(s?.items.map((i) => [i.label, i.href, i.soon])).toEqual([["Members", "/spaces", undefined], ["Workflows", "/workflows", undefined]]);
+    expect(s?.items.map((i) => [i.label, i.href, i.soon])).toEqual([["Members", "/spaces", undefined], ["Approval rules", "/approval-rules", undefined]]);
     expect(isActive("/spaces", "/spaces")).toBe(true);
     expect(isActive("/spaces/5b0c1f2e-0000-4000-8000-000000000000/members", "/spaces")).toBe(true);
   });

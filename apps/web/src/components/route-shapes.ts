@@ -1,7 +1,7 @@
 import { NEW_RECON_SHAPE, RECON_RUN_SHAPE, RECON_SETUP_SHAPE, RECON_SHAPE, RECON_VERSION_SHAPE, RECONS_SHAPE, TODAY_SHAPE } from "@/features/recon/shapes";
 import { SOURCE_DETAIL_SHAPE, SOURCES_SHAPE, VERSION_SHAPE, WIZARD_SHAPE } from "@/features/sources/shapes";
 import { MEMBERS_SHAPE } from "@/features/spaces/shapes";
-import { APPROVALS_SHAPE, WORKFLOW_SHAPE, WORKFLOWS_SHAPE } from "@/features/approvals/shapes";
+import { APPROVALS_SHAPE, LIBRARY_EDITOR_SHAPE, LIBRARY_SHAPE, RULES_EDITOR_SHAPE, RULES_SHAPE } from "@/features/approvals/shapes";
 import { BREAK_SHAPE, BREAKS_SHAPE } from "@/features/breaks/shapes";
 import type { Section } from "./route-skeleton";
 
@@ -28,9 +28,11 @@ export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/spaces/[spaceId]/recons": RECONS_SHAPE,
   "/spaces/[spaceId]/today": TODAY_SHAPE,
   "/spaces/[spaceId]/approvals": APPROVALS_SHAPE,
-  "/spaces/[spaceId]/workflows": WORKFLOWS_SHAPE,
-  "/spaces/[spaceId]/workflows/[action]": WORKFLOW_SHAPE,
-  "/workflows": WORKFLOWS_SHAPE,
+  "/spaces/[spaceId]/approval-rules": RULES_SHAPE,
+  "/spaces/[spaceId]/approval-rules/[trigger]": RULES_EDITOR_SHAPE,
+  "/approval-rules": RULES_SHAPE,
+  "/workflows": LIBRARY_SHAPE,
+  "/workflows/[id]": LIBRARY_EDITOR_SHAPE,
   "/spaces/[spaceId]/breaks": BREAKS_SHAPE,
   "/spaces/[spaceId]/breaks/[itemId]": BREAK_SHAPE,
   "/spaces/[spaceId]/recons/new": NEW_RECON_SHAPE,

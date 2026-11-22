@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 import { Field, Notice, Panel, Timeline } from "@starterkit/ui/ds";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
-import type { PreviewDto, WorkflowSpec } from "@starterkit/shared/contracts/workflows";
+import type { BindingSpec, PreviewDto } from "@starterkit/shared/contracts/workflows";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
-import type { WorkflowAction } from "@starterkit/shared/workflows";
+import type { Trigger } from "@starterkit/shared/workflows";
 import { needWords, People } from "@/components/request-chain";
 import { api, errorText } from "@/lib/client/api";
 import { APPROVALS_KEY } from "@/lib/shared/queries";
@@ -19,20 +19,21 @@ const useDebounced = <T,>(v: T, ms: number) => {
 };
 
 /**
- * "Who approves" (DEC-052, after Oracle AME's test workbench): sample attributes of a request, and the chain the rules
- * on screen would give it, with the people who could approve each group today; a group with too few people warns.
+ * "Who approves" (DEC-052, after Oracle AME's test workbench): sample attributes of a request, the rule and workflow
+ * the rules on screen (`spec`; null = the live ones) would give it, and the people who could approve each group today;
+ * a group with too few people warns.
  */
-export function WhoApproves({ spaceId, action, spec, recons }: { spaceId: string; action: WorkflowAction; spec: WorkflowSpec; recons: { id: string; name: string }[] }) {
+export function WhoApproves({ spaceId, trigger, spec, recons }: { spaceId: string; trigger: Trigger; spec: BindingSpec | null; recons: { id: string; name: string }[] }) {
   const [amount, setAmount] = useState("");
   const [currency, setCurrency] = useState("IDR");
   const [recon, setRecon] = useState("");
   const [age, setAge] = useState("");
   const e = CURRENCY_EXPONENT[currency] ?? 2;
   const minor = /^\d{1,15}(\.\d+)?$/.test(amount.replace(/[\s,]/g, "")) ? (() => { const [i, f = ""] = amount.replace(/[\s,]/g, "").split("."); return f.length <= e ? String(BigInt(i! + f.padEnd(e, "0"))) : undefined; })() : undefined;
-  const body = useDebounced(JSON.stringify({ spec, attributes: { ...(minor ? { amount: minor } : {}), currency, ...(recon ? { recon } : {}), ...(/^\d{1,5}$/.test(age) ? { ageDays: Number(age) } : {}) } }), 350);
+  const body = useDebounced(JSON.stringify({ ...(spec ? { spec } : {}), attributes: { ...(minor ? { amount: minor } : {}), currency, ...(recon ? { recon } : {}), ...(/^\d{1,5}$/.test(age) ? { ageDays: Number(age) } : {}) } }), 350);
   const q = useQuery({
-    queryKey: [...APPROVALS_KEY, "workflow-preview", spaceId, action, body],
-    queryFn: () => api<PreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows/${action}/preview`, { method: "POST", body }),
+    queryKey: [...APPROVALS_KEY, "rules-preview", spaceId, trigger, body],
+    queryFn: () => api<PreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/approval-rules/${trigger}/preview`, { method: "POST", body }),
     placeholderData: (prev) => prev,
   });
   const p = q.data;
@@ -58,7 +59,8 @@ export function WhoApproves({ spaceId, action, spec, recons }: { spaceId: string
         {p && (
           <div className="grid gap-3" aria-live="polite">
             <p className="text-body-sm text-fg-2">
-              {p.rule.index === null ? "No rule matches: the default chain" : <>Rule {p.rule.index + 1} · <span className="text-fg">{p.rule.name}</span></>}
+              {p.rule.index === null ? "No rule matches" : <>Rule {p.rule.index + 1} · <span className="text-fg">{p.rule.name}</span></>}
+              {" → "}<span className="text-fg">{p.workflow?.name ?? "Default chain"}</span>
             </p>
             <Timeline label="The chain it takes" items={p.levels.map((l, i) => ({
               id: String(i), title: l.name ? `Level ${i + 1} · ${l.name}` : `Level ${i + 1}`, status: "upcoming" as const,

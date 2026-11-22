@@ -142,7 +142,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       {open && !pending && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
 
       {b.request && (
-        <Panel title={REQUEST_TITLE[b.request.status]} description={`${APPROVAL_KIND_LABEL[b.request.kind]}${b.request.ruleName && b.request.ruleName !== "Default" ? ` · rule “${b.request.ruleName}”` : ""}`}
+        <Panel title={REQUEST_TITLE[b.request.status]} description={[APPROVAL_KIND_LABEL[b.request.kind], b.request.workflowName, b.request.ruleName && !["Default", "Otherwise"].includes(b.request.ruleName) ? `rule “${b.request.ruleName}”` : null].filter(Boolean).join(" · ")}
           toolbar={b.request.status === "pending" ? <Toolbar end={<>
             {b.request.canCancel && <Button type="button" variant="ghost" disabled={!!busy} onClick={() => void decide("cancel", {}, "Request cancelled.").catch(() => {})}>Cancel request</Button>}
             {b.request.canOverride && <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Override the approval chain", description: "As Superadmin you approve every level left at once. Your reason is recorded with the request.", action: "Approve by override", placeholder: "Why it can't wait for the chain", onSubmit: async (reason) => { await decide("override", { reason }, "Approved by override."); setDialog(null); } })}>Override</Button>}

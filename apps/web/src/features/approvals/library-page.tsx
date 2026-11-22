@@ -1,0 +1,81 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useState } from "react";
+import { type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, Toolbar } from "@starterkit/ui/ds";
+import { Button } from "@starterkit/ui/ui/button";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { toast } from "@starterkit/ui/ui/toast";
+import type { LibraryDetailDto, LibraryRowDto } from "@starterkit/shared/contracts/workflows";
+import { SavedViewsMenu } from "@/components/saved-views-menu";
+import { PageHeader } from "@/components/shell/page-header";
+import { api, errorText } from "@/lib/client/api";
+import { useTableQuery } from "@/lib/client/use-table-query";
+import { type LibraryFilters, WORKFLOWS } from "@/lib/shared/queries-recon";
+import { LevelDots, newLevel } from "./levels-editor";
+
+const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const FILTER_DEFAULTS: LibraryFilters = { q: "" };
+const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
+
+const usedText = (r: LibraryRowDto) => (r.rulesUsing ? `${r.rulesUsing} ${r.rulesUsing === 1 ? "rule" : "rules"} in ${r.spacesUsing} ${r.spacesUsing === 1 ? "space" : "spaces"}` : "Not used");
+const COLUMNS: Column<LibraryRowDto>[] = [
+  { key: "name", header: "Workflow", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
+    <span className="grid min-w-0">
+      <Link href={`/workflows/${encodeURIComponent(r.id)}`} className={LINK}>{r.name}</Link>
+      {(r.open || r.archived) && <span className="text-caption text-fg-3">{r.archived ? "Archived" : r.open!.status === "in_review" ? `Version ${r.open!.version} waits for approval` : `Draft ${r.open!.version}`}</span>}
+    </span>
+  ) },
+  { key: "levels", header: "Levels", mobile: "meta", cell: (r) => <LevelDots n={Math.max(1, r.levels)} muted={!r.published} /> },
+  { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published ? `Version ${r.published.version}` : <span className="text-fg-3">Not live</span>) },
+  { key: "usedBy", header: "Used by", mobile: "meta", cell: (r) => <span className={r.rulesUsing ? "" : "text-fg-3"}>{usedText(r)}</span> },
+  { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => <RelativeTime at={Date.parse(r.updatedAt)} /> },
+];
+
+/**
+ * The global workflow library (DEC-052 revision §4.2): named chains of levels that spaces' approval rules pick.
+ * New workflow saves a draft at once and opens it, so nothing typed is lost.
+ */
+export function LibraryPage({ canManage }: { canManage: boolean }) {
+  const router = useRouter();
+  const t = useTableQuery<LibraryRowDto, LibraryFilters>(WORKFLOWS);
+  const [busy, setBusy] = useState(false);
+  async function create() {
+    setBusy(true);
+    try {
+      // "New workflow", else the next free "New workflow N" (names are unique); renamed in the editor
+      for (let n = 1; ; n++) {
+        const name = n === 1 ? "New workflow" : `New workflow ${n}`;
+        const w = await api<LibraryDetailDto>("/api/workflows", { method: "POST", body: JSON.stringify({ spec: { name, levels: [newLevel()] } }) })
+          .catch((e: unknown) => { if (n < 20 && (e as { code?: string }).code === "duplicate") return null; throw e; });
+        if (w) { router.push(`/workflows/${encodeURIComponent(w.id)}`); return; }
+      }
+    } catch (e) { toast.error(errorText(e)); setBusy(false); }
+  }
+  return (
+    <div className="grid gap-section">
+      <PageHeader title="Workflows" description="Approval chains, level by level, that each space's approval rules pick from."
+        actions={canManage ? <Button type="button" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New workflow</Button> : undefined} />
+      <FilterSurface>
+        {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the workflows; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
+        <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}
+          filters={(draft, patch) => <FilterSearch label="Search workflows" value={draft.q} onChange={(q) => patch({ q })} placeholder="Name" />}>
+          {({ summary }) => (
+            <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
+              flush icon={BranchIcon} title="All workflows" count={t.count}>
+              {summary}
+              <DataTable label="Workflows" columns={COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading}
+                sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
+                error={t.loadError ? { title: "Couldn't load workflows", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
+                empty={t.state.q
+                  ? { icon: BranchIcon, title: "No workflows match", description: "Change the search, or clear it to see every workflow." }
+                  : { icon: BranchIcon, title: "No workflows yet", description: "A workflow appears here once a workflow manager creates one. Until a space's approval rules pick one, its requests take the default chain." }} />
+            </Panel>
+          )}
+        </FilterLayout>
+      </FilterSurface>
+    </div>
+  );
+}

@@ -8,14 +8,23 @@ export const APPROVALS_SHAPE: readonly Section[] = [
   { kind: "table", chrome: 144, rows: "page", rowHeight: 56 },
 ];
 
-/** /spaces/[spaceId]/workflows: the header and one card per action. */
-export const WORKFLOWS_SHAPE: readonly Section[] = [
+/** /spaces/[spaceId]/approval-rules: the header and one card per trigger under its module. */
+export const RULES_SHAPE: readonly Section[] = [
   { kind: "header", h: 68 },
   { kind: "panels", panels: [[12, 132], [12, 132], [12, 132]] },
 ];
-/** /spaces/[spaceId]/workflows/[action]: the header, the rules beside Who approves. */
-export const WORKFLOW_SHAPE: readonly Section[] = [
+/** /spaces/[spaceId]/approval-rules/[trigger]: the header, the rules beside Who approves. */
+export const RULES_EDITOR_SHAPE: readonly Section[] = [
   { kind: "header", h: 68 },
   { kind: "panels", panels: [[6, 520], [6, 520]] },
 ];
-
+/** /workflows: the header and the library table. */
+export const LIBRARY_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "table", chrome: 144, rows: "page", rowHeight: 56 },
+];
+/** /workflows/[id]: the header, the levels beside Used by. */
+export const LIBRARY_EDITOR_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "panels", panels: [[6, 520], [6, 360]] },
+];

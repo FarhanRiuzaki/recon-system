@@ -2,7 +2,7 @@
 // (the users, audit and source screens, every route's shell) don't carry them in their first load (bundle budget,
 // DEC-040). Keys still start with the owning module (queries.test.ts reads both files); the module keys themselves
 // (RECON_KEY, ENGINE_KEY, APPROVALS_KEY) stay in queries.ts, so any screen invalidates them.
-import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS } from "@starterkit/shared/paging";
+import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS, WORKFLOW_SORTS } from "@starterkit/shared/paging";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
 import { APPROVALS_KEY, ENGINE_KEY, type NoFilters, RECON_KEY, type TableDef, trailTable, type TrailFilters } from "./queries";
 import { isoDate, multiChoice, oneOf, type TableSpec, text } from "./table-state";
@@ -136,10 +136,22 @@ export const reconRunItems = (spaceId: string, id: string, runId: string, passes
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
 
-const workflowsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/workflows` as const;
-/** A space's approval workflows, one per action (DEC-052; the approvals module). */
-export const workflowList = (spaceId: string) => ({ key: [...APPROVALS_KEY, "workflows", spaceId] as const, url: workflowsPath(spaceId) });
-/** One workflow: its live and open version, the role names and people it may name. */
-export const workflowDetail = (spaceId: string, action: string) =>
-  ({ key: [...APPROVALS_KEY, "workflows", spaceId, action] as const, url: `${workflowsPath(spaceId)}/${encodeURIComponent(action)}` as const });
+const rulesPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/approval-rules` as const;
+/** A space's approval rules, one row per trigger (DEC-052; the approvals module). */
+export const approvalRules = (spaceId: string) => ({ key: [...APPROVALS_KEY, "rules", spaceId] as const, url: rulesPath(spaceId) });
+/** One trigger's approval rules: their live and open version and the library workflows they may pick. */
+export const approvalRulesDetail = (spaceId: string, trigger: string) =>
+  ({ key: [...APPROVALS_KEY, "rules", spaceId, trigger] as const, url: `${rulesPath(spaceId)}/${encodeURIComponent(trigger)}` as const });
+
+export type LibraryFilters = { q: string };
+/** The global workflow library (workflow.view), by name; `q` matches the name. */
+export const WORKFLOWS: TableDef<LibraryFilters> = {
+  key: APPROVALS_KEY[0], path: "/api/workflows", spec: { sorts: WORKFLOW_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
+};
+/** One library workflow: its live and open version, the role names and people it may name. */
+export const libraryWorkflow = (id: string) => ({ key: [...APPROVALS_KEY, "workflow", id] as const, url: `/api/workflows/${encodeURIComponent(id)}` as const });
+/** The approval rules across spaces that use a library workflow (u.page beside its editor). */
+export const usedByTable = (id: string): TableDef<Record<string, never>> => ({
+  key: APPROVALS_KEY[0], path: `/api/workflows/${encodeURIComponent(id)}/used-by`, spec: { sorts: [], defaultSort: "", filters: {}, ns: "u" },
+});
 

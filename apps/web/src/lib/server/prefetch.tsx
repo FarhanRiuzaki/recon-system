@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import type { z } from "zod";
 import { Hydrate } from "@/lib/client/hydrate";
 import { ApprovalListQuery } from "@starterkit/shared/contracts/approvals";
+import { WorkflowListQuery } from "@starterkit/shared/contracts/workflows";
 import { ActivityQuery, AuthLogQuery, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import { BreakCandidateQuery, BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
@@ -16,7 +17,7 @@ import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery } from "@/lib/shared/queries";
-import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, workflowDetail, workflowList, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
+import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, approvalRules, approvalRulesDetail, libraryWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
@@ -92,8 +93,10 @@ export const reads = {
   reconVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(reconVersions(spaceId, id), sp, ReconVersionListQuery),
   reconActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(reconActivity(spaceId, id), sp, ReconActivityQuery),
   reconSignoffs: (spaceId: string, id: string, sp: URLSearchParams) => table(reconSignoffs(spaceId, id), sp, SignoffListQuery),
-  workflows: (spaceId: string): Read => ({ key: workflowList(spaceId).key, path: workflowList(spaceId).url }),
-  workflow: (spaceId: string, action: string): Read => ({ key: workflowDetail(spaceId, action).key, path: workflowDetail(spaceId, action).url }),
+  approvalRules: (spaceId: string): Read => ({ key: approvalRules(spaceId).key, path: approvalRules(spaceId).url }),
+  approvalRulesDetail: (spaceId: string, trigger: string): Read => ({ key: approvalRulesDetail(spaceId, trigger).key, path: approvalRulesDetail(spaceId, trigger).url }),
+  library: (sp: URLSearchParams) => table(WORKFLOWS, sp, WorkflowListQuery),
+  libraryWorkflow: (id: string): Read => ({ key: libraryWorkflow(id).key, path: libraryWorkflow(id).url }),
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
