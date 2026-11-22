@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChunkBoundary } from "@starterkit/ui/ds/chunk-boundary";
-import { EmptyState, Failure, Notice, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
+import { EmptyState, Failure, InfoTip, Notice, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { BranchIcon } from "@starterkit/ui/ui/icons";
@@ -70,7 +70,8 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
     window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
   };
 
-  const header = <PageHeader title="Today" description={`${spaceName} · the recons' current business dates, read again every 15 seconds (every 5 while a run is under way)`} />;
+  // the refresh timing behind an ⓘ (T4): the description says what the page is
+  const header = <PageHeader title="Today" description={<span className="inline-flex flex-wrap items-center gap-1">{spaceName} · the recons&apos; current business dates<InfoTip label="how often Today refreshes" title="How often Today refreshes">Read again every 15 seconds, every 5 while a run is under way.</InfoTip></span>} />;
   if (q.error && !q.data) return <div className="grid gap-section">{header}<Panel><Failure title="Today couldn't be loaded." error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   const t = q.data;
   if (!t || skeleton) return <LoadingShape sections={TODAY_SHAPE} shown={skeleton} />;

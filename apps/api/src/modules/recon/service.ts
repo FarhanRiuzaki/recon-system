@@ -422,7 +422,7 @@ export function previewVersionAction(ctx: Ctx, id: string, versionId: string, b:
     const v = await versionOf(tx, c, versionId);
     // only a break of this recon (final review I2)
     const [x] = await tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, c.id), eq(reconItems.id, b.itemId))).limit(1);
-    if (!x) throw notFound("break");
+    if (!x) throw notFound("unmatch item");
     // the action being edited, in place of the saved one (or after the saved ones, a new action)
     const saved = (v.spec as ReconSpec).approvals;
     const stored = saved ?? ({ accounts: [], lookups: [], changes: {} } as unknown as NonNullable<typeof saved>);

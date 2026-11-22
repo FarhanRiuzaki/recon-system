@@ -33,22 +33,22 @@ export const engineController = () =>
     .post("/v1/spaces/:spaceId/breaks/take", async (c) => takeBreaks(c.ctx, await body(c, TakeBreaksBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
     .post("/v1/spaces/:spaceId/breaks/state", async (c) => setBreakState(c.ctx, await body(c, BreakStateBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
     // one break: its page, the other side's free items, its trail; resolving it (whoever has it, or a lead)
-    .get("/v1/spaces/:spaceId/breaks/:itemId", ({ ctx, params }) => breakDetail(ctx, idParam(params.itemId, "break")), { guard: { space: SPACE_ROLES } })
-    .get("/v1/spaces/:spaceId/breaks/:itemId/candidates", ({ ctx, params, query }) => candidatePage(ctx, idParam(params.itemId, "break"), query), { query: BreakCandidateQuery, guard: { space: SPACE_ROLES } })
-    .get("/v1/spaces/:spaceId/breaks/:itemId/activity", ({ ctx, params, query }) => breakActivity(ctx, idParam(params.itemId, "break"), query), { query: TargetActivityQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/:itemId", ({ ctx, params }) => breakDetail(ctx, idParam(params.itemId, "unmatch item")), { guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/:itemId/candidates", ({ ctx, params, query }) => candidatePage(ctx, idParam(params.itemId, "unmatch item"), query), { query: BreakCandidateQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/:itemId/activity", ({ ctx, params, query }) => breakActivity(ctx, idParam(params.itemId, "unmatch item"), query), { query: TargetActivityQuery, guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/breaks/:itemId/match", async (c) => {
       const b = await body(c, MatchBreakBody);
-      return matchBreak(c.ctx, idParam(c.params.itemId, "break"), b);
+      return matchBreak(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
     }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
-    .post("/v1/spaces/:spaceId/breaks/:itemId/match-pair", ({ ctx, params }) => matchPair(ctx, idParam(params.itemId, "break")), { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    .post("/v1/spaces/:spaceId/breaks/:itemId/match-pair", ({ ctx, params }) => matchPair(ctx, idParam(params.itemId, "unmatch item")), { guard: { space: ["operator", "reviewer", "space_admin"] } })
     .post("/v1/spaces/:spaceId/breaks/:itemId/close", async (c) => {
       const b = await body(c, CloseBreakBody);
-      return closeBreak(c.ctx, idParam(c.params.itemId, "break"), b);
+      return closeBreak(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
     }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
     // a change a checker decides (force match, unmatch, write-off): asked by whoever works the break, decided by a lead
     .post("/v1/spaces/:spaceId/breaks/:itemId/request", async (c) => {
       const b = await body(c, RequestBreakBody);
-      return requestChange(c.ctx, idParam(c.params.itemId, "break"), b);
+      return requestChange(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
     }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
     // a recon's closed days and their sign-off (Task 4): any role reads; a reviewer or space admin prepares, another signs
     .get("/v1/spaces/:spaceId/recons/:configId/signoffs", ({ ctx, params, query }) => signoffPage(ctx, idParam(params.configId, "recon"), query), { query: SignoffListQuery, guard: { space: SPACE_ROLES } })
