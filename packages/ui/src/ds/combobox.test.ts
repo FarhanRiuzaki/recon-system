@@ -111,6 +111,14 @@ describe("Combobox (multiple)", () => {
     await key("Enter");
     expect(document.querySelector('[aria-label="Remove Bali"]')).not.toBeNull();
   });
+  it("a chosen option with a slot is a CategoryChip inside the field; one without stays a plain chip", async () => {
+    await mount(h(Combobox, { label: "Cities", multiple: true, options: OPTS, onChange: () => {}, value: [{ value: "jkt", label: "Jakarta", slot: 2 }, { value: "mdn", label: "Medan" }] }));
+    const chip = (name: string) => document.querySelector(`[aria-label="Remove ${name}"]`)!.parentElement!;
+    expect(chip("Jakarta").getAttribute("data-slot")).toBe("category-chip");
+    expect(chip("Jakarta").className).toContain("bg-chart-2/10");
+    expect(chip("Medan").getAttribute("data-slot")).toBeNull();
+    expect(chip("Jakarta").parentElement).toBe(input().parentElement);
+  });
 });
 
 describe("Combobox (server search)", () => {

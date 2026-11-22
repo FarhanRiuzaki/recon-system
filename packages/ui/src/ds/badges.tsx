@@ -21,10 +21,10 @@ const SLOT_DOT: Record<CategorySlot, string> = { 1: "bg-chart-1", 2: "bg-chart-2
  * (10 %) with a 6 px slot-colour dot and text in --fg (never the series colour). `slot` follows the entity's
  * series slot so the chip matches its chart colour. Internet results: Allowed = slot 1, Denied = slot 2.
  */
-export function CategoryChip({ label, slot, className }: { label: string; slot: CategorySlot; className?: string }) {
+export function CategoryChip({ label, slot, className, children }: { label: string; slot: CategorySlot; className?: string; children?: ReactNode }) {
   return (
     <span data-slot="category-chip" className={cn("inline-flex h-5.5 items-center gap-1.5 rounded-sm px-2 text-label whitespace-nowrap text-fg", SLOT_BG[slot], className)}>
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", SLOT_DOT[slot])} />{label}
+      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", SLOT_DOT[slot])} />{label}{children}
     </span>
   );
 }

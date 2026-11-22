@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { cn } from "../lib/cn";
 import { Icon } from "../ui/icon";
 import { CheckIcon, ChevronDownIcon, CloseIcon, SpinnerIcon } from "../ui/icons";
+import { CategoryChip, type CategorySlot } from "./badges";
 
 /**
  * An option; `tone` marks whether it can be used here: "ok" a green check, "bad" a red cross with its description
@@ -14,6 +15,8 @@ export type ComboOption = {
   value: string; label: string; description?: string; disabled?: boolean; tone?: "ok" | "bad";
   /** A short example beside the label, at the right (mono, muted): what the option does, such as "a|b" → "b". */
   hint?: string;
+  /** Chosen in a `multiple` field: its chip is a CategoryChip of this slot (a space role's colour), else a plain tray chip. */
+  slot?: CategorySlot;
 };
 type Load = (query: string, signal: AbortSignal) => Promise<ComboOption[]>;
 type Common = {
@@ -213,15 +216,21 @@ export function SearchCombobox(props: Single | Multiple) {
         className={cn("flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md border border-control-border bg-card px-1.5 py-1 transition-[border-color,box-shadow] duration-(--dur-fast)",
           "focus-within:border-primary focus-within:ring-3 focus-within:ring-primary-soft",
           invalid && "border-down-mark focus-within:ring-down-soft", disabled && "pointer-events-none bg-inset opacity-60")}>
-        {multiple && chosen.map((c) => (
-          <span key={c.value} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm bg-tray pr-0.5 pl-2 text-body-sm text-fg">
-            <span className="truncate">{c.label}</span>
+        {multiple && chosen.map((c) => {
+          const x = (
             <button type="button" aria-label={`Remove ${c.label}`} onClick={() => remove(c.value)}
               className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-down-mark outline-none after:absolute after:-inset-1 hover:bg-down-soft hover:text-down-ink focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-primary">
               <Icon icon={CloseIcon} className="size-3.5" />
             </button>
-          </span>
-        ))}
+          );
+          return c.slot
+            ? <CategoryChip key={c.value} label={c.label} slot={c.slot} className="h-6 max-w-full gap-1 pr-0.5">{x}</CategoryChip>
+            : (
+              <span key={c.value} className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm bg-tray pr-0.5 pl-2 text-body-sm text-fg">
+                <span className="truncate">{c.label}</span>{x}
+              </span>
+            );
+        })}
         <input ref={inputRef} id={id} role="combobox" aria-label={label} aria-expanded={open} aria-controls={listId} aria-autocomplete="list"
           aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined} aria-invalid={invalid || undefined} aria-describedby={describedBy} aria-required={props["aria-required"]}
           disabled={disabled} autoComplete="off" placeholder={multiple && chosen.length ? undefined : placeholder} value={text}

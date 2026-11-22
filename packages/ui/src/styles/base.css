@@ -283,6 +283,10 @@ details[open]::details-content { block-size: auto; opacity: 1; }
 }
 /* Icon swap (copy → check): fades and settles in --dur-fast. */
 @keyframes swap { from { opacity: 0; transform: scale(0.8); } }
+/* Cross-fade of content swapped in place (a level card's read / edit body): opacity only, so reduced motion is the same. */
+@utility animate-fade {
+  animation: fade-in var(--dur-fast) linear both;
+}
 @utility animate-swap {
   animation: swap var(--dur-fast) var(--ease-out) both;
   @media (prefers-reduced-motion: reduce) { animation: fade-in var(--dur-instant) linear both; }

@@ -937,6 +937,10 @@ set up, in named groups, with the progress as a count and a bar. Written for the
   `grid-cols-[9rem_minmax(0,1fr)_2rem] items-start gap-2`: lead (a label or a level name), main (the controls), trailing
   (a remove button). The trailing column is reserved when the row has none (an invisible cell), so rows line up and
   nothing moves when one gains a remove button. One column below 768 px.
+  A list of editable blocks (a workflow's levels, `features/approvals/levels-editor.tsx`) is one card per block with
+  the same header row read and open (number, title, Edit; open: Done and ⋯ with move and remove); the body swaps with
+  `animate-fade` (opacity on `--dur-fast`, the same under reduced motion). Sub-rows sit in `--tray` blocks; a
+  `multiple` Combobox shows its chips inside the field, a chosen option with `slot` as a CategoryChip.
 - **CompareCard** (`ds/compare-card.tsx`; /ds/data): two sides of one comparison in a Panel, a row per field (`rows`:
   `{ label, a, b, delta?, differs }`, `sides` names the columns), a Difference column when any row has a delta. A row
   that differs has a 2 px `--line-strong` left rule, bold values and a screen-reader "differs". The table's caption
