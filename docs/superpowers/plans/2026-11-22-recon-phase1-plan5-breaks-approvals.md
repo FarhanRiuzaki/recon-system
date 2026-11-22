@@ -49,4 +49,11 @@ Status per task dicatat di bawah saat selesai, dengan commit dan tes buktinya.
   Belum: ambang write-off per space (spec §11, data bank) — sementara semua write-off butuh approval; unmatch hanya
   dari halaman break (item yang pernah break), bukan dari hasil run. Dicek di :3000: request force match pada break
   live → muncul di inbox → Reject → state kembali Assigned → Unassigned.
-- Task 4–7: belum.
+- Task 4: **selesai 22 Nov** — API `727df65` (migrasi 0047: `recon_days.prepared_*`/`signed_*`; `engine/signoff.ts`;
+  tes `signoff.test.ts` 2/2), halaman `b768af7` (panel Sign-off di Overview recon). Prepare oleh reviewer/space admin,
+  Sign off oleh lead lain yang bukan preparer dan tidak me-resolve break hari itu (Superadmin bebas, DEC-051); diblokir
+  selama ada request break pending hari itu; hari yang di-sign beku (`day_closed` untuk match, close, request, approve).
+  Belum: reopen hari (request yang diputuskan checker) dan data terlambat ke hari beku (`AUTO_MATCHED_LATE_DATA` di hari
+  berjalan, spec §11b) — dicatat untuk Task 7. Dicek di :3000: Prepare 21 Nov → dialog Sign off → Cancel; prepared
+  dikembalikan lewat SQL (entri activity `day.prepare` tetap, append-only).
+- Task 5–7: belum.
