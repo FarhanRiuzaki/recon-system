@@ -13,32 +13,35 @@ import { usedByTable } from "@/lib/shared/queries-recon";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const STATUS = { published: "Live", draft: "Draft", in_review: "Waits for approval" } as const;
-const COLUMNS: Column<UsedByRowDto>[] = [
-  { key: "space", header: "Space", mobile: "title", cell: (r) => (
-    <Link href={`/spaces/${encodeURIComponent(r.spaceId)}/approval-rules/${r.trigger}`} className={LINK}>{r.spaceName}</Link>
+const columns = (spaceId: string): Column<UsedByRowDto>[] => [
+  { key: "recon", header: "Recon", mobile: "title", cell: (r) => (
+    <span className="grid min-w-0">
+      <Link href={`/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(r.reconId)}`} className={LINK}>{r.reconName}</Link>
+      <span className="text-caption text-fg-3">Version {r.reconVersion} · {STATUS[r.reconStatus]}</span>
+    </span>
   ) },
-  { key: "trigger", header: "Change", mobile: "meta", cell: (r) => TRIGGER_LABEL[r.trigger] },
-  { key: "rule", header: "Rule", mobile: "meta", cell: (r) => r.ruleName },
-  { key: "rules", header: "Rules version", mobile: "meta", className: "whitespace-nowrap", cell: (r) => `${r.rulesVersion} · ${STATUS[r.rulesStatus]}` },
-  { key: "short", header: "People", mobile: "meta", hideable: false, cell: (r) => (r.short.length
-    ? <span className="text-body-sm text-down-ink">Short of people at {r.short.join(", ")}</span>
-    : <span className="text-body-sm text-fg-3">Enough</span>) },
+  { key: "change", header: "Change", mobile: "meta", cell: (r) => TRIGGER_LABEL[r.change] },
+  { key: "rules", header: "Rules", mobile: "meta", cell: (r) => r.rules.join(", ") },
+  { key: "pinned", header: "Uses", mobile: "meta", hideable: false, className: "whitespace-nowrap", cell: (r) => (r.outdated
+    ? <span className="text-body-sm text-degraded-ink">Version {r.pinned}, an older one</span>
+    : <span className="text-body-sm text-fg-3">Version {r.pinned}</span>) },
 ];
 
 /**
- * Which spaces' approval rules use a library workflow (DEC-052 revision §5), and where the levels on screen would lack
- * people (an approver counts only as an active member of the space): what a publish changes, before it is published.
+ * The recons of the space whose version (live or open) uses this workflow (DEC-052 rev 2 §5): for which change, by
+ * which rules, at which version; a pin older than the live version is marked, since publishing doesn't move it.
  */
-export function UsedBy({ id }: { id: string }) {
-  const def = useMemo(() => usedByTable(id), [id]);
+export function UsedBy({ spaceId, id }: { spaceId: string; id: string }) {
+  const def = useMemo(() => usedByTable(spaceId, id), [spaceId, id]);
+  const COLUMNS = useMemo(() => columns(spaceId), [spaceId]);
   const t = useTableQuery<UsedByRowDto, Record<string, never>>(def);
   return (
     <Panel flush icon={RankedListIcon} title="Used by" count={t.count}
       toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
-      <DataTable label="Approval rules using this workflow" columns={COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(r) => `${r.spaceId}:${r.trigger}:${r.rulesVersion}`}
+      <DataTable label="Recons using this workflow" columns={COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(r) => `${r.reconId}:${r.reconVersion}:${r.change}`}
         loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
         error={t.loadError ? { title: "Couldn't load where it is used", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-        empty={{ icon: RankedListIcon, title: "No approval rules use it", description: "A row appears when a space's approval rules pick this workflow." }} />
+        empty={{ icon: RankedListIcon, title: "No recon uses it yet", description: "A row appears once a recon's approval setup picks this workflow. Publishing a new version doesn't move a recon: it keeps the version it picked." }} />
     </Panel>
   );
 }

@@ -136,22 +136,17 @@ export const reconRunItems = (spaceId: string, id: string, runId: string, passes
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
 
-const rulesPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/approval-rules` as const;
-/** A space's approval rules, one row per trigger (DEC-052; the approvals module). */
-export const approvalRules = (spaceId: string) => ({ key: [...APPROVALS_KEY, "rules", spaceId] as const, url: rulesPath(spaceId) });
-/** One trigger's approval rules: their live and open version and the library workflows they may pick. */
-export const approvalRulesDetail = (spaceId: string, trigger: string) =>
-  ({ key: [...APPROVALS_KEY, "rules", spaceId, trigger] as const, url: `${rulesPath(spaceId)}/${encodeURIComponent(trigger)}` as const });
-
+const workflowsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/workflows` as const;
 export type LibraryFilters = { q: string };
-/** The global workflow library (workflow.view), by name; `q` matches the name. */
-export const WORKFLOWS: TableDef<LibraryFilters> = {
-  key: APPROVALS_KEY[0], path: "/api/workflows", spec: { sorts: WORKFLOW_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
-};
-/** One library workflow: its live and open version, the role names and people it may name. */
-export const libraryWorkflow = (id: string) => ({ key: [...APPROVALS_KEY, "workflow", id] as const, url: `/api/workflows/${encodeURIComponent(id)}` as const });
-/** The approval rules across spaces that use a library workflow (u.page beside its editor). */
-export const usedByTable = (id: string): TableDef<Record<string, never>> => ({
-  key: APPROVALS_KEY[0], path: `/api/workflows/${encodeURIComponent(id)}/used-by`, spec: { sorts: [], defaultSort: "", filters: {}, ns: "u" },
+/** A space's workflows (DEC-052 rev 2), by name; `q` matches the name. */
+export const WORKFLOWS = (spaceId: string): TableDef<LibraryFilters> => ({
+  key: APPROVALS_KEY[0], path: workflowsPath(spaceId), spec: { sorts: WORKFLOW_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
+});
+/** One workflow of a space: its live and open version, the role names and people it may name. */
+export const spaceWorkflow = (spaceId: string, id: string) =>
+  ({ key: [...APPROVALS_KEY, "workflow", spaceId, id] as const, url: `${workflowsPath(spaceId)}/${encodeURIComponent(id)}` as const });
+/** The recon versions of the space that pin a workflow (u.page beside its editor). */
+export const usedByTable = (spaceId: string, id: string): TableDef<Record<string, never>> => ({
+  key: APPROVALS_KEY[0], path: `${workflowsPath(spaceId)}/${encodeURIComponent(id)}/used-by`, spec: { sorts: [], defaultSort: "", filters: {}, ns: "u" },
 });
 

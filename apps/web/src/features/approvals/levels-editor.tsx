@@ -1,6 +1,7 @@
 "use client";
 
 import { arrayMove } from "@dnd-kit/sortable";
+import { useState } from "react";
 import { Combobox, type ComboOption } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
@@ -11,7 +12,7 @@ import { Select } from "@starterkit/ui/ui/select";
 import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { type Group, GROUPS_MAX, type Level, LEVELS_MAX, type Need, PEOPLE_MAX } from "@starterkit/shared/workflows";
 
-// A library workflow's levels (DEC-052 revision): the stepper the workflow editor edits and the request chain mirrors.
+// A workflow's levels (DEC-052 rev 2): the stepper the workflow editor edits and the request chain mirrors.
 
 /** Who a group may name: people, app roles (space roles are fixed). */
 export type Options = { people: { id: string; name: string }[]; globalRoles: string[] };
@@ -56,57 +57,98 @@ function NeedPicker({ need, onChange, disabled, label }: { need: Need; onChange:
   );
 }
 
-/** A workflow's levels as a vertical stepper: each level a name and its groups (AND), approvals in order top to bottom. */
+const NEED_TEXT = (n: Need) => (n.kind === "any" ? "Any one of" : n.kind === "all" ? "Everyone in" : `${n.n} of`);
+/** A group read back: "Any one of" and a chip per role or person. */
+function GroupLine({ g, options }: { g: Group; options: Options }) {
+  const names = [
+    ...g.spaceRoles.map((r) => ROLE_LABEL[r]), ...g.globalRoles,
+    ...g.users.map((u) => options.people.find((p) => p.id === u)?.name ?? "A removed user"),
+  ];
+  return (
+    <span className="flex flex-wrap items-center gap-1.5 text-body-sm text-fg-2">
+      {NEED_TEXT(g.need)}
+      {names.length
+        ? names.map((n, k) => <span key={k} className="rounded-sm bg-tray px-1.5 py-0.5 text-caption text-fg">{n}</span>)
+        : <span className="text-caption text-down-ink">nobody picked yet</span>}
+    </span>
+  );
+}
+
+/**
+ * A workflow's levels as a chain (Figma 06 direction A): numbered nodes on a line, approvals in order top to bottom.
+ * One level is open to edit at a time (Done closes it); the others read as a sentence with chips. Adding a level opens
+ * it; the dashed node at the end adds one.
+ */
 export function Levels({ levels, onChange, options, disabled }: { levels: Level[]; onChange: (l: Level[]) => void; options: Options; disabled: boolean }) {
+  const [open, setOpen] = useState<number | null>(null);
+  const editing = disabled ? null : open;
   const setLevel = (i: number, l: Level) => onChange(levels.map((x, j) => (j === i ? l : x)));
-  const move = (i: number, d: -1 | 1) => onChange(arrayMove(levels, i, i + d));
+  const move = (i: number, d: -1 | 1) => { onChange(arrayMove(levels, i, i + d)); if (open === i) setOpen(i + d); };
+  const remove = (i: number) => { onChange(levels.filter((_, j) => j !== i)); setOpen(null); };
   return (
     <ol className="grid" aria-label="Levels in order">
-      {levels.map((l, i) => (
-        <li key={i} className="relative grid grid-cols-[28px_1fr] gap-x-3 pb-4 last:pb-0">
-          {i < levels.length - 1 && <span aria-hidden="true" className="absolute top-7 bottom-0 left-3.25 w-px bg-line-strong" />}
-          <span aria-hidden="true" className="relative z-1 grid size-7 place-items-center rounded-full bg-primary-soft text-label text-primary tabular">{i + 1}</span>
-          <div className="grid min-w-0 gap-2 rounded-lg border border-line bg-card p-3">
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-label text-fg-2">Level {i + 1}</span>
-              <Input aria-label={`Level ${i + 1}: name (optional)`} placeholder="Name (optional), e.g. Treasury head" value={l.name} disabled={disabled} maxLength={80}
-                className="h-8 min-w-0 flex-1" onChange={(e) => setLevel(i, { ...l, name: e.target.value })} />
-              {!disabled && (
-                <span className="flex shrink-0">
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}><Icon icon={ArrowUpIcon} /></Button>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} down`} disabled={i === levels.length - 1} onClick={() => move(i, 1)}><Icon icon={ArrowDownIcon} /></Button>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Remove level ${i + 1}`} disabled={levels.length === 1}
-                    onClick={() => onChange(levels.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
+      {levels.map((l, i) => {
+        const on = editing === i;
+        const title = `Level ${i + 1}${l.name ? ` · ${l.name}` : ""}`;
+        return (
+          <li key={i} className="relative grid grid-cols-[28px_1fr] gap-x-3 pb-4 last:pb-0">
+            {(i < levels.length - 1 || (!disabled && levels.length < LEVELS_MAX)) && <span aria-hidden="true" className="absolute top-7 bottom-0 left-3.25 w-px bg-line-strong" />}
+            <span aria-hidden="true" className={cn("relative z-1 grid size-7 place-items-center rounded-full text-label tabular transition-colors duration-(--dur-fast)",
+              on ? "bg-primary text-primary-foreground" : "bg-primary-soft text-primary")}>{i + 1}</span>
+            {!on ? (
+              <div className="grid min-w-0 gap-1.5 pt-0.5">
+                <span className="flex items-center justify-between gap-2">
+                  <span className="text-label text-fg">{title}</span>
+                  {!disabled && <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${i + 1}`} onClick={() => setOpen(i)}>Edit</Button>}
                 </span>
-              )}
-            </div>
-            {l.groups.map((g, gi) => (
-              <div key={gi} className="grid gap-2">
-                {gi > 0 && <span className="flex items-center gap-2 text-caption text-fg-3"><span className="h-px flex-1 bg-line" />and<span className="h-px flex-1 bg-line" /></span>}
-                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 max-md:grid-cols-1">
-                  <NeedPicker need={g.need} disabled={disabled} label={`Level ${i + 1}, group ${gi + 1}: how many approve`}
-                    onChange={(need) => setLevel(i, { ...l, groups: l.groups.map((x, j) => (j === gi ? { ...x, need } : x)) })} />
-                  <ApproverPicker g={g} disabled={disabled} options={options} label={`Level ${i + 1}, group ${gi + 1}: approvers`}
-                    onChange={(ng) => setLevel(i, { ...l, groups: l.groups.map((x, j) => (j === gi ? ng : x)) })} />
-                  {!disabled && l.groups.length > 1 && (
-                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove group ${gi + 1} of level ${i + 1}`}
-                      onClick={() => setLevel(i, { ...l, groups: l.groups.filter((_, j) => j !== gi) })}><Icon icon={CloseIcon} /></Button>
-                  )}
+                {l.groups.map((g, gi) => (
+                  <span key={gi} className="grid gap-1">
+                    {gi > 0 && <span className="text-caption text-fg-3">and</span>}
+                    <GroupLine g={g} options={options} />
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="grid min-w-0 gap-2 rounded-lg border border-line bg-card p-3 shadow-xs motion-safe:animate-enter">
+                <div className="flex items-center gap-2">
+                  <Input aria-label={`Level ${i + 1}: name (optional)`} placeholder="Name (optional), e.g. Treasury head" value={l.name} maxLength={80}
+                    className="h-8 min-w-0 flex-1" onChange={(e) => setLevel(i, { ...l, name: e.target.value })} />
+                  <span className="flex shrink-0">
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}><Icon icon={ArrowUpIcon} /></Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Move level ${i + 1} down`} disabled={i === levels.length - 1} onClick={() => move(i, 1)}><Icon icon={ArrowDownIcon} /></Button>
+                    <Button type="button" variant="ghost" size="icon" aria-label={`Remove level ${i + 1}`} disabled={levels.length === 1} onClick={() => remove(i)}><Icon icon={RemoveIcon} /></Button>
+                  </span>
+                </div>
+                {l.groups.map((g, gi) => (
+                  <div key={gi} className="grid gap-2 motion-safe:animate-enter">
+                    {gi > 0 && <span className="flex items-center gap-2 text-caption text-fg-3"><span className="h-px flex-1 bg-line" />and<span className="h-px flex-1 bg-line" /></span>}
+                    <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 max-md:grid-cols-1">
+                      <NeedPicker need={g.need} disabled={false} label={`Level ${i + 1}, group ${gi + 1}: how many approve`}
+                        onChange={(need) => setLevel(i, { ...l, groups: l.groups.map((x, j) => (j === gi ? { ...x, need } : x)) })} />
+                      <ApproverPicker g={g} disabled={false} options={options} label={`Level ${i + 1}, group ${gi + 1}: approvers`}
+                        onChange={(ng) => setLevel(i, { ...l, groups: l.groups.map((x, j) => (j === gi ? ng : x)) })} />
+                      {l.groups.length > 1 && (
+                        <Button type="button" variant="ghost" size="icon" aria-label={`Remove group ${gi + 1} of level ${i + 1}`}
+                          onClick={() => setLevel(i, { ...l, groups: l.groups.filter((_, j) => j !== gi) })}><Icon icon={CloseIcon} /></Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  {l.groups.length < GROUPS_MAX
+                    ? <Button type="button" variant="link" size="sm" className="px-0" onClick={() => setLevel(i, { ...l, groups: [...l.groups, newGroup()] })}>Add a group that must also approve</Button>
+                    : <span />}
+                  <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(null)}>Done</Button>
                 </div>
               </div>
-            ))}
-            {!disabled && l.groups.length < GROUPS_MAX && (
-              <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={() => setLevel(i, { ...l, groups: [...l.groups, newGroup()] })}>
-                Add a group that must also approve
-              </Button>
             )}
-          </div>
-        </li>
-      ))}
+          </li>
+        );
+      })}
       {!disabled && levels.length < LEVELS_MAX && (
-        <li className="grid grid-cols-[28px_1fr] gap-x-3 pt-3">
-          <span />
-          <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => onChange([...levels, newLevel()])}>
+        <li className="grid grid-cols-[28px_1fr] items-center gap-x-3">
+          <span aria-hidden="true" className="relative z-1 grid size-7 place-items-center rounded-full border border-dashed border-line-strong bg-card text-label text-fg-3">+</span>
+          <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => { onChange([...levels, newLevel()]); setOpen(levels.length); }}>
             Add level {levels.length + 1}
           </Button>
         </li>

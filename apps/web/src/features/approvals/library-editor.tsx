@@ -8,7 +8,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
@@ -21,7 +21,7 @@ import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY } from "@/lib/shared/queries";
-import { libraryWorkflow } from "@/lib/shared/queries-recon";
+import { spaceWorkflow } from "@/lib/shared/queries-recon";
 import { Levels } from "./levels-editor";
 import { unsaved } from "./autosave";
 import { ReviewPanel } from "./review-panel";
@@ -31,15 +31,16 @@ import { UsedBy } from "./used-by";
 type Save = { state: "idle" | "saving" | "saved" | "error"; at?: number; error?: string };
 
 /**
- * One library workflow (DEC-052 revision §4.2, §5): its name and levels beside Used by. The live version reads only; a
- * workflow manager starts a draft from it, edits it (autosaved), sends it for approval and another one publishes it
- * (a Superadmin their own only by override, with a reason). Used by shows which spaces' approval rules a publish moves
- * and where a level would lack people.
+ * One workflow of a space (DEC-052 rev 2 §4.1, §5; Figma 06 direction A): its name and chain beside Used by. The live
+ * version reads only; a space admin or a workflow manager starts a draft from it, edits it (autosaved), sends it for
+ * approval and another one publishes it (a Superadmin their own only by override, with a reason). Used by lists the
+ * recons that use it and marks those on an older version.
  */
-export function LibraryEditor({ id }: { id: string }) {
+export function LibraryEditor({ spaceId, spaceName, id }: { spaceId: string; spaceName: string; id: string }) {
   const qc = useQueryClient();
   const router = useRouter();
-  const d = libraryWorkflow(id);
+  const d = spaceWorkflow(spaceId, id);
+  const list = `/spaces/${encodeURIComponent(spaceId)}/workflows`;
   const q = useQuery({ queryKey: d.key, queryFn: () => api<LibraryDetailDto>(d.url), retry: retryUnlessNotFound });
   const skeleton = useDelayedFlag(!q.data && !q.error);
   // people a group may name: the first 100 active users (a workflow manager usually reads users), plus those named already
@@ -71,7 +72,7 @@ export function LibraryEditor({ id }: { id: string }) {
     const t = setTimeout(async () => {
       setSave({ state: "saving" });
       try {
-        await api(`/api/workflows/${encodeURIComponent(id)}/draft`, { method: "PATCH", body });
+        await api(`/api/spaces/${encodeURIComponent(spaceId)}/workflows/${encodeURIComponent(id)}/draft`, { method: "PATCH", body });
         setSavedBody(body);
         setSave({ state: "saved", at: Date.now() });
         void qc.invalidateQueries({ predicate: (x) => JSON.stringify(x.queryKey).includes("/used-by") });
@@ -84,17 +85,17 @@ export function LibraryEditor({ id }: { id: string }) {
   async function run(label: string, path: string, body: object | undefined, done: string): Promise<boolean> {
     setBusy(label);
     try {
-      const next = await api<LibraryDetailDto | null>(`/api/workflows/${encodeURIComponent(id)}${path}`, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
+      const next = await api<LibraryDetailDto | null>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows/${encodeURIComponent(id)}${path}`, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) });
       void qc.invalidateQueries({ queryKey: APPROVALS_KEY });
       toast(done);
-      if (!next) { router.push("/workflows"); return true; } // a never-published workflow went with its draft
+      if (!next) { router.push(list); return true; } // a never-published workflow went with its draft
       qc.setQueryData(d.key, next);
       setSavedBody(null);
       return true;
     } catch (e) { toast.error(errorText(e)); return false; } finally { setBusy(null); }
   }
 
-  if (isNotFound(q.error)) return <DetailNotFound title="Workflow" noun="workflow" list={{ href: "/workflows", label: "Workflows" }} />;
+  if (isNotFound(q.error)) return <DetailNotFound title="Workflow" noun="workflow" list={{ href: list, label: "Workflows" }} />;
   if (q.error && !w) return <div className="grid gap-section"><PageHeader title="Workflow" /><Panel><Failure title="Couldn't load the workflow" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!w || skeleton) return <LoadingShape sections={LIBRARY_EDITOR_SHAPE} shown={skeleton} />;
 
@@ -108,7 +109,7 @@ export function LibraryEditor({ id }: { id: string }) {
     }] : []),
     ...(w.canEdit && w.published && !w.archived ? [{
       label: "Archive workflow", destructive: true as const,
-      confirm: { title: `Archive ${w.name}`, description: "Approval rules can no longer pick it. It is refused while any space's rules still use it.", actionLabel: "Archive workflow", onConfirm: async () => { await run("archive", "/archive", undefined, "Workflow archived."); } },
+      confirm: { title: `Archive ${w.name}`, description: "Recons can no longer pick it. It is refused while a recon still uses it.", actionLabel: "Archive workflow", onConfirm: async () => { await run("archive", "/archive", undefined, "Workflow archived."); } },
     }] : []),
   ];
   const named = new Map(w.people.map((p) => [p.id, p.name ?? "A removed user"]));
@@ -118,7 +119,8 @@ export function LibraryEditor({ id }: { id: string }) {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={(!readOnly && name.trim()) || w.name} description="An approval chain, level by level. Spaces' approval rules pick it."
+      <PageHeader title={(!readOnly && name.trim()) || w.name} trail={[{ href: list, label: `Workflows · ${spaceName}` }]}
+        description={`${levels.length} ${levels.length === 1 ? "level" : "levels"} · approves in order, every group in a level must approve`}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
@@ -142,10 +144,10 @@ export function LibraryEditor({ id }: { id: string }) {
             {w.open && w.published ? (
               <Segmented label="Version shown" value={view} onChange={setView}
                 options={[{ value: "open", label: w.open.status === "draft" ? `Draft ${w.open.version}` : `Version ${w.open.version}` }, { value: "live", label: `Live · ${w.published.version}` }]} />
-            ) : <span className="text-body-sm text-fg-2">Levels approve in order; every group in a level must approve.</span>}
+            ) : <span />}
             {!readOnly && (
               <span role="status" className="text-caption text-fg-3">
-                {save.state === "saving" ? "Saving…" : save.state === "saved" ? `Saved ${formatDateTime(save.at!)}` : save.state === "error" ? <span className="text-down-ink">Not saved: {save.error}</span> : "Changes save as you go"}
+                {save.state === "saving" ? "Saving…" : save.state === "saved" ? <span key={save.at} className="inline-flex items-center gap-1 animate-pop"><Icon icon={CheckIcon} className="text-healthy-ink" />Saved {formatDateTime(save.at!)}</span> : save.state === "error" ? <span className="text-down-ink">Not saved: {save.error}</span> : "Changes save as you go"}
               </span>
             )}
           </div>
@@ -156,7 +158,7 @@ export function LibraryEditor({ id }: { id: string }) {
           <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} />
         </div>
         <div className="min-w-0 xl:sticky xl:top-(--topbar-h)">
-          <UsedBy id={id} />
+          <UsedBy spaceId={spaceId} id={id} />
         </div>
       </div>
     </div>
