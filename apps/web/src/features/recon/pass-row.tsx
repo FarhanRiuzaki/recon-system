@@ -116,7 +116,7 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
           </button>
           {editable && onRemove && (
             <button type="button" onClick={onRemove} aria-label={`Remove pass ${pass.no}${pass.name ? ` (${pass.name})` : ""}`} title="Remove pass"
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-fg-3 hover:bg-tray hover:text-fg focus-visible:outline-2 focus-visible:outline-primary">
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-down-ink hover:bg-down-soft focus-visible:outline-2 focus-visible:outline-primary">
               <Icon icon={RemoveIcon} />
             </button>
           )}

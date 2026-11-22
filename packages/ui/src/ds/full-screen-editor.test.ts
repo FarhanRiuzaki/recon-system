@@ -20,6 +20,8 @@ describe("FullScreenEditor (a full-screen editor)", () => {
     expect(d.getAttribute("aria-labelledby") && document.getElementById(d.getAttribute("aria-labelledby")!)?.textContent).toBe("Post to GL");
     for (const name of ["Settings", "Inspector", "Preview"]) expect(d.querySelector(`[aria-label="${name}"]`), name).not.toBeNull();
     expect(d.textContent).toContain("canvas");
+    // each scrolling region fades where content is hidden past it (owner rule; final review I6)
+    for (const name of ["Settings", "Inspector", "Preview"]) expect(d.querySelector(`[aria-label="${name}"] [data-slot="scroll-fade"]`), name).not.toBeNull();
   });
   it("Escape asks the caller to close (it may refuse, e.g. unsaved changes)", async () => {
     const onOpenChange = vi.fn();

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -36,6 +36,9 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
   const ops = opsQ.data?.items ?? [];
   // the action open in the editor: its index (actions.length = a new one)
   const [open, setOpen] = useState<number | null>(null);
+  // what the editor starts from: fixed while it is open (a new object each render would read as a change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const initial = useMemo(() => (open === null ? null : actions[open] ?? blank()), [open]);
   const gapsOf = (a: ActionSpec) => a.variants.flatMap((v) => { const o = opOf(ops, v.operation).op; return o ? mappingGaps(v.mapping, o) : []; });
   return (
     <div className="grid gap-3">
@@ -72,8 +75,8 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
       {!disabled && actions.length < 10 && (
         <Button type="button" variant="add" className="justify-self-start" onClick={() => setOpen(actions.length)}><Icon icon={AddIcon} />Add an action</Button>
       )}
-      {open !== null && (
-        <ActionScreen open initial={actions[open] ?? blank()} changeLabel={changeLabel} ops={ops} catalog={catalog} setup={setup}
+      {open !== null && initial && (
+        <ActionScreen open initial={initial} changeLabel={changeLabel} ops={ops} catalog={catalog} setup={setup}
           spaceId={spaceId} configId={configId} versionId={versionId} change={kind} index={open}
           onCancel={() => setOpen(null)}
           onDone={(next) => { onChange(open < actions.length ? actions.map((x, j) => (j === open ? next : x)) : [...actions, next]); setOpen(null); }} />

@@ -6,7 +6,7 @@
 import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import type { ReconApprovalSpec, TodayDto } from "@starterkit/shared/contracts/recon";
-import { buildPayload, pickVariant } from "@starterkit/shared/mapping";
+import { buildPayload, pickVariant, type Source, templateParts } from "@starterkit/shared/mapping";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
 import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
 import { POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
@@ -16,7 +16,7 @@ import { likeEscape, pageQuery, sortSql } from "../../kernel/pagination";
 import { CSV_MAX_ROWS } from "@starterkit/shared/audit";
 import { withSpace } from "../spaces";
 import { encryptSecret } from "../../kernel/crypto";
-import { maskTree } from "@starterkit/shared/integrations";
+import { maskTree, maskValue } from "@starterkit/shared/integrations";
 import type { InTx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
@@ -138,6 +138,15 @@ const toRunRow = ({ r, reconId, recon }: { r: typeof actionRuns.$inferSelect; re
   break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
 });
 
+/** The recon fields a source reads (a field, a lookup's key, a template's fields). */
+function readsOf(s: Source | undefined): string[] {
+  if (!s) return [];
+  if (s.kind === "field") return [s.key];
+  if (s.kind === "lookup") return readsOf(s.key);
+  if (s.kind === "template") return templateParts(s.text).flatMap((p) => (p.field ? [p.field.key] : []));
+  return [];
+}
+
 /** Today: per recon, its posting runs (not notify) created in the last 24 hours that ended failed, timeout or not sent (none = left out). */
 export async function postingAttention(tx: InTx, spaceId: string, now = new Date()): Promise<TodayDto["posting"]> {
   const n = (s: string) => sql<number>`count(*) filter (where ${actionRuns.status} = ${s})::int`;
@@ -178,7 +187,7 @@ export type ActionPreview = { variant: string | null; payload: unknown; sources:
 export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApprovalSpec | undefined, configCode: string, kind: string, actionIndex: number, itemId: string): Promise<ActionPreview> {
   const a = approvals?.changes[kind as keyof ReconApprovalSpec["changes"]]?.actions[actionIndex];
   // the break's values as the action would read them: also answered when nothing fits (the editor's example column)
-  const context = {
+  const context: Record<string, string | number | null | undefined> = {
     ...(await breakContextOf(tx, ctx.space!.id, itemId, [])), "recon.code": configCode,
     "approval.level": a?.on.event === "level_approved" ? a.on.level : 1, "approval.by": ctx.user.name ?? ctx.user.id, "approval.at": new Date().toISOString(), "request.kind": kind, "request.note": "",
   };
@@ -187,9 +196,13 @@ export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApproval
   const picked = pickVariant(a.variants, context);
   if (!picked) return none("No posting rule fits this break.", "no_rule");
   const v = picked.variant;
-  const [cv] = await tx.select({ spec: connectorVersions.spec }).from(connectorVersions).where(and(eq(connectorVersions.connectorId, v.operation.connectorId), eq(connectorVersions.version, v.operation.version)));
+  // a reviewed version only (published or retired): a draft action could otherwise pin one still being written
+  const [cv] = await tx.select({ spec: connectorVersions.spec }).from(connectorVersions)
+    .where(and(eq(connectorVersions.connectorId, v.operation.connectorId), eq(connectorVersions.version, v.operation.version), inArray(connectorVersions.status, ["published", "retired"])));
   const op = (cv?.spec as ConnectorSpec | undefined)?.operations.find((o) => o.key === v.operation.key);
   if (!op) return { ...none("The connector version this variant pins has no such operation."), variant: v.name };
+  // the values a masked request field reads are masked in the context too (it would show what the payload hides)
+  for (const path of op.masked) for (const key of readsOf(v.mapping[path])) if (context[key] != null) context[key] = maskValue(String(context[key]));
   const built = buildPayload(v, op, context, { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
   return built.ok
     ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null, context }

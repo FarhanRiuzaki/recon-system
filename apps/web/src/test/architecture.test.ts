@@ -35,17 +35,25 @@ function intentViolations(fs: F[]): string[] {
   const out: string[] = [];
   for (const { r, src } of fs) {
     if (!r.endsWith(".tsx") || r.startsWith(VENDORED)) continue;
-    let at = 0;
-    while ((at = src.indexOf("<Button", at)) >= 0) {
-      // the opening tag, braces counted (an onClick's arrow holds ">")
-      let i = at + 7, depth = 0;
-      for (; i < src.length; i++) { const c = src[i]; if (c === "{") depth++; else if (c === "}") depth--; else if (c === ">" && depth === 0) break; }
-      const tag = src.slice(at, i + 1), text = src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
-      const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
+    for (const m of src.matchAll(/<(Button|button)(?=[\s>])/g)) {
+      // the opening tag: braces counted (an onClick's arrow holds ">"), quoted text skipped (title="a > b")
+      let i = m.index! + m[0].length, depth = 0, quote = "";
+      for (; i < src.length; i++) {
+        const c = src[i]!;
+        if (quote) { if (c === quote) quote = ""; continue; }
+        if (c === '"' || c === "'" || c === "`") { if (depth === 0 || c === "`") quote = c; continue; }
+        if (c === "{") depth++; else if (c === "}") depth--; else if (c === ">" && depth === 0) break;
+      }
+      const tag = src.slice(m.index!, i + 1), text = src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
       const named = /aria-label=\{?[`"']Remove\b/.test(tag) || /^Remove\b/.test(text);
+      if (m[1] === "button") {
+        // a raw button that removes says so in the Remove ink (the variant's colour)
+        if (named && !/text-down-ink/.test(tag)) out.push(`${r}: raw Remove button without text-down-ink`);
+        continue;
+      }
+      const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
       if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: Remove … is variant="${variant}"`);
-      if (/^Add\b/.test(text) && ["ghost", "link", "secondary"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
-      at = i;
+      if (/^Add\b/.test(text) && ["ghost", "link", "secondary", "outline"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
     }
   }
   return out;
@@ -461,7 +469,10 @@ describe("architecture checkers (fixtures)", () => {
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="ghost" size="icon" aria-label={\`Remove \${n}\`} onClick={() => go()}><Icon icon={RemoveIcon} /></Button>`),
       f(`${WEB}features/x/b.tsx`, `<Button type="button" variant="link" onClick={() => add()}>Add a condition</Button>`),
       f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="add" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button onClick={() => a()}>Add user</Button><Button variant="destructive">Remove member</Button>`),
-    ])).toEqual([`${WEB}features/x/a.tsx: Remove … is variant="ghost"`, `${WEB}features/x/b.tsx: Add … is variant="link"`]);
+      f(`${WEB}features/x/d.tsx`, `<button type="button" aria-label="Remove pass 2" className="text-fg-3" onClick={() => r()}>x</button><ButtonGroup>Add a row</ButtonGroup>`),
+      f(`${WEB}features/x/e.tsx`, `<Button variant="outline" title="a > b" onClick={() => a()}>Add a column</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Remove … is variant="ghost"`, `${WEB}features/x/b.tsx: Add … is variant="link"`,
+      `${WEB}features/x/d.tsx: raw Remove button without text-down-ink`, `${WEB}features/x/e.tsx: Add … is variant="outline"`]);
   });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([

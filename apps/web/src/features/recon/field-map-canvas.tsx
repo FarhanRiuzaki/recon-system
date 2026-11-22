@@ -74,8 +74,10 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   ];
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>(build());
   // the graph or the selection changed: new rows, same places
+  // new rows, same places; each node keeps React Flow's measurement (a node without it is measured again, which reads as
+  // "not initialized" and refit the view after every click — final review I1)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setNodes(build()), [graph, selected, moved, title, caption, examples]);
+  useEffect(() => setNodes((prev) => build().map((n) => { const p = prev.find((x) => x.id === n.id); return p ? { ...p, ...n, measured: p.measured } : n; })), [graph, selected, moved, title, caption, examples]);
   const edges: MapEdgeType[] = graph.edges.map((e) => ({
     id: e.id, type: "map", source: e.source, sourceHandle: e.row, target: "request", targetHandle: e.target, data: { label: e.label }, selected: e.target === selected,
     zIndex: 1000, // above the tables (a line to the request may cross a table between)
@@ -85,21 +87,25 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   // and once the tables are measured (a fit before that sees empty boxes and zooms too far out)
   const measured = useNodesInitialized();
   const { fitView } = useReactFlow();
-  useEffect(() => { if (measured) void fitView(FIT); }, [measured, fitView]);
+  const fitted = useRef(false);
+  useEffect(() => { if (measured && !fitted.current) { fitted.current = true; void fitView(FIT); } }, [measured, fitView]);
   const connect: OnConnect = (c) => { if (c.sourceHandle && c.targetHandle) onConnect(c.sourceHandle, c.targetHandle); };
   return (
-    <div ref={wrap} className="flow-canvas absolute inset-0">
+    // Delete removes the open field's mapping while the map has focus (never Backspace, never from a form control:
+    // React Flow's own delete key is off, a mapping has no undo)
+    <div ref={wrap} className="flow-canvas absolute inset-0"
+      onKeyDown={(e) => { if (e.key === "Delete" && selected && !(e.target as HTMLElement).closest("input, textarea, select, button")) onRemove(selected); }}>
       <ReactFlow<TableNodeType, MapEdgeType> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange} onConnect={connect} fitView fitViewOptions={FIT} minZoom={0.3} maxZoom={1.5}
         onNodeDragStop={(_, n) => setMoved((m) => ({ ...m, [n.id]: n.position }))}
         onEdgeClick={(_, e) => onSelect((e as MapEdgeType).targetHandle ?? null)}
-        onEdgesDelete={(es) => es.forEach((e) => e.targetHandle && onRemove(e.targetHandle))}
+        deleteKeyCode={null}
         onPaneClick={() => onSelect(null)}
         isValidConnection={(c) => graph.request.some((r) => r.path === c.targetHandle && r.leaf && !r.filledBy)}
         aria-label="Field map: recon fields on the left, the request on the right" proOptions={{ hideAttribution: true }}>
         <FlowBoard />
         <Controls showInteractive={false} position="bottom-left">
-          <ResetLayout onReset={() => setMoved({})} />
+          <ResetLayout onReset={() => { setMoved({}); requestAnimationFrame(() => void fitView(FIT)); }} />
         </Controls>
       </ReactFlow>
     </div>

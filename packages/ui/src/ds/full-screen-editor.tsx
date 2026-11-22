@@ -3,12 +3,13 @@
 import type { ReactNode } from "react";
 import { Dialog as D } from "radix-ui";
 import { cn } from "../lib/cn";
+import { ScrollFade } from "./scroll-fade";
 
 /**
  * A full-screen editor (owner 22 Nov: "full screen editor"): a modal dialog over the page with a header (title,
  * description, the actions: View as list, Cancel, Done), a settings rail on the left, the work area in the middle (a
  * canvas), an inspector on the right and a dock under the work area (a preview). Each part is a labelled region with
- * its own scroll and a clear edge (--line-strong). From 768 px it floats 12 px inside the window on the page's
+ * its own scroll (ScrollFade: a fade on each side with content hidden past it) and a clear edge (--line-strong). From 768 px it floats 12 px inside the window on the page's
  * background; below, it fills the screen and the parts stack in one scroll. Escape asks `onOpenChange(false)`: the
  * caller decides (unsaved changes may keep it open). Load it on demand (next/dynamic) with what it holds.
  */
@@ -35,15 +36,15 @@ export function FullScreenEditor({ open, onOpenChange, title, description, actio
           <div className={cn("scroll-quiet grid min-h-0 flex-1 max-md:overflow-y-auto",
             rail && inspector ? "md:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)_22rem]" : rail ? "md:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]" : inspector ? "xl:grid-cols-[minmax(0,1fr)_22rem]" : "")}>
             {rail && (
-              <aside aria-label="Settings" className="scroll-quiet min-h-0 border-line-strong bg-sheet p-5 max-md:border-b md:overflow-y-auto md:border-r">{rail}</aside>
+              <aside aria-label="Settings" className="min-h-0 border-line-strong bg-sheet max-md:border-b md:border-r"><ScrollFade className="h-full p-5 max-md:overflow-visible">{rail}</ScrollFade></aside>
             )}
             <div className="flex min-h-0 flex-col max-md:min-h-[60dvh]">
               <div className="relative min-h-0 flex-1">{children}</div>
-              {dock && <section aria-label="Preview" className="scroll-quiet max-h-[40%] shrink-0 overflow-y-auto border-t border-line-strong bg-sheet max-md:max-h-none">{dock}</section>}
+              {dock && <section aria-label="Preview" className="shrink-0 border-t border-line-strong bg-sheet"><ScrollFade className="max-h-[36dvh] max-md:max-h-none">{dock}</ScrollFade></section>}
             </div>
             {inspector && (
-              <aside aria-label="Inspector" className={cn("scroll-quiet min-h-0 border-line-strong bg-sheet p-5 max-md:border-t md:overflow-y-auto xl:border-l",
-                rail && "md:col-span-2 md:border-t xl:col-span-1 xl:border-t-0")}>{inspector}</aside>
+              <aside aria-label="Inspector" className={cn("min-h-0 border-line-strong bg-sheet max-md:border-t xl:border-l",
+                rail && "md:col-span-2 md:border-t xl:col-span-1 xl:border-t-0")}><ScrollFade className="h-full p-5 max-md:overflow-visible">{inspector}</ScrollFade></aside>
             )}
           </div>
         </D.Content>

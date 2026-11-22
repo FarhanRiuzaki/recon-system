@@ -239,6 +239,18 @@ describe("what gets posted (preview)", () => {
     const ctx = await json<{ context: Record<string, unknown> }>(call("POST", at, { token: t.adm, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
     expect(ctx.context["break.amount"]).toBe("10000");
     expect(ctx.context["recon.code"]).toBeTruthy();
+    // final review I4/I5: the values a masked request field reads are masked in the context too; a draft may pin only a
+    // reviewed connector version (published or retired), never one still in draft
+    await db.update(connectorVersions).set({ status: "retired" }).where(eq(connectorVersions.connectorId, cid));
+    await db.insert(connectorVersions).values({ id: Bun.randomUUIDv7(), connectorId: cid, version: 2, status: "published", spec: { name: "Bank Mega", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...OP, masked: ["Remark"] }] } });
+    const v2 = { ...draft, variants: [variant({ operation: { connectorId: cid, version: 2, key: "post" } })] };
+    const m = await json<{ payload: Record<string, unknown> | null; context: Record<string, unknown> }>(call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1, draft: v2 } }));
+    expect(m.payload!.Remark).not.toBe("P1-1");
+    expect(m.context["side_a.ext_ref"]).not.toBe("P1");
+    expect(m.context["break.amount"]).toBe("10000");
+    await db.update(connectorVersions).set({ status: "draft" }).where(and(eq(connectorVersions.connectorId, cid), eq(connectorVersions.version, 2)));
+    const r = await json<{ payload: unknown; problem: { message: string } | null }>(call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1, draft: v2 } }));
+    expect(r).toMatchObject({ payload: null, problem: { message: "The connector version this variant pins has no such operation." } });
     // a break of another recon, or none, is 404
     expect((await call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: Bun.randomUUIDv7() } })).status).toBe(404);
     const other = (await recon(A, spec(Bun.randomUUIDv7(), Bun.randomUUIDv7(), []))).configId;

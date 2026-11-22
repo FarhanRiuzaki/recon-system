@@ -20,7 +20,7 @@
 ## Review Focus
 
 - A drag onto a Fixed/Auto field or from a target row → refused (no handle), nothing written.
-- Connecting a second source to a mapped field replaces it (one source per request field).
+- Connecting a second row to a mapped field joins both into a template (owner 22 Nov, "gabung beberapa column"); a fixed value or lookup is replaced.
 - Changing the variant's operation keeps mappings whose paths still exist and drops only the rest.
 - Done refused while a variant condition is unfinished or the name is empty; Cancel discards everything.
 - Keyboard: every mapping can be made from the inspector without dragging.

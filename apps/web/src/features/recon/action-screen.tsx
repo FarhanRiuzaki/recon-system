@@ -24,7 +24,7 @@ import type { Trigger } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { EventPicker, type Ops, opOf, OperationPicker } from "./action-parts";
-import { condDone } from "./approval-model";
+import { unfinishedReason } from "./actions-model";
 import { ChangeChips } from "./change-chips";
 import { ConditionEditor } from "./condition-editor";
 import { connect, keepMapping, mapGraph } from "./field-map";
@@ -36,15 +36,6 @@ type Setup = { accounts: readonly Account[]; lookups: readonly { name: string }[
 const GROUP = { break: "Break", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
 const KIND_LABEL = { field: "A recon field", const: "A fixed value", template: "A template", lookup: "A lookup table", account: "An account" } as const;
 const blankClause = { all: [{ field: "", op: "eq", value: "" }] } as const;
-
-/** Why Done is refused, or null. */
-export function unfinishedReason(a: ActionSpec): string | null {
-  if (!a.name.trim()) return "Name the action first.";
-  const v = a.variants.findIndex((x) => !x.name.trim() || !x.operation.key || (x.when && !condDone(x.when as Condition)));
-  if (v < 0) return null;
-  const x = a.variants[v]!;
-  return !x.name.trim() ? `Name variant ${v + 1}.` : !x.operation.key ? `Pick where ${x.name} sends to.` : `Finish the conditions of ${x.name}.`;
-}
 
 /** The field open in the inspector: where its value comes from, its changes, a sample. */
 function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup, sample }: {
@@ -136,7 +127,9 @@ function Dock({ spaceId, configId, versionId, change, index, draft, onResult }: 
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<ActionPreviewDto | { error: string } | null>(null);
   const name = (id: string) => { const b = rows.find((x) => x.id === id); return b ? `${b.ref ?? "No reference"} · ${b.businessDate}` : "a break"; };
-  const body = JSON.stringify({ change, action: index, itemId: item, draft });
+  // an unfinished draft (no name, no operation yet, an empty template) is refused by the contract: preview the saved
+  // action instead, which still answers the break's values for the examples
+  const body = JSON.stringify({ change, action: index, itemId: item, ...(unfinishedReason(draft) ? {} : { draft }) });
   useEffect(() => {
     if (!item) return;
     let gone = false;
@@ -145,7 +138,7 @@ function Dock({ spaceId, configId, versionId, change, index, draft, onResult }: 
       try {
         const r = await api<ActionPreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/actions/preview`, { method: "POST", body });
         if (!gone) { setRes(r); onResult(r, name(item)); }
-      } catch (e) { if (!gone) { setRes({ error: errorText(e) }); onResult(null, ""); } } finally { if (!gone) setBusy(false); }
+      } catch (e) { if (!gone) setRes({ error: errorText(e) }); } finally { if (!gone) setBusy(false); } // the last examples stay
     }, 500);
     return () => { gone = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -274,7 +267,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-primary" />Mapped</span>
       <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-down-mark bg-card" />Required, still empty</span>
       <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-line-strong" />Optional, empty</span>
-      <span className="text-fg-3">Drag from a recon field&apos;s dot to a request field&apos;s dot. Click a field or a line to edit it.</span>
+      <span className="text-fg-3">Drag from a recon field&apos;s dot to a request field&apos;s dot. Click a field or a line to edit it; Delete removes its mapping.</span>
     </div>
   );
   const status = graph && (
@@ -315,8 +308,10 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
               onConnect={(row, target) => { const m = connect(v.mapping, row, target, op); if (m) { setV({ ...v, mapping: m }); setPicked(target); } }}
               onRemove={(target) => setSource(target, undefined)} examples={sample} />
           </div>
-          <div className={cn("scroll-quiet absolute inset-0 overflow-y-auto p-5 pt-14", view === "canvas" && "md:hidden")}>
+          <div className={cn("absolute inset-0", view === "canvas" && "md:hidden")}>
+            <ScrollFade className="h-full p-5 pt-14">
             <Mapper mapping={v.mapping} onChange={(mapping) => setV({ ...v, mapping })} op={op} catalog={catalog} setup={setup} disabled={false} />
+            </ScrollFade>
           </div>
         </>
       )}

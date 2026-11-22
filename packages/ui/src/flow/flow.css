@@ -79,8 +79,8 @@
 .flow-canvas .react-flow__handle.flow-port.is-on { background: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .flow-canvas .react-flow__handle.flow-port.is-missing { background: var(--card); box-shadow: 0 0 0 1.5px var(--down-mark); }
 .flow-canvas .react-flow__handle.flow-port:hover, .flow-canvas .react-flow__handle.flow-port.connectingto { background: var(--primary); transform: translate(var(--port-x, 0), -50%) scale(1.3); }
-.flow-canvas .react-flow__handle-left.flow-port { left: -6px; --port-x: 0; }
-.flow-canvas .react-flow__handle-right.flow-port { right: -6px; }
+.flow-canvas .react-flow__handle-left.flow-port { left: -6px; --port-x: -50%; }
+.flow-canvas .react-flow__handle-right.flow-port { right: -6px; --port-x: 50%; }
 .flow-canvas .react-flow__node-table { border-radius: var(--radius-lg); }
 .flow-canvas .react-flow__node-table.selected > [data-slot="table-node"] { border-color: var(--primary); }
 /* a mapping line (map-edge.tsx): grey, primary when selected */
