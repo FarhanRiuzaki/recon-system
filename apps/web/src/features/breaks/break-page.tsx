@@ -103,7 +103,8 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       <Panel icon={AlertsIcon} title="The break">
         <ValueRows items={[
           ["Recon", b.recon.name],
-          ["Side", `${b.recon.sides[b.item.side === "a" ? 0 : 1]}${b.item.source ? ` · ${b.item.source}` : ""}`],
+          ["Side", b.recon.sides[b.item.side === "a" ? 0 : 1]],
+          ...(b.item.source ? [["Source", b.item.source] as const] : []),
           ["Amount", money(b.item)],
           ["Business date", `${dateText(b.item.businessDate)} · ${b.ageDays === 0 ? "today" : `${b.ageDays} ${b.ageDays === 1 ? "day" : "days"} old`}`],
           ["Reason", b.item.reason ?? "—"],
