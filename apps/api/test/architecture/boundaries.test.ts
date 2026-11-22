@@ -6,7 +6,8 @@
 // (7) modules/spaces never imports kernel/worker-db (the API process loads it, and must not open the worker pool),
 // (8) every table with a space_id column has row level security forced with the one recon_space_visible policy, plus
 // only the allowlisted read-only (FOR SELECT) policies, (9) each source database driver is imported only by its
-// connector file (modules/ingest/connectors/{mysql,mssql,oracle}.ts).
+// connector file (modules/ingest/connectors/{mysql,mssql,oracle}.ts), (10) every security definer function of the schema
+// is allowlisted with why it may pass row level security or the app role's grants.
 // Each rule has a fixture that proves it fails.
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -237,6 +238,31 @@ function rlsGaps(rows: SpaceTable[], exempt: Record<string, string> = RLS_EXEMPT
   return out;
 }
 
+/**
+ * Functions that run as their owner (security definer), passing the app role's grants and row level security, and why.
+ * Each answers only what its reason says; a new one, or a stale entry, fails.
+ */
+const SECURITY_DEFINER: Record<string, string> = {
+  recon_ensure_month_partitions: "adds a domain table's monthly partitions: only the owner may (drizzle/0009)",
+  recon_analyze_month_partitions: "ANALYZE of partitions a run wrote: only the owner may (drizzle/0026)",
+  recon_analyze_table: "ANALYZE of match tables a run wrote: only the owner may (drizzle/0033)",
+  recon_source_day_closed: "whether any space closed a source's date: a boolean, no other space's data (drizzle/0042)",
+  recon_connector_used_by: "how many recons of active spaces call a connector: (connector_id, count) only, no recon or space data (drizzle/0058)",
+};
+
+/** Security definer functions of the current schema, by name. */
+const definers = (q: Q): Promise<{ name: string }[]> => q<{ name: string }[]>`
+  select p.proname as name from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = current_schema() and p.prosecdef order by p.proname`;
+
+/** (10) A security definer function not in `allow`, or an entry with no such function. */
+function definerGaps(names: string[], allow: Record<string, string> = SECURITY_DEFINER): string[] {
+  return [
+    ...names.filter((n) => !(n in allow)).map((n) => `${n}: security definer but not in SECURITY_DEFINER (say what it answers and why it runs as the owner)`),
+    ...Object.keys(allow).filter((k) => !names.includes(k)).map((k) => `${k}: in SECURITY_DEFINER but no such security definer function`),
+  ];
+}
+
 const scan = (dir: string): File[] =>
   [...new Bun.Glob("**/*.ts").scanSync(path.join(ROOT, dir))].map((f) => `${dir}/${f}`).map((file) => ({ file, src: readFileSync(path.join(ROOT, file), "utf8") }));
 const real = [...scan("src"), ...scan("test")];
@@ -272,6 +298,10 @@ describe("module boundaries (apps/api)", () => {
     expect(rlsGaps(rows)).toEqual([]);
   });
 
+  it("every security definer function is allowlisted with its reason", async () => {
+    expect(definerGaps((await definers(client)).map((r) => r.name))).toEqual([]);
+  });
+
   it("no test file sits beside the source", () => {
     expect(misplacedTests(real)).toEqual([]);
   });
@@ -288,6 +318,13 @@ describe("module boundaries (apps/api)", () => {
 });
 
 describe("module boundaries: fixtures", () => {
+  it("fixture: a security definer function outside the allowlist fails, and so does a stale entry", () => {
+    expect(definerGaps(["recon_a", "recon_b"], { recon_a: "why", recon_gone: "why" })).toEqual([
+      "recon_b: security definer but not in SECURITY_DEFINER (say what it answers and why it runs as the owner)",
+      "recon_gone: in SECURITY_DEFINER but no such security definer function",
+    ]);
+  });
+
   it("fixture: two indexes that import each other load; one that uses the other's export at load fails", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "isolation-"));
     try {

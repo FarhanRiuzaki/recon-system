@@ -95,7 +95,7 @@ export const ConnectorRowDto = z.object({
    * not sent for now), `none` (never called there).
    */
   link: z.object({ state: z.enum(["answered", "failing", "paused", "none"]), failures: z.number().int() }),
-  /** Recons, in every space, whose live version has an action that calls it. */
+  /** Recons, in every active space, whose live version has an action that calls it. */
   usedBy: z.number().int(),
 });
 export type ConnectorRowDto = z.infer<typeof ConnectorRowDto>;
@@ -104,7 +104,7 @@ export const ConnectorDetailDto = z.object({
   id: z.string(), name: z.string(), published: ConnectorVersionDto.nullable(), open: ConnectorVersionDto.nullable(),
   secrets: z.object({ dev: SecretFlags, prod: SecretFlags }),
   disabled: z.object({ at: z.string(), reason: z.string(), by: Person.nullable() }).nullable(),
-  /** Recons, in every space, whose live version has an action that calls it (as the list row). */
+  /** Recons, in every active space, whose live version has an action that calls it (as the list row). */
   usedBy: z.number().int(),
   ...reviewFields,
 });

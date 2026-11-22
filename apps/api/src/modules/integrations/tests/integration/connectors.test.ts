@@ -4,9 +4,11 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ConnectorDetailDto, ConnectorRowDto } from "@starterkit/shared/contracts/integrations";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { generateKeyPairSync } from "node:crypto";
 import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
+import { asAppRole } from "../../../../../test/helpers/app-role";
+import { functionsOf } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
 import { roles, rolePermissions, userRoles } from "../../../rbac";
@@ -133,5 +135,29 @@ describe("the connectors list and detail: bank link and used by (audit §5.8, C2
     expect((await row()).usedBy).toBe(2);
     // the detail says it too: Turn off connector names how many recons use it (audit C2)
     expect((await json<ConnectorDetailDto>(call("GET", `${C}/${c.id}`, { token: t.viewer }))).usedBy).toBe(2);
+  });
+
+  it("used by comes from recon_connector_used_by: one call for the page, archived spaces left out, counts only", async () => {
+    const [a, b] = [await create(t.m1, spec("A")), await create(t.m1, spec("B"))];
+    await db.delete(spaces);
+    const uses = (...ids: string[]) => ({ approvals: { changes: { write_off: { actions: [{ name: "Post", kind: "posting", on: { event: "approved" },
+      variants: ids.map((id, i) => ({ name: `V${i}`, operation: { connectorId: id, version: 1, key: "post" } })) }] } } } });
+    // a calls a twice in one recon (one recon), b once; the third space is archived
+    for (const [i, [status, ids]] of ([["active", [a.id, a.id, b.id]], ["active", [a.id]], ["archived", [a.id, b.id]]] as const).entries()) {
+      const sp = Bun.randomUUIDv7(), cfg = Bun.randomUUIDv7();
+      await db.insert(spaces).values({ id: sp, code: `u${i}`, name: `U${i}`, status });
+      await db.insert(reconConfigs).values({ id: cfg, spaceId: sp, code: `r${i}`, name: `R${i}` });
+      await db.insert(reconConfigVersions).values({ id: Bun.randomUUIDv7(), configId: cfg, spaceId: sp, version: 1, status: "published", spec: uses(...ids), specHash: "h", matchingHash: "h", makerId: Bun.randomUUIDv7() });
+    }
+    // google reads connectors (integration.view) and holds no role in any space: it gets the numbers, nothing more
+    const list = await json<Page<ConnectorRowDto>>(call("GET", C, { token: t.viewer }));
+    expect(list.items.map((r) => [r.name, r.usedBy])).toEqual([["A", 2], ["B", 1]]);
+    // the function as the app role, without a space scope: only (connector_id, recons), even though RLS hides every recon
+    const got = await db.transaction(async (tx) => {
+      await asAppRole(tx);
+      return tx.select({ id: sql<string>`connector_id`, n: sql<number>`recons` }).from(sql`recon_connector_used_by(${`{${a.id},${b.id},${Bun.randomUUIDv7()}}`}::uuid[])`).orderBy(sql`recons desc`);
+    });
+    expect(got).toEqual([{ id: a.id, n: 2 }, { id: b.id, n: 1 }]);
+    expect(await functionsOf(["recon_connector_used_by"])).toEqual([{ proname: "recon_connector_used_by", prosecdef: true, proconfig: [expect.stringMatching(/^search_path=/)] }]);
   });
 });

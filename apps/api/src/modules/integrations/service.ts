@@ -18,8 +18,6 @@ import { reviewRule, userNames, type VersionRow, versionDto, versionPeople } fro
 import { recordActivity } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import { publicKeyPem } from "./profile";
-import { reconConfigVersions } from "../recon";
-import { spaces, withSpace } from "../spaces";
 import { connectorCircuits, connectors, connectorSecrets, connectorTokens, connectorVersions } from "./schema";
 import { accessToken, NotSent, sendOperation } from "./transport";
 
@@ -59,7 +57,7 @@ export function connectorPage(q: ConnectorListQuery): Promise<Page<ConnectorRowD
     const ids = page.items.map((c) => c.id);
     const vs = ids.length ? await tx.select().from(connectorVersions).where(and(inArray(connectorVersions.connectorId, ids), inArray(connectorVersions.status, ["draft", "in_review", "published"]))) : [];
     const circuits = ids.length ? await tx.select().from(connectorCircuits).where(inArray(connectorCircuits.connectorId, ids)) : [];
-    const used = await usedByCounts(ids);
+    const used = await usedByCounts(tx, ids);
     const now = new Date();
     const linkOf = (id: string, env: Environment | null): ConnectorRowDto["link"] => {
       const k = env ? circuits.find((x) => x.connectorId === id && x.environment === env) : undefined;
@@ -85,21 +83,15 @@ export function connectorPage(q: ConnectorListQuery): Promise<Page<ConnectorRowD
 }
 
 /**
- * Per connector of `ids`: the recons of every space whose live version has an action variant that calls it. A
- * connector is global, so this reads every space (as the outbox sweep does) and answers counts only, never a recon.
- * ponytail: one jsonb path scan per connector of the page (≤ 100); an index on the pinned connector ids if recons get many
+ * Per connector of `ids`: how many recons of an active space have a live version whose approval actions call it. A
+ * connector is global and its reader may hold no space role, so the count comes from the owner's security-definer
+ * recon_connector_used_by (drizzle/0058), which answers (connector_id, recons) only, in one query for the page; no
+ * space scope, no recon data reaches the request.
  */
-async function usedByCounts(ids: readonly string[]): Promise<Map<string, number>> {
+async function usedByCounts(on: InTx, ids: readonly string[]): Promise<Map<string, number>> {
   if (!ids.length) return new Map();
-  const all = (await db.select({ id: spaces.id }).from(spaces)).map((x) => x.id);
-  if (!all.length) return new Map();
-  return withSpace({ spaceIds: all, userId: null }, async (tx) => new Map(await Promise.all(ids.map(async (id) => {
-    const [r] = await tx.select({ n: sql<number>`count(distinct ${reconConfigVersions.configId})::int` }).from(reconConfigVersions).where(and(
-      eq(reconConfigVersions.status, "published"),
-      sql`jsonb_path_exists(${reconConfigVersions.spec}, '$.approvals.changes.*.actions[*].variants[*].operation ? (@.connectorId == $id)', jsonb_build_object('id', ${id}::text))`,
-    ));
-    return [id, r?.n ?? 0] as const;
-  }))));
+  const rows = await on.select({ id: sql<string>`connector_id`, n: sql<number>`recons` }).from(sql`recon_connector_used_by(${`{${ids.join(",")}}`}::uuid[])`);
+  return new Map(rows.map((r) => [r.id, r.n]));
 }
 
 async function detail(tx: InTx, ctx: Ctx, id: string): Promise<ConnectorDetailDto> {
@@ -117,7 +109,7 @@ async function detail(tx: InTx, ctx: Ctx, id: string): Promise<ConnectorDetailDt
     open: open ? versionDto<ConnectorSpec>(open as VersionRow, n) as ConnectorVersionDto : null,
     secrets: flags,
     disabled: c.disabledAt ? { at: c.disabledAt.toISOString(), reason: c.disabledReason ?? "", by: c.disabledBy ? { id: c.disabledBy, name: n.get(c.disabledBy) ?? null } : null } : null,
-    usedBy: (await usedByCounts([id])).get(id) ?? 0,
+    usedBy: (await usedByCounts(tx, [id])).get(id) ?? 0,
     canEdit: canEdit(ctx), reviewBlocked: blocked, overrideOnly,
   };
 }
