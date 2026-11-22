@@ -28,7 +28,7 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
         const path = `${prefix}${f.name}`;
         return (
           <li key={i} className="grid gap-1.5 motion-safe:animate-enter" style={{ paddingLeft: `${depth * 1.25}rem` }}>
-            <div className="grid grid-cols-[minmax(0,1.3fr)_8rem_5.5rem_auto_auto_minmax(0,1fr)_auto] items-center gap-2 max-lg:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1.3fr)_8rem_5.5rem_4.5rem_3.5rem_minmax(0,1fr)_2rem] items-center gap-2 max-lg:grid-cols-2">
               <Input aria-label={`${label}: field ${path || i + 1} name`} value={f.name} maxLength={80} disabled={disabled} className="h-8 font-mono" onChange={(e) => set(i, { ...f, name: e.target.value })} />
               <Select aria-label={`${label}: ${path} type`} value={f.type} disabled={disabled} className="h-8"
                 onChange={(e) => { const type = e.target.value as FieldType; set(i, has(type) ? { ...f, type, children: f.children ?? [] } : { name: f.name, type, required: f.required, ...(f.maxLength ? { maxLength: f.maxLength } : {}) }); }}>
@@ -38,8 +38,8 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
                 <Input aria-label={`${label}: ${path} max length`} type="number" min={1} max={10000} placeholder="Length" value={f.maxLength ?? ""} disabled={disabled} className="h-8"
                   onChange={(e) => { const n = Number(e.target.value); const { maxLength: _, ...rest } = f; set(i, n > 0 ? { ...rest, maxLength: Math.min(10000, Math.round(n)) } : rest); }} />
               )}
-              <Checkbox label="Required" checked={f.required} readOnly={disabled} onToggle={() => set(i, { ...f, required: !f.required })} />
-              <Checkbox label="Mask" checked={masked.includes(path)} readOnly={disabled} onToggle={() => onMask(path, !masked.includes(path))} />
+              <Checkbox label={`${path || "Field"}: required`} checked={f.required} readOnly={disabled} onToggle={() => set(i, { ...f, required: !f.required })} />
+              <Checkbox label={`${path || "Field"}: mask`} checked={masked.includes(path)} readOnly={disabled} onToggle={() => onMask(path, !masked.includes(path))} />
               {onPreset && !has(f.type)
                 ? <Input aria-label={`${label}: ${path} fixed value`} placeholder="Fixed value (optional)" value={presets?.[path] ?? ""} maxLength={500} disabled={disabled} className="h-8" onChange={(e) => onPreset(path, e.target.value)} />
                 : <span />}
@@ -97,6 +97,11 @@ export function FieldTree({ title, fields, onChange, masked, onMask, presets, on
             <Button type="button" variant="secondary" size="sm" onClick={() => read("sample")}>Read a sample</Button>
             <Button type="button" variant="secondary" size="sm" onClick={() => read("openapi")}>Read an OpenAPI file</Button>
           </div>
+        </div>
+      )}
+      {fields.length > 0 && (
+        <div aria-hidden="true" className="grid grid-cols-[minmax(0,1.3fr)_8rem_5.5rem_4.5rem_3.5rem_minmax(0,1fr)_2rem] gap-2 text-caption text-fg-3 max-lg:hidden">
+          <span>Field</span><span>Type</span><span>Length</span><span>Required</span><span>Mask</span><span>{onPreset ? "Fixed value" : ""}</span><span />
         </div>
       )}
       {fields.length

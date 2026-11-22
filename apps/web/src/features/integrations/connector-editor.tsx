@@ -152,7 +152,7 @@ export function ConnectorEditor({ id }: { id: string }) {
       label: "Discard draft", destructive: true as const,
       confirm: { title: `Discard draft ${draft.version}`, description: c.published ? "The changes in this draft go. The live version keeps working." : "This connector was never published: it goes with its draft.", actionLabel: "Discard draft", onConfirm: async () => { await run("discard", "/draft/discard", undefined, "Draft discarded."); } },
     }] : []),
-    ...(c.canEdit && !c.disabled ? [{ label: "Turn off connector", onSelect: () => setTurnOff(true) }] : []),
+    ...(c.canEdit && c.published && !c.disabled ? [{ label: "Turn off connector", onSelect: () => setTurnOff(true) }] : []),
     ...(c.canEdit && c.disabled ? [{ label: "Turn on connector", busy: busy === "on", onSelect: () => void run("on", "/enable", undefined, "Connector turned on.") }] : []),
   ];
   const set = (s: ConnectorSpec) => setSpec(s);
