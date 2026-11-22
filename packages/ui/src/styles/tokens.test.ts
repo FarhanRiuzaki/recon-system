@@ -88,6 +88,14 @@ describe.each([["light", false], ["dark", true]] as const)("tokens (%s)", (name,
   it.each(MARKS)("mark %s on %s ≥ 3:1", (a, b) => {
     expect(contrast(t[a]!, t[b]!)).toBeGreaterThanOrEqual(3);
   });
+  // Separation (owner, 22 Nov: "separasinya terlalu mute, jadi nyaru semua"): hairlines and surface steps must read.
+  it("separation: a line on card and sheet ≥ 1.3:1, a strong line ≥ 1.5:1, the page behind a card ≥ 1.1:1", () => {
+    for (const s of ["card", "sheet"]) {
+      expect(contrast(t.line!, t[s]!), `line on ${s}`).toBeGreaterThanOrEqual(1.3);
+      expect(contrast(t["line-strong"]!, t[s]!), `line-strong on ${s}`).toBeGreaterThanOrEqual(1.5);
+    }
+    expect(contrast(t.bg!, t.card!), "bg behind card").toBeGreaterThanOrEqual(1.1);
+  });
   it("categorical palette: six slots in the fixed order", () => {
     expect([1, 2, 3, 4, 5, 6].map((i) => t[`chart-${i}`])).toEqual(PALETTE[name]);
   });

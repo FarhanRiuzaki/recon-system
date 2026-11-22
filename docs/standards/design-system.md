@@ -155,14 +155,14 @@ All colours are CSS custom properties in `packages/ui/src/styles/tokens.css`, ma
 
 | Token | Hex | Role | Contrast note |
 |---|---|---|---|
-| `--bg` | `#f3f3f4` | App background, sidebar | — |
+| `--bg` | `#f1f1f3` | App background, sidebar | — |
 | `--sheet` | `#ffffff` | Content sheet | — |
-| `--tray` | `#f7f7f8` | Tray, table header, segmented track, KPI group | fg-3 on tray 4.6:1 |
+| `--tray` | `#f4f4f6` | Tray, table header, segmented track, KPI group | fg-3 on tray 4.87:1 |
 | `--card` | `#ffffff` | Inner card, table rows, chart surface | — |
 | `--inset` | `#f4f4f5` | Inset well inside a card (sparkline wells, code) | fg-3 4.59:1 |
 | `--raised` | `#ffffff` | Menus, popovers, dialogs (with shadow) | — |
-| `--line` | `#ececee` | Hairlines: sheet, tray, card, row dividers, the secondary button's edge, the header's search, time range and refresh groups | non-text |
-| `--line-strong` | `#dcdce0` | Stronger hairlines: radio and switch at rest, step and timeline rails, chart baseline, a hovered card | non-text |
+| `--line` | `#dedee3` | Hairlines: sheet, tray, card, row dividers, the secondary button's edge, the header's search, time range and refresh groups | non-text, ≥ 1.3:1 on card and sheet (tokens.test.ts "separation") |
+| `--line-strong` | `#c9c9d1` | Stronger hairlines: radio and switch at rest, step and timeline rails, chart baseline, a hovered card | non-text, ≥ 1.5:1 on card and sheet |
 | `--control-border` | `#858591` | The boundary of a field: input, select, textarea, affix, number input and the combobox field (§5.12) | 3.65:1 on card (WCAG 1.4.11) |
 | `--grid` | `#ececee` | Chart gridlines (dashed) | non-text |
 | `--fg` | `#151518` | Primary text, KPI values | 18.2:1 on card |
@@ -208,8 +208,8 @@ Down ink on it 4.58:1 (dark 5.39:1), pinned by `tokens.test.ts` "text down-ink o
 | `--card` | `#1f1f23` | chart surface (validator run against it) |
 | `--inset` | `#18181b` | wells are *darker* than the card in dark |
 | `--raised` | `#26262b` | popovers + `0 0 0 1px #2c2c31` ring |
-| `--line` | `#2c2c31` | |
-| `--line-strong` | `#3a3a40` | |
+| `--line` | `#38383f` | |
+| `--line-strong` | `#4a4a52` | |
 | `--grid` | `#2c2c31` | dashed |
 | `--fg` | `#f2f2f3` | 14.7:1 on card |
 | `--fg-2` | `#a8a8b1` | 6.96:1 |
@@ -324,7 +324,7 @@ their corners are large for the height and have not been reviewed by eye.
 |---|---|---|---|
 | 0 | bg | — | — |
 | 1 | sheet, tray | 1 px `--line` | 1 px `--line` |
-| 2 | card; a secondary button; a field at rest (§5.12) | 1 px `--line` (a field: `--control-border`) + `--shadow-xs` `0 1px 2px rgb(21 21 24 / 0.04)` | 1 px line, no shadow; a card also has the inner top highlight `inset 0 1px 0 rgb(255 255 255 / 0.03)` |
+| 2 | card; a secondary button; a field at rest (§5.12) | 1 px `--line` (a field: `--control-border`) + `--shadow-xs` `0 1px 2px rgb(21 21 24 / 0.06)` | 1 px line, no shadow; a card also has the inner top highlight `inset 0 1px 0 rgb(255 255 255 / 0.03)` |
 | 2 | primary button | no shadow outside the box: the ring is its 1 px border (`--action-ring` `#0d0d0d`), the lit edge three inset shadows | ring `#d4d4d8` |
 | 3 | active segment, active nav, hovered card | `--shadow-sm` `0 1px 2px rgb(21 21 24 / 0.06), 0 1px 1px rgb(21 21 24 / 0.04)` | fill `#2c2c31` |
 | 4 | popover, menu, tooltip, dialog | `--shadow-overlay` `0 1px 2px rgb(21 21 24 / 0.06), 0 12px 32px rgb(21 21 24 / 0.12)` | `0 0 0 1px #2c2c31, 0 16px 40px rgb(0 0 0 / 0.5)` |

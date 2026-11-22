@@ -11,15 +11,15 @@
   --choice-press-scale: 0.92;
 
   /* surfaces */
-  --bg: #f3f3f4;
+  --bg: #f1f1f3;
   --sheet: #ffffff;
-  --tray: #f7f7f8;
+  --tray: #f4f4f6;
   --card: #ffffff;
   --inset: #f4f4f5;
   --raised: #ffffff;
   /* lines */
-  --line: #ececee;
-  --line-strong: #dcdce0;
+  --line: #dedee3;
+  --line-strong: #c9c9d1;
   --control-border: #858591;
   --auth-art-accent: #4f7de8;
   --grid: #ececee;
@@ -81,7 +81,7 @@
   --tip-2: #a8a8b1;
   /* elevation */
   --scrim: rgb(21 21 24 / 0.32);
-  --shadow-xs: 0 1px 2px rgb(21 21 24 / 0.04);
+  --shadow-xs: 0 1px 2px rgb(21 21 24 / 0.06);
   --shadow-sm: 0 1px 2px rgb(21 21 24 / 0.06), 0 1px 1px rgb(21 21 24 / 0.04);
   --shadow-overlay: 0 1px 2px rgb(21 21 24 / 0.06), 0 12px 32px rgb(21 21 24 / 0.12);
   --card-highlight: none;
@@ -186,8 +186,8 @@
   --card: #1f1f23;
   --inset: #18181b;
   --raised: #26262b;
-  --line: #2c2c31;
-  --line-strong: #3a3a40;
+  --line: #38383f;
+  --line-strong: #4a4a52;
   --grid: #2c2c31;
   --fg: #f2f2f3;
   --fg-2: #a8a8b1;
