@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, scopeCaption, readIn, oneCurrency } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -263,5 +263,26 @@ describe("a run history row's chips (review: Simulated + Simulation on one row)"
     expect(runRowChips({ status: "failed", mode: "simulation" }).mode).toBe("Simulation");
     expect(runRowChips({ status: "succeeded", mode: "daily" })).toEqual({ chip: { health: "healthy", label: "Done" }, mode: "Scheduled" });
     expect(runRowChips({ status: "queued", mode: "rerun" })).toEqual({ chip: { health: "unknown", label: "Queued" }, mode: "Rerun" });
+  });
+});
+
+describe("the results table's caption names its scope (audit R8)", () => {
+  it("what the tab shows, how many, and of how many records read on its dates", () => {
+    expect(scopeCaption("Pass 1", 32, "matched pairs", 18571)).toBe("Pass 1 · 32 matched pairs of 18,571 read");
+    expect(scopeCaption("Waiting", 2, "items", null)).toBe("Waiting · 2 items");
+  });
+  it("records read: both sides of each date, or unknown when a date doesn't say", () => {
+    expect(readIn([{ items: { a: 10, b: 5 } }, { items: { a: 1, b: 0 } }])).toBe(16);
+    expect(readIn([{ items: { a: 10, b: 5 } }, {}])).toBeNull();
+    expect(readIn([])).toBeNull();
+  });
+});
+
+describe("one currency on the page (§5.9: the currency column goes when every row has the same)", () => {
+  it("that currency, or null for none or several", () => {
+    expect(oneCurrency(["IDR", "IDR", null])).toBe("IDR");
+    expect(oneCurrency(["IDR", "USD"])).toBeNull();
+    expect(oneCurrency([null])).toBeNull();
+    expect(oneCurrency([])).toBeNull();
   });
 });

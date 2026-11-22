@@ -412,6 +412,20 @@ export function differenceText(evidence: unknown, ccy: string | null): string {
 
 export { amountText } from "@/lib/shared/amount";
 
+/** The results table's caption (audit R8): "Pass 1 · 32 matched pairs of 18,571 read"; without what was read when unknown. */
+export const scopeCaption = (scope: string, count: number, what: string, read: number | null) =>
+  `${scope} · ${formatNumber(count)} ${what}${read === null ? "" : ` of ${formatNumber(read)} read`}`;
+/** Records read on these dates, both sides; null when one of them doesn't say (or there are none). */
+export function readIn(days: readonly { items?: { a: number; b: number } }[]): number | null {
+  if (!days.length || days.some((d) => !d.items)) return null;
+  return days.reduce((n, d) => n + d.items!.a + d.items!.b, 0);
+}
+/** The one currency of these rows (blanks left out), or null for none or several. */
+export function oneCurrency(ccys: readonly (string | null)[]): string | null {
+  const set = new Set(ccys.filter((c): c is string => !!c));
+  return set.size === 1 ? [...set][0]! : null;
+}
+
 /** A business date of a run in the strip: groups matched and suggested, items broken by label, items waiting per side. */
 export function dayTotals(day: Pick<RunDay, "passes" | "open"> & Partial<Pick<RunDay, "breaks" | "closed">>, spec: ReconSpec) {
   let matched = 0, suggested = 0, duplicate = 0, ambiguous = 0;

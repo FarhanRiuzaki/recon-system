@@ -20,7 +20,8 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
   const at = run.finishedAt ? ` · ${formatTime(Date.parse(run.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
   const day = run.projection ? projectionText(run.projection, labels) : "";
   return (
-    <section aria-label="Run" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-card p-4 shadow-xs">
+    <section aria-label="Run" className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       <StateChip chip={chip} />
       <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
         {/* the live region is the state line only: the counts change with every poll; the counts are what stands now */}
@@ -30,9 +31,10 @@ export function RunSummary({ run, spec, labels, stalled = false, action }: { run
         {day && <span className="text-caption text-fg-3 tabular">At day close: {day}</span>}
       </div>
       {action}
-      {/* the counts as numbers to scan, not a sentence to read (owner, 22 Nov: law of Prägnanz); dimmed while it runs */}
+      </div>
+      {/* the counts as numbers to scan, in the KPI tray (audit R8; owner, 22 Nov: law of Prägnanz); dimmed while it runs */}
       {run.status !== "failed" && (
-        <StatTiles className={cn("basis-full rounded-md border-0 bg-transparent p-0", live && "opacity-60")}>
+        <StatTiles className={cn(live && "opacity-60")}>
           <StatTile label="Matched" value={formatNumber(t.matched)} caption={t.rate === null ? "Pairs and groups" : `Match rate ${rateText(t.rate)}`} />
           <StatTile label="Suggested" value={formatNumber(t.suggested)} caption="Open until someone accepts them" />
           <StatTile label="Waiting" value={formatNumber(t.waiting.a + t.waiting.b)} caption={`${formatNumber(t.waiting.a)} ${labels[0]} · ${formatNumber(t.waiting.b)} ${labels[1]}`} />
