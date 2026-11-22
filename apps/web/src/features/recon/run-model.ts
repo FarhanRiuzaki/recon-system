@@ -285,6 +285,15 @@ export type SimView = { chip: { health: "degraded" | "unknown" | "down"; label: 
 export const STOPPED_CHIP = { health: "down" as const, label: "Stopped" };
 /** A run that finished: Done is health; a simulation's result is a plain fact, a neutral chip (audit S5). */
 export const doneChip = (mode: string): Chip => (mode === "simulation" ? { slot: "neutral", label: "Simulated" } : { health: "healthy", label: "Done" });
+const MODE: Record<ReconRunDto["mode"], string> = { tick: "Scheduled", daily: "Scheduled", manual: "Manual", rerun: "Rerun", simulation: "Simulation" };
+/** A run as the state chip says it: Queued / Running, Stopped, else its finish (`doneChip`). */
+export const runChip = (r: Pick<ReconRunDto, "status" | "mode">): Chip => (isLive(r) ? { health: "unknown", label: r.status === "queued" ? "Queued" : "Running" }
+  : r.status === "failed" ? STOPPED_CHIP : doneChip(r.mode));
+/** A run history row: its state chip and its kind, the kind left out when the state says it already (Simulated). */
+export function runRowChips(r: Pick<ReconRunDto, "status" | "mode">): { chip: Chip; mode: string | null } {
+  const chip = runChip(r);
+  return { chip, mode: "slot" in chip && r.mode === "simulation" ? null : MODE[r.mode] };
+}
 export function stoppedLine(r: { mode: string; error: string | null }): string {
   return `The ${r.mode === "simulation" ? "simulation" : "run"} stopped: ${lowerFirst(r.error ?? "it ended before it finished. Run it again.")}`;
 }

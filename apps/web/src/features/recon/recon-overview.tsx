@@ -17,20 +17,16 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDto, ReconRunDto } from "@starterkit/shared/contracts/recon";
 import { StateChip } from "@/components/state-chip";
 import { api, errorText } from "@/lib/client/api";
-import type { Chip } from "@/lib/shared/categories";
 import { ENGINE_KEY } from "@/lib/shared/queries";
 import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
 import { carryText } from "./spec-model";
-import { doneChip, isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
+import { rangeText, rateText, runChip, runRowChips } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
 
-const MODE: Record<ReconRunDto["mode"], string> = { tick: "Scheduled", daily: "Scheduled", manual: "Manual", rerun: "Rerun", simulation: "Simulation" };
-const chipOf = (r: ReconRunDto): Chip => (isLive(r) ? { health: "unknown", label: r.status === "queued" ? "Queued" : "Running" }
-  : r.status === "failed" ? STOPPED_CHIP : doneChip(r.mode));
 const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
 /** Label / value rows of a card (as the source's Pull card). */
@@ -54,7 +50,7 @@ function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string
           ["Carry over", carryText(spec.carry_over_days)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
-              <StateChip chip={chipOf(last)} />
+              <StateChip chip={runChip(last)} />
               <RelativeTime at={Date.parse(last.startedAt)} touchDate={false} />
               <Link className="inline-flex items-center gap-1 text-fg underline-offset-4 hover:underline" href={reconRunHref(spaceId, id, last.id)}>Open results<Icon icon={ArrowRightIcon} size={14} /></Link>
             </span>
@@ -105,13 +101,13 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
             {first.isError && !runs.length && <li className="p-4 text-body-sm text-down-ink">Couldn&apos;t load the runs. {errorText(first.error)}</li>}
             {first.isSuccess && !runs.length && <li><EmptyState icon={LogIcon} title="No runs yet" description="Each run lists here once the schedule or someone starts one." /></li>}
             {runs.map((r) => {
-              const chip = chipOf(r);
+              const { chip, mode } = runRowChips(r);
               return (
                 <li key={r.id} className="border-b border-line last:border-b-0">
                   <Link href={reconRunHref(spaceId, id, r.id)} className="grid gap-1 px-4 py-2.5 hover:bg-tray focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary">
                     <span className="flex flex-wrap items-center gap-2">
                       <StateChip chip={chip} />
-                      <CategoryChip slot="neutral" label={MODE[r.mode]} />
+                      {mode && <CategoryChip slot="neutral" label={mode} />}
                       <span className="text-body-sm text-fg">{rangeText(r.from, r.to)}</span>
                       <span className="ml-auto font-mono text-caption text-fg-3 tabular">{at(r.startedAt)}</span>
                     </span>

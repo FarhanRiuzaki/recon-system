@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -255,3 +255,13 @@ describe("the replay a simulation starts with (owner, 22 Nov: never a date witho
   });
 });
 
+
+describe("a run history row's chips (review: Simulated + Simulation on one row)", () => {
+  it("the state chip, then its kind, unless the state already says it (a finished simulation)", () => {
+    expect(runRowChips({ status: "succeeded", mode: "simulation" })).toEqual({ chip: { slot: "neutral", label: "Simulated" }, mode: null });
+    expect(runRowChips({ status: "running", mode: "simulation" })).toEqual({ chip: { health: "unknown", label: "Running" }, mode: "Simulation" });
+    expect(runRowChips({ status: "failed", mode: "simulation" }).mode).toBe("Simulation");
+    expect(runRowChips({ status: "succeeded", mode: "daily" })).toEqual({ chip: { health: "healthy", label: "Done" }, mode: "Scheduled" });
+    expect(runRowChips({ status: "queued", mode: "rerun" })).toEqual({ chip: { health: "unknown", label: "Queued" }, mode: "Rerun" });
+  });
+});
