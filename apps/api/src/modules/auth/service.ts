@@ -144,6 +144,9 @@ async function totpOk(user: UserRow, code: string): Promise<boolean> {
   return step !== null && (await advanceTotpStep(user.id, step));
 }
 
+/** Where a user whose password an admin set lands after signing in: Security, with the password form (the web's page-guard too). */
+const OWN_PASSWORD_PAGE = "/me/security";
+
 /**
  * Sign-in step 1. Unknown login, wrong password and the wrong method for the account share one answer; an inactive
  * account is named only after the right credential. A user with 2FA gets only a challenge (10 minutes), no session.
@@ -172,7 +175,8 @@ export async function login(b: LoginBody, client: Client): Promise<{ next: strin
     await fail();
     throw new ApiError("account_inactive");
   }
-  const next = afterSignIn(b.next);
+  // a password an admin set: Security first (every other page and route waits for the user's own, password_change_required)
+  const next = user.mustChangePassword ? OWN_PASSWORD_PAGE : afterSignIn(b.next);
   if (user.twoFactorEnabled) {
     const challenge = randomToken();
     await db.transaction(async (tx) => {
@@ -236,7 +240,7 @@ export async function secondFactor(key: string | null, b: TwoFactorBody, client:
     await logAuth(tx, client, "2fa_success", method, user.email, user.id);
     return t;
   });
-  return { next: afterSignIn(b.next), token };
+  return { next: user.mustChangePassword ? OWN_PASSWORD_PAGE : afterSignIn(b.next), token };
 }
 
 /** Sign out: ends the bearer's session (`logout` entry) and/or deletes the challenge. */

@@ -198,6 +198,9 @@ describe("a password an admin set (owner, 22 Nov: the user sets their own first)
   it("allows only the account, the password change and sign-out until then; a reset sets it again", async () => {
     const admin = await signIn("admin");
     const dto = (await (await create(NEW, admin)).json()) as UserDto;
+    // signing in lands on Security, whatever page was asked for
+    const login = await call("POST", "/v1/auth/login", { body: { method: "auto", login: "new.person", password: NEW.password, next: "/recons" } });
+    expect(((await login.json()) as { next: string }).next).toBe("/me/security");
     const t = await signIn("new.person", NEW.password);
     for (const [m, path] of [["GET", "/v1/users"], ["GET", "/v1/me/sessions"], ["GET", "/v1/spaces"], ["PATCH", "/v1/me"]] as const) {
       const r = await call(m, path, { token: t, body: m === "PATCH" ? { name: "X" } : undefined });
