@@ -2,7 +2,8 @@
 
 import { arrayMove } from "@dnd-kit/sortable";
 import { Fragment, useEffect, useId, useReducer, useRef, useState } from "react";
-import { ActionMenu, CategoryChip, Combobox, type ComboOption, ConfirmActionDialog, EditorRow } from "@starterkit/ui/ds";
+import { ActionMenu, CategoryChip, Combobox, type ComboOption, EditorRow } from "@starterkit/ui/ds";
+import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { cn } from "@starterkit/ui/lib/cn";
 import { plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -228,7 +229,7 @@ export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { le
         </Button>
       )}
       {gone && removing !== null && (
-        <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setRemoving(null); }} auditFields={false} reasons={[]} destructive
+        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setRemoving(null); }} auditFields={false} reasons={[]} destructive
           title={`Remove level ${removing + 1}`} description="The level and who approves at it go from this draft. The levels after it move up."
           impact={[
             `Level ${removing + 1}${gone.name ? ` · ${gone.name}` : ""}: ${plural(gone.groups.length, "group", "groups")}`,
