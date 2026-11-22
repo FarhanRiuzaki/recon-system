@@ -217,13 +217,24 @@
                   "string",
                   "null"
                 ]
+              },
+              "connectorOff": {
+                "type": "boolean"
+              },
+              "blocked": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
               "kind",
               "workflowName",
               "levels",
-              "connector"
+              "connector",
+              "connectorOff",
+              "blocked"
             ],
             "additionalProperties": false
           }

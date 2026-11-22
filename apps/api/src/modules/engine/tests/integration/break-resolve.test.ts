@@ -117,7 +117,7 @@ describe("carry over on a break's page", () => {
   });
   it("every change kind goes to the default chain when the recon names no workflow, with nothing sent to the bank", async () => {
     const d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
-    expect(d.recon.routes).toEqual((["posting", "force_match", "write_off", "unmatch"] as const).map((kind) => ({ kind, workflowName: null, levels: 1, connector: null })));
+    expect(d.recon.routes).toEqual((["posting", "force_match", "write_off", "unmatch"] as const).map((kind) => ({ kind, workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null })));
   });
 });
 

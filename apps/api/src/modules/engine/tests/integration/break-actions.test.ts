@@ -189,8 +189,17 @@ describe("where each change goes, on the break's page", () => {
   it("the recon's default workflow per change (name, levels) and the connector its posting action calls", async () => {
     await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }]);
     const d = await detail(I.a1);
-    expect(d.recon.routes.find((r) => r.kind === "posting")).toEqual({ kind: "posting", workflowName: "Two levels", levels: 2, connector: "Bank Mega" });
-    expect(d.recon.routes.find((r) => r.kind === "write_off")).toEqual({ kind: "write_off", workflowName: null, levels: 1, connector: null });
+    expect(d.recon.routes.find((r) => r.kind === "posting")).toEqual({ kind: "posting", workflowName: "Two levels", levels: 2, connector: "Bank Mega", connectorOff: false, blocked: null });
+    expect(d.recon.routes.find((r) => r.kind === "write_off")).toEqual({ kind: "write_off", workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null });
+  });
+  it("a turned-off connector says so; a pinned workflow version that is gone keeps the kind, with why asking is refused", async () => {
+    await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }]);
+    await db.update(connectors).set({ disabledAt: new Date(), disabledReason: "Bank outage" }).where(eq(connectors.id, cid));
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({ connector: "Bank Mega", connectorOff: true, blocked: null });
+    await db.delete(workflowVersions);
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({
+      workflowName: null, blocked: "The approval setup of this recon points to a workflow version that no longer exists. Ask a config maker to fix the recon.",
+    });
   });
 });
 

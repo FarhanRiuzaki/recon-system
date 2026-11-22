@@ -7,7 +7,7 @@ const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   direction: null, ...o, signedMinor: o.signedMinor !== undefined ? o.signedMinor : o.amountMinor !== undefined ? o.amountMinor : "3607350000",
 });
 const debit = (amount: string, o: Partial<BreakItemDto> = {}) => item({ amountMinor: amount, signedMinor: `-${amount}`, direction: "debit", ...o });
-const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, ...o });
+const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null, ...o });
 const recon = (o: Partial<BreakDetailDto["recon"]> = {}): BreakDetailDto["recon"] => ({
   id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheck: { kind: "until", date: "2026-11-03" },
   routes: [route("posting", { workflowName: "Two levels", levels: 2, connector: "Bank Mega" }), route("force_match"), route("write_off"), route("unmatch")], ...o,

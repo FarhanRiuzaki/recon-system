@@ -56,7 +56,8 @@ export function groupText(g: Group, names: ReadonlyMap<string, string | null>): 
 const needText = (g: Group) => (g.need.kind === "any" ? "1 of" : g.need.kind === "all" ? "all of" : `${g.need.n} of`);
 
 type Resolved = { chain: Chain; versionId: string | null; workflow: { id: string; name: string; version: number } | null; rule: { name: string; index: number | null } };
-const MISSING = "The approval setup of this recon points to a workflow version that no longer exists. Ask a config maker to fix the recon.";
+/** Why a request is refused when its approval setup pins a workflow version that is gone. */
+export const MISSING_WORKFLOW = "The approval setup of this recon points to a workflow version that no longer exists. Ask a config maker to fix the recon.";
 /**
  * The chain an approval setup gives a change on `context`: the first rule whose condition holds, else the default
  * workflow ("Every request"), else the default chain ("Default"). A pinned version that is gone is 409.
@@ -67,7 +68,7 @@ export async function resolveChain(tx: InTx, spaceId: string, approvals: ReconAp
   const ref = i >= 0 ? w!.rules[i]!.workflow : w?.default ?? null;
   if (!ref) return { chain: DEFAULT_CHAIN, versionId: null, workflow: null, rule: { name: "Default", index: null } };
   const v = await pinnedVersion(tx, spaceId, ref);
-  if (!v) throw new ApiError("invalid_state", MISSING);
+  if (!v) throw new ApiError("invalid_state", MISSING_WORKFLOW);
   return { chain: v.spec, versionId: v.id, workflow: { id: ref.id, name: v.name, version: ref.version }, rule: i >= 0 ? { name: w!.rules[i]!.name, index: i } : { name: "Every request", index: null } };
 }
 

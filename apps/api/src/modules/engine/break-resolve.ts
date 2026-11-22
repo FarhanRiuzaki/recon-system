@@ -24,7 +24,7 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { approvalRequests, pinnedVersion, requestView } from "../approvals";
+import { approvalRequests, MISSING_WORKFLOW, pinnedVersion, requestView } from "../approvals";
 import { connectors, runsOf } from "../integrations";
 import { matchGroups, matchMembers, reconDays, reconItems } from "./schema";
 import { addDays } from "./service";
@@ -101,20 +101,20 @@ export async function liveSpec(tx: InTx, spaceId: string, configId: string): Pro
 
 /**
  * Where each change kind's request goes by default on the live spec: its default workflow (name, levels) or the
- * default chain, and the connector its first posting action calls. A pinned version that is gone leaves the kind out
- * (asking for it is refused with the reason).
+ * default chain, and the connector its first posting action calls (`connectorOff`: turned off, nothing is sent). A
+ * pinned version that is gone: `blocked` says why asking for that kind is refused.
  */
 async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Promise<BreakDetailDto["recon"]["routes"]> {
   const changes = spec?.approvals?.changes ?? {};
   const ops = TRIGGERS.map((k) => changes[k]?.actions.find((a) => a.kind === "posting")?.variants[0]?.operation.connectorId ?? null);
   const ids = [...new Set(ops.filter((x): x is string => !!x))];
-  const names = new Map(ids.length ? (await tx.select({ id: connectors.id, name: connectors.name }).from(connectors).where(inArray(connectors.id, ids))).map((c) => [c.id, c.name]) : []);
+  const found = new Map(ids.length ? (await tx.select({ id: connectors.id, name: connectors.name, off: connectors.disabledAt }).from(connectors).where(inArray(connectors.id, ids))).map((c) => [c.id, c]) : []);
   const out: BreakDetailDto["recon"]["routes"] = [];
   for (const [i, kind] of TRIGGERS.entries()) {
     const ref = changes[kind]?.workflow.default ?? null;
     const v = ref ? await pinnedVersion(tx, spaceId, ref) : null;
-    if (ref && !v) continue;
-    out.push({ kind, workflowName: v?.name ?? null, levels: (v?.spec ?? DEFAULT_CHAIN).levels.length, connector: ops[i] ? names.get(ops[i]!) ?? null : null });
+    const c = ops[i] ? found.get(ops[i]!) : undefined;
+    out.push({ kind, workflowName: v?.name ?? null, levels: (v?.spec ?? DEFAULT_CHAIN).levels.length, connector: c?.name ?? null, connectorOff: !!c?.off, blocked: ref && !v ? MISSING_WORKFLOW : null });
   }
   return out;
 }
