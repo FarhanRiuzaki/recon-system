@@ -26,7 +26,6 @@ import { ARRIVED_DATE, attrNameOf, fieldError, fieldMessage, fieldsOfColumns, lo
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
-import { FieldsStep, preloadFieldParts } from "./steps/fields";
 import {
   amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
@@ -48,6 +47,9 @@ const DESCRIPTION = (space: string) => [
 // the time someone reaches it (bundle budget, DEC-040)
 const loadReview = () => import("./steps/review").then((m) => m.ReviewStep);
 const ReviewStep = dynamic(loadReview, { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
+// Fields & mapping (step 2) the same way, with the parts it loads itself
+const loadFields = () => import("./steps/fields");
+const FieldsStep = dynamic(() => loadFields().then((m) => m.FieldsStep), { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
 /** A catalog list's failure as its state: the API's sentence, and when Retry may run again after a 429. */
 const failed = (e: unknown) => ({ status: "error" as const, message: errorText(e), retryAt: e instanceof ApiError && e.retryAfter ? Date.now() + e.retryAfter * 1000 : null });
 /** Next after a pass whose values changed since (copy-guide, REC-F2b); before any pass it is off without a sentence. */
@@ -158,7 +160,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
 }) {
   const router = useRouter();
   const qc = useQueryClient();
-  useEffect(() => { void loadReview(); void preloadFieldParts(); }, []);
+  useEffect(() => { void loadReview(); void loadFields().then((m) => m.preloadFieldParts()); }, []);
   const [d, setDraft] = useState(initial);
   const [edited, setEdited] = useState(false);
   const [done, setDone] = useState(false);
