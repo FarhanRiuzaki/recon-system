@@ -135,3 +135,11 @@ export const reconRunItems = (spaceId: string, id: string, runId: string, passes
   },
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
+
+const workflowsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/workflows` as const;
+/** A space's approval workflows, one per action (DEC-052; the approvals module). */
+export const workflowList = (spaceId: string) => ({ key: [...APPROVALS_KEY, "workflows", spaceId] as const, url: workflowsPath(spaceId) });
+/** One workflow: its live and open version, the role names and people it may name. */
+export const workflowDetail = (spaceId: string, action: string) =>
+  ({ key: [...APPROVALS_KEY, "workflows", spaceId, action] as const, url: `${workflowsPath(spaceId)}/${encodeURIComponent(action)}` as const });
+

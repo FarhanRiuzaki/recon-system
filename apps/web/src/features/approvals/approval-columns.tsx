@@ -27,6 +27,7 @@ export function approvalColumns(spaceId: string): Column<ApprovalRowDto>[] {
       </span>
     ) },
     { key: "submitter", header: "Sent by", mobile: "meta", cell: (r) => r.submitter?.name ?? <span className="text-fg-3">A removed user</span> },
+    { key: "level", header: "Level", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.level ? <span className="tabular">{r.level.at} of {r.level.of}</span> : <span className="text-fg-3">—</span>) },
     { key: "submittedAt", header: "Waiting since", sortable: true, mobile: "meta", className: "whitespace-nowrap",
       cell: (r) => (r.submittedAt ? <RelativeTime at={Date.parse(r.submittedAt)} /> : <span className="text-fg-3">—</span>) },
     { key: "decision", header: "Your decision", mobile: "meta", hideable: false, className: "min-w-56", cell: (r) => r.blocked

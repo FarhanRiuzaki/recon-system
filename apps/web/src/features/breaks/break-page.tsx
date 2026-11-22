@@ -3,7 +3,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RelativeTime, RequiredNote, Toolbar } from "@starterkit/ui/ds";
+import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RequiredNote, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -19,6 +19,7 @@ import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { CLOSE_RESOLUTIONS, RESOLUTION_NOTE_MAX } from "@starterkit/shared/recon";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { DetailNotFound } from "@/components/detail-not-found";
+import { RequestChain } from "@/components/request-chain";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
@@ -27,7 +28,7 @@ import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { amountText } from "@/lib/shared/amount";
-import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
+import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { STATE_LABEL } from "./break-columns";
@@ -46,6 +47,7 @@ const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
   unmatch: { title: "Request an unmatch", description: "Once approved, the match is undone and its breaks go back in the queue.", action: "Send for approval", placeholder: "Why the match is wrong" },
 };
 /** What approving does. */
+const REQUEST_TITLE: Record<NonNullable<BreakDetailDto["request"]>["status"], string> = { pending: "Waiting for approval", approved: "Last request · approved", rejected: "Last request · rejected", cancelled: "Last request · cancelled" };
 const DONE_TEXT: Record<RequestKind, string> = {
   force_match: "The items are matched now, by you, as force matched.",
   write_off: "The break closes now as written off.",
@@ -82,7 +84,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const mine = b.assignee?.id === user.id;
   const pending = b.state === "pending_approval";
   const canWork = open && !pending && (lead || mine);
-  const asks = !b.request && (lead || mine);
+  const asks = b.request?.status !== "pending" && (lead || mine);
 
   /** A change of the break: its answer replaces the page's copy; the queue is read again. */
   async function act(label: string, path: string, body: object, done: string) {
@@ -92,6 +94,20 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       qc.setQueryData(d.key, next);
       toast(done);
       void qc.invalidateQueries({ queryKey: ENGINE_KEY });
+    } catch (e) {
+      toast.error(errorText(e));
+      throw e;
+    } finally {
+      setBusy(null);
+    }
+  }
+  /** A decision on the break's request (approve, reject, override, cancel): then the break is read again. */
+  async function decide(how: "approve" | "reject" | "override" | "cancel", body: object, done: string) {
+    setBusy(how);
+    try {
+      await api(`/api/spaces/${encodeURIComponent(spaceId)}/approval-requests/${encodeURIComponent(b!.request!.id)}/${how}`, { method: "POST", body: JSON.stringify(body) });
+      toast(done);
+      await Promise.all([qc.invalidateQueries({ queryKey: ENGINE_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
     } catch (e) {
       toast.error(errorText(e));
       throw e;
@@ -126,17 +142,22 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       {open && !pending && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
 
       {b.request && (
-        <Panel title="Waiting for a decision" description={`${APPROVAL_KIND_LABEL[b.request.kind]} asked by ${b.request.requester?.name ?? "a removed user"}`}
-          toolbar={b.request.blocked ? undefined : <Toolbar end={<>
-            <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The break goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await act("reject", "/request/reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
-            <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve the ${APPROVAL_KIND_LABEL[b.request!.kind].toLowerCase()}`, description: DONE_TEXT[b.request!.kind], action: "Approve request", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await act("approve", "/request/approve", note ? { note } : {}, "Request approved."); setDialog(null); } })}>Approve</Button>
-          </>}>{null}</Toolbar>}>
-          <ValueRows items={[
-            ["Why", b.request.note],
-            ["Asked", <RelativeTime key="at" at={Date.parse(b.request.requestedAt)} />],
-            ...(b.request.items.length ? [["Match with", <span key="i" className="grid">{b.request.items.map((i) => <span key={i.id}>{itemLine(i, b.recon.sides)}</span>)}</span>] as const] : []),
-          ]} />
-          {b.request.blocked && <p className="px-4 pb-3 text-body-sm text-fg-3">{b.request.blocked}</p>}
+        <Panel title={REQUEST_TITLE[b.request.status]} description={`${APPROVAL_KIND_LABEL[b.request.kind]}${b.request.ruleName && b.request.ruleName !== "Default" ? ` · rule “${b.request.ruleName}”` : ""}`}
+          toolbar={b.request.status === "pending" ? <Toolbar end={<>
+            {b.request.canCancel && <Button type="button" variant="ghost" disabled={!!busy} onClick={() => void decide("cancel", {}, "Request cancelled.").catch(() => {})}>Cancel request</Button>}
+            {b.request.canOverride && <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Override the approval chain", description: "As Superadmin you approve every level left at once. Your reason is recorded with the request.", action: "Approve by override", placeholder: "Why it can't wait for the chain", onSubmit: async (reason) => { await decide("override", { reason }, "Approved by override."); setDialog(null); } })}>Override</Button>}
+            {!b.request.blocked && <>
+              <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the break goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
+              <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve level ${b.request!.currentLevel + 1} of ${b.request!.levels.length}`, description: b.request!.currentLevel + 1 < b.request!.levels.length ? "The request moves to the next level." : DONE_TEXT[b.request!.kind], action: "Approve", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await decide("approve", note ? { note } : {}, "Approved."); setDialog(null); } })}>Approve</Button>
+            </>}
+          </>}>{null}</Toolbar> : undefined}>
+          <div className="grid gap-4 p-4">
+            {b.request.status === "pending" && b.request.blocked && <p className="text-body-sm text-fg-2">{b.request.blocked}</p>}
+            {b.request.items.length > 0 && (
+              <p className="grid text-body-sm"><span className="text-fg-3">Match with</span>{b.request.items.map((i) => <span key={i.id} className="text-fg">{itemLine(i, b.recon.sides)}</span>)}</p>
+            )}
+            <RequestChain r={b.request} />
+          </div>
         </Panel>
       )}
 

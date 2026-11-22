@@ -2,7 +2,7 @@ import type { PermissionName } from "@starterkit/shared/permissions";
 import { canonicalSelection } from "@starterkit/shared/filter-selection";
 
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
-  | "today" | "breaks" | "approvals" | "recons" | "sources";
+  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows";
 export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
@@ -30,7 +30,7 @@ export type NavItem = {
   space?: SpacePage;
 };
 /** The pages every space has (/spaces/<id>/<page>). */
-export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals", "breaks"] as const;
+export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals", "breaks", "workflows"] as const;
 export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
@@ -44,6 +44,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
   { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null, space: "members" },
+  { href: "/workflows", label: "Workflows", icon: "workflows", shortcut: "G W", group: "space", perm: null, space: "workflows" },
   { href: "/users", label: "Users", icon: "users", shortcut: "G U", group: "access", perm: "user.view" },
   { href: "/roles", label: "Roles", icon: "roles", shortcut: "G R", group: "access", perm: "role.view" },
   { href: "/permissions", label: "Permissions", icon: "permissions", shortcut: "G P", group: "access", perm: "permission.view" },
