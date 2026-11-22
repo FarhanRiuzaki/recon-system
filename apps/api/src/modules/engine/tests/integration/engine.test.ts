@@ -395,6 +395,26 @@ describe("cases on records written directly", () => {
     expect((await itemsOf(r.configId)).map((i) => [i.status, i.reason, i.version])).toEqual([["closed", "Source row replaced", 1], ["open", null, 0]]);
   });
 
+  it("REC-FUT-15: a match whose record was replaced is reversed (source_changed), its items reopen, the new record pairs again", async () => {
+    const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
+    const [old] = await put(sa, [{ ref: "P", amount: 100n }]);
+    await put(sb, [{ ref: "P", amount: 100n }]);
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, exact()));
+    const first = await runRecon(probe, { ...r, mode: "manual", from: D });
+    expect(first.counters.passes).toMatchObject({ 1: { matched: 1 } });
+    // the mutable source sends the row again, changed: the old record is replaced by the new one
+    const [fresh] = await put(sa, [{ ref: "P", amount: 100n }]);
+    await db.update(records).set({ supersededBy: fresh! }).where(eq(records.id, old!));
+    const run = await runRecon(probe, { ...r, mode: "manual", from: D });
+    const groups = await db.select({ run: matchGroups.runId, by: matchGroups.reversedBy, why: matchGroups.reverseReason, at: matchGroups.reversedAt })
+      .from(matchGroups).where(eq(matchGroups.configId, r.configId)).orderBy(asc(matchGroups.createdAt));
+    // the first group reversed by the second run, the new record paired again in a new group
+    expect(groups.map((g) => [g.run === first.runId, g.by, g.why, g.at !== null])).toEqual([[true, run.runId, "source_changed", true], [false, null, null, false]]);
+    expect(run.counters).toMatchObject({ replaced: { a: 1, b: 0 }, passes: { 1: { matched: 1 } }, open: { a: 0, b: 0 } });
+    // the replaced item closed, side B's item reopened and matched again, the new record's item matched
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status, i.reason]).sort()).toEqual([["a", "closed", "Source row replaced"], ["a", "matched", null], ["b", "matched", null]]);
+  });
+
   it("empty text never matches through eq_normalized or contains", async () => {
     const [sa, sb] = [await source(A, plainSource()), await source(A, plainSource())];
     await put(sa, [{ ref: " - ", acct: "x" }, { ref: "ABC", acct: "" }]);

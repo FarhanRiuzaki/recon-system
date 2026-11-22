@@ -4,7 +4,7 @@
 import type { Filter } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
 import { records } from "../../ingest";
-import { reconItems } from "../schema";
+import { matchGroups, matchMembers, reconItems } from "../schema";
 import { fieldSql, type SideRef, type StepCtx } from "./pass";
 
 const CAST = { text: sql``, decimal: sql`::numeric`, date: sql`::date`, boolean: sql`::boolean` } as const;
@@ -46,11 +46,47 @@ export function intakeSql(c: StepCtx, s: 0 | 1, filters: readonly Filter[], date
   select (select count(*) from ins)::int as n, (select count(*) from cand)::int as scanned, (select max(seq) from cand)::text as last`;
 }
 
+/** Why the engine reverses a group: a member's record was replaced by its mutable source (spec §8, REC-FUT-15). */
+export const SOURCE_CHANGED = "source_changed";
+
+/**
+ * Reverses the engine's groups (auto, suggested; not a person's manual or forced match) in the window that hold an item
+ * of side `s` whose record no longer counts (a mutable source replaced the row, or its snapshot is no longer active):
+ * the group gets reversed_by = this run, reverse_reason source_changed and reversed_at, and every member item goes back
+ * to open (version + 1), so the record's new version can pair again; the replaced member then closes
+ * (closeReplacedSql). A group is reversed only when this statement locks all its items at the status and version read
+ * (A1): one an operator holds waits for the next run. Answers { n } groups reversed.
+ */
+export function reverseReplacedSql(c: StepCtx, s: 0 | 1): SQL {
+  const side = c.sides[s];
+  const live = (a: string) => (c.simRunId === null ? sql.raw(`${a}.sim_run_id is null`) : sql`${sql.raw(a)}.sim_run_id = ${c.simRunId}`);
+  return sql`with gone as materialized (select distinct m.group_id as id from ${reconItems} i
+      join ${matchMembers} m on m.space_id = i.space_id and m.item_id = i.id
+      join ${matchGroups} g on g.space_id = m.space_id and g.id = m.group_id
+      where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status in ('matched', 'suggested')
+        and ${live("i")} and i.business_date between ${c.lo}::date and ${c.hi}::date
+        and g.reversed_by is null and g.kind in ('auto', 'suggested') and ${live("g")}
+        and not exists (select 1 from ${records} where ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
+          and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current})),
+  lk as materialized (select i.id, i.version as v, i.status as st, i.business_date as bd, m.group_id as gid from ${reconItems} i
+      join ${matchMembers} m on m.space_id = i.space_id and m.item_id = i.id
+      where m.space_id = ${c.spaceId} and m.group_id in (select id from gone) and i.config_id = ${c.configId} and i.status in ('matched', 'suggested')
+      for update of i skip locked),
+  whole as (select lk.gid from lk group by lk.gid
+      having count(*) = (select count(*) from ${matchMembers} mm where mm.space_id = ${c.spaceId} and mm.group_id = lk.gid)),
+  rg as (update ${matchGroups} g set reversed_by = ${c.runId}::uuid, reverse_reason = ${SOURCE_CHANGED}, reversed_at = now()
+      where g.space_id = ${c.spaceId} and g.id in (select gid from whole) and g.reversed_by is null returning g.id),
+  up as (update ${reconItems} i set status = 'open', resolution = null, version = i.version + 1
+      from lk where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v
+        and lk.gid in (select id from rg) returning 1)
+  select (select count(*) from rg)::int as n, (select count(*) from up)::int as items`;
+}
+
 /**
  * Closes side `s`'s open items of the window whose record no longer counts (a mutable source replaced the row, or its
  * snapshot is no longer active): status closed, reason "Source row replaced", so they never wait or count as open.
- * Only items this statement locks (A1). TODO(Task 6 / Plan 5): a matched or suggested group whose record was replaced
- * is reversed (`reversed_by`, reason source_changed, spec §8) and its items reopened; not done here.
+ * Only items this statement locks (A1). A matched or suggested group with a replaced record was reversed just before
+ * (reverseReplacedSql), so its replaced member is open here and closes too.
  */
 export function closeReplacedSql(c: StepCtx, s: 0 | 1): SQL {
   const side = c.sides[s];

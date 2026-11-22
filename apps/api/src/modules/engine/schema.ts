@@ -189,7 +189,11 @@ export const matchGroups = pgTable("match_groups", {
   score: numeric("score"),
   businessDate: date("business_date").notNull(),
   evidence: jsonb("evidence").notNull(),
+  /** Who reversed it: the run that found a member's record replaced (reverse_reason source_changed), later an unmatch's user. */
   reversedBy: uuid("reversed_by"),
+  /** Why: `source_changed` (a mutable source replaced a member's record, spec §8, REC-FUT-15); Plan 5 adds unmatch. */
+  reverseReason: text("reverse_reason"),
+  reversedAt: timestamp("reversed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   unique("match_groups_space_id_id_key").on(t.spaceId, t.id),

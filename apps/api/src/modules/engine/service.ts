@@ -39,7 +39,7 @@ import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { matchGroups, matchMembers, reconDays, reconIntakeMarks, reconItems, reconRuns, reconSimChanges } from "./schema";
 import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./sql/breaks";
-import { closeReplacedSql, intakeSql } from "./sql/intake";
+import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
 import { acceptSql, clearProposalsSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
@@ -273,6 +273,8 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
               const [cur] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors)
                 .where(and(eq(sourceCursors.spaceId, side.sourceSpaceId), eq(sourceCursors.sourceId, side.sourceId)));
               ct = cur?.ct?.toISOString() ?? null;
+              // a group holding a replaced record is reversed first (REC-FUT-15), so its replaced member closes below
+              await one<{ n: number }>(tx, reverseReplacedSql(c(tx), s));
               counters.replaced[side.key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
             }
             // the window's dates in order, as many records as one chunk holds
