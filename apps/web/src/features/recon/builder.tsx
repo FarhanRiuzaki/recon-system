@@ -10,7 +10,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ChevronDownIcon, EditIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ChevronDownIcon, EditIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
@@ -31,7 +31,8 @@ import { DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
-import { ApprovalStep } from "./approval-step";
+// step 4 loads when it opens (first-load budget, DEC-040)
+const ApprovalStep = dynamic(() => import("./approval-step").then((m) => m.ApprovalStep), { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
 import { SpecView } from "./spec-view";
 import { saveQueue } from "./save-queue";
 import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView, type SimView } from "./run-model";
@@ -96,11 +97,11 @@ function PassExample({ spaceId, configId, runId, passNo }: { spaceId: string; co
 
 /** Add pass (owner, 22 Nov): a ready pass to start from, each saying what it does; one a side can't take says why. */
 function AddPassMenu({ fields, reason, onAdd }: { fields: Fields; reason: string | null; onAdd: (t: PassTemplate) => void }) {
-  if (reason) return <BlockedButton type="button" variant="secondary" reason={reason}>Add pass</BlockedButton>;
+  if (reason) return <BlockedButton type="button" variant="add" reason={reason}><Icon icon={AddIcon} />Add pass</BlockedButton>;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="add">Add pass<Icon icon={ChevronDownIcon} /></Button>
+        <Button type="button" variant="add"><Icon icon={AddIcon} />Add pass<Icon icon={ChevronDownIcon} /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80">
         {PASS_TEMPLATES.map((t) => {
@@ -440,6 +441,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const wizardSteps = ([1, 2, 3, 4, 5, 6] as const).map((n) => ({
     id: String(n), label: STEP_LABEL[n],
     status: (n === step ? "current" : n === 6 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
+    // a test over dates without a record ran but tested nothing: the rail says so, not a plain Complete (S5)
+    ...(n === 5 && n !== step && "health" in sim.chip && sim.chip.label === "Done" && simulation.shown ? { description: `Done · no records on ${rangeText(simulation.shown.from, simulation.shown.to)}` } : {}),
   }));
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
@@ -484,7 +487,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           <>
             {editable && gaps.length > 0 && (
               <Banner tone="error" action={<Button type="button" variant="add" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
-                onClick={() => change(addCurrencyCondition(spec, gaps))}>Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
+                onClick={() => change(addCurrencyCondition(spec, gaps))}><Icon icon={AddIcon} />Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
             {pageWarnings.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
             {spec.passes.length === 0 ? (
@@ -572,16 +575,16 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                   <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Waiting during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
-                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · unmatch checked: {carryText(spec.carry_over_days).toLowerCase()}</span>
+                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over: {carryText(spec.carry_over_days).toLowerCase()}</span>
                     </div>
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Unmatch at day close</span>
-                      <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} stay unmatch · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                      <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} stay unmatched · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
                     </div>
                     {currency && (
                       <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>
                         <span className="text-label text-down-ink">{CURRENCY_DIFFERS}</span>
-                        <span className="tabular">{currency} · break at day close</span>
+                        <span className="tabular">{currency} · unmatch at day close</span>
                       </div>
                     )}
                   </div>
@@ -611,7 +614,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
               {step === 6 && submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{step === 6 ? "Submit for approval" : `Next: ${STEP_LABEL[(step + 1) as WizardStep]}`}
             </BlockedButton>}
             back={step > 1 && <Button type="button" variant="secondary" onClick={() => go((step - 1) as WizardStep)}>Back</Button>}
-            cancel={<Button asChild variant="ghost"><Link href={exitHref}>Save and close</Link></Button>} />
+            close={<Button asChild variant="ghost"><Link href={exitHref}>Save and close</Link></Button>} />
         )}
       </form>
 

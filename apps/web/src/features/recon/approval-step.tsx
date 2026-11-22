@@ -1,11 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { Field, Panel, SectionHeading } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, EditIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, EditIcon, RemoveIcon, ShowIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
@@ -15,7 +15,7 @@ import type { LibraryRowDto, PreviewDto } from "@starterkit/shared/contracts/wor
 import { type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
-import { condDone, keptCopy, savable } from "./approval-model";
+import { approvalRow, condDone, DEFAULT_CHAIN_TEXT as DEFAULT_TEXT, keptCopy, ruleDone, savable } from "./approval-model";
 import dynamic from "next/dynamic";
 import { ConditionEditor } from "./condition-editor";
 
@@ -31,7 +31,6 @@ import type { Fields } from "./spec-model";
 type Setup = NonNullable<ReconApprovalSpec["changes"][Trigger]>;
 type Rule = Setup["workflow"]["rules"][number];
 const RULES_MAX = 20;
-const DEFAULT_TEXT = "Default · 1 of Reviewer or Space admin";
 
 /** "Version 3 is newer · Use it" beside a pin older than the workflow's live version. */
 function Newer({ pin, rows, onUse, disabled }: { pin: WorkflowRef; rows: readonly LibraryRowDto[]; onUse: (v: number) => void; disabled: boolean }) {
@@ -61,8 +60,8 @@ function WorkflowSelect({ value, rows, onChange, label, disabled, allowDefault }
   );
 }
 
-/** One change's card: who approves every request, then rules that pick another workflow in some cases. */
-function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, children }: {
+/** One change's editor, opened in place under its table row: who approves every request, rules that pick another workflow in some cases, then what is sent to the bank. */
+function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, children }: {
   kind: Trigger; recon: string; setup: Setup; onChange: (s: Setup) => void; rows: readonly LibraryRowDto[]; catalog: readonly CatalogField[]; disabled: boolean;
   /** What is sent to the bank on its approval events (stage 4). */
   children?: React.ReactNode;
@@ -73,8 +72,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
   const [open, setOpen] = useState<number | null>(null);
   const change = TRIGGER_LABEL[kind].toLowerCase();
   return (
-    <Panel title={TRIGGER_LABEL[kind]} description={`What happens when someone asks for a ${change} in ${recon}`}>
-      <div className="grid gap-6">
+      <div className="grid gap-6 rounded-lg bg-tray p-4 motion-safe:animate-enter">
         <section className="grid gap-4">
         <SectionHeading n={1} level={3} title="Who approves" description="The workflow every request goes through; rules can pick another one in some cases" />
         <div className="grid gap-1.5">
@@ -135,6 +133,61 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
           </section>
         )}
       </div>
+  );
+}
+
+/**
+ * The four changes as one table (S2): Change → Who approves → Sent to bank, each row with Edit that opens its editor in
+ * place under it (one at a time).
+ */
+function ChangesTable({ local, rows, editor, disabled }: {
+  local: ReconApprovalSpec; rows: readonly LibraryRowDto[]; editor: (k: Trigger) => React.ReactNode; disabled: boolean;
+}) {
+  const [open, setOpen] = useState<Trigger | null>(null);
+  const nameOf = (id: string) => rows.find((r) => r.id === id)?.name ?? null;
+  const CELL = "py-3 pr-4 align-top max-md:p-0";
+  return (
+    <Panel title="Who approves each change" description="Every request goes through its workflow; once approved, its actions send it to the bank">
+      <table className="w-full border-collapse text-left max-md:block">
+        <thead className="max-md:hidden">
+          <tr className="border-b border-line text-caption text-fg-3">
+            <th scope="col" className="w-40 py-2 pr-4 font-normal">Change</th>
+            <th scope="col" className="py-2 pr-4 font-normal">Who approves</th>
+            <th scope="col" className="py-2 pr-4 font-normal">Sent to bank</th>
+            <th scope="col" className="w-24 py-2 font-normal"><span className="sr-only">Edit</span></th>
+          </tr>
+        </thead>
+        <tbody className="max-md:grid">
+          {TRIGGERS.map((k) => {
+            const s = local.changes[k];
+            const r = approvalRow(s, nameOf);
+            const unfinished = (s?.workflow.rules ?? []).some((x) => !ruleDone(x));
+            const isOpen = open === k;
+            return (
+              <Fragment key={k}>
+                <tr className="border-b border-line last:border-b-0 max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:py-3">
+                  <th scope="row" className={`${CELL} text-label font-medium text-fg`}>{TRIGGER_LABEL[k]}</th>
+                  <td className={`${CELL} text-body-sm text-fg max-md:col-span-2 max-md:row-start-2`}>
+                    <span className="text-caption text-fg-3 md:hidden">Who approves: </span>{r.who}
+                    {unfinished && <span className="block text-caption text-degraded-ink">A rule is unfinished</span>}
+                  </td>
+                  <td className={`${CELL} text-body-sm text-fg max-md:col-span-2 max-md:row-start-3`}>
+                    <span className="text-caption text-fg-3 md:hidden">Sent to bank: </span>{r.bank}
+                  </td>
+                  <td className="py-2 text-right align-top max-md:col-start-2 max-md:row-start-1 max-md:p-0">
+                    <Button type="button" variant="ghost" size="sm" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : k)}>
+                      <Icon icon={isOpen ? CheckIcon : disabled ? ShowIcon : EditIcon} />{isOpen ? "Done" : disabled ? "Show" : "Edit"}<span className="sr-only"> {TRIGGER_LABEL[k].toLowerCase()}</span>
+                    </Button>
+                  </td>
+                </tr>
+                {isOpen && (
+                  <tr className="max-md:block"><td colSpan={4} className="pb-4 max-md:block">{editor(k)}</td></tr>
+                )}
+              </Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </Panel>
   );
 }
@@ -158,7 +211,7 @@ function WhoApproves({ spaceId, configId, versionId, approvals, catalog, dirty }
     } catch (e) { setRes({ error: errorText(e) }); } finally { setBusy(false); }
   }
   return (
-    <Panel title="Who approves" description="Try values to see which rule picks and who would approve">
+    <Panel title="Try who approves" description="Pick a change and enter values to see which rule picks and who would approve">
       <div className="grid gap-3">
         <Select aria-label="Change to try" value={kind} onChange={(e) => { setKind(e.target.value as Trigger); setRes(null); }}>
           {TRIGGERS.map((k) => <option key={k} value={k}>{TRIGGER_LABEL[k]}</option>)}
@@ -244,14 +297,14 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
       <div className="grid min-w-0 gap-section">
         {wf.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load the space&apos;s workflows. {errorText(wf.error)}</p>}
         {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it. The rest is saved.</p>}
-        {TRIGGERS.map((k) => (
-          <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
+        <ChangesTable local={local} rows={rows} disabled={disabled} editor={(k) => (
+          <ChangeEditor kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
             onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })}>
             <ActionsEditor kind={k} changeLabel={TRIGGER_LABEL[k]} actions={(local.changes[k] ?? empty).actions ?? []} spaceId={spaceId} configId={configId} versionId={versionId}
               catalog={actionCatalog} setup={{ accounts: local.accounts ?? [], lookups: local.lookups ?? [] }} disabled={disabled}
               onChange={(actions) => set({ ...local, changes: { ...local.changes, [k]: { ...(local.changes[k] ?? empty), actions } } })} />
-          </ChangeCard>
-        ))}
+          </ChangeEditor>
+        )} />
         <SetupTables accounts={local.accounts ?? []} lookups={local.lookups ?? []} disabled={disabled} onChange={(accounts, lookups) => set({ ...local, accounts, lookups })} />
 
       </div>

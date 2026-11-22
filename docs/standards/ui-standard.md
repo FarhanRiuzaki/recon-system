@@ -117,7 +117,7 @@ deviations are in `.superpowers/scratch/consistency/DEVIATIONS.md`.
 | Below the header | Filters rail (§1 item 4), one table panel named by its view (`All sources 13`), paging | `Tabs`: `Overview` first, `Versions`, `Activity` last; others between them | `Changes from version {n−1}` → `Settings of version {n}` → preview / simulation | Sections in dependency order (ux-form-rules 1–11) |
 | Side panel | — | Inspector of the selected item: right 340 px ≥ 1280, under the list 768–1279, bottom sheet < 768 | — | Same inspector rule (recon builder) |
 | Read-only values | Table cells | Facts and settings as text | Settings as text (a label and a value per row), **never disabled inputs** | Read-only fields use the read-only look, not disabled |
-| Footer | Table paging | — | — | Sticky, left under the fields: primary (`Create {noun}`, `Save {noun}`, `Next: {step}`), then `Back` in a wizard, then `Cancel`. An editor that saves itself has no footer; it shows `Saved` / `Saving…` / `Not saved · Retry` in the header description |
+| Footer | Table paging | — | — | Sticky, left under the fields: `Back` in a wizard, then the primary (`Create {noun}`, `Save {noun}`, `Next: {step}`), then `Cancel`; a wizard that saves its draft ends with `Save and close` (ghost) on the right edge instead (`FormFooter close`). An editor that saves itself has no footer; it shows `Saved` / `Saving…` / `Not saved · Retry` in the header description |
 
 A new plan (Plan 4 Today and Live day, Plan 5 Breaks, Approvals and Explain) picks one of these types per screen in its
 first Figma frame and names the type in its spec; a screen that needs something else is decided by Captain before

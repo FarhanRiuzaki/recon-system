@@ -315,6 +315,8 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   }
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;
   const at = shown.finishedAt ? ` · ${formatTime(Date.parse(shown.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
+  // finished over dates without a record: it ran, but tested nothing (S5)
+  if (!items) return { chip: { health: "degraded", label: "Done" }, line: `No records on ${rangeText(shown.from, shown.to)} · ${draft}${at}`, counts: shown, dim: false };
   return { chip: { slot: "neutral", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
 }
 

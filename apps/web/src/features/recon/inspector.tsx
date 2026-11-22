@@ -6,14 +6,14 @@ import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } 
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ChevronDownIcon, CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ChevronDownIcon, CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, clockOf, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -106,7 +106,7 @@ function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: 
         </div>
       ))}
       {rows.map(([code, v]) => (left.has(code) ? <PlaceError key={code} id={`${id}-${code}-error`} text={toleranceProblem(v, code)} /> : null))}
-      {free.length > 0 && <span><Button type="button" variant="add" size="sm" onClick={add}>Add currency</Button></span>}
+      {free.length > 0 && <span><Button type="button" variant="add" size="sm" onClick={add}><Icon icon={AddIcon} />Add currency</Button></span>}
     </div>
   );
 }
@@ -198,8 +198,8 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           </PairRow>
         ))}
           <div className="flex flex-wrap items-center gap-2">
-            <BlockedButton type="button" variant="ghost" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
-              onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}>Add condition</BlockedButton>
+            <BlockedButton type="button" variant="add" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
+              onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}><Icon icon={AddIcon} />Add condition</BlockedButton>
             {/* the fields both sides hold that no condition uses yet: one click adds "the same on both sides" */}
             {p.predicates.length < 20 && moreFields.map((f) => <Suggest key={f} onUse={() => addCondition(f)}>+ {keysText([f])}</Suggest>)}
           </div>
@@ -219,7 +219,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
       <Step n={5} label="If more than one item fits" required htmlFor={id("ambiguous")}>
         <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} aria-required className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
           {!group && <option value="suggest">Suggest them for review</option>}
-          <option value="break">Leave them unmatch</option>
+          <option value="break">Leave them unmatched</option>
         </Select>
       </Step>
 
@@ -246,8 +246,8 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           </PairRow>
         ))}
           <div className="flex flex-wrap items-center gap-2">
-            <BlockedButton type="button" variant="ghost" size="sm" reason={p.blocking.length >= 5 ? "A pass compares by at most 5 fields." : null}
-              onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}>Add field</BlockedButton>
+            <BlockedButton type="button" variant="add" size="sm" reason={p.blocking.length >= 5 ? "A pass compares by at most 5 fields." : null}
+              onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}><Icon icon={AddIcon} />Add field</BlockedButton>
           </div>
         </fieldset>
       </details>
@@ -309,8 +309,8 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
               onBlur={(e) => setFilter(j, { ...f, values: splitValues(e.target.value) })} />}
           </PairRow>
         ))}
-        <span><BlockedButton type="button" variant="ghost" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
-          onClick={() => onChange({ ...s, filter: [...s.filter, { field: refs[0]!, op: "eq", value: "" }] })}>Add filter</BlockedButton></span>
+        <span><BlockedButton type="button" variant="add" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
+          onClick={() => onChange({ ...s, filter: [...s.filter, { field: refs[0]!, op: "eq", value: "" }] })}><Icon icon={AddIcon} />Add filter</BlockedButton></span>
       </fieldset>
     </div>
   );
@@ -328,25 +328,26 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
           onChange={(kind) => onChange({ ...spec, schedule: kind === "daily" ? { kind, at: "06:00", business_date_offset: 1 } : { kind, every_minutes: 15 } })} />
         <PlaceError text={err("Schedule")} />
       </div>
-      {s.kind === "daily" ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field id="rs-at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} required>
-            <Input id="rs-at" type="time" value={s.at} onChange={(e) => onChange({ ...spec, schedule: { ...s, at: e.target.value } })} />
+      {/* two equal columns (S4): when it runs | when the day closes, then grace | carry over; numbers and times keep
+          their own short widths inside them */}
+      <div className="grid items-start gap-4 sm:grid-cols-2">
+        {s.kind === "daily" ? (
+          <div className="grid gap-4">
+            <ClockField id="rs-at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} value={s.at} onChange={(at) => onChange({ ...spec, schedule: { ...s, at } })} />
+            <Field id="rs-offset" label="Business date" required>
+              <Select id="rs-offset" value={s.business_date_offset} className="w-full max-w-60" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
+              </Select>
+            </Field>
+          </div>
+        ) : (
+          <Field id="rs-every" label="Every (minutes)" required>
+            <NumberInput id="rs-every" label="Minutes between runs" min={1} max={1440} className="max-w-32" value={s.every_minutes} onValueChange={(m) => onChange({ ...spec, schedule: { ...s, every_minutes: m === "" ? 1 : m } })} />
           </Field>
-          <Field id="rs-offset" label="Business date" required>
-            <Select id="rs-offset" value={s.business_date_offset} className="w-full" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
-              {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
-            </Select>
-          </Field>
-        </div>
-      ) : (
-        <Field id="rs-every" label="Every (minutes)" required>
-          <NumberInput id="rs-every" label="Minutes between runs" min={1} max={1440} value={s.every_minutes} onValueChange={(m) => onChange({ ...spec, schedule: { ...s, every_minutes: m === "" ? 1 : m } })} />
-        </Field>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2">
+        )}
+        <ClockField id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} value={spec.close_at} error={err("Close time")} onChange={(close_at) => onChange({ ...spec, close_at })} />
         <Field id="rs-grace" label="Grace (minutes)" required error={err("Grace")}>
-          <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
+          <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} className="max-w-32" value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
         </Field>
         {/* owner, 22 Nov: unmatch is data still moving (late data); some recons check it on its day only, some up to
             day + N, some on every run until it matches */}
@@ -359,14 +360,30 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
               <option value="always">Always, until matched or closed</option>
             </Select>
             {spec.carry_over_days !== null && spec.carry_over_days > 0 && (
-              <NumberInput id="rs-carry-days" label="Days after its own day" min={1} max={31} value={spec.carry_over_days} onValueChange={(d) => onChange({ ...spec, carry_over_days: d === "" ? 1 : d })} />
+              <NumberInput id="rs-carry-days" label="Days after its own day" min={1} max={31} className="max-w-32" value={spec.carry_over_days} onValueChange={(d) => onChange({ ...spec, carry_over_days: d === "" ? 1 : d })} />
             )}
           </span>
         </Field>
       </div>
-      <Field id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} required error={err("Close time")}>
-        <Input id="rs-close" type="time" value={spec.close_at} onChange={(e) => onChange({ ...spec, close_at: e.target.value })} />
-      </Field>
     </div>
+  );
+}
+
+/**
+ * A time of day as text, always shown 23:00 (the browser's time input shows "23.00" in some locales): what is typed
+ * stays on screen and reaches the spec once it reads as a time (`clockOf`); a value it can't read says so on leaving.
+ */
+function ClockField({ id, label, value, error, onChange }: { id: string; label: string; value: string; error?: string | null; onChange: (v: string) => void }) {
+  const [text, setText] = useState(value);
+  const [seen, setSeen] = useState(value);
+  const [bad, setBad] = useState(false);
+  // a value set from outside (undo, a reload) replaces what is typed
+  if (value !== seen) { setSeen(value); if (clockOf(text) !== value) setText(value); }
+  return (
+    <Field id={id} label={label} required error={error ?? (bad ? "Enter a time as HH:MM, such as 23:00." : null)}>
+      <Input id={id} value={text} inputMode="numeric" autoComplete="off" maxLength={5} placeholder="23:00" className="max-w-40 font-mono tabular"
+        onChange={(e) => { setText(e.target.value); setBad(false); const c = clockOf(e.target.value); if (c && c !== value) onChange(c); }}
+        onBlur={() => { const c = clockOf(text); if (c) setText(c); else setBad(true); }} />
+    </Field>
   );
 }

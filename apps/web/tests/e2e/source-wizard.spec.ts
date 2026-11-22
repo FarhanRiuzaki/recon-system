@@ -83,7 +83,7 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await expect(page).toHaveURL(/\/sources\/new\?step=1$/);
   await expect(page.getByRole("heading", { level: 1, name: "New source" })).toBeVisible();
   // REC-F2b: Next is off with no sentence until the folder is checked
-  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
+  await expect(next(page, "Next: fields and mapping")).toBeDisabled();
 
   await page.getByRole("textbox", { name: "Name", exact: true }).fill("KSEI ACT e2e");
   // the code follows the name until Edit
@@ -100,14 +100,14 @@ test("a file inbox source, KSEI-like: test the folder, read a sample, type the c
   await expect(page.getByRole("status").filter({ hasText: "Folder readable" })).toHaveText(/^Folder readable · 2 files match act\*\.txt · newest act2026110[23]\.txt$/);
   // a pass counts only for the values checked
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(`${folder}/`);
-  await blockedWith(page, "Next: fields & mapping", "The folder changed since the last check. Check it again.");
+  await blockedWith(page, "Next: fields and mapping", "The folder changed since the last check. Check it again.");
   await page.getByRole("textbox", { name: "Folder", exact: true }).fill(folder);
   // the test stored nothing: the source is made at Next
   expect((await (await page.request.get(`/api/spaces/${ids.fico}/sources?q=ksei-act-${RUN}`)).json() as { total: number }).total).toBe(0);
-  await next(page, "Next: fields & mapping").click();
+  await next(page, "Next: fields and mapping").click();
 
   await expect(page).toHaveURL(/step=2$/);
-  await expect(page.getByRole("heading", { level: 2, name: /Fields & mapping/ })).toBeFocused();
+  await expect(page.getByRole("heading", { level: 2, name: /Fields and mapping/ })).toBeFocused();
   await page.getByRole("textbox", { name: "Sample", exact: true }).fill(KSEI);
   await page.getByRole("textbox", { name: "File name", exact: true }).fill("act20261102.txt");
   await page.getByRole("button", { name: "Read the sample" }).click();
@@ -176,7 +176,7 @@ test("a PostgreSQL watermark source: a failed test, then a pass without a databa
   await page.getByLabel("Password", { exact: true }).press("Enter");
   await expect(page.getByText("Database recon_no_such_db wasn't found. Check the name.")).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Database", exact: true })).toBeFocused();
-  await expect(next(page, "Next: fields & mapping")).toBeDisabled();
+  await expect(next(page, "Next: fields and mapping")).toBeDisabled();
   // REC-F2a: no database typed, the connect runs on `postgres`; Server folds into one line and Database is a list
   await page.getByRole("textbox", { name: "Database", exact: true }).fill("");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
@@ -202,12 +202,12 @@ test("a PostgreSQL watermark source: a failed test, then a pass without a databa
   await txn.click();
   await expect(table).toHaveAccessibleName(`Table: ${SRC_TABLE}`);
   await expect(page.getByText("5 columns read.")).toBeVisible();
-  await next(page, "Next: fields & mapping").click();
+  await next(page, "Next: fields and mapping").click();
   const code = page.getByRole("textbox", { name: "Code", exact: true });
   await expect(code).toBeFocused();
   await expect(page.getByText("Another source in this space already has this code. Use a different one.")).toBeVisible();
   await code.fill(`bifast-${RUN}`);
-  await next(page, "Next: fields & mapping").click();
+  await next(page, "Next: fields and mapping").click();
 
   // step 2: the columns read through the stored connection; the watermark and id come suggested (NOT NULL; the id a
   // primary key), and the picker still refuses a column that can be empty
@@ -335,8 +335,8 @@ test("a source admin's sent-back version opens in the wizard; a draft source nob
   await page.getByRole("button", { name: "Check folder" }).click();
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).fill("act*.txt");
   await page.getByRole("textbox", { name: "File name pattern", exact: true }).press("Enter");
-  await expect(next(page, "Next: fields & mapping")).toBeEnabled();
-  await next(page, "Next: fields & mapping").click();
+  await expect(next(page, "Next: fields and mapping")).toBeEnabled();
+  await next(page, "Next: fields and mapping").click();
   await expect(page).toHaveURL(/step=2$/);
   await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Delete draft source", exact: true }).click();

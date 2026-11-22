@@ -126,7 +126,7 @@ describe("checkReconSpec", () => {
     expect(settle({ blocking: [] }).errors).toEqual(["Pass 4: A 1:N or N:1 pass groups records by a matching key. Add one, such as a settlement reference."]);
     expect(settle({ predicates: [{ op: "eq", field: "currency" }] }).errors).toEqual(["Pass 4: A 1:N or N:1 pass needs one group sum condition."]);
     // phase 1: a group pass matches automatically or raises breaks, never suggests (Plan 3 Task 2 review, I4)
-    const only = ["Pass 4 groups several items; it can only match automatically or raise breaks in this release."];
+    const only = ["Pass 4 groups several items; it can only match automatically or leave them unmatched in this release."];
     expect(settle({ accept: "suggest" }).errors).toEqual(only);
     expect(settle({ on_ambiguous: "suggest" }).errors).toEqual(only);
     // a group across days is held to carry over as a pair is

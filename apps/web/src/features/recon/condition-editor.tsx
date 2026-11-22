@@ -3,7 +3,7 @@
 import { Combobox } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CloseIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { type CatalogField, type Clause, type Condition, LIST_OPS, NO_VALUE_OPS, OP_TEXT, type Op, OPS_BY_KIND } from "@starterkit/shared/conditions";
@@ -70,7 +70,7 @@ export function ConditionEditor({ value, onChange, catalog, disabled, label }: {
         ? <ClauseRow key={i} n={i + 1} c={p} catalog={catalog} disabled={disabled} onChange={(c) => set(parts.map((x, j) => (j === i ? c : x)))} onRemove={() => set(parts.filter((_, j) => j !== i))} />
         : <span key={i} className="text-body-sm text-fg-3">A nested group of conditions (kept as it is)</span>)}
       {!disabled && parts.length < CLAUSES_MAX && (
-        <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => set([...parts, { field: "", op: "eq", value: "" }])}>Add a condition</Button>
+        <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => set([...parts, { field: "", op: "eq", value: "" }])}><Icon icon={AddIcon} />Add a condition</Button>
       )}
     </fieldset>
   );

@@ -62,10 +62,8 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
                 return (
                   <li key={j} className="grid gap-x-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
                     <span className="text-body-sm text-fg">{c.field}</span>
-                    <span className="min-w-0 text-body-sm text-fg-2">
-                      {c.rule}
-                      <span className="ml-2 font-mono text-caption wrap-anywhere text-fg-3">{c.columns}</span>
-                    </span>
+                    {/* the rule only: the sources' column names are machine values (P10) */}
+                    <span className="min-w-0 text-body-sm text-fg-2">{c.rule}</span>
                   </li>
                 );
               })}
@@ -74,7 +72,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
           <Row label="Then">
             <span className="text-body-sm text-fg-2">
               <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
-              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit stay unmatch" : "several that fit are suggested"}
+              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit are left unmatched" : "several that fit are suggested"}
             </span>
           </Row>
           <Row label="Compares">

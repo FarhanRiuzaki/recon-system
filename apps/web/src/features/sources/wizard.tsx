@@ -35,8 +35,8 @@ import {
   EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, newVersionHref, versionHref,
 } from "./use-sources";
 
-const STEPS = ["Connection", "Fields & mapping", "Review & submit"] as const;
-const NEXT = ["Next: fields & mapping", "Next: review", "Submit for approval"] as const;
+const STEPS = ["Connection", "Fields and mapping", "Review and submit"] as const;
+const NEXT = ["Next: fields and mapping", "Next: review", "Submit for approval"] as const;
 const DESCRIPTION = (space: string) => [
   `Recons in ${space} read from this source.`,
   "Check what was detected, fix types and formats, and say which columns the recon uses. The preview updates as you change things.",
@@ -47,7 +47,7 @@ const DESCRIPTION = (space: string) => [
 // the time someone reaches it (bundle budget, DEC-040)
 const loadReview = () => import("./steps/review").then((m) => m.ReviewStep);
 const ReviewStep = dynamic(loadReview, { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
-// Fields & mapping (step 2) the same way, with the parts it loads itself
+// Fields and mapping (step 2) the same way, with the parts it loads itself
 const loadFields = () => import("./steps/fields");
 const FieldsStep = dynamic(() => loadFields().then((m) => m.FieldsStep), { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
 /** A catalog list's failure as its state: the API's sentence, and when Retry may run again after a 429. */
@@ -573,7 +573,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId, businessDate]);
 
   useEffect(() => {
-    // Review & submit opened directly (a reload there): its Preview check needs one preview
+    // Review and submit opened directly (a reload there): its Preview check needs one preview
     if (step !== 2 || file || !autoPreview.current || !previewable || !ids) return;
     autoPreview.current = false;
     void runPreview();
@@ -738,7 +738,10 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               {(busy === "next" || busy === "submit" || (step === 0 && busy === "columns")) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{NEXT[step]}
             </BlockedButton>}
             back={step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
-            cancel={<Button asChild variant="ghost"><Link href={source ? sourceHref(spaceId, source.s.id) : sourcesHref(spaceId)} onClick={source ? undefined : dropNew}>Cancel</Link></Button>} />
+            close={ids
+              // the draft exists and saves itself (autosave below); before that nothing is made yet, so it is Cancel
+              ? <Button asChild variant="ghost"><Link href={sourceHref(spaceId, ids.sourceId)}>Save and close</Link></Button>
+              : <Button asChild variant="ghost"><Link href={sourcesHref(spaceId)} onClick={dropNew}>Cancel</Link></Button>} />
         </form>
       </Wizard>
       {guard.leaving && (

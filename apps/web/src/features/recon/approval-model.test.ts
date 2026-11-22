@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalChanges, keptCopy, savable } from "./approval-model";
+import { approvalChanges, approvalRow, keptCopy, savable } from "./approval-model";
 import { stepReasons } from "./spec-model";
 
 const W = { id: "0190f5a0-0000-7000-8000-00000000000a", version: 1 };
@@ -47,5 +47,20 @@ describe("the workflow part never drops the rest of the setup (stage 4)", () => 
       changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [action] }, write_off: { workflow: { default: null, rules: [] }, actions: [] } } };
     expect(savable(a).approvals).toEqual({ accounts: a.accounts, lookups: a.lookups, changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [action] } } });
     expect(savable({ accounts: [], lookups: [], changes: {} }).approvals).toBeUndefined();
+  });
+});
+
+describe("the Approval step's table row", () => {
+  const names = (id: string) => (id === W.id ? "Two checkers" : null);
+  it("says who approves: the default chain, a picked workflow, and how many rules pick another", () => {
+    expect(approvalRow(undefined, names)).toEqual({ who: "Default · 1 of Reviewer or Space admin", bank: "Nothing" });
+    expect(approvalRow({ workflow: { default: W, rules: [] } }, names).who).toBe("Two checkers");
+    expect(approvalRow({ workflow: { default: W, rules: [done, open] } }, names).who).toBe("Two checkers · 2 rules for some cases");
+    expect(approvalRow({ workflow: { default: null, rules: [done] } }, names).who).toBe("Default · 1 of Reviewer or Space admin · 1 rule for some cases");
+    expect(approvalRow({ workflow: { default: { id: "gone", version: 1 }, rules: [] } }, names).who).toBe("A workflow no longer available");
+  });
+  it("says what is sent to the bank: the actions by name, or Nothing", () => {
+    const post = { name: "Post to GL", kind: "posting" as const, on: { event: "approved" as const }, variants: [] };
+    expect(approvalRow({ workflow: { default: null, rules: [] }, actions: [post, { ...post, name: " " }] }, names).bank).toBe("Post to GL, An action without a name");
   });
 });

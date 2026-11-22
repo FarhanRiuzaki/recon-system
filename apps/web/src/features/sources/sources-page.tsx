@@ -47,6 +47,8 @@ export function SourcesPage({ spaceId }: { spaceId: string }) {
     <div className="grid gap-section">
       <PageHeader title="Sources" actions={add}
         description="The sources the recons of this space read." />
+      {/* the KPI tray inside the filter surface: one width with the list under it (SO1) */}
+      <FilterSurface>
       <Reveal loading={!summary} skeleton={<StatTiles><StatTileSkeletons count={4} /></StatTiles>}>
         {summary && (
           <StatTiles>
@@ -57,7 +59,6 @@ export function SourcesPage({ spaceId }: { spaceId: string }) {
           </StatTiles>
         )}
       </Reveal>
-      <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the sources; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
       <FilterLayout busy={t.paging.busy} values={{ q: t.state.q, state: t.state.state }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}

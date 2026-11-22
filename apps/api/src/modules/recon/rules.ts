@@ -114,7 +114,7 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
       if (q.op === "eq_sum" && p.cardinality === "1:1") at(place, "A group sum needs a 1:N or N:1 pass.");
     });
     if (p.cardinality !== "1:1") {
-      if (p.accept === "suggest" || p.on_ambiguous === "suggest") errors.push(`Pass ${p.no} groups several items; it can only match automatically or raise breaks in this release.`);
+      if (p.accept === "suggest" || p.on_ambiguous === "suggest") errors.push(`Pass ${p.no} groups several items; it can only match automatically or leave them unmatched in this release.`);
       if (!p.blocking.length) at(pass, "A 1:N or N:1 pass groups records by a matching key. Add one, such as a settlement reference.");
       if (p.predicates.filter((q) => q.op === "eq_sum").length !== 1) at(pass, "A 1:N or N:1 pass needs one group sum condition.");
     }

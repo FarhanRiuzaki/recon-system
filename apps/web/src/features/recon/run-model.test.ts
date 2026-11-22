@@ -88,6 +88,9 @@ describe("run-model", () => {
     // a simulation that finished is a fact, not health: a neutral chip (audit P4), never Healthy green
     expect(s.chip).toEqual({ slot: "neutral", label: "Simulated" });
     expect(s.line).toBe("Draft v1 · 2–5 Nov 2026 · 2,000 items · 14:22 WIB");
+    // a simulation over dates without a record finished but proved nothing: degraded, never a plain Simulated (S5)
+    const none = { ...run, counters: { ...run.counters, intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 } } };
+    expect(simView(v, none, none, false)).toMatchObject({ chip: { health: "degraded", label: "Done" }, line: "No records on 2–5 Nov 2026 · Draft v1 · 14:22 WIB" });
     expect(simView(v, { ...run, status: "running" as const }, run, false)).toMatchObject({ chip: { label: "Running" }, dim: true, counts: run });
     expect(simView(v, run, run, true)).toMatchObject({ chip: { label: "Out of date" }, line: "The draft changed after the last simulation", dim: true });
     expect(simView({ ...v, matchingHash: "h2" }, run, run, false).chip.label).toBe("Out of date");

@@ -76,7 +76,7 @@ export const plain = ({ id, side, businessDate, status, reason, ref, amountMinor
 export async function breakOf(tx: InTx, spaceId: string, id: string) {
   const [x] = await tx.select().from(reconItems)
     .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, id), isNull(reconItems.simRunId), or(eq(reconItems.status, "break"), sql`${reconItems.breakReason} is not null`)));
-  if (!x) throw notFound("break");
+  if (!x) throw notFound("unmatch item");
   return x;
 }
 /** The config's published spec (its side labels, signs) and version id. */
