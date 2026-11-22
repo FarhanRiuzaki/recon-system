@@ -5,6 +5,7 @@ import { seedDemo } from "../../src/db/seed/demo";
 import { seedSystem } from "../../src/db/seed/system";
 import { db } from "../../src/kernel/db";
 import { createSession, verifyPassword } from "../../src/modules/auth";
+import { roles, userRoles } from "../../src/modules/rbac";
 import { users } from "../../src/modules/users";
 import { truncateAll } from "./db";
 
@@ -46,4 +47,17 @@ export async function signIn(login: string, password = "Password123!"): Promise<
   if (!u || !(await verifyPassword(password, u.passwordHash))) throw new Error(`signIn: wrong login or password for ${login}`);
   const s = await db.transaction((tx) => createSession(tx, { userId: u.id, method: "password", client: { ip: "127.0.0.1", ua: "bun test" } }));
   return s.token;
+}
+
+/**
+ * A session of a platform admin: a user holding the global role Admin (space.view, space.manage) and no role in any
+ * space, so no access to space data. Not a Superadmin, who opens every space (isSuperadmin, owner rule 22 Nov).
+ */
+export async function platformAdmin(): Promise<string> {
+  const [admin] = await db.select({ hash: users.passwordHash }).from(users).where(eq(users.username, "admin"));
+  const id = Bun.randomUUIDv7();
+  await db.insert(users).values({ id, name: "Platform Admin", username: "platform", email: "platform@example.com", passwordHash: admin!.hash });
+  const [role] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, "Admin"));
+  await db.insert(userRoles).values({ userId: id, roleId: role!.id });
+  return signIn("platform");
 }

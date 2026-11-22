@@ -4,7 +4,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceCandidateDto, SpaceMemberDto, SpaceRowDto, UserSpaceDto } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { and, asc, eq, inArray } from "drizzle-orm";
-import { api, call, request, resetData, signIn } from "../../../../../test/helpers/app";
+import { api, call, platformAdmin, request, resetData, signIn } from "../../../../../test/helpers/app";
 import { holdTx, lockWaiters } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
 import { xactLock } from "../../../../kernel/locks";
@@ -36,7 +36,7 @@ beforeEach(async () => {
   await db.delete(spaces); // the demo spaces: these tests make their own (members go with them)
   A = await space("treasury", "Treasury");
   B = await space("ctop", "CTOP");
-  sa = await signIn("superadmin");
+  sa = await platformAdmin(); // space.manage, no space role, not a Superadmin (a Superadmin opens every space: own tests below)
 });
 
 const get = (path: string, token?: string) => call("GET", path, { token });
@@ -429,5 +429,16 @@ describe("the space guard: roles without a row lock, archived spaces", () => {
     expect((await put(A, await idOf("google"), { roles: ["viewer"] }, t)).status).toBe(200);
     expect((await call("PATCH", `/v1/spaces/${A}`, { token: t, body: { status: "active" } })).status).toBe(200);
     expect((await go("POST", t)).status).toBe(200);
+  });
+});
+
+describe("a Superadmin (owner rule, 22 Nov: does everything, opens everything)", () => {
+  it("lists every space with every role, opens one's data without being a member; a space that doesn't exist is 403", async () => {
+    const su = await signIn("superadmin");
+    expect(await listCodes(su)).toEqual([["ctop", [...SPACE_ROLES]], ["treasury", [...SPACE_ROLES]]]);
+    expect(((await (await get(`/v1/spaces/${A}`, su)).json()) as SpaceRowDto).roles).toEqual([...SPACE_ROLES]);
+    expect((await get(`/v1/spaces/${A}/recons`, su)).status).toBe(200);
+    expect((await get(`/v1/spaces/${A}/sources`, su)).status).toBe(200);
+    expect((await get(`/v1/spaces/${Bun.randomUUIDv7()}/recons`, su)).status).toBe(403);
   });
 });

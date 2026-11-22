@@ -118,9 +118,10 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   share a working tree or an index. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
   Start: `COMPOSE_PROJECT_NAME=recon-dev docker compose -f ../recon-preview/docker-compose.dev.yml up -d` (first start
   installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed
-  gives that user the space Treasury as space admin, source admin and config maker. A second user, `checker` / `Password123!`, is config
-  checker in Treasury and approves source and recon versions superadmin makes (maker ≠ checker); it exists only on the
-  dev stack (`LOCAL_CHECKER_PASSWORD`), never in a release build. A source database on the host is
+  gives that user the space Treasury as space admin, source admin and config maker. A Superadmin opens every space and may approve
+  their own versions (owner rule, 22 Nov). The default `maker` / `Password123!` (source admin + config maker in Treasury)
+  and `approver` / `Password123!` (config checker in Treasury) show the maker-checker flow; they exist only where
+  `SEED_MAKER_PASSWORD` / `SEED_APPROVER_PASSWORD` are set (the dev stack sets both). A source database on the host is
   `host.docker.internal`; on Docker Desktop its first connect occasionally stalls for seconds (dev-environment issue, not the source): the connector retries a connect timeout once.
 - **Release check: `docker-compose.yml`** — production images; code changes need a rebuild:
   `docker compose --env-file .env.compose up -d --build` (port from `WEB_PORT`, project from `COMPOSE_PROJECT_NAME`).

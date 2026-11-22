@@ -45,8 +45,9 @@ export function activitySentence(e: Entry): string {
 }
 
 /** Why the viewer can't approve or reject this version, or null (maker ≠ checker, spec §11). */
-export function reviewReason(v: { status: string; submitterId: string | null; makerId: string | null; contributorIds: string[] }, me: string, checker: boolean, act: "approve" | "reject"): string | null {
+export function reviewReason(v: { status: string; submitterId: string | null; makerId: string | null; contributorIds: string[] }, me: string, checker: boolean, act: "approve" | "reject", superadmin = false): string | null {
   if (v.status !== "in_review") return "This version is no longer waiting for approval.";
+  if (superadmin) return null; // a Superadmin decides anything, their own too (owner rule, 22 Nov)
   if (v.submitterId === me) return `You sent this version for approval. Another config checker ${act}s it.`;
   if (v.makerId === me || v.contributorIds.includes(me)) return `You worked on this version. A config checker who didn't work on it ${act}s it.`;
   if (!checker) return `Only a config checker of this space ${act}s recon versions.`;

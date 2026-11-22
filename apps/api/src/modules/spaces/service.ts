@@ -6,6 +6,7 @@ import type {
   SpaceRowDto, SpaceStatus, UpdateSpaceBody, UserSpaceDto, UserSpaceListQuery,
 } from "@starterkit/shared/contracts/spaces";
 import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, eq, exists, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db, type InTx, type Tx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
@@ -69,22 +70,24 @@ const inOrder = (roles: readonly string[] | null): SpaceRole[] => SPACE_ROLES.fi
 
 /**
  * One page of spaces (GET /v1/spaces) with the caller's roles in each: the spaces they are a member of, or every space
- * with `space.view` (a space without a role still gives no access to its data). Name A–Z unless `sort` says otherwise.
+ * with `space.view` (a space without a role still gives no access to its data). A Superadmin sees every space with
+ * every role (isSuperadmin). Name A–Z unless `sort` says otherwise.
  */
 export function spacePage(ctx: Ctx, q: SpaceListQuery): Promise<Page<SpaceRowDto>> {
   const mine = db.select({ spaceId: spaceMembers.spaceId, roles: sql<string[]>`array_agg(${spaceMembers.role})`.as("roles") })
     .from(spaceMembers).where(eq(spaceMembers.userId, ctx.user.id)).groupBy(spaceMembers.spaceId).as("mine");
   const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
+  const all = isSuperadmin(ctx.user.roles);
   const where = and(
     like ? or(ilike(spaces.code, like), ilike(spaces.name, like)) : undefined,
-    ctx.perms.has("space.view") ? undefined : isNotNull(mine.spaceId),
+    all || ctx.perms.has("space.view") ? undefined : isNotNull(mine.spaceId),
   );
   return pageQuery({
     rows: db.select({ s: spaces, roles: mine.roles }).from(spaces).leftJoin(mine, eq(mine.spaceId, spaces.id)).where(where).$dynamic(),
     count: db.select(one).from(spaces).leftJoin(mine, eq(mine.spaceId, spaces.id)).where(where).$dynamic(),
     orderBy: sortSql(q.sort, { name: sql`lower(${spaces.name})`, createdAt: spaces.createdAt }, "name", spaces.id),
     query: q,
-    map: (r) => ({ ...dto(r.s), roles: inOrder(r.roles) }),
+    map: (r) => ({ ...dto(r.s), roles: all ? [...SPACE_ROLES] : inOrder(r.roles) }),
   });
 }
 
@@ -124,6 +127,11 @@ export async function updateSpace(ctx: Ctx, id: string, b: UpdateSpaceBody): Pro
     await recordActivity(tx, ctx, { action: "space.update", target: { type: "space", id, label: s.name }, before: pick(cur), after });
     return s;
   });
+}
+
+/** Space `spaceId` exists (any status). */
+export async function spaceExists(tx: Tx, spaceId: string): Promise<boolean> {
+  return (await tx.select({ id: spaces.id }).from(spaces).where(eq(spaces.id, spaceId)).limit(1)).length > 0;
 }
 
 /** Space `id` with the caller's roles in it (GET /v1/spaces/:spaceId; [] when let in through `space.manage`); 404 when missing. */

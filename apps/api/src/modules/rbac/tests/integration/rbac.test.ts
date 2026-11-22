@@ -77,21 +77,21 @@ describe("GET /v1/roles and /v1/roles/{id}", () => {
 
   it("lists roles as a page, name A–Z by default, with user counts that match the users", async () => {
     const page = await rolePage();
-    expect(page).toMatchObject({ total: 3, page: 1, pageSize: 15 });
-    expect(page.items.map((r) => r.name)).toEqual(["Admin", "Superadmin", "Viewer"]);
+    expect(page).toMatchObject({ total: 5, page: 1, pageSize: 15 });
+    expect(page.items.map((r) => r.name)).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
     for (const r of page.items) {
       const n = await db.$count(userRoles, eq(userRoles.roleId, r.id));
       expect(r.userCount).toBe(n);
     }
-    expect(page.items[1]).toMatchObject({ id: await idOf("Superadmin"), locked: true, permissions: [...PERMISSIONS] });
+    expect(page.items[3]).toMatchObject({ id: await idOf("Superadmin"), locked: true, permissions: [...PERMISSIONS] });
   });
 
   it("sorts by permissions and users, searches the name, pages past the end empty", async () => {
-    expect((await roles("sort=-permissions")).map((r) => r.name)).toEqual(["Superadmin", "Admin", "Viewer"]);
+    expect((await roles("sort=-permissions")).map((r) => r.name).slice(0, 2)).toEqual(["Superadmin", "Admin"]);
     const byUsers = await roles("sort=users");
     expect(byUsers.map((r) => r.userCount)).toEqual([...byUsers.map((r) => r.userCount)].sort((a, b) => a - b));
     expect((await roles("q=ADM")).map((r) => r.name)).toEqual(["Admin", "Superadmin"]);
-    expect(await rolePage("page=2")).toMatchObject({ items: [], total: 3, page: 2 });
+    expect(await rolePage("page=2")).toMatchObject({ items: [], total: 5, page: 2 });
   });
 
   it("q with % and _ matches literally", async () => {
@@ -117,7 +117,7 @@ describe("GET /v1/roles and /v1/roles/{id}", () => {
 
   it("/v1/users/roles (user.view) answers the same names from the same source", async () => {
     await create({ name: "Auditor" });
-    expect(await roleOptions(await signIn("viewer"))).toEqual(["Admin", "Auditor", "Superadmin", "Viewer"]);
+    expect(await roleOptions(await signIn("viewer"))).toEqual(["Admin", "Approver", "Auditor", "Maker", "Superadmin", "Viewer"]);
     expect((await get("/v1/users/roles?q=VIEW", await signIn("viewer"))).status).toBe(200);
     expect((await get("/v1/users/roles?sort=id", sa)).status).toBe(400);
     expect((await get("/v1/users/roles")).status).toBe(401);
@@ -127,7 +127,7 @@ describe("GET /v1/roles and /v1/roles/{id}", () => {
 describe("POST /v1/roles", () => {
   it("Admin gets 403 and nothing is created", async () => {
     expect((await create({ name: "Auditor" }, await signIn("admin"))).status).toBe(403);
-    expect(await roleNames()).toHaveLength(3);
+    expect(await roleNames()).toHaveLength(5);
   });
 
   it("creates an empty role, 201, one activity entry", async () => {
@@ -146,7 +146,7 @@ describe("POST /v1/roles", () => {
     expect((await create({ name: "A" })).status).toBe(400);
     expect((await create({ name: "Ok", permissions: ["user.fly"] })).status).toBe(400);
     expect((await call("POST", "/v1/roles", { token: sa, body: null })).status).toBe(400);
-    expect(await roleNames()).toHaveLength(3);
+    expect(await roleNames()).toHaveLength(5);
   });
 
   it("a taken name with permissions answers 409 from the unique index and writes nothing (no role, permissions or activity)", async () => {
@@ -154,7 +154,7 @@ describe("POST /v1/roles", () => {
     const r = await create({ name: "VIEWER", permissions: ["user.view"] });
     expect(r.status).toBe(409);
     expect(await code(r)).toBe("duplicate");
-    expect(await roleNames()).toHaveLength(3);
+    expect(await roleNames()).toHaveLength(5);
     expect(await db.$count(rolePermissions)).toBe(grants);
     expect(await acts("role.create")).toEqual([]);
   });
@@ -209,7 +209,7 @@ describe("PATCH /v1/roles/{id}", () => {
     const dto = (await (await patch("Viewer", { add: ["user.create", "user.view"] })).json()) as RoleDto;
     expect(dto.userCount).toBe(before);
     expect((await perms()).find((p) => p.name === "user.create")!.roles).toContain("Viewer");
-    expect((await perms()).find((p) => p.name === "user.view")!.roles).toEqual(["Admin", "Superadmin", "Viewer"]);
+    expect((await perms()).find((p) => p.name === "user.view")!.roles).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
     const [entry] = await acts("role.update");
     expect(entry).toMatchObject({ targetType: "role", targetId: await idOf("Viewer"), targetLabel: "Viewer", before: { name: "Viewer" }, after: { name: "Viewer", added: ["user.create"], removed: [] } });
   });
@@ -221,7 +221,7 @@ describe("PATCH /v1/roles/{id}", () => {
     expect(dto).toMatchObject({ name: "Reader", userCount: count });
     expect((await db.select({ one: sql`1` }).from(userRoles).innerJoin(roleTable, eq(roleTable.id, userRoles.roleId)).where(eq(roleTable.name, "Viewer")))).toHaveLength(0);
     // a renamed role still grants its permissions on the next request
-    expect(await roleOptions(viewer)).toEqual(["Admin", "Reader", "Superadmin"]);
+    expect(await roleOptions(viewer)).toEqual(["Admin", "Approver", "Maker", "Reader", "Superadmin"]);
   });
 
   it("removing a permission takes effect on the holder's next request", async () => {
@@ -296,7 +296,7 @@ describe("PATCH applies add/remove to the current set", () => {
     expect(await code(await create({ name: "Superadmin" }))).toBe("duplicate");
     expect(await code(await create({ name: "superadmin" }))).toBe("duplicate");
     expect(await code(await patch("Viewer", { name: "SUPERADMIN" }))).toBe("duplicate");
-    expect(await roleNames()).toHaveLength(3);
+    expect(await roleNames()).toHaveLength(5);
   });
 });
 
@@ -328,7 +328,7 @@ describe("/v1/permissions", () => {
     expect(list.map((p) => p.name)).toEqual([...PERMISSIONS]); // default sort: catalog (module) order
     expect(list.every((p) => p.id === p.name)).toBe(true);
     expect(list.find((p) => p.name === "role.edit")!.roles).toEqual(["Superadmin"]);
-    expect(list.find((p) => p.name === "audit.view")!.roles).toEqual(["Admin", "Superadmin", "Viewer"]);
+    expect(list.find((p) => p.name === "audit.view")!.roles).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
   });
 
   it("filters by module, searches the name, sorts by name and action", async () => {
@@ -436,8 +436,8 @@ describe("PermissionDto: role names are capped", () => {
   it("roles lists at most 10 names, A–Z; roleCount is the real number", async () => {
     for (let i = 0; i < 12; i++) await create({ name: `Readers ${String(i).padStart(2, "0")}`, permissions: ["audit.view"] });
     const p = (await perms()).find((x) => x.name === "audit.view")!;
-    expect(p.roleCount).toBe(15);
-    expect(p.roles).toEqual(["Admin", "Readers 00", "Readers 01", "Readers 02", "Readers 03", "Readers 04", "Readers 05", "Readers 06", "Readers 07", "Readers 08"]);
+    expect(p.roleCount).toBe(17);
+    expect(p.roles).toEqual(["Admin", "Approver", "Maker", "Readers 00", "Readers 01", "Readers 02", "Readers 03", "Readers 04", "Readers 05", "Readers 06"]);
   });
 });
 

@@ -3,6 +3,7 @@
 // entry, one withSpace transaction per request. Row level security (drizzle/0011) bounds every query to the space and
 // the sources shared to it; the queries also filter by space themselves, so an answer never depends on the role the
 // pool connects as. A change locks the source row first, so changes to one source run one after the other.
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import type {
@@ -793,9 +794,11 @@ export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<
 
 /**
  * 409 `self_approval` when the caller created, edited or submitted the version (or is its maker): the checker is
- * always someone who had no hand in it (spec §11), so a trivial last edit by someone else can't clear the author.
+ * always someone who had no hand in it (spec §11), so a trivial last edit by someone else can't clear the author. A
+ * Superadmin may decide their own (owner rule, 22 Nov: isSuperadmin).
  */
 function notAContributor(ctx: Ctx, v: VersionRow): void {
+  if (isSuperadmin(ctx.user.roles)) return;
   if (v.makerId === ctx.user.id || v.contributorIds.includes(ctx.user.id)) throw new ApiError("self_approval");
 }
 

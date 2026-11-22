@@ -40,3 +40,11 @@ export function withViews<P extends string>(perms: Iterable<P>): Set<P> {
   }
   return out;
 }
+
+/** The locked built-in role that holds every permission. */
+export const SUPERADMIN_ROLE = "Superadmin";
+/**
+ * Owner rule (22 Nov 2026): a Superadmin may do everything and open everything: every space as if holding every space
+ * role, and the maker-checker rule (maker ≠ checker) doesn't stop them. Every action is still in the activity log.
+ */
+export const isSuperadmin = (roles: readonly string[]): boolean => roles.includes(SUPERADMIN_ROLE);

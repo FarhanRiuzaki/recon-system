@@ -11,9 +11,10 @@ export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = { source_versio
 
 /**
  * Why the caller can't decide a version sent for approval, or null (spec §11: a config checker of the space who had no
- * hand in it, compared by user id). The same words as the version's own page.
+ * hand in it, compared by user id; a Superadmin decides anything, owner rule 22 Nov). The same words as the version's own page.
  */
-export function approvalBlocked(kind: ApprovalKind, v: { makerId: string | null; contributorIds: readonly string[] }, me: string, checker: boolean): string | null {
+export function approvalBlocked(kind: ApprovalKind, v: { makerId: string | null; contributorIds: readonly string[] }, me: string, checker: boolean, superadmin = false): string | null {
+  if (superadmin) return null;
   if (v.makerId === me || v.contributorIds.includes(me)) return "You worked on this version. A config checker who didn't work on it approves it.";
   if (!checker) return `Only a config checker of this space approves ${kind === "source_version" ? "source" : "recon"} versions.`;
   return null;

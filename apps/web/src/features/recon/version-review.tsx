@@ -14,6 +14,7 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { VersionDecision, VersionLayout } from "@/components/version-layout";
 import { APPROVALS_FROM, approvalsHref } from "@/lib/shared/nav";
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, isNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY, RECON_KEY } from "@/lib/shared/queries";
@@ -67,8 +68,8 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
 
   const checker = roles.includes("config_checker");
   const maker = roles.includes("config_maker");
-  const approveWhy = reviewReason(v, user.id, checker, "approve");
-  const rejectWhy = reviewReason(v, user.id, checker, "reject");
+  const approveWhy = reviewReason(v, user.id, checker, "approve", isSuperadmin(user.roles));
+  const rejectWhy = reviewReason(v, user.id, checker, "reject", isSuperadmin(user.roles));
   const published = r.published && r.published.id !== v.id && v.status !== "retired" ? r.published.version : null;
   const st = reconVersionChip(v);
   const edit = v.status === "draft" && r.draft?.id === v.id && (maker

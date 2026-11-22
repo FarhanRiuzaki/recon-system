@@ -518,3 +518,28 @@ Disetujui sebagai bagian desain, diterapkan beserta tesnya saat modul dibangun: 
   tanpa run terjadwal sukses dalam 2× interval, selama masih ada yang dijalankan) = satu alert, diulang paling cepat tiap
   jam; upsert bersyarat, jadi dispatch yang bersamaan mengalert sekali (tes `schedule.test.ts` "a stale spell alerts
   once"). Alertnya masih baris log; kanal di luar app tetap REC-FUT-10.
+
+## DEC-051 — Superadmin melakukan dan membuka semuanya, termasuk melewati maker-checker
+
+22 November 2026 — pemilik (sesi core-recon). User yang memegang role global **Superadmin** (`isSuperadmin`,
+`packages/shared/src/permissions.ts`):
+
+- membuka setiap space yang ada seolah memegang ketujuh role space (`authenticateInSpace` di
+  `apps/api/src/modules/auth/guard.ts`; GET /v1/spaces mendaftar semua space dengan semua role). Space yang tidak ada
+  tetap 403;
+- boleh meng-approve atau me-reject versi source dan recon yang dia buat, ubah, atau kirim sendiri: `notAContributor`
+  (`modules/recon/service.ts`, `modules/sources/service.ts`) dan `approvalBlocked` tidak menghalanginya. Pilihan pemilik
+  dari dua opsi; opsi "akses penuh, SoD tetap" ditolak. Risiko yang diterima: kontrol maker ≠ checker bisa dilewati satu
+  orang yang memegang Superadmin; jejaknya tetap di activity log (maker dan checker dengan user id yang sama).
+
+Yang **tidak** berubah: Superadmin tidak bisa menonaktifkan, menghapus, atau reset password dirinya sendiri, dan
+Superadmin aktif terakhir tetap dilindungi (`self_action`, `last_superadmin`), karena itu penjaga agar aplikasi tidak
+terkunci, bukan batas wewenang. Ini menggantikan spec §11 "`platform_admin` (tanpa akses data default)" untuk Superadmin;
+role global lain (Admin dengan `space.manage`) tetap tanpa akses data space. Tes: `spaces.test.ts` "a Superadmin …",
+`recon.test.ts` "a Superadmin (owner rule, 22 Nov)", `approvals.test.ts`.
+
+Bersamaan: seeder dipecah menjadi `permissions.ts`, `roles.ts` (Superadmin, Admin, Viewer, **Maker**, **Approver**) dan
+`users.ts` (Superadmin dari `SEED_SUPERADMIN_*`; `maker` dan `approver` default bila `SEED_MAKER_PASSWORD` /
+`SEED_APPROVER_PASSWORD` diisi) di `apps/api/src/db/seed/`; `db:seed:local` memberi maker source_admin + config_maker dan
+approver config_checker di Treasury. User `checker` lama tidak lagi dibuat (yang sudah ada di database dibiarkan).
+

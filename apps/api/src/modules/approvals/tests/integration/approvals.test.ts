@@ -5,7 +5,7 @@ import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
-import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { sources, sourceVersions } from "../../../sources";
@@ -56,7 +56,7 @@ beforeEach(async () => {
   await grant(A, "ck", "config_checker");
   await grant(A, "op", "operator");
   await grant(B, "ck", "config_checker");
-  t = { sa: await signIn("superadmin"), mk: await signIn("viewer"), ck: await signIn("google"), op: await signIn("apple") };
+  t = { sa: await platformAdmin(), mk: await signIn("viewer"), ck: await signIn("google"), op: await signIn("apple") };
 });
 
 const list = (token: string, query = "", s = A) => call("GET", `/v1/spaces/${s}/approvals${query}`, { token });

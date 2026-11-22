@@ -3,6 +3,7 @@
 // transaction per request. Row level security (drizzle/0021) bounds every query to the space; the queries also filter
 // by space themselves. A change locks the config row first, so changes to one config run one after the other. A side's
 // source is one the space may read: its own or shared to it (DEC-042, readableSources in the sources module).
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type {
@@ -261,8 +262,12 @@ export async function markSimulated(tx: InTx, spaceId: string, versionId: string
     .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, versionId), eq(reconConfigVersions.status, "draft"), eq(reconConfigVersions.specHash, hash)));
 }
 
-/** 409 `self_approval` when the caller created, edited or submitted the version (spec §11: maker ≠ checker by user id). */
+/**
+ * 409 `self_approval` when the caller created, edited or submitted the version (spec §11: maker ≠ checker by user id);
+ * a Superadmin may decide their own (owner rule, 22 Nov: isSuperadmin), still in the activity log as such.
+ */
 function notAContributor(ctx: Ctx, v: VersionRow): void {
+  if (isSuperadmin(ctx.user.roles)) return;
   if (v.makerId === ctx.user.id || v.contributorIds.includes(ctx.user.id)) throw new ApiError("self_approval");
 }
 

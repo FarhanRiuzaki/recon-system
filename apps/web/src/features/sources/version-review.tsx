@@ -21,6 +21,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { APPROVALS_FROM, approvalsHref } from "@/lib/shared/nav";
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY, SOURCES_KEY } from "@/lib/shared/queries";
@@ -77,8 +78,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   if (!s || !v || skeleton) return <LoadingShape sections={VERSION_SHAPE} shown={skeleton} />;
 
   const checker = roles.includes("config_checker");
-  const approveWhy = reviewReason(v, user.id, checker, "approve");
-  const rejectWhy = reviewReason(v, user.id, checker, "reject");
+  const approveWhy = reviewReason(v, user.id, checker, "approve", isSuperadmin(user.roles));
+  const rejectWhy = reviewReason(v, user.id, checker, "reject", isSuperadmin(user.roles));
   const published = s.published;
   // a published or retired version shows its own settings: comparing a retired one with the newer published one reads backwards
   const isPublished = published?.id === v.id || v.status === "retired";

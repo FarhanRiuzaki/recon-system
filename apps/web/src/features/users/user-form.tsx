@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   BlockedButton, ErrorSummary, Failure, Field, FormFooter, FormSection, Notice, Panel, PasswordChecks, RadioGroup, RequiredNote, useForm,
 } from "@starterkit/ui/ds";
+import { copyText } from "@starterkit/ui/lib/clipboard";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -26,7 +27,7 @@ import { BRAND } from "@starterkit/shared/brand";
 import { rankBlock, USERS_KEY, useRoleNames, useUserDetail } from "./use-users";
 import { useDebounced } from "@/lib/client/use-debounced";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { PASSWORD_MIN, passwordChecks } from "@/lib/shared/password";
+import { generatePassword, PASSWORD_MIN, passwordChecks } from "@/lib/shared/password";
 import { EDIT_USER_SHAPE } from "./shapes";
 
 const CHECK = "size-4 cursor-pointer accent-primary";
@@ -167,6 +168,12 @@ function UserForm({ user }: { user?: UserDetailDto }) {
                     <PasswordInput {...f.text("password")} maxLength={128} autoComplete="new-password" aria-describedby="u-password-checks" />
                   </Field>
                   <PasswordChecks id="u-password-checks" checks={passwordChecks(f.values.password)} />
+                  {/* hand the password over (owner, 22 Nov): make one and copy it, without showing it on screen */}
+                  <span className="flex flex-wrap gap-2">
+                    <Button type="button" variant="secondary" size="sm" onClick={() => f.set("password", generatePassword())}>Generate password</Button>
+                    <BlockedButton type="button" variant="secondary" size="sm" reason={f.values.password ? null : "Type or generate a password first."}
+                      onClick={async () => { if (await copyText(f.values.password)) toast("Password copied. Share it with the user over a safe channel."); else toast.error("Couldn't copy to the clipboard. Show the password and copy it manually."); }}>Copy password</BlockedButton>
+                  </span>
                 </div>
               )}
             </FormSection>

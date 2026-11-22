@@ -4,7 +4,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import { seedDemo } from "../../src/db/seed/demo";
-import { CHECKER_USERNAME, LOCAL_ROLES, seedLocal } from "../../src/db/seed/local";
+import { LOCAL_ROLES, PEOPLE_ROLES, seedLocal } from "../../src/db/seed/local";
 import { seedSystem } from "../../src/db/seed/system";
 import { decryptSecret } from "../../src/kernel/crypto";
 import { and, asc, count, eq, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
@@ -38,6 +38,20 @@ const snapshot = async () => ({
 beforeEach(truncateAll);
 
 describe("seedSystem", () => {
+  it("the role seeder adds Maker and Approver; the user seeder adds the default maker and approver only with their password keys, once", async () => {
+    await seedSystem(db, {});
+    expect((await db.select({ name: roles.name }).from(roles).orderBy(roles.name)).map((r) => r.name)).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
+    expect(await userCount()).toBe(0);
+    const env = { SEED_MAKER_PASSWORD: "Maker-Password-1!", SEED_APPROVER_PASSWORD: "Approver-Password-1!" };
+    await seedSystem(db, env);
+    await seedSystem(db, env);
+    expect((await usersWithRoles()).map((u) => [u.username, u.roles])).toEqual([["approver", ["Approver"]], ["maker", ["Maker"]]]);
+    expect(await signIn("maker", "Maker-Password-1!").then(() => true, () => false)).toBe(true);
+    expect(await signIn("approver", "Approver-Password-1!").then(() => true, () => false)).toBe(true);
+    const short = await seedSystem(db, { NODE_ENV: "production", SEED_MAKER_PASSWORD: "short" }).catch((e: Error) => e.message);
+    expect(short).toBe("SEED_MAKER_PASSWORD must be 12 to 128 characters in production.");
+  });
+
   it("system seed twice changes nothing", async () => {
     await seedSystem(db, OWNER);
     const first = await snapshot();
@@ -45,6 +59,8 @@ describe("seedSystem", () => {
     expect(first.roles.map((r: { name: string; locked: boolean; perms: string[] }) => [r.name, r.locked, r.perms])).toEqual([
       // Admin: every permission but role.* and permission.*, so a new module's permissions come with it on a fresh install.
       ["Admin", false, PERMISSIONS.filter((p) => !p.startsWith("role.") && !p.startsWith("permission.")).sort()],
+      ["Approver", false, ["audit.view", "user.view"]],
+      ["Maker", false, ["audit.view", "user.view"]],
       ["Superadmin", true, [...PERMISSIONS].sort()],
       ["Viewer", false, ["audit.view", "user.view"]],
     ]);
@@ -151,18 +167,20 @@ describe("seedLocal", () => {
     expect((await db.select({ n: count() }).from(spaces))[0]!.n).toBe(1);
   });
 
-  it("adds the checker only with LOCAL_CHECKER_PASSWORD, once, as config checker in Treasury who can sign in", async () => {
+  it("gives the default maker and approver their roles in Treasury, once; without them nobody else is added", async () => {
     await seedSystem(db, OWNER);
     await seedLocal(db, OWNER);
-    expect((await db.select().from(users).where(eq(users.username, CHECKER_USERNAME))).length).toBe(0);
-    const env = { ...OWNER, LOCAL_CHECKER_PASSWORD: "Checker-Password-1!" };
+    expect((await db.select().from(users).where(or(eq(users.username, "maker"), eq(users.username, "approver")))).length).toBe(0);
+    const env = { ...OWNER, SEED_MAKER_PASSWORD: "Maker-Password-1!", SEED_APPROVER_PASSWORD: "Approver-Password-1!" };
+    await seedSystem(db, env);
     await seedLocal(db, env);
     await seedLocal(db, env);
-    const rows = await db.select({ role: spaceMembers.role, code: spaces.code }).from(spaceMembers).innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId))
-      .innerJoin(users, eq(users.id, spaceMembers.userId)).where(eq(users.username, CHECKER_USERNAME));
-    expect(rows).toEqual([{ role: "config_checker", code: "treasury" }]);
-    const signed = await signIn(CHECKER_USERNAME, "Checker-Password-1!").then(() => true, () => false);
-    expect(signed).toBe(true);
+    const rows = await db.select({ username: users.username, role: spaceMembers.role }).from(spaceMembers).innerJoin(users, eq(users.id, spaceMembers.userId))
+      .where(or(eq(users.username, "maker"), eq(users.username, "approver"))).orderBy(users.username, spaceMembers.role);
+    expect(rows).toEqual([
+      ...PEOPLE_ROLES.approver.map((role) => ({ username: "approver", role })),
+      ...[...PEOPLE_ROLES.maker].sort().map((role) => ({ username: "maker", role })),
+    ]);
   });
 
   it("refuses without SEED_SUPERADMIN_USERNAME or a user by that name", async () => {

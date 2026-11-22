@@ -198,8 +198,9 @@ const healthText = (h: SourceSpec["health"]) => (!h ? null : [h.graceMinutes ? `
  * more, submitted it, worked on it without submitting, or holds no config checker role in the space. The API answers
  * the same cases 409 self_approval / invalid_state and 403; this only says why before the press.
  */
-export function reviewReason(v: { status: string; submitterId: string | null; makerId: string | null; contributorIds: string[] }, me: string, checker: boolean, act: "approve" | "reject"): string | null {
+export function reviewReason(v: { status: string; submitterId: string | null; makerId: string | null; contributorIds: string[] }, me: string, checker: boolean, act: "approve" | "reject", superadmin = false): string | null {
   if (v.status !== "in_review") return `This version is no longer waiting for approval.`;
+  if (superadmin) return null; // a Superadmin decides anything, their own too (owner rule, 22 Nov)
   if (v.submitterId === me) return `You submitted this version. Another config checker ${act}s it.`;
   if (v.makerId === me || v.contributorIds.includes(me)) return `You worked on this version. A config checker who didn't work on it ${act}s it.`;
   if (!checker) return `Only a config checker of this space ${act}s source versions.`;

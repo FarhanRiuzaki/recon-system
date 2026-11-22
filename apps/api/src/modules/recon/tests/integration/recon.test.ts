@@ -8,7 +8,7 @@ import type { ReconDto, ReconRowDto, ReconVersionDetailDto, ReconVersionDto, Rec
 import { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { asc, eq } from "drizzle-orm";
-import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { specHash } from "../../../../kernel/versions";
@@ -71,7 +71,7 @@ beforeEach(async () => {
   S2 = await publishedSource(A, "source2", 2);
   S3 = await publishedSource(C, "source3", 2);
   await db.delete(activity);
-  t = { sa: await signIn("superadmin"), mk: await signIn("viewer"), ck: await signIn("google"), both: await signIn("twofa"), op: await signIn("apple") };
+  t = { sa: await platformAdmin(), mk: await signIn("viewer"), ck: await signIn("google"), both: await signIn("twofa"), op: await signIn("apple") };
 });
 
 const base = (s: string) => `/v1/spaces/${s}/recons`;
@@ -266,6 +266,19 @@ describe("versions: edit, simulate, submit, approve, reject", () => {
     const back = await json<ReconVersionDto>(step(t.ck, r.id, v, "reject", { comment: "Pass 2 is too loose" }));
     expect(back).toMatchObject({ status: "draft", reviewComment: "Pass 2 is too loose", checkerId: ids.ck });
     expect((await acts()).at(-1)).toMatchObject({ action: "recon.version_reject", after: { version: 1, comment: "Pass 2 is too loose" } });
+  });
+});
+
+describe("a Superadmin (owner rule, 22 Nov)", () => {
+  it("makes, submits and approves their own version without a space role; maker ≠ checker doesn't stop them", async () => {
+    const su = await signIn("superadmin");
+    const r = await json<ReconDto>(create(su));
+    const v = r.draft!.id;
+    await simulated(v);
+    expect((await step(su, r.id, v, "submit")).status).toBe(200);
+    const ok = await json<ReconVersionDto>(step(su, r.id, v, "approve"));
+    expect(ok).toMatchObject({ status: "published", makerId: ok.checkerId });
+    expect((await acts()).map((e) => e.action)).toEqual(["recon.create", "recon.version_submit", "recon.version_approve"]);
   });
 });
 

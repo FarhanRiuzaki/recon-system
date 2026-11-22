@@ -229,7 +229,7 @@ password must be 12 to 128 characters; elsewhere a shorter one is accepted with 
 | `bun run dev` | `apps/web` on :3000 and `apps/api` on :4000 together. |
 | `bun run db:generate` | The next `apps/api/drizzle/NNNN_*.sql` from every module's `schema.ts` (drizzle-kit), with `"public".` stripped from its foreign keys; `-- --custom --name=<name>` (from `apps/api`) makes an empty file for custom SQL. Never edit an applied file. |
 | `bun run db:migrate` | Applies pending `apps/api/drizzle/*.sql` as `MIGRATION_DATABASE_URL` (else `DATABASE_URL`). |
-| `bun run db:seed` | Permission catalog, roles Superadmin/Admin/Viewer, and the `SEED_SUPERADMIN_*` user while no active Superadmin exists. Idempotent. |
+| `bun run db:seed` | Three seeders in `apps/api/src/db/seed/`: permissions (the catalog), roles (Superadmin/Admin/Viewer/Maker/Approver) and users (the `SEED_SUPERADMIN_*` user while no active Superadmin exists; the default `maker` and `approver` when `SEED_MAKER_PASSWORD` / `SEED_APPROVER_PASSWORD` are set). Idempotent. |
 | `bun run db:seed:demo` | Demo accounts and data. Refused with `NODE_ENV=production`. |
 | `bun run db:reset` | Drops the schema, migrates, runs both seeds. Refused with `NODE_ENV=production`. |
 | `bun run check` | Typecheck, lint (no warnings allowed) and every workspace's tests; the API's run against `<database>_test`, created and migrated on first run. Must pass before every commit. |
@@ -331,6 +331,7 @@ or invalid value stops the process with an error that names the key, never the v
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | – | Google sign-in; both or neither. |
 | `APPLE_CLIENT_ID` / `APPLE_TEAM_ID` / `APPLE_KEY_ID` / `APPLE_PRIVATE_KEY` | no | – | Sign in with Apple; all four or none. The key is the `.p8` PKCS#8 PEM; line breaks may be written as `\n`. |
 | `SEED_SUPERADMIN_NAME` / `_EMAIL` / `_USERNAME` / `_PASSWORD` | no | – | Read by `db:seed` only: the first Superadmin, created once (skipped while an active Superadmin exists); all four or none; password 12 to 128 characters in production. |
+| `SEED_MAKER_PASSWORD` / `SEED_APPROVER_PASSWORD` | no | – | Read by `db:seed` only: the default `maker` (role Maker) and `approver` (role Approver), each created once when its key is set; 12 to 128 characters in production. `db:seed:local` gives them source admin + config maker and config checker in Treasury. |
 
 ### Web (`apps/web/.env.local`, schema `apps/web/src/lib/server/config.ts`)
 

@@ -333,7 +333,7 @@ reopen hari yang sudah sign-off, purge. Ambang write-off per space = data milik 
 
 **Space & RBAC**: model pool (tabel bersama + `space_id`) + RLS: `FORCE ROW LEVEL SECURITY`, app connect sebagai role
 non-owner tanpa `BYPASSRLS`, tiap transaksi `SET LOCAL app.space_ids, app.user_id`, policy hanya memeriksa baris
-sendiri. Role global (RBAC Starterkit yang ada): `platform_admin` (tanpa akses data default), `auditor`,
+sendiri. Role global (RBAC Starterkit yang ada): `platform_admin` (tanpa akses data default; **kecuali Superadmin**: membuka semua space dan boleh meng-approve versinya sendiri, DEC-051), `auditor`,
 `mgmt_reporting`. Role per space (tujuh): `space_admin`, `source_admin`, `config_maker`, `config_checker`, `operator`, `reviewer`, `viewer`; satu user boleh
 memegang beberapa role di satu space (mis. operator + config_maker, prototipe designer) — SoD tetap dijaga per aksi lewat user id.
 Source dimiliki satu space, dibagi ke space lain lewat `source_share` read-only.

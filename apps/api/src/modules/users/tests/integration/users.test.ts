@@ -166,8 +166,8 @@ describe("GET /v1/users/roles", () => {
     expect((await options()).status).toBe(401);
     const viewer = await signIn("viewer");
     expect(await (await options("", viewer)).json()).toEqual({
-      items: [{ id: await roleIdOf("Admin"), name: "Admin" }, { id: await roleIdOf("Superadmin"), name: "Superadmin" }, { id: await roleIdOf("Viewer"), name: "Viewer" }],
-      total: 3, page: 1, pageSize: 15,
+      items: await Promise.all(["Admin", "Approver", "Maker", "Superadmin", "Viewer"].map(async (name) => ({ id: await roleIdOf(name), name }))),
+      total: 5, page: 1, pageSize: 15,
     });
     await setPerms("Viewer", []);
     expect((await options("", viewer)).status).toBe(403);
@@ -178,7 +178,7 @@ describe("GET /v1/users/roles", () => {
     await db.insert(roles).values(Array.from({ length: 120 }, (_, i) => ({ id: Bun.randomUUIDv7(), name: `Team ${String(i).padStart(3, "0")}` })));
     const page = (await (await options("pageSize=100", viewer)).json()) as Page<{ name: string }>;
     expect(page.items).toHaveLength(100);
-    expect(page.total).toBe(123);
+    expect(page.total).toBe(125);
     expect(((await (await options("q=team 11", viewer)).json()) as Page<{ name: string }>).items.map((r) => r.name)).toEqual(Array.from({ length: 10 }, (_, i) => `Team 11${i}`));
     expect(((await (await options("sort=-name&pageSize=15", viewer)).json()) as Page<{ name: string }>).items[0]!.name).toBe("Viewer");
   });
@@ -190,7 +190,7 @@ describe("GET /v1/users/roles", () => {
   it("GET /v1/users/roles is role options, not a user 404", async () => {
     const r = await options("", await signIn("viewer"));
     expect(r.status).toBe(200);
-    expect(((await r.json()) as Page<{ name: string }>).items.map((x) => x.name)).toEqual(["Admin", "Superadmin", "Viewer"]);
+    expect(((await r.json()) as Page<{ name: string }>).items.map((x) => x.name)).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
   });
 });
 

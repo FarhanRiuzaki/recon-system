@@ -6,7 +6,7 @@ import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type { SourceDto, SourcePreviewDto, SourceRowDto, SourceVersionDetailDto, SourceVersionDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { asc, eq } from "drizzle-orm";
-import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
 import { seedSystem } from "../../../../db/seed/system";
 import { decryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
@@ -57,7 +57,7 @@ beforeEach(async () => {
   await grant(B, "admin", "source_admin");
   await grant(B, "apple", "viewer");
   await db.delete(activity);
-  t = { sa: await signIn("superadmin"), adm: await signIn("admin"), mk: await signIn("viewer"), ck: await signIn("google"), both: await signIn("twofa"), op: await signIn("apple") };
+  t = { sa: await platformAdmin(), adm: await signIn("admin"), mk: await signIn("viewer"), ck: await signIn("google"), both: await signIn("twofa"), op: await signIn("apple") };
   ids = { mk: await idOf("viewer"), both: await idOf("twofa") };
 });
 

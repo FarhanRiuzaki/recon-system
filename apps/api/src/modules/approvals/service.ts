@@ -1,6 +1,7 @@
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ApprovalListQuery, ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
 import { type ApprovalKind, approvalBlocked } from "@starterkit/shared/approvals";
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
@@ -19,11 +20,12 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
   return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const checker = ctx.space!.roles.includes("config_checker");
+    const superadmin = isSuperadmin(ctx.user.roles);
     const me = ctx.user.id;
     // mine: what approvalBlocked lets the caller decide, as SQL (not its maker, not among its contributors); nothing
     // for someone who isn't a config checker of the space
     const mine = <T extends typeof sourceVersions | typeof reconConfigVersions>(v: T) =>
-      !q.mine ? undefined : checker ? and(sql`${v.makerId} is distinct from ${me}`, sql`not (${me}::uuid = any(${v.contributorIds}))`) : sql`false`;
+      !q.mine || superadmin ? undefined : checker ? and(sql`${v.makerId} is distinct from ${me}`, sql`not (${me}::uuid = any(${v.contributorIds}))`) : sql`false`;
     const src = tx.select({
       kind: sql<ApprovalKind>`'source_version'`.as("kind"), id: sourceVersions.id, targetId: sql<string>`${sources.id}`.as("target_id"), code: sources.code, name: sources.name,
       version: sourceVersions.version, makerId: sourceVersions.makerId, contributorIds: sourceVersions.contributorIds,
@@ -53,7 +55,7 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
         kind: r.kind, id: r.id, target: { id: r.targetId, code: r.code, name: r.name }, version: r.version,
         submitter: r.submittedBy ? { id: r.submittedBy, name: names.get(r.submittedBy) ?? null } : null,
         submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
-        blocked: approvalBlocked(r.kind, r, me, checker),
+        blocked: approvalBlocked(r.kind, r, me, checker, superadmin),
       })),
     };
   });

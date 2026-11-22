@@ -1,11 +1,11 @@
 import { Elysia } from "elysia";
-import type { PermissionName } from "@starterkit/shared/permissions";
-import type { SpaceRole } from "@starterkit/shared/spaces";
+import { isSuperadmin, type PermissionName } from "@starterkit/shared/permissions";
+import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { db } from "../../kernel/db";
 import { ApiError } from "../../kernel/errors";
 import { idParam } from "../../kernel/parse";
 import { type Client, context } from "../../kernel/plugins/context";
-import { isSpaceArchived, spaceRolesOf } from "../spaces";
+import { isSpaceArchived, spaceExists, spaceRolesOf } from "../spaces";
 import { type AuthUser, resolveSession } from "./sessions";
 
 /**
@@ -41,12 +41,13 @@ const READS = new Set(["GET", "HEAD"]);
 /**
  * 401 without a live session; `params.spaceId` not a UUID → 404 before any space query; then 403 unless the user holds
  * one of `g.space` in that space or `g.or`; then, for a change on a route without `or`, 409 when the space is archived.
- * The roles are read per request, so a removed member is out on the next one.
+ * The roles are read per request, so a removed member is out on the next one. A Superadmin holds every space role in
+ * every space that exists (owner rule, 22 Nov: isSuperadmin); a space that doesn't is 403 as for anyone.
  */
 async function authenticateInSpace(token: string | undefined, g: SpaceGuard, spaceId: string | undefined, method: string): Promise<Pick<Ctx, keyof AuthUser | "space">> {
   const auth = await authenticate(token, null);
   const id = idParam(spaceId, "space");
-  const roles = await spaceRolesOf(db, auth.user.id, id);
+  const roles = isSuperadmin(auth.user.roles) ? (await spaceExists(db, id) ? [...SPACE_ROLES] : []) : await spaceRolesOf(db, auth.user.id, id);
   if (!roles.some((r) => g.space.includes(r)) && !(g.or && auth.perms.has(g.or))) throw new ApiError("forbidden");
   if (!g.or && !READS.has(method) && await isSpaceArchived(db, id)) throw new ApiError("space_archived");
   return { ...auth, space: { id, roles } };
