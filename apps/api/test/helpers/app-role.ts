@@ -8,7 +8,8 @@ import { db, type Tx } from "../../src/kernel/db";
 
 /**
  * Switches `tx`, until it ends, to `recon_app_probe` (NOLOGIN, no BYPASSRLS, DML on every table of the current schema,
- * EXECUTE on recon_ensure_month_partitions and recon_analyze_month_partitions as db:migrate grants APP_DB_ROLE), creating it when missing. Temp tables get no grant from here: a test grants on its own.
+ * EXECUTE on recon_ensure_month_partitions, recon_analyze_month_partitions, recon_analyze_table and recon_source_day_closed
+ * as db:migrate grants APP_DB_ROLE), creating it when missing. Temp tables get no grant from here: a test grants on its own.
  */
 export async function asAppRole(tx: Tx): Promise<void> {
   await tx.execute(sql.raw(`do $$
@@ -23,6 +24,7 @@ begin
   execute format('grant execute on function %I.recon_ensure_month_partitions(regclass, date, int) to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_analyze_month_partitions(regclass, date, date, int) to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_analyze_table(regclass, int) to recon_app_probe', current_schema());
+  execute format('grant execute on function %I.recon_source_day_closed(uuid, uuid, date) to recon_app_probe', current_schema());
 end
 $$`));
   await tx.execute(sql`set local role recon_app_probe`);

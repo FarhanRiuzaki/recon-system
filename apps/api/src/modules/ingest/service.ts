@@ -60,14 +60,18 @@ const FILE_BATCH = 1000;
 /** A watermark and file inbox source runs every minute (pg-boss's finest cron); a recon's own interval reads what is there. */
 
 /**
- * Seams of later plans and tests. onRecordChanged: records of a mutable source just replaced (Plan 3 reverses their
- * matches; a no-op until then). dayClosed: whether a source's business date is closed (Plan 3–5: recon_day; until then
- * none is), so it is never pulled again outside a rerun. connect: the connector of a stored connection, with the
+ * Seams of later plans and tests. onRecordChanged: records of a mutable source just replaced (the engine reverses
+ * their matches at its next intake, REC-FUT-15; a no-op here). dayClosed: whether a source's business date is closed:
+ * any config reading it, in any space, closed it (REC-FUT-16, recon_source_day_closed), so it is never pulled again
+ * outside a rerun (Plan 5). connect: the connector of a stored connection, with the
  * worker's statement timeout.
  */
 export const ingestHooks = {
   onRecordChanged: async (_tx: InTx, _recordIds: string[]): Promise<void> => {},
-  dayClosed: async (_tx: InTx, _source: Scope, _businessDate: string): Promise<boolean> => false,
+  dayClosed: async (tx: InTx, source: Scope, businessDate: string): Promise<boolean> => {
+    const [r] = (await tx.execute(sql`select recon_source_day_closed(${source.spaceId}::uuid, ${source.sourceId}::uuid, ${businessDate}::date) as closed`)) as unknown as { closed: boolean }[];
+    return r?.closed === true;
+  },
   connect: (c: StoredConnection): Connector => {
     const o = c.options as { tls: boolean; connectTimeoutSeconds: number };
     return connectorFor(c.engine as DbEngine, JSON.parse(decryptSecret(c.secretEnc)) as Secret, {

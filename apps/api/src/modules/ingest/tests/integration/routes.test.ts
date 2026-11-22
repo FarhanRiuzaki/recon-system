@@ -9,6 +9,8 @@ import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { activity } from "../../../audit";
+import { reconDays } from "../../../engine";
+import { reconConfigs, reconSourceUses } from "../../../recon";
 import { sourceShares, sources, sourceVersions } from "../../../sources";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
@@ -152,6 +154,20 @@ describe("POST run", () => {
     const closed = await run(t.adm, SNAP_SRC, { businessDate: "2026-11-02" });
     expect([closed.status, await code(closed)]).toEqual([409, "day_closed"]);
     expect(await json(run(t.adm, SNAP_SRC, { businessDate: "2026-11-03" }))).toEqual({ queued: true });
+  });
+
+  it("REC-FUT-16: a date is closed when any config reading the source closed it, another space's through a share too", async () => {
+    // the real hook (recon_source_day_closed), not a stand-in
+    ingestHooks.dayClosed = dayClosed;
+    const cfg = Bun.randomUUIDv7();
+    await db.insert(reconConfigs).values({ id: cfg, spaceId: B, code: "reads-shared", name: "Reads shared" });
+    await db.insert(reconSourceUses).values({ spaceId: B, configId: cfg, sourceSpaceId: A, sourceId: SNAP_SRC, field: "amount_minor", configName: "Reads shared" });
+    // a date still closing is not closed; one closed is, for the source's own space too
+    await db.insert(reconDays).values([{ spaceId: B, configId: cfg, businessDate: "2026-11-02", status: "closing" }, { spaceId: B, configId: cfg, businessDate: "2026-11-03", status: "closed" }]);
+    expect(await json(run(t.adm, SNAP_SRC, { businessDate: "2026-11-02" }))).toEqual({ queued: true });
+    const closed = await run(t.adm, SNAP_SRC, { businessDate: "2026-11-03" });
+    expect([closed.status, await code(closed)]).toEqual([409, "day_closed"]);
+    expect(await json(run(t.adm, SNAP_SRC, { businessDate: "2026-11-04" }))).toEqual({ queued: true });
   });
 
   it("a paused source is 409 invalid_state with its reason; a body that isn't JSON is 400; another space's source is 404", async () => {
