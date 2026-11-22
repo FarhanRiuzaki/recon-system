@@ -48,8 +48,8 @@ export function WorkflowsPage({ spaceId, spaceName }: { spaceId: string; spaceNa
         <ul className="grid gap-3">
           {(q.data?.items ?? []).map((r) => (
             <li key={r.action}>
-              <InteractiveCard asChild>
-                <Link href={`/spaces/${encodeURIComponent(spaceId)}/workflows/${r.action}`} className="flex items-center gap-4 p-4 md:p-5">
+              <InteractiveCard asChild className="flex items-center gap-4 md:p-5">
+                <Link href={`/spaces/${encodeURIComponent(spaceId)}/workflows/${r.action}`}>
                   <span className="grid min-w-0 flex-1 gap-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-title-3 text-fg">{WORKFLOW_ACTION_LABEL[r.action]}</span>

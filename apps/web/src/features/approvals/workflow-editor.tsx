@@ -96,13 +96,12 @@ export function WorkflowEditor({ spaceId, action }: { spaceId: string; action: W
     label: "Discard draft", destructive: true,
     confirm: { title: `Discard draft ${draft.version}`, description: "The rules you changed in this draft go. The live version keeps routing requests.", actionLabel: "Discard draft", onConfirm: () => run("discard", "/draft/discard", undefined, "Draft discarded.") },
   }] : [];
-  const back = { href: `/spaces/${encodeURIComponent(spaceId)}/workflows`, label: "Workflows" };
   const people = (members.data?.items ?? []).filter((m) => m.active).map((m) => ({ id: m.userId, name: m.name }));
   const options = { people: [...people, ...w.people.filter((p) => !people.some((x) => x.id === p.id)).map((p) => ({ id: p.id, name: p.name ?? "A removed user" }))], globalRoles: w.globalRoles, recons: (recons.data?.items ?? []).map((r) => ({ id: r.id, name: r.name })) };
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={`${WORKFLOW_ACTION_LABEL[action]} workflow`} trail={[back]} description={WORKFLOW_ACTION_TEXT[action]}
+      <PageHeader title={`${WORKFLOW_ACTION_LABEL[action]} workflow`} description={WORKFLOW_ACTION_TEXT[action]}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
