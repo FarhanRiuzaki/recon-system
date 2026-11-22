@@ -49,7 +49,7 @@ Dashboard and both audit GET endpoints accept either an inclusive calendar pair 
   `self_approval` 409, `invalid_state` 409, `day_closed` 409, `password_change_required` 403, `internal` 500.
 - A user whose password an admin set (Create user with a password, Reset password; `mustChangePassword` on
   [UserDto](schemas/UserDto.json)) gets 403 `password_change_required` on every route but GET `/api/auth/context`, GET
-  `/api/me`, POST `/api/me/password` and sign-out, after the 401 and before any permission check, until they set
+  `/api/me`, GET `/api/spaces`, POST `/api/me/password` and sign-out, after the 401 and before any permission check, until they set
   their own (POST `/api/me/password`, or a reset link).
   One code is sent with another status on purpose: `invalid_credentials` is 400 when a signed-in user's current
   password is wrong (`PATCH /api/me`, `/api/me/password`, `/api/me/reauth`, `DELETE /api/me/2fa`), so the browser

@@ -27,9 +27,10 @@ export const bearer = (header: string | null | undefined): string | undefined =>
 
 /**
  * What a user whose password an admin set may still do (403 password_change_required for the rest, after the 401 and
- * before the permission check): read their account and the app's context, change the password, sign out.
+ * before the permission check): read their account, the app's context and their spaces (the shell's switcher), change
+ * the password, sign out.
  */
-const BEFORE_OWN_PASSWORD = new Set(["GET /v1/auth/context", "GET /v1/me", "POST /v1/me/password", "POST /v1/auth/logout"]);
+const BEFORE_OWN_PASSWORD = new Set(["GET /v1/auth/context", "GET /v1/me", "POST /v1/me/password", "POST /v1/auth/logout", "GET /v1/spaces"]);
 
 /**
  * A bearer token → a live session (else 401 `unauthenticated`) → `perm` held (else 403 `forbidden`), before anything

@@ -202,12 +202,13 @@ describe("a password an admin set (owner, 22 Nov: the user sets their own first)
     const login = await call("POST", "/v1/auth/login", { body: { method: "auto", login: "new.person", password: NEW.password, next: "/recons" } });
     expect(((await login.json()) as { next: string }).next).toBe("/me/security");
     const t = await signIn("new.person", NEW.password);
-    for (const [m, path] of [["GET", "/v1/users"], ["GET", "/v1/me/sessions"], ["GET", "/v1/spaces"], ["PATCH", "/v1/me"]] as const) {
+    for (const [m, path] of [["GET", "/v1/users"], ["GET", "/v1/me/sessions"], ["GET", "/v1/me/views"], ["PATCH", "/v1/me"]] as const) {
       const r = await call(m, path, { token: t, body: m === "PATCH" ? { name: "X" } : undefined });
       expect([path, r.status, await code(r)]).toEqual([path, 403, "password_change_required"]);
     }
     expect((await call("GET", "/v1/me", { token: t })).status).toBe(200);
     expect((await call("GET", "/v1/auth/context", { token: t })).status).toBe(200);
+    expect((await call("GET", "/v1/spaces", { token: t })).status).toBe(200); // the shell's space switcher
     expect((await call("GET", "/v1/users")).status).toBe(401); // no session stays 401 first
     expect((await call("POST", "/v1/me/password", { token: t, body: { current: NEW.password, next: "My-Own-Pass-22!" } })).status).toBe(200);
     expect((await call("GET", "/v1/me/sessions", { token: t })).status).toBe(200);
