@@ -13,7 +13,7 @@
 // config would have to follow every publish, pause and retire; this job reads them as they are. ponytail: one job
 // reads every config each minute; shard by space if that read grows past a few hundred milliseconds.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { and, eq, inArray, max, min, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, max, min, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, errorDetail } from "../../kernel/errors";
 import { log } from "../../kernel/log";
@@ -24,7 +24,7 @@ import { closeDay, seenOn, sweepClosed } from "./breaks";
 import { claimConfig, runJob, send } from "./jobs";
 import { ALERT_REPEAT_MS, closeMoment, planRun, type ScheduleState, staleNow } from "./rules";
 import { reconAlerts, reconDays, reconRuns } from "./schema";
-import { addDays, createRun } from "./service";
+import { addDays, createRun, refreshRunDays } from "./service";
 
 const SCHEDULED = ["tick", "daily"] as const;
 
@@ -129,6 +129,26 @@ export async function alertStale(on: Tx, spaceId: string, configId: string, sinc
 }
 
 /**
+ * After a sweep broke items of closed dates `dates` (REC-FUT-17): the days of the last finalized live run covering each
+ * date read again, so Today, Live day and the trend (which show that run's days) count the sweep's breaks too.
+ */
+export async function refreshCovering(on: Tx, k: { spaceId: string; configId: string }, dates: readonly string[]): Promise<void> {
+  if (!dates.length) return;
+  const r = reconRuns;
+  const ids = new Set<string>();
+  await withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
+    for (const d of dates) {
+      const [run] = await tx.select({ id: r.id }).from(r)
+        .where(and(eq(r.spaceId, k.spaceId), eq(r.configId, k.configId), ne(r.mode, "simulation"), isNull(r.baselineOf), eq(r.status, "succeeded"), isNotNull(r.days),
+          sql`${d}::date between ${r.dateFrom} and ${r.dateTo}`))
+        .orderBy(desc(r.finishedAt)).limit(1);
+      if (run) ids.add(run.id);
+    }
+  }, on);
+  for (const id of ids) await refreshRunDays(on, k.spaceId, id);
+}
+
+/**
  * The job of a live run, scheduled or manual (recon.tick / recon.daily / recon.heavy, data { spaceId, runId }): the run
  * (jobs.ts runJob), then, if it succeeded and isn't a simulation, the closed dates just before it once more (sweepClosed: what their close skipped, what this run took in
  * for them) and each of its dates whose close moment has passed, oldest first, until one waits or isn't due. Closes
@@ -144,7 +164,8 @@ export async function runScheduled(on: Tx, data: { spaceId: string; runId: strin
   const [v] = await withSpace({ spaceIds: [run.spaceId], userId: null },
     (tx) => tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId))), on);
   const carry = ReconSpec.parse(v!.spec).carry_over_days;
-  await sweepClosed(on, k, addDays(run.dateFrom, -Math.max(carry, 1)), addDays(run.dateFrom, -1));
+  const swept = await sweepClosed(on, k, addDays(run.dateFrom, -Math.max(carry, 1)), addDays(run.dateFrom, -1));
+  await refreshCovering(on, k, swept.dates);
   for (let d = run.dateFrom; d <= run.dateTo; d = addDays(d, 1)) {
     const r = await closeDay(on, k, d, now());
     if (r === "closing" || r === "not_due") return;

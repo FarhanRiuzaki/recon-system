@@ -23,7 +23,7 @@ const live = (c: Pick<ClassifyCtx, "simRunId">, alias: string): SQL => (c.simRun
  */
 const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, late: SQL, pass: SQL = sql`i.break_pass`): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${reason}, late_match = ${late},
       break_pass = ${pass}, version = i.version + 1
-    from ${from} where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v returning lk.st)`;
+    from ${from} where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v returning lk.st, lk.bd)`;
 
 /**
  * Grace (spec §9 step 4): each open item of the window whose record's event time plus `graceMinutes` is at or before
@@ -56,7 +56,8 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
  * closed dates again, for what a close skipped), every open item breaks with its near-miss reason (late_match only for "No counterpart": a late counterpart may still close it when carry
  * over > 0), and every item of an unconfirmed suggestion dated there breaks with its pass's reason, its suggested group
  * kept as the pair to accept in one click (not late_match: a person decides it); a tie suggestion breaks as Duplicate
- * with its pass in break_pass, like a pass's own ambiguity breaks. Answers { open, suggested }.
+ * with its pass in break_pass, like a pass's own ambiguity breaks. Answers per business date of the items broken
+ * { d, open, suggested } (REC-FUT-17: each date's counters count its own items).
  */
 export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   const has = (ops: string[]) => sql`exists (select 1 from jsonb_array_elements(g.evidence -> 'predicates') e
@@ -75,5 +76,5 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   k as (${nearMissSql(c, lo, hi, sql`i.id in (select id from lk)`)}),
   ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
     sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
-  select count(*) filter (where st = 'open')::int as open, count(*) filter (where st = 'suggested')::int as suggested from up`;
+  select bd::text as d, count(*) filter (where st = 'open')::int as open, count(*) filter (where st = 'suggested')::int as suggested from up group by bd order by bd`;
 }

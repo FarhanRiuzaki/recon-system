@@ -58,6 +58,23 @@ async function runUnderWay(tx: InTx, spaceId: string, configId: string): Promise
   return !!r;
 }
 
+/** Items of one business date a close or a sweep made breaks: from open items, from unconfirmed suggestions. */
+export type DayBroken = { d: string; open: number; suggested: number };
+const total = (rows: readonly DayBroken[]) => rows.reduce((t, r) => ({ open: t.open + r.open, suggested: t.suggested + r.suggested }), { open: 0, suggested: 0 });
+
+/**
+ * Adds what a close or a sweep broke to each closed date's own counters (REC-FUT-17: a date's counters are its own
+ * items made breaks, by its close and by every sweep after it). A date not closed yet has no counters to keep.
+ */
+async function addCounters(tx: InTx, k: { spaceId: string; configId: string }, rows: readonly DayBroken[]): Promise<void> {
+  for (const r of rows) {
+    if (!r.open && !r.suggested) continue;
+    await tx.update(reconDays).set({ counters: sql`jsonb_build_object('open', coalesce((${reconDays.counters} ->> 'open')::int, 0) + ${r.open}::int,
+        'suggested', coalesce((${reconDays.counters} ->> 'suggested')::int, 0) + ${r.suggested}::int)` })
+      .where(and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.businessDate, r.d), eq(reconDays.status, "closed")));
+  }
+}
+
 /** Closes business date `d` of config `k.configId` at `now`, on `on` (the worker's pool), under its published version. */
 export async function closeDay(on: Tx, k: { spaceId: string; configId: string }, d: string, now = new Date()): Promise<DayClose> {
   return withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
@@ -80,11 +97,13 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
       return "closing";
     }
     const carry = v.spec.carry_over_days;
-    const [n] = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as
-      { open: number; suggested: number }[];
-    const closed = { status: "closed", incomplete: incomplete.length ? incomplete : null, counters: n, closedAt: sql`now()` } as const;
+    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as DayBroken[];
+    // the closing date's counters: its own items; carried-over items of dates closed before count on those dates
+    const own = rows.find((r) => r.d === d) ?? { open: 0, suggested: 0 };
+    const closed = { status: "closed", incomplete: incomplete.length ? incomplete : null, counters: { open: own.open, suggested: own.suggested }, closedAt: sql`now()` } as const;
     await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, ...closed })
       .onConflictDoUpdate({ target: [reconDays.spaceId, reconDays.configId, reconDays.businessDate], set: closed });
+    await addCounters(tx, k, rows.filter((r) => r.d !== d));
     return "closed";
   }, on);
 }
@@ -93,21 +112,22 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
  * Closed dates `lo`..`hi` of config `k.configId` again: their open items and unconfirmed suggestions (an item a close
  * skipped while another transaction held it, a record a later intake took in within carry over) become breaks, so a
  * closed date keeps none open. Only dates that are closed, and not while a run of the recon is under way (its intake
- * may have added items its passes haven't seen); their day counters stay as their close wrote them.
- * Answers { open, suggested } it broke.
+ * may have added items its passes haven't seen). Each date's counters take what it broke there (REC-FUT-17).
+ * Answers { open, suggested } it broke and the dates it broke items on.
  */
-export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string }, lo: string, hi: string): Promise<{ open: number; suggested: number }> {
+export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string }, lo: string, hi: string): Promise<{ open: number; suggested: number; dates: string[] }> {
+  const none = { open: 0, suggested: 0, dates: [] as string[] };
   return withSpace({ spaceIds: [k.spaceId], userId: null }, async (tx) => {
     await configLock(tx, k.configId);
-    if (await runUnderWay(tx, k.spaceId, k.configId)) return { open: 0, suggested: 0 };
+    if (await runUnderWay(tx, k.spaceId, k.configId)) return none;
     const [r] = await tx.select({ lo: sql<string | null>`min(${reconDays.businessDate})::text`, hi: sql<string | null>`max(${reconDays.businessDate})::text` }).from(reconDays)
       .where(and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.status, "closed"),
         sql`${reconDays.businessDate} between ${lo}::date and ${hi}::date`));
     const v = r?.lo && r.hi ? await published(tx, k.spaceId, k.configId) : null;
-    if (!v || !r?.lo || !r.hi) return { open: 0, suggested: 0 };
+    if (!v || !r?.lo || !r.hi) return none;
     // ponytail: a gap (a date never closed) between closed dates of the window would be swept too; closes run in order
-    const [n] = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: v.spec.carry_over_days }, r.lo, r.hi))) as unknown as
-      { open: number; suggested: number }[];
-    return n!;
+    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: v.spec.carry_over_days }, r.lo, r.hi))) as unknown as DayBroken[];
+    await addCounters(tx, k, rows);
+    return { ...total(rows), dates: rows.filter((x) => x.open || x.suggested).map((x) => x.d) };
   }, on);
 }

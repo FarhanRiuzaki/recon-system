@@ -10,7 +10,7 @@
 // - intake per chunk; the default range of a manual run (the day after the last closed one); sourceHealth's inputs from the recons.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { ReconRunDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { appRoleDb } from "../../../../../test/helpers/app-role";
 import { db } from "../../../../kernel/db";
@@ -25,7 +25,7 @@ import { holdTx } from "../../../../../test/helpers/db";
 import { reconConfigVersions } from "../../../recon";
 import { closeDay, sweepClosed } from "../../breaks";
 import { CLOSED_DAY, RUN_STOPPED } from "../../jobs";
-import { alertStale, dispatch, runScheduled } from "../../schedule";
+import { alertStale, dispatch, refreshCovering, runScheduled } from "../../schedule";
 import { reconLive, reconTrend, todayDto } from "../../today";
 import type { Ctx } from "../../../auth";
 import { reconDays, reconItems, reconRuns } from "../../schema";
@@ -353,10 +353,18 @@ describe("day close, review round 1", () => {
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status])).toEqual([["H1", "open"], ["H2", "break"]]);
     // not while a run of the recon is under way (its intake may have added items its passes haven't seen yet)
     const queued = await withSpace({ spaceIds: [A], userId: null }, (tx) => createRun(tx, { ...r, mode: "daily", from: D1, status: "queued" }), probe);
-    expect(await sweepClosed(probe, r, D, D)).toEqual({ open: 0, suggested: 0 });
+    expect(await sweepClosed(probe, r, D, D)).toEqual({ open: 0, suggested: 0, dates: [] });
     await db.update(reconRuns).set({ status: "failed" }).where(eq(reconRuns.id, queued));
-    expect(await sweepClosed(probe, r, D, D)).toEqual({ open: 1, suggested: 0 });
+    expect(await sweepClosed(probe, r, D, D)).toEqual({ open: 1, suggested: 0, dates: [D] });
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status, i.reason])).toEqual([["H1", "break", "No counterpart"], ["H2", "break", "No counterpart"]]);
+    // REC-FUT-17: the date's counters count its items made breaks, the close's and the sweep's, as a recount does
+    const breaks = (await itemsOf(r.configId)).filter((i) => i.status === "break").length;
+    expect((await db.select({ c: reconDays.counters }).from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!.c).toEqual({ open: breaks, suggested: 0 });
+    // and the run that covered the date shows the sweep's break too (Today, Live day and the trend read its days)
+    const [run] = await db.select({ id: reconRuns.id }).from(reconRuns).where(and(eq(reconRuns.configId, r.configId), eq(reconRuns.status, "succeeded"))).orderBy(desc(reconRuns.finishedAt)).limit(1);
+    await refreshCovering(probe, r, [D]);
+    const [after] = await db.select({ days: reconRuns.days }).from(reconRuns).where(eq(reconRuns.id, run!.id));
+    expect((after!.days as { date: string; breaks: { a: number; b: number } }[]).find((x) => x.date === D)!.breaks).toEqual({ a: breaks, b: 0 });
   }, 60_000);
 
   it("unconfirmed suggestions at close: a unique one is an Unconfirmed suggestion; a tie is a Duplicate with its pass", async () => {
