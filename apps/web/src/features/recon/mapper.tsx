@@ -122,7 +122,9 @@ export function Mapper({ mapping, onChange, op, catalog, setup, disabled }: {
     };
     draw();
     const ro = new ResizeObserver(draw);
+    // the lists reflow without the box resizing (fonts, an editor opening), so watch them too
     ro.observe(root);
+    root.querySelectorAll("section").forEach((el) => ro.observe(el));
     return () => ro.disconnect();
   }, [mapping, open]);
   const used = new Set(Object.values(mapping).flatMap((s) => (s.kind === "field" ? [s.key] : [])));
