@@ -33,5 +33,11 @@ export const ApprovalRowDto = z.object({
   blocked: z.string().nullable(),
   /** A break request's level waiting (`at` of `of`); null for a version. */
   level: z.object({ at: z.number().int(), of: z.number().int() }).nullable(),
+  /** A break request's item amount as written (minor units); null for a version or an item without one. */
+  amount: z.object({ minor: z.string(), currency: z.string().nullable() }).nullable(),
+  /** A force match's gap between the two sides' totals when it was asked (minor units); null otherwise. */
+  difference: z.object({ minor: z.string(), currency: z.string().nullable() }).nullable(),
+  /** The workflow a break request was routed to; null on the default chain and for a version. */
+  workflowName: z.string().nullable(),
 });
 export type ApprovalRowDto = z.infer<typeof ApprovalRowDto>;

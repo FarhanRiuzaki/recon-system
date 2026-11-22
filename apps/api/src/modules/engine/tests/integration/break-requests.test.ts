@@ -157,6 +157,18 @@ describe("the default chain (no workflow): one of reviewer or space admin", () =
   });
 });
 
+describe("the approvals inbox shows a request's amount, difference and workflow (audit §5.2)", () => {
+  it("a force match: the item's amount and the gap; a write-off on a workflow: its name, no difference; a version: none of them", async () => {
+    await req(I.a1, { kind: "force_match", itemIds: [I.b2], note: "Fee taken by the switch" });
+    const rows = async (token = t.rev) => (await json<{ items: ApprovalRowDto[] }>(call("GET", `/v1/spaces/${A}/approvals`, { token }))).items;
+    expect(await rows()).toMatchObject([{ kind: "force_match", amount: { minor: "10000", currency: "IDR" }, difference: { minor: "100", currency: "IDR" }, workflowName: null, level: { at: 1, of: 1 } }]);
+    await decide(I.a1, "reject", { note: "Wrong pair" });
+    await publish("write_off", [{ name: "Treasury head", levels: [{ name: "Head", groups: [group({ spaceRoles: ["reviewer"] })] }, { name: "Finance", groups: [group({ spaceRoles: ["space_admin"] })] }] }]);
+    await req(I.a1, { kind: "write_off", note: "Below the threshold" });
+    expect(await rows(t.op)).toMatchObject([{ kind: "write_off", amount: { minor: "10000", currency: "IDR" }, difference: null, workflowName: "Treasury head", level: { at: 1, of: 2 } }]);
+  });
+});
+
 describe("the recon's pinned workflows: rules over break and side fields, levels in order, groups AND'd, one decision per person", () => {
   it("a write-off over 50.00 takes 2 levels (a reviewer, then a space admin); under it the plain rule", async () => {
     await publish("write_off", [

@@ -10,6 +10,7 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceVersions } from "../sources";
 import type { InTx } from "../../kernel/db";
 import { withSpace } from "../spaces";
+import { itemsOf } from "../engine";
 import { decidable } from "./requests";
 import { approvalRequests } from "./schema";
 import { users } from "../users";
@@ -95,6 +96,18 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
     const reqs = reqIds.length ? await tx.select().from(approvalRequests).where(inArray(approvalRequests.id, reqIds)) : [];
     const why = await decidable(tx, ctx, reqs);
     const levelOf = new Map(reqs.map((r) => [r.id, { at: r.currentLevel + 1, of: (r.chain as unknown[]).length }]));
+    const reqOf = new Map(reqs.map((r) => [r.id, r]));
+    // the break's amount as written; a force match's gap is the rule attribute it was asked with
+    const items = new Map((await itemsOf(tx, spaceId, reqs.map((r) => r.itemId))).map((i) => [i.id, i]));
+    const amountOf = (id: string) => {
+      const i = items.get(reqOf.get(id)?.itemId ?? "");
+      return i?.amountMinor ? { minor: i.amountMinor, currency: i.currency } : null;
+    };
+    const differenceOf = (id: string) => {
+      const r = reqOf.get(id);
+      const at = r?.attributes as { amount?: string; currency?: string | null } | undefined;
+      return r?.kind === "force_match" && at?.amount ? { minor: at.amount, currency: at.currency ?? null } : null;
+    };
     return {
       ...page,
       items: page.items.map((r) => ({
@@ -103,6 +116,7 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
         submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
         blocked: isRequestKind(r.kind) ? why.get(r.id) ?? null : approvalBlocked(r.kind, r, me, checker, superadmin),
         level: levelOf.get(r.id) ?? null,
+        amount: amountOf(r.id), difference: differenceOf(r.id), workflowName: reqOf.get(r.id)?.workflowName ?? null,
       })),
     };
   });

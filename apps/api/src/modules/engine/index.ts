@@ -8,3 +8,4 @@ export { NEAR_MISS, type NearMissReason } from "./sql/breaks";
 export { classifyUnmatched, createRun, execRun, type NearMiss, RANGE_MAX_DAYS, type PassCounters, type RunCounters, type RunInput, type RunMode, type RunSummary, runRecon } from "./service";
 export { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "./schema";
 export { applyBreakChange, breakContextOf, revertBreakRequest } from "./break-requests";
+export { itemsOf } from "./break-resolve";

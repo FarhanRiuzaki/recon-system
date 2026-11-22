@@ -59,14 +59,15 @@ export const breakCandidates = (spaceId: string, id: string): TableDef<{ q: stri
 export const breakActivity = (spaceId: string, id: string): TableDef<TrailFilters> => trailTable(ENGINE_KEY[0], `${breakPath(spaceId, id)}/activity`);
 
 export type ApprovalFilters = { q: string; kind: string; mine: string };
-const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["", "1"], "") } };
+const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["1", "0"], "1") } };
 /**
  * A space's approvals inbox, waiting longest first; `kind` the ticked kinds (none = every kind), `q`
- * matches the source's or recon's code or name, `mine` = only what the viewer may decide. Deciding a version invalidates APPROVALS_KEY.
+ * matches the source's or recon's code or name, `mine` 1 (the default, audit §5.2) = only what the viewer may decide,
+ * 0 = every request (the API's `mine` left out). Deciding a version invalidates APPROVALS_KEY.
  */
 export const APPROVALS = (spaceId: string): TableDef<ApprovalFilters> => ({
   key: APPROVALS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/approvals`, spec: APPROVALS_SPEC,
-  facets: true,
+  facets: true, params: (f) => ({ q: f.q, kind: f.kind, mine: f.mine === "1" ? "1" : "" }),
 });
 
 const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;

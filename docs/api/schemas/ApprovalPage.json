@@ -118,6 +118,64 @@
                 "type": "null"
               }
             ]
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "minor": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "minor",
+                  "currency"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "difference": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "minor": {
+                    "type": "string"
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "minor",
+                  "currency"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "workflowName": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -128,7 +186,10 @@
           "submitter",
           "submittedAt",
           "blocked",
-          "level"
+          "level",
+          "amount",
+          "difference",
+          "workflowName"
         ],
         "additionalProperties": false
       }

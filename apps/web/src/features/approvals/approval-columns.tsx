@@ -7,6 +7,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon } from "@starterkit/ui/ui/icons";
 import { APPROVAL_KIND_LABEL, isRequestKind } from "@starterkit/shared/approvals";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
+import { amountText } from "@/lib/shared/amount";
 import { categoryChip } from "@/lib/shared/categories";
 import { APPROVALS_FROM } from "@/lib/shared/nav";
 
@@ -17,14 +18,24 @@ export const approvalHref = (spaceId: string, r: ApprovalRowDto) => isRequestKin
   ? `/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.target.id)}`
   : `/spaces/${encodeURIComponent(spaceId)}/${r.kind === "source_version" ? "sources" : "recons"}/${encodeURIComponent(r.target.id)}/versions/${encodeURIComponent(r.id)}?from=${APPROVALS_FROM}`;
 
+const money = (m: ApprovalRowDto["amount"]) => (m
+  ? <span className="tabular">{amountText(m.minor, m.currency)}{m.currency ? <span className="ml-1 text-caption text-fg-3">{m.currency}</span> : null}</span>
+  : <span className="text-fg-3">—</span>);
+
+/** Where a request is in its chain: "Treasury head · level 1 of 2", the default chain by name; a version goes to a config checker. */
+export const chainText = (r: ApprovalRowDto) => (isRequestKind(r.kind)
+  ? `${r.workflowName ?? "Default chain"}${r.level ? ` · level ${r.level.at} of ${r.level.of}` : ""}`
+  : "Config checker");
+
 /**
- * Columns of the approvals inbox: what is asked (the source or recon and its version), who sent it, how long it has
- * waited, and what the viewer can do (Review, or why it isn't theirs to decide). Sent and name sort (APPROVAL_SORTS).
+ * Columns of the approvals inbox (audit §5.2): the change (its kind and target), the item's amount and a force match's
+ * difference, its workflow and level, who sent it, how long it has waited, and who it waits for (Review when it is the
+ * viewer, else why not). Sent and name sort (APPROVAL_SORTS).
  */
 export function approvalColumns(spaceId: string): Column<ApprovalRowDto>[] {
   return [
-    { key: "name", header: "Request", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
-      <span className="grid min-w-0 max-w-80">
+    { key: "name", header: "Change", sortable: true, mobile: "title", className: "min-w-48", cell: (r) => (
+      <span className="grid min-w-0 max-w-72">
         <Truncate title={r.target.name}><Link href={approvalHref(spaceId, r)} className={LINK}>{r.target.name}</Link></Truncate>
         <span className="flex min-w-0 items-center gap-2">
           <CategoryChip label={`${APPROVAL_KIND_LABEL[r.kind]}${r.version === null ? "" : ` ${r.version}`}`} slot={categoryChip("changeKind", r.kind)} />
@@ -32,13 +43,15 @@ export function approvalColumns(spaceId: string): Column<ApprovalRowDto>[] {
         </span>
       </span>
     ) },
+    { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => money(r.amount) },
+    { key: "difference", header: "Difference", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => money(r.difference) },
+    { key: "workflow", header: "Workflow", mobile: "meta", className: "max-w-56", cell: (r) => <span className="block truncate" title={chainText(r)}>{chainText(r)}</span> },
     { key: "submitter", header: "Sent by", mobile: "meta", cell: (r) => r.submitter?.name ?? <span className="text-fg-3">A removed user</span> },
-    { key: "level", header: "Level", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.level ? <span className="tabular">{r.level.at} of {r.level.of}</span> : <span className="text-fg-3">—</span>) },
     { key: "submittedAt", header: "Waiting since", sortable: true, mobile: "meta", className: "whitespace-nowrap",
       cell: (r) => (r.submittedAt ? <RelativeTime at={Date.parse(r.submittedAt)} /> : <span className="text-fg-3">—</span>) },
-    { key: "decision", header: "Your decision", mobile: "meta", hideable: false, className: "min-w-56", cell: (r) => r.blocked
+    { key: "decision", header: "Waiting for", mobile: "meta", hideable: false, className: "min-w-48", cell: (r) => r.blocked
       ? <span className="text-body-sm text-fg-3">{r.blocked}</span>
       // a link to where it is decided, one per row: the page's primary stays the decision itself (P6)
-      : <Button asChild variant="link" size="sm"><Link href={approvalHref(spaceId, r)}>Review<Icon icon={ArrowRightIcon} /></Link></Button> },
+      : <span className="flex items-center gap-2">You<Button asChild variant="link" size="sm"><Link href={approvalHref(spaceId, r)}>Review<Icon icon={ArrowRightIcon} /></Link></Button></span> },
   ];
 }
