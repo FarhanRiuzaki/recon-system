@@ -12,7 +12,10 @@
             "type": "string",
             "enum": [
               "source_version",
-              "recon_version"
+              "recon_version",
+              "force_match",
+              "unmatch",
+              "write_off"
             ]
           },
           "id": {
@@ -39,9 +42,16 @@
             "additionalProperties": false
           },
           "version": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "submitter": {
             "anyOf": [

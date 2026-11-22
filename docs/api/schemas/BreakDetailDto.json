@@ -362,6 +362,157 @@
           "type": "null"
         }
       ]
+    },
+    "request": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "force_match",
+                "unmatch",
+                "write_off"
+              ]
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "side": {
+                    "type": "string",
+                    "enum": [
+                      "a",
+                      "b"
+                    ]
+                  },
+                  "businessDate": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "open",
+                      "matched",
+                      "suggested",
+                      "break",
+                      "closed"
+                    ]
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "ref": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "amountMinor": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "currency": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "eventTime": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "side",
+                  "businessDate",
+                  "status",
+                  "reason",
+                  "ref",
+                  "amountMinor",
+                  "currency",
+                  "eventTime",
+                  "source"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "note": {
+              "type": "string"
+            },
+            "requester": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "requestedAt": {
+              "type": "string"
+            },
+            "blocked": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "items",
+            "note",
+            "requester",
+            "requestedAt",
+            "blocked"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -372,7 +523,8 @@
     "ageDays",
     "resolution",
     "matchedWith",
-    "proposed"
+    "proposed",
+    "request"
   ],
   "additionalProperties": false
 }

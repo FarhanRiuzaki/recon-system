@@ -61,7 +61,7 @@ export const ACTION_LABEL = {
   "recon.create": "Recon created", "recon.version_create": "Recon version drafted", "recon.version_update": "Recon version edited",
   "recon.version_submit": "Recon version submitted", "recon.version_approve": "Recon version approved", "recon.version_reject": "Recon version rejected",
   "recon.discard": "Draft recon deleted", "recon.version_discard": "Recon draft discarded", "recon.run": "Recon run started", "recon.simulate": "Recon simulation started",
-  "break.assign": "Break assigned", "break.take": "Break taken", "break.state": "Break state changed", "break.match": "Break matched", "break.close": "Break closed",
+  "break.assign": "Break assigned", "break.take": "Break taken", "break.state": "Break state changed", "break.match": "Break matched", "break.close": "Break closed", "break.request": "Break change requested", "break.approve": "Break request approved", "break.reject": "Break request rejected",
 } satisfies Record<string, string>;
 /** An action of the vocabulary (what the API records). */
 export type ActivityAction = keyof typeof ACTION_LABEL;

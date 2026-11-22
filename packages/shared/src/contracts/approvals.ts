@@ -20,7 +20,8 @@ export const ApprovalRowDto = z.object({
   kind: z.enum(APPROVAL_KINDS),
   id: z.string(),
   target: z.object({ id: z.string(), code: z.string(), name: z.string() }),
-  version: z.number().int(),
+  /** The version's number; null for a break's request (`target` = the break: its reference and recon). */
+  version: z.number().int().nullable(),
   submitter: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
   submittedAt: z.string().nullable(),
   blocked: z.string().nullable(),

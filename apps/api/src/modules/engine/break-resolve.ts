@@ -8,11 +8,12 @@ import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { BreakCandidateQuery, BreakDetailDto, BreakItemDto, CloseBreakBody, MatchBreakBody } from "@starterkit/shared/contracts/breaks";
 import type { ActivityDto, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import type { Page } from "@starterkit/shared/contracts/common";
+import { type RequestKind, requestBlocked } from "@starterkit/shared/approvals";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT, DEBIT_CODES } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
-import { and, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery } from "../../kernel/pagination";
@@ -23,9 +24,9 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { matchGroups, matchMembers, reconItems } from "./schema";
+import { approvalRequests, matchGroups, matchMembers, reconItems } from "./schema";
 
-const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
+export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 const DAY_MS = 86_400_000;
 /** The resolution of a person's match within the amounts (DEC-046). */
@@ -37,7 +38,7 @@ async function recordSpaces(tx: InTx, spaceId: string): Promise<string[]> {
 }
 
 /** Live items `ids` of the space with their records, as the break's page shows them; in the order of `ids`. */
-async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[]): Promise<(BreakItemDto & { configId: string; signed: bigint | null; v: number; state: string | null; assigneeId: string | null })[]> {
+export async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[]): Promise<(BreakItemDto & { configId: string; signed: bigint | null; v: number; state: string | null; assigneeId: string | null })[]> {
   if (!ids.length) return [];
   const spaces = await recordSpaces(tx, spaceId);
   const rows = await tx.select({
@@ -61,11 +62,11 @@ async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[]): Promi
     }];
   });
 }
-const plain = ({ id, side, businessDate, status, reason, ref, amountMinor, currency, eventTime, source }: BreakItemDto): BreakItemDto =>
+export const plain = ({ id, side, businessDate, status, reason, ref, amountMinor, currency, eventTime, source }: BreakItemDto): BreakItemDto =>
   ({ id, side, businessDate, status, reason, ref, amountMinor, currency, eventTime, source });
 
 /** The break `id` of the space: a live item that broke (open, resolved or matched since); else 404. */
-async function breakOf(tx: InTx, spaceId: string, id: string) {
+export async function breakOf(tx: InTx, spaceId: string, id: string) {
   const [x] = await tx.select().from(reconItems)
     .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, id), isNull(reconItems.simRunId), or(eq(reconItems.status, "break"), sql`${reconItems.breakReason} is not null`)));
   if (!x) throw notFound("break");
@@ -78,8 +79,8 @@ async function published(tx: InTx, spaceId: string, configId: string) {
   if (!v) throw new ApiError("invalid_state", "This recon has no approved version running, so its breaks can't change.");
   return { id: v.id, spec: ReconSpec.parse(v.spec) };
 }
-/** An item free to match: live, open or a break nobody resolved. */
-const free = (i: { status: string; state: string | null }) => i.status === "open" || (i.status === "break" && i.state !== "resolved");
+/** An item free to match: live, open or a break nobody resolved and no request holds. */
+export const free = (i: { status: string; state: string | null }) => i.status === "open" || (i.status === "break" && i.state !== "resolved" && i.state !== "pending_approval");
 
 /** GET …/breaks/{itemId}. */
 export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<BreakDetailDto> {
@@ -98,7 +99,10 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const others = g ? (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id), ne(matchMembers.itemId, x.id)))).map((m) => m.id) : [];
     const matchedWith = await itemsOf(tx, spaceId, others);
     const [p] = x.proposedItemId ? await itemsOf(tx, spaceId, [x.proposedItemId]) : [];
-    const name = x.assigneeId ? (await tx.select({ name: users.name }).from(users).where(eq(users.id, x.assigneeId)))[0]?.name ?? null : null;
+    const [rq] = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.itemId, x.id), eq(approvalRequests.status, "pending")));
+    const people = [...new Set([x.assigneeId, rq?.requestedBy].filter((u): u is string => !!u))];
+    const names = new Map(people.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, people))).map((u) => [u.id, u.name]) : []);
+    const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
     return {
       item: plain(item!), recon: { id: x.configId, name: c?.name ?? "Recon", sides }, state: (x.breakState ?? "new") as BreakState,
@@ -106,6 +110,11 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),
       proposed: p ? { item: plain(p), pass: x.proposedPass, available: free(p) } : null,
+      request: rq ? {
+        id: rq.id, kind: rq.kind as RequestKind, note: rq.note, items: (await itemsOf(tx, spaceId, rq.itemIds)).map(plain),
+        requester: rq.requestedBy ? { id: rq.requestedBy, name: names.get(rq.requestedBy) ?? null } : null, requestedAt: rq.requestedAt.toISOString(),
+        blocked: requestBlocked(rq.requestedBy, ctx.user.id, isLead(ctx), isSuperadmin(ctx.user.roles)),
+      } : null,
     };
   });
 }
@@ -119,7 +128,7 @@ export function candidatePage(ctx: Ctx, id: string, q: BreakCandidateQuery): Pro
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     const where = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, x.configId), isNull(reconItems.simRunId), ne(reconItems.side, x.side),
-      or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), or(isNull(reconItems.breakState), ne(reconItems.breakState, "resolved")))),
+      or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), or(isNull(reconItems.breakState), notInArray(reconItems.breakState, ["resolved", "pending_approval"])))),
       like ? ilike(records.extRef, like) : undefined);
     const amount = mine?.amountMinor ?? null;
     const page = await pageQuery({
@@ -137,14 +146,20 @@ export function candidatePage(ctx: Ctx, id: string, q: BreakCandidateQuery): Pro
   });
 }
 
-/** Whoever has the break, or a space admin, reviewer or Superadmin; else 403. A resolved break is 409. */
-function mayWork(ctx: Ctx, x: { assigneeId: string | null; breakState: string | null; status: string }) {
+/** A space admin, reviewer or Superadmin: works anyone's break, decides break requests. */
+export const isLead = (ctx: Ctx) => isSuperadmin(ctx.user.roles) || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
+/** Whoever has the break, or a lead; else 403. */
+export function mayTouch(ctx: Ctx, x: { assigneeId: string | null }) {
+  if (!isLead(ctx) && x.assigneeId !== ctx.user.id) throw new ApiError("forbidden", "Take this break first: only whoever has it resolves it.");
+}
+/** An open break whoever has it (or a lead) may resolve; a resolved one or one waiting for a checker is 409. */
+export function mayWork(ctx: Ctx, x: { assigneeId: string | null; breakState: string | null; status: string }) {
   if (x.status !== "break" || x.breakState === "resolved") throw new ApiError("invalid_state", "This break is resolved already.");
-  const lead = isSuperadmin(ctx.user.roles) || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
-  if (!lead && x.assigneeId !== ctx.user.id) throw new ApiError("forbidden", "Take this break first: only whoever has it resolves it.");
+  if (x.breakState === "pending_approval") throw new ApiError("invalid_state", "A change of this break waits for a checker's decision.");
+  mayTouch(ctx, x);
 }
 
-const amountText = (minor: bigint, ccy: string | null) => { const e = ccy ? CURRENCY_EXPONENT[ccy] : undefined; return e === undefined ? String(minor) : formatMinor(minor, e); };
+export const amountText = (minor: bigint, ccy: string | null) => { const e = ccy ? CURRENCY_EXPONENT[ccy] : undefined; return e === undefined ? String(minor) : formatMinor(minor, e); };
 
 /**
  * One manual match of the break with `otherIds` (DEC-046): items of the recon free to match, both sides present, one
@@ -156,45 +171,56 @@ async function match(ctx: Ctx, id: string, otherIds: readonly string[], o: { not
   return inSpace(ctx, async (tx, spaceId) => {
     const x = await breakOf(tx, spaceId, id);
     mayWork(ctx, x);
+    await matchIn(tx, ctx, spaceId, x, otherIds, { ...o, resolution: MATCHED_MANUAL, action: "break.match" });
+  });
+}
+
+type MatchOptions = { note?: string; checkTotals: boolean; pass?: number | null; resolution: Resolution; action: "break.match" | "break.approve"; extra?: Record<string, unknown> };
+/** A break's items, locked and checked: free, of its recon, both sides present; with the recon's published version. */
+export async function matchItems(tx: InTx, spaceId: string, x: { id: string; configId: string }, otherIds: readonly string[]) {
     const ids = [x.id, ...otherIds.filter((i) => i !== x.id)];
     // lock them all at the status read (A1): an item an operator or a run holds waits; a moved one refuses below
     await tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, ids))).for("update");
     const items = await itemsOf(tx, spaceId, ids);
     if (items.length !== ids.length || items.some((i) => i.configId !== x.configId)) throw new ApiError("bad_request", "Match items of this recon only.");
-    const gone = items.find((i) => !free(i));
+    // the break itself may wait for its own request (an approved force match); every other item must be free
+    const gone = items.find((i) => (i.id === x.id ? i.status !== "break" || i.state === "resolved" : !free(i)));
     if (gone) throw new ApiError("invalid_state", `${gone.ref ?? "An item"} is no longer free to match (${gone.status}). Reload and pick again.`);
     if (!items.some((i) => i.side === "a") || !items.some((i) => i.side === "b")) throw new ApiError("bad_request", "A match needs items of both sides.");
     const v = await published(tx, spaceId, x.configId);
     const ccys = new Set(items.map((i) => i.currency));
-    if (o.checkTotals) {
-      if (ccys.size > 1) throw new ApiError("bad_request", "These items are in different currencies. Match items of one currency.");
-      const ccy = [...ccys][0] ?? null;
-      // the recon's convention (pass.ts comparedAmount): a side with amount_sign negate is negated
-      const total = (side: "a" | "b") => items.filter((i) => i.side === side).reduce((t, i) => t + (i.signed ?? 0n) * (v.spec.sides[side === "a" ? 0 : 1].amount_sign === "negate" ? -1n : 1n), 0n);
-      const a = total("a"), b = total("b");
-      if (a !== b) {
-        throw new ApiError("invalid_state", `${v.spec.sides[0].label} totals ${amountText(a, ccy)} and ${v.spec.sides[1].label} ${amountText(b, ccy)}: they differ by ${amountText(a > b ? a - b : b - a, ccy)}. A match across a difference needs approval (force match).`);
-      }
-    }
+    const mixed = ccys.size > 1 ? "These items are in different currencies. Match items of one currency." : null;
+    const ccy = [...ccys][0] ?? null;
+    // the recon's convention (pass.ts comparedAmount): a side with amount_sign negate is negated
+    const total = (side: "a" | "b") => items.filter((i) => i.side === side).reduce((t, i) => t + (i.signed ?? 0n) * (v.spec.sides[side === "a" ? 0 : 1].amount_sign === "negate" ? -1n : 1n), 0n);
+    const a = total("a"), b = total("b");
+    const differ = a === b ? null : `${v.spec.sides[0].label} totals ${amountText(a, ccy)} and ${v.spec.sides[1].label} ${amountText(b, ccy)}: they differ by ${amountText(a > b ? a - b : b - a, ccy)}.`;
+    return { ids, items, v, differ, mixed };
+}
+
+/** The match itself, in the caller's transaction, after its rules (match, or an approved force match). */
+export async function matchIn(tx: InTx, ctx: Ctx, spaceId: string, x: { id: string; configId: string; breakState: string | null }, otherIds: readonly string[], o: MatchOptions): Promise<void> {
+    const { ids, items, v, differ, mixed } = await matchItems(tx, spaceId, x, otherIds);
+    if (o.checkTotals && mixed) throw new ApiError("bad_request", mixed);
+    if (o.checkTotals && differ) throw new ApiError("invalid_state", `${differ} A match across a difference needs approval (force match).`);
     const gid = Bun.randomUUIDv7();
     const latest = items.reduce((d, i) => (i.businessDate > d ? i.businessDate : d), items[0]!.businessDate);
     await tx.insert(matchGroups).values({
       id: gid, spaceId, configId: x.configId, configVersionId: v.id, runId: null, simRunId: null, passNo: o.pass ?? 0, kind: "manual", businessDate: latest,
-      evidence: { manual: true, by: ctx.user.id, ...(o.note ? { note: o.note } : {}), ...(o.pass ? { proposedBy: o.pass } : {}), items: ids.length },
+      evidence: { manual: true, by: ctx.user.id, resolution: o.resolution, ...(o.note ? { note: o.note } : {}), ...(o.pass ? { proposedBy: o.pass } : {}), ...o.extra, items: ids.length },
     });
     await tx.insert(matchMembers).values(items.map((i) => ({ groupId: gid, spaceId, itemId: i.id, side: i.side, signedAmount: i.signed })));
     for (const i of items) {
       await tx.update(reconItems).set({
         status: "matched", version: sql`${reconItems.version} + 1`, stateAt: sql`now()`,
-        ...(i.status === "break" ? { breakState: "resolved", resolution: MATCHED_MANUAL } : {}),
+        ...(i.status === "break" ? { breakState: "resolved", resolution: o.resolution } : {}),
       }).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, i.id), eq(reconItems.businessDate, i.businessDate), eq(reconItems.version, i.v)));
     }
     await recordActivity(tx, ctx, {
-      action: "break.match", target: { type: "break", id: x.id, label: items[0]!.ref ?? "Break" },
+      action: o.action, target: { type: "break", id: x.id, label: items[0]!.ref ?? "Break" },
       before: { state: x.breakState ?? "new" },
-      after: { resolution: MATCHED_MANUAL, items: items.map((i) => ({ side: i.side, ref: i.ref })), ...(o.pass ? { proposedBy: o.pass } : {}), ...(o.note ? { note: o.note } : {}) },
+      after: { resolution: o.resolution, items: items.map((i) => ({ side: i.side, ref: i.ref })), ...(o.pass ? { proposedBy: o.pass } : {}), ...(o.note ? { note: o.note } : {}), ...o.extra },
     });
-  });
 }
 
 /** POST …/breaks/{itemId}/match. */

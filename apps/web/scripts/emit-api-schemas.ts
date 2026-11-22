@@ -137,6 +137,9 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "break.state": ["break", "`{ state }`", "`{ state }` (investigating or pending_external)"],
   "break.match": ["break", "`{ state }`", "`{ resolution, items (side, ref), proposedBy?, note? }`"],
   "break.close": ["break", "`{ state }`", "`{ resolution, note }` (DUPLICATE or NO_ACTION)"],
+  "break.request": ["break", "`{ state }`", "`{ kind, note, items? }` (force_match, unmatch or write_off; items = the other items of a force match)"],
+  "break.approve": ["break", "`{ state }` or `{ resolution }`", "`{ kind, requestedBy, decisionNote?, note }` and `{ resolution, items }` (force match), `{ resolution }` (write-off) or `{ unmatched }` (unmatch)"],
+  "break.reject": ["break", "`{ state }`", "`{ kind, note, requestedBy }`"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

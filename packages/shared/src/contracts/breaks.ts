@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { AGE_BUCKETS, BREAK_BULK_MAX, BREAK_REASONS, BREAK_STATES, CLOSE_RESOLUTIONS, ITEM_STATUSES, MATCH_ITEMS_MAX, RESOLUTION_NOTE_MAX, RESOLUTIONS, WORK_STATES } from "../recon";
+import { REQUEST_KINDS } from "../approvals";
 import { BREAK_SORTS } from "../paging";
 import { ListQuery, sortParam } from "./common";
 
@@ -78,6 +79,14 @@ export const BreakDetailDto = z.object({
   resolution: z.enum(RESOLUTIONS).nullable(),
   matchedWith: z.array(BreakItemDto),
   proposed: z.object({ item: BreakItemDto, pass: z.number().int().nullable(), available: z.boolean() }).nullable(),
+  /**
+   * The change of this break waiting for a checker (Task 3): what is asked (with the other items of a force match), by
+   * whom, why, and why the caller can't decide it (`blocked`), null when they can.
+   */
+  request: z.object({
+    id: z.string(), kind: z.enum(REQUEST_KINDS), items: z.array(BreakItemDto), note: z.string(),
+    requester: z.object({ id: z.string(), name: z.string().nullable() }).nullable(), requestedAt: z.string(), blocked: z.string().nullable(),
+  }).nullable(),
 });
 export type BreakDetailDto = z.infer<typeof BreakDetailDto>;
 
@@ -91,4 +100,22 @@ export type MatchBreakBody = z.infer<typeof MatchBreakBody>;
 /** POST …/breaks/{itemId}/close: resolved without a match, with why (the note is required). */
 export const CloseBreakBody = z.strictObject({ resolution: z.enum(CLOSE_RESOLUTIONS), note: z.string().trim().min(1, "Say why it closes without a match.").max(RESOLUTION_NOTE_MAX) });
 export type CloseBreakBody = z.infer<typeof CloseBreakBody>;
+
+const why = z.string().trim().min(1, "Say why it needs this.").max(RESOLUTION_NOTE_MAX);
+/**
+ * POST …/breaks/{itemId}/request: a change a checker decides (Task 3): a force match with `itemIds` (sides that total
+ * differently), the break's match undone (unmatch), or a write-off; the note says why.
+ */
+export const RequestBreakBody = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("force_match"), itemIds: z.array(z.uuid()).min(1).max(MATCH_ITEMS_MAX), note: why }),
+  z.strictObject({ kind: z.literal("unmatch"), note: why }),
+  z.strictObject({ kind: z.literal("write_off"), note: why }),
+]);
+export type RequestBreakBody = z.infer<typeof RequestBreakBody>;
+/** POST …/breaks/{itemId}/request/approve: the checker's note is optional. */
+export const ApproveRequestBody = z.strictObject({ note: z.string().trim().max(RESOLUTION_NOTE_MAX).optional() });
+export type ApproveRequestBody = z.infer<typeof ApproveRequestBody>;
+/** POST …/breaks/{itemId}/request/reject: the checker says why. */
+export const RejectRequestBody = z.strictObject({ note: z.string().trim().min(1, "Say why it is rejected.").max(RESOLUTION_NOTE_MAX) });
+export type RejectRequestBody = z.infer<typeof RejectRequestBody>;
 

@@ -36,7 +36,10 @@
       "type": "string",
       "enum": [
         "source_version",
-        "recon_version"
+        "recon_version",
+        "force_match",
+        "unmatch",
+        "write_off"
       ]
     },
     "mine": {
