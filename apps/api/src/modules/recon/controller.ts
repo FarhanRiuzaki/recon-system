@@ -4,11 +4,12 @@
 // space_admin deletes a draft recon never submitted (README row Plan 3). Query 400 → guard 401/403 → body 400 → 404 →
 // rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
-import { CreateReconBody, ReconActivityQuery, ReconListQuery, ReconVersionListQuery, RejectReconVersionBody, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
+import { CreateReconBody, PreviewApprovalBody, ReconActivityQuery, ReconListQuery, ReconVersionListQuery, RejectReconVersionBody, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
+  previewVersionApproval,
   approveVersion, createDraft, createRecon, discardRecon, reconActivity, reconDetail, reconPage, refusedRecon, rejectVersion, submitVersion, updateVersion,
   versionDetail, versionPage,
 } from "./service";
@@ -45,6 +46,11 @@ export const reconController = () =>
       const b = await body(c, UpdateReconVersionBody).catch(refusedRecon);
       return updateVersion(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
     }, { guard: { space: ["config_maker"] } })
+    // a read sent as POST for its body (typed field values): who would approve a change, nothing is written
+    .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/approvals/preview", async (c) => {
+      const b = await body(c, PreviewApprovalBody);
+      return previewVersionApproval(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
+    }, { guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/submit", ({ ctx, params }) =>
       submitVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: ["config_maker"] } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/approve", ({ ctx, params }) =>

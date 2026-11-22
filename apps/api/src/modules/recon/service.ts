@@ -6,7 +6,9 @@
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
+import type { PreviewDto } from "@starterkit/shared/contracts/workflows";
 import type {
+  PreviewApprovalBody,
   CreateReconBody, ReconActivityQuery, ReconDto, ReconListQuery, ReconRowDto, ReconSpec, ReconVersionDetailDto, ReconVersionDto, ReconVersionListQuery,
   ReconVersionRowDto, RejectReconVersionBody, UpdateReconVersionBody,
 } from "@starterkit/shared/contracts/recon";
@@ -22,7 +24,7 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { canStep, matchingHash, specHash } from "../../kernel/versions";
 import { recordActivity, targetActivityPage } from "../audit";
 import type { Ctx } from "../auth";
-import { workflowFacts } from "../approvals";
+import { previewApproval, workflowFacts } from "../approvals";
 import { records } from "../ingest";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
@@ -409,6 +411,15 @@ export function versionPage(ctx: Ctx, id: string, q: ReconVersionListQuery): Pro
 }
 
 /** GET …/versions/:versionId: the version with the names of everyone it names. */
+/** POST …/versions/{versionId}/approvals/preview: who would approve a change of this version on typed values. */
+export function previewVersionApproval(ctx: Ctx, id: string, versionId: string, b: PreviewApprovalBody): Promise<PreviewDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const c = await configOf(tx, spaceId, id);
+    const v = await versionOf(tx, c, versionId);
+    return previewApproval(tx, spaceId, c.id, (v.spec as ReconSpec).approvals, b.change, b.values);
+  });
+}
+
 export function versionDetail(ctx: Ctx, id: string, versionId: string): Promise<ReconVersionDetailDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const v = await versionOf(tx, await configOf(tx, spaceId, id), versionId);

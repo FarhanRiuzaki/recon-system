@@ -98,7 +98,7 @@ export type ReviewWorkflowBody = z.infer<typeof ReviewWorkflowBody>;
 const NeedDto = z.object({ kind: z.enum(["any", "all", "count"]), n: z.number().int().optional() });
 /** The rule and workflow (null = the default chain) a request would take, and who could approve each group now (`short`: not enough). */
 export const PreviewDto = z.object({
-  rule: z.object({ name: z.string(), index: z.number().int().nullable() }), workflow: z.object({ id: z.string(), name: z.string() }).nullable(),
+  rule: z.object({ name: z.string(), index: z.number().int().nullable() }), workflow: z.object({ id: z.string(), name: z.string(), version: z.number().int() }).nullable(),
   levels: z.array(z.object({ name: z.string(), groups: z.array(z.object({ need: NeedDto, approvers: z.array(Person), short: z.boolean() })) })),
 });
 export type PreviewDto = z.infer<typeof PreviewDto>;

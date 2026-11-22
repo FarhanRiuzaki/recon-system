@@ -2369,6 +2369,9 @@
             "specHash": {
               "type": "string"
             },
+            "matchingHash": {
+              "type": "string"
+            },
             "makerId": {
               "type": [
                 "string",
@@ -2436,6 +2439,7 @@
             "status",
             "spec",
             "specHash",
+            "matchingHash",
             "makerId",
             "contributorIds",
             "submitterId",
@@ -4773,6 +4777,9 @@
             "specHash": {
               "type": "string"
             },
+            "matchingHash": {
+              "type": "string"
+            },
             "makerId": {
               "type": [
                 "string",
@@ -4840,6 +4847,7 @@
             "status",
             "spec",
             "specHash",
+            "matchingHash",
             "makerId",
             "contributorIds",
             "submitterId",

@@ -38,11 +38,17 @@
             },
             "name": {
               "type": "string"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
             }
           },
           "required": [
             "id",
-            "name"
+            "name",
+            "version"
           ],
           "additionalProperties": false
         },

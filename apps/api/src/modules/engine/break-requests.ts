@@ -6,6 +6,7 @@
 // break (approval_requests_one_pending). The rule attributes: amount (the force match's gap, else the break's own
 // amount, minor units), currency, recon, age in days.
 import type { BreakDetailDto, RequestBreakBody } from "@starterkit/shared/contracts/breaks";
+import type { Context } from "@starterkit/shared/conditions";
 import type { Attributes } from "@starterkit/shared/workflows";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
@@ -13,8 +14,8 @@ import { ApiError } from "../../kernel/errors";
 import { openRequest } from "../approvals";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
-import { todayIn } from "../ingest";
-import { breakDetail, breakOf, inSpace, itemsOf, matchIn, matchItems, mayTouch, mayWork } from "./break-resolve";
+import { records, todayIn } from "../ingest";
+import { breakDetail, breakOf, inSpace, itemsOf, matchIn, matchItems, mayTouch, mayWork, recordSpaces } from "./break-resolve";
 import { matchGroups, matchMembers, reconItems } from "./schema";
 import { assertNotSigned } from "./signoff";
 
@@ -27,6 +28,30 @@ async function groupOf(tx: InTx, spaceId: string, itemId: string) {
 }
 const abs = (v: string | null) => (v === null ? undefined : (v.startsWith("-") ? v.slice(1) : v));
 const ageOf = (d: string, now = new Date()) => Math.max(0, Math.round((Date.parse(`${todayIn(now)}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86_400_000));
+
+/**
+ * The fields an approval rule reads for a break (DEC-052 rev 2 §4.3): the break's own (amount as the rule attributes
+ * have it, minor units), and its record's core columns and attrs under its side (`side_a.attrs.channel`). The other
+ * side's fields are absent, so a clause on them fails. recon.code is added by openRequest.
+ */
+async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: string; businessDate: string; breakReason: string | null; breakState: string | null; status: string }, at: Attributes): Promise<Context> {
+  const [r] = await tx.select().from(reconItems)
+    .innerJoin(records, and(inArray(records.spaceId, await recordSpaces(tx, spaceId)), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
+    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
+  const out: Record<string, string | number | null> = {
+    "break.amount": at.amount ?? null, "break.currency": at.currency ?? null, "break.business_date": x.businessDate, "break.age_days": at.ageDays ?? null,
+    "break.side": x.side, "break.reason": x.breakReason, "break.state": x.breakState ?? "new", "break.reference": r?.records.extRef ?? null,
+  };
+  if (r) {
+    const rec = r.records, p = `side_${x.side}.`;
+    Object.assign(out, {
+      [`${p}ext_ref`]: rec.extRef, [`${p}account_ref`]: rec.accountRef, [`${p}amount_minor`]: rec.amountMinor?.toString() ?? null, [`${p}currency`]: rec.currency,
+      [`${p}direction`]: rec.direction, [`${p}event_time`]: rec.eventTime?.toISOString() ?? null, [`${p}business_date`]: rec.businessDate,
+    });
+    for (const [k, v] of Object.entries((rec.attrs ?? {}) as Record<string, unknown>)) out[`${p}attrs.${k}`] = v === null || v === undefined ? null : String(v);
+  }
+  return out;
+}
 
 /** POST …/breaks/{itemId}/request. */
 export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): Promise<BreakDetailDto> {
@@ -52,7 +77,8 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
         attributes.amount = m.gap.toString();
       }
     }
-    await openRequest(tx, ctx, { kind: b.kind, configId: x.configId, itemId: x.id, itemIds, label: item?.ref ?? "Break", note: b.note, prevState: x.breakState, attributes });
+    const context = await breakContext(tx, spaceId, x, attributes);
+    await openRequest(tx, ctx, { kind: b.kind, configId: x.configId, itemId: x.id, itemIds, label: item?.ref ?? "Break", note: b.note, prevState: x.breakState, attributes, context });
     // a break waiting for a force match or write-off leaves the work states (a matched one keeps resolved meanwhile)
     if (b.kind !== "unmatch") {
       await tx.update(reconItems).set({ breakState: "pending_approval", version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })

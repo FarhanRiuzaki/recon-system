@@ -33,7 +33,7 @@ const DAY_MS = 86_400_000;
 /** The resolution of a person's match within the amounts (DEC-046). */
 export const MATCHED_MANUAL: Resolution = "MATCHED_MANUAL";
 
-async function recordSpaces(tx: InTx, spaceId: string): Promise<string[]> {
+export async function recordSpaces(tx: InTx, spaceId: string): Promise<string[]> {
   const shared = await tx.selectDistinct({ id: sourceShares.spaceId }).from(sourceShares).where(eq(sourceShares.toSpaceId, spaceId));
   return [spaceId, ...shared.map((s) => s.id)];
 }

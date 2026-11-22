@@ -125,6 +125,12 @@ export const ReconApprovalSpec = z.strictObject({
   changes: z.strictObject({ force_match: ChangeApproval.optional(), unmatch: ChangeApproval.optional(), write_off: ChangeApproval.optional() }),
 });
 export type ReconApprovalSpec = z.infer<typeof ReconApprovalSpec>;
+/** POST …/recons/{id}/versions/{versionId}/approvals/preview: who would approve a change on typed field values. */
+export const PreviewApprovalBody = z.strictObject({
+  change: z.enum(["force_match", "unmatch", "write_off"]),
+  values: z.record(z.string().max(120), z.string().max(200)).refine((v) => Object.keys(v).length <= 50, "Give at most 50 values."),
+});
+export type PreviewApprovalBody = z.infer<typeof PreviewApprovalBody>;
 
 /**
  * A recon version's `spec` (spec §10): exactly two sides (a, then b), the passes in order, an optional measure, the

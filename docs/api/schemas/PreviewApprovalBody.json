@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PreviewApprovalBody",
+  "type": "object",
+  "properties": {
+    "change": {
+      "type": "string",
+      "enum": [
+        "force_match",
+        "unmatch",
+        "write_off"
+      ]
+    },
+    "values": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "maxLength": 120
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 200
+      }
+    }
+  },
+  "required": [
+    "change",
+    "values"
+  ],
+  "additionalProperties": false
+}

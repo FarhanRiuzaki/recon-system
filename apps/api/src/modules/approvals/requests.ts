@@ -1,12 +1,14 @@
-// The runtime of the approval workflow engine (DEC-052, revised): a request takes the live version of the library
-// workflow its space's published approval rules pick for its trigger (the first rule whose conditions hold, else
-// `otherwise`, else the default chain), snapshotted with its names; its levels pass in order, a level
+// The runtime of the approval workflow engine (DEC-052 rev 2): a request takes the workflow version its recon's
+// published version pins for the change (the first rule whose condition holds on the break, else the default
+// workflow, else the default chain), snapshotted with its names; its levels pass in order, a level
 // when every group in it has its approvals from people eligible now (the one who asked and anyone who decided this
 // request already never count: one decision per person per request). One reject ends it; the one who asked may cancel
 // while it waits; a Superadmin approves what is left only by override, with a reason, and never their own request.
 // The owning module does the change when the last level passes and undoes the wait on a reject or cancel, in the
 // same transaction (engine: applyBreakChange, revertBreakRequest).
-import type { RequestViewDto } from "@starterkit/shared/contracts/workflows";
+import { type Context, evaluate } from "@starterkit/shared/conditions";
+import type { ReconApprovalSpec } from "@starterkit/shared/contracts/recon";
+import type { PreviewDto, RequestViewDto } from "@starterkit/shared/contracts/workflows";
 import type { ApproveBody, OverrideBody, RejectBody } from "@starterkit/shared/contracts/workflows";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { ROLE_LABEL } from "@starterkit/shared/spaces";
@@ -17,10 +19,12 @@ import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { applyBreakChange, revertBreakRequest } from "../engine";
+import { reconConfigs, reconConfigVersions } from "../recon";
 import { roles, userRoles } from "../rbac";
 import { spaceMembers, withSpace } from "../spaces";
 import { users } from "../users";
 import { approvalDecisions, approvalRequests } from "./schema";
+import { pinnedVersion } from "./workflows";
 
 type Person = { id: string; name: string | null };
 type RequestRow = typeof approvalRequests.$inferSelect;
@@ -50,22 +54,47 @@ export function groupText(g: Group, names: ReadonlyMap<string, string | null>): 
 }
 const needText = (g: Group) => (g.need.kind === "any" ? "1 of" : g.need.kind === "all" ? "all of" : `${g.need.n} of`);
 
+type Resolved = { chain: Chain; versionId: string | null; workflow: { id: string; name: string; version: number } | null; rule: { name: string; index: number | null } };
+const MISSING = "The approval setup of this recon points to a workflow version that no longer exists. Ask a config maker to fix the recon.";
 /**
- * Open a request for a change (called by the owning module inside its transaction): its chain from the published
- * workflow, refused when a level could never pass (nobody besides the one who asks).
+ * The chain an approval setup gives a change on `context`: the first rule whose condition holds, else the default
+ * workflow ("Every request"), else the default chain ("Default"). A pinned version that is gone is 409.
+ */
+export async function resolveChain(tx: InTx, approvals: ReconApprovalSpec | undefined, kind: Trigger, context: Context): Promise<Resolved> {
+  const w = approvals?.changes[kind]?.workflow;
+  const i = w ? w.rules.findIndex((r) => evaluate(r.when, context)) : -1;
+  const ref = i >= 0 ? w!.rules[i]!.workflow : w?.default ?? null;
+  if (!ref) return { chain: DEFAULT_CHAIN, versionId: null, workflow: null, rule: { name: "Default", index: null } };
+  const v = await pinnedVersion(tx, ref);
+  if (!v) throw new ApiError("invalid_state", MISSING);
+  return { chain: v.spec, versionId: v.id, workflow: { id: ref.id, name: v.name, version: ref.version }, rule: i >= 0 ? { name: w!.rules[i]!.name, index: i } : { name: "Every request", index: null } };
+}
+
+/** The recon's published version (its id, approval setup) and code, for a request's rules. */
+async function liveSetup(tx: InTx, spaceId: string, configId: string) {
+  const [v] = await tx.select({ id: reconConfigVersions.id, spec: reconConfigVersions.spec, code: reconConfigs.code }).from(reconConfigVersions)
+    .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId))
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
+  return v ? { id: v.id, code: v.code, approvals: (v.spec as { approvals?: ReconApprovalSpec }).approvals } : null;
+}
+
+/**
+ * Open a request for a change (called by the owning module inside its transaction): its chain from the recon's
+ * pinned workflow by its rules on `context`, refused when a level could never pass (nobody besides the one who asks).
  */
 export async function openRequest(tx: InTx, ctx: Ctx, r: {
-  kind: Trigger; configId: string; itemId: string; itemIds: string[]; label: string; note: string; prevState: string | null; attributes: Attributes;
+  kind: Trigger; configId: string; itemId: string; itemIds: string[]; label: string; note: string; prevState: string | null; attributes: Attributes; context: Context;
 }): Promise<string> {
   const spaceId = ctx.space!.id;
-  // stage 1 task 4 resolves the recon version's approval setup here; until then every change takes the default chain
-  const chain: Chain = DEFAULT_CHAIN, versionId: string | null = null, configVersionId: string | null = null, ruleName = "Default";
+  const live = await liveSetup(tx, spaceId, r.configId);
+  const { chain, versionId, workflow, rule } = await resolveChain(tx, live?.approvals, r.kind, { ...r.context, "recon.code": live?.code ?? null });
+  const configVersionId = live?.id ?? null, ruleName = rule.name;
   const me = new Set([ctx.user.id]);
   for (const [i, level] of chain.levels.entries()) {
     for (const g of level.groups) {
       const n = (await approversOf(tx, spaceId, g, me)).length;
       if (groupNeeds(g.need, n, 0).short) {
-        throw new ApiError("invalid_state", `Level ${i + 1}${level.name ? ` (${level.name})` : ""} of ${versionId ? `the “${chain.name}” workflow` : "the default chain"} has nobody else who can approve it. ${versionId ? "Ask a workflow manager to fix it." : "Ask a space admin to add a reviewer."}`);
+        throw new ApiError("invalid_state", `Level ${i + 1}${level.name ? ` (${level.name})` : ""} of ${versionId ? `the “${chain.name}” workflow` : "the default chain"} has nobody else who can approve it. ${versionId ? "Ask a space admin or a workflow manager to fix it." : "Ask a space admin to add a reviewer."}`);
       }
     }
   }
@@ -73,7 +102,7 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
   try {
     await tx.insert(approvalRequests).values({
       id, spaceId, configId: r.configId, kind: r.kind, itemId: r.itemId, itemIds: r.itemIds, label: r.label, note: r.note, prevState: r.prevState,
-      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: versionId, configVersionId, workflowName: versionId ? chain.name : null,
+      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: versionId, configVersionId, workflowName: workflow?.name ?? null,
       ruleName, chain: chain.levels, currentLevel: 0,
     });
   } catch (e) {
@@ -81,6 +110,21 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
     throw e;
   }
   return id;
+}
+
+/** Who would approve a change of a recon version on typed `values` (the setup step's preview; nothing is written). */
+export async function previewApproval(tx: InTx, spaceId: string, configId: string, approvals: ReconApprovalSpec | undefined, kind: Trigger, values: Context): Promise<PreviewDto> {
+  const [c] = await tx.select({ code: reconConfigs.code }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
+  const { chain, workflow, rule } = await resolveChain(tx, approvals, kind, { "recon.code": c?.code ?? null, ...values });
+  const none = new Set<string>();
+  const levels = await Promise.all(chain.levels.map(async (l, i) => ({
+    name: l.name || `Level ${i + 1}`,
+    groups: await Promise.all(l.groups.map(async (g) => {
+      const approvers = await approversOf(tx, spaceId, g, none);
+      return { need: g.need, approvers, short: groupNeeds(g.need, approvers.length, 0).short };
+    })),
+  })));
+  return { rule, workflow, levels };
 }
 
 /** The pending request of a subject (a break), if any. */
