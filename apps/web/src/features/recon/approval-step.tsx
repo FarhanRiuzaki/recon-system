@@ -229,7 +229,7 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
   }
   const empty: Setup = { workflow: { default: null, rules: [] } };
   return (
-    <div className="grid items-start gap-section xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+    <div className="grid gap-section">
       <div className="grid min-w-0 gap-section">
         {wf.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load the space&apos;s workflows. {errorText(wf.error)}</p>}
         {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow to save it.</p>}
@@ -238,7 +238,7 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
             onChange={(s) => set({ changes: { ...local.changes, [k]: s } })} />
         ))}
       </div>
-      <div className="min-w-0 xl:sticky xl:top-(--topbar-h)">
+      <div className="min-w-0">
         <WhoApproves spaceId={spaceId} configId={configId} versionId={versionId} approvals={local} catalog={catalog} dirty={dirty || unfinished} />
       </div>
     </div>
