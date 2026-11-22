@@ -17,5 +17,5 @@ export default async function Page({ params }: { params: Params }) {
   const { spaceId, id } = await params;
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
-  return <Prefetch reads={[reads.space(spaceId), reads.spaceWorkflow(spaceId, id)]}><LibraryEditor spaceId={spaceId} spaceName={space.name} id={id} /></Prefetch>;
+  return <Prefetch reads={[reads.space(spaceId), reads.spaceWorkflow(spaceId, id)]}><LibraryEditor spaceId={spaceId} id={id} /></Prefetch>;
 }

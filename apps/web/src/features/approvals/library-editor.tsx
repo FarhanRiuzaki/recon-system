@@ -36,7 +36,7 @@ type Save = { state: "idle" | "saving" | "saved" | "error"; at?: number; error?:
  * approval and another one publishes it (a Superadmin their own only by override, with a reason). Used by lists the
  * recons that use it and marks those on an older version.
  */
-export function LibraryEditor({ spaceId, spaceName, id }: { spaceId: string; spaceName: string; id: string }) {
+export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) {
   const qc = useQueryClient();
   const router = useRouter();
   const d = spaceWorkflow(spaceId, id);
@@ -119,7 +119,7 @@ export function LibraryEditor({ spaceId, spaceName, id }: { spaceId: string; spa
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={(!readOnly && name.trim()) || w.name} trail={[{ href: list, label: `Workflows · ${spaceName}` }]}
+      <PageHeader title={(!readOnly && name.trim()) || w.name}
         description={`${levels.length} ${levels.length === 1 ? "level" : "levels"} · approves in order, every group in a level must approve`}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
