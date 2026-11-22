@@ -1,8 +1,8 @@
 "use client";
 
 // One approval action in a full-screen editor (owner 22 Nov: "oke full screen", "seperti setup ERD"): settings on the
-// left in numbered sections (the action, its variants, the variant open), the field map in the middle (canvas, or the
-// list), the field open on the right (where its value comes from, its changes, a sample from a real break), and What
+// left in numbered sections (the action, its variants, the variant open), the field map in the middle (the list on
+// a phone), the field open on the right (where its value comes from, its changes, a sample from a real break), and What
 // gets posted under the map. Edits stay here until Done; Cancel drops them; Escape closes only when nothing changed.
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -24,7 +24,7 @@ import type { Trigger } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { EventPicker, type Ops, opOf, OperationPicker } from "./action-parts";
-import { unfinishedReason } from "./actions-model";
+import { previewBody, unfinishedReason } from "./actions-model";
 import { ChangeChips } from "./change-chips";
 import { ConditionEditor } from "./condition-editor";
 import { connect, keepMapping, mapGraph } from "./field-map";
@@ -115,8 +115,8 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
  * What gets posted for a real break, from the action as it stands in the editor: the first break is picked when the
  * editor opens and the preview runs again shortly after each change, so the map's examples stay live.
  */
-function Dock({ spaceId, configId, versionId, change, index, draft, onResult }: {
-  spaceId: string; configId: string; versionId: string; change: Trigger; index: number; draft: ActionSpec;
+function Dock({ spaceId, configId, versionId, change, index, draft, accounts, onResult }: {
+  spaceId: string; configId: string; versionId: string; change: Trigger; index: number; draft: ActionSpec; accounts: Setup["accounts"];
   onResult: (r: ActionPreviewDto | null, from: string) => void;
 }) {
   const q = reconBreaksQuery(spaceId, configId);
@@ -127,20 +127,21 @@ function Dock({ spaceId, configId, versionId, change, index, draft, onResult }: 
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<ActionPreviewDto | { error: string } | null>(null);
   const name = (id: string) => { const b = rows.find((x) => x.id === id); return b ? `${b.ref ?? "No reference"} · ${b.businessDate}` : "a break"; };
-  // an unfinished draft (no name, no operation yet, an empty template) is refused by the contract: preview the saved
-  // action instead, which still answers the break's values for the examples
-  const body = JSON.stringify({ change, action: index, itemId: item, ...(unfinishedReason(draft) ? {} : { draft }) });
+  // an unfinished draft is previewed as the saved action (still answering the break's values); the accounts as edited
+  const body = JSON.stringify(previewBody(change, index, item, draft, accounts));
   useEffect(() => {
     if (!item) return;
     let gone = false;
+    // a newer edit aborts the request still out (final review m10), not only ignores its answer
+    const stop = new AbortController();
     const t = setTimeout(async () => {
       setBusy(true);
       try {
-        const r = await api<ActionPreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/actions/preview`, { method: "POST", body });
+        const r = await api<ActionPreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/actions/preview`, { method: "POST", body, signal: stop.signal });
         if (!gone) { setRes(r); onResult(r, name(item)); }
       } catch (e) { if (!gone) setRes({ error: errorText(e) }); } finally { if (!gone) setBusy(false); } // the last examples stay
     }, 500);
-    return () => { gone = true; clearTimeout(t); };
+    return () => { gone = true; clearTimeout(t); stop.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [body]);
   return (
@@ -183,7 +184,6 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   const [a, setA] = useState<ActionSpec>(initial);
   const [vi, setVi] = useState(0);
   const [picked, setPicked] = useState<string | null>(null);
-  const [view, setView] = useState<"canvas" | "list">("canvas");
   const [held, setHeld] = useState(false);
   const [sample, setSample] = useState<{ payload: unknown; context: Record<string, unknown>; from: string } | null>(null);
   const v = a.variants[vi]!;
@@ -282,16 +282,11 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       onOpenChange={(o) => { if (!o) { if (dirty) setHeld(true); else onCancel(); } }}
       actions={<>
         {held && <span role="status" className="text-body-sm text-degraded-ink">Use Cancel to drop your changes, or Done to keep them.</span>}
-        <span className="flex rounded-md border border-line-strong bg-tray p-0.5 max-md:hidden" role="group" aria-label="View">
-          {(["canvas", "list"] as const).map((x) => (
-            <Button key={x} type="button" size="sm" variant={view === x ? "secondary" : "ghost"} aria-pressed={view === x} onClick={() => setView(x)}>{x === "canvas" ? "Map" : "List"}</Button>
-          ))}
-        </span>
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <BlockedButton reason={blocked} caption={false} onClick={() => onDone({ ...a, name: a.name.trim(), variants: a.variants.map((x) => ({ ...x, name: x.name.trim() })) })}>Done</BlockedButton>
+        <BlockedButton reason={blocked} wrapClassName="items-end" onClick={() => onDone({ ...a, name: a.name.trim(), variants: a.variants.map((x) => ({ ...x, name: x.name.trim() })) })}>Done</BlockedButton>
       </>}
       rail={rail} inspector={inspector}
-      dock={<Dock spaceId={spaceId} configId={configId} versionId={versionId} change={change} index={index} draft={a} onResult={(r, from) => setSample(r ? { payload: r.payload, context: r.context, from } : null)} />}>
+      dock={<Dock spaceId={spaceId} configId={configId} versionId={versionId} change={change} index={index} draft={a} accounts={setup.accounts} onResult={(r, from) => setSample(r ? { payload: r.payload, context: r.context, from } : null)} />}>
       {!op || !graph ? (
         <div className="grid h-full place-items-center p-8 text-center">
           <span className="grid max-w-sm gap-1.5">
@@ -302,13 +297,14 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       ) : (
         <>
           {status}
-          {view === "canvas" && <span className="max-md:hidden">{legend}</span>}
-          <div className={cn("absolute inset-0", view === "list" ? "hidden" : "max-md:hidden")}>
+          <span className="max-md:hidden">{legend}</span>
+          {/* the map from 768 px (owner 22 Nov: no list beside it); a phone gets the list, the map needs the width */}
+          <div className="absolute inset-0 max-md:hidden">
             <FieldMapCanvas graph={graph} title="Request" caption={`${op.name} · ${op.method} ${op.path}`} selected={picked} onSelect={setPicked}
               onConnect={(row, target) => { const m = connect(v.mapping, row, target, op); if (m) { setV({ ...v, mapping: m }); setPicked(target); } }}
               onRemove={(target) => setSource(target, undefined)} examples={sample} />
           </div>
-          <div className={cn("absolute inset-0", view === "canvas" && "md:hidden")}>
+          <div className="absolute inset-0 md:hidden">
             <ScrollFade className="h-full p-5 pt-14">
             <Mapper mapping={v.mapping} onChange={(mapping) => setV({ ...v, mapping })} op={op} catalog={catalog} setup={setup} disabled={false} />
             </ScrollFade>

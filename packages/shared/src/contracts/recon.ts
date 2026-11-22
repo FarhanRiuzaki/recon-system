@@ -158,14 +158,16 @@ const ChangeApproval = z.strictObject({
     rules: z.array(z.strictObject({ name: z.string().trim().min(1, "Name the rule.").max(80), when: Condition, workflow: WorkflowRef })).max(20),
   }),
 });
+/** A named account of the recon setup. */
+const Account = z.strictObject({
+  // empty while a draft is typed; an action using an account without a number is refused on submit (recon checkActions)
+  key: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the key."), label: z.string().trim().max(80),
+  number: z.string().trim().max(40), currency: z.string().trim().regex(/^([A-Z]{3})?$/, "Use a 3-letter currency code."),
+});
 /** A recon version's approval setup (DEC-052 rev 2 §4.4, stage 1: who approves each change). */
 export const ReconApprovalSpec = z.strictObject({
   /** Named accounts the mapping refers to (O2: accounts come from the recon setup). */
-  accounts: z.array(z.strictObject({
-    // empty while a draft is typed; an action using an account without a number is refused on submit (recon checkActions)
-    key: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the key."), label: z.string().trim().max(80),
-    number: z.string().trim().max(40), currency: z.string().trim().regex(/^([A-Z]{3})?$/, "Use a 3-letter currency code."),
-  })).max(ACCOUNTS_MAX).default([]),
+  accounts: z.array(Account).max(ACCOUNTS_MAX).default([]),
   /** Small tables (key → value) the mapping looks values up in. */
   lookups: z.array(z.strictObject({
     name: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the name."),
@@ -194,6 +196,9 @@ export const PreviewActionBody = z.strictObject({
   change: z.enum(["force_match", "unmatch", "write_off"]), action: z.number().int().min(0).max(ACTIONS_MAX - 1), itemId: z.uuid(),
   /** The action as it is being edited (the editor, before Done): previewed in place of action `action`. */
   draft: Action.optional(),
+  /** The accounts as edited (small: at most 50), read in place of the saved ones; lookup tables stay as saved (their
+   * rows would pass the body limit; the Approval step saves them as they are typed). */
+  accounts: z.array(Account).max(ACCOUNTS_MAX).optional(),
 });
 export type PreviewActionBody = z.infer<typeof PreviewActionBody>;
 export const ActionPreviewDto = z.object({

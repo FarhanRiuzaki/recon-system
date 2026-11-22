@@ -251,6 +251,10 @@ describe("what gets posted (preview)", () => {
     await db.update(connectorVersions).set({ status: "draft" }).where(and(eq(connectorVersions.connectorId, cid), eq(connectorVersions.version, 2)));
     const r = await json<{ payload: unknown; problem: { message: string } | null }>(call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1, draft: v2 } }));
     expect(r).toMatchObject({ payload: null, problem: { message: "The connector version this variant pins has no such operation." } });
+    // the accounts as edited (not saved yet) are what the draft's account sources read (final review m4)
+    const withAcc = { ...draft, variants: [variant({ mapping: { ...variant().mapping, Note: { kind: "account", account: "suspense", part: "number" } } })] };
+    const acc = await json<{ payload: Record<string, unknown> }>(call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1, draft: withAcc, accounts: [{ key: "suspense", label: "Suspense", number: "999", currency: "IDR" }] } }));
+    expect(acc.payload.Note).toBe("999");
     // a break of another recon, or none, is 404
     expect((await call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: Bun.randomUUIDv7() } })).status).toBe(404);
     const other = (await recon(A, spec(Bun.randomUUIDv7(), Bun.randomUUIDv7(), []))).configId;

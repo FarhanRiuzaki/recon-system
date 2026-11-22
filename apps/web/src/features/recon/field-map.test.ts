@@ -93,3 +93,18 @@ describe("another operation for a variant", () => {
     expect(keepMapping(m, op)).toEqual({ amount: { kind: "const", value: "1" } });
   });
 });
+
+describe("deferred minors (final review m3, m7)", () => {
+  it("a row already in the template isn't appended again", () => {
+    const m = { "Header.Ref": { kind: "template" as const, text: "{side_a.attrs.ref}-{break.business_date}" } };
+    expect(connect(m, "break.business_date", "Header.Ref", op)).toBe(m);
+  });
+  it("a field whose changes the template can't hold ({, }, |) is replaced, not joined", () => {
+    const m = { amount: { kind: "field" as const, key: "break.amount", transforms: ["default:a|b"] } };
+    expect(connect(m, "break.business_date", "amount", op)!.amount).toEqual({ kind: "field", key: "break.business_date", transforms: [] });
+  });
+  it("a template naming an account the setup doesn't have draws no line to it", () => {
+    const g = mapGraph({ "Header.Ref": { kind: "template", text: "{accounts.gone.number}{break.amount}" } }, catalog, op, accounts);
+    expect(g.edges.map((e) => e.row)).toEqual(["break.amount"]);
+  });
+});

@@ -57,3 +57,8 @@ export function unfinishedReason(a: ActionSpec): string | null {
   }
   return null;
 }
+
+/** The live preview's body: the action as edited once it is finished (else the saved one answers), the accounts as edited. */
+export function previewBody(change: string, action: number, itemId: string, draft: ActionSpec, accounts: readonly { key: string; label: string; number: string; currency: string }[]) {
+  return { change, action, itemId, ...(unfinishedReason(draft) ? {} : { draft }), accounts };
+}

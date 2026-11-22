@@ -54,14 +54,21 @@ export function TableCard({ title, caption, side, rows, onRowSelect }: TableCard
                 r.header ? "bg-tray/60 text-fg-2" : "text-fg",
                 r.selected && "bg-primary-soft", r.state === "missing" && !r.selected && "bg-down-soft/40",
                 (r.state === "fixed" || r.state === "auto") && "text-fg-3",
-                onRowSelect && !r.header && "cursor-pointer hover:bg-tray")}
-              onClick={onRowSelect && !r.header ? () => onRowSelect(r.id) : undefined}>
-              <span className="flex min-w-0 flex-1 items-center" style={{ paddingLeft: `${(r.depth ?? 0) * 14}px` }}>
+                onRowSelect && !r.header && "hover:bg-tray")}
+>
+              {/* a row that can be chosen is a button over its name: Tab reaches it, Enter opens it (nodrag: a press
+                  on it chooses, it doesn't move the table) */}
+              {(() => {
+                const Name = onRowSelect && !r.header ? "button" : "span";
+                return <Name {...(Name === "button" ? { type: "button" as const, "aria-label": `Open ${r.label}`, onClick: () => onRowSelect!(r.id),
+                  className: "nodrag flex min-w-0 flex-1 cursor-pointer items-center text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" }
+                  : { className: "flex min-w-0 flex-1 items-center" })} style={{ paddingLeft: `${(r.depth ?? 0) * 14}px` }}>
                 <span className={cn("truncate", side === "target" && "font-mono")}>
                   {r.label}{r.required && <span aria-hidden="true" className="ml-0.5 text-destructive">*</span>}
                 </span>
                 {r.required && <span className="sr-only"> (required)</span>}
-              </span>
+                </Name>;
+              })()}
               {note ? <span className={cn("max-w-28 shrink-0 truncate text-caption", r.state === "missing" ? "text-down-ink" : "text-fg-3")}>{note}</span>
                 : r.example !== undefined && <span className="max-w-28 shrink-0 truncate font-mono text-caption text-fg-3" title={r.example}>{r.example}</span>}
               {(r.type || r.limit) && !r.header && (

@@ -425,8 +425,11 @@ export function previewVersionAction(ctx: Ctx, id: string, versionId: string, b:
     if (!x) throw notFound("break");
     // the action being edited, in place of the saved one (or after the saved ones, a new action)
     const saved = (v.spec as ReconSpec).approvals;
-    const base = saved ?? ({ accounts: [], lookups: [], changes: {} } as unknown as NonNullable<typeof saved>);
-    const approvals = b.draft ? { ...base, changes: { ...base.changes, [b.change]: { workflow: { default: null, rules: [] }, ...base.changes[b.change], actions: Object.assign([...(base.changes[b.change]?.actions ?? [])], { [b.action]: b.draft }) } } } as typeof saved : saved;
+    const stored = saved ?? ({ accounts: [], lookups: [], changes: {} } as unknown as NonNullable<typeof saved>);
+    const base = b.accounts ? { ...stored, accounts: b.accounts } : stored;
+    const approvals = b.draft
+      ? { ...base, changes: { ...base.changes, [b.change]: { workflow: { default: null, rules: [] }, ...base.changes[b.change], actions: Object.assign([...(base.changes[b.change]?.actions ?? [])], { [b.action]: b.draft }) } } } as typeof saved
+      : b.accounts ? base : saved;
     return previewAction(tx, ctx, approvals, c.code, b.change, b.action, b.itemId) as Promise<ActionPreviewDto>;
   });
 }

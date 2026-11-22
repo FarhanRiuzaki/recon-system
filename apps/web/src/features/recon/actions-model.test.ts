@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionSentence, mappingGaps, parseTransforms, requestLeaves, unfinishedReason } from "./actions-model";
+import { actionSentence, mappingGaps, parseTransforms, previewBody, requestLeaves, unfinishedReason } from "./actions-model";
 
 const op = { request: [{ name: "Amount", type: "numeric" as const, required: true }, { name: "DE48", type: "object" as const, required: true, children: [{ name: "Remark", type: "string" as const, required: true }, { name: "Cur", type: "string" as const, required: true }, { name: "Note", type: "string" as const, required: false }] }], fixed: ["DE48.Cur"], auto: [] as string[] };
 
@@ -40,5 +40,17 @@ describe("why Done is refused (final review I2/I3)", () => {
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "lookup", table: "", key: { kind: "field", key: "break.amount", transforms: [] } } } }))).toBe("Ref: pick its lookup table or remove the mapping.");
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "account", account: "", part: "number" } } }))).toBe("Ref: pick its account or remove the mapping.");
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "const", value: "" } } }))).toBeNull();
+  });
+});
+
+describe("what the live preview asks (final review m4, m9)", () => {
+  const v = { name: "Default", when: null, operation: { connectorId: "c", version: 1, key: "post" }, mapping: {}, per: "item", zeroOrNegative: "skip" };
+  const done = { name: "Post", kind: "posting", on: { event: "approved" }, variants: [v] } as never;
+  const accounts = [{ key: "suspense", label: "Suspense", number: "1", currency: "IDR" }];
+  it("a finished action goes as the draft, with the accounts as edited", () => {
+    expect(previewBody("write_off", 0, "b1", done, accounts)).toEqual({ change: "write_off", action: 0, itemId: "b1", draft: done, accounts });
+  });
+  it("an unfinished one doesn't (the contract would refuse it): the saved action answers, the break's values still come", () => {
+    expect(previewBody("write_off", 2, "b1", { ...(done as object), name: "" } as never, accounts)).toEqual({ change: "write_off", action: 2, itemId: "b1", accounts });
   });
 });

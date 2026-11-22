@@ -37,4 +37,12 @@ describe("TableCard (an ERD table on a canvas)", () => {
     expect(out).toContain("Fixed");
     expect(out).toMatch(/data-row="remark"[^>]*aria-current="true"/);
   });
+  it("a row that can be chosen is a button (keyboard: Tab, Enter), named by its field; a header isn't (final review m5)", () => {
+    const out2 = html(h(TableCard, { title: "Request", side: "target", onRowSelect: () => {}, rows: [
+      { id: "Header", label: "Header", header: true, connectable: false },
+      { id: "Header.Ref", label: "Ref", depth: 1, required: true, connectable: true },
+    ] }));
+    expect(out2).toMatch(/<button type="button" aria-label="Open Ref" class="[^"]*nodrag[^"]*"/);
+    expect((out2.match(/<button/g) ?? []).length).toBe(1);
+  });
 });

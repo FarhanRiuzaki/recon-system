@@ -566,6 +566,38 @@
         "variants"
       ],
       "additionalProperties": false
+    },
+    "accounts": {
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{1,40}$"
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^([A-Z]{3})?$"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "number",
+          "currency"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [

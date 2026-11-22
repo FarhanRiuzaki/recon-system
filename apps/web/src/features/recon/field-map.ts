@@ -45,8 +45,10 @@ export function mapGraph(mapping: Readonly<Record<string, Source>>, catalog: rea
     const froms = [...new Set(fs.map((f) => split(f.label).from))];
     return [{ id, title: TITLE[id], caption: froms.length === 1 ? froms[0]! : null, rows: fs.map((f) => ({ key: f.key, label: froms.length === 1 ? split(f.label).name : f.label, kind: f.kind })) }];
   });
+  // a row only for what the tables show: an account the setup lacks, or a field the version no longer reads, draws no line
   const tableOf = (key: string): SourceId | null =>
-    key.startsWith("accounts.") ? "accounts" : (catalog.find((f) => f.key === key)?.group as SourceId | undefined) ?? null;
+    key.startsWith("accounts.") ? (accounts.some((a) => `accounts.${a.key}` === key) ? "accounts" : null)
+      : (catalog.find((f) => f.key === key)?.group as SourceId | undefined) ?? null;
   const edges: MapEdge[] = [];
   const add = (row: string, target: string, label: string | null) => {
     const source = tableOf(row);
@@ -73,8 +75,11 @@ export function connect(mapping: Readonly<Record<string, Source>>, key: string, 
   if (now?.kind === "field" && now.key === key) return mapping as Record<string, Source>;
   const ref = key.startsWith("accounts.") ? `{${key}.number}` : `{${key}}`;
   // a row dropped on a field already read from rows joins them, in drop order, as a template (owner 22 Nov: gabung
-  // beberapa column); a separator is typed into the template after
-  if (now?.kind === "field") return { ...mapping, [target]: { kind: "template", text: `{${[now.key, ...now.transforms].join("|")}}${ref}` } };
+  // beberapa column); a separator is typed into the template after. A row the template already reads isn't added again;
+  // a field whose changes a template can't hold ({ } |) is replaced instead.
+  if (now?.kind === "template" && templateParts(now.text).some((p) => (p.field ? `{${p.field.key}}` : `{accounts.${p.account!.key}.number}`) === ref))
+    return mapping as Record<string, Source>;
+  if (now?.kind === "field" && now.transforms.every((t) => !/[{}|]/.test(t))) return { ...mapping, [target]: { kind: "template", text: `{${[now.key, ...now.transforms].join("|")}}${ref}` } };
   if (now?.kind === "account") return { ...mapping, [target]: { kind: "template", text: `{accounts.${now.account}.${now.part}}${ref}` } };
   if (now?.kind === "template") return { ...mapping, [target]: { kind: "template", text: `${now.text}${ref}` } };
   const src: Source = key.startsWith("accounts.") ? { kind: "account", account: key.slice("accounts.".length), part: "number" } : { kind: "field", key, transforms: [] };

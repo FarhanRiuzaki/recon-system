@@ -898,7 +898,8 @@ set up, in named groups, with the progress as a count and a bar. Written for the
   colour: required red `*`, "Not mapped" in Down ink on a faint Down fill, Fixed / Auto generated muted, mapped =
   a primary handle. `MapEdge` is a bezier over the tables (z above nodes) with a halo in `--card`, its label (the
   changes, "template") a pill; selected = primary, 2.5 px. Every canvas has a list view (DEC-041) and on a phone the
-  list only.
+  list only; the action editor's field map has no list toggle beside it (owner, 22 Nov: "klo sudah ada map, list gaperlu"):
+  its keyboard path is the request rows as buttons and the inspector, and below 768 px it shows the list.
 
 ## 6. Charts
 
