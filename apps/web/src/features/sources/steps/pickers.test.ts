@@ -1,17 +1,20 @@
 // @vitest-environment happy-dom
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { IDLE, STALE_NOTE, type TablesPage } from "./catalog";
 import { NamePicker, TablePicker } from "./pickers";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 let root: Root | null = null;
+// the pickers load the command combobox on demand (next/dynamic): have its chunk ready before they mount
+beforeAll(async () => { await import("@starterkit/ui/ds/combobox-command"); });
 afterEach(async () => { await act(async () => root?.unmount()); root = null; document.body.innerHTML = ""; });
 async function mount(el: ReturnType<typeof h>) {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root!.render(el));
+  await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); // the dynamic picker resolves
 }
 async function open() {
   const t = document.querySelector<HTMLButtonElement>('button[aria-label^="Table:"], button[aria-label^="Database:"]')!;

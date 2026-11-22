@@ -1,7 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, InfoTip, Panel, Segmented, SqlEditor, type SqlSuggest, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Field, InfoTip, Panel, Segmented, type SqlSuggest, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -9,15 +10,27 @@ import { CheckIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
+import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, READ_EVERY, type ReadWhen, readWhenText, type SourceKind } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
-import { parseConnString } from "./conn-string";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, withEngine, withName } from "./model";
-import { NamePicker, TablePicker } from "./pickers";
+
+// The database, schema and table pickers show only for a database source: they load after the page (preloaded when
+// the connection step mounts) and hold a field's height meanwhile, as their own combobox does (bundle budget, DEC-040).
+const loadPickers = () => import("./pickers");
+const pickerShape = () => <div aria-hidden="true" className="grid gap-1.5"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-full" /></div>;
+const NamePicker = dynamic(() => loadPickers().then((m) => m.NamePicker), { ssr: false, loading: pickerShape });
+const TablePicker = dynamic(() => loadPickers().then((m) => m.TablePicker), { ssr: false, loading: pickerShape });
+
+// The SQL editor shows only for a query of one's own (a database source): it loads with that choice, not with the page
+// (bundle budget, DEC-040); its place keeps the editor's height meanwhile.
+const SqlEditor = dynamic(() => import("@starterkit/ui/ds/sql-editor").then((m) => m.SqlEditor), {
+  ssr: false, loading: () => <div aria-hidden="true" className="h-36 rounded-md border border-control-border bg-card" />,
+});
 
 const ENGINE_LABEL = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" } as const;
 const STORED = "Stored. Enter a new value to replace it.";
@@ -85,6 +98,7 @@ const UNREADABLE = "This connection string can't be read. Use postgresql://, mys
  */
 export function ConnectionStep(p: ConnectionStepProps) {
   const { d, set, created } = p;
+  useEffect(() => { void loadPickers(); }, []);
   const i = d.spec.input;
   const setInput = (patch: Partial<SourceSpec["input"]>) => set((x) => ({ ...x, spec: { ...x.spec, input: { ...x.spec.input, ...patch } as SourceSpec["input"] } }));
   const setKind = (kind: SourceKind) => set((x) => (x.kind === kind ? x : { ...x, kind, spec: emptySpec(kind) }));
@@ -286,8 +300,9 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
   const [dbShown, setDbShown] = useState(wantDb);
   if (wantDb && !dbShown) setDbShown(true);
 
-  function paste(text: string) {
-    const parsed = parseConnString(text);
+  // the parser loads on the first paste, not with the page (bundle budget, DEC-040)
+  async function paste(text: string) {
+    const parsed = (await import("./conn-string")).parseConnString(text);
     if (!parsed) { setPasting({ text, error: UNREADABLE }); return; }
     const { password, ...rest } = parsed;
     setConn({ ...rest, ...(password ? { password } : {}) });
@@ -339,9 +354,9 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
         {pasting ? (
           <Field id="src-conn-string" label="Connection string" error={pasting.error}>
             <Input id="src-conn-string" value={pasting.text} className="font-mono" autoComplete="off" spellCheck={false} placeholder="postgresql://user@host:5432/database"
-              onChange={(e) => setPasting({ text: e.target.value, error: null })} onPaste={(e) => { e.preventDefault(); paste(e.clipboardData.getData("text")); }}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); paste(pasting.text); } if (e.key === "Escape") setPasting(null); }}
-              onBlur={() => { if (pasting.text.trim()) paste(pasting.text); else setPasting(null); }} />
+              onChange={(e) => setPasting({ text: e.target.value, error: null })} onPaste={(e) => { e.preventDefault(); void paste(e.clipboardData.getData("text")); }}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); void paste(pasting.text); } if (e.key === "Escape") setPasting(null); }}
+              onBlur={() => { if (pasting.text.trim()) void paste(pasting.text); else setPasting(null); }} />
           </Field>
         ) : (
           <span><Button type="button" variant="link" size="sm" className="text-caption" onClick={() => {

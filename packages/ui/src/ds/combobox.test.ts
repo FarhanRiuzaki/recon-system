@@ -3,6 +3,7 @@ import { act, createElement as h, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type ComboOption, Combobox, filterOptions, nextEnabled } from "./combobox";
+import { CommandCombobox } from "./combobox-command";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const OPTS: ComboOption[] = [
@@ -135,7 +136,7 @@ describe("CommandCombobox (server query mode, REC-F2a)", () => {
     { value: "ops.log", label: "log", group: "ops", description: "table · 3 columns", mono: true },
   ];
   async function openWith(props: Record<string, unknown>) {
-    await mount(h(Combobox, { label: "Table", options: [], value: [], onValueChange: () => {}, query: "", onQuery: () => {}, phone: "sheet", ...props }));
+    await mount(h(CommandCombobox, { label: "Table", options: [], value: [], onValueChange: () => {}, query: "", onQuery: () => {}, phone: "sheet", ...props }));
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label^="Table:"]')!;
     await act(async () => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); trigger.click(); });
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });

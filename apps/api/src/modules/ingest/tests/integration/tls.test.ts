@@ -36,7 +36,7 @@ async function connect(ca?: string, host = "localhost"): Promise<{ ok: true } | 
 describe.skipIf(!ok)("source database over TLS signed by an internal CA", () => {
   beforeAll(async () => {
     dir = mkdtempSync(path.join(tmpdir(), "recon-tls-"));
-    writeFileSync(path.join(dir, "san.cnf"), "subjectAltName=DNS:localhost,IP:127.0.0.1\n");
+    writeFileSync(path.join(dir, "san.cnf"), "subjectAltName=DNS:localhost\n");
     const o = (args: string[]) => { const r = sh(["openssl", ...args]); if (r.exitCode) throw new Error(`openssl ${args[0]}: ${r.stderr}`); };
     o(["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1", "-subj", "/CN=Test Bank Internal CA", "-keyout", `${dir}/ca.key`, "-out", `${dir}/ca.pem`]);
     o(["req", "-newkey", "rsa:2048", "-nodes", "-subj", "/CN=localhost", "-keyout", `${dir}/server.key`, "-out", `${dir}/server.csr`]);
@@ -62,9 +62,10 @@ describe.skipIf(!ok)("source database over TLS signed by an internal CA", () => 
   }, 30_000);
 
   it("a certificate that does not name the typed host says so (Bun gives no certificate name: the fallback sentence)", async () => {
-    // the cert's SAN lists localhost and 127.0.0.1; Bun's error is only "Hostname/IP does not match certificate's altnames"
-    const r = await connect(path.join(dir, "ca.pem"), "localhost.localdomain");
-    expect(r).toMatchObject({ ok: false, kind: "tls", code: "ERR_TLS_CERT_ALTNAME_INVALID", tls: { field: "tls", message: "The certificate doesn't name localhost.localdomain. Use the name on the certificate as Host." } });
+    // the cert's SAN lists only localhost; 127.0.0.1 reaches the same server on any machine (a name such as
+    // localhost.localdomain resolves on some hosts only). Bun's error is only "Hostname/IP does not match certificate's altnames"
+    const r = await connect(path.join(dir, "ca.pem"), "127.0.0.1");
+    expect(r).toMatchObject({ ok: false, kind: "tls", code: "ERR_TLS_CERT_ALTNAME_INVALID", tls: { field: "tls", message: "The certificate doesn't name 127.0.0.1. Use the name on the certificate as Host." } });
   }, 30_000);
 
   it("with the CA in NODE_EXTRA_CA_CERTS (as deploy.md documents), Connect succeeds", async () => {

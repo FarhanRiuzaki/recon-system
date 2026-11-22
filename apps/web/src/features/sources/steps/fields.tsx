@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { type ChangeEvent, Fragment, useRef, useState } from "react";
 import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
@@ -16,8 +17,14 @@ import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, 
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows } from "./model";
-import { ComputedColumns } from "./computed";
 import { RowsToLoad } from "./conditions";
+
+/**
+ * Computed columns sit under the field table, out of the first screen: they load after the page, preloaded as soon
+ * as the wizard mounts (preloadFieldParts), and keep a row's height meanwhile (bundle budget, DEC-040).
+ */
+export const preloadFieldParts = () => import("./computed");
+const ComputedColumns = dynamic(() => preloadFieldParts().then((m) => m.ComputedColumns), { ssr: false, loading: () => <div aria-hidden="true" className="h-12" /> });
 import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */

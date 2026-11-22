@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,13 +26,12 @@ import { ARRIVED_DATE, attrNameOf, fieldError, fieldMessage, fieldsOfColumns, lo
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
-import { FieldsStep } from "./steps/fields";
+import { FieldsStep, preloadFieldParts } from "./steps/fields";
 import {
   amountProblems, buildSpec, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
   type Tested, watermarkProblems,
 } from "./steps/model";
 import { discardConfirm } from "./discard-dialog";
-import { ReviewStep } from "./steps/review";
 import {
   EDIT_REASON, NEW_SOURCE_REASON, sourceApi, sourceHref, sourcesHref, useSource, useSpaceRoles, useStartVersion, newVersionHref, versionHref,
 } from "./use-sources";
@@ -43,6 +43,11 @@ const DESCRIPTION = (space: string) => [
   "Check what was detected, fix types and formats, and say which columns the recon uses. The preview updates as you change things.",
   "Check the summary, then send the version for approval. A config checker other than you approves it before anything is ingested.",
 ] as const;
+
+// Review is step 3 only: it loads after the page, preloaded as soon as the wizard mounts (below), so it is there by
+// the time someone reaches it (bundle budget, DEC-040)
+const loadReview = () => import("./steps/review").then((m) => m.ReviewStep);
+const ReviewStep = dynamic(loadReview, { ssr: false, loading: () => <Panel><div className="h-40" /></Panel> });
 /** A catalog list's failure as its state: the API's sentence, and when Retry may run again after a 429. */
 const failed = (e: unknown) => ({ status: "error" as const, message: errorText(e), retryAt: e instanceof ApiError && e.retryAfter ? Date.now() + e.retryAfter * 1000 : null });
 /** Next after a pass whose values changed since (copy-guide, REC-F2b); before any pass it is off without a sentence. */
@@ -153,6 +158,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
 }) {
   const router = useRouter();
   const qc = useQueryClient();
+  useEffect(() => { void loadReview(); void preloadFieldParts(); }, []);
   const [d, setDraft] = useState(initial);
   const [edited, setEdited] = useState(false);
   const [done, setDone] = useState(false);
