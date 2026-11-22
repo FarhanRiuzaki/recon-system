@@ -147,7 +147,7 @@ function Volume({ s }: { s: SourceDto }) {
     <Panel icon={ColumnChartIcon} title="Last 14 days" description={`${formatNumber(total)} records by business date`}>
       <LazyMount minHeight={CHART_HEIGHT.standard}>
         <BarChart label="Records and quarantined lines per business date" categories={s.days.map((d) => day(d.date))} format={formatNumber} stacked
-          series={[{ label: "Records", values: s.days.map((d) => d.records), slot: 0 }, ...(s.owner ? [] : [{ label: "Quarantined", values: s.days.map((d) => d.quarantined), slot: 1 }])]} />
+          series={[{ label: "Records", values: s.days.map((d) => d.records), slot: 0 }, ...(s.owner ? [] : [{ label: "Quarantined", values: s.days.map((d) => d.quarantined), tone: "down" as const }])]} />
       </LazyMount>
     </Panel>
   );

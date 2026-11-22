@@ -985,10 +985,11 @@ Horizontal gridlines only, `--grid`, 1 px, `strokeDasharray="4 4"`; 4–5 ticks 
   texture (2 px line / 4 px gap, `--stripe`) over its fill; one look for all bars (`bar-chart.tsx`, `hbar-chart.tsx`,
   `distribution-bar.tsx`, `StatTile progress`).
 - Secondary/partial series: the same hue's soft tint (35 %), striped too (reference "Attended / Partial").
-- Series tones (`tone`, `chart-theme.ts` `toneColor`): `down` = a failure count beside successes (Down mark);
-  `neutral` = a count that is neither, such as what still waits beside matched and unmatch (`--fg-3`, with `striped`
-  its soft tint), so the palette slots stay with the outcomes (a recon's trend: Matched slot 1, Waiting neutral
-  striped, Unmatch slot 2; audit R4).
+- Series tones (`tone`, `chart-theme.ts` `toneColor`): `down` = a failure count beside successes (Down mark), such as
+  a source's quarantined lines (rows refused at ingest) beside its records; `neutral` = a count that is neither, such
+  as what still waits beside matched and unmatch (`--fg-3`, with `striped` its soft tint). Unmatch is an outcome of
+  matching, not a failure, so it takes a palette slot (a recon's trend: Matched slot 1, Waiting neutral striped,
+  Unmatch slot 2; audit R4).
 - Highlight on hover: other bars drop to 40 % opacity (150 ms).
 - Direct labels only on the max or the selected bar, `label` fg above the cap.
 - Horizontal bars (top-N): 20 px rows, 8 px bars radius full on a `--inset` track, label left (`body-sm` fg), value
