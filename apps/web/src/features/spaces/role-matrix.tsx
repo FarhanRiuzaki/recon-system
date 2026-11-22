@@ -7,30 +7,31 @@ const CODE: Record<string, Cell> = { D: "does", A: "approves", V: "views", "-": 
 const row = (action: string, cells: string) => ({ action, cells: [...cells].map((c) => CODE[c]!) });
 
 /**
- * What each space role may do: Figma "01 Space & shell" › RoleMatrix (7 roles × 16 actions), recon spec §11, §11b.
- * Read-only reference; the rules themselves live in the API.
+ * What each space role may do, as the API's space guards allow it today (engine, approvals, recon, sources and spaces
+ * controllers; audit M2). Read-only reference; the rules themselves live in the API.
  */
 export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cells: Cell[] }[] }[] = [
   { group: "Daily work", rows: [
-    row("View recons, live day, unmatch and explanations", "V-VVVVV"),
-    row("Export CSV (summary, unmatch, filtered results)", "D-DDDDD"),
-    row("Assign, comment and set a reason on unmatch items", "----D--"),
-    row("Manual match within tolerance", "----D--"),
-    row("Force match outside tolerance", "----DA-"),
-    row("Undo a match", "----DA-"),
-    row("Write off, within the reviewer limit", "----DA-"),
-    row("Write off, above the reviewer limit", "A---D--"),
-    row("Prepare a day for sign-off", "-----D-"),
-    row("Approve a day's sign-off", "A----A-"),
-    row("Reopen a signed-off day", "A----D-"),
+    row("View recons, today and unmatch items", "VVVVVVV"),
+    row("Take an item and set its state", "D---DD-"),
+    row("Assign items to someone", "D----D-"),
+    row("Run a recon now", "D-D-D--"),
+    row("Match", "D---DD-"),
+    row("Request posting", "D---DD-"),
+    row("Force match", "D---DD-"),
+    row("Write-off", "D---DD-"),
+    row("Close without a match", "D---DD-"),
+    row("Undo match", "D---DD-"),
+    row("Approve requests", "A----A-"),
+    row("Sign off a day", "D----D-"),
   ] },
-  { group: "Configuration", rows: [
-    row("Edit a config draft and run simulations", "--D----"),
-    row("Publish a config version", "--DA---"),
-    row("Declare source fields and mapping (source version)", "-DDA---"),
-    row("Set up a source connection and credentials", "-D-----"),
+  { group: "Setup", rows: [
+    row("Set up recons", "--DA---"),
+    row("Set up sources", "-DDA---"),
+    row("Connect a source and pull it", "-D-----"),
+    row("Set up workflows", "D------"),
   ] },
-  { group: "Space", rows: [row("Add and remove members, change their roles", "D------")] },
+  { group: "Space", rows: [row("Manage members", "D------"), row("Share a source with another space", "D------")] },
 ];
 
 // Tinted chips on *-soft / inset tokens (REC-D4), never opacity; "—" in fg-3 (5.35:1 on card), never fg-4.
@@ -46,21 +47,23 @@ const TITLE = "What each role can do";
 const TH = "h-10 border-b border-line bg-tray px-3 text-label font-normal whitespace-nowrap text-fg-2";
 
 // The Action column sticks to the card's left edge at every width while the role columns scroll (DataTable's sticky first column); opaque, with a hairline. The table is border-separate like ui/table: in a collapsed table the sticky cell's border stays on the grid and scrolls away.
-// Below 1280 it is 160 px and wraps; from 1280 it is 340 px on one line (Figma 4:83). Sticky is harmless where the table doesn't overflow.
-const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:w-85 xl:min-w-85";
+// Below 1280 it is 160 px and wraps; from 1280 it is 18rem (M2: 288 + 7 × 108 px fits the 1440 content width, no
+// sideways scroll there). Sticky is harmless where the table doesn't overflow.
+const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:w-72 xl:min-w-72";
 
-/** Scrolls sideways inside its card when the card is narrower than the table (160 + 7 × 108 px wide); the Action column stays. */
+/** Scrolls sideways inside its card when the card is narrower than the table (160 or 288 + 7 × 108 px wide); the Action column stays. */
 export function RoleMatrix() {
   return (
     <Panel flush className="min-w-0" title={TITLE} footnote={<>
       &ldquo;Does&rdquo; on an action with an approver means sending a request: nothing changes until someone else approves it.
+      Each change&apos;s workflow names who approves it; without one, a Reviewer or a Space admin does.
       Source admin is granted and removed only by an app admin, not by a space admin.
       The approver can&apos;t be the preparer or anyone who resolved an item that day. Approving freezes the day.
     </>}>
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
       <ScrollFade tabIndex={0} role="region" aria-label={TITLE} className="relative overflow-y-hidden outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
-        <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-274 border-separate border-spacing-0 text-body-sm">
+        <table aria-label={TITLE} className="w-full min-w-229 xl:min-w-261 border-separate border-spacing-0 text-body-sm">
           <thead>
             <tr>
               <th scope="col" className={`${TH} ${STICK} z-2 text-left`}>Action</th>

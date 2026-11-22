@@ -7,25 +7,34 @@ import { ROLE_MATRIX, RoleMatrix } from "./role-matrix";
 const rows = ROLE_MATRIX.flatMap((g) => g.rows);
 const row = (action: string) => rows.find((r) => r.action === action)!.cells;
 
-describe("RoleMatrix (Figma 01 Space & shell, RoleMatrix: 7 roles × 16 actions)", () => {
-  it("16 actions in three groups, a cell per role", () => {
-    expect(ROLE_MATRIX.map((g) => [g.group, g.rows.length])).toEqual([["Daily work", 11], ["Configuration", 4], ["Space", 1]]);
+describe("RoleMatrix: 7 roles × the actions the API guards today (audit M2)", () => {
+  it("the current actions in three groups, a cell per role", () => {
+    expect(ROLE_MATRIX.map((g) => [g.group, g.rows.map((r) => r.action)])).toEqual([
+      ["Daily work", ["View recons, today and unmatch items", "Take an item and set its state", "Assign items to someone", "Run a recon now", "Match", "Request posting", "Force match", "Write-off", "Close without a match", "Undo match", "Approve requests", "Sign off a day"]],
+      ["Setup", ["Set up recons", "Set up sources", "Connect a source and pull it", "Set up workflows"]],
+      ["Space", ["Manage members", "Share a source with another space"]],
+    ]);
     for (const r of rows) expect(r.cells, r.action).toHaveLength(SPACE_ROLES.length);
   });
-  it("cells as designed: makers do, checkers approve, the source admin only on sources", () => {
-    expect(row("Force match outside tolerance")).toEqual(["none", "none", "none", "none", "does", "approves", "none"]);
-    expect(row("Write off, above the reviewer limit")).toEqual(["approves", "none", "none", "none", "does", "none", "none"]);
-    expect(row("Declare source fields and mapping (source version)")).toEqual(["none", "does", "does", "approves", "none", "none", "none"]);
-    expect(row("View recons, live day, unmatch and explanations")).toEqual(["views", "none", "views", "views", "views", "views", "views"]);
-    expect(row("Prepare a day for sign-off")).toEqual(["none", "none", "none", "none", "none", "does", "none"]);
-    expect(row("Approve a day's sign-off")).toEqual(["approves", "none", "none", "none", "none", "approves", "none"]);
-    expect(rows.some((r) => r.action === "Sign off a business day")).toBe(false);
-    expect(row("Add and remove members, change their roles")).toEqual(["does", "none", "none", "none", "none", "none", "none"]);
+  it("cells as the API guards them: whoever works items does, the default chain approves, makers set up, checkers approve", () => {
+    const worker = ["does", "none", "none", "none", "does", "does", "none"];
+    for (const a of ["Match", "Request posting", "Force match", "Write-off", "Close without a match", "Undo match", "Take an item and set its state"]) expect(row(a), a).toEqual(worker);
+    expect(row("Assign items to someone")).toEqual(["does", "none", "none", "none", "none", "does", "none"]);
+    expect(row("Run a recon now")).toEqual(["does", "none", "does", "none", "does", "none", "none"]);
+    expect(row("Approve requests")).toEqual(["approves", "none", "none", "none", "none", "approves", "none"]);
+    expect(row("Sign off a day")).toEqual(["does", "none", "none", "none", "none", "does", "none"]);
+    expect(row("Set up recons")).toEqual(["none", "none", "does", "approves", "none", "none", "none"]);
+    expect(row("Set up sources")).toEqual(["none", "does", "does", "approves", "none", "none", "none"]);
+    expect(row("View recons, today and unmatch items")).toEqual(Array(7).fill("views"));
+    expect(row("Manage members")).toEqual(["does", "none", "none", "none", "none", "none", "none"]);
   });
   it("renders a table with the roles as columns; a dash cell says Not allowed to a screen reader; the source admin footnote", () => {
     const html = renderToStaticMarkup(h(RoleMatrix));
     expect([...html.matchAll(/<th scope="col"[^>]*>([^<]+)</g)].map((m) => m[1])).toEqual(["Action", ...SPACE_ROLES.map((r) => ROLE_LABEL[r])]);
-    expect([...html.matchAll(/<th scope="row"/g)]).toHaveLength(16);
+    expect([...html.matchAll(/<th scope="row"/g)]).toHaveLength(rows.length);
+    // 18rem Action column + 7 × 108 px fits the 1440 content width: no sideways scroll there (M2)
+    expect(html).toContain("xl:w-72");
+    expect(html).not.toContain("xl:min-w-274");
     const none = rows.flatMap((r) => r.cells).filter((c) => c === "none").length;
     expect(html.match(/<span class="sr-only">Not allowed<\/span>/g)).toHaveLength(none);
     expect(html).not.toMatch(/text-fg-4/);
