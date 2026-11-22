@@ -142,6 +142,12 @@ export type LibraryFilters = { q: string };
 export const WORKFLOWS = (spaceId: string): TableDef<LibraryFilters> => ({
   key: APPROVALS_KEY[0], path: workflowsPath(spaceId), spec: { sorts: WORKFLOW_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
 });
+/** The connectors' published operations a recon's action may pick (stage 4), read by any role of the space. */
+export const connectorOperationsQuery = (spaceId: string) =>
+  ({ key: [...APPROVALS_KEY, "connector-operations", spaceId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/connector-operations` as const });
+/** A recon's breaks to preview an action with (first 25, oldest first). */
+export const reconBreaksQuery = (spaceId: string, configId: string) =>
+  ({ key: [...APPROVALS_KEY, "preview-breaks", spaceId, configId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/breaks?recon=${encodeURIComponent(configId)}&pageSize=25` as const });
 /** The space's workflows a recon may pick (first 100 by name), for the setup's Approval step. */
 export const workflowOptions = (spaceId: string) =>
   ({ key: [...APPROVALS_KEY, "workflow-options", spaceId] as const, url: `${workflowsPath(spaceId)}?pageSize=100&sort=name` as const });

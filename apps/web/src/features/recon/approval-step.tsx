@@ -8,7 +8,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
-import { buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
+import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconApprovalSpec, ReconSpec, WorkflowRef } from "@starterkit/shared/contracts/recon";
 import type { LibraryRowDto, PreviewDto } from "@starterkit/shared/contracts/workflows";
@@ -16,7 +16,12 @@ import { type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workfl
 import { api, errorText } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
 import { condDone, keptCopy, savable } from "./approval-model";
+import dynamic from "next/dynamic";
 import { ConditionEditor } from "./condition-editor";
+
+// the actions editor, mapper and tables load after the step (first-load budget, DEC-040)
+const ActionsEditor = dynamic(() => import("./actions-editor").then((m) => m.ActionsEditor), { ssr: false, loading: () => <span className="text-body-sm text-fg-3">Loading actions…</span> });
+const SetupTables = dynamic(() => import("./setup-tables").then((m) => m.SetupTables), { ssr: false });
 import type { Fields } from "./spec-model";
 
 // The setup's Approval step (DEC-052 rev 2 §4.4, Figma 06 Rules frames): per change, the workflow that approves it in
@@ -57,8 +62,10 @@ function WorkflowSelect({ value, rows, onChange, label, disabled, allowDefault }
 }
 
 /** One change's card: who approves every request, then rules that pick another workflow in some cases. */
-function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled }: {
+function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, children }: {
   kind: Trigger; recon: string; setup: Setup; onChange: (s: Setup) => void; rows: readonly LibraryRowDto[]; catalog: readonly CatalogField[]; disabled: boolean;
+  /** What is sent to the bank on its approval events (stage 4). */
+  children?: React.ReactNode;
 }) {
   const w = setup.workflow;
   const setRules = (rules: Rule[]) => onChange({ ...setup, workflow: { ...w, rules } });
@@ -118,6 +125,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled }: {
             Use another workflow in some cases
           </button>
         )}
+        {children && <div className="border-t border-line pt-4">{children}</div>}
       </div>
     </Panel>
   );
@@ -222,14 +230,20 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
     onChange(r.approvals);
   }
   const empty: Setup = { workflow: { default: null, rules: [] }, actions: [] };
+  const actionCatalog = useMemo(() => [...catalog, ...APPROVAL_FIELDS], [catalog]);
   return (
     <div className="grid gap-section">
       <div className="grid min-w-0 gap-section">
         {wf.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load the space&apos;s workflows. {errorText(wf.error)}</p>}
         {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it. The rest is saved.</p>}
+        <SetupTables accounts={local.accounts ?? []} lookups={local.lookups ?? []} disabled={disabled} onChange={(accounts, lookups) => set({ ...local, accounts, lookups })} />
         {TRIGGERS.map((k) => (
           <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
-            onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })} />
+            onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })}>
+            <ActionsEditor kind={k} actions={(local.changes[k] ?? empty).actions ?? []} spaceId={spaceId} configId={configId} versionId={versionId}
+              catalog={actionCatalog} setup={{ accounts: local.accounts ?? [], lookups: local.lookups ?? [] }} disabled={disabled} dirty={dirty || unfinished}
+              onChange={(actions) => set({ ...local, changes: { ...local.changes, [k]: { ...(local.changes[k] ?? empty), actions } } })} />
+          </ChangeCard>
         ))}
       </div>
       <div className="min-w-0">

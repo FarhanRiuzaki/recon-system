@@ -849,18 +849,15 @@
               },
               "label": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 80
               },
               "number": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 40
               },
               "currency": {
                 "type": "string",
-                "minLength": 3,
-                "maxLength": 3
+                "pattern": "^([A-Z]{3})?$"
               }
             },
             "required": [

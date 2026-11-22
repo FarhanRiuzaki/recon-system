@@ -236,6 +236,8 @@ export function checkActions(approvals: ReconApprovalSpec | undefined, catalog: 
         });
         for (const p of required(op.request, "")) out.push(`${where}: ${p} is required. Map it, or give it a fixed or auto value.`);
         const reads = [...(v.when ? conditionFields(v.when as Condition) : []), ...Object.values(v.mapping).flatMap(sourceFields)];
+        const usedAccounts = new Set(Object.values(v.mapping).flatMap((src) => (src.kind === "account" ? [src.account] : src.kind === "template" ? templateParts(src.text).flatMap((p) => (p.account ? [p.account.key] : [])) : [])));
+        for (const k of usedAccounts) if (!approvals!.accounts.find((a) => a.key === k)?.number) out.push(`${where}: account ${k} has no number. Enter it under Accounts.`);
         const lost = [...new Set(reads.filter((k) => k && !known.has(k)))];
         if (lost.length) out.push(`${where}: a field it reads is no longer read from the sources (${lost.join(", ")}).`);
       }

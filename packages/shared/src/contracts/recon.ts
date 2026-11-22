@@ -162,8 +162,9 @@ const ChangeApproval = z.strictObject({
 export const ReconApprovalSpec = z.strictObject({
   /** Named accounts the mapping refers to (O2: accounts come from the recon setup). */
   accounts: z.array(z.strictObject({
-    key: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the key."), label: z.string().trim().min(1).max(80),
-    number: z.string().trim().min(1).max(40), currency: z.string().trim().length(3),
+    // empty while a draft is typed; an action using an account without a number is refused on submit (recon checkActions)
+    key: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the key."), label: z.string().trim().max(80),
+    number: z.string().trim().max(40), currency: z.string().trim().regex(/^([A-Z]{3})?$/, "Use a 3-letter currency code."),
   })).max(ACCOUNTS_MAX).default([]),
   /** Small tables (key → value) the mapping looks values up in. */
   lookups: z.array(z.strictObject({
