@@ -67,7 +67,7 @@ function UserForm({ user }: { user?: UserDetailDto }) {
     initial: { name: user?.name ?? "", username: user?.username ?? "", email: user?.email ?? "", method: user ? "" : "password", password: "" },
     schema: SCHEMA, idPrefix: "u",
   });
-  const [roles, setRoles] = useState<string[]>(user?.roles ?? ["Viewer"]);
+  const [roles, setRoles] = useState<string[]>(user?.roles ?? []);
   const [isActive, setActive] = useState(user?.isActive ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +80,7 @@ function UserForm({ user }: { user?: UserDetailDto }) {
   const shownRoles = searchable ? [...new Set([...roles, ...roleNames.names])] : roleNames.names;
   const toggleRole = (r: string) => setRoles((cur) => (cur.includes(r) ? cur.filter((x) => x !== r) : [...cur, r]));
   // Typed but not saved: a link click asks first (while saving, the form navigates away itself).
-  const startRoles = user?.roles ?? ["Viewer"];
+  const startRoles = user?.roles ?? [];
   const dirty = f.values.name !== (user?.name ?? "") || f.values.username !== (user?.username ?? "") || f.values.email !== (user?.email ?? "")
     || f.values.password !== "" || isActive !== (user?.isActive ?? true) || method !== (user ? "" : "password")
     || roles.length !== startRoles.length || roles.some((r) => !startRoles.includes(r));

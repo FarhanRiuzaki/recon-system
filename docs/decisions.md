@@ -543,3 +543,8 @@ Bersamaan: seeder dipecah menjadi `permissions.ts`, `roles.ts` (Superadmin, Admi
 `SEED_APPROVER_PASSWORD` diisi) di `apps/api/src/db/seed/`; `db:seed:local` memberi maker source_admin + config_maker dan
 approver config_checker di Treasury. User `checker` lama tidak lagi dibuat (yang sudah ada di database dibiarkan).
 
+Tambahan 22 November 2026 (pemilik: "remove roles dummy dan user dummy"): seed sistem hanya membuat role Superadmin, Maker
+dan Approver; Admin dan Viewer beserta user demo hanya dari seed demo (tes dan E2E), yang tidak lagi dijalankan stack dev
+(`scripts/docker-dev.sh`). Superadmin stack dev dibuat dari `SEED_SUPERADMIN_*` di `docker-compose.dev.yml`. Di database
+dev, user selain superadmin, maker dan approver serta role Admin dan Viewer dihapus.
+

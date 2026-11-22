@@ -229,8 +229,8 @@ password must be 12 to 128 characters; elsewhere a shorter one is accepted with 
 | `bun run dev` | `apps/web` on :3000 and `apps/api` on :4000 together. |
 | `bun run db:generate` | The next `apps/api/drizzle/NNNN_*.sql` from every module's `schema.ts` (drizzle-kit), with `"public".` stripped from its foreign keys; `-- --custom --name=<name>` (from `apps/api`) makes an empty file for custom SQL. Never edit an applied file. |
 | `bun run db:migrate` | Applies pending `apps/api/drizzle/*.sql` as `MIGRATION_DATABASE_URL` (else `DATABASE_URL`). |
-| `bun run db:seed` | Three seeders in `apps/api/src/db/seed/`: permissions (the catalog), roles (Superadmin/Admin/Viewer/Maker/Approver) and users (the `SEED_SUPERADMIN_*` user while no active Superadmin exists; the default `maker` and `approver` when `SEED_MAKER_PASSWORD` / `SEED_APPROVER_PASSWORD` are set). Idempotent. |
-| `bun run db:seed:demo` | Demo accounts and data. Refused with `NODE_ENV=production`. |
+| `bun run db:seed` | Three seeders in `apps/api/src/db/seed/`: permissions (the catalog), roles (Superadmin, Maker, Approver; the demo seed adds Admin and Viewer) and users (the `SEED_SUPERADMIN_*` user while no active Superadmin exists; the default `maker` and `approver` when `SEED_MAKER_PASSWORD` / `SEED_APPROVER_PASSWORD` are set). Idempotent. |
+| `bun run db:seed:demo` | Demo accounts, the roles Admin and Viewer, and demo data, for tests and E2E (the docker dev stack doesn't run it). Refused with `NODE_ENV=production`. |
 | `bun run db:reset` | Drops the schema, migrates, runs both seeds. Refused with `NODE_ENV=production`. |
 | `bun run check` | Typecheck, lint (no warnings allowed) and every workspace's tests; the API's run against `<database>_test`, created and migrated on first run. Must pass before every commit. |
 | `bun run --filter @starterkit/api test:unit` / `test:integration` | API unit tests (no database) / integration and architecture tests. |

@@ -1,7 +1,7 @@
 // Dev only: the two sources and the recon that read scripts/dev-live-feed.ts's tables, made through the API as a person
 // would (a maker drafts and submits, a checker approves), so the app's own rules check them. Run inside the dev API's
 // container (it calls the API on 127.0.0.1 with the internal token):
-//   SPACE_ID=… MAKER=superadmin CHECKER=checker PASSWORD=… LIVE_RO_PASSWORD=… bun scripts/dev-live-setup.ts
+//   SPACE_ID=… MAKER=maker CHECKER=approver PASSWORD=… LIVE_RO_PASSWORD=… bun scripts/dev-live-setup.ts
 if (process.env.NODE_ENV === "production") throw new Error("dev-live-setup is for development only");
 const env = (k: string) => { const v = process.env[k]; if (!v) throw new Error(`${k} is required`); return v; };
 const API = process.env.API_BASE_URL ?? "http://127.0.0.1:4000", INTERNAL = env("INTERNAL_API_TOKEN"), SPACE = env("SPACE_ID");

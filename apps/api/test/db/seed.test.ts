@@ -40,7 +40,7 @@ beforeEach(truncateAll);
 describe("seedSystem", () => {
   it("the role seeder adds Maker and Approver; the user seeder adds the default maker and approver only with their password keys, once", async () => {
     await seedSystem(db, {});
-    expect((await db.select({ name: roles.name }).from(roles).orderBy(roles.name)).map((r) => r.name)).toEqual(["Admin", "Approver", "Maker", "Superadmin", "Viewer"]);
+    expect((await db.select({ name: roles.name }).from(roles).orderBy(roles.name)).map((r) => r.name)).toEqual(["Approver", "Maker", "Superadmin"]);
     expect(await userCount()).toBe(0);
     const env = { SEED_MAKER_PASSWORD: "Maker-Password-1!", SEED_APPROVER_PASSWORD: "Approver-Password-1!" };
     await seedSystem(db, env);
@@ -58,11 +58,10 @@ describe("seedSystem", () => {
     expect(first.permissions.map((p: { name: string }) => p.name)).toEqual([...PERMISSIONS]);
     expect(first.roles.map((r: { name: string; locked: boolean; perms: string[] }) => [r.name, r.locked, r.perms])).toEqual([
       // Admin: every permission but role.* and permission.*, so a new module's permissions come with it on a fresh install.
-      ["Admin", false, PERMISSIONS.filter((p) => !p.startsWith("role.") && !p.startsWith("permission.")).sort()],
+      // owner, 22 Nov: only these three; Admin and Viewer are the demo seed's (DEMO_ROLES)
       ["Approver", false, ["audit.view", "user.view"]],
       ["Maker", false, ["audit.view", "user.view"]],
       ["Superadmin", true, [...PERMISSIONS].sort()],
-      ["Viewer", false, ["audit.view", "user.view"]],
     ]);
     expect(first.users).toHaveLength(1);
     expect(first.users[0]).toMatchObject({ name: "Seed Owner", email: "Owner@Example.test", username: "owner", isActive: true, roles: ["Superadmin"] });

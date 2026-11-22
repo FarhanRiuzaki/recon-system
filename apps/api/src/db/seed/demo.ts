@@ -1,5 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { ActivityAction } from "@starterkit/shared/audit";
+import { PERMISSIONS } from "@starterkit/shared/permissions";
 import type { AuthLogDto } from "@starterkit/shared/contracts/audit";
 import { encryptSecret } from "../../kernel/crypto";
 import type { Tx } from "../../kernel/db";
@@ -12,6 +13,7 @@ import { roles, userRoles } from "../../modules/rbac";
 import { type SpaceRole, spaceMembers, spaces as spacesTable } from "../../modules/spaces";
 import { recoveryCodes, users as usersTable } from "../../modules/users";
 import { seedDemoSources } from "./demo-sources";
+import { ensureRoles, type SeedRole } from "./roles";
 
 export const SEED_PASSWORD = "Password123!";
 /** Directory password of the demo LDAP account (username `ldap`), held by the mock directory (modules/auth/ldap.ts). */
@@ -56,6 +58,12 @@ const FIXED: { key: string; name: string; role: string; over?: Over }[] = [
 // ponytail: hashes cached per process (argon2 is slow on purpose); tests reseed often.
 let hashes: Promise<{ password: string; codes: string[] }> | undefined;
 
+/** The demo's global roles, beside the system seed's: the demo accounts and the tests sign in with them. */
+export const DEMO_ROLES: SeedRole[] = [
+  { name: "Admin", locked: false, perms: PERMISSIONS.filter((p) => !p.startsWith("role.") && !p.startsWith("permission.")) },
+  { name: "Viewer", locked: false, perms: ["user.view", "audit.view"] },
+];
+
 /**
  * Demo data on top of seedSystem: the 8 sign-in accounts of the mock (password Password123!, `ldap` signs in through
  * the directory, `twofa` has TOTP and recovery codes, `google`/`apple` are linked), 42 generated users, 200 activity
@@ -70,8 +78,11 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
     log.info("demo data exists: skipped");
     return;
   }
+  if (!(await db.select({ id: roles.id }).from(roles).where(eq(roles.name, "Superadmin")).limit(1)).length) throw new Error("Run the system seed first (bun run db:seed).");
+  // the demo's own roles (the system seed makes only Superadmin, Maker, Approver): Admin = every permission but roles
+  // and permissions, Viewer = users and the activity log
+  await db.transaction((tx) => ensureRoles(tx, DEMO_ROLES));
   const roleIds = new Map((await db.select({ name: roles.name, id: roles.id }).from(roles)).map((r) => [r.name, r.id]));
-  if (!["Superadmin", "Admin", "Viewer"].every((r) => roleIds.has(r))) throw new Error("Run the system seed first (bun run db:seed).");
   const { password, codes } = await (hashes ??= Promise.all([hashPassword(SEED_PASSWORD), Promise.all(RECOVERY_CODES.map(hashPassword))])
     .then(([password, codes]) => ({ password, codes })));
 

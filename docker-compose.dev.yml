@@ -1,7 +1,7 @@
 # The development stack in Docker: PostgreSQL 18 and one `app` container running `bun run dev` (web + API) on the
 # source mounted from this checkout, so a code change reloads at once (Next Fast Refresh, `bun --watch`) without a
 # rebuild. One port on the host: http://localhost:3000 (the API and the database stay inside). Sign in as
-# superadmin / Password123! (demo seed) or the SEED_SUPERADMIN_* user of apps/api/.env.
+# superadmin, maker or approver / Password123! (the system seed, from the env below; no demo data).
 #   docker compose -f docker-compose.dev.yml up -d            # first run installs, migrates and seeds (about a minute)
 #   docker compose -f docker-compose.dev.yml logs -f app      # follow web + API logs
 #   docker compose -f docker-compose.dev.yml exec app bun run check     # tests run against starterkit_test in here
@@ -58,7 +58,12 @@ services:
       LDAP_MOCK: "true"
       # File inbox folders the source wizard may test (./inbox on the host, gitignored).
       INBOX_ROOTS: /app/inbox
-      # The user who gets the local space Treasury (db:seed:local): the demo seed's superadmin.
+      # The first Superadmin (db:seed; skipped once an active Superadmin exists) and the user who gets the local space
+      # Treasury (db:seed:local). No demo users or roles on the dev stack: only superadmin, maker and approver.
+      SEED_SUPERADMIN_NAME: Super Admin
+      SEED_SUPERADMIN_EMAIL: superadmin@recon.local
+      SEED_SUPERADMIN_USERNAME: superadmin
+      SEED_SUPERADMIN_PASSWORD: Password123!
       LOCAL_ADMIN_USERNAME: superadmin
       # The default maker (source admin + config maker in Treasury) and approver (config checker in Treasury), same
       # demo password: the user seeder makes them, the local seed gives them their space roles.

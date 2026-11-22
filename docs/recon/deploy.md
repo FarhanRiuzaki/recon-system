@@ -117,7 +117,8 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   `feat/recon-phase1`; the integrator merges it into `feat/recon-phase1` after its affected tests pass. Two agents never
   share a working tree or an index. The hook's source is `scripts/recon-preview-sync.sh` (install: copy it to `$(git rev-parse --git-common-dir)/hooks/post-commit`).
   Start: `COMPOSE_PROJECT_NAME=recon-dev docker compose -f ../recon-preview/docker-compose.dev.yml up -d` (first start
-  installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (demo seed); the local seed
+  installs inside the container, about 5 minutes). Sign in as `superadmin` / `Password123!` (system seed, `SEED_SUPERADMIN_*` of the dev compose file; the dev stack has no
+  demo users or roles); the local seed
   gives that user the space Treasury as space admin, source admin and config maker. A Superadmin opens every space and may approve
   their own versions (owner rule, 22 Nov). The default `maker` / `Password123!` (source admin + config maker in Treasury)
   and `approver` / `Password123!` (config checker in Treasury) show the maker-checker flow; they exist only where
