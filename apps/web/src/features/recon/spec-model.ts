@@ -362,7 +362,6 @@ export function scheduleText(s: ReconSpec["schedule"]): string {
 }
 export const graceText = (m: number) => (m === 0 ? "None" : m % 60 === 0 ? `${plural(m / 60, "hour")}` : `${m} min`);
 export const daysText = (n: number) => plural(n, "day");
-/** Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. */
 /**
  * A typed time as the spec keeps it (HH:MM, 24 hours), or null: a colon, a dot or no separator, one or two hour digits
  * ("9.05" → "09:05"). The schedule's times are text fields, not the browser's time input, which shows "23.00" in some
@@ -374,7 +373,12 @@ export function clockOf(text: string): string | null {
   const h = Number(m[1]), min = Number(m[2]);
   return h < 24 && min < 60 ? `${String(h).padStart(2, "0")}:${m[2]}` : null;
 }
+/** `clockOf` while the field is being typed in: three digits without a separator wait ("230" may become "2300"). */
+export const clockWhileTyping = (text: string): string | null => (/^\d{3}$/.test(text.trim()) ? null : clockOf(text));
+/** Why a typed time holds its step ("Close time: …"), or null once it reads as a time (on leaving the field at the latest). */
+export const clockProblem = (setting: string, text: string): string | null => (clockOf(text) ? null : `${setting}: Enter a time as HH:MM, such as 23:00.`);
 
+/** Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. */
 export const carryText = (c: number | null) => (c === null ? "Always, until matched or closed" : c === 0 ? "Only on its own day" : `Up to day + ${c}`);
 /** The measure: the amount by default, compared per currency. */
 export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : "Amount, per currency");

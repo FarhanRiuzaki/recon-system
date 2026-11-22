@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockedButton, CategoryChip, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
@@ -174,8 +174,17 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const failed = dirty && failedJson === json;
   // a field still being filled in (save-queue waits; Run simulation and Submit say what to fill in)
   const incomplete = incompleteField(spec);
-  // the leave guard holds only while a change is waiting, saving or refused
-  const guard = useLeaveGuard(editable && dirty);
+  // a schedule time typed that doesn't read as a time (by field id): never in the spec, so it holds step 3 and the leave
+  const [clockBad, setClockBad] = useState<Record<string, string>>({});
+  const onClockProblem = useCallback((id: string, p: string | null) => setClockBad((x) => {
+    if (p) return x[id] === p ? x : { ...x, [id]: p };
+    if (!(id in x)) return x;
+    const { [id]: _gone, ...rest } = x;
+    return rest;
+  }), []);
+  const clockText = Object.values(clockBad)[0] ?? null;
+  // the leave guard holds only while a change is waiting, saving or refused, or a typed time isn't one
+  const guard = useLeaveGuard(editable && (dirty || !!clockText));
   // Never lose an edit (ux-form-rules rule 12): a change the API hasn't taken yet (waiting, still being filled in,
   // or refused) is kept in the browser per draft version, over the hash it was made from, and comes back on the next
   // open while the server's draft is still that one; a saved spec drops the copy.
@@ -374,7 +383,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const title = sel.k === "settings" ? "Settings" : sel.k === "side" ? `Side ${sel.i === 0 ? "A" : "B"}` : passIndex >= 0 ? `Pass ${passIndex + 1} of ${spec.passes.length}` : "Pass";
   const sourceOf = (i: 0 | 1) => (i === 0 ? sa.data : sb.data);
   const editor = sel.k === "settings"
-    ? <SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} />
+    ? <SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} onClockProblem={onClockProblem} />
     : sel.k === "side"
       ? <SideEditor spec={spec} i={sel.i} fields={fields} sourceName={sourceOf(sel.i)?.name ?? "Loading…"} place={placed?.side === sel.i ? placed : null}
         onChange={(s) => change({ ...spec, sides: sel.i === 0 ? [s, spec.sides[1]] : [spec.sides[0], s] })}
@@ -434,7 +443,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const why = stepReasons({
     loaded: !!fields[0] && !!fields[1], sideProblem: placed?.side !== undefined ? `Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}` : null,
     passes: spec.passes.length, needs: spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null)), incomplete,
-    settingProblem: placed?.setting ? `${placed.setting}: ${placed.text}` : null, simulation: simulated, running: live || starting, submit: blocked,
+    settingProblem: clockText ?? (placed?.setting ? `${placed.setting}: ${placed.text}` : null), simulation: simulated, running: live || starting, submit: blocked,
     approval: approvalOpen ? "A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it." : null,
   });
   const STEP_LABEL = SETUP_STEPS;
@@ -531,7 +540,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                 ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>;
             })}
             <Panel title="Schedule and day close">
-              <fieldset disabled={!editable} className="contents"><SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} /></fieldset>
+              <fieldset disabled={!editable} className="contents"><SettingsEditor spec={spec} place={placed?.setting ? placed : null} onChange={change} onClockProblem={onClockProblem} /></fieldset>
             </Panel>
           </>
         )}
@@ -625,7 +634,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
       }}><div onKeyDown={onInspectorKey}>{body}</div></InspectorSheet>}
       {guard.leaving && (
         <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
-          onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={failed ? `The last change wasn't saved: ${problem?.text ?? "the save failed"}` : `Draft v${saved.version} is still saving the last change.`}
+          onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description={clockText ? `${clockText} The time typed isn't saved.` : failed ? `The last change wasn't saved: ${problem?.text ?? "the save failed"}` : `Draft v${saved.version} is still saving the last change.`}
           impact={["Changes not saved yet are discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
       )}
     </Wizard>

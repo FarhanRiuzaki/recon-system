@@ -305,7 +305,7 @@ describe("the setup's steps (owner, 22 Nov: Next says what is missing)", () => {
   });
 });
 
-import { carryText, clockOf } from "./spec-model";
+import { carryText, clockOf, clockProblem, clockWhileTyping } from "./spec-model";
 
 describe("carry over modes (owner, 22 Nov: match / unmatch)", () => {
   it("says each mode in words", () => {
@@ -320,5 +320,15 @@ describe("clockOf: a typed time as HH:MM", () => {
   it("takes a colon, a dot or no separator, pads the hour, refuses what isn't a time", () => {
     expect(["23:00", "23.00", "2300", "9:05", " 7.30 ", "00:00"].map(clockOf)).toEqual(["23:00", "23:00", "23:00", "09:05", "07:30", "00:00"]);
     expect(["24:00", "23:60", "", "2", "ab:cd", "123:00"].map(clockOf)).toEqual([null, null, null, null, null, null]);
+  });
+  it("while typing, three digits wait (230 on the way to 2300 is not 02:30); leaving the field reads them", () => {
+    expect(["230", "23", "2", "23:0"].map(clockWhileTyping)).toEqual([null, null, null, null]);
+    expect(["2300", "23:00", "9.05"].map(clockWhileTyping)).toEqual(["23:00", "23:00", "09:05"]);
+    expect(clockOf("230")).toBe("02:30");
+  });
+  it("a text that doesn't read as a time is the step's blocking reason, named by its setting", () => {
+    expect(clockProblem("Close time", "25:00")).toBe("Close time: Enter a time as HH:MM, such as 23:00.");
+    expect(clockProblem("Runs at", "")).toBe("Runs at: Enter a time as HH:MM, such as 23:00.");
+    expect(clockProblem("Close time", "230")).toBeNull();
   });
 });

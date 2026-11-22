@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -13,7 +13,7 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, clockOf, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
+  addCurrency, clockOf, clockProblem, clockWhileTyping, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
   type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
 } from "./spec-model";
 
@@ -317,7 +317,8 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
 }
 
 /** The day's settings (BUILDER-SPEC "Settings strip"): schedule, grace, carry over, close time. */
-export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; place: Place | null; onChange: (s: ReconSpec) => void }) {
+/** `onClockProblem`: a time field's text that doesn't read as a time (by field id; null once it does or the field goes). */
+export function SettingsEditor({ spec, place, onChange, onClockProblem }: { spec: ReconSpec; place: Place | null; onChange: (s: ReconSpec) => void; onClockProblem?: (id: string, problem: string | null) => void }) {
   const s = spec.schedule;
   const err = (name: string) => (place?.setting === name ? place.text : null);
   return (
@@ -333,7 +334,7 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
       <div className="grid items-start gap-4 sm:grid-cols-2">
         {s.kind === "daily" ? (
           <div className="grid gap-4">
-            <ClockField id="rs-at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} value={s.at} onChange={(at) => onChange({ ...spec, schedule: { ...s, at } })} />
+            <ClockField id="rs-at" setting="Runs at" label={`Runs at (${APP_TIME_ZONE_LABEL})`} value={s.at} onProblem={onClockProblem} onChange={(at) => onChange({ ...spec, schedule: { ...s, at } })} />
             <Field id="rs-offset" label="Business date" required>
               <Select id="rs-offset" value={s.business_date_offset} className="w-full max-w-60" onChange={(e) => onChange({ ...spec, schedule: { ...s, business_date_offset: Number(e.target.value) } })}>
                 {[0, 1, 2, 3, 4, 5, 6, 7].map((d) => <option key={d} value={d}>{d === 0 ? "The same day" : d === 1 ? "The day before" : `${d} days before`}</option>)}
@@ -345,7 +346,7 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
             <NumberInput id="rs-every" label="Minutes between runs" min={1} max={1440} className="max-w-32" value={s.every_minutes} onValueChange={(m) => onChange({ ...spec, schedule: { ...s, every_minutes: m === "" ? 1 : m } })} />
           </Field>
         )}
-        <ClockField id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} value={spec.close_at} error={err("Close time")} onChange={(close_at) => onChange({ ...spec, close_at })} />
+        <ClockField id="rs-close" setting="Close time" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} value={spec.close_at} onProblem={onClockProblem} error={err("Close time")} onChange={(close_at) => onChange({ ...spec, close_at })} />
         <Field id="rs-grace" label="Grace (minutes)" required error={err("Grace")}>
           <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} className="max-w-32" value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
         </Field>
@@ -371,19 +372,27 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
 
 /**
  * A time of day as text, always shown 23:00 (the browser's time input shows "23.00" in some locales): what is typed
- * stays on screen and reaches the spec once it reads as a time (`clockOf`); a value it can't read says so on leaving.
+ * stays on screen and reaches the spec once it reads as a time without doubt (`clockWhileTyping`: "230" waits, it may
+ * become "2300"), else on leaving the field or Enter; a value it can't read says so on leaving, and holds the step
+ * meanwhile through `onProblem` (the builder's step reason and leave question).
  */
-function ClockField({ id, label, value, error, onChange }: { id: string; label: string; value: string; error?: string | null; onChange: (v: string) => void }) {
+function ClockField({ id, setting, label, value, error, onChange, onProblem }: {
+  id: string; setting: string; label: string; value: string; error?: string | null; onChange: (v: string) => void; onProblem?: (id: string, problem: string | null) => void;
+}) {
   const [text, setText] = useState(value);
   const [seen, setSeen] = useState(value);
   const [bad, setBad] = useState(false);
   // a value set from outside (undo, a reload) replaces what is typed
   if (value !== seen) { setSeen(value); if (clockOf(text) !== value) setText(value); }
+  const problem = clockProblem(setting, text);
+  useEffect(() => { onProblem?.(id, problem); }, [id, problem, onProblem]);
+  useEffect(() => () => onProblem?.(id, null), [id, onProblem]);
+  const commit = () => { const c = clockOf(text); if (!c) { setBad(true); return; } setText(c); if (c !== value) onChange(c); };
   return (
     <Field id={id} label={label} required error={error ?? (bad ? "Enter a time as HH:MM, such as 23:00." : null)}>
       <Input id={id} value={text} inputMode="numeric" autoComplete="off" maxLength={5} placeholder="23:00" className="max-w-40 font-mono tabular"
-        onChange={(e) => { setText(e.target.value); setBad(false); const c = clockOf(e.target.value); if (c && c !== value) onChange(c); }}
-        onBlur={() => { const c = clockOf(text); if (c) setText(c); else setBad(true); }} />
+        onChange={(e) => { setText(e.target.value); setBad(false); const c = clockWhileTyping(e.target.value); if (c && c !== value) onChange(c); }}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); }} onBlur={commit} />
     </Field>
   );
 }
