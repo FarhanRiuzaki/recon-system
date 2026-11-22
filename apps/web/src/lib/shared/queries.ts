@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { CONNECTOR_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { timeRange } from "./time-controls";
@@ -140,6 +140,13 @@ export const sourceVersion = (spaceId: string, id: string, versionId: string) =>
   key: [...SOURCES_KEY, "version", spaceId, id, versionId] as const,
   url: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
 });
+
+// Open API connectors (DEC-053): the integrations module.
+export const INTEGRATIONS_KEY = ["integrations"] as const;
+export const CONNECTORS: TableDef<{ q: string }> = {
+  key: INTEGRATIONS_KEY[0], path: "/api/integrations/connectors", spec: { sorts: CONNECTOR_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
+};
+export const connectorDetail = (id: string) => ({ key: [...INTEGRATIONS_KEY, "connector", id] as const, url: `/api/integrations/connectors/${encodeURIComponent(id)}` as const });
 
 export const RECON_KEY = ["recon"] as const;
 export const ENGINE_KEY = ["engine"] as const;

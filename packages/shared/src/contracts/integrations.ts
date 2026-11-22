@@ -43,7 +43,8 @@ export const OperationSpec = z.strictObject({
 export type OperationSpec = z.infer<typeof OperationSpec>;
 
 export const EnvironmentSettings = z.strictObject({
-  baseUrl: z.string().trim().max(300).refine((u) => /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(u), "Use an https:// address."),
+  /** Empty in a draft until it is known; a call to it then says to enter it. */
+  baseUrl: z.string().trim().max(300).refine((u) => u === "" || /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(u), "Use an https:// address."),
   host: z.string().trim().max(200),
   partnerId: z.string().trim().max(64),
   channelId: z.string().trim().max(64),

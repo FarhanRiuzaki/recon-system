@@ -18,9 +18,13 @@ describe("navFor", () => {
     expect(labels(new Set())).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Profile"]);
   });
 
+  it("integration.view alone shows Open API under Access", () => {
+    expect(labels(new Set(["integration.view"]))).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Open API", "Profile"]);
+  });
+
   it("all permissions: every item but the hidden template pages, groups in the designed order", () => {
     const all = NAV.filter((n) => !n.hidden).map((n) => n.label);
-    expect(all).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Activity log", "Sign-in log", "Profile"]);
+    expect(all).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Open API", "Activity log", "Sign-in log", "Profile"]);
     expect(labels(new Set(PERMISSIONS))).toEqual(all);
     expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "space", "access", "audit", "personal"]);
   });

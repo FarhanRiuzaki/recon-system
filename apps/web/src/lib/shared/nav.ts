@@ -2,7 +2,7 @@ import type { PermissionName } from "@starterkit/shared/permissions";
 import { canonicalSelection } from "@starterkit/shared/filter-selection";
 
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
-  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows";
+  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations";
 export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
@@ -48,6 +48,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/users", label: "Users", icon: "users", shortcut: "G U", group: "access", perm: "user.view" },
   { href: "/roles", label: "Roles", icon: "roles", shortcut: "G R", group: "access", perm: "role.view" },
   { href: "/permissions", label: "Permissions", icon: "permissions", shortcut: "G P", group: "access", perm: "permission.view" },
+  { href: "/integrations", label: "Open API", icon: "integrations", shortcut: "G I", group: "access", perm: "integration.view" },
   { href: "/audit/activity", label: "Activity log", icon: "activity", shortcut: "G A", group: "audit", perm: "audit.view" },
   { href: "/audit/auth", label: "Sign-in log", icon: "signin", shortcut: "G S", group: "audit", perm: "audit.view" },
   { href: "/ds", label: "Design system", icon: "ds", shortcut: "", group: "personal", perm: null, hidden: true, children: [

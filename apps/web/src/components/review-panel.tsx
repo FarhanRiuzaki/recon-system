@@ -11,7 +11,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 type Open = { version: number; submittedBy: { name: string | null } | null; submittedAt: string | null };
 
 /**
- * A version waiting for approval (a library workflow's or a space's approval rules'): publish it or send it back with a
+ * A version waiting for approval (a workflow's or an Open API connector's): publish it or send it back with a
  * comment; a Superadmin's own only by override, with a reason; `blocked` says why the viewer can't decide it.
  */
 export function ReviewPanel({ open, blocked, overrideOnly, busy, onDecide }: {

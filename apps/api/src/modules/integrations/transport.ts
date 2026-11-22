@@ -32,6 +32,7 @@ const tlsOf = (s: Secrets) => (s.caBundle ? { tls: { ca: [s.caBundle] } } : {});
 
 /** The bank's access token for the environment; a new one when none is cached or it ends within 30 s (`fresh` forces one). */
 export async function accessToken(connectorId: string, env: Environment, settings: EnvironmentSettings, secrets: Secrets, fresh = false): Promise<{ token: string; expiresIn: number }> {
+  if (!settings.baseUrl) throw new NotSent("Enter this environment's address first.");
   if (!secrets.clientId || !secrets.clientSecret) throw new NotSent("Set the client ID and client secret of this environment first.");
   return db.transaction(async (tx) => {
     await connectorTokenLock(tx, `${connectorId}:${env}`);
@@ -82,6 +83,7 @@ export async function sendOperation(i: { connectorId: string; env: Environment; 
   const start = Date.now();
   const done = (r: Omit<SendResult, "ms">): SendResult => ({ ...r, ms: Date.now() - start });
   const s = i.secrets ?? {};
+  if (!i.settings.baseUrl) return done({ outcome: "not_sent", status: null, externalId: null, json: null, raw: null, message: "Enter this environment's address first." });
   if (!s.clientId || !s.clientSecret || !s.publicKey) {
     return done({ outcome: "not_sent", status: null, externalId: null, json: null, raw: null, message: "Set this environment's client ID, client secret and the bank's public key first." });
   }

@@ -23,8 +23,8 @@ import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/ap
 import { APPROVALS_KEY } from "@/lib/shared/queries";
 import { spaceWorkflow } from "@/lib/shared/queries-recon";
 import { Levels } from "./levels-editor";
-import { unsaved } from "./autosave";
-import { ReviewPanel } from "./review-panel";
+import { unsaved } from "@/lib/shared/autosave";
+import { ReviewPanel } from "@/components/review-panel";
 import { LIBRARY_EDITOR_SHAPE } from "./shapes";
 import { UsedBy } from "./used-by";
 
