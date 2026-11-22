@@ -22,7 +22,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY } from "@/lib/shared/queries";
 import { spaceWorkflow } from "@/lib/shared/queries-recon";
-import { Levels } from "./levels-editor";
+import { emptyGroups, Levels } from "./levels-editor";
 import { unsaved } from "@/lib/shared/autosave";
 import { ReviewPanel } from "@/components/review-panel";
 import { LIBRARY_EDITOR_SHAPE } from "./shapes";
@@ -60,7 +60,17 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
     setLoadedFrom(source); setName(from.name); setLevels(from.levels);
   }
   const spec = useMemo<ChainSpec>(() => ({ name, levels }), [name, levels]);
-  const complete = !!name.trim() && levels.length > 0 && levels.every((l) => l.groups.every((g) => g.spaceRoles.length + g.globalRoles.length + g.users.length > 0));
+  const hasName = !!name.trim(), picked = levels.length > 0 && levels.every((l) => !emptyGroups(l).length);
+  const complete = hasName && picked;
+  const blockedWhy = complete ? null : `${[!hasName && "Name the workflow", !picked && "pick who approves every group"].filter(Boolean).join(" and ")} to send it.`.replace(/^./, (c) => c.toUpperCase());
+  // a blocked Send shows where: the name's error, and the first level with a group naming nobody opens with its error
+  const [nameChecked, setNameChecked] = useState(false);
+  const [reveal, setReveal] = useState(0);
+  const showBlocked = () => {
+    setNameChecked(true);
+    if (!picked) setReveal((r) => r + 1);
+    else document.getElementById("wf-name")?.focus();
+  };
 
   const [save, setSave] = useState<Save>({ state: "idle" });
   const saving = useDelayedFlag(save.state === "saving");
@@ -69,7 +79,8 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
   const pending = editing && view === "open" && unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }));
   useEffect(() => {
     if (!editing || view !== "open") return;
-    if (!complete || !unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }))) return;
+    // an incomplete draft (no name yet, a group naming nobody) saves too: nothing typed is lost; sending checks it
+    if (!unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }))) return;
     const t = setTimeout(async () => {
       setSave({ state: "saving" });
       try {
@@ -80,7 +91,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
       } catch (e) { setSave({ state: "error", error: errorText(e) }); }
     }, 700);
     return () => clearTimeout(t);
-  }, [spec, complete, editing, view, savedBody]); // eslint-disable-line react-hooks/exhaustive-deps -- the draft and url follow `editing` and `id`
+  }, [spec, editing, view, savedBody]); // eslint-disable-line react-hooks/exhaustive-deps -- the draft and url follow `editing` and `id`
 
   const [busy, setBusy] = useState<string | null>(null);
   async function run(label: string, path: string, body: object | undefined, done: string): Promise<boolean> {
@@ -137,8 +148,8 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
               <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit workflow
             </Button>
           : draft && w.canEdit
-            ? <BlockedButton type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending} aria-busy={busy === "submit" || undefined}
-                reason={complete ? null : "Name the workflow and pick who approves every group to send it."}>
+            ? <BlockedButton type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || (complete && pending)} aria-busy={busy === "submit" || undefined}
+                reason={blockedWhy} onBlockedPress={showBlocked}>
                 {busy === "submit" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Send for approval
               </BlockedButton>
             : undefined} />
@@ -155,10 +166,10 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
             <Segmented label="Version shown" value={view} onChange={setView}
               options={[{ value: "open", label: w.open.status === "draft" ? `Draft ${w.open.version}` : `Version ${w.open.version}` }, { value: "live", label: `Live · ${w.published.version}` }]} />
           )}
-          <Field id="wf-name" label="Name" required>
+          <Field id="wf-name" label="Name" required error={!readOnly && nameChecked && !hasName ? "Name the workflow." : null}>
             <Input id="wf-name" value={name} maxLength={RULE_NAME_MAX} disabled={readOnly} onChange={(e) => setName(e.target.value)} placeholder="Treasury head" className="md:max-w-md" />
           </Field>
-          <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} />
+          <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} reveal={reveal} />
         </div>
         <div className="min-w-0 xl:sticky xl:top-(--topbar-h)">
           <UsedBy spaceId={spaceId} id={id} />

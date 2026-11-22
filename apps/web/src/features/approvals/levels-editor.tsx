@@ -1,17 +1,18 @@
 "use client";
 
 import { arrayMove } from "@dnd-kit/sortable";
-import { Fragment, useId, useState } from "react";
+import { Fragment, useEffect, useId, useReducer, useRef, useState } from "react";
 import { ActionMenu, CategoryChip, Combobox, type ComboOption, ConfirmActionDialog, EditorRow } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, CloseIcon, EditIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, EditIcon, FailedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { type Group, GROUPS_MAX, type Level, LEVELS_MAX, type Need, PEOPLE_MAX } from "@starterkit/shared/workflows";
+import { needWords } from "@/components/request-chain";
 import { categoryChip } from "@/lib/shared/categories";
 
 // A workflow's levels (DEC-052 rev 2): the cards the workflow editor edits and the request chain mirrors.
@@ -53,7 +54,8 @@ function ApproverPicker({ g, onChange, options, label, invalid, describedBy }: {
   );
 }
 
-const NEED_KIND = [{ value: "any", label: "Any one of" }, { value: "all", label: "All of" }, { value: "count", label: "A number of" }] as const;
+// the same words as the request chain
+const NEED_KIND = [{ value: "any", label: needWords({ kind: "any" }) }, { value: "all", label: needWords({ kind: "all" }) }, { value: "count", label: "A number of" }] as const;
 /** How many of a group must approve: any one, all, or a number (2…), the number under the choice. */
 function NeedPicker({ need, onChange, label }: { need: Need; onChange: (n: Need) => void; label: string }) {
   return (
@@ -70,17 +72,17 @@ function NeedPicker({ need, onChange, label }: { need: Need; onChange: (n: Need)
   );
 }
 
-const NEED_TEXT = (n: Need) => (n.kind === "any" ? "Any one of" : n.kind === "all" ? "All of" : `${n.n} of`);
 /** "and" between two groups that must both approve: a neutral chip at the start of the line. */
 const And = () => <span className="inline-flex h-5.5 items-center justify-self-start rounded-sm bg-inset px-2 text-label text-fg-2">and</span>;
 
-/** A group read back: "Any one of" and a chip per role or person. */
+/** A group read back: "Any one of" and a chip per role or person; nobody picked is the error colour with its icon. */
 function GroupLine({ g, options }: { g: Group; options: Options }) {
   const chips = approvers(g, options);
   return (
-    <span className="flex flex-wrap items-center gap-1.5 text-body-sm text-fg-2">
-      {NEED_TEXT(g.need)}
-      {chips.length ? chips.map((c) => <CategoryChip key={c.value} label={c.label} slot={c.slot!} />) : <span className="text-fg-3">nobody picked yet</span>}
+    <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-body-sm text-fg-2">
+      {needWords(g.need)}
+      {chips.length ? chips.map((c) => <CategoryChip key={c.value} label={c.label} slot={c.slot!} />)
+        : <span className="inline-flex items-center gap-1 text-down-ink"><Icon icon={FailedIcon} className="size-4" />Nobody picked yet</span>}
     </span>
   );
 }
@@ -104,16 +106,17 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
   const id = useId();
   const n = i + 1;
   const empty = checked ? emptyGroups(l) : [];
+  const [added, setAdded] = useState<number | null>(null); // the group just added enters; the others don't replay it
   const setGroup = (gi: number, g: Group) => onChange({ ...l, groups: l.groups.map((x, j) => (j === gi ? g : x)) });
   return (
     <li data-slot="level-card" data-mode={editing ? "edit" : "read"} className="grid rounded-lg border border-line bg-card shadow-xs">
       <div data-slot="level-head" className="flex min-h-12 items-center gap-3 px-4 py-2">
         <span aria-hidden="true" className={cn("grid size-7 shrink-0 place-items-center rounded-full text-label tabular transition-colors duration-(--dur-fast)",
           editing ? "bg-primary text-primary-foreground" : "bg-primary-soft text-primary")}>{n}</span>
-        <span className="min-w-0 flex-1 truncate text-label text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</span>
+        <h3 className="min-w-0 flex-1 truncate text-label text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</h3>
         {editing ? (
           <span className="flex shrink-0 items-center gap-1">
-            <Button type="button" variant="secondary" size="sm" onClick={onDone}>Done</Button>
+            <Button type="button" variant="secondary" size="sm" data-focus="done" onClick={onDone}>Done</Button>
             <ActionMenu label={`Actions for level ${n}`} actions={[
               { id: "up", label: "Move up", disabled: i === 0, hint: i === 0 ? "It is the first level." : undefined, onSelect: () => onMove(-1) },
               { id: "down", label: "Move down", disabled: i === count - 1, hint: i === count - 1 ? "It is the last level." : undefined, onSelect: () => onMove(1) },
@@ -121,7 +124,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
             ]} />
           </span>
         ) : !readOnly && (
-          <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${n}`} onClick={onEdit}><Icon icon={EditIcon} />Edit</Button>
+          <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${n}`} data-focus="edit" onClick={onEdit}><Icon icon={EditIcon} />Edit</Button>
         )}
       </div>
       <div key={editing ? "edit" : "read"} data-slot="level-body" className="grid animate-fade gap-2 border-t border-line px-4 py-3">
@@ -129,7 +132,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
           <Fragment key={gi}>{gi > 0 && <And />}<GroupLine g={g} options={options} /></Fragment>
         )) : <>
           <EditorRow className="px-2" lead={<label htmlFor={`${id}-name`} className="flex h-8 items-center text-label text-fg">Name<span className="ml-1 font-normal text-fg-3">(optional)</span></label>}>
-            <Input id={`${id}-name`} placeholder="Treasury head" value={l.name} maxLength={80} onChange={(e) => onChange({ ...l, name: e.target.value })} />
+            <Input id={`${id}-name`} data-focus="name" placeholder="Treasury head" value={l.name} maxLength={80} onChange={(e) => onChange({ ...l, name: e.target.value })} />
           </EditorRow>
           {l.groups.map((g, gi) => {
             const label = `Level ${n}, group ${gi + 1}`;
@@ -137,7 +140,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
             return (
               <Fragment key={gi}>
                 {gi > 0 && <And />}
-                <div data-slot="group-block" className="relative rounded-md bg-tray p-2 max-md:pr-11">
+                <div data-slot="group-block" className={cn("relative rounded-md bg-tray p-2 max-md:pr-11", gi === added && "animate-enter")}>
                   <EditorRow
                     lead={<NeedPicker need={g.need} label={`${label}: how many approve`} onChange={(need) => setGroup(gi, { ...g, need })} />}
                     trailing={
@@ -157,7 +160,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
           })}
           {l.groups.length < GROUPS_MAX && (
             <EditorRow className="px-2" lead={null}>
-              <Button type="button" variant="add" size="sm" className="px-0" onClick={() => onChange({ ...l, groups: [...l.groups, newGroup()] })}>
+              <Button type="button" variant="add" size="sm" className="px-0" onClick={() => { setAdded(l.groups.length); onChange({ ...l, groups: [...l.groups, newGroup()] }); }}>
                 <Icon icon={AddIcon} />Add a group that must also approve
               </Button>
             </EditorRow>
@@ -169,30 +172,58 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
 }
 
 /**
- * A workflow's levels as cards, approvals in order top to bottom. One level is open to edit at a time: Done closes it
- * once every group names someone, else it says which group needs a pick. Adding a level opens it. Moving and removing
- * a level sit in the open card's ⋯ menu; removing asks first.
+ * A workflow's levels as cards, approvals in order top to bottom. One level is open to edit at a time: Done, Edit on
+ * another card and "Add level" all close it only once every group names someone, else it stays open and says which
+ * group needs a pick. Adding a level opens it. Moving and removing a level sit in the open card's ⋯ menu; removing
+ * asks first. `reveal` (a count, raised by a blocked Send) opens the first level with a group naming nobody, with its
+ * error. Focus follows: the button that replaced the one pressed, the moved card's ⋯, the card after a removed one.
  */
-export function Levels({ levels, onChange, options, disabled }: { levels: Level[]; onChange: (l: Level[]) => void; options: Options; disabled: boolean }) {
+export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { levels: Level[]; onChange: (l: Level[]) => void; options: Options; disabled: boolean; reveal?: number }) {
   const [open, setOpen] = useState<number | null>(null);
   const [checked, setChecked] = useState<number | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  // where focus goes once the change is on screen: card index + selector (a new object each time, so the same target again counts)
+  const [want, focus] = useReducer((_: { i: number; on: string } | null, next: { i: number; on: string }) => next, null);
   const editing = disabled ? null : open;
-  const openLevel = (i: number | null) => { setOpen(i); setChecked(null); };
+  useEffect(() => {
+    if (!want) return;
+    // a task later: a closing menu or dialog puts focus back on its (gone) trigger first
+    setTimeout(() => listRef.current?.children[want.i]?.querySelector<HTMLElement>(want.on)?.focus(), 0);
+  }, [want]);
+  /** The open level may close only when every group names someone; else it stays open with its error. */
+  const mayLeave = () => {
+    if (editing === null || !levels[editing] || !emptyGroups(levels[editing]).length) return true;
+    setChecked(editing); focus({ i: editing, on: '[aria-invalid="true"]' });
+    return false;
+  };
+  const openLevel = (i: number | null) => {
+    if (!mayLeave()) return;
+    setOpen(i); setChecked(null);
+    focus({ i: i ?? editing ?? 0, on: i === null ? '[data-focus="edit"]' : '[data-focus="done"]' });
+  };
+  const [seen, setSeen] = useState(reveal);
+  if (reveal !== seen) {
+    setSeen(reveal);
+    const at = editing !== null && levels[editing] && emptyGroups(levels[editing]).length ? editing : levels.findIndex((l) => emptyGroups(l).length);
+    if (at >= 0 && !disabled) { setOpen(at); setChecked(at); focus({ i: at, on: '[aria-invalid="true"]' }); }
+  }
   const setLevel = (i: number, l: Level) => onChange(levels.map((x, j) => (j === i ? l : x)));
-  const move = (i: number, d: -1 | 1) => { onChange(arrayMove(levels, i, i + d)); setOpen(i + d); setChecked(null); };
+  const move = (i: number, d: -1 | 1) => { onChange(arrayMove(levels, i, i + d)); setOpen(i + d); setChecked(null); focus({ i: i + d, on: '[data-slot="action-menu-trigger"]' }); };
   const gone = removing === null ? null : levels[removing];
+  const removedAt = useRef<number | null>(null);
   return (
     <>
-      <ol className="grid gap-3" aria-label="Levels in order">
+      <ol ref={listRef} className="grid gap-3" aria-label="Levels in order">
         {levels.map((l, i) => (
           <LevelCard key={i} level={l} index={i} count={levels.length} options={options} editing={editing === i} readOnly={disabled} checked={checked === i}
             onChange={(x) => setLevel(i, x)} onEdit={() => openLevel(i)} onMove={(d) => move(i, d)} onRemove={() => setRemoving(i)}
-            onDone={() => (emptyGroups(l).length ? setChecked(i) : openLevel(null))} />
+            onDone={() => openLevel(null)} />
         ))}
       </ol>
       {!disabled && levels.length < LEVELS_MAX && (
-        <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => { onChange([...levels, newLevel()]); openLevel(levels.length); }}>
+        <Button type="button" variant="add" size="sm" className="justify-self-start"
+          onClick={() => { if (!mayLeave()) return; onChange([...levels, newLevel()]); setOpen(levels.length); setChecked(null); focus({ i: levels.length, on: '[data-focus="name"]' }); }}>
           <Icon icon={AddIcon} />Add level {levels.length + 1}
         </Button>
       )}
@@ -204,7 +235,15 @@ export function Levels({ levels, onChange, options, disabled }: { levels: Level[
             "Recons that use this workflow keep the version they picked until they move to a new one.",
           ]}
           actionLabel="Remove level"
-          onConfirm={async () => { onChange(levels.filter((_, j) => j !== removing)); openLevel(null); }} />
+          onCloseAutoFocus={(e) => {
+            // opened from a menu item that is gone: removed → the card now there (or the one before), kept → its ⋯
+            e.preventDefault();
+            const at = removedAt.current, cards = listRef.current?.children;
+            removedAt.current = null;
+            if (at === null) cards?.[removing]?.querySelector<HTMLElement>('[data-slot="action-menu-trigger"]')?.focus();
+            else (cards?.[at] ?? cards?.[at - 1])?.querySelector<HTMLElement>('[data-focus="edit"]')?.focus();
+          }}
+          onConfirm={async () => { removedAt.current = removing; onChange(levels.filter((_, j) => j !== removing)); setOpen(null); setChecked(null); }} />
       )}
     </>
   );
