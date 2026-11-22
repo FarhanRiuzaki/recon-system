@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, check, date, foreignKey, index, integer, numeric, pgTable, primaryKey, smallint, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, foreignKey, index, integer, numeric, pgTable, primaryKey, smallint, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { jsonb } from "../../kernel/columns";
 import { reconConfigs, reconConfigVersions } from "../recon/schema";
 
@@ -274,35 +274,3 @@ export const reconAlerts = pgTable("recon_alerts", {
   primaryKey({ name: "recon_alerts_pkey", columns: [t.spaceId, t.configId] }),
   foreignKey({ name: "recon_alerts_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
 ]);
-
-/**
- * A change of a break a checker decides (spec §11 maker-checker, Plan 5 Task 3): `force_match` (a match whose sides
- * total differently: `item_ids` the other items), `unmatch` (the break's manual match undone), `write_off` (closed
- * WRITTEN_OFF). One pending per break (the partial unique index); `prev_state` = the break's queue state to go back to
- * when rejected; `label` = the break's reference when asked (the inbox lists it without reading records).
- * Decided by a reviewer or space admin other than `requested_by` (a Superadmin decides anything, DEC-051).
- */
-export const approvalRequests = pgTable("approval_requests", {
-  id: uuid("id").primaryKey(),
-  spaceId: uuid("space_id").notNull(),
-  configId: uuid("config_id").notNull(),
-  kind: text("kind").notNull(),
-  itemId: uuid("item_id").notNull(),
-  itemIds: uuid("item_ids").array().notNull().default(sql`'{}'::uuid[]`),
-  label: text("label").notNull(),
-  note: text("note").notNull(),
-  prevState: text("prev_state"),
-  status: text("status").notNull().default("pending"),
-  requestedBy: uuid("requested_by"),
-  requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
-  decidedBy: uuid("decided_by"),
-  decidedAt: timestamp("decided_at", { withTimezone: true }),
-  decisionNote: text("decision_note"),
-}, (t) => [
-  uniqueIndex("approval_requests_one_pending").on(t.spaceId, t.itemId).where(sql`${t.status} = 'pending'`),
-  index("approval_requests_inbox").on(t.spaceId, t.status, t.requestedAt),
-  foreignKey({ name: "approval_requests_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
-  check("approval_requests_kind_check", sql`kind in ('force_match', 'unmatch', 'write_off')`),
-  check("approval_requests_status_check", sql`status in ('pending', 'approved', 'rejected', 'cancelled')`),
-]);
-

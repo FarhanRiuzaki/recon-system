@@ -90,6 +90,33 @@
               "string",
               "null"
             ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "of": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "at",
+                  "of"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -99,7 +126,8 @@
           "version",
           "submitter",
           "submittedAt",
-          "blocked"
+          "blocked",
+          "level"
         ],
         "additionalProperties": false
       }

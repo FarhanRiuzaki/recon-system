@@ -8,12 +8,11 @@ import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { BreakCandidateQuery, BreakDetailDto, BreakItemDto, CloseBreakBody, MatchBreakBody } from "@starterkit/shared/contracts/breaks";
 import type { ActivityDto, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import type { Page } from "@starterkit/shared/contracts/common";
-import { type RequestKind, requestBlocked } from "@starterkit/shared/approvals";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT, DEBIT_CODES } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
-import { and, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery } from "../../kernel/pagination";
@@ -24,7 +23,8 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { approvalRequests, matchGroups, matchMembers, reconItems } from "./schema";
+import { approvalRequests, requestView } from "../approvals";
+import { matchGroups, matchMembers, reconItems } from "./schema";
 import { assertNotSigned } from "./signoff";
 
 export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -100,8 +100,9 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const others = g ? (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id), ne(matchMembers.itemId, x.id)))).map((m) => m.id) : [];
     const matchedWith = await itemsOf(tx, spaceId, others);
     const [p] = x.proposedItemId ? await itemsOf(tx, spaceId, [x.proposedItemId]) : [];
-    const [rq] = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.itemId, x.id), eq(approvalRequests.status, "pending")));
-    const people = [...new Set([x.assigneeId, rq?.requestedBy].filter((u): u is string => !!u))];
+    // its latest request (waiting, or how the last one ended), as its timeline
+    const [rq] = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.itemId, x.id))).orderBy(desc(approvalRequests.requestedAt)).limit(1);
+    const people = [...new Set([x.assigneeId].filter((u): u is string => !!u))];
     const names = new Map(people.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, people))).map((u) => [u.id, u.name]) : []);
     const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
@@ -111,11 +112,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),
       proposed: p ? { item: plain(p), pass: x.proposedPass, available: free(p) } : null,
-      request: rq ? {
-        id: rq.id, kind: rq.kind as RequestKind, note: rq.note, items: (await itemsOf(tx, spaceId, rq.itemIds)).map(plain),
-        requester: rq.requestedBy ? { id: rq.requestedBy, name: names.get(rq.requestedBy) ?? null } : null, requestedAt: rq.requestedAt.toISOString(),
-        blocked: requestBlocked(rq.requestedBy, ctx.user.id, isLead(ctx), isSuperadmin(ctx.user.roles)),
-      } : null,
+      request: rq ? { ...(await requestView(tx, ctx, rq)), items: (await itemsOf(tx, spaceId, rq.itemIds)).map(plain) } : null,
     };
   });
 }
@@ -176,7 +173,8 @@ async function match(ctx: Ctx, id: string, otherIds: readonly string[], o: { not
   });
 }
 
-type MatchOptions = { note?: string; checkTotals: boolean; pass?: number | null; resolution: Resolution; action: "break.match" | "break.approve"; extra?: Record<string, unknown> };
+/** `quiet`: the caller records the activity entry (an approval's, which carries the chain). */
+type MatchOptions = { note?: string; checkTotals: boolean; pass?: number | null; resolution: Resolution; action: "break.match" | "break.approve"; extra?: Record<string, unknown>; quiet?: boolean };
 /** A break's items, locked and checked: free, of its recon, both sides present; with the recon's published version. */
 export async function matchItems(tx: InTx, spaceId: string, x: { id: string; configId: string }, otherIds: readonly string[]) {
     const ids = [x.id, ...otherIds.filter((i) => i !== x.id)];
@@ -196,7 +194,7 @@ export async function matchItems(tx: InTx, spaceId: string, x: { id: string; con
     const total = (side: "a" | "b") => items.filter((i) => i.side === side).reduce((t, i) => t + (i.signed ?? 0n) * (v.spec.sides[side === "a" ? 0 : 1].amount_sign === "negate" ? -1n : 1n), 0n);
     const a = total("a"), b = total("b");
     const differ = a === b ? null : `${v.spec.sides[0].label} totals ${amountText(a, ccy)} and ${v.spec.sides[1].label} ${amountText(b, ccy)}: they differ by ${amountText(a > b ? a - b : b - a, ccy)}.`;
-    return { ids, items, v, differ, mixed };
+    return { ids, items, v, differ, mixed, gap: a > b ? a - b : b - a, ccy };
 }
 
 /** The match itself, in the caller's transaction, after its rules (match, or an approved force match). */
@@ -218,6 +216,7 @@ export async function matchIn(tx: InTx, ctx: Ctx, spaceId: string, x: { id: stri
         ...(i.status === "break" ? { breakState: "resolved", resolution: o.resolution } : {}),
       }).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, i.id), eq(reconItems.businessDate, i.businessDate), eq(reconItems.version, i.v)));
     }
+    if (o.quiet) return;
     await recordActivity(tx, ctx, {
       action: o.action, target: { type: "break", id: x.id, label: items[0]!.ref ?? "Break" },
       before: { state: x.breakState ?? "new" },

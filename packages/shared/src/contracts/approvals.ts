@@ -31,5 +31,7 @@ export const ApprovalRowDto = z.object({
   submitter: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
   submittedAt: z.string().nullable(),
   blocked: z.string().nullable(),
+  /** A break request's level waiting (`at` of `of`); null for a version. */
+  level: z.object({ at: z.number().int(), of: z.number().int() }).nullable(),
 });
 export type ApprovalRowDto = z.infer<typeof ApprovalRowDto>;

@@ -48,7 +48,8 @@
             "permission",
             "audit",
             "project",
-            "space"
+            "space",
+            "workflow"
           ]
         },
         {
@@ -62,7 +63,8 @@
               "permission",
               "audit",
               "project",
-              "space"
+              "space",
+              "workflow"
             ]
           }
         }

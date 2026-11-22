@@ -1,16 +1,17 @@
 import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import type { ApprovalListQuery, ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
-import { type ApprovalKind, approvalBlocked, isRequestKind, requestBlocked } from "@starterkit/shared/approvals";
+import { type ApprovalKind, approvalBlocked, isRequestKind } from "@starterkit/shared/approvals";
 import { isSuperadmin } from "@starterkit/shared/permissions";
-import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, eq, ilike, inArray, or, type SQL, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
 import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import type { Ctx } from "../auth";
-import { approvalRequests } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceVersions } from "../sources";
 import type { InTx } from "../../kernel/db";
 import { withSpace } from "../spaces";
+import { decidable } from "./requests";
+import { approvalRequests } from "./schema";
 import { users } from "../users";
 
 /**
@@ -18,7 +19,7 @@ import { users } from "../users";
  * each says whether the caller may decide it (approvalBlocked). One union, paged in the database.
  */
 /** The inbox as one union subquery `u` (source versions, recon versions, break requests), filtered by `q`. */
-function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pageSize" | "sort">) {
+async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pageSize" | "sort">) {
     const spaceId = ctx.space!.id;
     const kinds: readonly string[] = q.kind ?? [];
     const reqKinds = kinds.filter(isRequestKind);
@@ -42,9 +43,15 @@ function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pageSize
       submittedBy: reconConfigVersions.submittedBy, submittedAt: reconConfigVersions.submittedAt,
     }).from(reconConfigVersions).innerJoin(reconConfigs, and(eq(reconConfigs.spaceId, reconConfigVersions.spaceId), eq(reconConfigs.id, reconConfigVersions.configId)))
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.status, "in_review"), mine(reconConfigVersions), like ? or(ilike(reconConfigs.name, like), ilike(reconConfigs.code, like)) : undefined));
-    // a break's request (Task 3): decided by a reviewer or space admin who didn't ask; `version` null, `code` its reference
+    // a break's request (DEC-052): who may decide it follows its chain's current level, so "mine" is read request by
+    // request in code (ponytail: every pending request of the space; a space with thousands waiting needs it in SQL)
     const lead = superadmin || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
-    const reqMine = !q.mine || superadmin ? undefined : lead ? sql`${approvalRequests.requestedBy} is distinct from ${me}` : sql`false`;
+    let reqMine: SQL | undefined;
+    if (q.mine) {
+      const pending = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"))).limit(500);
+      const ok = [...(await decidable(tx, ctx, pending))].filter(([, why]) => why === null).map(([id]) => id);
+      reqMine = ok.length ? inArray(approvalRequests.id, ok) : sql`false`;
+    }
     const req = tx.select({
       kind: sql<ApprovalKind>`${approvalRequests.kind}`.as("kind"), id: approvalRequests.id, targetId: sql<string>`${approvalRequests.itemId}`.as("target_id"),
       code: sql<string>`${approvalRequests.label}`.as("code"), name: reconConfigs.name, version: sql<number>`null::int`.as("version"),
@@ -64,7 +71,7 @@ function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pageSize
 /** GET …/approvals/facets: what waits per kind, with the other filters (search, mine) applied. */
 export function approvalFacets(ctx: Ctx, q: ApprovalListQuery): Promise<FacetsDto> {
   return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
-    const { u } = inbox(tx, ctx, { ...q, kind: undefined });
+    const { u } = await inbox(tx, ctx, { ...q, kind: undefined });
     return { kind: facetOf(await tx.select({ v: u.kind, n: countN }).from(u).groupBy(u.kind)) };
   });
 }
@@ -72,7 +79,7 @@ export function approvalFacets(ctx: Ctx, q: ApprovalListQuery): Promise<FacetsDt
 export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
   const spaceId = ctx.space!.id;
   return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
-    const { u, me, checker, lead, superadmin } = inbox(tx, ctx, q);
+    const { u, me, checker, superadmin } = await inbox(tx, ctx, q);
     const page = await pageQuery({
       rows: tx.select().from(u).$dynamic(),
       count: tx.select(one).from(u).$dynamic(),
@@ -83,13 +90,19 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
     });
     const ids = [...new Set(page.items.map((r) => r.submittedBy).filter((x): x is string => !!x))];
     const names = new Map(ids.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids))).map((x) => [x.id, x.name]) : []);
+    // a break request's level and whether the caller decides it now, from its chain
+    const reqIds = page.items.filter((r) => isRequestKind(r.kind)).map((r) => r.id);
+    const reqs = reqIds.length ? await tx.select().from(approvalRequests).where(inArray(approvalRequests.id, reqIds)) : [];
+    const why = await decidable(tx, ctx, reqs);
+    const levelOf = new Map(reqs.map((r) => [r.id, { at: r.currentLevel + 1, of: (r.chain as unknown[]).length }]));
     return {
       ...page,
       items: page.items.map((r) => ({
         kind: r.kind, id: r.id, target: { id: r.targetId, code: r.code, name: r.name }, version: r.version,
         submitter: r.submittedBy ? { id: r.submittedBy, name: names.get(r.submittedBy) ?? null } : null,
         submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : null,
-        blocked: isRequestKind(r.kind) ? requestBlocked(r.makerId, me, lead, superadmin) : approvalBlocked(r.kind, r, me, checker, superadmin),
+        blocked: isRequestKind(r.kind) ? why.get(r.id) ?? null : approvalBlocked(r.kind, r, me, checker, superadmin),
+        level: levelOf.get(r.id) ?? null,
       })),
     };
   });

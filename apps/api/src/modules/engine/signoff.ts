@@ -16,7 +16,8 @@ import type { Ctx } from "../auth";
 import { reconConfigs } from "../recon";
 import { users } from "../users";
 import { withSpace } from "../spaces";
-import { approvalRequests, reconDays, reconItems } from "./schema";
+import { approvalRequests } from "../approvals";
+import { reconDays, reconItems } from "./schema";
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));

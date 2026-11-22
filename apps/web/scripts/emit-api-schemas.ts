@@ -21,6 +21,7 @@ import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
 import * as approvals from "@starterkit/shared/contracts/approvals";
 import * as breaks from "@starterkit/shared/contracts/breaks";
+import * as workflows from "@starterkit/shared/contracts/workflows";
 import * as recon from "@starterkit/shared/contracts/recon";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
@@ -73,7 +74,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -139,8 +140,15 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "break.match": ["break", "`{ state }`", "`{ resolution, items (side, ref), proposedBy?, note? }`"],
   "break.close": ["break", "`{ state }`", "`{ resolution, note }` (DUPLICATE or NO_ACTION)"],
   "break.request": ["break", "`{ state }`", "`{ kind, note, items? }` (force_match, unmatch or write_off; items = the other items of a force match)"],
-  "break.approve": ["break", "`{ state }` or `{ resolution }`", "`{ kind, requestedBy, decisionNote?, note }` and `{ resolution, items }` (force match), `{ resolution }` (write-off) or `{ unmatched }` (unmatch)"],
-  "break.reject": ["break", "`{ state }`", "`{ kind, note, requestedBy }`"],
+  "break.approve": ["break", "`{ level }`", "`{ kind, level, of, note? }`; the last level adds `final` and what the change did (`resolution`, `items` or `unmatched`)"],
+  "break.reject": ["break", "`{ level }`", "`{ kind, note, requestedBy }`"],
+  "break.override": ["break", "`{ level }`", "`{ kind, reason }` and what the change did (`resolution`, `items` or `unmatched`)"],
+  "break.cancel": ["break", "`{ level }`", "`{ kind }`"],
+  "workflow.save": ["workflow", "—", "`{ version, from? }` (a new draft) or `{ version, rules }`"],
+  "workflow.submit": ["workflow", "—", "`{ version }`"],
+  "workflow.publish": ["workflow", "—", "`{ version, comment?, override? }`"],
+  "workflow.reject": ["workflow", "—", "`{ version, comment }`"],
+  "workflow.discard": ["workflow", "`{ version }`", "—"],
   "day.prepare": ["recon", "`{ stage }`", "`{ date, stage }` (prepared)"],
   "day.sign": ["recon", "`{ stage }`", "`{ date, stage }` (signed)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],

@@ -246,6 +246,7 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/recons/:configId/days": "a recon's last TREND_DAYS business dates (14), fixed",
   "GET /v1/spaces/:spaceId/recons/:configId/live": "one recon's current business date and its two sources",
   "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",
+  "GET /v1/spaces/:spaceId/workflows": "one row per WORKFLOW_ACTIONS (fixed), the space's workflow for each",
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };
 const ONE_RECORD = /\/:\w+$/;
@@ -260,6 +261,7 @@ const IN_HANDLER_GATES: Record<string, string> = {
 };
 /** Non-GET routes that change no record of the activity log's kind (an auth step, a viewer's own list preference), so they record no entry. */
 const NO_ACTIVITY: Record<string, string> = {
+  "POST /v1/spaces/:spaceId/workflows/:action/preview": "a read sent as POST for its body (a draft's rules and sample attributes): who would approve, nothing changes",
   "POST /v1/me/reauth": "proves the user again on this session (stamps reauth_at); an auth step, and the sign-in log has no event for it",
   "POST /v1/me/views": "saves the caller's own named list view: a viewer preference like the prefs cookie, seen by no one else",
   "DELETE /v1/me/views/:id": "deletes the caller's own saved list view: a viewer preference, seen by no one else",
@@ -277,7 +279,17 @@ const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controlle
  * §11: a platform admin has no data access, so a route with `or` reads no space data). None today: the members and
  * detail routes name `or` and read only spaces and space_members, which have no RLS.
  */
-const OR_WITH_SPACE: Record<string, string> = {};
+/**
+ * Routes whose `or` permission reaches space data on purpose. workflow.manage (DEC-052): a governance role configures
+ * the approval workflows of any space; it reads and writes only approval_workflows (not the space's business data).
+ */
+const WF = "workflow.manage configures any space's approval workflows (DEC-052); approval_workflows only";
+const OR_WITH_SPACE: Record<string, string> = {
+  "GET /v1/spaces/:spaceId/workflows": WF, "GET /v1/spaces/:spaceId/workflows/:action": WF, "POST /v1/spaces/:spaceId/workflows/:action/preview": WF,
+  "POST /v1/spaces/:spaceId/workflows/:action/draft": WF, "PATCH /v1/spaces/:spaceId/workflows/:action/draft": WF,
+  "POST /v1/spaces/:spaceId/workflows/:action/draft/submit": WF, "POST /v1/spaces/:spaceId/workflows/:action/draft/discard": WF,
+  "POST /v1/spaces/:spaceId/workflows/:action/review/approve": WF, "POST /v1/spaces/:spaceId/workflows/:action/review/reject": WF,
+};
 const REAL_ALLOW: Allow = { nonList: NON_LIST_GETS, gates: IN_HANDLER_GATES, authFiles: AUTH_ROUTE_FILES, noActivity: NO_ACTIVITY, orWithSpace: OR_WITH_SPACE };
 
 /** A path inside one space: its :spaceId segment is what the { space } guard checks. */

@@ -1,3 +1,5 @@
-// Public API of the approvals module: its route. It owns no table yet: the requests it lists are the versions sent for
-// approval, owned by the sources and recon modules (read through their index); break requests join with Breaks (Plan 5).
+// Public API of the approvals module: its routes; the approval workflow engine (DEC-052) the owning modules call inside
+// their transaction (openRequest, the request's view, its table for the inbox and the day sign-off's pending check).
 export { approvalsController } from "./controller";
+export { openRequest, pendingOf, requestView } from "./requests";
+export { approvalDecisions, approvalRequests, approvalWorkflows } from "./schema";

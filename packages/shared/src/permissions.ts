@@ -1,6 +1,6 @@
 export type Action = "view" | "create" | "edit" | "delete" | "manage";
 
-export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space"; actions: Action[] }[] = [
+export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space" | "workflow"; actions: Action[] }[] = [
   { key: "user", actions: ["view", "create", "edit", "delete"] },
   { key: "role", actions: ["view", "create", "edit", "delete"] },
   { key: "permission", actions: ["view", "create"] },
@@ -8,6 +8,8 @@ export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project
   { key: "project", actions: ["view", "create", "edit", "delete"] },
   /** `space.view` lists every space; `space.manage` creates spaces and manages any space's members (no data access, recon spec §11). */
   { key: "space", actions: ["view", "manage"] },
+  /** `workflow.manage` edits any space's approval workflows (DEC-052; a space admin edits its own space's). */
+  { key: "workflow", actions: ["view", "manage"] },
 ];
 
 export type PermissionName =
@@ -16,7 +18,8 @@ export type PermissionName =
   | "permission.view" | "permission.create"
   | "audit.view"
   | "project.view" | "project.create" | "project.edit" | "project.delete"
-  | "space.view" | "space.manage";
+  | "space.view" | "space.manage"
+  | "workflow.view" | "workflow.manage";
 
 /** A permission name: `<module>.<action>`, an action of lowercase letters, digits or underscores (the module is checked against MODULES separately). */
 export const PERMISSION_KEY = /^[a-z]+\.[a-z][a-z0-9_]{0,31}$/;
