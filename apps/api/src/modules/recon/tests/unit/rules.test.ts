@@ -4,7 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { ReconSpec, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
-import { checkApprovals, checkReconSpec, reconIssue, usedFields } from "../../rules";
+import { checkActions, checkApprovals, checkReconSpec, reconIssue, usedFields } from "../../rules";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import { gate, sourceSpec } from "../spec";
 
@@ -237,5 +237,33 @@ describe("checkApprovals (DEC-052 rev 2)", () => {
       .toContain("Unmatch · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.branch).");
     expect(checkApprovals(setup({ all: [{ field: "break.amount", op: "starts_with", value: "1" }] }), cat, facts(), S))
       .toContain("Unmatch · rule “Large”: Amount can't be compared with “starts with”.");
+  });
+});
+
+describe("checkActions (stage 4)", () => {
+  const C = "0190f5a0-0000-7000-8000-0000000000c1";
+  const cat = buildCatalog([{ label: "BI", fields: new Map([["attrs.e2e_id", { kind: "text" as const, from: null, fromType: null }]]) }, { label: "Core", fields: new Map() }]);
+  const facts = new Map([[C, { name: "Bank Mega", disabled: false, versions: new Map([[2, { operations: new Map([["misc_dc", {
+    name: "Misc D/C", request: [{ name: "Amount", type: "numeric" as const, required: true }, { name: "DE48", type: "object" as const, required: true, children: [{ name: "Remark", type: "string" as const, required: true }, { name: "Cur", type: "string" as const, required: true }] }],
+    presets: new Set(["DE48.Cur"]), auto: new Set<string>(),
+  }]]) }]]) }]]);
+  const variant = (o: object = {}) => ({ name: "Default", when: { all: [] }, operation: { connectorId: C, version: 2, key: "misc_dc" }, per: "item", zeroOrNegative: "skip",
+    mapping: { Amount: { kind: "field", key: "break.amount", transforms: [] }, "DE48.Remark": { kind: "template", text: "{side_a.attrs.e2e_id}" } }, ...o });
+  const setup = (v: object) => ({ accounts: [], lookups: [], changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [{ name: "Post to GL", kind: "posting", on: { event: "approved" }, variants: [v] }] } } }) as never;
+  it("passes a variant that maps every required field (fixed values count)", () => {
+    expect(checkActions(setup(variant()), cat, facts)).toEqual([]);
+  });
+  it("names change, action and variant for each problem", () => {
+    const where = "Unmatch · Post to GL · Default";
+    expect(checkActions(setup(variant({ operation: { connectorId: Bun.randomUUIDv7(), version: 2, key: "misc_dc" } })), cat, facts)).toEqual([`${where}: the connector picked no longer exists. Pick another one.`]);
+    expect(checkActions(setup(variant({ operation: { connectorId: C, version: 9, key: "misc_dc" } })), cat, facts)).toEqual([`${where}: version 9 of “Bank Mega” was never published. Pick a published version.`]);
+    expect(checkActions(setup(variant({ operation: { connectorId: C, version: 2, key: "nope" } })), cat, facts)).toEqual([`${where}: “Bank Mega” version 2 has no operation nope.`]);
+    expect(checkActions(setup(variant({ mapping: { Amount: { kind: "const", value: "1" } } })), cat, facts)).toEqual([`${where}: DE48.Remark is required. Map it, or give it a fixed or auto value.`]);
+    expect(checkActions(setup(variant({ mapping: { Amount: { kind: "const", value: "1" }, "DE48.Remark": { kind: "const", value: "x" }, Extra: { kind: "const", value: "x" } } })), cat, facts)).toEqual([`${where}: Extra isn't a request field of Misc D/C.`]);
+    expect(checkActions(setup(variant({ mapping: { Amount: { kind: "field", key: "side_a.attrs.gone", transforms: [] }, "DE48.Remark": { kind: "template", text: "{side_b.attrs.lost}" } } })), cat, facts))
+      .toEqual([`${where}: a field it reads is no longer read from the sources (side_a.attrs.gone, side_b.attrs.lost).`]);
+  });
+  it("approval fields may be read by a variant", () => {
+    expect(checkActions(setup(variant({ when: { all: [{ field: "approval.level", op: "eq", value: "1" }] } })), cat, facts)).toEqual([]);
   });
 });

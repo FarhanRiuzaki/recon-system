@@ -93,6 +93,9 @@ describe("the mapping engine", () => {
     // a field the operation fixes or fills itself needs no mapping
     expect(buildPayload({ ...base, mapping: { Ref: { kind: "const", value: "ab" } } } as never, op, ctx, setup, new Set(["Note"])).ok).toBe(true);
   });
+  it("a variant without a condition fits every break", () => {
+    expect(pickVariant([{ name: "Every", when: null }], ctx)?.variant.name).toBe("Every");
+  });
   it("picks the first variant whose condition holds; none is null", () => {
     const vs = [{ name: "RTGS", when: { all: [{ field: "side_a.attrs.mid", op: "eq", value: "M2" }] } }, { name: "Any", when: { all: [{ field: "break.amount", op: "gte", value: "1" }] } }];
     expect(pickVariant(vs as unknown as { name: string; when: never }[], ctx)?.variant.name).toBe("Any");

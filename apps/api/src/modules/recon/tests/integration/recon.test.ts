@@ -19,6 +19,7 @@ import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "../../schema";
 import { workflows, workflowVersions } from "../../../approvals";
+import { connectors, connectorVersions } from "../../../integrations";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { gate, sourceSpec } from "../spec";
 
@@ -422,5 +423,27 @@ describe("approval setup in the recon version (DEC-052 rev 2)", () => {
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");
     expect([sent.status, await message(sent)]).toEqual([400, "Unmatch: workflow “Treasury head” is archived. Pick another one."]);
+  });
+});
+
+describe("actions in the recon version (stage 4)", () => {
+  it("a required request field left unmapped saves with a warning; submit refuses it naming change, action and variant", async () => {
+    const cid = Bun.randomUUIDv7();
+    const env = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
+    const op = { key: "misc_dc", name: "Misc D/C", method: "POST", path: "/x", timeoutMs: 30000, request: [{ name: "Amount", type: "numeric", required: true }, { name: "Remark", type: "string", required: true }],
+      response: [], success: null, reference: null, masked: [], presets: {}, auto: {} };
+    await db.insert(connectors).values({ id: cid, name: "Bank Mega" });
+    await db.insert(connectorVersions).values({ id: Bun.randomUUIDv7(), connectorId: cid, version: 1, status: "published", spec: { name: "Bank Mega", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [op] } });
+    const r = await made();
+    const v = r.draft!.id;
+    const approvals = { accounts: [], lookups: [], changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [{ name: "Post to GL", kind: "posting", on: { event: "approved" },
+      variants: [{ name: "Default", operation: { connectorId: cid, version: 1, key: "misc_dc" }, mapping: { Amount: { kind: "field", key: "break.amount", transforms: [] } } }] }] } } };
+    const saved = await patch(t.mk, r.id, v, { ...gate(S1, S2), approvals });
+    expect(saved.status).toBe(200);
+    const why = "Unmatch · Post to GL · Default: Remark is required. Map it, or give it a fixed or auto value.";
+    expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
+    await simulated(v);
+    const sent = await step(t.mk, r.id, v, "submit");
+    expect([sent.status, await message(sent)]).toEqual([400, why]);
   });
 });

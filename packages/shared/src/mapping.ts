@@ -42,7 +42,7 @@ export const ACTIONS_MAX = 10, VARIANTS_MAX = 20, MAPPED_MAX = 300, ACCOUNTS_MAX
 
 // ---- the engine: a payload from a break's context (stage 4) ----
 type Setup = { accounts: readonly { key: string; label: string; number: string; currency: string }[]; lookups: readonly { name: string; rows: readonly { key: string; value: string }[] }[] };
-type VariantLike = { name: string; when: Condition; mapping: Readonly<Record<string, Source>>; zeroOrNegative: "skip" | "absolute_swap" };
+type VariantLike = { name: string; when: Condition | null; mapping: Readonly<Record<string, Source>>; zeroOrNegative: "skip" | "absolute_swap" };
 export type Built = { ok: true; payload: Record<string, unknown>; sources: Record<string, string> } | { ok: false; code: "build_error" | "lookup" | "skipped"; field: string; message: string };
 
 const exponent = (ccy?: string) => (ccy && CURRENCY_EXPONENT[ccy.toUpperCase()] !== undefined ? CURRENCY_EXPONENT[ccy.toUpperCase()]! : 2);
@@ -166,8 +166,8 @@ export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }
   return { ok: true, payload, sources };
 }
 
-/** The first variant whose condition holds on the context, or null (no posting rule, O6). */
-export function pickVariant<V extends { when: Condition }>(variants: readonly V[], ctx: Context): { index: number; variant: V } | null {
-  const index = variants.findIndex((x) => evaluate(x.when, ctx));
+/** The first variant whose condition holds on the context (no condition = always), or null (no posting rule, O6). */
+export function pickVariant<V extends { when: Condition | null }>(variants: readonly V[], ctx: Context): { index: number; variant: V } | null {
+  const index = variants.findIndex((x) => !x.when || evaluate(x.when, ctx));
   return index < 0 ? null : { index, variant: variants[index]! };
 }

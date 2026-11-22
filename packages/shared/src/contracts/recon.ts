@@ -125,8 +125,8 @@ const Source: z.ZodType<SourceT> = z.lazy(() => z.discriminatedUnion("kind", [
 export const OperationRef = z.strictObject({ connectorId: z.uuid(), version: z.number().int().min(1), key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/) });
 const Variant = z.strictObject({
   name: z.string().trim().min(1, "Name the variant.").max(80),
-  /** The first variant whose condition holds is used; none → no posting rule (O6). */
-  when: Condition,
+  /** The first variant whose condition holds is used (none = every break); no variant fits → no posting rule (O6). */
+  when: Condition.nullable().default(null),
   operation: OperationRef,
   /** Request field (dot path) → where its value comes from. */
   mapping: z.record(z.string().min(1).max(300), Source).refine((m) => Object.keys(m).length <= MAPPED_MAX, `A variant maps at most ${MAPPED_MAX} fields.`),

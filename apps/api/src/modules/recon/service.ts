@@ -25,11 +25,12 @@ import { canStep, matchingHash, specHash } from "../../kernel/versions";
 import { recordActivity, targetActivityPage } from "../audit";
 import type { Ctx } from "../auth";
 import { previewApproval, workflowFacts } from "../approvals";
+import { connectorFacts } from "../integrations";
 import { records } from "../ingest";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { checkApprovals, checkReconSpec, placeOf, reconIssue, type SideSource, usedFields } from "./rules";
+import { checkActions, checkApprovals, checkReconSpec, placeOf, reconIssue, type SideSource, usedFields } from "./rules";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "./schema";
 
 type ConfigRow = typeof reconConfigs.$inferSelect;
@@ -95,7 +96,8 @@ async function approvalProblems(tx: InTx, spaceId: string, spec: ReconSpec, side
   const refs = Object.values(spec.approvals.changes).flatMap((c) => (c ? [...(c.workflow.default ? [c.workflow.default.id] : []), ...c.workflow.rules.map((r) => r.workflow.id)] : []));
   const fields = (s: SideSource) => (s.spec ? recordFields(s.spec) : new Map());
   const catalog = buildCatalog([{ label: sides[0].name ?? "Side A", fields: fields(sides[0]) }, { label: sides[1].name ?? "Side B", fields: fields(sides[1]) }]);
-  return checkApprovals(spec.approvals, catalog, await workflowFacts(tx, spaceId, refs), spaceId);
+  const ops = Object.values(spec.approvals.changes).flatMap((c) => c?.actions.flatMap((a) => a.variants.map((v) => v.operation.connectorId)) ?? []);
+  return [...checkApprovals(spec.approvals, catalog, await workflowFacts(tx, spaceId, refs), spaceId), ...checkActions(spec.approvals, catalog, await connectorFacts(tx, ops))];
 }
 
 /** What the check says now about a stored spec, never refusing: a lost source, errors, gates, then warnings. */

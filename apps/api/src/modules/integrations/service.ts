@@ -306,3 +306,19 @@ export async function tryOperation(ctx: Ctx, id: string, b: TryBody): Promise<Tr
     filled: r.filled,
   };
 }
+
+/** For the recon check (stage 4): connectors by id with their versions published once and each one's operations. */
+export async function connectorFacts(tx: InTx, ids: readonly string[]) {
+  const out = new Map<string, { name: string; disabled: boolean; versions: Map<number, { operations: Map<string, { name: string; request: ConnectorSpec["operations"][number]["request"]; presets: Set<string>; auto: Set<string> }> }> }>();
+  const uniq = [...new Set(ids)];
+  if (!uniq.length) return out;
+  const cs = await tx.select().from(connectors).where(inArray(connectors.id, uniq));
+  const vs = cs.length ? await tx.select({ connectorId: connectorVersions.connectorId, version: connectorVersions.version, spec: connectorVersions.spec }).from(connectorVersions)
+    .where(and(inArray(connectorVersions.connectorId, cs.map((c) => c.id)), inArray(connectorVersions.status, ["published", "retired"]))) : [];
+  for (const c of cs) {
+    out.set(c.id, { name: c.name, disabled: !!c.disabledAt, versions: new Map(vs.filter((v) => v.connectorId === c.id).map((v) => [v.version, {
+      operations: new Map((v.spec as ConnectorSpec).operations.map((o) => [o.key, { name: o.name, request: o.request, presets: new Set(Object.keys(o.presets)), auto: new Set(Object.keys(o.auto ?? {})) }])),
+    }])) });
+  }
+  return out;
+}

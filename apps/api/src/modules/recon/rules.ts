@@ -1,7 +1,9 @@
 // Pure rules of a recon spec (spec §10) beyond its contract: what checkReconSpec finds against the sides' published
 // source versions, where in the builder a problem is (in the builder's words, never a spec path), and the fields a
 // published recon holds its sources to (Plan 3 A4). Sentences name fields as people do (fieldLabel), never by code.
-import { type CatalogField, type Condition, conditionFields, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
+import { APPROVAL_FIELDS, type CatalogField, type Condition, conditionFields, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
+import { fieldPaths, type OpField } from "@starterkit/shared/integrations";
+import { type Source, templateParts } from "@starterkit/shared/mapping";
 import type { ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { type FieldKind, fieldLabel, type FieldPair, type Operator, recordFields, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
@@ -145,7 +147,11 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, boolean] = [false, false]): [string[], string[]] {
   const pairs = spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]);
   // an approval rule's side fields (side_a.attrs.channel) bind the source too (DEC-052 rev 2 §4.3)
-  const ruled = Object.values(spec.approvals?.changes ?? {}).flatMap((c) => c?.workflow.rules.flatMap((r) => conditionFields(r.when as Condition)) ?? []);
+  const ruled = Object.values(spec.approvals?.changes ?? {}).flatMap((c) => [
+    ...(c?.workflow.rules.flatMap((r) => conditionFields(r.when as Condition)) ?? []),
+    // what the actions' variants check and map read (stage 4)
+    ...(c?.actions.flatMap((a) => a.variants.flatMap((v) => [...(v.when ? conditionFields(v.when as Condition) : []), ...Object.values(v.mapping).flatMap(sourceFields)])) ?? []),
+  ]);
   const sideOf = (i: 0 | 1) => ruled.filter((k) => k.startsWith(`side_${i ? "b" : "a"}.`)).map((k) => k.slice(7));
   const of = (i: 0 | 1) => [...new Set([...sideOf(i),
     ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)),
@@ -184,6 +190,54 @@ export function checkApprovals(approvals: ReconApprovalSpec | undefined, catalog
       for (const c of clausesOf(r.when)) {
         const f = catalog.find((x) => x.key === c.field);
         if (f && !OPS_BY_KIND[f.kind].includes(c.op)) out.push(`${where}: ${f.label} can't be compared with “${OP_TEXT[c.op]}”.`);
+      }
+    }
+  }
+  return out;
+}
+
+/** A connector as the recon check needs it: its reviewed versions (published once) and their operations. */
+export type ConnectorFact = {
+  name: string; disabled: boolean;
+  versions: ReadonlyMap<number, { operations: ReadonlyMap<string, { name: string; request: readonly OpField[]; presets: ReadonlySet<string>; auto: ReadonlySet<string> }> }>;
+};
+/** The catalog keys a source reads (a field, a template's fields, a lookup's key). */
+export function sourceFields(src: Source): string[] {
+  if (src.kind === "field") return [src.key];
+  if (src.kind === "template") return templateParts(src.text).flatMap((p) => (p.field ? [p.field.key] : []));
+  if (src.kind === "lookup") return sourceFields(src.key);
+  return [];
+}
+
+/**
+ * What is wrong with a recon version's actions (stage 4): a connector gone, a version never published, an operation
+ * the version doesn't have, a mapped path that isn't a request field, a required field neither mapped nor fixed nor
+ * auto, a field the sides no longer read. Each names the change, action and variant. A save keeps these as warnings;
+ * submit and approve refuse on the first.
+ */
+export function checkActions(approvals: ReconApprovalSpec | undefined, catalog: readonly CatalogField[], connectors: ReadonlyMap<string, ConnectorFact>): string[] {
+  const out: string[] = [];
+  const known = new Set([...catalog, ...APPROVAL_FIELDS].map((f) => f.key));
+  for (const change of TRIGGERS) {
+    for (const action of approvals?.changes[change]?.actions ?? []) {
+      for (const v of action.variants) {
+        const where = `${TRIGGER_LABEL[change]} · ${action.name} · ${v.name}`;
+        const c = connectors.get(v.operation.connectorId);
+        if (!c) { out.push(`${where}: the connector picked no longer exists. Pick another one.`); continue; }
+        const ver = c.versions.get(v.operation.version);
+        if (!ver) { out.push(`${where}: version ${v.operation.version} of “${c.name}” was never published. Pick a published version.`); continue; }
+        const op = ver.operations.get(v.operation.key);
+        if (!op) { out.push(`${where}: “${c.name}” version ${v.operation.version} has no operation ${v.operation.key}.`); continue; }
+        const paths = new Set(fieldPaths(op.request));
+        for (const p of Object.keys(v.mapping)) if (!paths.has(p)) out.push(`${where}: ${p} isn't a request field of ${op.name}.`);
+        const required = (fs: readonly OpField[], prefix: string): string[] => fs.flatMap((f) => {
+          const p = `${prefix}${f.name}`;
+          return f.children?.length ? required(f.children, `${p}.`) : f.required && !(p in v.mapping) && !op.presets.has(p) && !op.auto.has(p) ? [p] : [];
+        });
+        for (const p of required(op.request, "")) out.push(`${where}: ${p} is required. Map it, or give it a fixed or auto value.`);
+        const reads = [...(v.when ? conditionFields(v.when as Condition) : []), ...Object.values(v.mapping).flatMap(sourceFields)];
+        const lost = [...new Set(reads.filter((k) => k && !known.has(k)))];
+        if (lost.length) out.push(`${where}: a field it reads is no longer read from the sources (${lost.join(", ")}).`);
       }
     }
   }

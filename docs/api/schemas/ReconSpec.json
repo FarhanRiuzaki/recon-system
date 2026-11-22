@@ -1000,394 +1000,402 @@
                               "maxLength": 80
                             },
                             "when": {
+                              "default": null,
                               "anyOf": [
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "all": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "all": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
                                             "anyOf": [
                                               {
                                                 "type": "object",
                                                 "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
                                                       },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
                                                   }
                                                 },
                                                 "required": [
-                                                  "all"
+                                                  "field",
+                                                  "op"
                                                 ],
                                                 "additionalProperties": false
                                               },
                                               {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
                                                               "type": "string",
-                                                              "maxLength": 64
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                                                             },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
                                                             }
-                                                          ]
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
                                                         }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
                                                   }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
+                                                ]
                                               }
                                             ]
                                           }
-                                        ]
-                                      }
+                                        }
+                                      },
+                                      "required": [
+                                        "all"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "any": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
+                                                      },
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                "required": [
+                                                  "field",
+                                                  "op"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "any"
+                                      ],
+                                      "additionalProperties": false
                                     }
-                                  },
-                                  "required": [
-                                    "all"
-                                  ],
-                                  "additionalProperties": false
+                                  ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "any": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
-                                            "anyOf": [
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "all"
-                                                ],
-                                                "additionalProperties": false
-                                              },
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "required": [
-                                    "any"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -2025,394 +2033,402 @@
                               "maxLength": 80
                             },
                             "when": {
+                              "default": null,
                               "anyOf": [
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "all": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "all": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
                                             "anyOf": [
                                               {
                                                 "type": "object",
                                                 "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
                                                       },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
                                                   }
                                                 },
                                                 "required": [
-                                                  "all"
+                                                  "field",
+                                                  "op"
                                                 ],
                                                 "additionalProperties": false
                                               },
                                               {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
                                                               "type": "string",
-                                                              "maxLength": 64
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                                                             },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
                                                             }
-                                                          ]
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
                                                         }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
                                                   }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
+                                                ]
                                               }
                                             ]
                                           }
-                                        ]
-                                      }
+                                        }
+                                      },
+                                      "required": [
+                                        "all"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "any": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
+                                                      },
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                "required": [
+                                                  "field",
+                                                  "op"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "any"
+                                      ],
+                                      "additionalProperties": false
                                     }
-                                  },
-                                  "required": [
-                                    "all"
-                                  ],
-                                  "additionalProperties": false
+                                  ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "any": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
-                                            "anyOf": [
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "all"
-                                                ],
-                                                "additionalProperties": false
-                                              },
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "required": [
-                                    "any"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -3050,394 +3066,402 @@
                               "maxLength": 80
                             },
                             "when": {
+                              "default": null,
                               "anyOf": [
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "all": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
+                                  "anyOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "all": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
                                             "anyOf": [
                                               {
                                                 "type": "object",
                                                 "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
                                                       },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
                                                   }
                                                 },
                                                 "required": [
-                                                  "all"
+                                                  "field",
+                                                  "op"
                                                 ],
                                                 "additionalProperties": false
                                               },
                                               {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
                                                               "type": "string",
-                                                              "maxLength": 64
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                                                             },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
                                                             }
-                                                          ]
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
                                                         }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
                                                   }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
+                                                ]
                                               }
                                             ]
                                           }
-                                        ]
-                                      }
+                                        }
+                                      },
+                                      "required": [
+                                        "all"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "any": {
+                                          "minItems": 1,
+                                          "maxItems": 20,
+                                          "type": "array",
+                                          "items": {
+                                            "anyOf": [
+                                              {
+                                                "type": "object",
+                                                "properties": {
+                                                  "field": {
+                                                    "type": "string",
+                                                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                  },
+                                                  "op": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                      "eq",
+                                                      "ne",
+                                                      "in",
+                                                      "not_in",
+                                                      "starts_with",
+                                                      "contains",
+                                                      "gte",
+                                                      "gt",
+                                                      "lte",
+                                                      "lt",
+                                                      "empty",
+                                                      "not_empty"
+                                                    ]
+                                                  },
+                                                  "value": {
+                                                    "anyOf": [
+                                                      {
+                                                        "type": "string",
+                                                        "maxLength": 64
+                                                      },
+                                                      {
+                                                        "minItems": 1,
+                                                        "maxItems": 50,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "string",
+                                                          "maxLength": 64
+                                                        }
+                                                      }
+                                                    ]
+                                                  }
+                                                },
+                                                "required": [
+                                                  "field",
+                                                  "op"
+                                                ],
+                                                "additionalProperties": false
+                                              },
+                                              {
+                                                "anyOf": [
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "all": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "all"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  },
+                                                  {
+                                                    "type": "object",
+                                                    "properties": {
+                                                      "any": {
+                                                        "minItems": 1,
+                                                        "maxItems": 20,
+                                                        "type": "array",
+                                                        "items": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "field": {
+                                                              "type": "string",
+                                                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
+                                                            },
+                                                            "op": {
+                                                              "type": "string",
+                                                              "enum": [
+                                                                "eq",
+                                                                "ne",
+                                                                "in",
+                                                                "not_in",
+                                                                "starts_with",
+                                                                "contains",
+                                                                "gte",
+                                                                "gt",
+                                                                "lte",
+                                                                "lt",
+                                                                "empty",
+                                                                "not_empty"
+                                                              ]
+                                                            },
+                                                            "value": {
+                                                              "anyOf": [
+                                                                {
+                                                                  "type": "string",
+                                                                  "maxLength": 64
+                                                                },
+                                                                {
+                                                                  "minItems": 1,
+                                                                  "maxItems": 50,
+                                                                  "type": "array",
+                                                                  "items": {
+                                                                    "type": "string",
+                                                                    "maxLength": 64
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          },
+                                                          "required": [
+                                                            "field",
+                                                            "op"
+                                                          ],
+                                                          "additionalProperties": false
+                                                        }
+                                                      }
+                                                    },
+                                                    "required": [
+                                                      "any"
+                                                    ],
+                                                    "additionalProperties": false
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      },
+                                      "required": [
+                                        "any"
+                                      ],
+                                      "additionalProperties": false
                                     }
-                                  },
-                                  "required": [
-                                    "all"
-                                  ],
-                                  "additionalProperties": false
+                                  ]
                                 },
                                 {
-                                  "type": "object",
-                                  "properties": {
-                                    "any": {
-                                      "minItems": 1,
-                                      "maxItems": 20,
-                                      "type": "array",
-                                      "items": {
-                                        "anyOf": [
-                                          {
-                                            "type": "object",
-                                            "properties": {
-                                              "field": {
-                                                "type": "string",
-                                                "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                              },
-                                              "op": {
-                                                "type": "string",
-                                                "enum": [
-                                                  "eq",
-                                                  "ne",
-                                                  "in",
-                                                  "not_in",
-                                                  "starts_with",
-                                                  "contains",
-                                                  "gte",
-                                                  "gt",
-                                                  "lte",
-                                                  "lt",
-                                                  "empty",
-                                                  "not_empty"
-                                                ]
-                                              },
-                                              "value": {
-                                                "anyOf": [
-                                                  {
-                                                    "type": "string",
-                                                    "maxLength": 64
-                                                  },
-                                                  {
-                                                    "minItems": 1,
-                                                    "maxItems": 50,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "string",
-                                                      "maxLength": 64
-                                                    }
-                                                  }
-                                                ]
-                                              }
-                                            },
-                                            "required": [
-                                              "field",
-                                              "op"
-                                            ],
-                                            "additionalProperties": false
-                                          },
-                                          {
-                                            "anyOf": [
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "all": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "all"
-                                                ],
-                                                "additionalProperties": false
-                                              },
-                                              {
-                                                "type": "object",
-                                                "properties": {
-                                                  "any": {
-                                                    "minItems": 1,
-                                                    "maxItems": 20,
-                                                    "type": "array",
-                                                    "items": {
-                                                      "type": "object",
-                                                      "properties": {
-                                                        "field": {
-                                                          "type": "string",
-                                                          "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
-                                                        },
-                                                        "op": {
-                                                          "type": "string",
-                                                          "enum": [
-                                                            "eq",
-                                                            "ne",
-                                                            "in",
-                                                            "not_in",
-                                                            "starts_with",
-                                                            "contains",
-                                                            "gte",
-                                                            "gt",
-                                                            "lte",
-                                                            "lt",
-                                                            "empty",
-                                                            "not_empty"
-                                                          ]
-                                                        },
-                                                        "value": {
-                                                          "anyOf": [
-                                                            {
-                                                              "type": "string",
-                                                              "maxLength": 64
-                                                            },
-                                                            {
-                                                              "minItems": 1,
-                                                              "maxItems": 50,
-                                                              "type": "array",
-                                                              "items": {
-                                                                "type": "string",
-                                                                "maxLength": 64
-                                                              }
-                                                            }
-                                                          ]
-                                                        }
-                                                      },
-                                                      "required": [
-                                                        "field",
-                                                        "op"
-                                                      ],
-                                                      "additionalProperties": false
-                                                    }
-                                                  }
-                                                },
-                                                "required": [
-                                                  "any"
-                                                ],
-                                                "additionalProperties": false
-                                              }
-                                            ]
-                                          }
-                                        ]
-                                      }
-                                    }
-                                  },
-                                  "required": [
-                                    "any"
-                                  ],
-                                  "additionalProperties": false
+                                  "type": "null"
                                 }
                               ]
                             },
