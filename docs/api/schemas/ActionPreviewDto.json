@@ -52,13 +52,21 @@
           "type": "null"
         }
       ]
+    },
+    "context": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {}
     }
   },
   "required": [
     "variant",
     "payload",
     "sources",
-    "problem"
+    "problem",
+    "context"
   ],
   "additionalProperties": false
 }

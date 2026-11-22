@@ -62,10 +62,19 @@ describe("the field map as a graph (ERD)", () => {
 });
 
 describe("connecting a row to a request field", () => {
-  it("a field becomes a field source, an account an account source; a second source replaces the first", () => {
-    const m1 = connect({}, "break.amount", "amount", op)!;
-    expect(m1).toEqual({ amount: { kind: "field", key: "break.amount", transforms: [] } });
-    expect(connect(m1, "accounts.suspense", "amount", op)).toEqual({ amount: { kind: "account", account: "suspense", part: "number" } });
+  it("a field becomes a field source, an account an account source", () => {
+    expect(connect({}, "break.amount", "amount", op)).toEqual({ amount: { kind: "field", key: "break.amount", transforms: [] } });
+    expect(connect({}, "accounts.suspense", "amount", op)).toEqual({ amount: { kind: "account", account: "suspense", part: "number" } });
+  });
+  it("a second row dropped on a mapped field joins both into a template (owner 22 Nov: gabung beberapa column)", () => {
+    const m1 = connect({}, "side_a.attrs.ref", "Header.Ref", op)!;
+    const m2 = connect(m1, "break.business_date", "Header.Ref", op)!;
+    expect(m2["Header.Ref"]).toEqual({ kind: "template", text: "{side_a.attrs.ref}{break.business_date}" });
+    expect(connect(m2, "accounts.suspense", "Header.Ref", op)!["Header.Ref"]).toEqual({ kind: "template", text: "{side_a.attrs.ref}{break.business_date}{accounts.suspense.number}" });
+    // a field with changes keeps them inside its braces; a fixed value is replaced, not joined
+    const m3 = connect({ amount: { kind: "field", key: "break.amount", transforms: ["abs"] } }, "break.business_date", "amount", op)!;
+    expect(m3.amount).toEqual({ kind: "template", text: "{break.amount|abs}{break.business_date}" });
+    expect(connect({ remark: { kind: "const", value: "x" } }, "break.amount", "remark", op)!.remark).toEqual({ kind: "field", key: "break.amount", transforms: [] });
   });
   it("keeps the changes when the same field is connected again", () => {
     const m = { amount: { kind: "field" as const, key: "break.amount", transforms: ["abs"] } };

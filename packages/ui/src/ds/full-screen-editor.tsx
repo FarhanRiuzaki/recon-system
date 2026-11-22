@@ -25,7 +25,7 @@ export function FullScreenEditor({ open, onOpenChange, title, description, actio
             "fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg text-fg outline-none md:inset-3 md:rounded-xl md:border md:border-line-strong md:shadow-overlay",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98 data-[state=open]:duration-(--dur-slow) data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-(--dur-exit)",
           )}>
-          <header className="flex flex-wrap items-center gap-3 border-b border-line-strong bg-sheet px-5 py-3 pt-safe">
+          <header className="flex min-h-16 flex-wrap items-center gap-3 border-b border-line-strong bg-sheet px-5 py-3 max-md:pt-[max(0.75rem,env(safe-area-inset-top))]">
             <span className="grid min-w-0 flex-1">
               <D.Title className="truncate text-title-2 text-fg">{title}</D.Title>
               {description ? <D.Description className="truncate text-body-sm text-fg-3">{description}</D.Description> : <D.Description className="sr-only">{title}</D.Description>}

@@ -9,9 +9,9 @@ import { type Source, templateParts } from "@starterkit/shared/mapping";
 type Op = { request: readonly OpField[]; fixed: readonly string[]; auto: readonly string[] };
 type Account = { key: string; label: string };
 export type SourceId = "break" | "recon" | "side_a" | "side_b" | "approval" | "accounts";
-export type SourceTable = { id: SourceId; title: string; caption: string | null; rows: { key: string; label: string }[] };
+export type SourceTable = { id: SourceId; title: string; caption: string | null; rows: { key: string; label: string; kind: string }[] };
 export type RequestRow = {
-  path: string; name: string; depth: number; leaf: boolean; required: boolean; type: OpField["type"];
+  path: string; name: string; depth: number; leaf: boolean; required: boolean; type: OpField["type"]; maxLength: number | null;
   /** The operation fills it itself (a fixed or auto value): no source may be connected. */
   filledBy: "fixed" | "auto" | null;
   /** The kind of source mapped to it, if any. */
@@ -29,7 +29,7 @@ function requestRows(op: Op, fields: readonly OpField[], mapping: Readonly<Recor
     const path = `${prefix}${f.name}`;
     const leaf = !f.children?.length;
     const row: RequestRow = {
-      path, name: f.name, depth, leaf, required: f.required, type: f.type,
+      path, name: f.name, depth, leaf, required: f.required, type: f.type, maxLength: f.maxLength ?? null,
       filledBy: !leaf ? null : op.fixed.includes(path) ? "fixed" : op.auto.includes(path) ? "auto" : null, mapped: mapping[path]?.kind ?? null,
     };
     return leaf ? [row] : [row, ...requestRows(op, f.children!, mapping, `${path}.`, depth + 1)];
@@ -39,11 +39,11 @@ function requestRows(op: Op, fields: readonly OpField[], mapping: Readonly<Recor
 /** The graph of one variant's mapping over its operation. */
 export function mapGraph(mapping: Readonly<Record<string, Source>>, catalog: readonly CatalogField[], op: Op, accounts: readonly Account[]) {
   const sources: SourceTable[] = ORDER.flatMap((id): SourceTable[] => {
-    if (id === "accounts") return accounts.length ? [{ id, title: TITLE[id], caption: null, rows: accounts.map((a) => ({ key: `accounts.${a.key}`, label: a.label || a.key })) }] : [];
+    if (id === "accounts") return accounts.length ? [{ id, title: TITLE[id], caption: null, rows: accounts.map((a) => ({ key: `accounts.${a.key}`, label: a.label || a.key, kind: "account" })) }] : [];
     const fs = catalog.filter((f) => f.group === id);
     if (!fs.length) return [];
     const froms = [...new Set(fs.map((f) => split(f.label).from))];
-    return [{ id, title: TITLE[id], caption: froms.length === 1 ? froms[0]! : null, rows: fs.map((f) => ({ key: f.key, label: froms.length === 1 ? split(f.label).name : f.label })) }];
+    return [{ id, title: TITLE[id], caption: froms.length === 1 ? froms[0]! : null, rows: fs.map((f) => ({ key: f.key, label: froms.length === 1 ? split(f.label).name : f.label, kind: f.kind })) }];
   });
   const tableOf = (key: string): SourceId | null =>
     key.startsWith("accounts.") ? "accounts" : (catalog.find((f) => f.key === key)?.group as SourceId | undefined) ?? null;
@@ -64,13 +64,19 @@ export function mapGraph(mapping: Readonly<Record<string, Source>>, catalog: rea
 
 /**
  * Row `key` (a catalog field or `accounts.<key>`) dragged onto request field `target`: the mapping with that source,
- * replacing any other; null when the target takes no source (a header, or a field the operation fills itself).
+ * joined into a template with a field, account or template already there, replacing a fixed value or a lookup; null when the target takes no source (a header, or a field the operation fills itself).
  */
 export function connect(mapping: Readonly<Record<string, Source>>, key: string, target: string, op: Op): Record<string, Source> | null {
   const row = requestRows(op, op.request, mapping).find((r) => r.path === target);
   if (!row?.leaf || row.filledBy) return null;
   const now = mapping[target];
   if (now?.kind === "field" && now.key === key) return mapping as Record<string, Source>;
+  const ref = key.startsWith("accounts.") ? `{${key}.number}` : `{${key}}`;
+  // a row dropped on a field already read from rows joins them, in drop order, as a template (owner 22 Nov: gabung
+  // beberapa column); a separator is typed into the template after
+  if (now?.kind === "field") return { ...mapping, [target]: { kind: "template", text: `{${[now.key, ...now.transforms].join("|")}}${ref}` } };
+  if (now?.kind === "account") return { ...mapping, [target]: { kind: "template", text: `{accounts.${now.account}.${now.part}}${ref}` } };
+  if (now?.kind === "template") return { ...mapping, [target]: { kind: "template", text: `${now.text}${ref}` } };
   const src: Source = key.startsWith("accounts.") ? { kind: "account", account: key.slice("accounts.".length), part: "number" } : { kind: "field", key, transforms: [] };
   return { ...mapping, [target]: src };
 }

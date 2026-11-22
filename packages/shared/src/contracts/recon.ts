@@ -199,6 +199,8 @@ export type PreviewActionBody = z.infer<typeof PreviewActionBody>;
 export const ActionPreviewDto = z.object({
   variant: z.string().nullable(), payload: z.unknown().nullable(), sources: z.record(z.string(), z.string()),
   problem: z.object({ code: z.string(), field: z.string(), message: z.string() }).nullable(),
+  /** The break's values each recon field reads (the editor's example column); config roles only, like the payload. */
+  context: z.record(z.string(), z.unknown()),
 });
 export type ActionPreviewDto = z.infer<typeof ActionPreviewDto>;
 /** POST …/recons/{id}/versions/{versionId}/approvals/preview: who would approve a change on typed field values. */

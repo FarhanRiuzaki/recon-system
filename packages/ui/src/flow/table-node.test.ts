@@ -14,6 +14,7 @@ describe("TableCard (an ERD table on a canvas)", () => {
       { id: "Header", label: "Header", header: true, connectable: false },
       { id: "Header.Channel", label: "Channel", depth: 1, required: true, state: "fixed", note: "Fixed", connectable: false },
       { id: "remark", label: "remark", state: "mapped", note: "“Write-off”", connectable: true, selected: true },
+      { id: "fee", label: "fee", state: "mapped", connectable: true, type: "numeric", limit: "≤ 15", example: "150000" },
     ],
   }));
   it("names itself and counts its rows", () => {
@@ -26,8 +27,11 @@ describe("TableCard (an ERD table on a canvas)", () => {
     expect(out).toContain("Not mapped");
   });
   it("a handle only on rows that take a connection, on the target's left", () => {
-    expect((out.match(/react-flow__handle-left/g) ?? []).length).toBe(2);
+    expect((out.match(/react-flow__handle-left/g) ?? []).length).toBe(3);
     expect(out).not.toContain("react-flow__handle-right");
+  });
+  it("each row shows its data type, a length limit and an example value (owner 22 Nov)", () => {
+    expect(out).toMatch(/data-row="fee".*150000.*≤ 15 numeric/s);
   });
   it("a header row is indented content, a fixed field shows its note; the selected row is marked", () => {
     expect(out).toContain("Fixed");

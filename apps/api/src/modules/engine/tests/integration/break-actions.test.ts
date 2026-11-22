@@ -228,13 +228,17 @@ describe("what gets posted (preview)", () => {
     expect((await call("POST", at, { token: t.op, body: { change: "write_off", action: 0, itemId: I.a1 } })).status).toBe(403);
     const p = await json<{ variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null }>(
       call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1 } }));
-    expect(p).toEqual({ variant: "Default", payload: { Amount: 10000, Remark: "P1-1", Note: "fixed" }, sources: { Amount: "break.amount", Remark: "template", Note: "fixed" }, problem: null });
+    expect(p).toMatchObject({ variant: "Default", payload: { Amount: 10000, Remark: "P1-1", Note: "fixed" }, sources: { Amount: "break.amount", Remark: "template", Note: "fixed" }, problem: null });
     const none = await json<{ variant: string | null; problem: { message: string } | null }>(call("POST", at, { token: t.adm, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
     expect(none).toMatchObject({ variant: null, problem: { message: "This change has no such action." } });
     // the action being edited (not saved yet) is previewed as it stands: the workspace's sample values
     const draft = { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant({ mapping: { ...variant().mapping, Note: { kind: "const", value: "edited" } } })] };
     const d = await json<{ payload: Record<string, unknown> }>(call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1, draft } }));
     expect(d.payload.Note).toBe("edited");
+    // the break's values each recon field reads, for the editor's example column (also when no action fits)
+    const ctx = await json<{ context: Record<string, unknown> }>(call("POST", at, { token: t.adm, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
+    expect(ctx.context["break.amount"]).toBe("10000");
+    expect(ctx.context["recon.code"]).toBeTruthy();
     // a break of another recon, or none, is 404
     expect((await call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: Bun.randomUUIDv7() } })).status).toBe(404);
     const other = (await recon(A, spec(Bun.randomUUIDv7(), Bun.randomUUIDv7(), []))).configId;

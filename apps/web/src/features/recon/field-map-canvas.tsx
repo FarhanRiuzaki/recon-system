@@ -10,12 +10,13 @@ import {
   Controls, FIT, FlowBoard, MapEdge, type MapEdgeType, type OnConnect, ReactFlow, ReactFlowProvider, ResetLayout,
   TableNode, type TableNodeType, type TableRow, useFitToCard, useNodesInitialized, useNodesState, useReactFlow,
 } from "@starterkit/ui/flow";
+import { readPath } from "@starterkit/shared/integrations";
 import type { mapGraph } from "./field-map";
 
 type Graph = ReturnType<typeof mapGraph>;
 const NODE_TYPES = { table: TableNode };
 const EDGE_TYPES = { map: MapEdge };
-const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 256, LANE = 160;
+const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 320, LANE = 160;
 
 /**
  * Where each table sits at first: the sources in columns on the left (a new column once one is as tall as the request
@@ -35,8 +36,14 @@ function layout(g: Graph): Record<string, { x: number; y: number }> {
   return at;
 }
 
-function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove }: {
+/** A value as a short example ("" = empty). */
+const shown = (v: unknown) => (v === undefined || v === null ? undefined : v === "" ? "(empty)" : typeof v === "object" ? JSON.stringify(v) : String(v));
+const KIND: Record<string, string> = { money: "amount", number: "number", text: "text", date: "date", list: "list", account: "account" };
+
+function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove, examples }: {
   graph: Graph; title: string; caption: string; selected: string | null;
+  /** A real break's values (context) and what would be sent (payload), once the preview has run. */
+  examples: { context: Record<string, unknown>; payload: unknown } | null;
   onSelect: (path: string | null) => void; onConnect: (row: string, target: string) => void; onRemove: (target: string) => void;
 }) {
   const home = useMemo(() => layout(graph), [graph]);
@@ -44,7 +51,10 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   const build = (): TableNodeType[] => [
     ...graph.sources.map((t): TableNodeType => ({
       id: t.id, type: "table", position: moved[t.id] ?? home[t.id]!, deletable: false, width: COL,
-      data: { title: t.title, caption: t.caption, side: "source", rows: t.rows.map((r): TableRow => ({ id: r.key, label: r.label, connectable: true, state: graph.edges.some((e) => e.row === r.key) ? "mapped" : null })) },
+      data: { title: t.title, caption: t.caption, side: "source", rows: t.rows.map((r): TableRow => ({
+        id: r.key, label: r.label, connectable: true, state: graph.edges.some((e) => e.row === r.key) ? "mapped" : null,
+        type: KIND[r.kind] ?? r.kind, example: examples ? shown(examples.context[r.key]) : undefined,
+      })) },
     })),
     {
       id: "request", type: "table", position: moved.request ?? home.request!, deletable: false, width: COL,
@@ -53,7 +63,11 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
         rows: graph.request.map((r): TableRow => ({
           id: r.path, label: r.name, depth: r.depth, header: !r.leaf, required: r.leaf && r.required, connectable: r.leaf && !r.filledBy, selected: r.path === selected,
           state: !r.leaf ? null : r.filledBy ?? (r.mapped ? "mapped" : r.required ? "missing" : null),
-          note: r.mapped === "const" ? "Fixed value" : r.mapped === "template" ? "Template" : r.mapped === "lookup" ? "Lookup" : undefined,
+          // what would be sent when the preview has run, else what fills it
+          example: examples && r.leaf ? shown(readPath(examples.payload, r.path)) : undefined,
+          note: examples && r.leaf && shown(readPath(examples.payload, r.path)) !== undefined ? undefined
+            : r.mapped === "const" ? "Fixed value" : r.mapped === "template" ? "Template" : r.mapped === "lookup" ? "Lookup" : undefined,
+          type: r.leaf ? r.type : undefined, limit: r.maxLength ? `≤ ${r.maxLength}` : undefined,
         })),
       },
     },
@@ -61,7 +75,7 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   const [nodes, setNodes, onNodesChange] = useNodesState<TableNodeType>(build());
   // the graph or the selection changed: new rows, same places
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setNodes(build()), [graph, selected, moved, title, caption]);
+  useEffect(() => setNodes(build()), [graph, selected, moved, title, caption, examples]);
   const edges: MapEdgeType[] = graph.edges.map((e) => ({
     id: e.id, type: "map", source: e.source, sourceHandle: e.row, target: "request", targetHandle: e.target, data: { label: e.label }, selected: e.target === selected,
     zIndex: 1000, // above the tables (a line to the request may cross a table between)

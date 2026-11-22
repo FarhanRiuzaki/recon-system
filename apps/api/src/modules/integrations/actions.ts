@@ -170,19 +170,20 @@ export function actionRunCsv(ctx: Ctx, q: ActionRunListQuery): Promise<string> {
   });
 }
 
-export type ActionPreview = { variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null };
+export type ActionPreview = { variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null; context: Record<string, unknown> };
 /**
  * What action `actionIndex` of change `kind` would send for break `itemId` (on its final approval, by the caller): the
  * variant that fits, the payload masked as the operation masks it, and each field's source; or why it wouldn't.
  */
 export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApprovalSpec | undefined, configCode: string, kind: string, actionIndex: number, itemId: string): Promise<ActionPreview> {
-  const none = (message: string, code = "build_error"): ActionPreview => ({ variant: null, payload: null, sources: {}, problem: { code, field: "", message } });
   const a = approvals?.changes[kind as keyof ReconApprovalSpec["changes"]]?.actions[actionIndex];
-  if (!a) return none("This change has no such action.");
+  // the break's values as the action would read them: also answered when nothing fits (the editor's example column)
   const context = {
     ...(await breakContextOf(tx, ctx.space!.id, itemId, [])), "recon.code": configCode,
-    "approval.level": a.on.event === "level_approved" ? a.on.level : 1, "approval.by": ctx.user.name ?? ctx.user.id, "approval.at": new Date().toISOString(), "request.kind": kind, "request.note": "",
+    "approval.level": a?.on.event === "level_approved" ? a.on.level : 1, "approval.by": ctx.user.name ?? ctx.user.id, "approval.at": new Date().toISOString(), "request.kind": kind, "request.note": "",
   };
+  const none = (message: string, code = "build_error"): ActionPreview => ({ variant: null, payload: null, sources: {}, problem: { code, field: "", message }, context });
+  if (!a) return none("This change has no such action.");
   const picked = pickVariant(a.variants, context);
   if (!picked) return none("No posting rule fits this break.", "no_rule");
   const v = picked.variant;
@@ -191,6 +192,6 @@ export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApproval
   if (!op) return { ...none("The connector version this variant pins has no such operation."), variant: v.name };
   const built = buildPayload(v, op, context, { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
   return built.ok
-    ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null }
-    : { variant: v.name, payload: null, sources: {}, problem: { code: built.code, field: built.field, message: built.message } };
+    ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null, context }
+    : { variant: v.name, payload: null, sources: {}, problem: { code: built.code, field: built.field, message: built.message }, context };
 }

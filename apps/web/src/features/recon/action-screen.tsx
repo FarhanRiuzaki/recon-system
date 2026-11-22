@@ -5,7 +5,7 @@
 // list), the field open on the right (where its value comes from, its changes, a sample from a real break), and What
 // gets posted under the map. Edits stay here until Done; Cancel drops them; Escape closes only when nothing changed.
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BlockedButton, Combobox, Field, ScrollFade, SectionHeading } from "@starterkit/ui/ds";
 import { FullScreenEditor } from "@starterkit/ui/ds/full-screen-editor";
 import { cn } from "@starterkit/ui/lib/cn";
@@ -88,9 +88,14 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
       )}
       {source?.kind === "const" && <Field id="src-const" label="Fixed value"><Input id="src-const" value={source.value} maxLength={500} onChange={(e) => onChange({ ...source, value: e.target.value })} /></Field>}
       {source?.kind === "template" && (
-        <Field id="src-tpl" label="Template" note="Recon fields in braces, with changes after |: {break.business_date|date:yyMMdd}-{accounts.suspense.number}">
-          <Input id="src-tpl" value={source.text} maxLength={500} className="font-mono" onChange={(e) => onChange({ ...source, text: e.target.value })} />
-        </Field>
+        <div className="grid gap-2">
+          <Field id="src-tpl" label="Template" note="Recon fields in braces, joined with any text you type between them; changes after |, e.g. {break.business_date|date:yyMMdd}">
+            <Input id="src-tpl" value={source.text} maxLength={500} className="font-mono" onChange={(e) => onChange({ ...source, text: e.target.value })} />
+          </Field>
+          <Combobox label="Insert a recon field" value={[]} placeholder="Insert a recon field at the end" searchPlaceholder="Search fields"
+            options={[...catalog.map((f) => ({ value: f.key, label: f.label, group: GROUP[f.group] })), ...setup.accounts.map((x) => ({ value: `accounts.${x.key}.number`, label: `${x.label || x.key} number`, group: "Accounts" }))]}
+            onValueChange={([k]) => k && onChange({ ...source, text: `${source.text}{${k}}` })} />
+        </div>
       )}
       {source?.kind === "lookup" && (
         <>
@@ -115,39 +120,46 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
   );
 }
 
-/** What gets posted for a real break, from the action as it stands in the editor (not only what was saved). */
+/**
+ * What gets posted for a real break, from the action as it stands in the editor: the first break is picked when the
+ * editor opens and the preview runs again shortly after each change, so the map's examples stay live.
+ */
 function Dock({ spaceId, configId, versionId, change, index, draft, onResult }: {
-  spaceId: string; configId: string; versionId: string; change: Trigger; index: number; draft: ActionSpec; onResult: (r: ActionPreviewDto | null, from: string) => void;
+  spaceId: string; configId: string; versionId: string; change: Trigger; index: number; draft: ActionSpec;
+  onResult: (r: ActionPreviewDto | null, from: string) => void;
 }) {
   const q = reconBreaksQuery(spaceId, configId);
   const breaks = useQuery({ queryKey: q.key, queryFn: () => api<Page<BreakRowDto>>(q.url) });
-  const [item, setItem] = useState("");
+  const rows = breaks.data?.items ?? [];
+  const [chosen, setItem] = useState("");
+  const item = chosen || rows[0]?.id || "";
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<ActionPreviewDto | { error: string } | null>(null);
-  const rows = breaks.data?.items ?? [];
   const name = (id: string) => { const b = rows.find((x) => x.id === id); return b ? `${b.ref ?? "No reference"} · ${b.businessDate}` : "a break"; };
-  async function run() {
-    setBusy(true);
-    try {
-      const r = await api<ActionPreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/actions/preview`, {
-        method: "POST", body: JSON.stringify({ change, action: index, itemId: item, draft }),
-      });
-      setRes(r); onResult(r, name(item));
-    } catch (e) { setRes({ error: errorText(e) }); onResult(null, ""); } finally { setBusy(false); }
-  }
+  const body = JSON.stringify({ change, action: index, itemId: item, draft });
+  useEffect(() => {
+    if (!item) return;
+    let gone = false;
+    const t = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const r = await api<ActionPreviewDto>(`/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/versions/${encodeURIComponent(versionId)}/actions/preview`, { method: "POST", body });
+        if (!gone) { setRes(r); onResult(r, name(item)); }
+      } catch (e) { if (!gone) { setRes({ error: errorText(e) }); onResult(null, ""); } } finally { if (!gone) setBusy(false); }
+    }, 500);
+    return () => { gone = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body]);
   return (
     <div className="grid gap-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <SectionHeading level={3} title="What gets posted" description="The payload this action builds for a real break, masked as the bank's spec masks it" className="min-w-0 flex-1" />
+        <SectionHeading level={3} title="What gets posted" description="Built from a real break as you edit, masked as the bank's spec masks it" className="min-w-0 flex-1" />
         {rows.length > 0 && (
-          <span className="flex flex-wrap items-center gap-2">
-            <Select aria-label="Break to try" value={item} className="w-64" onChange={(e) => { setItem(e.target.value); setRes(null); }}>
-              <option value="">Pick a break</option>
+          <span className="flex items-center gap-2">
+            {busy && <Icon icon={SpinnerIcon} className="text-fg-3 motion-safe:animate-spin" aria-label="Updating" />}
+            <Select aria-label="Break to try" value={item} className="w-72" onChange={(e) => setItem(e.target.value)}>
               {rows.map((b) => <option key={b.id} value={b.id}>{b.ref ?? "No reference"} · {b.businessDate} · {b.reason ?? ""}</option>)}
             </Select>
-            <Button type="button" variant="secondary" disabled={!item || busy} aria-busy={busy || undefined} onClick={() => void run()}>
-              {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show what gets posted
-            </Button>
           </span>
         )}
       </div>
@@ -180,7 +192,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   const [picked, setPicked] = useState<string | null>(null);
   const [view, setView] = useState<"canvas" | "list">("canvas");
   const [held, setHeld] = useState(false);
-  const [sample, setSample] = useState<{ payload: unknown; from: string } | null>(null);
+  const [sample, setSample] = useState<{ payload: unknown; context: Record<string, unknown>; from: string } | null>(null);
   const v = a.variants[vi]!;
   const setV = (next: VariantSpec) => setA({ ...a, variants: a.variants.map((x, j) => (j === vi ? next : x)) });
   const { op, connector } = opOf(ops, v.operation);
@@ -286,7 +298,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         <BlockedButton reason={blocked} caption={false} onClick={() => onDone({ ...a, name: a.name.trim(), variants: a.variants.map((x) => ({ ...x, name: x.name.trim() })) })}>Done</BlockedButton>
       </>}
       rail={rail} inspector={inspector}
-      dock={<Dock spaceId={spaceId} configId={configId} versionId={versionId} change={change} index={index} draft={a} onResult={(r, from) => setSample(r?.payload != null ? { payload: r.payload, from } : null)} />}>
+      dock={<Dock spaceId={spaceId} configId={configId} versionId={versionId} change={change} index={index} draft={a} onResult={(r, from) => setSample(r ? { payload: r.payload, context: r.context, from } : null)} />}>
       {!op || !graph ? (
         <div className="grid h-full place-items-center p-8 text-center">
           <span className="grid max-w-sm gap-1.5">
@@ -301,7 +313,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
           <div className={cn("absolute inset-0", view === "list" ? "hidden" : "max-md:hidden")}>
             <FieldMapCanvas graph={graph} title="Request" caption={`${op.name} · ${op.method} ${op.path}`} selected={picked} onSelect={setPicked}
               onConnect={(row, target) => { const m = connect(v.mapping, row, target, op); if (m) { setV({ ...v, mapping: m }); setPicked(target); } }}
-              onRemove={(target) => setSource(target, undefined)} />
+              onRemove={(target) => setSource(target, undefined)} examples={sample} />
           </div>
           <div className={cn("scroll-quiet absolute inset-0 overflow-y-auto p-5 pt-14", view === "canvas" && "md:hidden")}>
             <Mapper mapping={v.mapping} onChange={(mapping) => setV({ ...v, mapping })} op={op} catalog={catalog} setup={setup} disabled={false} />
