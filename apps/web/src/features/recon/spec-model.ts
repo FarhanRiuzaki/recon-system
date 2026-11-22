@@ -529,6 +529,8 @@ export const placeholderName = (name: string) => !name.trim() || /^Pass \d+$/.te
 
 /** The setup's steps: 1 Sources, 2 Matching, 3 Schedule, 4 Test, 5 Review and submit. */
 export type SetupStep = 1 | 2 | 3 | 4 | 5;
+/** The setup's step names, as its rail and its Next buttons say them. */
+export const SETUP_STEPS: Record<SetupStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Test", 5: "Review and submit" };
 /**
  * Why each step of the setup can't go on yet, or null (owner, 22 Nov: Next says what is missing); step 5's is why the
  * draft can't be submitted. `needs` = each pass's passNeeds, `sideProblem`/`settingProblem` = the API's refusal there.

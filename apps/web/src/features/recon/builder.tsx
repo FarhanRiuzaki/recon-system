@@ -23,7 +23,7 @@ import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -421,7 +421,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
     passes: spec.passes.length, needs: spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null)), incomplete,
     settingProblem: placed?.setting ? `${placed.setting}: ${placed.text}` : null, simulation: simulated, running: live || starting, submit: blocked,
   });
-  const STEP_LABEL: Record<WizardStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Test", 5: "Review and submit" };
+  const STEP_LABEL = SETUP_STEPS;
   const wizardSteps = ([1, 2, 3, 4, 5] as const).map((n) => ({
     id: String(n), label: STEP_LABEL[n],
     status: (n === step ? "current" : n === 5 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",

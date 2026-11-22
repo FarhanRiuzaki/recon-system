@@ -3,8 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useRef, useState } from "react";
-import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, StatusChip, useForm } from "@starterkit/ui/ds";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, StatusChip, useForm, Wizard } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
@@ -16,14 +16,12 @@ import { toast } from "@starterkit/ui/ui/toast";
 import type { ReconDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { RECON_CODE, RECON_NAME_MAX, recordFields } from "@starterkit/shared/recon";
-import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { PageHeader } from "@/components/shell/page-header";
 import { ApiError, api, errorText } from "@/lib/client/api";
-import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
 import { sourceStatus } from "@/lib/shared/source-status";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { addPass, defaultSpec, type Fields, placeOf } from "./spec-model";
+import { addPass, defaultSpec, type Fields, placeOf, SETUP_STEPS } from "./spec-model";
 import { NEW_RECON_REASON, reconApi, reconEditHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
 
 type Values = { name: string; code: string; a: string; b: string };
@@ -64,7 +62,7 @@ const optionText = (s: SourceRowDto) =>
 
 /**
  * /spaces/[spaceId]/recons/new (README row Plan 3): a name, a code and the two sides' sources; the API makes the recon
- * and its Draft v1 (with pass 1 ready to edit) together on this first save, then the builder opens over it. A role other than config maker gets
+ * and its Draft v1 (with pass 1 ready to edit) together on Next, then its setup goes on at step 2 (Matching). A role other than config maker gets
  * the reason. With no published source in the space there is nothing to pick: one sentence and Create source instead.
  */
 export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
@@ -81,8 +79,27 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
   const [apiErr, setApiErr] = useState<Partial<Record<keyof Values, string>>>({});
   const items = sources.data?.items ?? [];
   const dirty = Object.values(f.values).some(Boolean);
-  const guard = useLeaveGuard(dirty && !busy);
   const shown = { ...f.shown, ...apiErr };
+  // Never lose what was typed (owner rule): until the recon exists, the browser keeps step 1 per space and puts it
+  // back on the next open; creating it drops the copy (the draft on the server holds it from then on)
+  const keptKey = `recon:recon-new:${spaceId}`;
+  useEffect(() => {
+    try {
+      const k = JSON.parse(localStorage.getItem(keptKey) ?? "null") as (Values & { codeTyped?: boolean }) | null;
+      if (!k) return;
+      (["name", "code", "a", "b"] as const).forEach((key) => { if (typeof k[key] === "string") f.set(key, k[key]); });
+      // the browser's copy is only readable after mount: one restore, once
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (k.codeTyped) setCodeTyped(true);
+    } catch { /* nothing kept */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    try {
+      if (dirty && !busy) localStorage.setItem(keptKey, JSON.stringify({ ...f.values, codeTyped }));
+      else if (!dirty) localStorage.removeItem(keptKey);
+    } catch { /* not kept */ }
+  }, [f.values, codeTyped, dirty, busy, keptKey]);
 
   const create = (event: FormEvent<HTMLFormElement>) => f.submit(async (v) => {
     if (saving.current) return;
@@ -102,7 +119,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
       const fields: Fields = [fa ?? null, fb ?? null];
       const spec = addPass(defaultSpec(a, b), fields);
       const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec }) });
-      toast(`Created ${r.name} as Draft v1. Add its passes, then save the draft.`);
+      try { localStorage.removeItem(keptKey); } catch { /* nothing kept */ }
+      toast(`Created ${r.name} as Draft v1.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
       router.push(reconEditHref(spaceId, r.id, 2)); // its setup goes on with the passes
     } catch (err) {
@@ -136,7 +154,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
 
   return (
     <div className="grid gap-section">
-      <PageHeader title="New recon" description="Name the recon and pick the source of each side. The passes and settings come next, in the draft." />
+      <PageHeader title="New recon" />
       {sources.data && !items.some((x) => x.publishedVersion !== null) ? (
         <Panel>
           <div className="grid justify-items-center gap-3 py-8 text-center">
@@ -147,6 +165,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
           </div>
         </Panel>
       ) : (
+      // the setup's first step (owner, 22 Nov: one flow): the same rail as the steps after it
+      <Wizard title="Setup progress" steps={([1, 2, 3, 4, 5] as const).map((n) => ({ id: String(n), label: SETUP_STEPS[n], status: n === 1 ? "current" : "todo" }))}>
       <Panel bodyClassName="md:p-6">
         <form noValidate onSubmit={create} aria-label="New recon" className="grid gap-4">
           {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}
@@ -168,16 +188,12 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
           </fieldset>
           <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
             primary={<BlockedButton type="submit" reason={maker ? null : NEW_RECON_REASON} disabled={busy} aria-busy={busy || undefined}>
-              {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Create recon
+              {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Next: {SETUP_STEPS[2]}
             </BlockedButton>}
             cancel={<Button asChild variant="ghost"><Link href={reconsHref(spaceId)}>Cancel</Link></Button>} />
         </form>
       </Panel>
-      )}
-      {guard.leaving && (
-        <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) guard.stay(); }} auditFields={false} reasons={[]} destructive title="Leave without saving"
-          onCloseAutoFocus={(e) => { e.preventDefault(); guard.restoreFocus(); }} description="This recon isn't created yet."
-          impact={["What you typed is discarded."]} actionLabel="Leave page" onConfirm={async () => guard.leave()} />
+      </Wizard>
       )}
     </div>
   );
