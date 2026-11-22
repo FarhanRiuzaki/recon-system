@@ -116,7 +116,7 @@ export function LibraryEditor({ id }: { id: string }) {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={w.name} description="An approval chain, level by level. Spaces' approval rules pick it."
+      <PageHeader title={(!readOnly && name.trim()) || w.name} description="An approval chain, level by level. Spaces' approval rules pick it."
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
