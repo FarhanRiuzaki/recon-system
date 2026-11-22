@@ -11,8 +11,9 @@ import { ENGINE_KEY } from "@/lib/shared/queries";
 import { breakSummaryUrl } from "@/lib/shared/queries-recon";
 
 /**
- * The unmatch queue's KPI tray (audit Q1) under the list's filters: open items, open amount per currency, past carry
- * over, assigned to me (a toggle of the Mine filter). Its own loading shape, and a notice when it can't load.
+ * The unmatch queue's KPI tray (audit Q1) under the list's filters: open items, open amount per currency, open longer
+ * than carry over (by age only), assigned to me (a toggle of the Mine filter). Its own loading shape, and a notice
+ * when it can't load.
  */
 export function BreakSummary({ spaceId, filterQuery, mine, onMine }: { spaceId: string; filterQuery: string; mine: boolean; onMine: () => void }) {
   const url = breakSummaryUrl(spaceId, filterQuery);
@@ -25,7 +26,7 @@ export function BreakSummary({ spaceId, filterQuery, mine, onMine }: { spaceId: 
         <StatTiles>
           <StatTile label="Open items" value={formatNumber(s.open)} />
           <StatTile label="Open amount" {...amountTile(s.amounts)} />
-          <StatTile label="Older than carry over" value={formatNumber(s.pastCarryOver)} caption="Runs no longer check them" />
+          <StatTile label="Older than carry over" value={formatNumber(s.pastCarryOver)} caption="Open longer than the recon's carry over" />
           <StatTile label="Assigned to me" value={formatNumber(s.mine)} selected={mine} onSelect={onMine} />
         </StatTiles>
       )}

@@ -27,8 +27,9 @@ export const Recheck = z.discriminatedUnion("kind", [z.object({ kind: z.literal(
 
 /**
  * GET …/breaks/summary: the queue's headline numbers with the list's filters: `open` items, their amount per currency
- * (absolute amounts as written, with `items`; the currency with the most items first, then the larger amount), how many are past their recon's carry over (no longer checked again by
- * runs; a recon whose carry over is always never counts) and how many the caller has.
+ * (absolute amounts as written, with `items`; the currency with the most items first, then the larger amount), how
+ * many are open longer than their recon's carry over (by age only: business date + carry over before today, whatever
+ * runs still check; carry over always never counts) and how many the caller has.
  */
 export const BreakSummaryDto = z.object({
   open: z.number().int(),

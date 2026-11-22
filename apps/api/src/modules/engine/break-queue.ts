@@ -98,7 +98,7 @@ const stateRank = sql`case ${sql.join(BREAK_STATES.map((st, i) => sql`when coale
 
 /**
  * GET …/breaks/summary: the queue's headline numbers under the list's filters: open items, their absolute amount per
- * currency, how many are past their recon's carry over (business date + carry over before today; a recon whose carry
+ * currency, how many are open longer than their recon's carry over, by age only (business date + carry over before today; a recon whose carry
  * over is always, or without a live version, never counts), and how many the caller has.
  */
 export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<BreakSummaryDto> {
