@@ -59,7 +59,7 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
   );
   return (
     <div className="grid gap-5">
-      <SectionHeading level={3} title={row.name} description={<span className="font-mono">{path}</span>}
+      <SectionHeading level={3} title={row.name} description={path !== row.name ? <span className="font-mono">{path}</span> : "A field of the request"}
         actions={<>
           {source && <Button type="button" variant="remove" size="icon" aria-label={`Remove the mapping of ${row.name}`} title="Remove mapping" onClick={() => onChange(undefined)}><Icon icon={RemoveIcon} /></Button>}
           <Button type="button" variant="ghost" size="icon" aria-label="Close this field" title="Close" onClick={onClose}><Icon icon={CloseIcon} /></Button>

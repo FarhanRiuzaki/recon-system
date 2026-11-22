@@ -20,7 +20,7 @@ export function OperationPicker({ value, onChange, ops, label, stacked }: { valu
   const v = c?.versions.find((x) => x.version === value?.version);
   const live = (cc: Ops[number]) => cc.versions.find((x) => x.live) ?? cc.versions[0]!;
   return (
-    <span className={stacked ? "grid gap-2" : "grid gap-2 md:grid-cols-3"}>
+    <span className={stacked ? "grid min-w-0 grid-cols-1 gap-2 [&>*]:w-full [&>*]:min-w-0" : "grid gap-2 md:grid-cols-3"}>
       <Select aria-label={`${label}: connector`} value={c?.id ?? ""} onChange={(e) => { const cc = ops.find((x) => x.id === e.target.value); if (cc) onChange({ connectorId: cc.id, version: live(cc).version, key: live(cc).operations[0]?.key ?? "" }); }}>
         {!c && <option value="">Pick a connector</option>}
         {ops.map((x) => <option key={x.id} value={x.id}>{x.name}{x.disabled ? " (turned off)" : ""}</option>)}

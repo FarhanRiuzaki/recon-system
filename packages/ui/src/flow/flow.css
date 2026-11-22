@@ -84,7 +84,8 @@
 .flow-canvas .react-flow__node-table { border-radius: var(--radius-lg); }
 .flow-canvas .react-flow__node-table.selected > [data-slot="table-node"] { border-color: var(--primary); }
 /* a mapping line (map-edge.tsx): grey, primary when selected */
-.flow-canvas .flow-map-edge { stroke: var(--fg-4); stroke-width: 1.5; }
+.flow-canvas .flow-map-edge { stroke: var(--fg-3); stroke-width: 1.5; }
+.flow-canvas .flow-map-halo { stroke: var(--card); stroke-width: 5; stroke-linecap: round; }
 .flow-canvas .flow-map-edge.is-selected { stroke: var(--primary); stroke-width: 2.5; }
 .flow-canvas .flow-label.is-selected { color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
 .flow-canvas .react-flow__connectionline path { stroke: var(--primary); stroke-width: 2; }

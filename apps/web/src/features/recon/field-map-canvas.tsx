@@ -64,6 +64,7 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   useEffect(() => setNodes(build()), [graph, selected, moved, title, caption]);
   const edges: MapEdgeType[] = graph.edges.map((e) => ({
     id: e.id, type: "map", source: e.source, sourceHandle: e.row, target: "request", targetHandle: e.target, data: { label: e.label }, selected: e.target === selected,
+    zIndex: 1000, // above the tables (a line to the request may cross a table between)
   }));
   const wrap = useRef<HTMLDivElement>(null);
   useFitToCard(wrap, graph.sources.length * 100 + graph.request.length);

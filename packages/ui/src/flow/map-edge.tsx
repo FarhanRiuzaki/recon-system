@@ -10,6 +10,8 @@ export function MapEdge(p: EdgeProps<MapEdgeType>) {
   const [path, x, y] = getBezierPath({ ...p, curvature: 0.4 });
   return (
     <>
+      {/* a halo in the card's colour under the line: it reads where it crosses a table (lines sit above tables) */}
+      <path d={path} className="flow-map-halo" fill="none" />
       <BaseEdge id={p.id} path={path} interactionWidth={18} className={cn("flow-map-edge", p.selected && "is-selected")} />
       {p.data?.label && (
         <EdgeLabelRenderer>
