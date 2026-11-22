@@ -15,7 +15,7 @@ import type { mapGraph } from "./field-map";
 type Graph = ReturnType<typeof mapGraph>;
 const NODE_TYPES = { table: TableNode };
 const EDGE_TYPES = { map: MapEdge };
-const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 288, LANE = 220;
+const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 256, LANE = 160;
 
 /**
  * Where each table sits at first: the sources in columns on the left (a new column once one is as tall as the request

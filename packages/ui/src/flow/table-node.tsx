@@ -32,7 +32,7 @@ const NOTE: Record<NonNullable<TableRow["state"]>, string> = { missing: "Not map
 export function TableCard({ title, caption, side, rows, onRowSelect }: TableCardProps) {
   const fields = rows.filter((r) => !r.header).length;
   return (
-    <div data-slot="table-node" role="group" aria-label={title} className="w-72 overflow-hidden rounded-lg border border-line-strong bg-card shadow-sm">
+    <div data-slot="table-node" role="group" aria-label={title} className="w-64 overflow-hidden rounded-lg border border-line-strong bg-card shadow-sm">
       <div className="flex items-start justify-between gap-2 border-b border-line-strong bg-tray px-3 py-2">
         <span className="grid min-w-0">
           <span className="truncate text-label text-fg">{title}</span>

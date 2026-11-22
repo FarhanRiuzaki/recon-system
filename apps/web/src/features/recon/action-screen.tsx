@@ -11,7 +11,7 @@ import { FullScreenEditor } from "@starterkit/ui/ds/full-screen-editor";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ArrowDownIcon, ArrowUpIcon, CloseIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
@@ -47,9 +47,9 @@ export function unfinishedReason(a: ActionSpec): string | null {
 }
 
 /** The field open in the inspector: where its value comes from, its changes, a sample. */
-function FieldInspector({ path, graph, source, onChange, catalog, setup, sample }: {
+function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup, sample }: {
   path: string; graph: ReturnType<typeof mapGraph>; source: Source | undefined;
-  onChange: (s: Source | undefined) => void; catalog: readonly CatalogField[]; setup: Setup; sample: { value: unknown; from: string } | null;
+  onChange: (s: Source | undefined) => void; onClose: () => void; catalog: readonly CatalogField[]; setup: Setup; sample: { value: unknown; from: string } | null;
 }) {
   const row = graph.request.find((r) => r.path === path)!;
   const kind = source?.kind ?? "none";
@@ -60,7 +60,10 @@ function FieldInspector({ path, graph, source, onChange, catalog, setup, sample 
   return (
     <div className="grid gap-5">
       <SectionHeading level={3} title={row.name} description={<span className="font-mono">{path}</span>}
-        actions={source ? <Button type="button" variant="remove" size="icon" aria-label={`Remove the mapping of ${row.name}`} title="Remove mapping" onClick={() => onChange(undefined)}><Icon icon={RemoveIcon} /></Button> : undefined} />
+        actions={<>
+          {source && <Button type="button" variant="remove" size="icon" aria-label={`Remove the mapping of ${row.name}`} title="Remove mapping" onClick={() => onChange(undefined)}><Icon icon={RemoveIcon} /></Button>}
+          <Button type="button" variant="ghost" size="icon" aria-label="Close this field" title="Close" onClick={onClose}><Icon icon={CloseIcon} /></Button>
+        </>} />
       <dl className="grid grid-cols-2 gap-2 rounded-lg border border-line-strong bg-card p-3 text-body-sm">
         <dt className="text-fg-3">Required</dt><dd className={row.required ? "text-down-ink" : "text-fg"}>{row.required ? "Yes" : "No"}</dd>
         <dt className="text-fg-3">Type</dt><dd className="text-fg">{row.type}</dd>
@@ -249,21 +252,19 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   );
 
   const inspector = graph && picked && graph.request.some((r) => r.path === picked && r.leaf) ? (
-    <FieldInspector path={picked} graph={graph} source={v.mapping[picked]} onChange={(s) => setSource(picked, s)} catalog={catalog} setup={setup}
+    <FieldInspector path={picked} graph={graph} source={v.mapping[picked]} onChange={(s) => setSource(picked, s)} onClose={() => setPicked(null)} catalog={catalog} setup={setup}
       sample={sample ? { value: readPath(sample.payload, picked), from: sample.from } : null} />
-  ) : (
-    <div className="grid gap-4">
-      <SectionHeading level={3} title="Field" description="Pick a request field or a line on the map to set where its value comes from." />
-      <ul className="grid gap-2 text-body-sm text-fg-2">
-        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-primary" />Mapped: a line comes into it</li>
-        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-down-mark bg-card" />Required and still empty</li>
-        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-line-strong bg-line-strong" />Optional, empty</li>
-        <li className="text-fg-3">Fixed and Auto generated fields are filled by the bank&apos;s spec itself.</li>
-      </ul>
-      <p className="text-body-sm text-fg-3">Drag from the dot at the end of a recon field to the dot of a request field to connect them. Select a line and press Delete to remove it.</p>
+  ) : undefined;
+
+  // what the map's dots mean, and how to draw a line: on the map itself (the inspector opens only with a field)
+  const legend = (
+    <div className="pointer-events-none absolute right-3 bottom-3 z-10 grid gap-1 rounded-md border border-line-strong bg-card/95 px-3 py-2 text-caption text-fg-2 shadow-sm">
+      <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-primary" />Mapped</span>
+      <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-down-mark bg-card" />Required, still empty</span>
+      <span className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-line-strong" />Optional, empty</span>
+      <span className="text-fg-3">Drag from a recon field&apos;s dot to a request field&apos;s dot. Click a field or a line to edit it.</span>
     </div>
   );
-
   const status = graph && (
     <div className={cn("pointer-events-none absolute top-3 left-3 z-10 max-w-[70%] rounded-md border px-3 py-1.5 text-body-sm shadow-sm",
       graph.missing.length ? "border-down-mark bg-down-soft text-down-ink" : "border-healthy-mark bg-healthy-soft text-healthy-ink")} role="status">
@@ -296,6 +297,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       ) : (
         <>
           {status}
+          {view === "canvas" && <span className="max-md:hidden">{legend}</span>}
           <div className={cn("absolute inset-0", view === "list" ? "hidden" : "max-md:hidden")}>
             <FieldMapCanvas graph={graph} title="Request" caption={`${op.name} · ${op.method} ${op.path}`} selected={picked} onSelect={setPicked}
               onConnect={(row, target) => { const m = connect(v.mapping, row, target, op); if (m) { setV({ ...v, mapping: m }); setPicked(target); } }}
