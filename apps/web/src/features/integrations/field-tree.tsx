@@ -32,9 +32,12 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
       {fields.map((f, i) => {
         const path = `${prefix}${f.name}`;
         return (
-          <li key={i} className="grid gap-1.5 motion-safe:animate-enter" style={{ paddingLeft: `${depth * 1.25}rem` }}>
+          <li key={i} className="grid gap-1.5 motion-safe:animate-enter">
             <div className="grid grid-cols-[minmax(0,1.3fr)_8rem_5.5rem_4.5rem_3.5rem_minmax(0,1fr)_2rem] items-center gap-2 max-lg:grid-cols-2">
-              <Input aria-label={`${label}: field ${path || i + 1} name`} value={f.name} maxLength={80} disabled={disabled} className="h-8 font-mono" onChange={(e) => set(i, { ...f, name: e.target.value })} />
+              {/* the indent sits inside the Field column, so every column stays under its header */}
+              <span className="min-w-0" style={{ paddingLeft: `${depth * 1.25}rem` }}>
+                <Input aria-label={`${label}: field ${path || i + 1} name`} value={f.name} maxLength={80} disabled={disabled} className="h-8 font-mono" onChange={(e) => set(i, { ...f, name: e.target.value })} />
+              </span>
               <Select aria-label={`${label}: ${path} type`} value={f.type} disabled={disabled} className="h-8"
                 onChange={(e) => { const type = e.target.value as FieldType; set(i, has(type) ? { ...f, type, children: f.children ?? [] } : { name: f.name, type, required: f.required, ...(f.maxLength ? { maxLength: f.maxLength } : {}) }); }}>
                 {FIELD_TYPES.map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}
@@ -55,7 +58,7 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
                 onChange={(children, rename) => set(i, { ...f, children }, rename)} />
             )}
             {has(f.type) && !disabled && (
-              <Button type="button" variant="link" size="sm" className="justify-self-start px-0" style={{ marginLeft: "1.25rem" }}
+              <Button type="button" variant="link" size="sm" className="justify-self-start px-0" style={{ marginLeft: `${(depth + 1) * 1.25}rem` }}
                 onClick={() => set(i, { ...f, children: [...(f.children ?? []), { name: "", type: "string", required: false }] })}>Add a field to {f.name || "this group"}</Button>
             )}
           </li>
