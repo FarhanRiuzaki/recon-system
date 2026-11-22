@@ -20,7 +20,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const step = Number(toSearch(await searchParams).get("step")) || null;
   const sources = await reconSourceReads(spaceId, configId);
   return (
-    <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), ...sources]}>
+    <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), reads.sideSourceOptions(spaceId), ...sources]}>
       <ReconSetup spaceId={spaceId} id={configId} step={step} />
     </Prefetch>
   );

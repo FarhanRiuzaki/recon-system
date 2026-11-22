@@ -7,7 +7,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
-import { APP_TIME_ZONE_LABEL, appDate, formatNumber } from "@starterkit/ui/lib/format";
+import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ChevronDownIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
@@ -32,8 +32,8 @@ import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
 import { SpecView } from "./spec-view";
 import { saveQueue } from "./save-queue";
-import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, recordDates, replayGap, suggestedReplay, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
-import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useSideSource, useSimulation, useSourceOptions } from "./use-recons";
+import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
+import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useReplayDefault, useSideSource, useSimulation } from "./use-recons";
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
@@ -330,12 +330,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   // the dates to replay: what the maker picked, else the last simulation's, else a date both sides have records on
   // (owner, 22 Nov: a default without data reads as a broken simulation), else yesterday
   const [picked, setRange] = useState<DateRange | null>(null);
-  const options = useSourceOptions(spaceId).data?.items;
-  const sideDates = ([0, 1] as const).map((i) => (options ? recordDates(options.find((o) => o.id === spec.sides[i].source_id)) : null));
-  const suggested = suggestedReplay(sideDates[0]!, sideDates[1]!, appDate(Date.now()));
+  const replay = useReplayDefault(spaceId, spec);
+  const suggested = replay.suggested;
   const range: DateRange = picked ?? (simulation.run ? { from: simulation.run.from, to: simulation.run.to } : suggested ?? defaultReplay());
-  const gap = sideDates[0] && sideDates[1]
-    ? replayGap(range, [{ label: spec.sides[0].label, dates: sideDates[0] }, { label: spec.sides[1].label, dates: sideDates[1] }]) : null;
+  const gap = replay.gap(range);
   const [starting, setStarting] = useState(false);
   // a simulation that ended marks the draft simulated (the recon is read again): take its simulatedHash for the same spec
   if (version.id === saved.id && version.specHash === saved.specHash && version.simulatedHash !== saved.simulatedHash) setSaved({ ...saved, simulatedHash: version.simulatedHash });

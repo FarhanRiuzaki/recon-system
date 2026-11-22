@@ -8,7 +8,10 @@ import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sourc
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, RECON_KEY, reconLive, reconTrend, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
-import { isLive } from "./run-model";
+import { isLive, recordDates, replayGap, suggestedReplay } from "./run-model";
+import { appDate } from "@starterkit/ui/lib/format";
+import type { DateRange } from "@starterkit/ui/lib/date-range";
+import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 
 export const reconsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/recons`;
 export const newReconHref = (spaceId: string) => `${reconsHref(spaceId)}/new`;
@@ -161,4 +164,19 @@ export function useReconLive(spaceId: string, id: string, enabled: boolean) {
 export function useReconTrend(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconTrend(spaceId, id);
   return useQuery({ queryKey: key, queryFn: () => api<ReconTrendDto>(url), enabled, retry: retryUnlessNotFound, refetchInterval: 60_000 });
+}
+
+/**
+ * The dates a run or simulation of `spec` starts with, and why a range finds nothing (owner, 22 Nov: never a default
+ * without data): from each side's record dates in the space's source list (suggestedReplay, replayGap). `suggested`
+ * null while the list loads or when neither side has records; `gap(range)` null when both sides have records in it.
+ */
+export function useReplayDefault(spaceId: string, spec: Pick<ReconSpec, "sides">) {
+  const options = useSourceOptions(spaceId).data?.items;
+  const dates = ([0, 1] as const).map((i) => (options ? recordDates(options.find((o) => o.id === spec.sides[i].source_id)) : null));
+  const [today] = useState(() => appDate(Date.now())); // read once: a render stays pure
+  const suggested = suggestedReplay(dates[0]!, dates[1]!, today);
+  const gap = (range: DateRange) => (dates[0] && dates[1]
+    ? replayGap(range, [{ label: spec.sides[0].label, dates: dates[0] }, { label: spec.sides[1].label, dates: dates[1] }]) : null);
+  return { suggested, gap };
 }
