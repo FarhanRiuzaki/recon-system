@@ -596,3 +596,22 @@ workflow yang hilang, beda space, diarsipkan atau versi yang tak pernah publish,
 saat simpan hal itu peringatan. Arsip workflow ditolak selama versi recon (live atau terbuka) memakainya. Tabel
 `approval_bindings` dihapus (migrasi 0050). Tahap 3–5 (connector Open API, aksi posting per level, mode grup; O2, O4–O10
 dan keputusan builder §10) menyusul dengan rencana sendiri.
+
+## DEC-053 — Connector Open API global, berversi dengan maker-checker; rahasia per environment di luar versi
+
+22 November 2026 — pemilik ("go" atas rencana `docs/superpowers/plans/2026-11-22-open-api-connectors-stage-3.md`, tahap 3
+desain `docs/superpowers/specs/2026-11-22-recon-approval-and-posting-design.md` §4.2). Modul baru `integrations` (global,
+tanpa space, tanpa RLS; menu Access → Open API). Satu connector = satu versi yang direview berisi profil keamanan
+(`bank_mega_openapi_2_1`), environment dev dan prod (alamat, Host, partner id, channel id) dan operasinya (method, path,
+batas waktu, pohon field request/response dari contoh JSON atau file OpenAPI, aturan sukses, field referensi, field yang
+dimask, nilai tetap). `integration.manage` mengedit, orang lain yang mem-publish (Superadmin miliknya sendiri hanya override
+dengan alasan); hanya pembuat draft yang menyimpannya. Versi recon (tahap 4) merujuk `{ connector, versi, kunci operasi }`,
+bukan versi per operasi. Rahasia (client id, client secret, public key bank, CA bundle) disimpan per environment di
+`connector_secrets` (`encryptSecret`), tidak masuk versi, tidak pernah dijawab API, activity hanya menyebut nama nilai
+yang diganti. Panggilan: token di-cache per connector dan environment di bawah advisory lock (satu permintaan token
+sekaligus, diperbarui 30 s sebelum habis); `X-EXTERNAL-ID` = tanggal (Asia/Jakarta) + nomor 12 digit per connector dan
+hari, tidak pernah dipakai ulang; TLS selalu diverifikasi dengan CA bundle environment; format kabel mengikuti Recon-QR
+(RSA PKCS#1 v1.5 atas `base64(key):base64(iv)`, AES-256-CBC, HMAC-SHA512, timestamp UTC `+00:00`). Hasil: ok, rejected
+(401/403 atau bank menolak), not_sent (belum keluar), timeout (terkirim, jawaban tidak terbaca atau lewat waktu). "Try it"
+hanya ke dev, 20 per menit per user, jawaban dimask. Connector bisa dimatikan darurat dengan alasan. Circuit breaker dan
+grant `password` (LDAP) masuk runtime tahap 4.

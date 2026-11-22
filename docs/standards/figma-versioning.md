@@ -15,6 +15,11 @@ This is page versioning; no native Figma version-history checkpoint was created.
 in code only. No Figma page was duplicated or edited for them and a versioned draft is owed; see
 [Code ahead of Figma](#code-ahead-of-figma--affectui-re-skin-and-two-components--2026-11-14).
 
+**Code ahead of Figma (2026-11-22):** Access → Open API (DEC-053: the connector list, Environments with credentials and
+Get token, Operations with the field tree, Try it) exists in code only. Page "07 Open API · v1.0.0" is owed; it is to be
+drawn with the stage 4 design pass (approval actions and posting), which also brings the swimlane request view the owner
+pointed to on 22 Nov (lanes per actor, the waiting node highlighted, Approve / Reject on the node).
+
 ## Naming and page order
 
 Use `<existing number> · <existing area name> · v<major>.<minor>.<patch>`. Keep the area's name and section
