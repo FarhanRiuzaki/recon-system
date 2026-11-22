@@ -1,4 +1,5 @@
-// `bun run setup [--database-url <url>]`: env files (only when missing), the database (when missing), migrations, seeds.
+// `bun run setup [--database-url <url>] [--demo]`: env files (only when missing), the database (when missing),
+// migrations, the system seed, and with --demo the demo accounts and data (none by default: owner, 22 Nov).
 // SEED_SUPERADMIN_NAME/EMAIL/USERNAME/PASSWORD from the environment go into apps/api/.env; empty = fill in later. New
 // env files turn on the mock Google/Apple and directory sign-in (OAUTH_MOCK, LDAP_MOCK), never with NODE_ENV=production.
 // Prints file names and steps only, never a value.
@@ -84,7 +85,7 @@ async function main() {
   console.log((await createDatabase(url)) ? "Database created." : "Database exists.");
   await run("bun", "run", "db:migrate");
   await run("bun", "run", "db:seed");
-  await run("bun", "run", "db:seed:demo");
+  if (process.argv.includes("--demo")) await run("bun", "run", "db:seed:demo");
   console.log("Setup done. Start web and API with `bun run dev`.");
 }
 

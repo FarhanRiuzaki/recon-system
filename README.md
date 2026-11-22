@@ -158,7 +158,8 @@ bun run dev     # web http://localhost:3000, API http://127.0.0.1:4000
    environment (empty when unset);
 2. writes `apps/web/.env.local` when missing: `API_BASE_URL=http://127.0.0.1:4000`, the same `INTERNAL_API_TOKEN`, a
    random `SESSION_SECRET`, `OAUTH_MOCK=true`;
-3. creates the database when missing, applies the migrations, and runs `db:seed` and `db:seed:demo`.
+3. creates the database when missing, applies the migrations, and runs `db:seed`; `db:seed:demo` (demo accounts and
+   data) only with `bun run setup --demo`.
 
 Both files are written with mode 0600 and are gitignored; an existing file is kept as it is. `--database-url <url>`
 works too, but `bun run` echoes the command line, password included. With `NODE_ENV=production` setup writes no
