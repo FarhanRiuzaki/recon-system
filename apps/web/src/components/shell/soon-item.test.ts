@@ -2,12 +2,12 @@ import { TooltipProvider } from "@starterkit/ui/ui/tooltip";
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { NAV } from "@/lib/shared/nav";
+import { NAV, type NavItem } from "@/lib/shared/nav";
 import { SoonCaption, SoonItem } from "./soon-item";
 
-// two soon items (Breaks, and one more as a later release would add), so the caption names both
-const breaks = NAV.find((n) => n.soon)!;
-const work = [breaks, { ...breaks, href: "/later", label: "Approvals" }];
+// two soon items, as a later release would add them (none is soon now), so the caption names both
+const later: NavItem = { href: "/exports", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true };
+const work = [later, { ...later, href: "/later", label: "Approvals" }];
 
 describe("SoonItem", () => {
   it("one caption for the group; each item points at it and has no caption or tooltip text of its own", () => {

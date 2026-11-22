@@ -30,7 +30,7 @@ export type NavItem = {
   space?: SpacePage;
 };
 /** The pages every space has (/spaces/<id>/<page>). */
-export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals"] as const;
+export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals", "breaks"] as const;
 export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
@@ -38,7 +38,7 @@ export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
 export const NAV: readonly NavItem[] = [
   { href: "/", label: "Dashboard", icon: "dashboard", shortcut: "G D", group: "main", perm: null },
   { href: "/today", label: "Today", icon: "today", shortcut: "G T", group: "work", perm: null, space: "today" },
-  { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true },
+  { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "G B", group: "work", perm: null, space: "breaks" },
   { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "G V", group: "work", perm: null, space: "approvals" },
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },

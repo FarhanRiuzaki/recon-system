@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { APPROVAL_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { APPROVAL_SORTS, BREAK_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
@@ -158,6 +158,22 @@ export const reconVersion = (spaceId: string, id: string, versionId: string) => 
   url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
 });
 /** Runs of a recon belong to the engine module. */
+export type BreakFilters = { q: string; recon: string; reason: string; state: string; age: string; assignee: string };
+const BREAKS_SPEC: TableSpec<BreakFilters> = {
+  sorts: BREAK_SORTS, defaultSort: "businessDate", search: ["q"],
+  filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice() },
+};
+/** One value of a multi-choice filter when exactly one is ticked (the API takes one), else none. */
+const single = (v: string) => { const x = v.split(",").filter(Boolean); return x.length === 1 ? x[0]! : ""; };
+/**
+ * A space's breaks queue (the engine's, Plan 5), oldest business date first: `reason`, `state`, `age` and `assignee`
+ * (me, none = Unassigned) reach the API when one is ticked; `recon` one recon (a link from it); `q` the reference.
+ */
+export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
+  key: ENGINE_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/breaks`, spec: BREAKS_SPEC,
+  params: ({ reason, state, age, assignee, ...rest }) => ({ ...rest, reason: single(reason), state: single(state), age: single(age), assignee: single(assignee) }),
+});
+
 export const APPROVALS_KEY = ["approvals"] as const;
 export type ApprovalFilters = { q: string; kind: string; mine: string };
 const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["", "1"], "") } };

@@ -394,12 +394,7 @@ export function differenceText(evidence: unknown, ccy: string | null): string {
   return parts.join(" · ");
 }
 
-/** An item's amount: "25,517.79" in its currency's minor unit, or the raw minor value when the currency is unknown. */
-export function amountText(minor: string | null, ccy: string | null): string {
-  if (minor === null) return "—";
-  const exp = ccy ? CURRENCY_EXPONENT[ccy] : undefined;
-  return exp === undefined ? minor : formatMinor(BigInt(minor), exp);
-}
+export { amountText } from "@/lib/shared/amount";
 
 /** A business date of a run in the strip: groups matched and suggested, items broken by label, items waiting per side. */
 export function dayTotals(day: Pick<RunDay, "passes" | "open"> & Partial<Pick<RunDay, "breaks" | "closed">>, spec: ReconSpec) {

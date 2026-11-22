@@ -3,7 +3,7 @@ import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
-/** The Work and Setup items in order (Today, Approvals, Recons and Sources are space pages; Breaks is soon). */
+/** The Work and Setup items in order (every one a space page; nothing is soon). */
 const WORK_SETUP = ["Today", "Breaks", "Approvals", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
@@ -36,19 +36,14 @@ describe("navFor", () => {
     expect(crumbs("/projects", new Set())).toEqual([]);
   });
 
-  it("coming-soon items: no shortcut, no permission, not in the palette or shortcut list, no page behind them", () => {
-    const soon = NAV.filter((n) => n.soon);
-    expect(soon.map((n) => [n.group, n.label])).toEqual([["work", "Breaks"]]);
-    expect(soon.every((n) => n.shortcut === "" && n.perm === null)).toBe(true);
-    const pages = pagesFor(new Set(PERMISSIONS));
-    expect(pages.some((n) => n.soon || n.hidden)).toBe(false);
-    expect(pages.map((n) => n.label)).not.toContain("Breaks");
-    expect(pagePerm("/breaks")).toBeNull();
-    expect(crumbs("/breaks", new Set(PERMISSIONS))).toEqual([]);
+  it("coming-soon items: none now; one later is off the palette, has no page, and its group's caption names it", () => {
+    expect(NAV.filter((n) => n.soon)).toEqual([]);
+    const later: NavItem = { href: "/exports", label: "Exports", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true };
+    expect(pagesFor(new Set(PERMISSIONS)).some((n) => n.soon || n.hidden)).toBe(false);
     expect(SOON_REASON).toBe("Arrives in a later release.");
-    const sections = navFor(new Set());
-    expect(sections.map((s) => soonCaption(s.items))).toEqual([null, "Breaks arrives in a later release.", null, null, null]);
-    expect(soonCaption([soon[0]!, { ...soon[0]!, label: "Approvals" }])).toBe("Breaks and Approvals arrive in a later release.");
+    expect(navFor(new Set()).map((s) => soonCaption(s.items))).toEqual([null, null, null, null, null]);
+    expect(soonCaption([later])).toBe("Exports arrives in a later release.");
+    expect(soonCaption([later, { ...later, label: "Reports" }])).toBe("Exports and Reports arrive in a later release.");
   });
 
   it("shortcuts are unique", () => {
@@ -60,8 +55,8 @@ describe("navFor", () => {
 describe("space group", () => {
   it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
     const admin = new Set(["user.view", "role.view", "space.view"] as const);
-    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...WORK_SETUP.filter((l) => !["Sources", "Recons", "Today", "Approvals"].includes(l)), "Users", "Roles", "Profile"]);
-    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "work", "personal"]); // Setup holds only space pages
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...WORK_SETUP.filter((l) => !["Sources", "Recons", "Today", "Approvals", "Breaks"].includes(l)), "Users", "Roles", "Profile"]);
+    expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "personal"]); // Work and Setup hold only space pages
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");
   });
