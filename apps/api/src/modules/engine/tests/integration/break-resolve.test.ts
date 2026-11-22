@@ -15,7 +15,7 @@ import { records } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { matchGroups, matchMembers, reconItems } from "../../schema";
+import { matchGroups, matchMembers, reconDays, reconItems } from "../../schema";
 import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
 const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
@@ -72,15 +72,33 @@ describe("a break's page and candidates", () => {
 });
 
 describe("carry over on a break's page", () => {
-  it("says how long the item is checked again: business date + carry over days, null when carry over is always", async () => {
-    let d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
-    expect(d.recon).toMatchObject({ carryOverDays: 1, recheckUntil: "2026-11-03" });
+  it("says whether runs check the item again, by the engine's pool rules: until business date + carry over, always, or not", async () => {
+    const recheck = async () => (await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }))).recon.recheck;
     const [v] = await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
-    for (const [carry, until] of [[0, "2026-11-02"], [null, null]] as const) {
-      await db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), carry_over_days: carry } }).where(eq(reconConfigVersions.id, v!.id));
-      d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
-      expect(d.recon).toMatchObject({ carryOverDays: carry, recheckUntil: until });
-    }
+    const carry = (c: number | null) => db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), carry_over_days: c } }).where(eq(reconConfigVersions.id, v!.id));
+    const a1 = (o: Partial<typeof reconItems.$inferInsert>) => db.update(reconItems).set(o).where(eq(reconItems.id, I.a1));
+    // a break a run closed without late_match never rejoins the pool
+    expect(await recheck()).toEqual({ kind: "no" });
+    await a1({ lateMatch: true });
+    expect(await recheck()).toEqual({ kind: "until", date: "2026-11-03" });
+    await carry(null);
+    expect(await recheck()).toEqual({ kind: "always" });
+    await carry(0);
+    expect(await recheck()).toEqual({ kind: "no" });
+    await carry(1);
+    // waiting for a decision, another reason, or a signed-off day: out of the pool
+    await a1({ breakState: "pending_approval" });
+    expect(await recheck()).toEqual({ kind: "no" });
+    await a1({ breakState: "assigned", breakReason: "Amount differs" });
+    expect(await recheck()).toEqual({ kind: "no" });
+    await a1({ breakReason: "No counterpart" });
+    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: D, status: "closed", closedAt: new Date(), signedAt: new Date(), counters: {} });
+    expect(await recheck()).toEqual({ kind: "no" });
+    await db.delete(reconDays);
+    expect(await recheck()).toEqual({ kind: "until", date: "2026-11-03" });
+    // no approved version runs: nothing checks it
+    await db.update(reconConfigVersions).set({ status: "retired" }).where(eq(reconConfigVersions.id, v!.id));
+    expect(await recheck()).toEqual({ kind: "no" });
   });
   it("every change kind goes to the default chain when the recon names no workflow, with nothing sent to the bank", async () => {
     const d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));

@@ -7,7 +7,7 @@ const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
 });
 const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, ...o });
 const recon = (o: Partial<BreakDetailDto["recon"]> = {}): BreakDetailDto["recon"] => ({
-  id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheckUntil: "2026-11-03",
+  id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheck: { kind: "until", date: "2026-11-03" },
   routes: [route("posting", { workflowName: "Two levels", levels: 2, connector: "Bank Mega" }), route("force_match"), route("write_off"), route("unmatch")], ...o,
 });
 
@@ -39,10 +39,11 @@ describe("the difference between this item and its counterpart", () => {
 });
 
 describe("words of the page", () => {
-  it("how long the item is checked again", () => {
-    expect(recheckText(recon())).toBe("checked again until 3 Nov (carry over 1 day)");
-    expect(recheckText(recon({ carryOverDays: 0, recheckUntil: "2026-11-02" }))).toBe("checked again until 2 Nov (carry over 0 days)");
-    expect(recheckText(recon({ carryOverDays: null, recheckUntil: null }))).toBe("checked again until it matches or is settled");
+  it("whether runs check the item again, in past tense once its last day has gone", () => {
+    expect(recheckText({ kind: "until", date: "2026-11-03" }, "2026-11-03")).toBe("Checked again on each run until 3 Nov");
+    expect(recheckText({ kind: "until", date: "2026-11-03" }, "2026-11-04")).toBe("Checked again until 3 Nov; no longer checked");
+    expect(recheckText({ kind: "always" }, "2026-11-04")).toBe("Checked again on each run until it matches or is settled");
+    expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again — settle it here");
   });
   it("where a request goes: the workflow or the default chain, its levels, the connector", () => {
     expect(routeText(recon(), "posting")).toBe("Two levels · 2 levels · sent through Bank Mega");

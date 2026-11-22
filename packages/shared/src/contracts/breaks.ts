@@ -100,14 +100,18 @@ export const BreakDetailDto = z.object({
   item: BreakItemDto,
   /**
    * `posts`: its live version posts its unmatch (a posting action under Posting): the page offers Request posting.
-   * `carryOverDays`: the live version's carry over (null = always); `recheckUntil`: the last business date a run still
-   * looks for its counterpart (business date + carry over), null while carry over is always. `routes`: per change kind,
+   * `carryOverDays`: the live version's carry over (null = always). `recheck`: whether runs look for its counterpart
+   * again, by the engine's pool rules (sql/pass.ts poolStatus): an open item, or a "No counterpart" break with
+   * late_match, not waiting for a decision, on a day not signed off, while carry over is above 0 — `until` the last
+   * business date a run still does (business date + carry over), `always` while carry over is always; else `no` (also
+   * without a live version). `routes`: per change kind,
    * the workflow its request goes to by default (`workflowName` null = the default chain; a rule may pick another on
    * the request's values) with its level count, and the connector its first posting action calls (null = none).
    */
   recon: z.object({
     id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean(),
-    carryOverDays: z.number().int().nullable(), recheckUntil: z.string().nullable(),
+    carryOverDays: z.number().int().nullable(),
+    recheck: z.discriminatedUnion("kind", [z.object({ kind: z.literal("until"), date: z.string() }), z.object({ kind: z.literal("always") }), z.object({ kind: z.literal("no") })]),
     routes: z.array(z.object({ kind: z.enum(REQUEST_KINDS), workflowName: z.string().nullable(), levels: z.number().int(), connector: z.string().nullable() })),
   }),
   state: z.enum(BREAK_STATES),

@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Failure, Field, FilterSearch, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { formatDateTime } from "@starterkit/ui/lib/format";
+import { appDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AlertsIcon, ErrorIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -73,6 +73,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const [dialog, setDialog] = useState<Dialogue | null>(null);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [closing, setClosing] = useState(false);
+  const [today] = useState(() => appDate(Date.now())); // read once: a render stays pure
   const b = q.data;
   const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Unmatch" };
 
@@ -166,7 +167,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         </span>}
         description={<span className="grid gap-0.5">
           {b.item.ref ? <CopyValue value={b.item.ref} label="reference" /> : <span>No reference</span>}
-          <span>{[b.recon.name, dateText(b.item.businessDate), open ? recheckText(b.recon) : b.resolution ? RESOLUTION_LABEL[b.resolution] ?? null : null].filter(Boolean).join(" · ")}</span>
+          <span>{[b.recon.name, dateText(b.item.businessDate), open ? recheckText(b.recon.recheck, today) : b.resolution ? RESOLUTION_LABEL[b.resolution] ?? null : null].filter(Boolean).join(" · ")}</span>
         </span>} />
 
       <PageZone title="Summary">

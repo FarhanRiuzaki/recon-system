@@ -13,7 +13,7 @@ import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/s
 import { DEFAULT_CHAIN, TRIGGERS } from "@starterkit/shared/workflows";
 import { CURRENCY_EXPONENT, DEBIT_CODES } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
-import { and, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery } from "../../kernel/pagination";
@@ -26,8 +26,9 @@ import { withSpace } from "../spaces";
 import { users } from "../users";
 import { approvalRequests, pinnedVersion, requestView } from "../approvals";
 import { connectors, runsOf } from "../integrations";
-import { matchGroups, matchMembers, reconItems } from "./schema";
+import { matchGroups, matchMembers, reconDays, reconItems } from "./schema";
 import { addDays } from "./service";
+import { NEAR_MISS } from "./sql/breaks";
 import { assertNotSigned } from "./signoff";
 
 export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -116,6 +117,21 @@ async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Prom
   return out;
 }
 
+/**
+ * Whether runs look for the item's counterpart again: the engine's pool (sql/pass.ts poolStatus) holds an open item,
+ * and with carry over above 0 (or always) a "No counterpart" break with late_match that waits for no decision on a
+ * day not signed off. Carry over is calendar days from the business date (engine addDays).
+ */
+async function recheckOf(tx: InTx, spaceId: string, x: typeof reconItems.$inferSelect, live: ReconSpec | null): Promise<BreakDetailDto["recon"]["recheck"]> {
+  const carry = live ? live.carry_over_days : 0;
+  const pooled = x.status === "open" || (x.status === "break" && x.lateMatch && x.breakReason === NEAR_MISS.none && x.breakState !== "pending_approval"
+    && carry !== 0 && !(await signed(tx, spaceId, x.configId, x.businessDate)));
+  if (!live || !pooled) return { kind: "no" };
+  return carry === null ? { kind: "always" } : { kind: "until", date: addDays(x.businessDate, carry) };
+}
+const signed = async (tx: InTx, spaceId: string, configId: string, d: string) => (await tx.select({ d: reconDays.businessDate }).from(reconDays)
+  .where(and(eq(reconDays.spaceId, spaceId), eq(reconDays.configId, configId), eq(reconDays.businessDate, d), isNotNull(reconDays.signedAt))).limit(1)).length > 0;
+
 export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<BreakDetailDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const x = await breakOf(tx, spaceId, id);
@@ -141,7 +157,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       item: plain(item!), recon: {
         id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live),
         // carry over is calendar days from the business date (engine addDays); before a first approval it reads as always
-        carryOverDays: live?.carry_over_days ?? null, recheckUntil: live && live.carry_over_days !== null ? addDays(x.businessDate, live.carry_over_days) : null,
+        carryOverDays: live?.carry_over_days ?? null, recheck: await recheckOf(tx, spaceId, x, live),
         routes: await routesOf(tx, spaceId, live),
       }, state: (x.breakState ?? "new") as BreakState,
       assignee: x.assigneeId ? { id: x.assigneeId, name } : null,

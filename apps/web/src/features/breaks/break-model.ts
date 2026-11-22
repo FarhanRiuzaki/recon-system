@@ -55,10 +55,11 @@ export function combined(items: readonly BreakItemDto[]): BreakItemDto | null {
   };
 }
 
-/** "checked again until 3 Nov (carry over 1 day)", or until it is settled while carry over is always. */
-export function recheckText(r: BreakDetailDto["recon"]): string {
-  if (r.carryOverDays === null || r.recheckUntil === null) return "checked again until it matches or is settled";
-  return `checked again until ${dateText(r.recheckUntil)} (carry over ${plural(r.carryOverDays, "day")})`;
+/** Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day has gone. */
+export function recheckText(r: BreakDetailDto["recon"]["recheck"], today: string): string {
+  if (r.kind === "always") return "Checked again on each run until it matches or is settled";
+  if (r.kind === "no") return "Not checked again — settle it here";
+  return r.date < today ? `Checked again until ${dateText(r.date)}; no longer checked` : `Checked again on each run until ${dateText(r.date)}`;
 }
 
 /** Where a request of `kind` goes by default: "Two levels · 2 levels · sent through Bank Mega"; null when unknown. */

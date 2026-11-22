@@ -118,10 +118,51 @@
             }
           ]
         },
-        "recheckUntil": {
-          "type": [
-            "string",
-            "null"
+        "recheck": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "until"
+                },
+                "date": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "date"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "always"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "no"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            }
           ]
         },
         "routes": {
@@ -172,7 +213,7 @@
         "sides",
         "posts",
         "carryOverDays",
-        "recheckUntil",
+        "recheck",
         "routes"
       ],
       "additionalProperties": false
