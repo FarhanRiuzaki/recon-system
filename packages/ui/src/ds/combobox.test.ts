@@ -104,6 +104,15 @@ describe("Combobox (multiple)", () => {
     await key("Backspace");
     expect(document.querySelector('[aria-label="Remove Medan"]')).toBeNull();
   });
+  it("removing a chip with its X doesn't open the list", async () => {
+    await mount(h(Multi));
+    await type("jak"); await key("Enter"); await key("Escape");
+    input().blur();
+    expect(input().getAttribute("aria-expanded")).toBe("false");
+    await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Remove Jakarta"]')!.click());
+    expect(document.querySelector('[aria-label="Remove Jakarta"]')).toBeNull();
+    expect(input().getAttribute("aria-expanded")).toBe("false");
+  });
   it("onCreate offers the typed text when nothing has that label", async () => {
     await mount(h(Multi, { onCreate: (t: string) => ({ value: t.toLowerCase(), label: t }) }));
     await type("Bali");

@@ -218,7 +218,7 @@ export function SearchCombobox(props: Single | Multiple) {
           invalid && "border-down-mark focus-within:ring-down-soft", disabled && "pointer-events-none bg-inset opacity-60")}>
         {multiple && chosen.map((c) => {
           const x = (
-            <button type="button" aria-label={`Remove ${c.label}`} onClick={() => remove(c.value)}
+            <button type="button" aria-label={`Remove ${c.label}`} onClick={(e) => { e.stopPropagation(); remove(c.value); }}
               className="relative inline-grid size-5 shrink-0 cursor-pointer place-items-center rounded-xs text-down-mark outline-none after:absolute after:-inset-1 hover:bg-down-soft hover:text-down-ink focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-primary">
               <Icon icon={CloseIcon} className="size-3.5" />
             </button>

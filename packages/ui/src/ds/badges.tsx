@@ -23,8 +23,8 @@ const SLOT_DOT: Record<CategorySlot, string> = { 1: "bg-chart-1", 2: "bg-chart-2
  */
 export function CategoryChip({ label, slot, className, children }: { label: string; slot: CategorySlot; className?: string; children?: ReactNode }) {
   return (
-    <span data-slot="category-chip" className={cn("inline-flex h-5.5 items-center gap-1.5 rounded-sm px-2 text-label whitespace-nowrap text-fg", SLOT_BG[slot], className)}>
-      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", SLOT_DOT[slot])} />{label}{children}
+    <span data-slot="category-chip" className={cn("inline-flex h-5.5 max-w-full min-w-0 items-center gap-1.5 rounded-sm px-2 text-label whitespace-nowrap text-fg", SLOT_BG[slot], className)}>
+      <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", SLOT_DOT[slot])} /><span className="min-w-0 truncate" title={label}>{label}</span>{children}
     </span>
   );
 }

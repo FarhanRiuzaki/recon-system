@@ -11,11 +11,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
  * reason is a visible caption below the button (CSS only; with a fine pointer the wrapper is `display: contents`, so
  * the layout is the same as a bare button). `caption={false}` for dense rows (table row actions) that show the same
  * reason elsewhere on touch; the reason then stays screen-reader only there.
+ * `onBlockedPress` runs on a press while blocked (show where the problem is); the action itself never runs then.
  * `className` stays on the button, blocked or not. Under a coarse pointer the button and its caption are one box:
  * `wrapClassName` places that box where the button alone would sit (`w-full` beside a full-width button, `ml-auto
  * items-end` for a button pushed right); with a fine pointer the wrapper has no box, so it changes nothing there.
  */
-export function BlockedButton({ reason, caption = true, children, onClick, className, wrapClassName, ...props }: ComponentProps<typeof Button> & { reason: string | null; caption?: boolean; wrapClassName?: string }) {
+export function BlockedButton({ reason, caption = true, children, onClick, onBlockedPress, className, wrapClassName, ...props }: ComponentProps<typeof Button> & { reason: string | null; caption?: boolean; wrapClassName?: string; onBlockedPress?: () => void }) {
   const id = useId();
   if (!reason) return <Button onClick={onClick} className={className} {...props}>{children}</Button>;
   return (
@@ -23,7 +24,7 @@ export function BlockedButton({ reason, caption = true, children, onClick, class
     <span className={cn("contents flex-col items-start gap-1 pointer-coarse:inline-flex", wrapClassName)} data-slot="blocked-button">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button {...props} aria-disabled="true" aria-describedby={id} onClick={(e) => e.preventDefault()} className={cn("aria-disabled:cursor-default aria-disabled:opacity-50", className)}>{children}</Button>
+          <Button {...props} aria-disabled="true" aria-describedby={id} onClick={(e) => { e.preventDefault(); onBlockedPress?.(); }} className={cn("aria-disabled:cursor-default aria-disabled:opacity-50", className)}>{children}</Button>
         </TooltipTrigger>
         <TooltipContent>{reason}</TooltipContent>
       </Tooltip>

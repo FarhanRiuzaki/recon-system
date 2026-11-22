@@ -13,6 +13,7 @@ import { Button } from "../ui/button";
 import { ActionCard } from "./action-card";
 import { CompareCard } from "./compare-card";
 import { EditorRow } from "./editor-row";
+import { CategoryChip } from "./badges";
 import { PageZone } from "./page-zone";
 import { BlockedButton } from "./blocked-button";
 import { TooltipProvider } from "../ui/tooltip";
@@ -184,6 +185,26 @@ describe("EditorRow (audit P7)", () => {
     const filled = html(h(EditorRow, { lead: "Level 2", trailing: h("button", null, "Remove"), children: "x" }));
     expect(filled).toContain("<button>Remove</button>");
     expect(filled).not.toContain("invisible");
+  });
+});
+
+describe("EditorRow on a phone (one column)", () => {
+  it("no lead: its cell is there from md (the column), gone on a phone, so no empty row and gap", () => {
+    const out = html(h(EditorRow, { lead: null, children: "x" }));
+    expect(out).toMatch(/^<div data-slot="editor-row" class="[^"]*"><div class="[^"]*\bmax-md:hidden\b[^"]*"><\/div>/);
+  });
+  it("a trailing control's wrapper is no box on a phone (the control places itself), a flex cell from md", () => {
+    const out = html(h(EditorRow, { lead: "Level 2", trailing: h("button", null, "Remove"), children: "x" }));
+    const wrap = /<div class="([^"]*)"><button>Remove<\/button>/.exec(out)![1]!.split(" ");
+    expect(wrap).toEqual(expect.arrayContaining(["max-md:contents", "md:flex", "md:justify-end"]));
+  });
+});
+
+describe("CategoryChip long labels", () => {
+  it("the label truncates inside the chip, which never grows past its line", () => {
+    const out = html(h(CategoryChip, { label: "A very long name that would overflow a phone", slot: 2 }));
+    expect(classOf(out, "category-chip")).toEqual(expect.arrayContaining(["max-w-full", "min-w-0"]));
+    expect(out).toContain('<span class="min-w-0 truncate" title="A very long name that would overflow a phone">A very long name that would overflow a phone</span>');
   });
 });
 

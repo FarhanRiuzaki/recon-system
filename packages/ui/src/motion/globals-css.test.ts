@@ -79,7 +79,7 @@ describe("motion utilities", () => {
     // utilities whose reduced branch is a 100 ms fade, or none
     const fade = css.match(/\[data-motion-preview="reduced"\] :is\(([^)]*)\) \{ animation: fade-in var\(--dur-instant\) linear both !important; \}/)?.[1] ?? "";
     expect(fade).not.toBe("");
-    for (const u of ["animate-page-enter", "animate-enter", "animate-reveal-in", "animate-pop", "animate-swap", "animate-shell-sheet"]) {
+    for (const u of ["animate-page-enter", "animate-enter", "animate-reveal-in", "animate-pop", "animate-swap", "animate-shell-sheet", "animate-fade"]) {
       expect(block(`@utility ${u}`)).toMatch(/reduce\) \{ animation: fade-in var\(--dur-instant\) linear both; \}/);
       expect(fade).toContain(`.${u}`);
     }

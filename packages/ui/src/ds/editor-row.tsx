@@ -10,9 +10,10 @@ import { cn } from "../lib/cn";
 export function EditorRow({ lead, children, trailing, className }: { lead: ReactNode; children: ReactNode; trailing?: ReactNode; className?: string }) {
   return (
     <div data-slot="editor-row" className={cn("grid grid-cols-1 items-start gap-2 md:grid-cols-[9rem_minmax(0,1fr)_2rem]", className)}>
-      <div className="min-w-0">{lead}</div>
+      {/* on a phone (one column) an empty lead and the trailing wrapper add no row or gap */}
+      <div className={cn("min-w-0", lead == null && "max-md:hidden")}>{lead}</div>
       <div className="min-w-0">{children}</div>
-      {trailing ? <div className="flex md:justify-end">{trailing}</div> : <div aria-hidden="true" className="invisible max-md:hidden" />}
+      {trailing ? <div className="max-md:contents md:flex md:justify-end">{trailing}</div> : <div aria-hidden="true" className="invisible max-md:hidden" />}
     </div>
   );
 }
