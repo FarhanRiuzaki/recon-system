@@ -74,7 +74,7 @@ function MoreMenu({ actions, onConfirm }: { actions: HeaderAction[]; onConfirm: 
 export function PageHeader({ title, crumb, status, actions, more, description, trail = [] }: {
   title: string;
   /** The breadcrumb's last crumb when it differs from the title (a version page: "Version 2" under "{name} · version 2"). */
-  crumb?: string; status?: ReactNode; actions?: ReactNode; more?: HeaderAction[]; description?: string; trail?: TrailCrumb[];
+  crumb?: string; status?: ReactNode; actions?: ReactNode; more?: HeaderAction[]; description?: ReactNode; trail?: TrailCrumb[];
 }) {
   usePublishTrail(usePathname(), [...trail, { label: crumb ?? title }]);
   const extra = more?.length ? more : null;
@@ -86,7 +86,7 @@ export function PageHeader({ title, crumb, status, actions, more, description, t
           <h1 tabIndex={-1} className="min-w-0 text-title-1 wrap-anywhere text-fg">{title}</h1>
           {status}
         </div>
-        {description && <p className="max-w-[72ch] text-body-sm wrap-anywhere text-fg-3">{description}</p>}
+        {description && <div className="max-w-[72ch] text-body-sm wrap-anywhere text-fg-3">{description}</div>}
       </div>
       {(actions || extra) && (
         <div className="ml-auto flex flex-wrap items-center gap-2">

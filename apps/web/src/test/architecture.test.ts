@@ -234,8 +234,17 @@ const sharedZodViolations = (fs: F[]) => fs
 /** A list screen's call, generic or not: `useTableQuery(` and `useTableQuery<T, F>(`. */
 const LIST_CALL = /\buseTableQuery\s*[<(]/;
 
-function columnsMenuViolations(fs: F[]): string[] {
-  return fs.filter(({ r, src }) => r.startsWith(`${WEB}features/`) && LIST_CALL.test(strip(src)))
+/**
+ * A useTableQuery screen that is not a list page, with why it has no saved views or column chooser. The stale-entry
+ * check fails when a file listed here no longer calls useTableQuery.
+ */
+const COLUMNS_MENU_ALLOWED: Record<string, string> = {
+  [`${WEB}features/breaks/break-page.tsx`]: "the counterpart picker inside the unmatch item page: five fixed columns to tick from, not a list to keep views of (audit B7)",
+  [`${WEB}features/breaks/break-activity.tsx`]: "the unmatch item's History zone: a quiet three-column trail, not a list page (audit B9)",
+};
+
+function columnsMenuViolations(fs: F[], allowed: Record<string, string> = COLUMNS_MENU_ALLOWED): string[] {
+  return fs.filter(({ r, src }) => r.startsWith(`${WEB}features/`) && !(r in allowed) && LIST_CALL.test(strip(src)))
     .filter(({ src }) => {
       const code = strip(src);
       return !/<SavedViewsMenu\b/.test(code) || !/<ColumnsMenu\b[^>]*hidden=/.test(code) || !/<DataTable\b[^>]*\bhidden=/.test(code);
@@ -459,6 +468,7 @@ describe("architecture", () => {
 
   it("every list screen has saved views and the column chooser (SavedViewsMenu, ColumnsMenu + DataTable hidden)", () => {
     expect(columnsMenuViolations(files)).toEqual([]);
+    expect(Object.keys(COLUMNS_MENU_ALLOWED).filter((k) => !files.some((x) => x.r === k && LIST_CALL.test(strip(x.src))))).toEqual([]);
   });
 
   it("every page with a list screen is in VIEW_PAGES", () => {
@@ -718,7 +728,8 @@ import { INTENTS } from "@starterkit/ui/ds";\nimport x from "bunyan";`),
       f(`${WEB}features/e/list.tsx`, `const t = useTableQuery<T, F>({}); <ColumnsMenu columns={c} hidden={t.hidden} /> <DataTable columns={c} hidden={t.hidden} />`),
       f(`${WEB}features/c/list.tsx`, `const t = useTableQuery({}); <SavedViewsMenu /> <ColumnsMenu columns={c} hidden={t.hidden} onChange={t.setHidden} /> <DataTable columns={c} hidden={t.hidden} />`),
       f(`${WEB}features/d/detail.tsx`, `<DataTable columns={c} rows={u.recent} />`),
-    ])).toEqual([`${WEB}features/a/list.tsx: ${msg}`, `${WEB}features/b/list.tsx: ${msg}`, `${WEB}features/e/list.tsx: ${msg}`]);
+      f(`${WEB}features/f/picker.tsx`, `const t = useTableQuery({}); <DataTable columns={c} />`),
+    ], { [`${WEB}features/f/picker.tsx`]: "a picker" })).toEqual([`${WEB}features/a/list.tsx: ${msg}`, `${WEB}features/b/list.tsx: ${msg}`, `${WEB}features/e/list.tsx: ${msg}`]);
   });
 
   it("fixture: a shared file outside contracts/ importing zod", () => {

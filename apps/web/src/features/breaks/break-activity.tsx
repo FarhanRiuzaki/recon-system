@@ -1,11 +1,10 @@
 "use client";
 
 import { useMemo } from "react";
-import { Avatar, ColumnsMenu, DataTable, Notice, Panel, RelativeTime, Toolbar, Truncate } from "@starterkit/ui/ds";
+import { Avatar, DataTable, Notice, Panel, RelativeTime, Truncate } from "@starterkit/ui/ds";
 import { ActivityIcon } from "@starterkit/ui/ui/icons";
 import { actionLabel } from "@starterkit/shared/audit";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
-import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { type TrailFilters } from "@/lib/shared/queries";
@@ -18,7 +17,10 @@ function whatText(e: ActivityDto): string {
   return [actionLabel(e.action), typeof resolution === "string" ? resolution.toLowerCase().replaceAll("_", " ") : null, typeof note === "string" ? `“${note}”` : null].filter(Boolean).join(" · ");
 }
 
-/** A break's own trail (GET …/breaks/{id}/activity), newest first: time, who, what. */
+/**
+ * A break's own trail (GET …/breaks/{id}/activity), newest first: time, who, what. The page's History zone, so a quiet
+ * panel without saved views or a column chooser (three fixed columns; architecture.test.ts allowlist).
+ */
 export function BreakActivity({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => breakActivity(spaceId, id), [spaceId, id]);
   const t = useTableQuery<ActivityDto, TrailFilters>(def);
@@ -32,8 +34,7 @@ export function BreakActivity({ spaceId, id }: { spaceId: string; id: string }) 
   return (
     <>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh this list; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
-      <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={ActivityIcon} title="Activity" description="Newest first" count={t.count}>
+      <Panel tone="quiet" flush icon={ActivityIcon} title="Activity" description="Newest first" count={t.count}>
         <DataTable label="Activity" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(e) => e.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           error={t.loadError ? { title: "Couldn't load activity", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={{ icon: ActivityIcon, title: "No activity yet", description: "Entries appear here when someone takes, assigns or resolves this item." }} />
