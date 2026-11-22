@@ -11,7 +11,7 @@ import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { REMEMBERED_VIEW_QUERY_MAX } from "@starterkit/shared/views";
 import { MAX_PAGE, PAGE_SIZES, type PageSize } from "@starterkit/shared/paging";
 import { type ColumnChoice, columnsKey, savedView, viewPageOf } from "@/lib/shared/prefs";
-import { facetsRequest, historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, withOtherTables, writeTable } from "@/lib/shared/table-state";
+import { facetsRequest, historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, tableHref, toSortParam, withOtherTables, writeTable } from "@/lib/shared/table-state";
 
 /**
  * A server-driven table: page, page size, sort and filters live in the URL (shareable; a change other than the page
@@ -56,11 +56,8 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
   const set = useCallback((patch: Partial<TableState<F>>, options?: { history: "push" | "replace" }) => {
     if (window.location.pathname !== pathname) return;
     const current = new URLSearchParams(window.location.search);
-    const next = edit ? edit(current, patch) : writeTable(readTable(current, spec), patch, spec);
-    if (!next) return;
-    preserveTableParams(next, current, transient);
-    if (!edit) withOtherTables(next, current, spec);
-    const href = next.size ? `${pathname}?${next}` : pathname;
+    const href = tableHref(pathname, current, patch, { spec, edit, transient });
+    if (href === (current.size ? `${pathname}?${current}` : pathname)) return;
     // Native history (Next keeps useSearchParams in sync): the URL changes in place, without a server round trip for
     // the page, so the next page loads from /api with the previous rows kept and the busy dim. The server prefetch
     // covers document loads and route changes only.
@@ -106,8 +103,11 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
     update({ columns: choice ? { ...rest, [colsKey]: choice } : rest });
   }, [colsKey, prefs.columns, update]);
 
+  /** The URL `set(patch)` goes to, for a filter drawn as a link (it opens in a new tab too). */
+  const hrefOf = useCallback((patch: Partial<TableState<F>>) => tableHref(pathname, new URLSearchParams(sp.toString()), patch, { spec, edit, transient }), [sp, pathname, spec, edit, transient]);
+
   return {
-    state, set, query: q, filterQuery, paging, hidden, setHidden, facets: fq.data,
+    state, set, hrefOf, query: q, filterQuery, paging, hidden, setHidden, facets: fq.data,
     viewNotRemembered: view !== null && view.length > REMEMBERED_VIEW_QUERY_MAX,
     rows: tv.rows, total: tv.total, totalCapped: tv.totalCapped, count: tv.count,
     sort: sortState(state.sort),

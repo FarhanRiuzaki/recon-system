@@ -1,6 +1,6 @@
 import { writeTableFromSearch } from "./raw-table-state";
 import { describe, expect, it } from "vitest";
-import { facetsRequest, historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableRequest, tableView, text, toSortParam, type TableSpec, withCounts, withOtherTables, writeTable } from "./table-state";
+import { facetsRequest, historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableHref, tableRequest, tableView, text, toSortParam, type TableSpec, withCounts, withOtherTables, writeTable } from "./table-state";
 
 const SPEC = {
   sorts: ["at", "login"], defaultSort: "-at", search: ["user"] as const,
@@ -66,6 +66,15 @@ describe("writeTable", () => {
     expect(writeTable(base, { pageSize: 50 }, SPEC)!.get("page")).toBeNull();
     expect(writeTable(base, { sort: "login" }, SPEC)!.toString()).toBe("pageSize=25&sort=login&user=ann");
     expect(writeTable(base, { range: "30d" }, SPEC)!.get("page")).toBeNull();
+  });
+});
+
+describe("tableHref (a filter as a real link: the tab opens in a new tab too)", () => {
+  it("the URL set() would go to, keeping the refresh and the page's other keys; the same URL when nothing changes", () => {
+    const cur = new URLSearchParams("page=4&user=ann&refresh=30s&tab=x.y");
+    expect(tableHref("/users", cur, { user: "bob" }, { spec: SPEC })).toBe("/users?user=bob&refresh=30s");
+    expect(tableHref("/users", cur, { user: "ann" }, { spec: SPEC })).toBe("/users?page=4&user=ann&refresh=30s&tab=x.y");
+    expect(tableHref("/users", new URLSearchParams(), { page: 1 }, { spec: SPEC })).toBe("/users");
   });
 });
 

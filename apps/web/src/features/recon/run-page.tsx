@@ -3,8 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CategoryChip, ColumnsMenu, type Column, CountBadge, DataTable, Failure, Notice, Panel, ScrollFade, Segmented, Toolbar } from "@starterkit/ui/ds";
-import { Tabs, TabsList, TabsTrigger } from "@starterkit/ui/ui/tabs";
+import { CategoryChip, ColumnsMenu, type Column, CountBadge, DataTable, Failure, Notice, Panel, RouteTabs, ScrollFade, Segmented, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -21,7 +20,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
-import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, oneCurrency, pairDifference, rangeText, readIn, reasonOptions, runDays, scopeCaption } from "./run-model";
+import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, readIn, reasonOptions, runCurrency, runDays, scopeCaption } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { dayLabel, dayTilesOf, tileOption } from "./run-days";
 import { RECON_RUN_SHAPE } from "./shapes";
@@ -95,8 +94,9 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   useEffect(() => { if (strayDate) setTable({ date: "" }, { history: "replace" }); }, [strayDate, setTable]);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
-  // one currency on the page: in the amount headers, no column of its own (§5.9)
-  const ccy = oneCurrency(t.rows.flatMap((r) => [r.currency, ...(r.group?.members.map((m) => m.currency) ?? [])]));
+  // one currency for the run (both sources write it fixed): in the amount headers, no column of its own (§5.9); else a
+  // Currency column on every page. ponytail: the sources' published specs, not the run's; a run DTO currency set would be exact
+  const ccy = runCurrency(specA, specB);
   const columns = useColumns(t.state, labels, ccy);
 
   // a run is named by its time, in the title and the last crumb alike (Captain, R4-5): "Run 21 Nov, 01:40" (WIB)
@@ -179,11 +179,15 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
                 options={dayTiles.map((x) => ({ value: x.date || "all", label: `${dayLabel(x.date)}${x.t.closed ? " · closed" : ""}` }))} />
             </ScrollFade>
           )}
-          <Tabs value={tabKey} onValueChange={(k) => { const tab = tabs.find((x) => x.key === k); if (tab) t.set(tabPatch(tab)); }} className="max-md:hidden">
-            <TabsList aria-label="Passes">
-              {tabs.map((tab) => <TabsTrigger key={tab.key} value={tab.key}>{tab.name}<CountBadge>{formatNumber(tab.count)}</CountBadge></TabsTrigger>)}
-            </TabsList>
-          </Tabs>
+          {/* each pass is a link to its URL (opens in a new tab too); a plain click changes the URL in place */}
+          <RouteTabs aria-label="Passes" className="max-md:hidden">
+            {tabs.map((tab) => (
+              <a key={tab.key} href={t.hrefOf(tabPatch(tab))} aria-current={tab.key === tabKey ? "page" : undefined} className="gap-1.5"
+                onClick={(e) => { if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return; e.preventDefault(); t.set(tabPatch(tab)); }}>
+                {tab.name}<CountBadge>{formatNumber(tab.count)}</CountBadge>
+              </a>
+            ))}
+          </RouteTabs>
           <div className="flex flex-wrap items-center gap-3">
             <span role="status" className="text-body-sm text-fg-2">{caption}{pass ? ` · ${pass.name}` : ""}{status === "suggested" ? " · open until someone accepts them" : ""}</span>
             {breaksTab && <span className="text-body-sm text-fg-2">Duplicates from the passes; the rest left open at day close.</span>}

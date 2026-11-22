@@ -422,10 +422,14 @@ export function readIn(days: readonly { items?: { a: number; b: number } }[]): n
   if (!days.length || days.some((d) => !d.items)) return null;
   return days.reduce((n, d) => n + d.items!.a + d.items!.b, 0);
 }
-/** The one currency of these rows (blanks left out), or null for none or several. */
-export function oneCurrency(ccys: readonly (string | null)[]): string | null {
-  const set = new Set(ccys.filter((c): c is string => !!c));
-  return set.size === 1 ? [...set][0]! : null;
+/**
+ * The one currency of a run's amounts, or null: both sides' sources write every row in the same fixed currency (no
+ * currency column). Read from the sources, not the rows of a page, so the header is the same on every page; null puts
+ * a Currency column on every page.
+ */
+export function runCurrency(...specs: ({ currency?: string; mapping: { currency?: unknown } } | null)[]): string | null {
+  const ccys = specs.map((x) => (x && !x.mapping.currency ? (x.currency ?? null) : null));
+  return ccys.every((c) => c !== null && c === ccys[0]) ? ccys[0]! : null;
 }
 
 /** A business date of a run in the strip: groups matched and suggested, items broken by label, items waiting per side. */

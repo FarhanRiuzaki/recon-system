@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, scopeCaption, readIn, oneCurrency } from "./run-model";
+import { amountText, connectorText, countLine, dayPasses, dayTotals, differenceText, itemsText, passOutcome, pastClose, projectionText, rangeText, reasonCount, recordDates, replayEnd, replayGap, suggestedReplay, runDays, runTotals, sidesText, simView, doneChip, standingTotals, breakCounts, carryOverText, counterpartWindow, lonePairText, pairDifference, reasonOptions, breakPair, breaksOf, breaksText, runLine, runRowChips, scopeCaption, readIn, runCurrency } from "./run-model";
 
 // The Plan 3 gate (docs/recon/source-test-db.md "Kunci jawaban"): pass 1 exact with duplicates, passes 2 and 3 suggest.
 const pass = (no: number, accept: "auto" | "suggest", blocking: string[] = ["ext_ref"]): PassSpec =>
@@ -281,11 +281,13 @@ describe("the results table's caption names its scope (audit R8)", () => {
   });
 });
 
-describe("one currency on the page (§5.9: the currency column goes when every row has the same)", () => {
-  it("that currency, or null for none or several", () => {
-    expect(oneCurrency(["IDR", "IDR", null])).toBe("IDR");
-    expect(oneCurrency(["IDR", "USD"])).toBeNull();
-    expect(oneCurrency([null])).toBeNull();
-    expect(oneCurrency([])).toBeNull();
+describe("the run's currency (§5.9: in the amount headers when every row has it, the same on every page)", () => {
+  it("both sides' sources write one fixed currency: that one; a currency column, none or two: null (a Currency column)", () => {
+    const fixed = (currency?: string, column = false) => ({ currency, mapping: column ? { currency: { field: "ccy" } } : {} });
+    expect(runCurrency(fixed("IDR"), fixed("IDR"))).toBe("IDR");
+    expect(runCurrency(fixed("IDR"), fixed("USD"))).toBeNull();
+    expect(runCurrency(fixed("IDR"), fixed(undefined, true))).toBeNull();
+    expect(runCurrency(fixed(), fixed())).toBeNull();
+    expect(runCurrency(null, fixed("IDR"))).toBeNull();
   });
 });

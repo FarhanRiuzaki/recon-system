@@ -139,6 +139,20 @@ export function preserveTableParams(next: URLSearchParams, current: URLSearchPar
   return next;
 }
 
+/**
+ * The URL a table goes to after `patch` (what `useTableQuery`'s set navigates to, and the href of a filter drawn as a
+ * link): its state written over `current`, the transient keys and the other tables kept; `current` unchanged when the
+ * patch changes nothing.
+ */
+export function tableHref<F extends Record<string, string>>(pathname: string, current: URLSearchParams, patch: Partial<TableState<NoInfer<F>>>, def: {
+  spec: TableSpec<F>; edit?: (source: URLSearchParams, patch: Partial<TableState<F>>) => URLSearchParams | null; transient?: readonly string[];
+}): string {
+  const next = def.edit ? def.edit(current, patch) : writeTable(readTable(current, def.spec), patch, def.spec);
+  const out = next ? preserveTableParams(next, current, def.transient ?? []) : current;
+  if (next && !def.edit) withOtherTables(next, current, def.spec);
+  return out.size ? `${pathname}?${out}` : pathname;
+}
+
 export const sortState = (sort: string): SortState => (sort.startsWith("-") ? { key: sort.slice(1), dir: "desc" } : { key: sort, dir: "asc" });
 export const toSortParam = (s: SortState): string => (s.dir === "desc" ? `-${s.key}` : s.key);
 
