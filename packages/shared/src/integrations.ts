@@ -99,3 +99,85 @@ export function withPresets(body: unknown, presets: Readonly<Record<string, stri
   }
   return out;
 }
+
+// ---- a field table copied from a bank's spec (PDF or Word): one row per field, wrapped descriptions in between ----
+const TYPE_WORDS: Record<string, FieldType> = {
+  string: "string", alphanumeric: "string", an: "string", ans: "string", char: "string", varchar: "string", text: "string", date: "string", datetime: "string", time: "string",
+  numeric: "numeric", number: "numeric", integer: "numeric", int: "numeric", long: "numeric", decimal: "numeric", double: "numeric", amount: "numeric", n: "numeric",
+  boolean: "boolean", bool: "boolean", object: "object", array: "array", list: "array",
+};
+/** M / O / C as specs mark them ("N" is the numeric type, as ISO-style specs write it). */
+const MANDATORY: Record<string, boolean> = { m: true, mandatory: true, required: true, y: true, yes: true, o: false, optional: false, c: false, conditional: false, no: false };
+const NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
+
+/** One table row as a field, or null for a header, a wrapped description or prose. */
+function tableRow(line: string): { indent: number; numbered: boolean; path: string; field: OpField } | null {
+  const indent = line.length - line.trimStart().length;
+  let rest = line.trim();
+  const num = /^\d+[.)]\s+/.exec(rest);
+  if (num) rest = rest.slice(num[0].length);
+  const t = rest.split(/\s+/);
+  if (!t[0] || !NAME.test(t[0])) return null;
+  let required = false, type: FieldType | null = null, maxLength: number | undefined, i = 1;
+  for (; i < Math.min(t.length, 4) && !type; i++) {
+    const w = t[i]!.toLowerCase();
+    if (TYPE_WORDS[w]) type = TYPE_WORDS[w]!;
+    else if (MANDATORY[w] !== undefined) required = MANDATORY[w]!;
+    else return null;
+  }
+  if (!type) return null;
+  const len = t[i] ? /^(\d{1,5})(?:[,.]\d+)?$/.exec(t[i]!) : null;
+  if (len && type !== "object" && type !== "array") maxLength = Number(len[1]);
+  const path = t[0];
+  const name = path.split(".").at(-1)!;
+  return { indent, numbered: !!num, path, field: { name, type, ...(maxLength ? { maxLength } : {}), required, ...(type === "object" || type === "array" ? { children: [] } : {}) } };
+}
+
+/**
+ * The fields of a table copied from a spec: a row is "name [M|O] type [length] description" (tabs or spaces); rows
+ * numbered "1." or indented under an Object/Array row are its fields; "DE48.TraceID" goes under DE48. `rows` = rows read.
+ */
+export function fieldsFromTable(text: string): { fields: OpField[]; rows: number } {
+  const out: OpField[] = [];
+  let group: { field: OpField; indent: number } | null = null, rows = 0;
+  const under = (parent: OpField[], parts: string[], f: OpField) => {
+    let at = parent;
+    for (const p of parts.slice(0, -1)) {
+      let g = at.find((x) => x.name === p && x.children);
+      if (!g) { g = { name: p, type: "object", required: false, children: [] }; at.push(g); }
+      at = g.children!;
+    }
+    at.push(f);
+  };
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const r = tableRow(line);
+    if (!r) continue;
+    rows++;
+    const child = !!group && (r.numbered || r.indent > group.indent);
+    if (child) group!.field.children!.push(r.field);
+    else {
+      under(out, r.path.split("."), r.field);
+      group = r.field.children ? { field: r.field, indent: r.indent } : null;
+    }
+  }
+  const tidy = (fs: OpField[]): OpField[] => fs.map((f) => (f.children ? (f.children.length ? { ...f, children: tidy(f.children) } : (({ children: _, ...x }) => x)(f)) : f));
+  return { fields: tidy(out), rows };
+}
+
+/** What a paste from a spec holds: an OpenAPI file, a sample JSON or a field table; the fields, or why none. */
+export function readSpecPaste(text: string, path: string, method: string, side: "request" | "response"): { fields: OpField[]; from: "openapi" | "sample" | "table" } | string {
+  const none = "No fields were found. Paste the field table, a sample JSON or an OpenAPI file from the spec.";
+  let json: unknown;
+  try { json = JSON.parse(text); } catch { json = undefined; }
+  if (json !== undefined && json !== null && typeof json === "object") {
+    const doc = json as Record<string, unknown>;
+    if ("paths" in doc || "openapi" in doc || "swagger" in doc) {
+      const r = fieldsFromOpenApi(doc, path, method);
+      return typeof r === "string" ? r : r[side].length ? { fields: r[side], from: "openapi" } : none;
+    }
+    const f = fieldsFromSample(json);
+    return f.length ? { fields: f, from: "sample" } : none;
+  }
+  const t = fieldsFromTable(text);
+  return t.fields.length ? { fields: t.fields, from: "table" } : none;
+}

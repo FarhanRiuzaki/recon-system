@@ -8,7 +8,8 @@ import { CloseIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
-import { FIELD_TYPES, type FieldType, fieldsFromOpenApi, fieldsFromSample, type OpField } from "@starterkit/shared/integrations";
+import { toast } from "@starterkit/ui/ui/toast";
+import { FIELD_TYPES, type FieldType, fieldPaths, type OpField, readSpecPaste } from "@starterkit/shared/integrations";
 
 // An operation's request or response fields as a tree (DEC-053): name, type, required, length; a field can be masked
 // (shown and stored hidden) and, on the request, given a fixed value. Fields come from a sample JSON or an OpenAPI file,
@@ -65,8 +66,8 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
 }
 
 /**
- * A field tree with Import: paste a sample JSON (types read from its values) or an OpenAPI file (its `path` and
- * `method`); imported fields replace the tree.
+ * A field tree with Paste from the spec: a field table copied from the bank's spec (rows of name, M/O, type, length),
+ * a sample JSON (types read from its values) or an OpenAPI file (its `path` and `method`); the fields read replace the tree.
  */
 export function FieldTree({ title, fields, onChange, masked, onMask, presets, onPreset, disabled, openApi }: {
   title: string; fields: OpField[]; onChange: (f: OpField[], rename?: [string, string]) => void; masked: readonly string[]; onMask: (path: string, on: boolean) => void;
@@ -77,30 +78,28 @@ export function FieldTree({ title, fields, onChange, masked, onMask, presets, on
   const [importing, setImporting] = useState(false);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
-  function read(kind: "sample" | "openapi") {
-    let doc: unknown;
-    try { doc = JSON.parse(text); } catch { setProblem("This isn't JSON. Paste the sample or the OpenAPI file as JSON."); return; }
-    const got = kind === "sample" ? fieldsFromSample(doc) : fieldsFromOpenApi(doc, openApi.path, openApi.method);
+  function read() {
+    const got = readSpecPaste(text, openApi.path, openApi.method, openApi.side);
     if (typeof got === "string") { setProblem(got); return; }
-    const next = Array.isArray(got) ? got : got[openApi.side];
-    if (!next.length) { setProblem("No fields were found in it."); return; }
-    onChange(next); setImporting(false); setText(""); setProblem(null);
+    onChange(got.fields); setImporting(false); setText(""); setProblem(null);
+    const n = fieldPaths(got.fields).length;
+    toast(`${n} ${n === 1 ? "field" : "fields"} read from the ${got.from === "table" ? "field table" : got.from === "sample" ? "sample" : "OpenAPI file"}.`);
   }
   return (
     <section className="grid gap-2" aria-label={title}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-label text-fg">{title}</h3>
-        {!disabled && <Button type="button" variant="ghost" size="sm" onClick={() => setImporting(!importing)}>{importing ? "Close import" : "Import fields"}</Button>}
+        {!disabled && <Button type="button" variant="ghost" size="sm" onClick={() => setImporting(!importing)}>{importing ? "Close" : "Paste from the spec"}</Button>}
       </div>
       {importing && (
         <div className="grid gap-2 rounded-lg border border-line bg-tray p-3 motion-safe:animate-enter">
-          <Textarea aria-label={`${title}: sample JSON or OpenAPI file`} rows={6} value={text} onChange={(e) => setText(e.target.value)} className="font-mono"
-            placeholder={'Paste a sample, e.g. { "ResponseCode": "00", "ReferenceNumber": "123456" }, or an OpenAPI file'} />
+          <Textarea aria-label={`${title}: pasted from the spec`} rows={8} value={text} onChange={(e) => { setText(e.target.value); setProblem(null); }} className="font-mono"
+            placeholder={"Copy the field table from the bank's spec (PDF or Word) and paste it here, or a sample JSON, or an OpenAPI file.\nfromDateTime   M   String   25   Range start"} />
           {problem && <span role="alert" className="text-caption text-down-ink">{problem}</span>}
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => read("sample")}>Read a sample</Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => read("openapi")}>Read an OpenAPI file</Button>
-          </div>
+          <span className="flex flex-wrap items-center gap-3">
+            <Button type="button" variant="secondary" size="sm" onClick={read} disabled={!text.trim()}>Read fields</Button>
+            <span className="text-caption text-fg-3">The fields read replace the ones below.</span>
+          </span>
         </div>
       )}
       {fields.length > 0 && (
@@ -110,7 +109,7 @@ export function FieldTree({ title, fields, onChange, masked, onMask, presets, on
       )}
       {fields.length
         ? <Rows fields={fields} prefix="" depth={0} onChange={onChange} masked={masked} onMask={onMask} presets={presets} onPreset={onPreset} disabled={disabled} label={title} />
-        : <p className="text-body-sm text-fg-3">No fields yet. Import a sample or add one.</p>}
+        : <p className="text-body-sm text-fg-3">No fields yet. Paste them from the spec or add one.</p>}
       {!disabled && (
         <Button type="button" variant="link" size="sm" className="justify-self-start px-0" onClick={() => onChange([...fields, { name: "", type: "string", required: false }])}>Add a field</Button>
       )}

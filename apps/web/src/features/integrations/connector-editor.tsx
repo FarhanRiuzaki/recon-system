@@ -250,7 +250,7 @@ export function ConnectorEditor({ id }: { id: string }) {
               <OperationEditor key={at} op={op} onChange={setOp} disabled={readOnly} />
             </Panel>
           ) : (
-            <Panel title="Operations"><p className="text-body-sm text-fg-3">No operations yet. {readOnly ? "A draft adds them." : "Add one, then import its fields from a sample or an OpenAPI file."}</p></Panel>
+            <Panel title="Operations"><p className="text-body-sm text-fg-3">No operations yet. {readOnly ? "A draft adds them." : "Add one, then paste its fields from the spec."}</p></Panel>
           )}
         </div>
       )}
