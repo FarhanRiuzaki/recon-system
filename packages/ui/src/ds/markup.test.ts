@@ -14,6 +14,8 @@ import { ActionCard } from "./action-card";
 import { CompareCard } from "./compare-card";
 import { EditorRow } from "./editor-row";
 import { PageZone } from "./page-zone";
+import { BlockedButton } from "./blocked-button";
+import { TooltipProvider } from "../ui/tooltip";
 
 /** Server markup of the v3 signature components (spec §5.4, §5.5): structure and copy, not pixels. */
 const html = (el: ReturnType<typeof h>) => renderToStaticMarkup(el);
@@ -162,6 +164,13 @@ describe("PageZone (audit P2)", () => {
     expect(classOf(out, "page-zone")).toEqual(expect.arrayContaining(["grid", "gap-gutter"]));
     expect(out).toContain('<h2 class="eyebrow text-fg-3">History</h2><p>panel</p>');
   });
+  it("the zone heading is h2; a Panel inside the zone titles itself h3, outside it h2", () => {
+    const out = html(h(PageZone, { title: "History", children: h(Panel, { title: "Activity", children: "x" }) }));
+    expect(out).toContain('<h2 class="eyebrow text-fg-3">History</h2>');
+    expect(out).toContain('<h3 class="text-title-3 text-fg">Activity</h3>');
+    expect(out).not.toContain(">Activity</h2>");
+    expect(html(h(Panel, { title: "Activity", children: "x" }))).toContain('<h2 class="text-title-3 text-fg">Activity</h2>');
+  });
 });
 
 describe("EditorRow (audit P7)", () => {
@@ -194,6 +203,15 @@ describe("CompareCard (audit P8)", () => {
     expect(same).toContain("border-l-transparent");
     expect(same).not.toContain("font-semibold");
   });
+  it("the table is named by the card title, and so is its scroll box (focusable while it overflows: scroll-fade.test)", () => {
+    expect(out).toMatch(/<table[^>]*><caption class="sr-only" id="([^"]+)">Bank and ledger<\/caption>/);
+    const id = /<caption class="sr-only" id="([^"]+)"/.exec(out)![1]!;
+    expect(out).toContain(`aria-labelledby="${id}"`);
+  });
+  it("two rows with one label both render (rows keyed by place and label)", () => {
+    const twice = html(h(CompareCard, { title: "x", sides: ["A", "B"], rows: [{ label: "Ref", a: "1", b: "2", differs: true }, { label: "Ref", a: "3", b: "3", differs: false }] }));
+    expect(twice.match(/>Ref</g)).toHaveLength(2);
+  });
   it("no difference column when no row has one", () => {
     expect(html(h(CompareCard, { title: "x", sides: ["A", "B"], rows: [{ label: "Ref", a: "1", b: "2", differs: true }] }))).not.toContain("Difference");
   });
@@ -203,7 +221,11 @@ describe("ActionCard (audit P9)", () => {
   it("title, consequence, meta, and the button pinned to the bottom; full height in its grid row", () => {
     const out = html(h(ActionCard, { title: "Request posting", consequence: "Sends the entry to core banking after approval.", meta: "Two-level approval · Core banking", action: h(Button, null, "Request posting") }));
     expect(classOf(out, "action-card")).toEqual(expect.arrayContaining(["flex", "h-full", "flex-col"]));
-    expect(out).toMatch(/<h3[^>]*>Request posting<\/h3><p[^>]*>Sends the entry to core banking after approval\.<\/p><p class="text-caption text-fg-3">Two-level approval · Core banking<\/p><div class="mt-auto[^"]*"><button/);
+    expect(out).toMatch(/<h3[^>]*>Request posting<\/h3><p[^>]*>Sends the entry to core banking after approval\.<\/p><p class="text-caption text-fg-3">Two-level approval · Core banking<\/p><div class="mt-auto[^"]*" data-slot="action-card-action"><button/);
+  });
+  it("a BlockedButton's caption (shown on touch) sits above the button, so the buttons of a row stay on one line", () => {
+    const out = html(h(TooltipProvider, null, h(ActionCard, { title: "Request posting", consequence: "Sends it.", action: h(BlockedButton, { reason: "Needs approval first." }, "Request posting") })));
+    expect(out).toMatch(/<div class="mt-auto [^"]*\*:data-\[slot=blocked-button\]:flex-col-reverse[^"]*" data-slot="action-card-action"><span class="[^"]*pointer-coarse:inline-flex[^"]*" data-slot="blocked-button"><button/);
   });
   it("without meta, no empty line", () => {
     expect(html(h(ActionCard, { title: "Write off", consequence: "Closes the item.", action: "x" }))).not.toContain("text-caption");

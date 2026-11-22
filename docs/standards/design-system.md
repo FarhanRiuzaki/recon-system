@@ -188,10 +188,10 @@ and a soft (chip bg):
 
 | State | Mark | Ink | Soft | Shape |
 |---|---|---|---|---|
-| Healthy | `#16a05a` | `#117a46` | `#e9f7ef` | filled circle-check |
+| Healthy | `#149a56` | `#117a46` | `#e9f7ef` | filled circle-check |
 | Degraded | `#c96a05` | `#ae5109` | `#fff2e6` | triangle |
 | Down | `#e5303a` | `#c8262f` | `#feeced` | circle-x |
-| Stopped | `#8a8a93` | `#55555c` | `#f1f1f3` | square |
+| Stopped | `#868690` | `#55555c` | `#f1f1f3` | square |
 | Unknown | `#a1a1aa` (dashed ring) | `#55555c` | `#f1f1f3` | dashed circle |
 
 Contrast verified: Healthy ink on soft 4.88:1, Degraded 4.80:1 (ink `#ae5109`, one step darker than `#b25309` so it keeps 4.5:1 on the deeper tray), Down 4.88:1, Stopped ink on soft 5.54:1;
@@ -931,20 +931,28 @@ set up, in named groups, with the progress as a count and a bar. Written for the
 
 - **PageZone** (`ds/page-zone.tsx`; /ds/components): one part of a page (Summary, Act, History) under an `eyebrow`
   heading in fg-3, its panels 16 px apart (`gap-gutter`). Zones stack in `grid gap-zone` (40 px, `--gap-zone`).
-  History comes last and its panels take `tone="quiet"` (§5.4).
+  History comes last and its panels take `tone="quiet"` (§5.4). The zone title is the h2; a Panel inside a zone titles
+  itself h3 (`PanelHeading` context), outside one h2.
 - **EditorRow** (`ds/editor-row.tsx`; /ds/components): a row of an editor on the fixed grid
   `grid-cols-[9rem_minmax(0,1fr)_2rem] items-start gap-2`: lead (a label or a level name), main (the controls), trailing
   (a remove button). The trailing column is reserved when the row has none (an invisible cell), so rows line up and
   nothing moves when one gains a remove button. One column below 768 px.
 - **CompareCard** (`ds/compare-card.tsx`; /ds/data): two sides of one comparison in a Panel, a row per field (`rows`:
   `{ label, a, b, delta?, differs }`, `sides` names the columns), a Difference column when any row has a delta. A row
-  that differs has a 2 px `--line-strong` left rule, bold values and a screen-reader "differs".
+  that differs has a 2 px `--line-strong` left rule, bold values and a screen-reader "differs". The table's caption
+  (screen reader only) is the card title; the scroll box is named by it and, while it overflows, is a focusable region
+  (`ScrollFade focusable`) so a keyboard can scroll it.
 - **ActionCard** (`ds/action-card.tsx`; /ds/components): an action that says its consequence before the press: title
   (`title-3`), consequence (`body-sm` fg-2), optional meta (`caption` fg-3, "Two-level approval · Core banking") and the
   button (Primary, Secondary or a `BlockedButton` with its reason) pinned to the bottom (`mt-auto`); `h-full`, so cards
-  in a grid row are as tall as the row and their buttons sit on one line.
+  in a grid row are as tall as the row and their buttons sit on one line. On touch a BlockedButton's caption goes above
+  its button (`flex-col-reverse`), so the buttons still line up.
 - **Hidden by default** (`Column.defaultHidden`, `ds/data-table.tsx`): a table shows at most 7 columns at 1440 px; the rest start
-  hidden until the viewer turns them on in ColumnsMenu (saved per viewer; "Reset to default" goes back to these).
+  hidden until the viewer turns them on in ColumnsMenu (saved per viewer and table as changes against these defaults, so
+  a column made `defaultHidden` later starts hidden for everyone who hasn't shown it; "Reset to default" goes back to
+  them). Only reachable through ColumnsMenu: a table with a `defaultHidden` column renders ColumnsMenu
+  (`architecture.test.ts` "a defaultHidden column is reachable"), and its page needs a `VIEW_PAGES` entry
+  (`lib/shared/prefs.ts`): without one `useTableQuery` keeps no choice and the menu changes nothing.
 
 ## 6. Charts
 

@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { createContext, type ReactNode, useContext } from "react";
 import { Icon, type IconData } from "../ui/icon";
 import { cn } from "../lib/cn";
 import { CardSurface } from "./card-surface";
@@ -22,16 +24,21 @@ import { type LegendItem, StatusLegend } from "./status-legend";
  * - `toolbar`: a list's search and filters (`Toolbar`) on the title row, right of "Users 51" (ui-standard §1 item 4);
  *   it wraps under the title when the row is narrow, and the description moves to its own line under them.
  */
+/** The heading a Panel titles itself with: h2, or h3 inside a PageZone (whose title is the h2). */
+export const PanelHeading = createContext<"h2" | "h3">("h2");
+
 export function Panel({ title, description, actions, children, flush, className, icon, count, footnote, variant = "tray", tone, cards, bodyClassName, legend, toolbar }: {
   title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; flush?: boolean; className?: string;
   icon?: IconData; count?: number | string; footnote?: ReactNode; variant?: "tray" | "flat"; cards?: boolean; bodyClassName?: string;
   legend?: readonly LegendItem[]; toolbar?: ReactNode; tone?: "quiet";
 }) {
   const quiet = tone === "quiet";
+  const level = useContext(PanelHeading);
+  const titleClass = cn("text-title-3", quiet ? "text-fg-2" : "text-fg");
   const header = (title || actions || legend || toolbar) && (
     <header className={cn("flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1", variant === "tray" ? "px-3 py-1.5" : "px-4 pt-3")}>
       {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-2" />}
-      {title && <h2 className={cn("text-title-3", quiet ? "text-fg-2" : "text-fg")}>{title}</h2>}
+      {title && (level === "h3" ? <h3 className={titleClass}>{title}</h3> : <h2 className={titleClass}>{title}</h2>)}
       {count != null && <CountBadge inTray={variant === "tray"}>{count}</CountBadge>}
       {/* Phone: the description takes its own line under the title row, without the middot. Wider: it wraps inside
           its own box (from 12rem) before it pushes the actions or the legend button onto a line of their own. */}

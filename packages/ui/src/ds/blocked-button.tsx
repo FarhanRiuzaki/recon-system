@@ -20,7 +20,7 @@ export function BlockedButton({ reason, caption = true, children, onClick, class
   if (!reason) return <Button onClick={onClick} className={className} {...props}>{children}</Button>;
   return (
     // Only `display` changes with the pointer; the flex classes act once the wrapper is a box (coarse).
-    <span className={cn("contents flex-col items-start gap-1 pointer-coarse:inline-flex", wrapClassName)}>
+    <span className={cn("contents flex-col items-start gap-1 pointer-coarse:inline-flex", wrapClassName)} data-slot="blocked-button">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button {...props} aria-disabled="true" aria-describedby={id} onClick={(e) => e.preventDefault()} className={cn("aria-disabled:cursor-default aria-disabled:opacity-50", className)}>{children}</Button>

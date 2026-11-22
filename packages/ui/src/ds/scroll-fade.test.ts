@@ -26,4 +26,21 @@ describe("ScrollFade (owner rule: every region that scrolls fades where it goes 
     expect([...host.querySelectorAll("[data-slot=scroll-fade-edge]")].every((x) => x.getAttribute("aria-hidden") === "true")).toBe(true);
     await act(async () => root.unmount());
   });
+  it("focusable: a named region in the tab order while it overflows (keyboard scrolling), out of it while it fits", async () => {
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    await act(async () => root.render(h(ScrollFade, { focusable: true, "aria-label": "Comparison" }, h("table", null))));
+    const box = host.querySelector<HTMLElement>("[data-slot=scroll-fade] > div")!;
+    const size = (o: Record<string, number>) => { for (const [k, v] of Object.entries(o)) Object.defineProperty(box, k, { value: v, configurable: true, writable: true }); };
+    expect(box.getAttribute("tabindex")).toBeNull();
+    expect(box.getAttribute("aria-label")).toBe("Comparison");
+    size({ scrollHeight: 80, clientHeight: 80, scrollTop: 0, scrollWidth: 600, clientWidth: 300, scrollLeft: 0 });
+    await act(async () => { box.dispatchEvent(new Event("scroll")); });
+    expect(box.getAttribute("tabindex")).toBe("0");
+    expect(box.getAttribute("role")).toBe("region");
+    size({ scrollWidth: 300 });
+    await act(async () => { box.dispatchEvent(new Event("scroll")); });
+    expect(box.getAttribute("tabindex")).toBeNull();
+    await act(async () => root.unmount());
+  });
 });

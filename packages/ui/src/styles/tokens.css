@@ -54,7 +54,7 @@
   --row-selected: #f5f9ff;
   --seg-active: #ffffff;
   /* status: mark (icon/dot, ≥ 3:1), ink (text, ≥ 4.5:1 on soft and on every surface), soft (chip bg) */
-  --healthy-mark: #16a05a;  --healthy-ink: #117a46;  --healthy-soft: #e9f7ef;
+  --healthy-mark: #149a56;  --healthy-ink: #117a46;  --healthy-soft: #e9f7ef;
   --degraded-mark: #c96a05; --degraded-ink: #ae5109; --degraded-soft: #fff2e6;
   --down-mark: #e5303a;     --down-ink: #c8262f;     --down-soft: #feeced;
   --down-soft-hover: #fde3e5; /* Danger button hover: Down ink on it 4.58:1 (dark 5.39:1) */
@@ -62,7 +62,7 @@
   --add-ink: #1d5fcc;
   --add-soft: #ebf2fe;
   --add-soft-hover: #dde9fd;
-  --stopped-mark: #8a8a93;  --stopped-ink: #55555c;  --stopped-soft: #f1f1f3;
+  --stopped-mark: #868690;  --stopped-ink: #55555c;  --stopped-soft: #f1f1f3;
   --unknown-mark: #a1a1aa;  --unknown-ink: #55555c;  --unknown-soft: #f1f1f3;
   --on-crit: #ffffff;
   /* SQL syntax (SqlEditor), after VS Code's Light+ / Dark+: text colours, each ≥ 4.5:1 on card and inset */

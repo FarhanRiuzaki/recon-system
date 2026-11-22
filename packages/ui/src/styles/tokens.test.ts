@@ -70,6 +70,8 @@ const MARKS: [string, string][] = [
   ["ring", "bg"], ["ring", "sheet"], ["ring", "card"],
   // StatusChip draws Stopped and Unknown shapes in stopped-mark (unknown-mark is decorative only, < 3:1).
   ["stopped-mark", "card"], ["stopped-mark", "sheet"],
+  // a Panel header (status legend, icons) sits on the tray
+  ...["healthy-mark", "degraded-mark", "down-mark", "stopped-mark"].map((m) => [m, "tray"] as [string, string]),
 ];
 
 /** Spec §3.3: slot order is fixed (hue follows the entity, never the rank). */

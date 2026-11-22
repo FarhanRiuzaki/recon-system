@@ -36,13 +36,16 @@ const FADE = "pointer-events-none absolute z-20 from-line via-tray to-transparen
 /**
  * A box that scrolls, on either axis, with a fade on each side that has content hidden past it (owner rule, 21 Nov:
  * every region that scrolls shows where it goes on). `className` sizes the box (it scrolls inside); the fades sit on
- * it and never take a pointer. Decoration only: the box keeps its own role and label.
+ * it and never take a pointer. Decoration only: the box keeps its own role and label. `focusable` (give it an
+ * `aria-label` or `aria-labelledby`): while the content overflows, the box is a region in the tab order, so a keyboard
+ * can scroll it (WCAG 2.1.1); while it fits it is not a tab stop.
  */
-export function ScrollFade({ className, children, ...props }: React.ComponentProps<"div">) {
+export function ScrollFade({ className, children, focusable, ...props }: React.ComponentProps<"div"> & { focusable?: boolean }) {
   const [ref, e] = useEdges<HTMLDivElement>();
+  const reach = focusable && (e.top || e.bottom || e.left || e.right) ? { tabIndex: 0, role: "region" } : {};
   return (
     <div data-slot="scroll-fade" className="relative h-full min-h-0 min-w-0">
-      <div ref={ref} className={cn("scroll-quiet overflow-auto", className)} {...props}>{children}</div>
+      <div ref={ref} className={cn("scroll-quiet overflow-auto", focusable && "focus-visible:-outline-offset-2", className)} {...reach} {...props}>{children}</div>
       <span aria-hidden="true" data-slot="scroll-fade-edge" data-side="top" data-on={e.top || undefined} className={cn(FADE, "inset-x-0 top-0 h-8 bg-linear-to-b")} />
       <span aria-hidden="true" data-slot="scroll-fade-edge" data-side="bottom" data-on={e.bottom || undefined} className={cn(FADE, "inset-x-0 bottom-0 h-8 bg-linear-to-t")} />
       <span aria-hidden="true" data-slot="scroll-fade-edge" data-side="left" data-on={e.left || undefined} className={cn(FADE, "inset-y-0 left-0 w-12 bg-linear-to-r")} />

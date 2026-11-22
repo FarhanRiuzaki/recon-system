@@ -21,7 +21,7 @@ describe("BlockedButton reason on touch", () => {
   });
 
   it("the wrapper adds no box with a fine pointer (desktop layout unchanged) and stacks button (its own width) and caption under a coarse one", () => {
-    const wrap = classesOf(html(), /^<span class="([^"]*)"><button/);
+    const wrap = classesOf(html(), /^<span class="([^"]*)" data-slot="blocked-button"><button/);
     expect(wrap).toEqual(expect.arrayContaining(["contents", "pointer-coarse:inline-flex", "flex-col", "items-start"]));
   });
 
@@ -44,7 +44,7 @@ describe("BlockedButton layout classes", () => {
   });
 
   it("wrapClassName lays out the button + caption pair under a coarse pointer (with a fine one the wrapper has no box)", () => {
-    const wrap = classesOf(html({ wrapClassName: "ml-auto items-end" }), /^<span class="([^"]*)"><button/);
+    const wrap = classesOf(html({ wrapClassName: "ml-auto items-end" }), /^<span class="([^"]*)" data-slot="blocked-button"><button/);
     expect(wrap).toEqual(expect.arrayContaining(["contents", "pointer-coarse:inline-flex", "ml-auto", "items-end"]));
     expect(wrap).not.toContain("items-start");
   });

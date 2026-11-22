@@ -249,6 +249,23 @@ const COLUMNS_MENU_ALLOWED: Record<string, string> = {
   [`${WEB}features/breaks/break-activity.tsx`]: "the unmatch item's History zone: a quiet three-column trail, not a list page (audit B9)",
 };
 
+/**
+ * A `defaultHidden` column is reachable only through ColumnsMenu (and kept only on a VIEW_PAGES page, tested below):
+ * a file that defines one renders ColumnsMenu where it renders the DataTable; a columns module without a DataTable
+ * is checked in every file that imports it and renders a DataTable.
+ */
+function defaultHiddenViolations(fs: F[]): string[] {
+  const table = (src: string) => /<DataTable\b/.test(src), menu = (src: string) => /<ColumnsMenu\b/.test(src);
+  return fs.filter(({ r }) => r.startsWith(WEB) && /\.tsx?$/.test(r) && !r.endsWith(".test.ts")).flatMap(({ r, src }) => {
+    const code = strip(src);
+    if (!/\bdefaultHidden\s*:\s*true\b/.test(code)) return [];
+    if (table(code)) return menu(code) ? [] : [`${r}: a defaultHidden column without ColumnsMenu`];
+    const self = r.replace(/\.tsx?$/, "");
+    return fs.filter((x) => x.imp.some((s) => resolveSpec(x.r, s) === self) && table(strip(x.src)) && !menu(strip(x.src)))
+      .map((x) => `${x.r}: a defaultHidden column (${r}) without ColumnsMenu`);
+  });
+}
+
 function columnsMenuViolations(fs: F[], allowed: Record<string, string> = COLUMNS_MENU_ALLOWED): string[] {
   return fs.filter(({ r, src }) => r.startsWith(`${WEB}features/`) && !(r in allowed) && LIST_CALL.test(strip(src)))
     .filter(({ src }) => {
@@ -475,6 +492,10 @@ describe("architecture", () => {
   it("every list screen has saved views and the column chooser (SavedViewsMenu, ColumnsMenu + DataTable hidden)", () => {
     expect(columnsMenuViolations(files)).toEqual([]);
     expect(Object.keys(COLUMNS_MENU_ALLOWED).filter((k) => !files.some((x) => x.r === k && LIST_CALL.test(strip(x.src))))).toEqual([]);
+  });
+
+  it("a defaultHidden column is reachable: its table renders ColumnsMenu", () => {
+    expect(defaultHiddenViolations(files)).toEqual([]);
   });
 
   it("every page with a list screen is in VIEW_PAGES", () => {
@@ -744,6 +765,17 @@ import { INTENTS } from "@starterkit/ui/ds";\nimport x from "bunyan";`),
       f(`${WEB}features/d/detail.tsx`, `<DataTable columns={c} rows={u.recent} />`),
       f(`${WEB}features/f/picker.tsx`, `const t = useTableQuery({}); <DataTable columns={c} />`),
     ], { [`${WEB}features/f/picker.tsx`]: "a picker" })).toEqual([`${WEB}features/a/list.tsx: ${msg}`, `${WEB}features/b/list.tsx: ${msg}`, `${WEB}features/e/list.tsx: ${msg}`]);
+  });
+
+  it("fixture: a defaultHidden column on a table without ColumnsMenu, in the file or through a columns module", () => {
+    expect(defaultHiddenViolations([
+      f(`${WEB}features/a/list.tsx`, `const c = [{ key: "at", defaultHidden: true }]; <ColumnsMenu columns={c} /> <DataTable columns={c} />`),
+      f(`${WEB}features/b/list.tsx`, `const c = [{ key: "at", defaultHidden: true }]; <DataTable columns={c} />`),
+      f(`${WEB}features/c/c-columns.tsx`, `export const cols = [{ key: "at", defaultHidden: true }];`),
+      f(`${WEB}features/c/list.tsx`, `import { cols } from "./c-columns"; <DataTable columns={cols} />`),
+      f(`${WEB}features/c/page.tsx`, `import { cols } from "./c-columns"; <ColumnsMenu columns={cols} /> <DataTable columns={cols} />`),
+      f(`${WEB}features/d/list.tsx`, `const c = [{ key: "at", defaultHidden: false }]; <DataTable columns={c} />`),
+    ])).toEqual([`${WEB}features/b/list.tsx: a defaultHidden column without ColumnsMenu`, `${WEB}features/c/list.tsx: a defaultHidden column (${WEB}features/c/c-columns.tsx) without ColumnsMenu`]);
   });
 
   it("fixture: a shared file outside contracts/ importing zod", () => {
