@@ -191,7 +191,8 @@ export const matchGroups = pgTable("match_groups", {
   spaceId: uuid("space_id").notNull(),
   configId: uuid("config_id").notNull(),
   configVersionId: uuid("config_version_id").notNull(),
-  runId: uuid("run_id").notNull(),
+  /** The run that made it; null for a person's match (kind manual or force, Plan 5), which no run made. */
+  runId: uuid("run_id"),
   /** The simulation the group belongs to (its run; null = live), as recon_items.sim_run_id. */
   simRunId: uuid("sim_run_id"),
   passNo: smallint("pass_no").notNull(),

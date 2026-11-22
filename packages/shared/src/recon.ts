@@ -86,6 +86,15 @@ export const AGE_BUCKETS = ["d0", "d1", "d2_3", "d4_7", "d8_30", "gt30"] as cons
 export type AgeBucket = (typeof AGE_BUCKETS)[number];
 /** Each bucket's days, inclusive (null = no upper bound). */
 export const AGE_DAYS: Record<AgeBucket, [number, number | null]> = { d0: [0, 0], d1: [1, 1], d2_3: [2, 3], d4_7: [4, 7], d8_30: [8, 30], gt30: [31, null] };
+/** How a break was resolved (spec §11); the engine writes only AUTO_MATCHED_LATE_DATA. */
+export const RESOLUTIONS = ["MATCHED_MANUAL", "FORCE_MATCHED", "WRITTEN_OFF", "ADJUSTED", "AUTO_MATCHED_LATE_DATA", "DUPLICATE", "NO_ACTION"] as const;
+export type Resolution = (typeof RESOLUTIONS)[number];
+/** The resolutions a person closes a break with, without a match and without approval. */
+export const CLOSE_RESOLUTIONS = ["DUPLICATE", "NO_ACTION"] as const;
+/** The longest note a resolution keeps. */
+export const RESOLUTION_NOTE_MAX = 500;
+/** The most items one manual match pairs with its break. */
+export const MATCH_ITEMS_MAX = 20;
 /** The most breaks one assign or take changes. */
 export const BREAK_BULK_MAX = 100;
 /** Members a run's screens get per group (RunGroupDto.members); `memberCount` tells how many it has. */

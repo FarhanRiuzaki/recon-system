@@ -60,6 +60,7 @@ const COMPOSED = {
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
   ApprovalPage: pageOf(approvals.ApprovalRowDto),
   BreakPage: pageOf(breaks.BreakRowDto),
+  BreakItemPage: pageOf(breaks.BreakItemDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
@@ -134,6 +135,8 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "break.assign": ["break (the item; label its reference)", "`{ assignee, state }`", "`{ assignee, state }` (assignee null = back to Unassigned)"],
   "break.take": ["break", "`{ assignee, state }`", "`{ assignee, state }` (the caller)"],
   "break.state": ["break", "`{ state }`", "`{ state }` (investigating or pending_external)"],
+  "break.match": ["break", "`{ state }`", "`{ resolution, items (side, ref), proposedBy?, note? }`"],
+  "break.close": ["break", "`{ state }`", "`{ resolution, note }` (DUPLICATE or NO_ACTION)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

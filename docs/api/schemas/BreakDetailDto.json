@@ -1,0 +1,378 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BreakDetailDto",
+  "type": "object",
+  "properties": {
+    "item": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "a",
+            "b"
+          ]
+        },
+        "businessDate": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "matched",
+            "suggested",
+            "break",
+            "closed"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amountMinor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventTime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "side",
+        "businessDate",
+        "status",
+        "reason",
+        "ref",
+        "amountMinor",
+        "currency",
+        "eventTime",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "recon": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "sides": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "sides"
+      ],
+      "additionalProperties": false
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "new",
+        "assigned",
+        "investigating",
+        "pending_external",
+        "proposed_resolution",
+        "pending_approval",
+        "resolved"
+      ]
+    },
+    "assignee": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ageDays": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "resolution": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "MATCHED_MANUAL",
+            "FORCE_MATCHED",
+            "WRITTEN_OFF",
+            "ADJUSTED",
+            "AUTO_MATCHED_LATE_DATA",
+            "DUPLICATE",
+            "NO_ACTION"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "matchedWith": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          "businessDate": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "matched",
+              "suggested",
+              "break",
+              "closed"
+            ]
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amountMinor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "eventTime": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "side",
+          "businessDate",
+          "status",
+          "reason",
+          "ref",
+          "amountMinor",
+          "currency",
+          "eventTime",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "proposed": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "item": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                },
+                "businessDate": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "open",
+                    "matched",
+                    "suggested",
+                    "break",
+                    "closed"
+                  ]
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "ref": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "amountMinor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "currency": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "eventTime": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "source": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "side",
+                "businessDate",
+                "status",
+                "reason",
+                "ref",
+                "amountMinor",
+                "currency",
+                "eventTime",
+                "source"
+              ],
+              "additionalProperties": false
+            },
+            "pass": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "available": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "item",
+            "pass",
+            "available"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "item",
+    "recon",
+    "state",
+    "assignee",
+    "ageDays",
+    "resolution",
+    "matchedWith",
+    "proposed"
+  ],
+  "additionalProperties": false
+}

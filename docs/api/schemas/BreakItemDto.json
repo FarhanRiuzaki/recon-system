@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BreakItemDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "matched",
+        "suggested",
+        "break",
+        "closed"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "amountMinor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "eventTime": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "side",
+    "businessDate",
+    "status",
+    "reason",
+    "ref",
+    "amountMinor",
+    "currency",
+    "eventTime",
+    "source"
+  ],
+  "additionalProperties": false
+}

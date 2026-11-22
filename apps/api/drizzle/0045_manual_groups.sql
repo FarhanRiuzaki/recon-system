@@ -1,0 +1,1 @@
+ALTER TABLE "match_groups" ALTER COLUMN "run_id" DROP NOT NULL;

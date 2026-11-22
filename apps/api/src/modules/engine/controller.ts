@@ -5,12 +5,14 @@
 // reads. A request answers 202 with the run, queued; the worker runs it (jobs.ts). Query 400 → guard 401/403 → body
 // 400 → 404 → rules → change → activity (the last four in jobs.ts and service.ts).
 import { Elysia } from "elysia";
-import { AssignBreaksBody, BreakListQuery, BreakStateBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
+import { AssignBreaksBody, BreakCandidateQuery, BreakListQuery, BreakStateBody, CloseBreakBody, MatchBreakBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
+import { TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody } from "@starterkit/shared/contracts/recon";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { assignBreaks, breakPage, setBreakState, takeBreaks } from "./break-queue";
+import { breakActivity, breakDetail, candidatePage, closeBreak, matchBreak, matchPair } from "./break-resolve";
 import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
@@ -26,6 +28,19 @@ export const engineController = () =>
     .post("/v1/spaces/:spaceId/breaks/assign", async (c) => assignBreaks(c.ctx, await body(c, AssignBreaksBody)), { guard: { space: ["space_admin", "reviewer"] } })
     .post("/v1/spaces/:spaceId/breaks/take", async (c) => takeBreaks(c.ctx, await body(c, TakeBreaksBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
     .post("/v1/spaces/:spaceId/breaks/state", async (c) => setBreakState(c.ctx, await body(c, BreakStateBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    // one break: its page, the other side's free items, its trail; resolving it (whoever has it, or a lead)
+    .get("/v1/spaces/:spaceId/breaks/:itemId", ({ ctx, params }) => breakDetail(ctx, idParam(params.itemId, "break")), { guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/:itemId/candidates", ({ ctx, params, query }) => candidatePage(ctx, idParam(params.itemId, "break"), query), { query: BreakCandidateQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/:itemId/activity", ({ ctx, params, query }) => breakActivity(ctx, idParam(params.itemId, "break"), query), { query: TargetActivityQuery, guard: { space: SPACE_ROLES } })
+    .post("/v1/spaces/:spaceId/breaks/:itemId/match", async (c) => {
+      const b = await body(c, MatchBreakBody);
+      return matchBreak(c.ctx, idParam(c.params.itemId, "break"), b);
+    }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    .post("/v1/spaces/:spaceId/breaks/:itemId/match-pair", ({ ctx, params }) => matchPair(ctx, idParam(params.itemId, "break")), { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    .post("/v1/spaces/:spaceId/breaks/:itemId/close", async (c) => {
+      const b = await body(c, CloseBreakBody);
+      return closeBreak(c.ctx, idParam(c.params.itemId, "break"), b);
+    }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
     /** Live day: one recon's current business date. */
     .get("/v1/spaces/:spaceId/recons/:configId/live", ({ ctx, params }) => reconLive(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
     /** A recon's trend: its last TREND_DAYS business dates. */
