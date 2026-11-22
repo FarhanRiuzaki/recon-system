@@ -20,6 +20,7 @@ import * as me from "@starterkit/shared/contracts/me";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
 import * as approvals from "@starterkit/shared/contracts/approvals";
+import * as breaks from "@starterkit/shared/contracts/breaks";
 import * as recon from "@starterkit/shared/contracts/recon";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
@@ -58,6 +59,7 @@ const COMPOSED = {
   SourcePullPage: pageOf(sources.SourcePullDto),
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
   ApprovalPage: pageOf(approvals.ApprovalRowDto),
+  BreakPage: pageOf(breaks.BreakRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
@@ -69,7 +71,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -129,6 +131,9 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "recon.version_reject": ["recon", "–", "`{ version, comment }`"],
   "recon.discard": ["recon", "`{ code, name }`", "–"],
   "recon.version_discard": ["recon", "`{ version }`", "–"],
+  "break.assign": ["break (the item; label its reference)", "`{ assignee, state }`", "`{ assignee, state }` (assignee null = back to Unassigned)"],
+  "break.take": ["break", "`{ assignee, state }`", "`{ assignee, state }` (the caller)"],
+  "break.state": ["break", "`{ state }`", "`{ state }` (investigating or pending_external)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

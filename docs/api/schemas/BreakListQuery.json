@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BreakListQuery",
+  "type": "object",
+  "properties": {
+    "page": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageSize": {
+      "default": 15,
+      "enum": [
+        15,
+        25,
+        50,
+        100
+      ],
+      "type": "number"
+    },
+    "q": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "sort": {
+      "type": "string",
+      "enum": [
+        "businessDate",
+        "-businessDate"
+      ]
+    },
+    "recon": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "Duplicate",
+        "Ambiguous",
+        "Currency differs",
+        "Amount differs",
+        "Date differs",
+        "No counterpart",
+        "Unconfirmed suggestion"
+      ]
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "new",
+        "assigned",
+        "investigating",
+        "pending_external",
+        "proposed_resolution",
+        "pending_approval",
+        "resolved"
+      ]
+    },
+    "age": {
+      "type": "string",
+      "enum": [
+        "d0",
+        "d1",
+        "d2_3",
+        "d4_7",
+        "d8_30",
+        "gt30"
+      ]
+    },
+    "assignee": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "me"
+        },
+        {
+          "type": "string",
+          "const": "none"
+        },
+        {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        }
+      ]
+    }
+  }
+}

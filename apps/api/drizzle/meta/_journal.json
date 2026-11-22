@@ -309,6 +309,13 @@
       "when": 1795320918574,
       "tag": "0043_must_change_password",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1795322274183,
+      "tag": "0044_break_queue",
+      "breakpoints": true
     }
   ]
 }

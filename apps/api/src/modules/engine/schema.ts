@@ -110,6 +110,12 @@ export const reconItems = pgTable("recon_items", {
    */
   proposedItemId: uuid("proposed_item_id"),
   proposedPass: smallint("proposed_pass"),
+  /** Where a break stands in its queue (BREAK_STATES; null = new: nobody has it yet). Plan 5. */
+  breakState: text("break_state"),
+  /** Who works the break (a member of the space); null = Unassigned. */
+  assigneeId: uuid("assignee_id"),
+  /** When its queue state or assignee last changed. */
+  stateAt: timestamp("state_at", { withTimezone: true }),
   version: integer("version").notNull().default(0),
   simRunId: uuid("sim_run_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -123,6 +129,10 @@ export const reconItems = pgTable("recon_items", {
   index("recon_items_late").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'break' and ${t.lateMatch}`),
   // the open breaks of a config (Today, Live day: a count per screen read, never a scan of its days)
   index("recon_items_breaks").on(t.spaceId, t.configId).where(sql`${t.status} = 'break' and ${t.simRunId} is null`),
+  // the queue of a space's breaks (Plan 5): by assignee, Unassigned first-class
+  index("recon_items_break_queue").on(t.spaceId, t.assigneeId, t.businessDate).where(sql`${t.status} = 'break' and ${t.simRunId} is null`),
+  // unqualified: a month partition copies the check, and a table-qualified column fails there
+  check("recon_items_break_state_check", sql`break_state is null or break_state in ('assigned', 'investigating', 'pending_external', 'proposed_resolution', 'pending_approval', 'resolved')`),
   // a simulation's rows, for the delete of an old simulation (cascade) without a scan of every partition
   index("recon_items_sim_run").on(t.spaceId, t.simRunId).where(sql`${t.simRunId} is not null`),
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),

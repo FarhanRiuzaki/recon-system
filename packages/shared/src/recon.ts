@@ -73,6 +73,21 @@ export type SimChange = (typeof SIM_CHANGES)[number];
  */
 export const BREAK_REASONS = ["Duplicate", "Ambiguous", "Currency differs", "Amount differs", "Date differs", "No counterpart", "Unconfirmed suggestion"] as const;
 export type BreakReason = (typeof BREAK_REASONS)[number];
+/**
+ * Where a break stands in its queue (spec §11): new (nobody has it), assigned, investigating, pending external (waiting
+ * on another team or bank), proposed resolution, pending approval, resolved. Stored null for new.
+ */
+export const BREAK_STATES = ["new", "assigned", "investigating", "pending_external", "proposed_resolution", "pending_approval", "resolved"] as const;
+export type BreakState = (typeof BREAK_STATES)[number];
+/** The states a person sets while working a break (the rest follow from assigning and resolving). */
+export const WORK_STATES = ["investigating", "pending_external"] as const;
+/** Ageing from D0, the break's business date (spec §11): its buckets in order. */
+export const AGE_BUCKETS = ["d0", "d1", "d2_3", "d4_7", "d8_30", "gt30"] as const;
+export type AgeBucket = (typeof AGE_BUCKETS)[number];
+/** Each bucket's days, inclusive (null = no upper bound). */
+export const AGE_DAYS: Record<AgeBucket, [number, number | null]> = { d0: [0, 0], d1: [1, 1], d2_3: [2, 3], d4_7: [4, 7], d8_30: [8, 30], gt30: [31, null] };
+/** The most breaks one assign or take changes. */
+export const BREAK_BULK_MAX = 100;
 /** Members a run's screens get per group (RunGroupDto.members); `memberCount` tells how many it has. */
 export const GROUP_MEMBERS_MAX = 50;
 /** The most business dates one run or simulation covers. */
