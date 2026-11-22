@@ -11,7 +11,7 @@ import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { assignBreaks, breakPage, setBreakState, takeBreaks } from "./break-queue";
+import { assignBreaks, breakFacets, breakPage, setBreakState, takeBreaks } from "./break-queue";
 import { breakActivity, breakDetail, candidatePage, closeBreak, matchBreak, matchPair } from "./break-resolve";
 import { approveRequest, rejectRequest, requestChange } from "./break-requests";
 import { signoffPage, signoffStep } from "./signoff";
@@ -27,6 +27,7 @@ export const engineController = () =>
     .get("/v1/spaces/:spaceId/today", ({ ctx }) => todayDto(ctx), { guard: { space: SPACE_ROLES } })
     // the breaks queue (Plan 5): any role reads it; a space admin or reviewer assigns; whoever works breaks takes them
     .get("/v1/spaces/:spaceId/breaks", ({ ctx, query }) => breakPage(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/breaks/facets", ({ ctx, query }) => breakFacets(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/breaks/assign", async (c) => assignBreaks(c.ctx, await body(c, AssignBreaksBody)), { guard: { space: ["space_admin", "reviewer"] } })
     .post("/v1/spaces/:spaceId/breaks/take", async (c) => takeBreaks(c.ctx, await body(c, TakeBreaksBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
     .post("/v1/spaces/:spaceId/breaks/state", async (c) => setBreakState(c.ctx, await body(c, BreakStateBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })

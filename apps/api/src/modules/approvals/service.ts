@@ -1,14 +1,15 @@
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import type { ApprovalListQuery, ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
 import { type ApprovalKind, approvalBlocked, isRequestKind, requestBlocked } from "@starterkit/shared/approvals";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, eq, ilike, inArray, or, sql } from "drizzle-orm";
 import { unionAll } from "drizzle-orm/pg-core";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import type { Ctx } from "../auth";
 import { approvalRequests } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceVersions } from "../sources";
+import type { InTx } from "../../kernel/db";
 import { withSpace } from "../spaces";
 import { users } from "../users";
 
@@ -16,10 +17,10 @@ import { users } from "../users";
  * GET …/approvals: the space's source and recon versions in review, waiting longest first unless `sort` says otherwise;
  * each says whether the caller may decide it (approvalBlocked). One union, paged in the database.
  */
-export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
-  const spaceId = ctx.space!.id;
-  return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
-    const kinds = q.kind ? q.kind.split(",") : [];
+/** The inbox as one union subquery `u` (source versions, recon versions, break requests), filtered by `q`. */
+function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pageSize" | "sort">) {
+    const spaceId = ctx.space!.id;
+    const kinds: readonly string[] = q.kind ?? [];
     const reqKinds = kinds.filter(isRequestKind);
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const checker = ctx.space!.roles.includes("config_checker");
@@ -57,6 +58,21 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
       .filter((a) => !!a) as unknown as (typeof src)[];
     const [first, second, ...rest] = arms;
     const u = (second ? unionAll(first!, second, ...rest) : first!).as("u");
+    return { u, me, checker, lead, superadmin };
+}
+
+/** GET …/approvals/facets: what waits per kind, with the other filters (search, mine) applied. */
+export function approvalFacets(ctx: Ctx, q: ApprovalListQuery): Promise<FacetsDto> {
+  return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
+    const { u } = inbox(tx, ctx, { ...q, kind: undefined });
+    return { kind: facetOf(await tx.select({ v: u.kind, n: countN }).from(u).groupBy(u.kind)) };
+  });
+}
+
+export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
+  const spaceId = ctx.space!.id;
+  return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
+    const { u, me, checker, lead, superadmin } = inbox(tx, ctx, q);
     const page = await pageQuery({
       rows: tx.select().from(u).$dynamic(),
       count: tx.select(one).from(u).$dynamic(),

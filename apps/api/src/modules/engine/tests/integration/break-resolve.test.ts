@@ -116,3 +116,17 @@ describe("resolving without approval", () => {
     expect(trail.items.map((x) => x.action)).toEqual(["break.close", "break.take"]);
   });
 });
+
+describe("the queue's filter counts (facets) and several values per filter", () => {
+  it("counts each filter's values with the other filters applied but its own", async () => {
+    const f = await json<Record<string, Record<string, number>>>(call("GET", `/v1/spaces/${A}/breaks/facets`, { token: t.op }));
+    expect(f).toMatchObject({ state: { assigned: 1, new: 1 }, assignee: { me: 1, none: 1 }, reason: { "No counterpart": 2 }, age: {} });
+    const only = await json<Record<string, Record<string, number>>>(call("GET", `/v1/spaces/${A}/breaks/facets?state=new`, { token: t.op }));
+    expect(only.state).toEqual({ assigned: 1, new: 1 }); // its own filter left out
+    expect(only.assignee).toEqual({ me: 0, none: 1 });
+    // two values of one filter: either
+    expect((await json<Page<unknown>>(call("GET", `/v1/spaces/${A}/breaks?state=new&state=assigned`, { token: t.op }))).items.length).toBe(2);
+    expect((await call("GET", `/v1/spaces/${A}/breaks/facets?state=nope`, { token: t.op })).status).toBe(400);
+  });
+});
+

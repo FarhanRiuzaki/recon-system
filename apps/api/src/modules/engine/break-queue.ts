@@ -4,15 +4,15 @@
 // assignee_id. Every change locks the items it changes, bumps their version (A1: the engine skips an item an operator
 // changed meanwhile) and writes one activity entry per break changed; a bulk answers { done, skipped }.
 import type { AssignBreaksBody, BreakListQuery, BreakRowDto, BreakStateBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
-import type { BulkResult, Page } from "@starterkit/shared/contracts/common";
+import type { BulkResult, FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { isSuperadmin } from "@starterkit/shared/permissions";
-import { AGE_DAYS, type BreakState } from "@starterkit/shared/recon";
-import { and, eq, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { AGE_BUCKETS, AGE_DAYS, type AgeBucket, type BreakState } from "@starterkit/shared/recon";
+import { and, eq, ilike, inArray, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
 import type { ErrorCode } from "@starterkit/shared/contracts/common";
 import { ApiError } from "../../kernel/errors";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { records, todayIn } from "../ingest";
@@ -38,24 +38,60 @@ async function recordSpaces(tx: InTx, spaceId: string): Promise<string[]> {
   return [spaceId, ...shared.map((s) => s.id)];
 }
 
+type BreakFilter = Omit<BreakListQuery, "page" | "pageSize" | "sort">;
+/** One age bucket as SQL on the item's business date (days before `today`). */
+const inBucket = (today: string, b: AgeBucket) => {
+  const [lo, hi] = AGE_DAYS[b];
+  return and(sql`${reconItems.businessDate} <= ${addDays(today, -lo)}::date`, hi != null ? sql`${reconItems.businessDate} >= ${addDays(today, -hi)}::date` : undefined);
+};
+/** The queue filter: each filter's values OR'd, the filters AND'd; `q` = the record's reference (needs the records join). */
+function breakWhere(ctx: Ctx, spaceId: string, today: string, q: BreakFilter) {
+  const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
+  const any = <T>(vs: readonly T[] | undefined, f: (v: T) => SQL | undefined) => (vs?.length ? or(...vs.map(f)) : undefined);
+  return and(
+    queued(spaceId),
+    q.recon?.length ? inArray(reconItems.configId, q.recon) : undefined,
+    q.reason?.length ? inArray(reconItems.breakReason, q.reason) : undefined,
+    any(q.state, (st) => (st === "new" ? isNull(reconItems.breakState) : eq(reconItems.breakState, st))),
+    any(q.assignee, (a) => (a === "none" ? isNull(reconItems.assigneeId) : eq(reconItems.assigneeId, a === "me" ? ctx.user.id : a))),
+    any(q.age, (b) => inBucket(today, b as AgeBucket)),
+    like ? ilike(records.extRef, like) : undefined,
+  );
+}
+
+/**
+ * GET …/breaks/facets: the queue's counts per state, reason, age and assignee (Mine, Unassigned), each with the other
+ * filters applied (the standard of every list's check filters).
+ */
+export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<FacetsDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const today = todayIn(now);
+    const spaces = await recordSpaces(tx, spaceId);
+    const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
+    const from = <S extends Record<string, unknown>>(sel: S, omit: keyof BreakFilter) => {
+      const base = tx.select(sel as never).from(reconItems);
+      return (q.q?.trim() ? base.leftJoin(records, record) : base).where(breakWhere(ctx, spaceId, today, { ...q, [omit]: undefined })).$dynamic();
+    };
+    const state = sql<string>`coalesce(${reconItems.breakState}, 'new')`;
+    const age = sql<string>`case ${sql.join(AGE_BUCKETS.map((b) => sql`when ${inBucket(today, b)} then ${b}`), sql` `)} end`;
+    const [byState, byReason, byAge, [who]] = await Promise.all([
+      from({ v: state, n: countN }, "state").groupBy(state) as Promise<{ v: string; n: number }[]>,
+      from({ v: reconItems.breakReason, n: countN }, "reason").groupBy(reconItems.breakReason) as Promise<{ v: string | null; n: number }[]>,
+      from({ v: age, n: countN }, "age").groupBy(sql`1`) as Promise<{ v: string | null; n: number }[]>,
+      from({ me: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int`, none: sql<number>`count(*) filter (where ${reconItems.assigneeId} is null)::int` }, "assignee") as Promise<{ me: number; none: number }[]>,
+    ]);
+    return { state: facetOf(byState), reason: facetOf(byReason), age: facetOf(byAge), assignee: { me: who?.me ?? 0, none: who?.none ?? 0 } };
+  });
+}
+
 /** GET …/breaks: one page of the space's queue, oldest business date first unless `sort` says otherwise. */
 export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<Page<BreakRowDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
     const today = todayIn(now);
     const spaces = await recordSpaces(tx, spaceId);
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
-    const age = q.age ? AGE_DAYS[q.age] : null;
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
-    const where = and(
-      queued(spaceId),
-      q.recon ? eq(reconItems.configId, q.recon) : undefined,
-      q.reason ? eq(reconItems.breakReason, q.reason) : undefined,
-      q.state ? (q.state === "new" ? isNull(reconItems.breakState) : eq(reconItems.breakState, q.state)) : undefined,
-      q.assignee === "none" ? isNull(reconItems.assigneeId) : q.assignee ? eq(reconItems.assigneeId, q.assignee === "me" ? ctx.user.id : q.assignee) : undefined,
-      age ? sql`${reconItems.businessDate} <= ${addDays(today, -age[0])}::date` : undefined,
-      age?.[1] != null ? sql`${reconItems.businessDate} >= ${addDays(today, -age[1])}::date` : undefined,
-      like ? ilike(records.extRef, like) : undefined,
-    );
+    const where = breakWhere(ctx, spaceId, today, q);
     // a proposal's item and its record (DEC-047), joined once for the page
     const pi = alias(reconItems, "pi"), pr = alias(records, "pr");
     const page = await pageQuery({

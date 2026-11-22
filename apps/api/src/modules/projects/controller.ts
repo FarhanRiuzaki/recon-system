@@ -4,7 +4,7 @@ import { CreateProjectBody, ProjectListQuery, UpdateProjectBody } from "@starter
 import { notFound } from "../../kernel/errors";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { createProject, deleteProject, projectById, projectPage, updateProject } from "./service";
+import { createProject, deleteProject, projectById, projectFacets, projectPage, updateProject } from "./service";
 
 /** The routes of /v1/projects*. */
 export const projectsController = () =>
@@ -12,6 +12,7 @@ export const projectsController = () =>
     .use(guard)
     /** One page of projects, name A–Z unless `sort` says otherwise; `q` matches the name, `status` is exact. */
     .get("/v1/projects", ({ query }) => projectPage(query), { query: ProjectListQuery, guard: "project.view" })
+    .get("/v1/projects/facets", ({ query }) => projectFacets(query), { query: ProjectListQuery, guard: "project.view" })
     .post("/v1/projects", async (c) => {
       const p = await createProject(c.ctx, await body(c, CreateProjectBody));
       c.set.status = 201;

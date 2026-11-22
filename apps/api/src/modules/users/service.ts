@@ -8,7 +8,7 @@
 import {
   and, asc, desc, eq, exists, getTableColumns, ilike, inArray, isNotNull, isNull, lt, ne, or, sql, type SQLWrapper,
 } from "drizzle-orm";
-import type { BulkResult, ErrorCode, Page } from "@starterkit/shared/contracts/common";
+import type { BulkResult, ErrorCode, FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import {
   type ActivityBrief, BULK_ALL_MAX, type BulkUserBody, type BulkUserFilter, type CreateUserBody, MAX_USER_ROLES, type UpdateUserBody, UserDto, type UserDetailDto, type UserListQuery,
   type UserRowDto,
@@ -20,7 +20,7 @@ import { db, type InTx, type Tx } from "../../kernel/db";
 import { ApiError, currentSession, isUniqueViolation, notFound } from "../../kernel/errors";
 import { xactLock } from "../../kernel/locks";
 import { sendMail } from "../../kernel/mailer";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { isUuid } from "../../kernel/parse";
 import { activity, recordActivity } from "../audit";
 import {
@@ -164,6 +164,17 @@ function userWhere(q: BulkUserFilter) {
       : undefined,
     q.status?.length ? inArray(users.isActive, q.status.map(status => status === "active")) : undefined,
   );
+}
+
+/** GET /v1/users/facets: users per role (by role name) and per status, each with the other filters applied. */
+export async function userFacets(q: UserListQuery): Promise<FacetsDto> {
+  const status = sql<string>`case when ${users.isActive} then 'active' else 'inactive' end`;
+  const [byRole, byStatus] = await Promise.all([
+    db.select({ v: roles.name, n: sql<number>`count(distinct ${users.id})::int` }).from(users).innerJoin(userRoles, eq(userRoles.userId, users.id)).innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(userWhere({ ...q, role: undefined })).groupBy(roles.name),
+    db.select({ v: status, n: countN }).from(users).where(userWhere({ ...q, status: undefined })).groupBy(status),
+  ]);
+  return { role: facetOf(byRole), status: facetOf(byStatus) };
 }
 
 export async function userPage(q: UserListQuery): Promise<Page<UserRowDto>> {

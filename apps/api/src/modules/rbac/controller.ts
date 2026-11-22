@@ -5,7 +5,7 @@ import { CreatePermissionsBody, CreateRoleBody, PermissionListQuery, RoleListQue
 import { notFound } from "../../kernel/errors";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { createPermissions, createRole, deleteRole, permissionPage, roleDetail, roleOptionPage, rolePage, updateRole } from "./service";
+import { createPermissions, createRole, deleteRole, permissionFacets, permissionPage, roleDetail, roleOptionPage, rolePage, updateRole } from "./service";
 
 /** The routes of /v1/roles and /v1/permissions, and the role options of /v1/users/roles. */
 export const rbacController = () =>
@@ -38,4 +38,5 @@ export const rbacController = () =>
     }, { guard: "role.delete" })
     /** One page of the catalog, catalog order unless `sort` says otherwise; `q` matches the name, `module` is exact. */
     .get("/v1/permissions", ({ query }) => permissionPage(query), { query: PermissionListQuery, guard: "permission.view" })
+    .get("/v1/permissions/facets", ({ query }) => permissionFacets(query), { query: PermissionListQuery, guard: "permission.view" })
     .post("/v1/permissions", async (c) => createPermissions(c.ctx, [...new Set((await body(c, CreatePermissionsBody)).names)]), { guard: "permission.create" });

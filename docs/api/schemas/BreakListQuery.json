@@ -31,59 +31,176 @@
       ]
     },
     "recon": {
-      "type": "string",
-      "format": "uuid",
-      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "format": "uuid",
+          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          }
+        }
+      ]
     },
     "reason": {
-      "type": "string",
-      "enum": [
-        "Duplicate",
-        "Ambiguous",
-        "Currency differs",
-        "Amount differs",
-        "Date differs",
-        "No counterpart",
-        "Unconfirmed suggestion"
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "Duplicate",
+            "Ambiguous",
+            "Currency differs",
+            "Amount differs",
+            "Date differs",
+            "No counterpart",
+            "Unconfirmed suggestion"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "Duplicate",
+              "Ambiguous",
+              "Currency differs",
+              "Amount differs",
+              "Date differs",
+              "No counterpart",
+              "Unconfirmed suggestion"
+            ]
+          }
+        }
       ]
     },
     "state": {
-      "type": "string",
-      "enum": [
-        "new",
-        "assigned",
-        "investigating",
-        "pending_external",
-        "proposed_resolution",
-        "pending_approval",
-        "resolved"
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "new",
+            "assigned",
+            "investigating",
+            "pending_external",
+            "proposed_resolution",
+            "pending_approval",
+            "resolved"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "new",
+              "assigned",
+              "investigating",
+              "pending_external",
+              "proposed_resolution",
+              "pending_approval",
+              "resolved"
+            ]
+          }
+        }
       ]
     },
     "age": {
-      "type": "string",
-      "enum": [
-        "d0",
-        "d1",
-        "d2_3",
-        "d4_7",
-        "d8_30",
-        "gt30"
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "d0",
+            "d1",
+            "d2_3",
+            "d4_7",
+            "d8_30",
+            "gt30"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "d0",
+              "d1",
+              "d2_3",
+              "d4_7",
+              "d8_30",
+              "gt30"
+            ]
+          }
+        }
       ]
     },
     "assignee": {
       "anyOf": [
         {
           "type": "string",
-          "const": "me"
+          "const": ""
         },
         {
-          "type": "string",
-          "const": "none"
+          "anyOf": [
+            {
+              "type": "string",
+              "const": "me"
+            },
+            {
+              "type": "string",
+              "const": "none"
+            },
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          ]
         },
         {
-          "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "me"
+              },
+              {
+                "type": "string",
+                "const": "none"
+              },
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              }
+            ]
+          }
         }
       ]
     }

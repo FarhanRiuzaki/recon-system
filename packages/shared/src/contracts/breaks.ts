@@ -3,20 +3,21 @@ import { AGE_BUCKETS, BREAK_BULK_MAX, BREAK_REASONS, BREAK_STATES, CLOSE_RESOLUT
 import { REQUEST_KINDS } from "../approvals";
 import { BREAK_SORTS } from "../paging";
 import { ListQuery, sortParam } from "./common";
+import { filterSelection } from "./filter-selection";
 
 export { BREAK_SORTS };
 
 /**
  * GET /api/spaces/{spaceId}/breaks: the space's open breaks (not resolved), oldest business date first. `recon`: one
- * recon; `reason`, `state`, `age`: one each; `assignee`: a user id, `me` or `none` (Unassigned); `q`: the reference.
+ * recon; `reason`, `state`, `age`: one or more each (repeated); `assignee`: user ids, `me`, `none` (Unassigned); `q`: the reference.
  */
 export const BreakListQuery = ListQuery.extend({
   sort: sortParam(BREAK_SORTS),
-  recon: z.uuid().optional(),
-  reason: z.enum(BREAK_REASONS).optional(),
-  state: z.enum(BREAK_STATES).optional(),
-  age: z.enum(AGE_BUCKETS).optional(),
-  assignee: z.union([z.literal("me"), z.literal("none"), z.uuid()]).optional(),
+  recon: filterSelection(z.uuid()).optional(),
+  reason: filterSelection(z.enum(BREAK_REASONS)).optional(),
+  state: filterSelection(z.enum(BREAK_STATES)).optional(),
+  age: filterSelection(z.enum(AGE_BUCKETS)).optional(),
+  assignee: filterSelection(z.union([z.literal("me"), z.literal("none"), z.uuid()])).optional(),
 });
 export type BreakListQuery = z.infer<typeof BreakListQuery>;
 

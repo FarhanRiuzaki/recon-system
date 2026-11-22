@@ -41,6 +41,13 @@ export const sortParam = (keys: readonly string[]) => z.enum(keys.flatMap((k) =>
 /** One page of a list. `totalCapped` = the server stopped counting at `total` (the UI shows "100,000+"). */
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; totalCapped?: boolean };
 
+/**
+ * GET <list>/facets (a list's filter counts, the standard of every list's check filters): per filter, per value, how
+ * many rows the list would show with that value, counted with every other filter applied but its own.
+ */
+export const FacetsDto = z.record(z.string(), z.record(z.string(), z.number().int()));
+export type FacetsDto = z.infer<typeof FacetsDto>;
+
 export const BulkResult = z.object({
   done: z.array(z.string()),
   skipped: z.array(z.object({ id: z.string(), code: z.string() })),

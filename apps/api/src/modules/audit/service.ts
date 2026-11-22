@@ -4,14 +4,14 @@ import { and, type Column, desc, eq, exists, ilike, inArray, lt, or, type SQL, s
 import { CSV_MAX_ROWS } from "@starterkit/shared/audit";
 import { activityChangeText } from "@starterkit/shared/audit-changes";
 import type { ActivityDto, ActivityQuery, AuthLogDto, AuthLogQuery } from "@starterkit/shared/contracts/audit";
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
 import { resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { APP_TIME_ZONE } from "@starterkit/ui/lib/format";
 import { ApiError, notFound } from "../../kernel/errors";
 import { config } from "../../kernel/config";
 import { db, type Tx } from "../../kernel/db";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { users } from "../users";
 import { activity, authLog } from "./schema";
 
@@ -59,6 +59,19 @@ const activityWhere = (q: ActivityQuery) =>
 const authLogWhere = (q: AuthLogQuery) =>
   and(inRange(authLog.at, q), q.event?.length ? inArray(authLog.event, q.event) : undefined, q.method?.length ? inArray(authLog.method, q.method) : undefined,
     matchesUser(q.user, authLog.login, authLog.userId));
+
+/** GET /v1/audit/activity/facets: entries per action, with the other filters (range, user) applied. */
+export async function activityFacets(q: ActivityQuery): Promise<FacetsDto> {
+  return { action: facetOf(await db.select({ v: activity.action, n: countN }).from(activity).where(activityWhere({ ...q, action: undefined })).groupBy(activity.action)) };
+}
+/** GET /v1/audit/auth/facets: sign-ins per event and per method, each with the other filters applied. */
+export async function authLogFacets(q: AuthLogQuery): Promise<FacetsDto> {
+  const [event, method] = await Promise.all([
+    db.select({ v: authLog.event, n: countN }).from(authLog).where(authLogWhere({ ...q, event: undefined })).groupBy(authLog.event),
+    db.select({ v: authLog.method, n: countN }).from(authLog).where(authLogWhere({ ...q, method: undefined })).groupBy(authLog.method),
+  ]);
+  return { event: facetOf(event), method: facetOf(method) };
+}
 
 // ponytail: a `user` filter is a substring scan of the rows the other filters leave (no trigram index on the audit
 // tables); the date range (max 92 days) and the page cap bound it. Add pg_trgm indexes if it gets slow.

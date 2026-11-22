@@ -33,8 +33,36 @@
       ]
     },
     "kind": {
-      "type": "string",
-      "pattern": "^(source_version|recon_version|force_match|unmatch|write_off)(,(source_version|recon_version|force_match|unmatch|write_off))*$"
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "source_version",
+            "recon_version",
+            "force_match",
+            "unmatch",
+            "write_off"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "source_version",
+              "recon_version",
+              "force_match",
+              "unmatch",
+              "write_off"
+            ]
+          }
+        }
+      ]
     },
     "mine": {
       "type": "string",

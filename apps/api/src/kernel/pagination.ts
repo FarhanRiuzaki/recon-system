@@ -46,3 +46,10 @@ export const likeEscape = (q: string): string => q.replace(/[\\%_]/g, "\\$&");
 
 /** A constant select list for the `count` query of pageQuery. */
 export const one = { one: sql<number>`1` };
+
+/** A facet's counts as the API answers them (FacetsDto), from `{ v, n }` rows grouped by value; a null value is skipped. */
+export const facetOf = (rows: readonly { v: string | number | boolean | null; n: number }[]): Record<string, number> =>
+  Object.fromEntries(rows.filter((r) => r.v !== null).map((r) => [String(r.v), Number(r.n)]));
+/** count(*) as a number, for a facet's group by. */
+export const countN = sql<number>`count(*)::int`;
+

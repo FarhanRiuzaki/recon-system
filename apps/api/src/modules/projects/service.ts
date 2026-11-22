@@ -1,10 +1,10 @@
 // Projects: the logic of /v1/projects*. 404 → change → activity entry, in one transaction per change.
 import { and, eq, ilike, inArray, sql } from "drizzle-orm";
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import type { CreateProjectBody, ProjectDto, ProjectListQuery, ProjectStatus, UpdateProjectBody } from "@starterkit/shared/contracts/projects";
 import { db, type Tx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { projectChanges } from "./rules";
@@ -19,11 +19,12 @@ const dto = (r: Row): ProjectDto => ({
 });
 
 /** One page of projects (GET /v1/projects), name A–Z unless `sort` says otherwise; `q` matches the name, `status` is exact. */
+const projectWhere = (q: Omit<ProjectListQuery, "page" | "pageSize" | "sort">) => and(
+  q.q?.trim() ? ilike(projects.name, `%${likeEscape(q.q.trim())}%`) : undefined,
+  q.status?.length ? inArray(projects.status, q.status) : undefined,
+);
 export function projectPage(q: ProjectListQuery): Promise<Page<ProjectDto>> {
-  const where = and(
-    q.q?.trim() ? ilike(projects.name, `%${likeEscape(q.q.trim())}%`) : undefined,
-    q.status?.length ? inArray(projects.status, q.status) : undefined,
-  );
+  const where = projectWhere(q);
   return pageQuery({
     rows: db.select().from(projects).where(where).$dynamic(),
     count: db.select(one).from(projects).where(where).$dynamic(),
@@ -86,4 +87,9 @@ export async function deleteProject(ctx: Ctx, id: string): Promise<void> {
     await tx.delete(projects).where(eq(projects.id, id));
     await recordActivity(tx, ctx, { action: "project.delete", target: { type: "project", id, label: p.name }, before: p });
   });
+}
+
+/** GET /v1/projects/facets: projects per status, with the other filters applied. */
+export async function projectFacets(q: ProjectListQuery): Promise<FacetsDto> {
+  return { status: facetOf(await db.select({ v: projects.status, n: countN }).from(projects).where(projectWhere({ ...q, status: undefined })).groupBy(projects.status)) };
 }

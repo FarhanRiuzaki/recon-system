@@ -249,6 +249,8 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };
 const ONE_RECORD = /\/:\w+$/;
+/** A list's filter counts (FacetsDto: per filter, per value; bounded by the filter's values), beside the list it counts. */
+const FACETS = /\/facets$/;
 /**
  * Routes that check their permission in the handler (`{ guard: null }`, then `ctx.perms.has(…)` before any service
  * call), because the permission depends on the body.
@@ -332,7 +334,7 @@ function routeViolations(files: File[], allow: Allow = REAL_ALLOW): string[] {
       // (c) a change records activity
       if (h.method !== "GET" && !(key in (allow.noActivity ?? {})) && !reaches(recorders)) out.push(`${id}: no recordActivity (in the handler or a service it calls)`);
       // (d) lists page; a CSV branch calls a capped …Csv function
-      if (h.method === "GET" && !(key in allow.nonList) && !ONE_RECORD.test(key) && !reaches(pagers)) out.push(`${id}: GET answers a list without pageQuery`);
+      if (h.method === "GET" && !(key in allow.nonList) && !ONE_RECORD.test(key) && !FACETS.test(key) && !reaches(pagers)) out.push(`${id}: GET answers a list without pageQuery`);
       if (h.csv && !reaches(csvReach)) out.push(`${id}: format=csv branch without a …Csv function`);
       // (e) nothing answers 404 or reads data before the body
       const b = firstPos((c) => c.name === "body");

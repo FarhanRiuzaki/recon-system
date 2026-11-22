@@ -2,7 +2,7 @@
 // role reads and writes the users module makes. Every escalation check reads the actor's permissions inside the
 // transaction (actorPermissions), never the request's earlier ctx.perms.
 import { and, type Column, eq, ilike, inArray, like, or, type SQL, sql } from "drizzle-orm";
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import {
   CATALOG_MAX, type CreatePermissionsResult, type CreateRoleBody, PERMISSION_ROLES_SHOWN, type PermissionDto, type PermissionListQuery, type RoleDetailDto, type RoleDto,
   type RoleListQuery, type RoleOption, type RoleOptionQuery, type UpdateRoleBody,
@@ -11,7 +11,7 @@ import { withViews } from "@starterkit/shared/permissions";
 import { db, type Tx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { xactLock } from "../../kernel/locks";
-import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
+import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity } from "../audit";
 import { actorPermissions, type Ctx } from "../auth";
 import { checkPermissionGrant, checkRoleChange, inCatalogOrder, permissionDelta } from "./rules";
@@ -78,6 +78,14 @@ export async function roleById(id: string, tx: Tx = db): Promise<RoleDto | null>
   return r ?? null;
 }
 
+const permissionWhere = (q: Pick<PermissionListQuery, "q" | "module">) =>
+  and(matches(permissions.name, q.q), q.module?.length ? or(...q.module.map(module => like(permissions.name, `${likeEscape(module)}.%`))) : undefined);
+/** GET /v1/permissions/facets: permissions per module, with the search applied. */
+export async function permissionFacets(q: PermissionListQuery): Promise<FacetsDto> {
+  const mod = sql<string>`split_part(${permissions.name}, '.', 1)`;
+  return { module: facetOf(await db.select({ v: mod, n: countN }).from(permissions).where(permissionWhere({ q: q.q })).groupBy(mod)) };
+}
+
 /** One page of the catalog (GET /v1/permissions), catalog order unless `sort` says otherwise; `q` matches the name, `module` is exact. */
 export function permissionPage(q: PermissionListQuery): Promise<Page<PermissionDto>> {
   // The roles holding each: one grouped subquery; `names` are the first PERMISSION_ROLES_SHOWN by name.
@@ -86,7 +94,7 @@ export function permissionPage(q: PermissionListQuery): Promise<Page<PermissionD
     n: sql<number>`count(*)::int`.as("role_count"),
     names: sql<string[]>`(array_agg(${roles.name} order by lower(${roles.name}), ${roles.name}))[1:${PERMISSION_ROLES_SHOWN}]`.as("names"),
   }).from(rolePermissions).innerJoin(roles, eq(roles.id, rolePermissions.roleId)).groupBy(rolePermissions.permission).as("h");
-  const where = and(matches(permissions.name, q.q), q.module?.length ? or(...q.module.map(module => like(permissions.name, `${likeEscape(module)}.%`))) : undefined);
+  const where = permissionWhere(q);
   const sorts = { module: permissions.position, name: permissions.name, action: sql`split_part(${permissions.name}, '.', 2)` };
   return pageQuery({
     rows: db.select({ name: permissions.name, roles: sql<string[]>`coalesce(${h.names}, '{}')`, roleCount: sql<number>`coalesce(${h.n}, 0)` })

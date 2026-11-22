@@ -7,7 +7,7 @@ import { ApiError, notFound } from "../../kernel/errors";
 import { body, idParam } from "../../kernel/parse";
 import { guard, sessionPage } from "../auth";
 import {
-  bulkUsers, createUser, editUser, endSessionOf, removeUser, resetUserPassword, setUserStatus, userDetail, userExists, userPage,
+  bulkUsers, createUser, editUser, endSessionOf, removeUser, resetUserPassword, setUserStatus, userDetail, userExists, userFacets, userPage,
 } from "./service";
 
 const OK = { ok: true } as const;
@@ -17,6 +17,7 @@ export const usersController = () =>
   new Elysia()
     .use(guard)
     .get("/v1/users", ({ query }) => userPage(query), { query: UserListQuery, guard: "user.view" })
+    .get("/v1/users/facets", ({ query }) => userFacets(query), { query: UserListQuery, guard: "user.view" })
     /** New user with a password, an invitation (72 h set-password link, mailed after the commit) or neither (directory user). */
     .post("/v1/users", async (c) => {
       const dto = await createUser(c.ctx, await body(c, CreateUserBody));
