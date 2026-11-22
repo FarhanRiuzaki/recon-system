@@ -99,22 +99,32 @@ export async function liveSpec(tx: InTx, spaceId: string, configId: string): Pro
   return v ? ReconSpec.parse(v.spec) : null;
 }
 
+/** Why where a request goes can't be told before it is sent: its rules pick the workflow on the item's values. */
+export const BY_RULES = "The workflow depends on the item; checked when you send it.";
 /**
  * Where each change kind's request goes by default on the live spec: its default workflow (name, levels) or the
- * default chain, and the connector its first posting action calls (`connectorOff`: turned off, nothing is sent). A
- * pinned version that is gone: `blocked` says why asking for that kind is refused.
+ * default chain, and the connector its posting at the final approval calls (`connectorOff`: one of its variants'
+ * connectors is turned off, and `connector` names that one). A pinned version that is gone: without rules `blocked`
+ * says why asking is refused (the default applies); with rules the request may never meet it, so `note` says it is
+ * checked on sending.
  */
 async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Promise<BreakDetailDto["recon"]["routes"]> {
   const changes = spec?.approvals?.changes ?? {};
-  const ops = TRIGGERS.map((k) => changes[k]?.actions.find((a) => a.kind === "posting")?.variants[0]?.operation.connectorId ?? null);
-  const ids = [...new Set(ops.filter((x): x is string => !!x))];
+  const ops = TRIGGERS.map((k) => (changes[k]?.actions ?? []).filter((a) => a.kind === "posting" && a.on.event === "approved").flatMap((a) => a.variants.map((v) => v.operation.connectorId)));
+  const ids = [...new Set(ops.flat())];
   const found = new Map(ids.length ? (await tx.select({ id: connectors.id, name: connectors.name, off: connectors.disabledAt }).from(connectors).where(inArray(connectors.id, ids))).map((c) => [c.id, c]) : []);
   const out: BreakDetailDto["recon"]["routes"] = [];
   for (const [i, kind] of TRIGGERS.entries()) {
-    const ref = changes[kind]?.workflow.default ?? null;
+    const w = changes[kind]?.workflow;
+    const ref = w?.default ?? null;
     const v = ref ? await pinnedVersion(tx, spaceId, ref) : null;
-    const c = ops[i] ? found.get(ops[i]!) : undefined;
-    out.push({ kind, workflowName: v?.name ?? null, levels: (v?.spec ?? DEFAULT_CHAIN).levels.length, connector: c?.name ?? null, connectorOff: !!c?.off, blocked: ref && !v ? MISSING_WORKFLOW : null });
+    let gone = !!ref && !v;
+    for (const r of w?.rules ?? []) gone ||= !(await pinnedVersion(tx, spaceId, r.workflow));
+    const cs = ops[i]!.flatMap((id) => found.get(id) ?? []);
+    const c = cs.find((x) => x.off) ?? cs[0];
+    const rules = !!w?.rules.length;
+    out.push({ kind, workflowName: v?.name ?? null, levels: (v?.spec ?? DEFAULT_CHAIN).levels.length, connector: c?.name ?? null, connectorOff: !!c?.off,
+      blocked: gone && !rules ? MISSING_WORKFLOW : null, note: gone && rules ? BY_RULES : null });
   }
   return out;
 }

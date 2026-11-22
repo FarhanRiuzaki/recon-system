@@ -189,8 +189,8 @@ describe("where each change goes, on the break's page", () => {
   it("the recon's default workflow per change (name, levels) and the connector its posting action calls", async () => {
     await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }]);
     const d = await detail(I.a1);
-    expect(d.recon.routes.find((r) => r.kind === "posting")).toEqual({ kind: "posting", workflowName: "Two levels", levels: 2, connector: "Bank Mega", connectorOff: false, blocked: null });
-    expect(d.recon.routes.find((r) => r.kind === "write_off")).toEqual({ kind: "write_off", workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null });
+    expect(d.recon.routes.find((r) => r.kind === "posting")).toEqual({ kind: "posting", workflowName: "Two levels", levels: 2, connector: "Bank Mega", connectorOff: false, blocked: null, note: null });
+    expect(d.recon.routes.find((r) => r.kind === "write_off")).toEqual({ kind: "write_off", workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null, note: null });
   });
   it("a turned-off connector says so; a pinned workflow version that is gone keeps the kind, with why asking is refused", async () => {
     await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }]);
@@ -200,6 +200,31 @@ describe("where each change goes, on the break's page", () => {
     expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({
       workflowName: null, blocked: "The approval setup of this recon points to a workflow version that no longer exists. Ask a config maker to fix the recon.",
     });
+  });
+  it("the connector is the one a posting action fired on the final approval calls; any of its variants turned off says so", async () => {
+    const other = Bun.randomUUIDv7();
+    await db.insert(connectors).values({ id: other, name: "Bank Lain" });
+    await setup("posting", [
+      { name: "Status", kind: "posting", on: { event: "level_approved", level: 1 }, variants: [variant({ operation: { connectorId: other, version: 1, key: "post" } })] },
+      { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant({ name: "Main", operation: { connectorId: other, version: 1, key: "post" } }), variant({ name: "Mega" })] },
+    ]);
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({ connector: "Bank Lain", connectorOff: false });
+    await db.update(connectors).set({ disabledAt: new Date(), disabledReason: "Bank outage" }).where(eq(connectors.id, cid));
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({ connector: "Bank Mega", connectorOff: true });
+  });
+  it("a posting fired only at a level is not what the final approval sends", async () => {
+    await setup("posting", [{ name: "Status", kind: "posting", on: { event: "level_approved", level: 1 }, variants: [variant()] }]);
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "posting")).toMatchObject({ connector: null, connectorOff: false });
+  });
+  it("with rules a gone version isn't refused up front: the workflow depends on the item, checked when it is sent", async () => {
+    await setup("write_off", []);
+    const [v] = await db.select().from(reconConfigVersions).where(and(eq(reconConfigVersions.configId, cfg), eq(reconConfigVersions.status, "published")));
+    const s = v!.spec as { approvals: { changes: { write_off: { workflow: { default: unknown; rules: unknown[] } } } } };
+    const w = s.approvals.changes.write_off.workflow;
+    w.rules = [{ name: "Big", when: { all: [{ field: "break.amount", op: "gte", value: "1000000" }] }, workflow: w.default }];
+    await db.update(reconConfigVersions).set({ spec: s }).where(eq(reconConfigVersions.id, v!.id));
+    await db.delete(workflowVersions);
+    expect((await detail(I.a1)).recon.routes.find((r) => r.kind === "write_off")).toMatchObject({ blocked: null, note: "The workflow depends on the item; checked when you send it." });
   });
 });
 

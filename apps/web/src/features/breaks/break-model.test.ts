@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, combined, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, combined, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
   direction: null, ...o, signedMinor: o.signedMinor !== undefined ? o.signedMinor : o.amountMinor !== undefined ? o.amountMinor : "3607350000",
 });
 const debit = (amount: string, o: Partial<BreakItemDto> = {}) => item({ amountMinor: amount, signedMinor: `-${amount}`, direction: "debit", ...o });
-const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null, ...o });
+const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null, note: null, ...o });
 const recon = (o: Partial<BreakDetailDto["recon"]> = {}): BreakDetailDto["recon"] => ({
   id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheck: { kind: "until", date: "2026-11-03" },
   routes: [route("posting", { workflowName: "Treasury head", levels: 2, connector: "Bank Mega" }), route("force_match"), route("write_off"), route("unmatch")], ...o,
@@ -57,12 +57,13 @@ describe("words of the page", () => {
     expect(recheckText({ kind: "always" }, "2026-11-04")).toBe("Checked again on each run until it matches or is settled");
     expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again — settle it here");
   });
-  it("where a request goes: the connector it calls, or that it is turned off; why it can't be asked", () => {
+  it("where a request goes: the connector it calls, or that it is turned off as a warning; only a refused route blocks", () => {
     expect(routeText(recon(), "posting")).toBe("Sent through Bank Mega");
     expect(routeText(recon(), "write_off")).toBeNull();
     const off = recon({ routes: [route("posting", { connector: "Bank Mega", connectorOff: true }), route("write_off", { blocked: "The workflow is gone." })] });
-    expect(routeText(off, "posting")).toBe("Bank Mega is turned off");
-    expect(routeBlocked(off, "posting")).toBe("Bank Mega is turned off: nothing is sent to the bank until it is on again.");
+    expect(routeText(off, "posting")).toBeNull();
+    expect(routeWarning(off, "posting")).toBe("Bank Mega is turned off: the posting waits as not sent until it is on again");
+    expect(routeBlocked(off, "posting")).toBeNull();
     expect(routeBlocked(off, "write_off")).toBe("The workflow is gone.");
     expect(routeBlocked(recon(), "posting")).toBeNull();
   });
@@ -135,8 +136,13 @@ describe("what you can do", () => {
     expect(a.find((x) => x.key === "posting")).toMatchObject({ consequence: "It goes for approval: Treasury head, 2 levels approves. On the final approval it closes as posted and is sent to the bank.", meta: "Sent through Bank Mega" });
     expect(a.find((x) => x.key === "writeOff")!.consequence).toBe("Closes it as written off once a reviewer or space admin approves.");
     expect(a.find((x) => x.key === "close")!.meta).toBeUndefined();
-    const off = settleActions({ ...base, recon: recon({ routes: [route("posting", { connector: "Bank Mega", connectorOff: true })] }), target: { kind: "proposed" } });
-    expect(off.find((x) => x.key === "posting")).toMatchObject({ blocked: "Bank Mega is turned off: nothing is sent to the bank until it is on again.", primary: false });
-    expect(off.filter((x) => x.primary).map((x) => x.key)).toEqual(["match"]);
+    // a turned-off connector warns but never blocks: the server takes the request and the posting waits
+    const off = settleActions({ ...base, recon: recon({ routes: [route("posting", { connector: "Bank Mega", connectorOff: true }), route("write_off", { connector: "Bank Mega", connectorOff: true })] }), target: { kind: "proposed" } });
+    expect(off.find((x) => x.key === "posting")).toMatchObject({ blocked: null, primary: true, meta: undefined, warning: "Bank Mega is turned off: the posting waits as not sent until it is on again" });
+    expect(off.find((x) => x.key === "writeOff")!.blocked).toBeNull();
+    // a gone workflow blocks only when no rule could pick another; with rules it is checked on sending
+    const gone = settleActions({ ...base, recon: recon({ routes: [route("posting", { connector: "Bank Mega" }), route("write_off", { blocked: "The workflow is gone." }), route("force_match", { note: "The workflow depends on the item; checked when you send it." })] }) });
+    expect(gone.find((x) => x.key === "writeOff")!.blocked).toBe("The workflow is gone.");
+    expect(gone.find((x) => x.key === "force")).toMatchObject({ meta: "The workflow depends on the item; checked when you send it." });
   });
 });

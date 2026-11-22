@@ -250,7 +250,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
           {!access.take && access.blocked && <Notice>{access.blocked}</Notice>}
           <div className="grid items-stretch gap-gutter md:grid-cols-2 xl:grid-cols-3">
             {settle.map((s) => (
-              <ActionCard key={s.key} title={s.title} consequence={s.consequence} meta={s.meta} className={s.key === "close" && closing ? "md:col-span-full" : undefined}
+              <ActionCard key={s.key} title={s.title} consequence={s.consequence} meta={s.meta || s.warning ? <>{s.meta}{s.warning && <span className="block text-degraded-ink">{s.warning}</span>}</> : undefined} className={s.key === "close" && closing ? "md:col-span-full" : undefined}
                 action={s.key === "close" && closing
                   ? <CloseForm busy={busy} onCancel={() => { setClosing(false); focusNext(CLOSE_BUTTON); }} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Item closed.")} />
                   : (

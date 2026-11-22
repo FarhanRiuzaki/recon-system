@@ -85,17 +85,21 @@ export function approverText(r: BreakDetailDto["recon"], kind: RequestKind): str
   return x?.workflowName ? `${x.workflowName}, ${plural(x.levels, "level")}` : "a reviewer or space admin";
 }
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
-/** The connector a request of `kind` calls: "Sent through Bank Mega", or that it is turned off; null when none. */
+/**
+ * Where a request of `kind` goes, as a card's meta: "Sent through Bank Mega" while its connector is on, and that its
+ * rules pick the workflow on sending; null when there is nothing to say.
+ */
 export function routeText(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
   const x = routeOf(r, kind);
-  if (!x?.connector) return null;
-  return x.connectorOff ? `${x.connector} is turned off` : `Sent through ${x.connector}`;
+  return [x?.connector && !x.connectorOff ? `Sent through ${x.connector}` : null, x?.note ?? null].filter(Boolean).join(" · ") || null;
 }
-/** Why a request of `kind` can't be asked now: its workflow version is gone, or its connector is turned off. */
-export function routeBlocked(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
+/** A turned-off connector: asking still works (the server takes it), the posting waits as not sent. */
+export function routeWarning(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
   const x = routeOf(r, kind);
-  return x?.blocked ?? (x?.connector && x.connectorOff ? `${x.connector} is turned off: nothing is sent to the bank until it is on again.` : null);
+  return x?.connector && x.connectorOff ? `${x.connector} is turned off: the posting waits as not sent until it is on again` : null;
 }
+/** Why a request of `kind` can't be asked now: the server refuses it (its default workflow's version is gone). */
+export const routeBlocked = (r: BreakDetailDto["recon"], kind: RequestKind): string | null => routeOf(r, kind)?.blocked ?? null;
 
 export type Access = { worker: boolean; canWork: boolean; take: "first" | "offer" | null; blocked: string | null };
 /**
@@ -133,14 +137,14 @@ export function counterpartOf(o: { picked: readonly BreakItemDto[]; request: Bre
 export const findToggled = <T>(picked: ReadonlyMap<string, T>, open: boolean): ReadonlyMap<string, T> => (open ? picked : new Map());
 
 export type SettleKey = "posting" | "match" | "force" | "writeOff" | "close";
-export type Settle = { key: SettleKey; title: string; consequence: string; meta?: string; label: string; blocked: string | null; primary: boolean };
+export type Settle = { key: SettleKey; title: string; consequence: string; meta?: string; warning?: string; label: string; blocked: string | null; primary: boolean };
 export type Target = { kind: "proposed" } | { kind: "picked"; count: number } | { kind: "none" };
 
 /**
  * The ways to settle an open unmatch item, in this order: Request posting (only when the recon posts), Match with a
  * counterpart, Force match, Write off, Close without a match. `access.blocked` = why nothing can be done yet; `target`
  * = what Match and Force match act on (the proposed pair, or the items ticked below), named on their buttons. A request
- * names who approves it and is blocked while its route is. The primary is the next step: posting when the recon posts
+ * names who approves it and is blocked only while the server would refuse it; a turned-off connector is a warning. The primary is the next step: posting when the recon posts
  * (and it can be asked), else the proposed pair; none while the item is blocked.
  */
 export function settleActions(o: { recon: BreakDetailDto["recon"]; access: Access; target: Target }): Settle[] {
@@ -152,10 +156,10 @@ export function settleActions(o: { recon: BreakDetailDto["recon"]; access: Acces
   const what = t.kind === "proposed" ? "the proposed pair" : picked ? `the ${picked === 1 ? "item" : `${picked} items`} you picked` : "the items you pick";
   const req = (kind: RequestKind) => blocked ?? routeBlocked(r, kind);
   const all: Settle[] = [
-    ...(r.posts ? [{ key: "posting" as const, title: "Request posting", consequence: `It goes for approval: ${approverText(r, "posting")} approves. On the final approval it closes as posted and is sent to the bank.`, meta: routeText(r, "posting") ?? undefined, label: "Request posting", blocked: req("posting"), primary: false }] : []),
+    ...(r.posts ? [{ key: "posting" as const, title: "Request posting", consequence: `It goes for approval: ${approverText(r, "posting")} approves. On the final approval it closes as posted and is sent to the bank.`, meta: routeText(r, "posting") ?? undefined, warning: routeWarning(r, "posting") ?? undefined, label: "Request posting", blocked: req("posting"), primary: false }] : []),
     { key: "match", title: "Match with counterpart", consequence: `Matches it with ${what}${t.kind === "proposed" ? "" : ", when the totals are the same"}. No approval needed.`, label: t.kind === "proposed" ? "Match pair" : picked ? `Match with ${items(picked)}` : "Match item", blocked: blocked ?? pick, primary: false },
-    { key: "force", title: "Force match", consequence: `Matches it with ${what} although the totals differ. ${cap(approverText(r, "force_match"))} approves first.`, meta: routeText(r, "force_match") ?? undefined, label: t.kind === "proposed" ? "Force match pair" : picked ? `Force match with ${items(picked)}` : "Force match", blocked: req("force_match") ?? pick, primary: false },
-    { key: "writeOff", title: "Write off", consequence: `Closes it as written off once ${approverText(r, "write_off")} approves.`, meta: routeText(r, "write_off") ?? undefined, label: "Request write-off", blocked: req("write_off"), primary: false },
+    { key: "force", title: "Force match", consequence: `Matches it with ${what} although the totals differ. ${cap(approverText(r, "force_match"))} approves first.`, meta: routeText(r, "force_match") ?? undefined, warning: routeWarning(r, "force_match") ?? undefined, label: t.kind === "proposed" ? "Force match pair" : picked ? `Force match with ${items(picked)}` : "Force match", blocked: req("force_match") ?? pick, primary: false },
+    { key: "writeOff", title: "Write off", consequence: `Closes it as written off once ${approverText(r, "write_off")} approves.`, meta: routeText(r, "write_off") ?? undefined, warning: routeWarning(r, "write_off") ?? undefined, label: "Request write-off", blocked: req("write_off"), primary: false },
     { key: "close", title: "Close without a match", consequence: "Closes it as a duplicate or as needing no action, with your note. No approval needed.", label: "Close item", blocked, primary: false },
   ];
   const posting = all.find((a) => a.key === "posting");

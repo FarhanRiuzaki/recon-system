@@ -112,15 +112,16 @@ export const BreakDetailDto = z.object({
    * business date a run still does (business date + carry over), `always` while carry over is always; else `no` (also
    * without a live version). `routes`: per change kind,
    * the workflow its request goes to by default (`workflowName` null = the default chain; a rule may pick another on
-   * the request's values) with its level count, the connector its first posting action calls (null = none) and
-   * whether it is turned off (nothing is sent), and `blocked`: why asking for it is refused (its pinned workflow
-   * version is gone), else null.
+   * the request's values) with its level count, the connector its posting at the final approval calls (null = none) and
+   * whether it (or another variant's) is turned off (the posting waits, not sent; asking is not refused), `blocked`:
+   * why asking for it is refused (its default workflow's pinned version is gone and no rule could pick another), else
+   * null, and `note`: with rules and a gone version, that the workflow is checked when the request is sent.
    */
   recon: z.object({
     id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean(),
     carryOverDays: z.number().int().nullable(),
     recheck: z.discriminatedUnion("kind", [z.object({ kind: z.literal("until"), date: z.string() }), z.object({ kind: z.literal("always") }), z.object({ kind: z.literal("no") })]),
-    routes: z.array(z.object({ kind: z.enum(REQUEST_KINDS), workflowName: z.string().nullable(), levels: z.number().int(), connector: z.string().nullable(), connectorOff: z.boolean(), blocked: z.string().nullable() })),
+    routes: z.array(z.object({ kind: z.enum(REQUEST_KINDS), workflowName: z.string().nullable(), levels: z.number().int(), connector: z.string().nullable(), connectorOff: z.boolean(), blocked: z.string().nullable(), note: z.string().nullable() })),
   }),
   state: z.enum(BREAK_STATES),
   assignee: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),

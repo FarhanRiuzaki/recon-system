@@ -226,6 +226,12 @@
                   "string",
                   "null"
                 ]
+              },
+              "note": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             },
             "required": [
@@ -234,7 +240,8 @@
               "levels",
               "connector",
               "connectorOff",
-              "blocked"
+              "blocked",
+              "note"
             ],
             "additionalProperties": false
           }
