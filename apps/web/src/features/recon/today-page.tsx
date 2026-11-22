@@ -21,7 +21,7 @@ import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { StateChip } from "@/components/state-chip";
-import { countText, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayTotals, kpiCaption, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
 import { useArrivals } from "./live-hooks";
 import { reconHref, reconsHref, useMyApprovals, useToday } from "./use-recons";
@@ -87,8 +87,9 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh Today; showing what was read <RelativeTime at={q.dataUpdatedAt} />.</Notice>}
       {/* the space at a glance first (audit T1): what needs someone today */}
       <StatTiles>
-        <StatTile label="Unmatch open" value={formatNumber(k.unmatch)} caption="Every date of these recons" />
-        <StatTile label="Waiting for my approval" value={waiting.data ? countText(waiting.data.total, waiting.data.totalCapped) : "—"} caption={waiting.error && !waiting.data ? "Couldn't load the approvals" : undefined} />
+        {/* capped: the space has more recons than Today reads, so their unmatch is at least this */}
+        <StatTile label="Unmatch open" value={countText(k.unmatch, t.capped)} caption="Every date of these recons" />
+        <StatTile label="Waiting for my approval" value={waiting.data ? countText(waiting.data.total, waiting.data.totalCapped) : "—"} caption={kpiCaption(waiting, "the approvals")} />
         <StatTile label="Postings needing attention" value={formatNumber(k.posting)} caption="Failed, timeout or not sent in 24 h" />
         <StatTile label="Sources behind" value={formatNumber(k.behind)} caption={`Degraded or down, of ${formatNumber(t.sources.length)}`} />
       </StatTiles>

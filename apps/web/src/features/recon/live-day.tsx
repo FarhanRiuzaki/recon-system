@@ -18,7 +18,7 @@ import { StateChip } from "@/components/state-chip";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
 import { useArrivals, useElapsed } from "./live-hooks";
-import { dayCounters, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
+import { dayCounters, dayTotals, kpiCaption, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
 import { LIVE_DAY_SHAPE } from "./shapes";
 import { amountTile } from "@/lib/shared/amount";
 import { useOpenSummary, useReconLive } from "./use-recons";
@@ -28,7 +28,7 @@ const fmt = (v: number) => formatNumber(Math.round(v));
 /** `between`: what sits under the day's numbers, before the pipeline (the Overview's run card, history and trend). */
 export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: string; spec: ReconSpec | null; between?: ReactNode }) {
   const q = useReconLive(spaceId, id, !!spec);
-  const open = useOpenSummary(spaceId, id, !!spec).data;
+  const openQ = useOpenSummary(spaceId, id, !!spec), open = openQ.data;
   const skeleton = useDelayedFlag(!!spec && !q.data && !q.error);
   const elapsed = useElapsed(q.data?.recon.running?.status === "running" ? q.data.recon.running.startedAt : null);
   // a source whose records grew since the last read: its records are coming in (owner, 22 Nov)
@@ -72,7 +72,7 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
             caption={tot ? `${formatNumber(tot.suggested)} suggested, open until accepted` : "Open items of this date"} />
           <StatTile label="Unmatch" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} unmatch on this date` : "Every date"} />
           {/* what the open unmatch items add up to, every date (audit R3; the queue's summary for this recon) */}
-          <StatTile label="Open amount" {...(open ? amountTile(open.amounts) : { value: "—" })} />
+          <StatTile label="Open amount" {...(open ? amountTile(open.amounts) : { value: "—" })} caption={kpiCaption(openQ, "the open amount", open ? amountTile(open.amounts).caption : undefined)} />
         </StatTiles>
       </Panel>
 

@@ -125,3 +125,12 @@ export function todayKpis(t: Pick<TodayDto, "recons" | "sources" | "posting">) {
 
 /** A count as a tile shows it: "500+" when the server stopped counting there (`capped`). */
 export const countText = (n: number, capped = false) => `${formatNumber(n)}${capped ? "+" : ""}`;
+
+/**
+ * A KPI tile's caption from its own read: it failed with nothing to show, it failed and keeps the last value, or the
+ * tile's usual `caption`.
+ */
+export function kpiCaption(q: { data: unknown; error: unknown }, what: string, caption?: string): string | undefined {
+  if (!q.error) return caption;
+  return q.data === undefined ? `Couldn't load ${what}` : `Couldn't refresh ${what}; showing the last read`;
+}

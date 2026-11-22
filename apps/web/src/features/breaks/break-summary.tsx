@@ -22,6 +22,7 @@ export function BreakSummary({ spaceId, filterQuery, mine, onMine }: { spaceId: 
   if (!s && q.isError) return <Notice tone="warn">Couldn&apos;t load the totals. {errorText(q.error)}</Notice>;
   return (
     <Reveal loading={!s} skeleton={<StatTiles><StatTileSkeletons count={4} /></StatTiles>}>
+      {s && q.isError && <Notice tone="warn" live>Couldn&apos;t refresh the totals; showing the ones loaded before. {errorText(q.error)}</Notice>}
       {s && (
         <StatTiles>
           <StatTile label="Open items" value={formatNumber(s.open)} />

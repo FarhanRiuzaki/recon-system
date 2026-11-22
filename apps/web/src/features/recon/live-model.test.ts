@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LiveReconDto, LiveSourceDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { countText, dayCounters, dayTotals, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayCounters, kpiCaption, dayTotals, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 
 const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
   ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
@@ -68,5 +68,13 @@ describe("Today's KPI tray (audit T1)", () => {
     expect(countText(500, true)).toBe("500+");
     expect(countText(1234, false)).toBe("1,234");
     expect(countText(3)).toBe("3");
+  });
+
+  it("a tile whose read failed says so; one keeping its last value says it is not fresh", () => {
+    const e = new Error("x");
+    expect(kpiCaption({ data: undefined, error: e }, "the approvals")).toBe("Couldn't load the approvals");
+    expect(kpiCaption({ data: 1, error: e }, "the approvals", "Every date")).toBe("Couldn't refresh the approvals; showing the last read");
+    expect(kpiCaption({ data: 1, error: null }, "the approvals", "Every date")).toBe("Every date");
+    expect(kpiCaption({ data: undefined, error: null }, "the approvals")).toBeUndefined();
   });
 });
