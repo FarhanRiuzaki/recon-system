@@ -6,6 +6,7 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
 import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
+import type { Chip } from "@/lib/shared/categories";
 
 type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
 type Version = { version: number; matchingHash: string; simulatedHash: string | null };
@@ -282,6 +283,8 @@ const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 export type SimView = { chip: { health: "degraded" | "unknown" | "down"; label: string } | { slot: "neutral"; label: string }; line: string; counts: Run | null; dim: boolean };
 /** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
 export const STOPPED_CHIP = { health: "down" as const, label: "Stopped" };
+/** A run that finished: Done is health; a simulation's result is a plain fact, a neutral chip (audit S5). */
+export const doneChip = (mode: string): Chip => (mode === "simulation" ? { slot: "neutral", label: "Simulated" } : { health: "healthy", label: "Done" });
 export function stoppedLine(r: { mode: string; error: string | null }): string {
   return `The ${r.mode === "simulation" ? "simulation" : "run"} stopped: ${lowerFirst(r.error ?? "it ended before it finished. Run it again.")}`;
 }

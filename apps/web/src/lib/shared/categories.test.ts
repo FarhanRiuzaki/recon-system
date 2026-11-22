@@ -23,6 +23,11 @@ describe("categories (audit §1.1 chip map): one slot per categorical value, nev
     for (const r of SPACE_ROLES) expect(CATEGORIES.spaceRole).toHaveProperty(r);
     for (const e of ENVIRONMENTS) expect(CATEGORIES.environment).toHaveProperty(e);
   });
+  it("an action's kind and a recon's day state: posting as the posting change kind, a day open neutral, never health", () => {
+    expect(["posting", "notify"].map((k) => categoryChip("actionKind", k))).toEqual([1, "neutral"]);
+    expect(categoryChip("actionKind", "posting")).toBe(categoryChip("changeKind", "posting"));
+    expect(["open", "closing", "closed"].map((d) => categoryChip("dayState", d))).toEqual(["neutral", 5, 3]);
+  });
   it("an unknown value is neutral", () => {
     expect(categoryChip("workState", "archived")).toBe("neutral");
     expect(categoryChip("reason", "Something new")).toBe("neutral");

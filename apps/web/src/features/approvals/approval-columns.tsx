@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { type Column, RelativeTime, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, RelativeTime, Truncate } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { ArrowRightIcon } from "@starterkit/ui/ui/icons";
 import { APPROVAL_KIND_LABEL, isRequestKind } from "@starterkit/shared/approvals";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
+import { categoryChip } from "@/lib/shared/categories";
 import { APPROVALS_FROM } from "@/lib/shared/nav";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -23,7 +26,10 @@ export function approvalColumns(spaceId: string): Column<ApprovalRowDto>[] {
     { key: "name", header: "Request", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
       <span className="grid min-w-0 max-w-80">
         <Truncate title={r.target.name}><Link href={approvalHref(spaceId, r)} className={LINK}>{r.target.name}</Link></Truncate>
-        <span className="truncate text-caption text-fg-3">{APPROVAL_KIND_LABEL[r.kind]}{r.version === null ? "" : ` ${r.version}`} · {r.target.code}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <CategoryChip label={`${APPROVAL_KIND_LABEL[r.kind]}${r.version === null ? "" : ` ${r.version}`}`} slot={categoryChip("changeKind", r.kind)} />
+          <span className="truncate text-caption text-fg-3">{r.target.code}</span>
+        </span>
       </span>
     ) },
     { key: "submitter", header: "Sent by", mobile: "meta", cell: (r) => r.submitter?.name ?? <span className="text-fg-3">A removed user</span> },
@@ -32,6 +38,7 @@ export function approvalColumns(spaceId: string): Column<ApprovalRowDto>[] {
       cell: (r) => (r.submittedAt ? <RelativeTime at={Date.parse(r.submittedAt)} /> : <span className="text-fg-3">—</span>) },
     { key: "decision", header: "Your decision", mobile: "meta", hideable: false, className: "min-w-56", cell: (r) => r.blocked
       ? <span className="text-body-sm text-fg-3">{r.blocked}</span>
-      : <Button asChild size="sm"><Link href={approvalHref(spaceId, r)}>Review</Link></Button> },
+      // a link to where it is decided, one per row: the page's primary stays the decision itself (P6)
+      : <Button asChild variant="link" size="sm"><Link href={approvalHref(spaceId, r)}>Review<Icon icon={ArrowRightIcon} /></Link></Button> },
   ];
 }

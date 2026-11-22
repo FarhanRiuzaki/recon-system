@@ -9,26 +9,28 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
-import { EmptyState, LazyMount, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
+import { CategoryChip, EmptyState, LazyMount, Panel, RelativeTime, ScrollFade } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from "@starterkit/ui/ui/icons";
+import { ArrowRightIcon, ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from "@starterkit/ui/ui/icons";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDto, ReconRunDto } from "@starterkit/shared/contracts/recon";
+import { StateChip } from "@/components/state-chip";
 import { api, errorText } from "@/lib/client/api";
+import type { Chip } from "@/lib/shared/categories";
 import { ENGINE_KEY } from "@/lib/shared/queries";
 import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
 import { carryText } from "./spec-model";
-import { isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
+import { doneChip, isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
 
 const MODE: Record<ReconRunDto["mode"], string> = { tick: "Scheduled", daily: "Scheduled", manual: "Manual", rerun: "Rerun", simulation: "Simulation" };
-const chipOf = (r: ReconRunDto) => (isLive(r) ? { health: "unknown" as const, label: r.status === "queued" ? "Queued" : "Running" }
-  : r.status === "failed" ? STOPPED_CHIP : { health: "healthy" as const, label: r.mode === "simulation" ? "Simulated" : "Done" });
+const chipOf = (r: ReconRunDto): Chip => (isLive(r) ? { health: "unknown", label: r.status === "queued" ? "Queued" : "Running" }
+  : r.status === "failed" ? STOPPED_CHIP : doneChip(r.mode));
 const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
 /** Label / value rows of a card (as the source's Pull card). */
@@ -52,9 +54,9 @@ function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string
           ["Carry over", carryText(spec.carry_over_days)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
-              <StatusChip health={chipOf(last).health} label={chipOf(last).label} />
+              <StateChip chip={chipOf(last)} />
               <RelativeTime at={Date.parse(last.startedAt)} touchDate={false} />
-              <Link className="text-fg underline-offset-4 hover:underline" href={reconRunHref(spaceId, id, last.id)}>Open results</Link>
+              <Link className="inline-flex items-center gap-1 text-fg underline-offset-4 hover:underline" href={reconRunHref(spaceId, id, last.id)}>Open results<Icon icon={ArrowRightIcon} size={14} /></Link>
             </span>
           ) : "No run yet"],
         ]} />
@@ -108,8 +110,9 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
                 <li key={r.id} className="border-b border-line last:border-b-0">
                   <Link href={reconRunHref(spaceId, id, r.id)} className="grid gap-1 px-4 py-2.5 hover:bg-tray focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary">
                     <span className="flex flex-wrap items-center gap-2">
-                      <StatusChip health={chip.health} label={chip.label} />
-                      <span className="text-body-sm text-fg">{MODE[r.mode]} · {rangeText(r.from, r.to)}</span>
+                      <StateChip chip={chip} />
+                      <CategoryChip slot="neutral" label={MODE[r.mode]} />
+                      <span className="text-body-sm text-fg">{rangeText(r.from, r.to)}</span>
                       <span className="ml-auto font-mono text-caption text-fg-3 tabular">{at(r.startedAt)}</span>
                     </span>
                     <span className="text-body-sm text-fg-2">{r.status === "failed" && r.error ? r.error : countsOf(r)}</span>

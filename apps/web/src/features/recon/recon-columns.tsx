@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import type { LiveReconDto, LiveSourceDto, ReconRowDto } from "@starterkit/shared/contracts/recon";
+import { StateChip } from "@/components/state-chip";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SOURCE_KIND_WORD, sourceKindIcon, useElapsed } from "./live-hooks";
@@ -81,7 +82,7 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
       return (
         <span className="grid justify-items-start gap-1">
           <span>{formatDate(Date.parse(`${x.date}T00:00:00+07:00`))}</span>
-          <StatusChip health={chip.health} label={chip.label} />
+          <StateChip chip={chip} />
         </span>
       );
     } },

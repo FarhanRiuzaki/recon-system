@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { type Column, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, Truncate } from "@starterkit/ui/ds";
 import { formatDate } from "@starterkit/ui/lib/format";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import type { AgeBucket, BreakState } from "@starterkit/shared/recon";
 import { amountText } from "@/lib/shared/amount";
+import { categoryChip } from "@/lib/shared/categories";
 
 /** A break's queue state as people say it. */
 export const STATE_LABEL: Record<BreakState, string> = {
@@ -43,12 +44,12 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
       <span className="tabular">{amountText(r.amountMinor, r.currency)}{r.currency ? <span className="ml-1 text-caption text-fg-3">{r.currency}</span> : null}</span>
     ) },
     { key: "reason", header: "Reason", mobile: "meta", className: "min-w-40", cell: (r) => (
-      <span className="grid">
-        <span>{r.reason ?? "–"}</span>
+      <span className="grid justify-items-start gap-1">
+        {r.reason ? <CategoryChip label={r.reason} slot={categoryChip("reason", r.reason)} /> : <span className="text-fg-3">–</span>}
         {r.proposedRef && <span className="truncate text-caption text-fg-3" title={r.proposedRef}>Pair proposed: {r.proposedRef}</span>}
       </span>
     ) },
-    { key: "state", header: "State", mobile: "meta", className: "whitespace-nowrap", cell: (r) => STATE_LABEL[r.state] },
+    { key: "state", header: "State", mobile: "meta", className: "whitespace-nowrap", cell: (r) => <CategoryChip label={STATE_LABEL[r.state]} slot={categoryChip("workState", r.state)} /> },
     { key: "assignee", header: "Assignee", mobile: "meta", cell: (r) => (r.assignee ? (r.assignee.name ?? "A removed user") : <span className="text-fg-3">Unassigned</span>) },
   ];
   if (!select) return cols;

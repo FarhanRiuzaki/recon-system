@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BRAND } from "@starterkit/shared/brand";
 import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { LoadingShape } from "@/components/route-skeleton";
+import { StateChip } from "@/components/state-chip";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
 import { useArrivals, useElapsed } from "./live-hooks";
@@ -59,7 +60,7 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
           {r.alertedAt ? ` Last alert ${formatDateTime(Date.parse(r.alertedAt))}.` : ""}
         </Notice>
       )}
-      <Panel flush title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StatusChip health={chip.health} label={chip.label} /></span>}
+      <Panel flush title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StateChip chip={chip} /></span>}
         description={[scheduleLine(r.schedule), run ?? (r.runAt ? `last run finished ${formatDateTime(Date.parse(r.runAt))}` : "no run has covered this date yet")].join(" · ")}>
         {/* the tiles fill the card: its body is the tray (no second frame) */}
         <StatTiles className="rounded-none border-0">

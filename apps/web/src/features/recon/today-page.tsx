@@ -20,6 +20,7 @@ import { attentionText } from "@/lib/shared/posting";
 import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import { StateChip } from "@/components/state-chip";
 import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
 import { useArrivals } from "./live-hooks";
@@ -116,7 +117,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
                           )}
                         </span>
                       </TableCell>
-                      <TableCell><span className="flex items-center gap-2 whitespace-nowrap">{formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StatusChip health={chip.health} label={chip.label} /></span></TableCell>
+                      <TableCell><span className="flex items-center gap-2 whitespace-nowrap">{formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StateChip chip={chip} /></span></TableCell>
                       <TableCell className="whitespace-nowrap text-fg-2">
                         {r.running ? (r.running.status === "running" ? "Running now" : "Queued")
                           : r.lastSuccessAt ? <RelativeTime at={Date.parse(r.lastSuccessAt)} /> : "No run yet"}

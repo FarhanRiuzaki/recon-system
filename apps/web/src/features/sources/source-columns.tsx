@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CategoryChip, type CategorySlot, type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { Sparkline } from "@starterkit/ui/charts";
 import { formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
@@ -11,11 +11,6 @@ const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-
 const none = <span className="text-fg-3">—</span>;
 /** One line cut with an ellipsis (a table cell wraps `.truncate` on purpose, so it is spelled out); the title holds it all. */
 const ONE_LINE = "block max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-mono text-caption";
-/**
- * The kind chip's hue says how data arrives: a file (blue) or a database (violet); the label says the mode. Slots 2, 3
- * and 5 (orange, teal, ochre) are left out: beside the state chip they read as Degraded or Healthy.
- */
-const KIND_SLOT: Record<SourceRowDto["kind"], CategorySlot> = { file_inbox: 1, db_watermark: 4, db_snapshot: 4 };
 
 /**
  * What the last pull brought: "+4 rows" (in the good-delta green, as a StatTile's pill: rows came in) then "1 left out",
@@ -60,11 +55,14 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="truncate text-caption text-fg-3">{sourceCaption(s)}</span>
       </span>
     ) },
-    // KIND_SLOT per kind, the same in every row (Figma 02 v1.0.6); a shared source neutral
+    // kind (with its read mode) and engine as neutral chips: facts, not states (audit §1.1); a shared source names its owner
     // what it reads and where (owner, 21 Nov: an admin sees the engine, the table or folder, and the server at a glance)
     { key: "kind", header: "Reads", mobile: "meta", className: "min-w-56", help: "How the data arrives, from which engine and table or folder; the server it connects to shows for a source admin.", cell: (s) => (
       <span className="grid min-w-0 max-w-80 justify-items-start gap-1">
-        <CategoryChip slot={s.owner ? "neutral" : KIND_SLOT[s.kind]} label={s.owner ? `Shared from ${s.owner.name}` : `${KIND_LABEL[s.kind]}${s.engine ? ` · ${ENGINE[s.engine]}` : ""}`} />
+        <span className="flex max-w-full flex-wrap gap-1">
+          <CategoryChip slot="neutral" label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} />
+          {!s.owner && s.engine && <CategoryChip slot="neutral" label={ENGINE[s.engine]} />}
+        </span>
         {s.reads && <span className={`${ONE_LINE} text-fg-2`} title={s.reads}>{s.reads}</span>}
         {s.server && <span className={`${ONE_LINE} text-fg-3`} title={s.server}>{s.server}</span>}
       </span>

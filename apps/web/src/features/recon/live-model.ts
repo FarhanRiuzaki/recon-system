@@ -3,6 +3,7 @@
 // reads it) and a day's numbers as the builder canvas's counters. Pure: the screens and their tests share it.
 import type { LiveReconDto, LiveSourceDto, ReconRunDto, RunDay, TodayDto } from "@starterkit/shared/contracts/recon";
 import { formatDateTime, formatDuration, formatNumber } from "@starterkit/ui/lib/format";
+import { categoryChip, type Chip } from "@/lib/shared/categories";
 
 type Health = "healthy" | "degraded" | "down" | "stopped" | "unknown";
 export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", closing: "Closing", closed: "Closed" };
@@ -24,13 +25,13 @@ export function sourceLag(s: LiveSourceDto): string {
 export const troubled = (r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>) =>
   r.sides.map((s) => byId.get(s.sourceId)).filter((s): s is LiveSourceDto => !!s?.health && s.health.state !== "healthy");
 
-/** A recon's state for a chip: Stale or affected by a source = Degraded; else its day, healthy. */
-export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>): { health: Health; label: string } {
+/** A recon's state for a chip: Stale or affected by a source = Degraded or Down; else its day, a category (Open is not Healthy). */
+export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>): Chip {
   if (r.stale) return { health: "degraded", label: "Stale" };
   const bad = troubled(r, byId);
   if (bad.some((s) => s.health!.state === "down")) return { health: "down", label: "Source down" };
   if (bad.length) return { health: "degraded", label: "Source degraded" };
-  return { health: r.state === "closed" ? "stopped" : "healthy", label: DAY_STATE_LABEL[r.state] };
+  return { slot: categoryChip("dayState", r.state), label: DAY_STATE_LABEL[r.state] };
 }
 
 /** "Runs every 2 min" / "Runs daily at 06:00". */
@@ -63,7 +64,7 @@ export function dayCounters(r: LiveReconDto): ReconRunDto["counters"] | undefine
 }
 
 export type MapNode = {
-  id: string; lane: 0 | 1; title: string; line: string; chip: { health: Health; label: string };
+  id: string; lane: 0 | 1; title: string; line: string; chip: Chip;
   /** A recon: its page; the names of its sources that are Degraded or Down. */
   href?: string; affectedBy?: string[];
   /** A recon with a live run queued or under way, and when it started. */

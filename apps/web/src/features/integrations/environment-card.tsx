@@ -1,17 +1,18 @@
 "use client";
 
 import { useState } from "react";
-import { Checkbox, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
+import { CategoryChip, Checkbox, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { EditIcon, KeyIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { ConnectorDetailDto, EnvironmentSettings, TokenCheckDto } from "@starterkit/shared/contracts/integrations";
 import { type Environment, ENVIRONMENT_LABEL } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
+import { categoryChip } from "@/lib/shared/categories";
 
 // One environment of a connector (DEC-053): its address and ids (in the version), its credentials (apart, encrypted:
 // Set / Not set, Replace) and Get token, which asks the bank for a token with them.
@@ -73,7 +74,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
   }
   const set = (k: keyof EnvironmentSettings, v: string) => onSettings({ ...settings, [k]: v });
   return (
-    <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <StatusChip health="healthy" label="Active" /> : undefined}>
+    <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <CategoryChip label="Active" slot={categoryChip("environment", env)} /> : undefined}>
       <div className="grid gap-section">
         <div className="grid gap-4 md:grid-cols-2">
           <Field id={id("url")} label="Address">
@@ -110,7 +111,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
         {canEdit && (
           <div className="flex flex-wrap items-center gap-3">
             <Button type="button" variant="secondary" size="sm" onClick={() => void getToken()} disabled={check.busy} aria-busy={check.busy || undefined}>
-              {check.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Get token
+              <Icon icon={check.busy ? SpinnerIcon : KeyIcon} className={check.busy ? "motion-safe:animate-spin" : undefined} />Get token
             </Button>
             <span role="status" className="text-body-sm">
               {check.r && ("error" in check.r ? <span className="text-down-ink">{check.r.error}</span>

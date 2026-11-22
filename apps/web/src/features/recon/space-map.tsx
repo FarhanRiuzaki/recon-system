@@ -8,11 +8,11 @@
 import { type Accent, arrowOf, Controls, EDGE_TYPES, type Edge, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, type Node, type NodeChangeset, type NodeProps, pathOf, PortHandles, ports, portsOf, ReactFlow, ReactFlowProvider, ResetLayout, useFitToCard, useHotNode, ViewportPortal } from "@starterkit/ui/flow";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
-import { StatusChip } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 
+import { StateChip } from "@/components/state-chip";
 import { sourceKindIcon, useElapsed } from "./live-hooks";
 import type { MapEdge, MapNode } from "./live-model";
 
@@ -20,7 +20,8 @@ const W = 280, H = 68, GAP_X = 180, GAP_Y = 20;
 const LANES = ["Sources", "Recons"] as const;
 type Data = Omit<MapNode, "id"> & { ins?: [string, number][]; outs?: [string, number][] };
 
-const ACCENT: Record<MapNode["chip"]["health"], Accent> = { healthy: null, degraded: "degraded", down: "down", stopped: null, unknown: null };
+// only health marks a card; a day state (Open, Closed) is a category and marks nothing
+const accentOf = (c: MapNode["chip"]): Accent => ("health" in c && (c.health === "degraded" || c.health === "down") ? c.health : null);
 
 function MapCard({ data }: NodeProps<Node<Data>>) {
   const hit = !!data.affectedBy?.length;
@@ -28,12 +29,12 @@ function MapCard({ data }: NodeProps<Node<Data>>) {
   return (
     <>
       <PortHandles ins={data.ins ?? []} outs={data.outs ?? []} />
-      <FlowCard icon={data.lane === 0 ? sourceKindIcon(data.kind ?? "db_watermark") : data.running === "running" ? SpinnerIcon : BranchIcon} title={data.title} accent={ACCENT[data.chip.health]} marked={hit}
+      <FlowCard icon={data.lane === 0 ? sourceKindIcon(data.kind ?? "db_watermark") : data.running === "running" ? SpinnerIcon : BranchIcon} title={data.title} accent={accentOf(data.chip)} marked={hit}
         interactive={!!data.href} running={data.running === "running" || !!data.arriving}
         line={elapsed ? `Running for ${elapsed}` : data.arriving ? `+${formatNumber(data.arriving)} records just in` : hit ? `Reads ${data.affectedBy!.join(", ")}` : data.line}
         badge={data.running
           ? <FlowBadge tone="primary"><Icon icon={SpinnerIcon} size={12} className={data.running === "running" ? "motion-safe:animate-spin" : undefined} />{data.running === "running" ? "Running" : "Queued"}</FlowBadge>
-          : <StatusChip health={data.chip.health} label={data.chip.label} />} />
+          : <StateChip chip={data.chip} />} />
     </>
   );
 }
@@ -74,7 +75,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
   const mine = (id: string) => (moved.shape === shape ? moved.at.get(id) : undefined);
   const at = (id: string) => mine(id)?.position ?? pos.get(id)!;
   const port = useMemo(() => ports(links, (id) => (moved.shape === shape ? moved.at.get(id)?.position.y : undefined) ?? pos.get(id)?.y ?? 0), [links, moved, shape, pos]);
-  const health = useMemo(() => new Map(input.map((n) => [n.id, n.chip.health])), [input]);
+  const health = useMemo(() => new Map(input.map((n) => [n.id, "health" in n.chip ? n.chip.health : null])), [input]);
   const hover = useHotNode();
   const lit = useMemo(() => pathOf(hover.hot, links), [hover.hot, links]);
   const nodes: Node<Data>[] = useMemo(() => input.map(({ id, ...data }) => ({

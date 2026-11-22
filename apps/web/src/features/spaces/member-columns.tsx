@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 import { type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
-import { ROLE_LABEL } from "@starterkit/shared/spaces";
 import type { SpaceMemberDto } from "@starterkit/shared/contracts/spaces";
-import { RoleChips } from "@/components/role-chips";
+import { SpaceRoleChips } from "@/components/role-chips";
 
 /**
  * Columns of a space's members (Figma "Build notes · 01 Space & shell"). Phone card: the member is the title, roles,
@@ -11,7 +10,7 @@ import { RoleChips } from "@/components/role-chips";
  */
 export const MEMBER_COLUMNS: Column<SpaceMemberDto>[] = [
   { key: "name", header: "Member", sortable: true, mobile: "title", className: "min-w-48", cell: (m) => <Truncate title={m.name}><span className="font-medium text-fg">{m.name}</span></Truncate> },
-  { key: "roles", header: "Roles in this space", cell: (m) => <RoleChips roles={m.roles.map((r) => ROLE_LABEL[r])} fallback="neutral" /> },
+  { key: "roles", header: "Roles in this space", cell: (m) => <SpaceRoleChips roles={m.roles} /> },
   { key: "status", header: "Status", cell: (m) => (m.active ? <StatusChip health="healthy" label="Active" /> : <StatusChip health="stopped" label="Inactive" />) },
   { key: "username", header: "Username", mobile: "hidden", className: "max-xl:hidden", cell: (m) => <span className="font-mono text-body-sm">{m.username}</span> },
   { key: "lastSignInAt", header: "Last sign-in", className: "md:max-xl:hidden", cell: (m): ReactNode =>

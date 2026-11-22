@@ -9,8 +9,7 @@ import { Button } from "@starterkit/ui/ui/button";
 import { SurfacesIcon } from "@starterkit/ui/ui/icons";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { UserSpaceDto } from "@starterkit/shared/contracts/spaces";
-import { ROLE_LABEL } from "@starterkit/shared/spaces";
-import { RoleChips } from "@/components/role-chips";
+import { SpaceRoleChips } from "@/components/role-chips";
 import { api, errorText } from "@/lib/client/api";
 import { userSpaces } from "@/lib/shared/queries";
 
@@ -30,7 +29,7 @@ export function joinedSpaces(page: Page<UserSpaceDto> | undefined): string[] | n
 
 const COLUMNS: Column<UserSpaceDto>[] = [
   { key: "name", header: "Space", mobile: "title", cell: (s) => <Link href={`/spaces/${encodeURIComponent(s.spaceId)}/members`} className="text-fg underline-offset-2 hover:underline">{s.name}</Link> },
-  { key: "roles", header: "Roles in this space", mobile: "meta", cell: (s) => <RoleChips roles={s.roles.map((r) => ROLE_LABEL[r])} fallback="neutral" /> },
+  { key: "roles", header: "Roles in this space", mobile: "meta", cell: (s) => <SpaceRoleChips roles={s.roles} /> },
   { key: "status", header: "Status", mobile: "meta", cell: (s) => (s.status === "active" ? <StatusChip health="healthy" label="Active" /> : <StatusChip health="stopped" label="Archived" />) },
 ];
 

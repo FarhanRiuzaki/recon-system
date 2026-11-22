@@ -1,26 +1,27 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
+import { StatTile, StatTiles } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { isLive, itemsText, projectionText, rangeText, rateText, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
+import { StateChip } from "@/components/state-chip";
+import type { Chip } from "@/lib/shared/categories";
+import { doneChip, isLive, itemsText, projectionText, rangeText, rateText, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
 import { STALL_TEXT } from "./use-recons";
 
 /** A run in one strip (the run page's head, the recon's last run on its Overview): its state, dates, counts and what day close does; `action` ends the strip. */
 export function RunSummary({ run, spec, labels, stalled = false, action }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled?: boolean; action?: ReactNode }) {
   const t = standingTotals(run, spec);
   const live = isLive(run);
-  const chip = live ? { health: "unknown" as const, label: "Running" } : run.status === "failed" ? STOPPED_CHIP
-    : { health: "healthy" as const, label: run.mode === "simulation" ? "Simulated" : "Done" };
+  const chip: Chip = live ? { health: "unknown", label: "Running" } : run.status === "failed" ? STOPPED_CHIP : doneChip(run.mode);
   const what = run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`;
   const at = run.finishedAt ? ` · ${formatTime(Date.parse(run.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
   const day = run.projection ? projectionText(run.projection, labels) : "";
   return (
     <section aria-label="Run" className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-card p-4 shadow-xs">
-      <StatusChip health={chip.health} label={chip.label} />
+      <StateChip chip={chip} />
       <div className="grid min-w-0 flex-1 basis-64 gap-0.5">
         {/* the live region is the state line only: the counts change with every poll; the counts are what stands now */}
         <span role="status" className="text-body-sm text-fg">

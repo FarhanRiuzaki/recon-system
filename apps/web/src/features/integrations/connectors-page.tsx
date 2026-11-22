@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ExternalLinkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -14,6 +14,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
+import { categoryChip } from "@/lib/shared/categories";
 import { CONNECTORS } from "@/lib/shared/queries";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -31,7 +32,9 @@ const COLUMNS: Column<ConnectorRowDto>[] = [
   { key: "status", header: "Status", mobile: "meta", cell: (r) => (r.disabled ? <StatusChip health="down" label="Turned off" />
     : r.open ? <StatusChip health={r.open.status === "draft" ? "unknown" : "degraded"} label={r.open.status === "draft" ? `Draft ${r.open.version}` : `Version ${r.open.version} waits`} />
       : r.published ? <StatusChip health="healthy" label="Live" /> : <StatusChip health="stopped" label="Not live" />) },
-  { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published ? `Version ${r.published.version} · ${ENVIRONMENT_LABEL[r.active!]}` : <span className="text-fg-3">Not live</span>) },
+  { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published
+    ? <span className="flex items-center gap-2">Version {r.published.version}<CategoryChip label={ENVIRONMENT_LABEL[r.active!]} slot={categoryChip("environment", r.active!)} /></span>
+    : <span className="text-fg-3">Not live</span>) },
   { key: "operations", header: "Operations", mobile: "meta", className: "tabular", cell: (r) => r.operations },
   { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => <RelativeTime at={Date.parse(r.updatedAt)} /> },
 ];

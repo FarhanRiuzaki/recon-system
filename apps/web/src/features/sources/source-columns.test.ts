@@ -22,7 +22,10 @@ describe("sources columns (Build notes 02 + owner 21 Nov: what it reads, last re
   it("Reads names the engine, the table or folder and, for a source admin, the server; Used by counts recons", () => {
     expect(cell("kind")).toContain("/inbox/bi · bisettle{yyyyMMdd}.txt");
     const db = { ...S, kind: "db_watermark" as const, engine: "postgres" as const, reads: "core.source1", server: "recon_ro@db:5432/core" };
-    expect(cell("kind", db)).toContain("Database · watermark · PostgreSQL");
+    // the kind (with its read mode) and the engine: a neutral chip each (audit §1.1)
+    expect(cell("kind", db)).toContain(">Database · watermark</span>");
+    expect(cell("kind", db)).toContain(">PostgreSQL</span>");
+    expect(cell("kind", db).match(/data-slot="category-chip"/g)).toHaveLength(2);
     expect(cell("kind", db)).toContain("recon_ro@db:5432/core");
     expect(cell("usedBy")).toBe("2 recons");
     expect(cell("name", { ...S, pending: { version: 2, status: "in_review" } })).toContain("version 2 in review");
@@ -47,11 +50,9 @@ describe("sources columns (Build notes 02 + owner 21 Nov: what it reads, last re
     const shared = { ...S, shared: true, owner: { spaceId: "t", name: "Treasury" }, quarantinedToday: null };
     expect(cell("name", shared)).toContain("Read-only here · owned by Treasury");
     expect(cell("kind", shared)).toContain("Shared from Treasury");
-    // a category chip per input kind, the same slot in every row; a shared source neutral (Figma 02 v1.0.6)
+    // kind, engine and read mode are facts, not states: neutral chips (audit §1.1); a shared source neutral too
     expect(cell("kind")).toContain('data-slot="category-chip"');
-    expect(cell("kind")).toContain("bg-chart-1");
-    expect(cell("kind", { ...S, kind: "db_watermark" })).toContain("bg-chart-4");
-    expect(cell("kind", { ...S, kind: "db_snapshot" })).toContain("bg-chart-4");
+    for (const kind of ["file_inbox", "db_watermark", "db_snapshot"] as const) expect(cell("kind", { ...S, kind })).not.toMatch(/bg-chart-\d/);
     expect(cell("kind", shared)).toContain("bg-fg-4");
     expect(cell("state")).toContain('data-status="healthy"');
     expect(cell("state")).toContain("border-transparent");

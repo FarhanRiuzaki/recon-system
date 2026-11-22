@@ -573,8 +573,11 @@ request) `variant="caution"` with `ErrorIcon`, its confirm inside a dialog Dange
 Replace a Ghost with `EditIcon`, never the bare word; Open / View / Review a link with a trailing arrow; Export a
 Secondary with `ExportIcon`; Retry / Try again a Secondary with `RefreshIcon`. `architecture.test.ts` reads
 `INTENTS`: a Button or BlockedButton labelled Reject / Turn off / Cancel request is caution (or Danger), one labelled
-Edit / Replace / Export / Retry renders an `<Icon>`.
-Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. One
+Edit / Replace / Export / Retry renders an `<Icon>`, and a `Button asChild` around a `Link` labelled View / Open /
+Review is `variant="link"` with its `<Icon>` after the words.
+Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. A
+`disabled` passed with a `reason` is ignored (aria-disabled instead), so the reason still reaches mouse and keyboard
+(`blocked-button.test.ts`). One
 primary per page. The primary's gradient, edge and ring are drawn by `base.css` on
 `.bg-action[data-variant="default"]` (under an `asChild` trigger the `data-slot` is the trigger's, so the rule keys on
 the class); under a palette other than Current the button is flat `--action`. Values, contrast and
@@ -721,9 +724,11 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   Resolved 3, Pending approval 4), reason (No counterpart neutral, Amount differs 2, Date differs 5, the rest 6), change
   kind (Posting 1, Force match 4, Write-off 2, Unmatch 6, versions neutral), environment (Development neutral,
   Production 2), space role (Space admin 4, Source admin 3, Config maker 1, Config checker 6, Operator 5, Reviewer 2,
-  Viewer neutral). All-neutral sets need no entry: source kind, engine, read mode, Fixed / Auto generated, Simulated.
+  Viewer neutral), action kind (Posting 1, Notify neutral), a recon's day (Open neutral, Closing 5, Closed 3).
+  All-neutral sets need no entry: source kind, engine, read mode, run kind, Fixed / Auto generated, Simulated.
   Never a health colour for a non-health value; version state, posting result and a credential set / not set stay
-  StatusChips.
+  StatusChips. A value that is health in some states and a category in others (a recon's day: Stale or Source down,
+  else Open) is a `Chip` drawn by `components/state-chip.tsx`.
 - **Count badge**: 18 px pill, `--tray` (in tray: `--card`), `label` fg-2, tabular.
 - **Result chip** (sign-in Success / Failed, or any pass / block outcome): use slot 1 / slot 2 dots, not status
   colours (a failed sign-in is an event, not a system failure).
