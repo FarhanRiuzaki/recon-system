@@ -7,6 +7,7 @@ import type { LibraryDetailDto, LibraryRowDto, UsedByRowDto } from "@starterkit/
 import type { Level } from "@starterkit/shared/workflows";
 import { and, eq } from "drizzle-orm";
 import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
+import { holdTx, lockWaiters } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
 import { spaceMembers, spaces } from "../../../spaces";
@@ -81,6 +82,31 @@ describe("the workflow library", () => {
     expect((await err(r)).message).toContain("Treasury · Write-off");
     await db.update(approvalBindings).set({ status: "retired" }).where(and(eq(approvalBindings.spaceId, A)));
     expect((await json<LibraryDetailDto>(call("POST", `/v1/workflows/${w.id}/archive`, { token: t.m1 }))).archived).toBe(true);
+  });
+
+  it("only its maker edits a draft: another manager's save is refused, so nobody publishes what they wrote", async () => {
+    const w = await create(t.m1, "Checker only");
+    const r = await call("PATCH", `/v1/workflows/${w.id}/draft`, { token: t.m2, body: { spec: { name: "Checker only", levels: [...reviewers, ...reviewers] } } });
+    expect((await err(r)).code).toBe("invalid_state");
+    expect((await json<LibraryDetailDto>(call("GET", `/v1/workflows/${w.id}`, { token: t.m1 }))).open!.spec.levels).toHaveLength(1);
+  });
+
+  it("an archive in flight holds a rules publish that picks the workflow, which then refuses it", async () => {
+    const w = await create(t.m1, "Checker only");
+    await publish(w.id, t.m2, t.m1);
+    const sa = await signIn("superadmin");
+    await db.insert(spaceMembers).values({ spaceId: A, userId: await idOf("admin"), role: "space_admin" });
+    const R = (x = "") => `/v1/spaces/${A}/approval-rules/write_off${x}`;
+    await call("POST", R("/draft"), { token: t.m1 });
+    await call("PATCH", R("/draft"), { token: t.m1, body: { spec: { rules: [{ name: "Large", when: [], workflowId: w.id }], otherwise: null } } });
+    await call("POST", R("/draft/submit"), { token: t.m1 });
+    const archive = await holdTx((tx) => tx.update(workflows).set({ archivedAt: new Date() }).where(eq(workflows.id, w.id)));
+    const publishing = call("POST", R("/review/approve"), { token: sa, body: {} });
+    expect(await lockWaiters(1, "%workflows%")).toBe(true); // waits for the archive
+    await archive.commit(async () => {});
+    const r = await publishing;
+    expect(r.status).toBe(400);
+    expect((await err(r)).message).toContain("has no live version");
   });
 
   it("used by lists each space's rules and the levels short of people there", async () => {

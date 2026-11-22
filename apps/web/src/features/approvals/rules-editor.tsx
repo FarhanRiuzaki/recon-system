@@ -20,6 +20,7 @@ import { api, errorText } from "@/lib/client/api";
 import { APPROVALS_KEY } from "@/lib/shared/queries";
 import { approvalRulesDetail } from "@/lib/shared/queries-recon";
 import { RULES_EDITOR_SHAPE } from "./shapes";
+import { unsaved } from "./autosave";
 import { ReviewPanel } from "./review-panel";
 import { WhoApproves } from "./who-approves";
 import { type KeyedRule, RulesEditor } from "./binding-rules";
@@ -61,10 +62,11 @@ export function ApprovalRulesEditor({ spaceId, trigger }: { spaceId: string; tri
   const [save, setSave] = useState<Save>({ state: "idle" });
   // the body the server holds (null = the draft as loaded): nothing is sent until the rules differ from it
   const [savedBody, setSavedBody] = useState<string | null>(null);
+  const body = JSON.stringify({ spec });
+  const pending = editing && view === "open" && unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }));
   useEffect(() => {
     if (!editing || view !== "open") return;
-    const body = JSON.stringify({ spec });
-    if (!complete || body === (savedBody ?? JSON.stringify({ spec: draft!.spec }))) return;
+    if (!complete || !unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }))) return;
     const t = setTimeout(async () => {
       setSave({ state: "saving" });
       try {
@@ -110,7 +112,7 @@ export function ApprovalRulesEditor({ spaceId, trigger }: { spaceId: string; tri
               {busy === "start" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Edit rules
             </Button>
           : draft && w.canEdit
-            ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || save.state === "saving" || !complete} aria-busy={busy === "submit" || undefined}>
+            ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending || !complete} aria-busy={busy === "submit" || undefined}>
                 {busy === "submit" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Send for approval
               </Button>
             : undefined} />

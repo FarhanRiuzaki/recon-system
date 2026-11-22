@@ -15,7 +15,7 @@ import { ApiError, isUniqueViolation } from "../../kernel/errors";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { withSpace } from "../spaces";
-import { liveLibrary, liveVersion } from "./library";
+import { assertMaker, liveLibrary, liveVersion } from "./library";
 import { approversOf } from "./requests";
 import { approvalBindings, workflows } from "./schema";
 import { reviewRule, userNames, type VersionRow, versionDto, versionPeople } from "./versions";
@@ -37,7 +37,8 @@ const workflowIdsOf = (s: BindingSpec) => [...new Set([...s.rules.map((r) => r.w
 /** Every workflow the rules pick exists and has a live version, else 400 naming it. */
 async function assertLive(tx: InTx, s: BindingSpec) {
   for (const id of workflowIdsOf(s)) {
-    const [w] = await tx.select({ name: workflows.name, archivedAt: workflows.archivedAt }).from(workflows).where(eq(workflows.id, id));
+    // FOR SHARE: an archive in flight (library.ts archiveWorkflow) finishes first, then this sees it archived
+    const [w] = await tx.select({ name: workflows.name, archivedAt: workflows.archivedAt }).from(workflows).where(eq(workflows.id, id)).for("share");
     if (!w) throw new ApiError("bad_request", "A picked workflow no longer exists. Pick another one.");
     if (w.archivedAt || !(await liveVersion(tx, id))) throw new ApiError("bad_request", `“${w.name}” has no live version. Publish it in Workflows first, or pick another one.`);
   }
@@ -108,6 +109,7 @@ export function saveDraft(ctx: Ctx, trigger: Trigger, b: SaveRulesBody): Promise
   return inSpace(ctx, async (tx, spaceId) => {
     const d = await draftOf(tx, spaceId, trigger);
     if (d.status !== "draft") throw new ApiError("invalid_state", "This version waits for approval and can't change. Ask for it back to edit it.");
+    await assertMaker(tx, ctx, d);
     if (JSON.stringify(d.spec) === JSON.stringify(b.spec)) return;
     await assertLive(tx, b.spec);
     await tx.update(approvalBindings).set({ spec: b.spec, updatedAt: sql`now()`, reviewComment: null }).where(eq(approvalBindings.id, d.id));

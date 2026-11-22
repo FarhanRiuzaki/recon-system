@@ -23,6 +23,7 @@ import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/ap
 import { APPROVALS_KEY } from "@/lib/shared/queries";
 import { libraryWorkflow } from "@/lib/shared/queries-recon";
 import { Levels } from "./levels-editor";
+import { unsaved } from "./autosave";
 import { ReviewPanel } from "./review-panel";
 import { LIBRARY_EDITOR_SHAPE } from "./shapes";
 import { UsedBy } from "./used-by";
@@ -62,10 +63,11 @@ export function LibraryEditor({ id }: { id: string }) {
 
   const [save, setSave] = useState<Save>({ state: "idle" });
   const [savedBody, setSavedBody] = useState<string | null>(null);
+  const body = JSON.stringify({ spec: { ...spec, name: spec.name.trim() } });
+  const pending = editing && view === "open" && unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }));
   useEffect(() => {
     if (!editing || view !== "open") return;
-    const body = JSON.stringify({ spec: { ...spec, name: spec.name.trim() } });
-    if (!complete || body === (savedBody ?? JSON.stringify({ spec: draft!.spec }))) return;
+    if (!complete || !unsaved(body, savedBody, JSON.stringify({ spec: draft!.spec }))) return;
     const t = setTimeout(async () => {
       setSave({ state: "saving" });
       try {
@@ -123,7 +125,7 @@ export function LibraryEditor({ id }: { id: string }) {
               {busy === "start" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Edit workflow
             </Button>
           : draft && w.canEdit
-            ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || save.state === "saving" || !complete} aria-busy={busy === "submit" || undefined}>
+            ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending || !complete} aria-busy={busy === "submit" || undefined}>
                 {busy === "submit" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Send for approval
               </Button>
             : undefined} />

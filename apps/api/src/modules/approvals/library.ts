@@ -181,6 +181,15 @@ async function draftOf(tx: InTx, id: string): Promise<Row> {
   if (!d) throw new ApiError("invalid_state", "This workflow has no open draft. Start one first.");
   return d;
 }
+/**
+ * Only the draft's maker edits it: maker-checker counts the maker (and who sent it) as its authors, so a second editor's
+ * changes would let them publish what they wrote, and their autosaves would overwrite each other.
+ */
+export async function assertMaker(tx: InTx, ctx: Ctx, d: { makerId: string | null }) {
+  if (!d.makerId || d.makerId === ctx.user.id) return;
+  const who = (await userNames(tx, [d.makerId])).get(d.makerId) ?? "someone else";
+  throw new ApiError("invalid_state", `This draft is ${who}'s. Ask them to send it for approval or discard it, then start your own.`);
+}
 const hasPublished = async (tx: InTx, id: string) => (await tx.select({ id: workflowVersions.id }).from(workflowVersions).where(and(eq(workflowVersions.workflowId, id), eq(workflowVersions.status, "published")))).length > 0;
 
 /** PATCH /v1/workflows/{id}/draft (autosave); no entry when nothing changed. A never-published workflow takes the draft's name. */
@@ -190,6 +199,7 @@ export async function saveWorkflowDraft(ctx: Ctx, id: string, b: SaveChainBody):
     const w = await workflowOf(tx, id, true);
     const d = await draftOf(tx, id);
     if (d.status !== "draft") throw new ApiError("invalid_state", "This version waits for approval and can't change. Ask for it back to edit it.");
+    await assertMaker(tx, ctx, d);
     if (JSON.stringify(d.spec) === JSON.stringify(b.spec)) return;
     await tx.update(workflowVersions).set({ spec: b.spec, updatedAt: sql`now()`, reviewComment: null }).where(eq(workflowVersions.id, d.id));
     if (!(await hasPublished(tx, id)) && w.name !== b.spec.name) await tx.update(workflows).set({ name: b.spec.name }).where(eq(workflows.id, id));
@@ -254,17 +264,21 @@ export async function reviewWorkflowDraft(ctx: Ctx, id: string, b: ReviewWorkflo
   return libraryDetail(ctx, id);
 }
 
-/** POST /v1/workflows/{id}/archive: refused while a space's live or open approval rules use it. */
+/**
+ * POST /v1/workflows/{id}/archive: refused while a space's live or open approval rules use it. The workflow's row is
+ * locked first: a rules save or publish reads it FOR SHARE (rules.ts assertLive), so it either finishes before the
+ * check below sees it, or waits and then finds the workflow archived.
+ */
 export async function archiveWorkflow(ctx: Ctx, id: string): Promise<LibraryDetailDto> {
   mustManage(ctx);
-  const using = await rulesUsing([id]);
-  if (using.length) {
-    const where = [...new Set(using.map((r) => `${r.spaceName} · ${TRIGGER_LABEL[r.trigger as Trigger]}`))].join(", ");
-    throw new ApiError("invalid_state", `Approval rules still use this workflow: ${where}. Change them first.`);
-  }
   await db.transaction(async (tx) => {
     const w = await workflowOf(tx, id, true);
     if (w.archivedAt) return;
+    const using = await rulesUsing([id]);
+    if (using.length) {
+      const where = [...new Set(using.map((r) => `${r.spaceName} · ${TRIGGER_LABEL[r.trigger as Trigger]}`))].join(", ");
+      throw new ApiError("invalid_state", `Approval rules still use this workflow: ${where}. Change them first.`);
+    }
     await tx.update(workflows).set({ archivedAt: sql`now()` }).where(and(eq(workflows.id, id), isNull(workflows.archivedAt)));
     await recordActivity(tx, ctx, { action: "workflow.archive", target: target(id, w.name), before: { archived: false }, after: { archived: true } });
   });
