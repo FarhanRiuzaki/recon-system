@@ -31,6 +31,7 @@ import { DASH, PassRow, type PassRowProps } from "./pass-row";
 import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
+import { ApprovalStep } from "./approval-step";
 import { SpecView } from "./spec-view";
 import { saveQueue } from "./save-queue";
 import { amountText, connectorText, countLine, CURRENCY_DIFFERS, defaultReplay, isLive, rangeText, passOutcome, projectionText, reasonCount, RUNNING_REASON, runTotals, simView } from "./run-model";
@@ -422,16 +423,16 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   };
 
   // ---- the steps (owner, 22 Nov: one flow, the user knows where to start and what comes next) ----
-  const simulated: "none" | "stale" | "current" = saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.specHash || dirty ? "stale" : "current";
+  const simulated: "none" | "stale" | "current" = saved.simulatedHash === null ? "none" : saved.simulatedHash !== saved.matchingHash || dirty ? "stale" : "current";
   const why = stepReasons({
     loaded: !!fields[0] && !!fields[1], sideProblem: placed?.side !== undefined ? `Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}` : null,
     passes: spec.passes.length, needs: spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null)), incomplete,
     settingProblem: placed?.setting ? `${placed.setting}: ${placed.text}` : null, simulation: simulated, running: live || starting, submit: blocked,
   });
   const STEP_LABEL = SETUP_STEPS;
-  const wizardSteps = ([1, 2, 3, 4, 5] as const).map((n) => ({
+  const wizardSteps = ([1, 2, 3, 4, 5, 6] as const).map((n) => ({
     id: String(n), label: STEP_LABEL[n],
-    status: (n === step ? "current" : n === 5 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
+    status: (n === step ? "current" : n === 6 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
   }));
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
@@ -446,8 +447,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   return (
     <Wizard title="Setup progress" steps={wizardSteps}>
       <form noValidate aria-label="Recon setup" className="grid gap-section"
-        onSubmit={(e) => { e.preventDefault(); if (why[step] === null) { if (step === 5) void submit(); else go((step + 1) as WizardStep); } }}>
-        <h2 className="sr-only">Step {step} of 5 · {STEP_LABEL[step]}</h2>
+        onSubmit={(e) => { e.preventDefault(); if (why[step] === null) { if (step === 6) void submit(); else go((step + 1) as WizardStep); } }}>
+        <h2 className="sr-only">Step {step} of 6 · {STEP_LABEL[step]}</h2>
         <p aria-live="polite" className="sr-only">{said}</p>
         <span role="status" className="sr-only">{editable && failed ? "Not saved" : ""}</span>
         {failed && problem && <p role="alert" className="text-body-sm text-down-ink">{placed ? problemText(placed) : problem.text}</p>}
@@ -526,6 +527,11 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         )}
 
         {step === 4 && (
+          <ApprovalStep spaceId={spaceId} configId={recon.id} versionId={saved.id} recon={recon.name} spec={spec} fields={fields} disabled={!editable} dirty={dirty}
+            onChange={(approvals) => { const { approvals: _, ...rest } = spec; change(approvals ? { ...rest, approvals } : rest); }} />
+        )}
+
+        {step === 5 && (
           <>
             <Panel title="Test the draft" description="Nothing is stored and no break is raised">
               <div className="grid gap-4">
@@ -577,11 +583,11 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           </>
         )}
 
-        {step === 5 && (
+        {step === 6 && (
           <>
             {/* the whole draft as the Configuration will show it, each part with Edit back to its step */}
             <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
-            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(4)}>Edit</Button> : undefined}>
+            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button> : undefined}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <StatusChip health={sim.chip.health} label={sim.chip.label} />
                 <span className="text-body-sm text-fg">{sim.line}</span>
@@ -593,8 +599,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
 
         {editable && (
           <FormFooter
-            primary={<BlockedButton type="submit" reason={why[step]} variant={why[step] === null ? "default" : "secondary"} disabled={step === 5 && submitting} aria-busy={(step === 5 && submitting) || undefined}>
-              {step === 5 && submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{step === 5 ? "Submit for approval" : `Next: ${STEP_LABEL[(step + 1) as WizardStep]}`}
+            primary={<BlockedButton type="submit" reason={why[step]} variant={why[step] === null ? "default" : "secondary"} disabled={step === 6 && submitting} aria-busy={(step === 6 && submitting) || undefined}>
+              {step === 6 && submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{step === 6 ? "Submit for approval" : `Next: ${STEP_LABEL[(step + 1) as WizardStep]}`}
             </BlockedButton>}
             back={step > 1 && <Button type="button" variant="secondary" onClick={() => go((step - 1) as WizardStep)}>Back</Button>}
             cancel={<Button asChild variant="ghost"><Link href={exitHref}>Save and close</Link></Button>} />

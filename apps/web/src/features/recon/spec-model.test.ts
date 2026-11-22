@@ -117,15 +117,15 @@ describe("checks before a save", () => {
     expect(tolerancePass("Pass 3 allows dates 1 day apart …")).toBeNull();
   });
   it("Submit says why it is off, in order", () => {
-    const v = { simulatedHash: null, specHash: "h" };
+    const v = { simulatedHash: null, matchingHash: "h" };
     const ok = { dirty: false, passes: 2, gaps: [] };
     expect(submitReason(v, { ...ok, dirty: true })).toBe("Wait until the draft is saved.");
     expect(submitReason(v, { ...ok, dirty: true, failed: true })).toBe("The draft isn't saved. Retry the save, then submit.");
     expect(submitReason(v, { ...ok, passes: 0 })).toBe("Add at least one pass, then submit.");
     expect(submitReason(v, { ...ok, gaps: [1, 2, 3] })).toBe("Add a currency condition to passes 1–3 first.");
     expect(submitReason(v, ok)).toBe("Run a simulation on this draft first.");
-    expect(submitReason({ simulatedHash: "old", specHash: "h" }, ok)).toBe("The draft changed since the last simulation. Run it again.");
-    expect(submitReason({ simulatedHash: "h", specHash: "h" }, ok)).toBeNull();
+    expect(submitReason({ simulatedHash: "old", matchingHash: "h" }, ok)).toBe("The draft changed since the last simulation. Run it again.");
+    expect(submitReason({ simulatedHash: "h", matchingHash: "h" }, ok)).toBeNull();
   });
 });
 
@@ -287,19 +287,20 @@ describe("what the pass editor suggests (owner, 22 Nov: the user knows what to d
   });
 });
 
-import { stepReasons } from "./spec-model";
+import { SETUP_STEPS, stepReasons } from "./spec-model";
 describe("the setup's steps (owner, 22 Nov: Next says what is missing)", () => {
   const ok = { loaded: true, sideProblem: null, passes: 2, needs: [[], []], incomplete: null, settingProblem: null, simulation: "current" as const, running: false, submit: null };
   it("every step can go on when nothing is missing", () => {
-    expect(stepReasons(ok)).toEqual({ 1: null, 2: null, 3: null, 4: null, 5: null });
+    expect(stepReasons(ok)).toEqual({ 1: null, 2: null, 3: null, 4: null, 5: null, 6: null });
+    expect(SETUP_STEPS).toEqual({ 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Approval", 5: "Test", 6: "Review and submit" });
   });
   it("each step names what it still needs", () => {
     expect(stepReasons({ ...ok, loaded: false })[1]).toBe("The sides' sources are still loading.");
     expect(stepReasons({ ...ok, passes: 0, needs: [] })[2]).toBe("Add a pass first.");
     expect(stepReasons({ ...ok, needs: [[], ["A name", "A condition"]] })[2]).toBe("Pass 2 needs: a name, a condition.");
-    expect(stepReasons({ ...ok, simulation: "none" })[4]).toBe("Run a simulation of this draft first.");
-    expect(stepReasons({ ...ok, simulation: "stale" })[4]).toBe("The draft changed since the last simulation. Run it again.");
-    expect(stepReasons({ ...ok, running: true })[4]).toBe("Wait for the simulation to finish.");
-    expect(stepReasons({ ...ok, submit: "Run a simulation on this draft first." })[5]).toBe("Run a simulation on this draft first.");
+    expect(stepReasons({ ...ok, simulation: "none" })[5]).toBe("Run a simulation of this draft first.");
+    expect(stepReasons({ ...ok, simulation: "stale" })[5]).toBe("The draft changed since the last simulation. Run it again.");
+    expect(stepReasons({ ...ok, running: true })[5]).toBe("Wait for the simulation to finish.");
+    expect(stepReasons({ ...ok, submit: "Run a simulation on this draft first." })[6]).toBe("Run a simulation on this draft first.");
   });
 });

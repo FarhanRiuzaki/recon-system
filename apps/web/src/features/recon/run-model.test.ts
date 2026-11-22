@@ -79,7 +79,7 @@ describe("run-model", () => {
   });
 
   it("states the simulation bar: not simulated, running, simulated, out of date, stopped", () => {
-    const v = { version: 1, specHash: "h1", simulatedHash: "h1" };
+    const v = { version: 1, matchingHash: "h1", simulatedHash: "h1" };
     expect(simView({ ...v, simulatedHash: null }, null, null, false).chip.label).toBe("Not simulated");
     expect(simView({ ...v, simulatedHash: null }, null, null, false).line).toBe("Draft v1 · not simulated yet");
     const s = simView(v, run, run, false);
@@ -87,7 +87,7 @@ describe("run-model", () => {
     expect(s.line).toBe("Draft v1 · 2–5 Nov 2026 · 2,000 items · 14:22 WIB");
     expect(simView(v, { ...run, status: "running" as const }, run, false)).toMatchObject({ chip: { label: "Running" }, dim: true, counts: run });
     expect(simView(v, run, run, true)).toMatchObject({ chip: { label: "Out of date" }, line: "The draft changed after the last simulation", dim: true });
-    expect(simView({ ...v, specHash: "h2" }, run, run, false).chip.label).toBe("Out of date");
+    expect(simView({ ...v, matchingHash: "h2" }, run, run, false).chip.label).toBe("Out of date");
     const failed = simView(v, { ...run, status: "failed" as const, error: "The run stopped before it finished. Run it again." }, null, false);
     expect(failed).toMatchObject({ chip: { label: "Stopped" }, line: "The simulation stopped: the run stopped before it finished. Run it again.", counts: null });
   });

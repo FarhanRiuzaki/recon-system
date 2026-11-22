@@ -369,12 +369,12 @@ export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? 
  * running or failed) first, then what the API would
  * refuse: no pass, a currency gap, no simulation, a stale one.
  */
-export function submitReason(v: { simulatedHash: string | null; specHash: string }, s: { dirty: boolean; failed?: boolean; passes: number; gaps: readonly number[] }): string | null {
+export function submitReason(v: { simulatedHash: string | null; matchingHash: string }, s: { dirty: boolean; failed?: boolean; passes: number; gaps: readonly number[] }): string | null {
   if (s.dirty) return s.failed ? "The draft isn't saved. Retry the save, then submit." : "Wait until the draft is saved.";
   if (!s.passes) return "Add at least one pass, then submit.";
   if (s.gaps.length) return `Add a currency condition to ${passesText(s.gaps)} first.`;
   if (v.simulatedHash === null) return "Run a simulation on this draft first.";
-  if (v.simulatedHash !== v.specHash) return "The draft changed since the last simulation. Run it again.";
+  if (v.simulatedHash !== v.matchingHash) return "The draft changed since the last simulation. Run it again.";
   return null;
 }
 
@@ -527,12 +527,12 @@ export function suggestedName(p: PassSpec): string | null {
 /** A name the builder gave and the user hasn't changed ("Pass 3", or none). */
 export const placeholderName = (name: string) => !name.trim() || /^Pass \d+$/.test(name.trim());
 
-/** The setup's steps: 1 Sources, 2 Matching, 3 Schedule, 4 Test, 5 Review and submit. */
-export type SetupStep = 1 | 2 | 3 | 4 | 5;
+/** The setup's steps: 1 Sources, 2 Matching, 3 Schedule, 4 Approval (optional), 5 Test, 6 Review and submit. */
+export type SetupStep = 1 | 2 | 3 | 4 | 5 | 6;
 /** The setup's step names, as its rail and its Next buttons say them. */
-export const SETUP_STEPS: Record<SetupStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Test", 5: "Review and submit" };
+export const SETUP_STEPS: Record<SetupStep, string> = { 1: "Sources", 2: "Matching", 3: "Schedule", 4: "Approval", 5: "Test", 6: "Review and submit" };
 /**
- * Why each step of the setup can't go on yet, or null (owner, 22 Nov: Next says what is missing); step 5's is why the
+ * Why each step of the setup can't go on yet, or null (owner, 22 Nov: Next says what is missing); step 4 (approval) is optional, step 6's is why the
  * draft can't be submitted. `needs` = each pass's passNeeds, `sideProblem`/`settingProblem` = the API's refusal there.
  */
 export function stepReasons(d: {
@@ -544,8 +544,9 @@ export function stepReasons(d: {
     1: !d.loaded ? "The sides' sources are still loading." : d.sideProblem,
     2: !d.passes ? "Add a pass first." : at >= 0 ? `Pass ${at + 1} needs: ${d.needs[at]!.join(", ").toLowerCase()}.` : d.incomplete,
     3: d.settingProblem,
-    4: d.running ? "Wait for the simulation to finish." : d.simulation === "current" ? null
+    4: null,
+    5: d.running ? "Wait for the simulation to finish." : d.simulation === "current" ? null
       : d.simulation === "stale" ? "The draft changed since the last simulation. Run it again." : "Run a simulation of this draft first.",
-    5: d.submit,
+    6: d.submit,
   };
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Panel } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
@@ -8,10 +9,16 @@ import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
+import type { Page } from "@starterkit/shared/contracts/common";
+import type { LibraryRowDto } from "@starterkit/shared/contracts/workflows";
 import { recordFields } from "@starterkit/shared/recon";
+import { buildCatalog, type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
+import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { useSideSource } from "./use-recons";
+import { api } from "@/lib/client/api";
+import { workflowOptions } from "@/lib/shared/queries-recon";
 
 
 /** A small word chip in a pass's head. */
@@ -107,14 +114,17 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
  */
 export function SpecView({ spaceId, spec, onEdit }: {
   spaceId: string; spec: ReconSpec;
-  /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule). */
-  onEdit?: (step: 1 | 2 | 3) => void;
+  /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule, 4 Approval). */
+  onEdit?: (step: 1 | 2 | 3 | 4) => void;
 }) {
-  const edit = (n: 1 | 2 | 3) => (onEdit ? <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(n)}>Edit</Button> : undefined);
+  const edit = (n: 1 | 2 | 3 | 4) => (onEdit ? <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(n)}>Edit</Button> : undefined);
   const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
   const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
   const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
   const sources: [SourceDto | undefined, SourceDto | undefined] = [sa.data, sb.data];
+  const catalog = useMemo(() => buildCatalog([
+    { label: spec.sides[0].label, fields: fields[0] ?? new Map() }, { label: spec.sides[1].label, fields: fields[1] ?? new Map() },
+  ]), [fields, spec.sides]);
   return (
     <>
       <Panel title="Sides" description="What each side reads" actions={edit(1)}>
@@ -139,6 +149,32 @@ export function SpecView({ spaceId, spec, onEdit }: {
           ))}
         </dl>
       </Panel>
+
+      <Panel title="Approval" description="Who approves each change; the first rule that holds picks its workflow" actions={edit(4)}>
+        <ApprovalSummary spaceId={spaceId} approvals={spec.approvals} catalog={catalog} />
+      </Panel>
     </>
+  );
+}
+
+/** The approval setup as sentences: per change, its rules in order and who approves every other request. */
+function ApprovalSummary({ spaceId, approvals, catalog }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[] }) {
+  const q = workflowOptions(spaceId);
+  const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`), enabled: !!approvals });
+  const name = (id: string) => wf.data?.items.find((r) => r.id === id)?.name ?? "a workflow";
+  const pin = (w: { id: string; version: number } | null) => (w ? `${name(w.id)} (version ${w.version})` : "the default chain (1 of Reviewer or Space admin)");
+  return (
+    <ul className="grid gap-3">
+      {TRIGGERS.map((k) => {
+        const w = approvals?.changes[k]?.workflow;
+        return (
+          <li key={k} className="grid gap-1 text-body-sm">
+            <span className="text-label text-fg">{TRIGGER_LABEL[k]}</span>
+            {w?.rules.map((r, i) => <span key={i} className="text-fg-2">{r.name}: when {conditionText(r.when as Condition, catalog)} → {pin(r.workflow)}</span>)}
+            <span className="text-fg-2">{w?.rules.length ? "Every other request" : "Every request"} → {pin(w?.default ?? null)}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

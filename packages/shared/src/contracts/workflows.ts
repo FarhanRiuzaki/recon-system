@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SPACE_ROLES } from "../spaces";
 import {
-  ATTRS, CONDITIONS_MAX, GROUPS_MAX, LEVELS_MAX, NUMBER_OPS, NUMERIC_ATTRS, OVERRIDE_REASON_MAX, PEOPLE_MAX, RULE_NAME_MAX, RULES_MAX, SET_OPS, TRIGGERS,
+  GROUPS_MAX, LEVELS_MAX, OVERRIDE_REASON_MAX, PEOPLE_MAX, RULE_NAME_MAX, TRIGGERS,
 } from "../workflows";
 import { REVIEW_COMMENT_MAX } from "../sources";
 import { WORKFLOW_SORTS } from "../paging";
@@ -10,16 +10,6 @@ import { ListQuery, sortParam } from "./common";
 // Approval workflows (DEC-052 rev 2): a space's workflows (named chains of levels), the "Who approves" preview, and
 // the requests they route. Which workflow a change takes lives in the recon version (contracts/recon ReconApprovalSpec).
 
-const Condition = z.strictObject({
-  attr: z.enum(ATTRS),
-  op: z.enum([...NUMBER_OPS, ...SET_OPS]),
-  value: z.union([z.string().trim().min(1).max(64), z.array(z.string().trim().min(1).max(64)).min(1).max(PEOPLE_MAX)]),
-}).superRefine((c, ctx) => {
-  const numeric = NUMERIC_ATTRS.includes(c.attr);
-  if (numeric && (SET_OPS as readonly string[]).includes(c.op)) ctx.addIssue({ code: "custom", message: "Compare a number with at least, at most, more than, less than or exactly." });
-  if (!numeric && !(SET_OPS as readonly string[]).includes(c.op)) ctx.addIssue({ code: "custom", message: "Compare it with is one of or is not one of." });
-  if (numeric && (Array.isArray(c.value) || !/^\d{1,18}$/.test(c.value))) ctx.addIssue({ code: "custom", message: "Enter a whole number." });
-});
 const Need = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("any") }),
   z.strictObject({ kind: z.literal("all") }),

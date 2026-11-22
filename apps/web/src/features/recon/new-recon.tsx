@@ -166,7 +166,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
         </Panel>
       ) : (
       // the setup's first step (owner, 22 Nov: one flow): the same rail as the steps after it
-      <Wizard title="Setup progress" steps={([1, 2, 3, 4, 5] as const).map((n) => ({ id: String(n), label: SETUP_STEPS[n], status: n === 1 ? "current" : "todo" }))}>
+      <Wizard title="Setup progress" steps={([1, 2, 3, 4, 5, 6] as const).map((n) => ({ id: String(n), label: SETUP_STEPS[n], status: n === 1 ? "current" : "todo" }))}>
       <Panel bodyClassName="md:p-6">
         <form noValidate onSubmit={create} aria-label="New recon" className="grid gap-4">
           {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}

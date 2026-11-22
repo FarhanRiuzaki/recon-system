@@ -8,7 +8,7 @@ import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 
 type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
-type Version = { version: number; specHash: string; simulatedHash: string | null };
+type Version = { version: number; matchingHash: string; simulatedHash: string | null };
 
 /** A run the worker hasn't finished: the screen polls it. */
 export const isLive = (r: { status: string } | null | undefined) => r?.status === "queued" || r?.status === "running";
@@ -294,7 +294,8 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
     return { chip: STOPPED_CHIP, line: stoppedLine(run), counts: null, dim: false };
   }
   if (v.simulatedHash === null || !shown) return { chip: { health: "unknown", label: "Not simulated" }, line: `${draft} · not simulated yet`, counts: null, dim: false };
-  if (dirty || v.simulatedHash !== v.specHash || shown.specHash !== v.specHash) {
+  // a run carries the matching hash (no approval setup): an approval-only edit leaves it current
+  if (dirty || v.simulatedHash !== v.matchingHash || shown.specHash !== v.matchingHash) {
     return { chip: { health: "degraded", label: "Out of date" }, line: "The draft changed after the last simulation", counts: shown, dim: true };
   }
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;

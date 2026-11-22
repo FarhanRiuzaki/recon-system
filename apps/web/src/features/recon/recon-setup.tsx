@@ -19,10 +19,10 @@ import { at } from "./recon-text";
 import { RECON_SETUP_SHAPE } from "./shapes";
 import { reconHref, reconsHref, reconVersionHref, useRecon, useSpaceRoles, useStartVersion } from "./use-recons";
 
-const asStep = (n: number | null): WizardStep | null => (n && n >= 1 && n <= 5 ? (n as WizardStep) : null);
+const asStep = (n: number | null): WizardStep | null => (n && n >= 1 && n <= 6 ? (n as WizardStep) : null);
 
 /**
- * A recon's setup over its open draft (owner, 22 Nov: one flow, the user knows where to start): five steps as the
+ * A recon's setup over its open draft (owner, 22 Nov: one flow, the user knows where to start): six steps as the
  * Sources wizard has them, the step in the URL, the draft saved as it changes. A new recon goes on from step 2; an
  * edit of a live recon opens on Review, every part shown with Edit.
  */
@@ -35,10 +35,10 @@ export function ReconSetup({ spaceId, id, step: urlStep }: { spaceId: string; id
   const skeleton = useDelayedFlag(!q.data && !q.error);
   const [save, setSave] = useState<SaveState | null>(null);
   const r = q.data;
-  const first = asStep(urlStep) ?? (r?.published ? 5 : 1);
+  const first = asStep(urlStep) ?? (r?.published ? 6 : 1);
   const [step, setStep] = useState<WizardStep>(first);
   // the furthest step reached: a live recon's draft has every part already, so every step is open
-  const [reached, setReached] = useState<WizardStep>(r?.published ? 5 : first);
+  const [reached, setReached] = useState<WizardStep>(r?.published ? 6 : first);
   // the step lives in the URL without a server round trip (the canvas view keeps its own ?view=)
   useEffect(() => {
     const next = new URLSearchParams(window.location.search);

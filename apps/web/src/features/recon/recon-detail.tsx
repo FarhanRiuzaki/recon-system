@@ -79,7 +79,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   return (
     <div className="grid gap-section">
       <PageHeader title={r.name} status={<StatusChip health={st.health} label={st.label} description={st.description} />} description={lineOf(r, by)}
-        actions={maker && r.draft?.status === "draft" ? <Button asChild><Link href={reconEditHref(spaceId, id, 5)}>Continue editing</Link></Button> : undefined}
+        actions={maker && r.draft?.status === "draft" ? <Button asChild><Link href={reconEditHref(spaceId, id, 6)}>Continue editing</Link></Button> : undefined}
         more={more.length ? more : undefined} />
       <RouteTabs aria-label="Recon sections">
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}

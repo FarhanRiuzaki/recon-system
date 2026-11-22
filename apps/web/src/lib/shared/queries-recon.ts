@@ -142,6 +142,9 @@ export type LibraryFilters = { q: string };
 export const WORKFLOWS = (spaceId: string): TableDef<LibraryFilters> => ({
   key: APPROVALS_KEY[0], path: workflowsPath(spaceId), spec: { sorts: WORKFLOW_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
 });
+/** The space's workflows a recon may pick (first 100 by name), for the setup's Approval step. */
+export const workflowOptions = (spaceId: string) =>
+  ({ key: [...APPROVALS_KEY, "workflow-options", spaceId] as const, url: `${workflowsPath(spaceId)}?pageSize=100&sort=name` as const });
 /** One workflow of a space: its live and open version, the role names and people it may name. */
 export const spaceWorkflow = (spaceId: string, id: string) =>
   ({ key: [...APPROVALS_KEY, "workflow", spaceId, id] as const, url: `${workflowsPath(spaceId)}/${encodeURIComponent(id)}` as const });
