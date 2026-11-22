@@ -69,3 +69,5 @@
 .recon-canvas .flow-label.is-quiet { color: var(--fg-4); }
 /* a card being dragged sits over the others */
 .recon-canvas .react-flow__node.dragging { z-index: 10 !important; }
+/* Controls style their svg as a filled glyph; the reset icon is a stroke icon */
+.recon-canvas .react-flow__controls-button svg.flow-reset { fill: none; max-width: 14px; max-height: 14px; }

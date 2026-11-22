@@ -7,7 +7,7 @@
 // flashes once when the run ends; an edge into it carries packets along its path (SMIL animateMotion on the edge's own
 // path, timed by DUR); hovering or focusing a node lights its whole path and dims the rest. Reduced motion: no sweep,
 // bar, packets or flash; the primary stroke and the words stay.
-import { Background, BackgroundVariant, BaseEdge, ControlButton, type Edge, EdgeLabelRenderer, type EdgeProps, getBezierPath, getSmoothStepPath, Handle, Position, useReactFlow } from "@xyflow/react";
+import { Background, BackgroundVariant, BaseEdge, ControlButton, type Edge, EdgeLabelRenderer, type EdgeProps, getBezierPath, getSmoothStepPath, Handle, Position, useNodeId, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
@@ -197,6 +197,11 @@ export function ports(edges: readonly { id: string; source: string; target: stri
 }
 /** A card's ports as handles: `outs` on its right, `ins` on its left, each at its fraction of the height. */
 export function PortHandles({ ins, outs }: { ins: readonly [string, number][]; outs: readonly [string, number][] }) {
+  // React Flow measures a node's handles once: ports that appear or move (a dragged card re-orders them) are measured again
+  const id = useNodeId();
+  const update = useUpdateNodeInternals();
+  const key = [...ins, ...outs].map(([e, f]) => `${e}:${f}`).join("|");
+  useEffect(() => { if (id) update(id); }, [id, key, update]);
   return (
     <>
       {ins.map(([id, f]) => <Handle key={`i-${id}`} id={`i-${id}`} type="target" position={Position.Left} isConnectable={false} style={{ top: `${f * 100}%` }} />)}
@@ -215,7 +220,7 @@ export function portsOf(id: string, edges: readonly { id: string; source: string
 /** The Controls button that puts every card back where the layout placed it (after dragging them around). */
 export const ResetLayout = ({ onReset }: { onReset: () => void }) => (
   <ControlButton onClick={onReset} title="Reset layout" aria-label="Reset layout">
-    <Icon icon={ResetIcon} size={14} />
+    <Icon icon={ResetIcon} size={14} className="flow-reset" />
   </ControlButton>
 );
 
