@@ -615,3 +615,11 @@ hari, tidak pernah dipakai ulang; TLS selalu diverifikasi dengan CA bundle envir
 (401/403 atau bank menolak), not_sent (belum keluar), timeout (terkirim, jawaban tidak terbaca atau lewat waktu). "Try it"
 hanya ke dev, 20 per menit per user, jawaban dimask. Connector bisa dimatikan darurat dengan alasan. Circuit breaker dan
 grant `password` (LDAP) masuk runtime tahap 4.
+
+**Amandemen DEC-053, 22 November 2026 (pemilik):** sertifikat TLS Open API bank tidak dicek secara bawaan ("normalnya ga
+pernah ada sertifikat dev atau prod"; Recon-QR memakai `CURLOPT_SSL_VERIFYPEER false`). Tiap environment punya setelan
+`verifyTls` (bawaan mati, bagian dari versi yang direview); CA bundle opsional dan hanya dipakai bila `verifyTls` hidup
+(kosong = sertifikat tepercaya server; Bun memakai daftar CA-nya sendiri, CA internal lewat `NODE_EXTRA_CA_CERTS`).
+Body dan jawaban tetap terenkripsi oleh profil keamanan; yang tidak terlindung tanpa cek sertifikat adalah panggilan
+token (Basic auth client id dan secret) bila jaringan internal disadap. Field request dapat bernilai otomatis (message
+ID = X-EXTERNAL-ID, tanggal-jam panggilan dengan format), diisi server di setiap panggilan, tidak pernah diketik user.

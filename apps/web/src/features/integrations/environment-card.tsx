@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Field, Panel, StatusChip } from "@starterkit/ui/ds";
+import { Checkbox, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -89,12 +89,19 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
             <Input id={id("channel")} value={settings.channelId} disabled={!editing} className="font-mono" onChange={(e) => set("channelId", e.target.value)} />
           </Field>
         </div>
+        <span className="flex items-center gap-2">
+          <Checkbox id={id("tls")} label="Check the bank's certificate" checked={!!settings.verifyTls} readOnly={!editing} onToggle={() => onSettings({ ...settings, verifyTls: !settings.verifyTls })} />
+          <label htmlFor={id("tls")} className="text-body-sm text-fg">Check the bank&apos;s certificate</label>
+          <InfoTip label="About the certificate check" title="Certificate check">
+            Off by default: the bank&apos;s internal endpoints carry certificates no client checks. The request and the answer stay encrypted either way. On: the CA bundle, else the server&apos;s trusted certificates, must accept it.
+          </InfoTip>
+        </span>
         <ul className="grid divide-y divide-line" aria-label={`${ENVIRONMENT_LABEL[env]} credentials`}>
           {(Object.keys(SECRET_LABEL) as SecretKey[]).map((k) => (
             <li key={k} className="flex items-center justify-between gap-3 py-2">
               <span className="text-body-sm text-fg">{SECRET_LABEL[k]}</span>
               <span className="flex items-center gap-2">
-                <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? "Server's certificates" : "Not set"} />
+                <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? (settings.verifyTls ? "Server's certificates" : "Not used") : "Not set"} />
                 {canEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setReplace(k)}>Replace</Button>}
               </span>
             </li>

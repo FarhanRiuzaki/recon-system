@@ -29,7 +29,7 @@ describe("a connector's draft (final review I2, I3)", () => {
 });
 
 describe("operations pasted from a whole spec", () => {
-  const env = { baseUrl: "", host: "", partnerId: "P1", channelId: "C1" };
+  const env = { baseUrl: "", host: "", partnerId: "P1", channelId: "C1", verifyTls: false };
   const spec: ConnectorSpec = { name: "Bank", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...op, key: "fund_status", timeoutMs: 15000, presets: { Currency: "IDR" } }] };
   const pasted = {
     baseUrl: "https://api.bank.local:15000",
@@ -66,7 +66,7 @@ describe("auto values in the draft", () => {
     expect(prune({ ...withAuto, request: [withAuto.request[0]!] }).auto).toEqual({});
   });
   it("a pasted spec brings its suggested auto values; an existing operation keeps the ones it set", () => {
-    const env = { baseUrl: "", host: "", partnerId: "", channelId: "" };
+    const env = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
     const spec: ConnectorSpec = { name: "B", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...withAuto, key: "same" }] };
     const field = { name: "rqMsgId", type: "string" as const, required: true };
     const r = mergeSpecOperations(spec, { baseUrl: null, operations: [

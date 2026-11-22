@@ -16,8 +16,8 @@ const op = (key: string, path: string, extra: object = {}) => ({
   response: [{ name: "ResponseCode", type: "string", required: false }, { name: "Ref", type: "string", required: false }, { name: "Account", type: "string", required: false }],
   success: { field: "ResponseCode", equals: "00" }, reference: "Ref", masked: ["Account"], presets: { Currency: "IDR" }, ...extra,
 });
-async function connector(o: { devUrl?: string; prodUrl?: string; secret?: string; ca?: boolean } = {}) {
-  const env = (url: string) => ({ baseUrl: url, host: "localhost", partnerId: "P1", channelId: "C1" });
+async function connector(o: { devUrl?: string; prodUrl?: string; secret?: string; ca?: boolean; verify?: boolean } = {}) {
+  const env = (url: string) => ({ baseUrl: url, host: "localhost", partnerId: "P1", channelId: "C1", verifyTls: o.verify ?? true });
   const spec = { name: `Bank ${Bun.randomUUIDv7().slice(-6)}`, profile: "bank_mega_openapi_2_1", active: "dev",
     environments: { dev: env(o.devUrl ?? bank.url), prod: env(o.prodUrl ?? bank.url) },
     operations: [op("ok", "/ok"), op("html", "/html"), op("slow", "/slow", { timeoutMs: 1000 }),
@@ -123,7 +123,11 @@ describe("Try it against dev", () => {
     expect((await tryIt(id, "ok")).outcome).toBe("not_sent");
   });
 
-  it("a certificate the environment doesn't trust is not sent", async () => {
+  it("as the bank's internal endpoints are used (owner, 22 Nov), the certificate is not checked unless the environment asks", async () => {
+    expect((await tryIt(await connector({ ca: false, verify: false }), "ok")).ok).toBe(true);
+  });
+
+  it("a certificate the environment checks and doesn't trust is not sent", async () => {
     expect(await tryIt(await connector({ ca: false }), "ok")).toMatchObject({ outcome: "not_sent", message: "This server doesn't trust the bank's certificate. Ask IT to add the bank's root certificate to the server (NODE_EXTRA_CA_CERTS), or paste it as this environment's CA bundle." });
   });
 

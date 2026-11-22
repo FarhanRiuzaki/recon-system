@@ -2,7 +2,8 @@
 // request at a time under a lock, renewed 30 s before it ends), the X-EXTERNAL-ID counter per connector and day, and one
 // signed, encrypted call with the operation's time limit. Outcomes: ok (2xx, read), rejected (the bank refused it),
 // not_sent (it never left: credentials, certificate, network, token), timeout (sent, no readable answer in time: its
-// effect at the bank is unknown). Never logs or answers a secret, a token or a payload.
+// effect at the bank is unknown). Never logs or answers a secret, a token or a payload. TLS is checked only where the
+// environment asks (verifyTls): the bank's internal endpoints carry certificates no client checks (owner, 22 Nov).
 import type { EnvironmentSettings, OperationSpec } from "@starterkit/shared/contracts/integrations";
 import { type Environment, withAuto, withPresets } from "@starterkit/shared/integrations";
 import { and, eq, sql } from "drizzle-orm";
@@ -33,7 +34,9 @@ function failure(e: unknown, ms: number): { sent: boolean; message: string } {
   if (TLS_CODES.test(String(x.code ?? ""))) return { sent: false, message: "This server doesn't trust the bank's certificate. Ask IT to add the bank's root certificate to the server (NODE_EXTRA_CA_CERTS), or paste it as this environment's CA bundle." };
   return { sent: false, message: `The bank couldn't be reached${x.code ? ` (${x.code})` : ""}.` };
 }
-const tlsOf = (s: Secrets) => (s.caBundle ? { tls: { ca: [s.caBundle] } } : {});
+/** TLS options: the environment's CA bundle when it checks the certificate; no check when it doesn't (verifyTls off). */
+const tlsOf = (settings: EnvironmentSettings, s: Secrets) =>
+  !settings.verifyTls ? { tls: { rejectUnauthorized: false } } : s.caBundle ? { tls: { ca: [s.caBundle] } } : {};
 
 /** The bank's access token for the environment; a new one when none is cached or it ends within 30 s (`fresh` forces one). */
 export async function accessToken(connectorId: string, env: Environment, settings: EnvironmentSettings, secrets: Secrets, fresh = false): Promise<{ token: string; expiresIn: number }> {
@@ -47,7 +50,7 @@ export async function accessToken(connectorId: string, env: Environment, setting
     let res: Response;
     try {
       res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}${TOKEN_PATH}`, {
-        method: "POST", body: "grant_type=client_credentials", signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS), ...tlsOf(secrets),
+        method: "POST", body: "grant_type=client_credentials", signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS), ...tlsOf(settings, secrets),
         headers: { Host: settings.host, "Content-Type": "application/x-www-form-urlencoded", Authorization: `Basic ${Buffer.from(`${secrets.clientId}:${secrets.clientSecret}`).toString("base64")}` },
       });
     } catch (e) {
@@ -98,7 +101,7 @@ export async function sendOperation(i: { connectorId: string; env: Environment; 
   let res: Response;
   try {
     res = await fetch(`${i.settings.baseUrl.replace(/\/$/, "")}${i.op.path}`, {
-      method: i.op.method, ...(i.op.method === "GET" ? {} : { body: sealed.body }), signal: AbortSignal.timeout(i.op.timeoutMs), ...tlsOf(s),
+      method: i.op.method, ...(i.op.method === "GET" ? {} : { body: sealed.body }), signal: AbortSignal.timeout(i.op.timeoutMs), ...tlsOf(i.settings, s),
       headers: {
         Authorization: `Bearer ${token}`, "Content-Type": "application/json", Host: i.settings.host, "X-PARTNER-ID": i.settings.partnerId, "CHANNEL-ID": i.settings.channelId,
         "X-EXTERNAL-ID": externalId, ...sealed.headers,

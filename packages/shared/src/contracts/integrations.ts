@@ -59,6 +59,11 @@ export const EnvironmentSettings = z.strictObject({
   host: z.string().trim().max(200),
   partnerId: z.string().trim().max(64),
   channelId: z.string().trim().max(64),
+  /**
+   * Check the bank's TLS certificate (against the CA bundle, else the server's): off by default, as the bank's internal
+   * endpoints are called (owner, 22 Nov; Recon-QR does not check); the body stays encrypted by the profile either way.
+   */
+  verifyTls: z.boolean().default(false),
 });
 export type EnvironmentSettings = z.infer<typeof EnvironmentSettings>;
 

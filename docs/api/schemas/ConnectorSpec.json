@@ -42,13 +42,18 @@
             "channelId": {
               "type": "string",
               "maxLength": 64
+            },
+            "verifyTls": {
+              "default": false,
+              "type": "boolean"
             }
           },
           "required": [
             "baseUrl",
             "host",
             "partnerId",
-            "channelId"
+            "channelId",
+            "verifyTls"
           ],
           "additionalProperties": false
         },
@@ -70,13 +75,18 @@
             "channelId": {
               "type": "string",
               "maxLength": 64
+            },
+            "verifyTls": {
+              "default": false,
+              "type": "boolean"
             }
           },
           "required": [
             "baseUrl",
             "host",
             "partnerId",
-            "channelId"
+            "channelId",
+            "verifyTls"
           ],
           "additionalProperties": false
         }

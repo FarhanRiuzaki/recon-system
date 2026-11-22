@@ -19,7 +19,7 @@ import { CONNECTORS } from "@/lib/shared/queries";
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const FILTER_DEFAULTS = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
-const empty = { baseUrl: "", host: "", partnerId: "", channelId: "" };
+const empty = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
 
 const COLUMNS: Column<ConnectorRowDto>[] = [
   { key: "name", header: "Connector", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (

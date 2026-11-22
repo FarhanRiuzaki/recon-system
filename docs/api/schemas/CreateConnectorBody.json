@@ -45,6 +45,10 @@
                 "channelId": {
                   "type": "string",
                   "maxLength": 64
+                },
+                "verifyTls": {
+                  "default": false,
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -73,6 +77,10 @@
                 "channelId": {
                   "type": "string",
                   "maxLength": 64
+                },
+                "verifyTls": {
+                  "default": false,
+                  "type": "boolean"
                 }
               },
               "required": [
