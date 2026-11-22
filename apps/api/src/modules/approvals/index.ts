@@ -4,3 +4,4 @@ export { approvalsController } from "./controller";
 export { openRequest, pendingOf, previewApproval, requestView } from "./requests";
 export { approvalDecisions, approvalRequests, workflows, workflowVersions } from "./schema";
 export { pinnedVersion, workflowFacts } from "./workflows";
+export { reviewRule, userNames, type VersionRow, versionDto, versionPeople } from "./versions";

@@ -1,0 +1,105 @@
+// Open API connectors (DEC-053): integration.manage edits, another publishes (a Superadmin their own only by
+// override); only the draft's maker saves it; integration.view reads; secrets are encrypted and never answered or
+// logged; a connector's draft may be large (512 KB body).
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { Page } from "@starterkit/shared/contracts/common";
+import type { ConnectorDetailDto, ConnectorRowDto } from "@starterkit/shared/contracts/integrations";
+import { eq } from "drizzle-orm";
+import { generateKeyPairSync } from "node:crypto";
+import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
+import { db } from "../../../../kernel/db";
+import { activity } from "../../../audit";
+import { roles, rolePermissions, userRoles } from "../../../rbac";
+import { users } from "../../../users";
+import { connectors, connectorSecrets } from "../../schema";
+
+const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
+const err = async (r: Response) => ((await r.json()) as { error: { code: string; message: string } }).error;
+const C = "/v1/integrations/connectors";
+const env = { baseUrl: "https://api.bank.local:15000", host: "api.bank.local", partnerId: "P1", channelId: "C1" };
+const op = (key: string, extra = 0) => ({
+  key, name: `Operation ${key}`, method: "POST", path: "/openapi/v2.0/misc/debit-credit", timeoutMs: 30000,
+  request: Array.from({ length: 1 + extra }, (_, i) => ({ name: `Field${i}`, type: "string", maxLength: 40, required: false })),
+  response: [{ name: "ResponseCode", type: "string", required: false }], success: { field: "ResponseCode", equals: "00" }, reference: null, masked: [], presets: {},
+});
+const spec = (name = "Bank Mega", ops = [op("post")]) => ({ name, profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: ops });
+let t: Record<"m1" | "m2" | "sa" | "viewer" | "none", string>;
+
+beforeEach(async () => {
+  await resetData();
+  await db.delete(connectors);
+  // a role with integration.view only, for "google"
+  const rid = Bun.randomUUIDv7();
+  await db.insert(roles).values({ id: rid, name: "Open API reader" });
+  await db.insert(rolePermissions).values({ roleId: rid, permission: "integration.view" });
+  const [g] = await db.select({ id: users.id }).from(users).where(eq(users.username, "google"));
+  await db.insert(userRoles).values({ userId: g!.id, roleId: rid });
+  t = { m1: await signIn("admin"), m2: await platformAdmin(), sa: await signIn("superadmin"), viewer: await signIn("google"), none: await signIn("viewer") };
+});
+
+const create = (token: string, s = spec()) => json<ConnectorDetailDto>(call("POST", C, { token, body: { spec: s } }));
+const publish = async (id: string, maker: string, by: string) => {
+  await call("POST", `${C}/${id}/draft/submit`, { token: maker });
+  return call("POST", `${C}/${id}/review/approve`, { token: by, body: {} });
+};
+
+describe("connectors", () => {
+  it("a manager creates, another publishes; a reader reads and can't create; without the permission it's 403", async () => {
+    const c = await create(t.m1);
+    expect(c.open).toMatchObject({ version: 1, status: "draft" });
+    expect((await err(await publish(c.id, t.m1, t.m1))).code).toBe("self_approval");
+    expect((await json<ConnectorDetailDto>(call("POST", `${C}/${c.id}/review/approve`, { token: t.m2, body: {} }))).published).toMatchObject({ version: 1 });
+    const list = await json<Page<ConnectorRowDto>>(call("GET", C, { token: t.viewer }));
+    expect(list.items.map((r) => [r.name, r.published?.version, r.operations, r.active])).toEqual([["Bank Mega", 1, 1, "dev"]]);
+    expect((await call("POST", C, { token: t.viewer, body: { spec: spec("X") } })).status).toBe(403);
+    expect((await call("GET", C, { token: t.none })).status).toBe(403);
+    expect((await err(await call("POST", C, { token: t.m1, body: { spec: spec("bank MEGA") } }))).code).toBe("duplicate");
+  });
+
+  it("a Superadmin publishes their own only by override; only the draft's maker saves it", async () => {
+    const c = await create(t.sa);
+    expect((await err(await publish(c.id, t.sa, t.sa))).code).toBe("self_approval");
+    expect((await json<ConnectorDetailDto>(call("POST", `${C}/${c.id}/review/approve`, { token: t.sa, body: { override: true, comment: "Bank cutover" } }))).published).toMatchObject({ overrideReason: "Bank cutover" });
+    await call("POST", `${C}/${c.id}/draft`, { token: t.m1 });
+    expect((await err(await call("PATCH", `${C}/${c.id}/draft`, { token: t.m2, body: { spec: spec("Bank Mega", [op("post"), op("status")]) } }))).code).toBe("invalid_state");
+  });
+
+  it("secrets: replaced per environment, encrypted, never answered or logged", async () => {
+    const c = await create(t.m1);
+    const r = await call("PUT", `${C}/${c.id}/secrets`, { token: t.m1, body: { environment: "dev", clientSecret: "s3cret-value", clientId: "client-1" } });
+    const text = await r.text();
+    expect(text).not.toContain("s3cret-value");
+    expect((JSON.parse(text) as ConnectorDetailDto).secrets.dev).toEqual({ clientId: true, clientSecret: true, publicKey: false, caBundle: false });
+    expect((JSON.parse(text) as ConnectorDetailDto).secrets.prod.clientSecret).toBe(false);
+    const [row] = await db.select().from(connectorSecrets).where(eq(connectorSecrets.connectorId, c.id));
+    expect(row!.secretEnc).not.toContain("s3cret-value");
+    const acts = await db.select({ action: activity.action, after: activity.after }).from(activity).where(eq(activity.targetId, c.id));
+    expect(JSON.stringify(acts)).not.toContain("s3cret-value");
+    expect(acts.find((a) => a.action === "integration.secrets")?.after).toEqual({ environment: "dev", replaced: ["clientId", "clientSecret"] });
+    // a later replace keeps what it doesn't give
+    const after = await json<ConnectorDetailDto>(call("PUT", `${C}/${c.id}/secrets`, { token: t.m1, body: { environment: "dev", clientId: "client-2" } }));
+    expect(after.secrets.dev.clientSecret).toBe(true);
+    expect((await err(await call("PUT", `${C}/${c.id}/secrets`, { token: t.m1, body: { environment: "dev" } }))).message).toBe("Enter at least one value to replace.");
+    expect((await err(await call("PUT", `${C}/${c.id}/secrets`, { token: t.m1, body: { environment: "dev", publicKey: "hello" } }))).message).toBe("This isn't a public key. Paste the bank's public key (PEM).");
+    const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+    const bare = publicKey.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+    expect((await json<ConnectorDetailDto>(call("PUT", `${C}/${c.id}/secrets`, { token: t.m1, body: { environment: "dev", publicKey: bare } }))).secrets.dev.publicKey).toBe(true);
+    expect((await call("PUT", `${C}/${c.id}/secrets`, { token: t.viewer, body: { environment: "dev", clientId: "x" } })).status).toBe(403);
+  });
+
+  it("turned off with a reason, then on again", async () => {
+    const c = await create(t.m1);
+    expect((await err(await call("POST", `${C}/${c.id}/disable`, { token: t.m1, body: { reason: " " } }))).code).toBe("bad_request");
+    const off = await json<ConnectorDetailDto>(call("POST", `${C}/${c.id}/disable`, { token: t.m1, body: { reason: "Bank incident" } }));
+    expect(off.disabled).toMatchObject({ reason: "Bank incident" });
+    expect((await json<ConnectorDetailDto>(call("POST", `${C}/${c.id}/enable`, { token: t.m1 }))).disabled).toBeNull();
+  });
+
+  it("a draft with many operations saves past 64 KB", async () => {
+    const c = await create(t.m1);
+    const big = spec("Bank Mega", Array.from({ length: 40 }, (_, i) => op(`op_${i}`, 60)));
+    expect(JSON.stringify({ spec: big }).length).toBeGreaterThan(64 * 1024);
+    const r = await call("PATCH", `${C}/${c.id}/draft`, { token: t.m1, body: { spec: big } });
+    expect(r.status).toBe(200);
+  });
+});
