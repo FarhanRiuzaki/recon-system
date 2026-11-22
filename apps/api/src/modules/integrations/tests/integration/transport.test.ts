@@ -3,7 +3,7 @@
 // echoing them, an untrusted certificate, and Try it never reaching production.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { ConnectorDetailDto, TokenCheckDto, TryDto } from "@starterkit/shared/contracts/integrations";
-import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
 import { type FakeBank, fakeBank } from "../../../../../test/helpers/fake-bank";
 import { db } from "../../../../kernel/db";
 import { connectors } from "../../schema";
@@ -35,6 +35,42 @@ beforeEach(async () => {
   await resetData();
   await db.delete(connectors);
   t = await signIn("admin");
+});
+
+describe("tokens follow reviewed settings (final review C1)", () => {
+  it("Get token on production uses the published address, never a draft's; replacing credentials drops the cached token", async () => {
+    const id = await connector();
+    const m2 = await platformAdmin();
+    await call("POST", `${C}/${id}/draft/submit`, { token: t });
+    expect((await call("POST", `${C}/${id}/review/approve`, { token: m2, body: {} })).status).toBe(200);
+    await call("POST", `${C}/${id}/draft`, { token: t });
+    const d = await json<ConnectorDetailDto>(call("GET", `${C}/${id}`, { token: t }));
+    const spec = d.open!.spec;
+    expect((await call("PATCH", `${C}/${id}/draft`, { token: t, body: { spec: { ...spec, environments: { ...spec.environments, prod: { ...spec.environments.prod, baseUrl: "https://localhost:1" } } } } })).status).toBe(200);
+    const before = bank.tokens;
+    expect((await json<TokenCheckDto>(call("POST", `${C}/${id}/token-check`, { token: t, body: { environment: "prod" } }))).ok).toBe(true);
+    expect(bank.tokens - before).toBe(1);
+    // a cached dev token goes when the dev credentials are replaced
+    await tryIt(id, "ok");
+    const mid = bank.tokens;
+    await call("PUT", `${C}/${id}/secrets`, { token: t, body: { environment: "dev", clientId: bank.clientId } });
+    await tryIt(id, "ok");
+    expect(bank.tokens - mid).toBe(1);
+  });
+
+  it("a cached token is for one address: a draft pointing dev to another bank asks that bank", async () => {
+    const id = await connector();
+    await tryIt(id, "ok");
+    const other = fakeBank();
+    try {
+      const d = await json<ConnectorDetailDto>(call("GET", `${C}/${id}`, { token: t }));
+      const spec = d.open!.spec;
+      await call("PATCH", `${C}/${id}/draft`, { token: t, body: { spec: { ...spec, environments: { ...spec.environments, dev: { ...spec.environments.dev, baseUrl: other.url } } } } });
+      await call("PUT", `${C}/${id}/secrets`, { token: t, body: { environment: "dev", publicKey: other.publicKey, caBundle: other.cert } });
+      expect((await tryIt(id, "ok")).ok).toBe(true);
+      expect(other.tokens).toBe(1);
+    } finally { other.stop(); }
+  });
 });
 
 describe("Try it against dev", () => {

@@ -18,7 +18,7 @@ import { reviewRule, userNames, type VersionRow, versionDto, versionPeople } fro
 import { recordActivity } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import { publicKeyPem } from "./profile";
-import { connectors, connectorSecrets, connectorVersions } from "./schema";
+import { connectors, connectorSecrets, connectorTokens, connectorVersions } from "./schema";
 import { accessToken, NotSent, sendOperation } from "./transport";
 
 const EDITORS = "an Open API manager";
@@ -207,6 +207,8 @@ export async function replaceSecrets(ctx: Ctx, id: string, b: ReplaceSecretsBody
     const enc = encryptSecret(JSON.stringify(next));
     await tx.insert(connectorSecrets).values({ connectorId: id, environment: b.environment, secretEnc: enc, updatedBy: ctx.user.id })
       .onConflictDoUpdate({ target: [connectorSecrets.connectorId, connectorSecrets.environment], set: { secretEnc: enc, updatedBy: ctx.user.id, updatedAt: sql`now()` } });
+    // a token asked with the old credentials goes with them
+    await tx.delete(connectorTokens).where(and(eq(connectorTokens.connectorId, id), eq(connectorTokens.environment, b.environment)));
     await recordActivity(tx, ctx, { action: "integration.secrets", target: target(id, c.name), after: { environment: b.environment, replaced: SECRET_KEYS.filter((k) => given[k]) } });
   });
   return connectorDetail(ctx, id);
@@ -251,18 +253,33 @@ async function workingSpec(tx: InTx, id: string): Promise<{ name: string; spec: 
   return { name: c.name, spec: (open ?? published)!.spec as ConnectorSpec, disabled: c.disabledAt ? c.disabledReason ?? "" : null };
 }
 
-/** POST …/{id}/token-check: asks the environment's bank for a new token. The bank's text is never echoed. */
+/**
+ * POST …/{id}/token-check: asks the environment's bank for a new token. Production takes only the published settings
+ * (a draft's address is never sent the production secret); development the version being worked on. The bank's text is
+ * never echoed; the activity keeps the environment and whether it worked.
+ */
 export async function tokenCheck(ctx: Ctx, id: string, b: TokenCheckBody): Promise<TokenCheckDto> {
   const wait = await tries.hit(ctx.user.id);
   if (wait !== null) throw tooManyAttempts(wait, retryText(wait));
-  const { spec, secrets } = await db.transaction(async (tx) => ({ ...(await workingSpec(tx, id)), secrets: await secretsOf(tx, id, b.environment) }));
-  try {
-    const t = await accessToken(id, b.environment, spec.environments[b.environment], secrets ?? {}, true);
-    return { ok: true, expiresIn: t.expiresIn, message: `The bank gave a token that lasts ${t.expiresIn} s.` };
-  } catch (e) {
-    if (e instanceof NotSent) return { ok: false, expiresIn: null, message: e.message };
-    throw e;
+  const w = await db.transaction(async (tx) => {
+    const c = await connectorOf(tx, id);
+    const { published, open } = await versionsOf(tx, id);
+    const v = b.environment === "prod" ? published : open ?? published;
+    return { name: c.name, spec: (v?.spec as ConnectorSpec | undefined) ?? null, secrets: await secretsOf(tx, id, b.environment) };
+  });
+  let r: TokenCheckDto;
+  if (!w.spec) r = { ok: false, expiresIn: null, message: "Publish the connector first: production uses only its published settings." };
+  else {
+    try {
+      const t = await accessToken(id, b.environment, w.spec.environments[b.environment], w.secrets ?? {}, true);
+      r = { ok: true, expiresIn: t.expiresIn, message: `The bank gave a token that lasts ${t.expiresIn} s.` };
+    } catch (e) {
+      if (!(e instanceof NotSent)) throw e;
+      r = { ok: false, expiresIn: null, message: e.message };
+    }
   }
+  await db.transaction((tx) => recordActivity(tx, ctx, { action: "integration.token_check", target: target(id, w.name), after: { environment: b.environment, ok: r.ok } }));
+  return r;
 }
 
 /**

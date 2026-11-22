@@ -73,3 +73,29 @@ export const fieldPaths = (fields: readonly OpField[], prefix = ""): string[] =>
 export function readPath(json: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((v, k) => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>)[k] : undefined), json);
 }
+
+/** Names a field can't have: they would reach an object's prototype. */
+export const RESERVED_NAMES: readonly string[] = ["__proto__", "constructor", "prototype"];
+const own = (o: object, k: string) => Object.hasOwn(o, k);
+/**
+ * The request body with the operation's fixed values where the body leaves them out. A path through a reserved name,
+ * or through a value that isn't a plain object, is skipped; the body is never changed in place.
+ */
+export function withPresets(body: unknown, presets: Readonly<Record<string, string>>): unknown {
+  const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+  const out = structuredClone(isObj(body) ? body : {});
+  for (const [path, v] of Object.entries(presets)) {
+    const parts = path.split(".");
+    if (parts.some((p) => RESERVED_NAMES.includes(p))) continue;
+    let at: Record<string, unknown> | null = out;
+    for (const p of parts.slice(0, -1)) {
+      if (!own(at, p)) at[p] = {};
+      const next: unknown = at[p];
+      at = isObj(next) ? next : null;
+      if (!at) break;
+    }
+    const last = parts.at(-1)!;
+    if (at && !own(at, last)) at[last] = v;
+  }
+  return out;
+}

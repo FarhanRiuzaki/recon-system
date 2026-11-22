@@ -1,0 +1,1 @@
+ALTER TABLE "connector_tokens" ADD COLUMN "fingerprint" text DEFAULT '' NOT NULL;

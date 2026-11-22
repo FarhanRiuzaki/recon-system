@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConnectorSpec } from "./contracts/integrations";
-import { fieldsFromOpenApi, fieldsFromSample, maskTree, maskValue } from "./integrations";
+import { fieldsFromOpenApi, fieldsFromSample, maskTree, maskValue, withPresets } from "./integrations";
 
 describe("field trees", () => {
   it("reads a sample JSON into a field tree", () => {
@@ -49,5 +49,21 @@ describe("ConnectorSpec", () => {
     expect(issue({ ...spec, environments: { dev: { ...env, baseUrl: "http://x" }, prod: env } })).toContain("Use an https:// address.");
     expect(issue({ ...spec, operations: [op, op] })).toContain("Give each operation its own key.");
     expect(issue({ ...spec, operations: [{ ...op, success: { field: "Nope", equals: "00" } }] })).toContain("Pick a response field for success.");
+  });
+});
+
+describe("fixed values (final review I1)", () => {
+  it("fill what the body leaves out, never touch Object.prototype, and skip a path through a value that isn't an object", () => {
+    expect(withPresets({ Amount: "1" }, { Currency: "IDR", "DE48.Cur": "IDR" })).toEqual({ Amount: "1", Currency: "IDR", DE48: { Cur: "IDR" } });
+    expect(withPresets({ Currency: "USD" }, { Currency: "IDR" })).toEqual({ Currency: "USD" });
+    withPresets({}, { "constructor.prototype.polluted": "yes", "__proto__.polluted": "yes" });
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect(withPresets({ DE48: "abc" }, { "DE48.Cur": "IDR" })).toEqual({ DE48: "abc" });
+  });
+  it("a field can't be named __proto__, constructor or prototype", () => {
+    const env = { baseUrl: "", host: "", partnerId: "", channelId: "" };
+    const op = { key: "a", name: "A", method: "POST", path: "/", timeoutMs: 30000, request: [{ name: "constructor", type: "object", required: false }], response: [], success: null, reference: null, masked: [], presets: {} };
+    const r = ConnectorSpec.safeParse({ name: "X", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [op] });
+    expect(r.error?.issues.map((i) => i.message)).toContain("Pick another name: this one is reserved.");
   });
 });

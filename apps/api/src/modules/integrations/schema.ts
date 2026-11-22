@@ -49,11 +49,13 @@ export const connectorSecrets = pgTable("connector_secrets", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ name: "connector_secrets_pkey", columns: [t.connectorId, t.environment] })]);
 
-/** The bank's access token per environment (encrypted), until `expires_at`. */
+/** The bank's access token per environment (encrypted), until `expires_at`, for the settings in `fingerprint`. */
 export const connectorTokens = pgTable("connector_tokens", {
   connectorId: uuid("connector_id").notNull().references(() => connectors.id, { onDelete: "cascade" }),
   environment: text("environment").notNull(),
   tokenEnc: text("token_enc").notNull(),
+  /** sha256 of the address, Host and client ID the token was asked with: another one asks again. */
+  fingerprint: text("fingerprint").notNull().default(""),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 }, (t) => [primaryKey({ name: "connector_tokens_pkey", columns: [t.connectorId, t.environment] })]);
 

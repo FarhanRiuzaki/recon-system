@@ -18,10 +18,14 @@ const TYPE_LABEL: Record<FieldType, string> = { string: "Text", numeric: "Number
 const has = (t: FieldType) => t === "object" || t === "array";
 
 function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPreset, disabled, label }: {
-  fields: OpField[]; prefix: string; depth: number; onChange: (f: OpField[]) => void; masked: readonly string[]; onMask: (path: string, on: boolean) => void;
+  fields: OpField[]; prefix: string; depth: number; onChange: (f: OpField[], rename?: [string, string]) => void; masked: readonly string[]; onMask: (path: string, on: boolean) => void;
   presets?: Readonly<Record<string, string>>; onPreset?: (path: string, v: string) => void; disabled: boolean; label: string;
 }) {
-  const set = (i: number, f: OpField) => onChange(fields.map((x, j) => (j === i ? f : x)));
+  // a renamed field carries its fixed value, mask, success rule and reference (renamePath, by the operation editor)
+  const set = (i: number, f: OpField, rename?: [string, string]) => {
+    const was = fields[i]!;
+    onChange(fields.map((x, j) => (j === i ? f : x)), rename ?? (was.name !== f.name ? [`${prefix}${was.name}`, `${prefix}${f.name}`] : undefined));
+  };
   return (
     <ul className="grid gap-1.5">
       {fields.map((f, i) => {
@@ -47,7 +51,7 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
             </div>
             {has(f.type) && (
               <Rows fields={f.children ?? []} prefix={`${path}.`} depth={depth + 1} masked={masked} onMask={onMask} presets={presets} onPreset={onPreset} disabled={disabled} label={label}
-                onChange={(children) => set(i, { ...f, children })} />
+                onChange={(children, rename) => set(i, { ...f, children }, rename)} />
             )}
             {has(f.type) && !disabled && (
               <Button type="button" variant="link" size="sm" className="justify-self-start px-0" style={{ marginLeft: "1.25rem" }}
@@ -65,7 +69,7 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, presets, onPres
  * `method`); imported fields replace the tree.
  */
 export function FieldTree({ title, fields, onChange, masked, onMask, presets, onPreset, disabled, openApi }: {
-  title: string; fields: OpField[]; onChange: (f: OpField[]) => void; masked: readonly string[]; onMask: (path: string, on: boolean) => void;
+  title: string; fields: OpField[]; onChange: (f: OpField[], rename?: [string, string]) => void; masked: readonly string[]; onMask: (path: string, on: boolean) => void;
   presets?: Readonly<Record<string, string>>; onPreset?: (path: string, v: string) => void; disabled: boolean;
   /** The operation's path and method and which side this tree is, for an OpenAPI file. */
   openApi: { path: string; method: string; side: "request" | "response" };

@@ -5,6 +5,7 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { OperationSpec } from "@starterkit/shared/contracts/integrations";
 import { fieldPaths, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "@starterkit/shared/integrations";
+import { renamePath } from "./connector-model";
 import { FieldTree } from "./field-tree";
 
 // One operation of a connector (DEC-053): what it is called, where it goes, its request and response fields, when the
@@ -39,10 +40,10 @@ export function OperationEditor({ op, onChange, disabled }: { op: OperationSpec;
       </div>
 
       <FieldTree title="Request fields" fields={op.request} disabled={disabled} openApi={{ path: op.path, method: op.method, side: "request" }}
-        onChange={(request) => onChange({ ...op, request })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })}
+        onChange={(request, r) => onChange(r ? renamePath({ ...op, request }, r[0], r[1]) : { ...op, request })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })}
         presets={op.presets} onPreset={(p, v) => { const { [p]: _, ...rest } = op.presets; onChange({ ...op, presets: v ? { ...rest, [p]: v } : rest }); }} />
       <FieldTree title="Response fields" fields={op.response} disabled={disabled} openApi={{ path: op.path, method: op.method, side: "response" }}
-        onChange={(response) => onChange({ ...op, response })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })} />
+        onChange={(response, r) => onChange(r ? renamePath({ ...op, response }, r[0], r[1]) : { ...op, response })} masked={op.masked} onMask={(p, on) => onChange({ ...op, masked: toggle(op.masked, p, on) })} />
 
       <div className="grid gap-3">
         <span className="flex flex-wrap items-center gap-2 text-body-sm text-fg-2">

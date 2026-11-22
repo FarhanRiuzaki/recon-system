@@ -4,8 +4,9 @@
 // not_sent (it never left: credentials, certificate, network, token), timeout (sent, no readable answer in time: its
 // effect at the bank is unknown). Never logs or answers a secret, a token or a payload.
 import type { EnvironmentSettings, OperationSpec } from "@starterkit/shared/contracts/integrations";
-import type { Environment } from "@starterkit/shared/integrations";
+import { type Environment, withPresets } from "@starterkit/shared/integrations";
 import { and, eq, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import { db } from "../../kernel/db";
 import { connectorTokenLock } from "../../kernel/locks";
@@ -36,8 +37,9 @@ export async function accessToken(connectorId: string, env: Environment, setting
   if (!secrets.clientId || !secrets.clientSecret) throw new NotSent("Set the client ID and client secret of this environment first.");
   return db.transaction(async (tx) => {
     await connectorTokenLock(tx, `${connectorId}:${env}`);
+    const fingerprint = createHash("sha256").update(`${settings.baseUrl}\n${settings.host}\n${secrets.clientId}`).digest("hex");
     const [c] = await tx.select().from(connectorTokens).where(and(eq(connectorTokens.connectorId, connectorId), eq(connectorTokens.environment, env)));
-    if (!fresh && c && c.expiresAt.getTime() - Date.now() > 30_000) return { token: decryptSecret(c.tokenEnc), expiresIn: Math.round((c.expiresAt.getTime() - Date.now()) / 1000) };
+    if (!fresh && c && c.fingerprint === fingerprint && c.expiresAt.getTime() - Date.now() > 30_000) return { token: decryptSecret(c.tokenEnc), expiresIn: Math.round((c.expiresAt.getTime() - Date.now()) / 1000) };
     let res: Response;
     try {
       res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}${TOKEN_PATH}`, {
@@ -50,10 +52,10 @@ export async function accessToken(connectorId: string, env: Environment, setting
     if (!res.ok) throw new NotSent(`The bank refused the credentials (HTTP ${res.status}).`);
     const body = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number } | null;
     if (!body?.access_token) throw new NotSent("The bank's token answer has no access token.");
-    const life = Math.max(1, Number(body.expires_in) || 300);
+    const life = Math.min(3600, Math.max(1, Number(body.expires_in) || 300)); // a token that claims longer is asked again within the hour
     const enc = encryptSecret(body.access_token), expiresAt = new Date(Date.now() + life * 1000);
-    await tx.insert(connectorTokens).values({ connectorId, environment: env, tokenEnc: enc, expiresAt })
-      .onConflictDoUpdate({ target: [connectorTokens.connectorId, connectorTokens.environment], set: { tokenEnc: enc, expiresAt } });
+    await tx.insert(connectorTokens).values({ connectorId, environment: env, tokenEnc: enc, fingerprint, expiresAt })
+      .onConflictDoUpdate({ target: [connectorTokens.connectorId, connectorTokens.environment], set: { tokenEnc: enc, fingerprint, expiresAt } });
     return { token: body.access_token, expiresIn: life };
   });
 }
@@ -64,18 +66,6 @@ export async function nextExternalId(connectorId: string, now = new Date()): Pro
   const [r] = await db.insert(connectorExternalIds).values({ connectorId, day, n: 1 })
     .onConflictDoUpdate({ target: [connectorExternalIds.connectorId, connectorExternalIds.day], set: { n: sql`${connectorExternalIds.n} + 1` } }).returning({ n: connectorExternalIds.n });
   return `${day.replace(/-/g, "")}${String(r!.n).padStart(12, "0")}`;
-}
-
-/** The request body with the operation's fixed values where the body leaves them out. */
-export function withPresets(body: unknown, presets: Readonly<Record<string, string>>): unknown {
-  const out = structuredClone(body ?? {}) as Record<string, unknown>;
-  for (const [path, v] of Object.entries(presets)) {
-    const parts = path.split(".");
-    let at: Record<string, unknown> = out;
-    for (const p of parts.slice(0, -1)) at = (at[p] ??= {}) as Record<string, unknown>;
-    at[parts.at(-1)!] ??= v;
-  }
-  return out;
 }
 
 /** One call of `op` to the environment: signed, encrypted, within the operation's time. Never throws for the bank. */

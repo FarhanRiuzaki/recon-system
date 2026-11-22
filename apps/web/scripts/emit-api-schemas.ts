@@ -165,6 +165,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "integration.disable": ["connector", "`{ disabled: false }`", "`{ disabled: true, reason }`"],
   "integration.enable": ["connector", "`{ disabled: true }`", "`{ disabled: false }`"],
   "integration.try": ["connector", "—", "`{ operation, outcome, status, externalId }` (no body, no response)"],
+  "integration.token_check": ["connector", "—", "`{ environment, ok }`"],
   "rules.save": ["approval_rules", "—", "`{ version, from? }` (a new draft) or `{ version, rules }`"],
   "rules.submit": ["approval_rules", "—", "`{ version }`"],
   "rules.publish": ["approval_rules", "—", "`{ version, comment?, override? }`"],

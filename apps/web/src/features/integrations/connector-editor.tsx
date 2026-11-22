@@ -25,6 +25,7 @@ import { type HeaderAction, PageHeader } from "@/components/shell/page-header";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { unsaved } from "@/lib/shared/autosave";
 import { connectorDetail, INTEGRATIONS_KEY } from "@/lib/shared/queries";
+import { prune, replaceAt } from "./connector-model";
 import { EnvironmentCard } from "./environment-card";
 import { OperationEditor } from "./operation-editor";
 import { CONNECTOR_SHAPE } from "./shapes";
@@ -37,7 +38,7 @@ const asTab = (v: string | null): Tab => (v === "operations" || v === "try" ? v 
 
 /** A field typed but not named yet stays on screen and out of the saved draft (the contract names every field). */
 const named = (fs: readonly OpField[]): OpField[] => fs.filter((f) => f.name.trim()).map((f) => (f.children ? { ...f, children: named(f.children) } : f));
-const savable = (s: ConnectorSpec): ConnectorSpec => ({ ...s, name: s.name.trim(), operations: s.operations.map((o) => ({ ...o, request: named(o.request), response: named(o.response) })) });
+const savable = (s: ConnectorSpec): ConnectorSpec => ({ ...s, name: s.name.trim(), operations: s.operations.map((o) => prune({ ...o, request: named(o.request), response: named(o.response) })) });
 const newOperation = (n: number): OperationSpec => ({
   key: `operation_${n}`, name: `Operation ${n}`, method: "POST", path: "/", timeoutMs: TIMEOUT_DEFAULT_MS, request: [], response: [], success: null, reference: null, masked: [], presets: {},
 });
@@ -94,7 +95,8 @@ export function ConnectorEditor({ id }: { id: string }) {
   const readOnly = !(editing && view === "open");
 
   const tab = asTab(params.get("tab"));
-  const opKey = params.get("op");
+  // the operation by its place in the list (its key is edited on screen and may repeat while typed)
+  const opAt = Number(params.get("op") ?? 0);
   const go = (next: Record<string, string | null>) => {
     const sp = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(next)) if (v === null) sp.delete(k); else sp.set(k, v);
@@ -156,8 +158,9 @@ export function ConnectorEditor({ id }: { id: string }) {
     ...(c.canEdit && c.disabled ? [{ label: "Turn on connector", busy: busy === "on", onSelect: () => void run("on", "/enable", undefined, "Connector turned on.") }] : []),
   ];
   const set = (s: ConnectorSpec) => setSpec(s);
-  const op = spec.operations.find((o) => o.key === opKey) ?? spec.operations[0] ?? null;
-  const setOp = (o: OperationSpec) => { set({ ...spec, operations: spec.operations.map((x) => (x.key === op!.key ? o : x)) }); if (o.key !== op!.key) go({ op: o.key }); };
+  const at = Number.isInteger(opAt) && opAt >= 0 && opAt < spec.operations.length ? opAt : 0;
+  const op = spec.operations[at] ?? null;
+  const setOp = (o: OperationSpec) => set({ ...spec, operations: replaceAt(spec.operations, at, o) });
 
   return (
     <div className="grid gap-section">
@@ -223,10 +226,10 @@ export function ConnectorEditor({ id }: { id: string }) {
           <Panel title="Operations" count={spec.operations.length}>
             <div className="grid gap-2">
               <ul className="grid gap-1" aria-label="Operations">
-                {spec.operations.map((o) => (
-                  <li key={o.key}>
-                    <button type="button" onClick={() => go({ op: o.key })} aria-current={op?.key === o.key ? "true" : undefined}
-                      className={cn("grid w-full rounded-md px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary", op?.key === o.key && "bg-tray")}>
+                {spec.operations.map((o, i) => (
+                  <li key={i}>
+                    <button type="button" onClick={() => go({ op: String(i) })} aria-current={i === at ? "true" : undefined}
+                      className={cn("grid w-full rounded-md px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary", i === at && "bg-tray")}>
                       <span className="truncate text-body-sm text-fg">{o.name}</span>
                       <span className="truncate font-mono text-caption text-fg-3">{o.method} {o.path}</span>
                     </button>
@@ -237,15 +240,14 @@ export function ConnectorEditor({ id }: { id: string }) {
                 <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => {
                   let n = spec.operations.length + 1;
                   while (spec.operations.some((o) => o.key === `operation_${n}`)) n++;
-                  const o = newOperation(n);
-                  set({ ...spec, operations: [...spec.operations, o] }); go({ op: o.key });
+                  set({ ...spec, operations: [...spec.operations, newOperation(n)] }); go({ op: String(spec.operations.length) });
                 }}>Add operation</Button>
               )}
             </div>
           </Panel>
           {op ? (
-            <Panel title={op.name || "Operation"} actions={!readOnly ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((x) => x.key !== op.key) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
-              <OperationEditor key={op.key} op={op} onChange={setOp} disabled={readOnly} />
+            <Panel title={op.name || "Operation"} actions={!readOnly ? <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((_, j) => j !== at) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
+              <OperationEditor key={at} op={op} onChange={setOp} disabled={readOnly} />
             </Panel>
           ) : (
             <Panel title="Operations"><p className="text-body-sm text-fg-3">No operations yet. {readOnly ? "A draft adds them." : "Add one, then import its fields from a sample or an OpenAPI file."}</p></Panel>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CONNECTOR_SORTS } from "../paging";
-import { ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
+import { ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
 import { ListQuery, sortParam } from "./common";
 import { Person, reviewFields, versionFields } from "./workflows";
 
@@ -8,7 +8,7 @@ import { Person, reviewFields, versionFields } from "./workflows";
 // operations with their field trees) and its secrets per environment, which no answer ever carries.
 
 const OpField: z.ZodType<OpFieldT> = z.lazy(() => z.strictObject({
-  name: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(80).refine((n) => !RESERVED_NAMES.includes(n), "Pick another name: this one is reserved."),
   type: z.enum(FIELD_TYPES),
   maxLength: z.number().int().min(1).max(10000).optional(),
   required: z.boolean(),
