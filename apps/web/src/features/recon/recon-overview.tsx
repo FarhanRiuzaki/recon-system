@@ -5,6 +5,7 @@
 // first, as tall as the card, older runs load as the list scrolls), the last TREND_DAYS dates, then the day's pipeline
 // and the sources (LiveDay). What it is (sides, passes, settings) is the Configuration tab.
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
@@ -20,7 +21,6 @@ import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
-import { SignoffTable } from "./signoff-table";
 import { isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
@@ -149,6 +149,9 @@ function Trend({ spaceId, id }: { spaceId: string; id: string }) {
  * The Overview of a recon with an approved version; before one, where to go (its draft is in Configuration).
  * `last` = its latest run (the Run card's line).
  */
+// below the fold: its code loads after the page (bundle budget, DEC-040); its rows are prefetched with the page
+const SignoffTable = dynamic(() => import("./signoff-table").then((m) => m.SignoffTable), { ssr: false, loading: () => <div aria-hidden="true" className="h-64" /> });
+
 export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId: string; id: string; r: ReconDto; runner: boolean; configHref: string }) {
   const firstQ = reconRunsFirst(spaceId, id);
   const runs = useQuery({ queryKey: firstQ.key, queryFn: () => api<Page<ReconRunDto>>(firstQ.url), enabled: !!r.published, refetchInterval: 30_000 });

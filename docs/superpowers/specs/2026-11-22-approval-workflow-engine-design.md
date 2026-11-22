@@ -237,3 +237,17 @@ maker-checker DEC-051 saat fase A rilis); **Q2 → space admin + izin global `wo
 7. **"360 derajat"** maksudnya semua aksi lewat satu engine (bacaan saya), atau juga **jenis approver** yang lebih
    luas, misalnya atasan langsung atau orang di luar space?
 8. **Fase C (delegasi, SLA, eskalasi) masuk fase 1** atau boleh menyusul?
+
+## 10. Status
+
+- **Fase A: selesai 22 Nov.** API `55b8dec` (migrasi 0048: `approval_workflows`, `approval_decisions`;
+  `approval_requests` pindah ke modul approvals dengan snapshot rantai; `approvals/{requests,workflows}.ts`; tes
+  `break-requests.test.ts` 6/6, `approvals/tests/integration/workflows.test.ts` 3/3). Web `d312ce2`, `0b766ca`:
+  Space → Workflows, editor aturan/level dengan autosave dan "Who approves", timeline rantai di halaman break, kolom Level
+  di inbox. Dicek di :3000: draft dibuat → aturan, kondisi, dan 2 level → "Who approves" memilih aturan untuk 25 jt →
+  draft dibuang; request write-off → timeline "Level 1 · Checker, menunggu Default Approver" → dibatalkan.
+- Seed lokal: `maker` + operator, `approver` + reviewer (supaya rantai default punya approver selain Superadmin).
+- **Figma: belum.** Server Figma MCP perlu login ulang. Halaman "06 Approval workflows · v1.0.0" dibuat setelah
+  login.
+- Fase B dan C: belum.
+
