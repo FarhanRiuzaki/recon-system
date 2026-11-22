@@ -12,7 +12,6 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { ConnectorDetailDto, EnvironmentSettings, TokenCheckDto } from "@starterkit/shared/contracts/integrations";
 import { type Environment, ENVIRONMENT_LABEL } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
-import { categoryChip } from "@/lib/shared/categories";
 
 // One environment of a connector (DEC-053): its address and ids (in the version), its credentials (apart, encrypted:
 // Set / Not set, Replace) and Get token, which asks the bank for a token with them.
@@ -74,7 +73,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
   }
   const set = (k: keyof EnvironmentSettings, v: string) => onSettings({ ...settings, [k]: v });
   return (
-    <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <CategoryChip label="Active" slot={categoryChip("environment", env)} /> : undefined}>
+    <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <CategoryChip label={`${ENVIRONMENT_LABEL[env]} active`} slot="neutral" /> : undefined}>
       <div className="grid gap-section">
         <div className="grid gap-4 md:grid-cols-2">
           <Field id={id("url")} label="Address">

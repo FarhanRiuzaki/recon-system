@@ -85,6 +85,7 @@ export {
   UserCheck01Icon as TakeIcon, // Take an item: it becomes yours
   UserArrowLeftRightIcon as AssignIcon, // Assign an item to someone
   HourglassIcon as WaitIcon, // Mark an item as waiting on someone outside
+  InvestigationIcon as InvestigateIcon, // Mark an item as being investigated (not search)
   PlusSignIcon as AddIcon, // An add intent (variant="add"): a row, a condition, an item
   LinkSquare02Icon as ExternalLinkIcon,
   Copy01Icon as CopyIcon,
