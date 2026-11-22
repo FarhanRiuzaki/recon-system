@@ -34,11 +34,14 @@ export type PassRowProps = {
   /** false: the pass alone, no outcome column or connector (the setup's Matching step; results are the Test step's). */
   results?: boolean;
 };
-/** A labelled part of a pass card: a small heading, then its content; a line between parts. */
+/**
+ * A labelled part of a pass card: a sentence-case label beside its content, as the Configuration's rows read (S8: no
+ * ruled boxes or uppercase eyebrows inside the card, one level flatter).
+ */
 const Part = ({ label, children }: { label: string; children: ReactNode }) => (
-  <span className="grid gap-1 border-t border-line pt-2">
-    <span className="eyebrow text-fg-3">{label}</span>
-    {children}
+  <span className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[6rem_minmax(0,1fr)]">
+    <span className="pt-px text-caption text-fg-3">{label}</span>
+    <span className="min-w-0">{children}</span>
   </span>
 );
 
@@ -71,7 +74,7 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
       <Part label="Then">
         <span className="text-body-sm text-fg-2">
           <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
-          {" · "}{CARD_SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit stay unmatch" : "several that fit are suggested"}
+          {" · "}{CARD_SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit are left unmatched" : "several that fit are suggested"}
         </span>
       </Part>
       <Part label="Compares">

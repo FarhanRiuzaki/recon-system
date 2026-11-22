@@ -305,7 +305,7 @@ describe("the setup's steps (owner, 22 Nov: Next says what is missing)", () => {
   });
 });
 
-import { carryText } from "./spec-model";
+import { carryText, clockOf } from "./spec-model";
 
 describe("carry over modes (owner, 22 Nov: match / unmatch)", () => {
   it("says each mode in words", () => {
@@ -313,5 +313,12 @@ describe("carry over modes (owner, 22 Nov: match / unmatch)", () => {
     expect(carryText(1)).toBe("Up to day + 1");
     expect(carryText(7)).toBe("Up to day + 7");
     expect(carryText(null)).toBe("Always, until matched or closed");
+  });
+});
+
+describe("clockOf: a typed time as HH:MM", () => {
+  it("takes a colon, a dot or no separator, pads the hour, refuses what isn't a time", () => {
+    expect(["23:00", "23.00", "2300", "9:05", " 7.30 ", "00:00"].map(clockOf)).toEqual(["23:00", "23:00", "23:00", "09:05", "07:30", "00:00"]);
+    expect(["24:00", "23:60", "", "2", "ab:cd", "123:00"].map(clockOf)).toEqual([null, null, null, null, null, null]);
   });
 });

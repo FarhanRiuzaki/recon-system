@@ -59,13 +59,14 @@ export function FormActions({ children, sticky = true, className }: { children: 
 }
 
 /**
- * The footer of a form page (ui-standard §1a "Form"): the primary action (`Create user`, `Save user`, `Next: …`), then
- * `Back` in a wizard, then `Cancel`, left-aligned under the form and sticky (FormActions). The order is fixed here, so
+ * The footer of a form page (ui-standard §1a "Form"): `Back` in a wizard, then the primary action (`Create user`,
+ * `Save user`, `Next: …`), then `Cancel`, left-aligned under the form and sticky (FormActions). A wizard that saves
+ * itself ends with `close` (`Save and close`, ghost) on the right edge instead of Cancel. The order is fixed here, so
  * no form puts them another way; a destructive action is never in a footer (it is in the header's ⋯ menu). An editor
  * that saves itself has no footer.
  */
-export function FormFooter({ primary, back, cancel, sticky, className }: { primary: ReactNode; back?: ReactNode; cancel?: ReactNode; sticky?: boolean; className?: string }) {
-  return <FormActions sticky={sticky} className={className}>{primary}{back}{cancel}</FormActions>;
+export function FormFooter({ primary, back, cancel, close, sticky, className }: { primary: ReactNode; back?: ReactNode; cancel?: ReactNode; close?: ReactNode; sticky?: boolean; className?: string }) {
+  return <FormActions sticky={sticky} className={className}>{back}{primary}{cancel}{close && <span className="ml-auto">{close}</span>}</FormActions>;
 }
 
 export function Fieldset({ legend, description, children, ...props }: ComponentProps<"fieldset"> & { legend: string; description?: string }) {

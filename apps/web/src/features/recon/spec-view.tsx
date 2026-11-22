@@ -62,10 +62,8 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
                 return (
                   <li key={j} className="grid gap-x-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
                     <span className="text-body-sm text-fg">{c.field}</span>
-                    <span className="min-w-0 text-body-sm text-fg-2">
-                      {c.rule}
-                      <span className="ml-2 font-mono text-caption wrap-anywhere text-fg-3">{c.columns}</span>
-                    </span>
+                    {/* the rule only: the sources' column names are machine values (P10) */}
+                    <span className="min-w-0 text-body-sm text-fg-2">{c.rule}</span>
                   </li>
                 );
               })}
@@ -74,7 +72,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
           <Row label="Then">
             <span className="text-body-sm text-fg-2">
               <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
-              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit stay unmatch" : "several that fit are suggested"}
+              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit are left unmatched" : "several that fit are suggested"}
             </span>
           </Row>
           <Row label="Compares">
@@ -147,7 +145,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
 
       <Panel title="Schedule and day close" actions={edit(3)}>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
-          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Unmatch is checked", carryText(spec.carry_over_days)],
+          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", carryText(spec.carry_over_days)],
             ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
             <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
           ))}

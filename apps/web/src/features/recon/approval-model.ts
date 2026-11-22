@@ -32,6 +32,25 @@ export function savable(a: ReconApprovalInput): { approvals: ReconApprovalSpec |
   return { approvals: any ? { accounts, lookups, changes } : undefined, unfinished };
 }
 
+export const DEFAULT_CHAIN_TEXT = "Default · 1 of Reviewer or Space admin";
+
+type ChangeSetup = ReconApprovalInput["changes"][(typeof TRIGGERS)[number]];
+/**
+ * One row of the Approval step's table: who approves (the picked workflow, else the default chain, and how many rules
+ * pick another in some cases) and what is sent to the bank (the actions by name, or Nothing). `nameOf` = a live
+ * workflow's name, null when it is gone.
+ */
+export function approvalRow(s: ChangeSetup | undefined, nameOf: (id: string) => string | null): { who: string; bank: string } {
+  const w = s?.workflow;
+  const base = w?.default ? (nameOf(w.default.id) ?? "A workflow no longer available") : DEFAULT_CHAIN_TEXT;
+  const n = w?.rules.length ?? 0;
+  const actions = s?.actions ?? [];
+  return {
+    who: n ? `${base} · ${n} ${n === 1 ? "rule" : "rules"} for some cases` : base,
+    bank: actions.length ? actions.map((a) => a.name.trim() || "An action without a name").join(", ") : "Nothing",
+  };
+}
+
 /** The kept copy (`{ base, approvals }`), when the saved draft still holds what it was based on; else null. */
 export function keptCopy(stored: string | null, saved: ReconApprovalInput | undefined): ReconApprovalInput | null {
   if (!stored) return null;

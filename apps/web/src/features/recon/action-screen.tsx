@@ -282,6 +282,8 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       onOpenChange={(o) => { if (!o) { if (dirty) setHeld(true); else onCancel(); } }}
       actions={<>
         {held && <span role="status" className="text-body-sm text-degraded-ink">Use Cancel to drop your changes, or Done to keep them.</span>}
+        {/* why Done is off, on screen at every width (S7): the caption the button would show only on touch */}
+        {blocked && !held && <span aria-hidden="true" className="max-w-80 text-right text-caption text-pretty text-fg-3 pointer-coarse:hidden">{blocked}</span>}
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
         <BlockedButton reason={blocked} wrapClassName="items-end" onClick={() => onDone({ ...a, name: a.name.trim(), variants: a.variants.map((x) => ({ ...x, name: x.name.trim() })) })}>Done</BlockedButton>
       </>}
@@ -289,9 +291,18 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       dock={<Dock spaceId={spaceId} configId={configId} versionId={versionId} change={change} index={index} draft={a} accounts={setup.accounts} onResult={(r, from) => setSample(r ? { payload: r.payload, context: r.context, from } : null)} />}>
       {!op || !graph ? (
         <div className="grid h-full place-items-center p-8 text-center">
-          <span className="grid max-w-sm gap-1.5">
-            <span className="text-title-3 text-fg">Pick where it sends to</span>
-            <span className="text-body-sm text-fg-3">Choose the connector and operation under 3 in the settings. Its request fields appear here to map.</span>
+          {/* the picker where the work goes (S7), not only under 3 in the settings */}
+          <span className="grid w-full max-w-md gap-3">
+            <span className="grid gap-1.5">
+              <span className="text-title-3 text-fg">Pick where it sends to</span>
+              <span className="text-body-sm text-fg-3">{ops.length ? "The connector and its operation. Its request fields appear here to map." : "No Open API connector in this space yet. An administrator adds one under Open API."}</span>
+            </span>
+            {ops.length > 0 && (
+              <span className="text-left">
+                <OperationPicker stacked value={v.operation.connectorId ? v.operation : null} ops={ops} label="Sends to"
+                  onChange={(operation) => { const o = opOf(ops, operation).op; setV({ ...v, operation, mapping: o ? keepMapping(v.mapping, o) : {} }); setPicked(null); }} />
+              </span>
+            )}
           </span>
         </div>
       ) : (
