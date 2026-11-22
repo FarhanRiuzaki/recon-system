@@ -80,7 +80,7 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
           subjectRef: context["break.reference"] === null || context["break.reference"] === undefined ? null : String(context["break.reference"]),
         };
         let row: typeof actionRuns.$inferInsert;
-        if (!picked) row = { ...base, status: "no_rule", message: "No posting rule fits this break.", finishedAt: new Date() };
+        if (!picked) row = { ...base, status: "no_rule", message: "No posting rule fits this item.", finishedAt: new Date() };
         else {
           const vr = picked.variant, op = await opOf(vr.operation);
           const target = { variantName: vr.name, connectorId: vr.operation.connectorId, connectorVersion: vr.operation.version, operationKey: vr.operation.key };
@@ -194,7 +194,7 @@ export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApproval
   const none = (message: string, code = "build_error"): ActionPreview => ({ variant: null, payload: null, sources: {}, problem: { code, field: "", message }, context });
   if (!a) return none("This change has no such action.");
   const picked = pickVariant(a.variants, context);
-  if (!picked) return none("No posting rule fits this break.", "no_rule");
+  if (!picked) return none("No posting rule fits this item.", "no_rule");
   const v = picked.variant;
   // a reviewed version only (published or retired): a draft action could otherwise pin one still being written
   const [cv] = await tx.select({ spec: connectorVersions.spec }).from(connectorVersions)

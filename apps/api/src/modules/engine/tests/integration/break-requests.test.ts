@@ -100,7 +100,7 @@ describe("the default chain (no workflow): one of reviewer or space admin", () =
     expect(d.request!.levels).toHaveLength(1);
     expect(d.request!.levels[0]!.groups[0]!.approvers.map((p) => p.name).sort()).toEqual(["Admin User", "Google User"]);
     expect(await code(await req(I.a1, { kind: "write_off", note: "x" }))).toBe("invalid_state");
-    expect(await message(await call("POST", path(I.a1, "/close"), { token: t.op, body: { resolution: "NO_ACTION", note: "x" } }))).toBe("A change of this break waits for a checker's decision.");
+    expect(await message(await call("POST", path(I.a1, "/close"), { token: t.op, body: { resolution: "NO_ACTION", note: "x" } }))).toBe("A change of this item waits for a checker's decision.");
     // an operator isn't in the chain; the reviewer's inbox lists it at level 1 of 1
     const no = await decide(I.a1, "approve", {}, t.op2);
     expect([no.status, await message(no)]).toEqual([403, "Level 1 (Checker) waits for 1 of Reviewer, Space admin."]);

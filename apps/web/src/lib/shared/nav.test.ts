@@ -4,7 +4,7 @@ import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
 /** The Work and Setup items in order (every one a space page; nothing is soon). */
-const WORK_SETUP = ["Today", "Breaks", "Approvals", "Posting", "Recons", "Sources"];
+const WORK_SETUP = ["Today", "Unmatch", "Approvals", "Posting", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
 describe("navFor", () => {
@@ -59,7 +59,7 @@ describe("navFor", () => {
 describe("space group", () => {
   it("in no space: the Space group is gone, other permitted items stay; a space.manage holder keeps it (Create space on /spaces)", () => {
     const admin = new Set(["user.view", "role.view", "space.view"] as const);
-    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...WORK_SETUP.filter((l) => !["Sources", "Recons", "Today", "Approvals", "Breaks", "Posting"].includes(l)), "Users", "Roles", "Profile"]);
+    expect(navFor(admin, true).flatMap((s) => s.items.map((i) => i.label))).toEqual(["Dashboard", ...WORK_SETUP.filter((l) => !["Sources", "Recons", "Today", "Approvals", "Unmatch", "Posting"].includes(l)), "Users", "Roles", "Profile"]);
     expect(navFor(new Set(), true).map((s) => s.id)).toEqual(["main", "personal"]); // Work and Setup hold only space pages
     expect(navFor(new Set(["space.manage"]), true).map((s) => s.id)).toContain("space");
     expect(navFor(new Set(), false).map((s) => s.id)).toContain("space");

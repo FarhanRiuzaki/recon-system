@@ -127,8 +127,8 @@ describe("actions written with the decision", () => {
     await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
     await decide(I.a1, "approve", {}, t.rev);
     expect((await runs()).map((x) => [x.actionName, x.status, x.code, x.message, x.payloadEnc])).toEqual([
-      ["Only RTGS", "no_rule", null, "No posting rule fits this break.", null],
-      ["Broken", "failed", "build_error", "Remark is required, and this break has no value for it.", null],
+      ["Only RTGS", "no_rule", null, "No posting rule fits this item.", null],
+      ["Broken", "failed", "build_error", "Remark is required, and this item has no value for it.", null],
     ]);
   });
 

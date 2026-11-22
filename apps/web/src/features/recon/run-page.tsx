@@ -126,7 +126,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const allBreaks = real ? breaksOf(run.live?.breakReasons) : null;
   const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, label: passLabel(p, counts[String(p.no)]), pass: p.no })),
     { key: "waiting", label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const },
-    ...(breaks ? [{ key: "breaks", label: `Breaks · ${allBreaks ? breaksText(allBreaks, labels, false) : `${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`}`, status: "break" as const }] : [])];
+    ...(breaks ? [{ key: "breaks", label: `Unmatch · ${allBreaks ? breaksText(allBreaks, labels, false) : `${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`}`, status: "break" as const }] : [])];
   const tabKey = waiting ? "waiting" : breaksTab ? "breaks" : `p${passNo}`;
   const x = pass ? counts[String(pass.no)] : undefined;
   const own = pass?.accept === "suggest" ? "suggested" : "matched";
@@ -152,7 +152,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={NetworkIcon} title="Results per pass"
-        description={run.mode === "simulation" ? "Not stored: after a real run these become breaks at day close." : undefined}
+        description={run.mode === "simulation" ? "Not stored: after a real run these stay unmatch at day close." : undefined}
         toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
         <div className="grid gap-3 px-3 pb-3">
           {/* from 768 px: a tile per business date and a tab per pass; on a phone the same choices as two selects */}
@@ -212,7 +212,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
             );
           }}
           error={t.loadError ? { title: "Couldn't load the items", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-          empty={breaksTab && !isLive(run) ? { icon: NetworkIcon, title: "No breaks on these dates.", description: "Breaks appear here when a date closes with items nothing paired." }
+          empty={breaksTab && !isLive(run) ? { icon: NetworkIcon, title: "No unmatch on these dates.", description: "Unmatch appears here when a date closes with items nothing paired." }
             : { icon: NetworkIcon, title: isLive(run) ? "Nothing here yet" : "No items here",
               description: isLive(run) ? "Items appear here once the run is over." : "Pick another pass, outcome or date to see its items." }} />
       </Panel>

@@ -100,7 +100,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
               <TableHeader><TableRow>
                 <TableHead>Recon</TableHead><TableHead>Business date</TableHead><TableHead>Last run</TableHead>
                 <TableHead className="text-right">Matched</TableHead><TableHead className="text-right">Suggested</TableHead>
-                <TableHead className="text-right">Waiting</TableHead><TableHead className="text-right">Open breaks</TableHead>
+                <TableHead className="text-right">Waiting</TableHead><TableHead className="text-right">Unmatch</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {t.recons.map((r) => {

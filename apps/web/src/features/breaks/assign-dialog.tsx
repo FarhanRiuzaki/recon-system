@@ -37,7 +37,7 @@ export default function AssignDialog({ spaceId, count, onAssign, onClose }: {
     <Dialog open onOpenChange={(o) => { if (!o && !busy) onClose(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Assign {count === 1 ? "1 break" : `${count} breaks`}</DialogTitle>
+          <DialogTitle>Assign {count === 1 ? "1 item" : `${count} items`}</DialogTitle>
           <DialogDescription>Whoever you pick sees them under Mine. Unassigned puts them back in the queue.</DialogDescription>
         </DialogHeader>
         <DialogBody>
@@ -51,7 +51,7 @@ export default function AssignDialog({ spaceId, count, onAssign, onClose }: {
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void go()} disabled={busy || q.isPending} aria-busy={busy || undefined}>
-            {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{who ? "Assign breaks" : "Unassign breaks"}
+            {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{who ? "Assign items" : "Unassign items"}
           </Button>
         </DialogFooter>
       </DialogContent>

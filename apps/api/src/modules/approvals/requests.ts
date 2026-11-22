@@ -107,7 +107,7 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
       ruleName, chain: chain.levels, currentLevel: 0,
     });
   } catch (e) {
-    if (isUniqueViolation(e)) throw new ApiError("invalid_state", "A change of this break already waits for a decision.");
+    if (isUniqueViolation(e)) throw new ApiError("invalid_state", "A change of this item already waits for a decision.");
     throw e;
   }
   return id;

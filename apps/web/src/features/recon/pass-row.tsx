@@ -71,7 +71,7 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
       <Part label="Then">
         <span className="text-body-sm text-fg-2">
           <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
-          {" · "}{CARD_SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit raise a break" : "several that fit are suggested"}
+          {" · "}{CARD_SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit stay unmatch" : "several that fit are suggested"}
         </span>
       </Part>
       <Part label="Compares">

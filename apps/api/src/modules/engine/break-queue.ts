@@ -151,7 +151,7 @@ async function change(ctx: Ctx, ids: readonly string[], action: "break.assign" |
       await tx.update(reconItems).set({ breakState: next.state, assigneeId: next.assigneeId, stateAt: sql`now()`, version: sql`${reconItems.version} + 1` })
         .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, id), eq(reconItems.businessDate, b.bd), eq(reconItems.version, b.v)));
       await recordActivity(tx, ctx, {
-        action, target: { type: "break", id, label: b.ref ?? "Break" },
+        action, target: { type: "break", id, label: b.ref ?? "Unmatch item" },
         before: action === "break.state" ? { state: stateOf(b.state) } : { assignee: b.assigneeId, state: stateOf(b.state) },
         after: action === "break.state" ? { state: stateOf(next.state) } : { assignee: next.assigneeId, state: stateOf(next.state) },
       });
@@ -172,7 +172,7 @@ export async function assignBreaks(ctx: Ctx, b: AssignBreaksBody): Promise<BulkR
   if (b.assigneeId) {
     const member = await inSpace(ctx, (tx, spaceId) => tx.select({ id: spaceMembers.userId }).from(spaceMembers)
       .where(and(eq(spaceMembers.spaceId, spaceId), eq(spaceMembers.userId, b.assigneeId!))).limit(1));
-    if (!member.length) throw new ApiError("bad_request", "Assign breaks to a member of this space.");
+    if (!member.length) throw new ApiError("bad_request", "Assign items to a member of this space.");
   }
   return change(ctx, b.ids, "break.assign", (x) => {
     if (x.state === "pending_approval" || x.state === "proposed_resolution") return "invalid_state";

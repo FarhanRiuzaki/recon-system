@@ -219,7 +219,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
       <Step n={5} label="If more than one item fits" required htmlFor={id("ambiguous")}>
         <Select id={id("ambiguous")} value={p.on_ambiguous} disabled={group} aria-required className="w-full" onChange={(e) => onChange({ ...p, on_ambiguous: e.target.value as PassSpec["on_ambiguous"] })}>
           {!group && <option value="suggest">Suggest them for review</option>}
-          <option value="break">Raise a break</option>
+          <option value="break">Leave them unmatch</option>
         </Select>
       </Step>
 

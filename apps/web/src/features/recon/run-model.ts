@@ -269,7 +269,7 @@ export function sidesText(x: PerSide, labels: readonly [string, string], noun: s
 
 /**
  * "937 matched · 24 suggested (open) · 30 duplicate · 24 waiting per side · match rate 93.7%" (BUILDER-SPEC count
- * line, sides named per R4-1); breaks per side after waiting once there are any ("48 breaks per side").
+ * line, sides named per R4-1); breaks per side after waiting once there are any ("48 unmatch per side").
  */
 export function countLine(t: Totals, labels: readonly [string, string]): string {
   const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [sidesText(t.breaks, labels, "breaks")] : [];

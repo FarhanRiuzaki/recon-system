@@ -60,10 +60,10 @@ export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: C
   });
   const ORDER = ["Matched", "Suggested"];
   const sorted = [...outs].sort(([x], [y]) => (ORDER.indexOf(x) < 0 ? 9 : ORDER.indexOf(x)) - (ORDER.indexOf(y) < 0 ? 9 : ORDER.indexOf(y)));
-  for (const [out, id] of sorted) nodes.push({ id, lane: 3, title: out, line: out === "Matched" ? "Closed" : out === "Suggested" ? "Open until accepted" : "A break to review", select: null });
+  for (const [out, id] of sorted) nodes.push({ id, lane: 3, title: out, line: out === "Matched" ? "Closed" : out === "Suggested" ? "Open until accepted" : "Unmatch to review", select: null });
   if (spec.passes.length) {
     const open = counters ? `${formatNumber(counters.open.a)} ${a.label} · ${formatNumber(counters.open.b)} ${b.label}` : "No counterpart yet";
-    nodes.push({ id: "out-unmatched", lane: 3, title: "Waiting", line: `${open}; a break at day close`, select: null });
+    nodes.push({ id: "out-unmatched", lane: 3, title: "Waiting", line: `${open}; unmatch at day close`, select: null });
     edges.push({ id: "e-last-unmatched", source: keys[spec.passes.length - 1]!, target: "out-unmatched", label: null });
   }
   return { nodes, edges };

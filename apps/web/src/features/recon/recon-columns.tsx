@@ -100,7 +100,7 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
         </span>
       );
     } },
-    { key: "breaks", header: "Open breaks", mobile: "meta", align: "right", help: "Break items of every date not resolved yet.", cell: (r) => {
+    { key: "breaks", header: "Unmatch", mobile: "meta", align: "right", help: "Unmatch items of every date not settled yet.", cell: (r) => {
       const x = of(r);
       return x ? <span className="tabular">{formatNumber(x.openBreaks)}</span> : none;
     } },

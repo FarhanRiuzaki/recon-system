@@ -73,7 +73,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
           <Row label="Then">
             <span className="text-body-sm text-fg-2">
               <span className="text-fg">{pass.accept === "auto" ? "Matches it" : "Suggests it for review"}</span>
-              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit raise a break" : "several that fit are suggested"}
+              {" · "}{SHAPE[pass.cardinality]}{" · "}{pass.on_ambiguous === "break" ? "several that fit stay unmatch" : "several that fit are suggested"}
             </span>
           </Row>
           <Row label="Compares">

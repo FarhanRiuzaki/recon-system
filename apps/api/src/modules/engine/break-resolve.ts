@@ -159,12 +159,12 @@ export function candidatePage(ctx: Ctx, id: string, q: BreakCandidateQuery): Pro
 export const isLead = (ctx: Ctx) => isSuperadmin(ctx.user.roles) || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
 /** Whoever has the break, or a lead; else 403. */
 export function mayTouch(ctx: Ctx, x: { assigneeId: string | null }) {
-  if (!isLead(ctx) && x.assigneeId !== ctx.user.id) throw new ApiError("forbidden", "Take this break first: only whoever has it resolves it.");
+  if (!isLead(ctx) && x.assigneeId !== ctx.user.id) throw new ApiError("forbidden", "Take this item first: only whoever has it resolves it.");
 }
 /** An open break whoever has it (or a lead) may resolve; a resolved one or one waiting for a checker is 409. */
 export function mayWork(ctx: Ctx, x: { assigneeId: string | null; breakState: string | null; status: string }) {
-  if (x.status !== "break" || x.breakState === "resolved") throw new ApiError("invalid_state", "This break is resolved already.");
-  if (x.breakState === "pending_approval") throw new ApiError("invalid_state", "A change of this break waits for a checker's decision.");
+  if (x.status !== "break" || x.breakState === "resolved") throw new ApiError("invalid_state", "This item is resolved already.");
+  if (x.breakState === "pending_approval") throw new ApiError("invalid_state", "A change of this item waits for a checker's decision.");
   mayTouch(ctx, x);
 }
 
@@ -229,7 +229,7 @@ export async function matchIn(tx: InTx, ctx: Ctx, spaceId: string, x: { id: stri
     }
     if (o.quiet) return;
     await recordActivity(tx, ctx, {
-      action: o.action, target: { type: "break", id: x.id, label: items[0]!.ref ?? "Break" },
+      action: o.action, target: { type: "break", id: x.id, label: items[0]!.ref ?? "Unmatch item" },
       before: { state: x.breakState ?? "new" },
       after: { resolution: o.resolution, items: items.map((i) => ({ side: i.side, ref: i.ref })), ...(o.pass ? { proposedBy: o.pass } : {}), ...(o.note ? { note: o.note } : {}), ...o.extra },
     });
@@ -244,7 +244,7 @@ export async function matchBreak(ctx: Ctx, id: string, b: MatchBreakBody): Promi
 /** POST …/breaks/{itemId}/match-pair: the pair a later suggesting pass proposed (DEC-047), if that item is still free. */
 export async function matchPair(ctx: Ctx, id: string): Promise<BreakDetailDto> {
   const x = await inSpace(ctx, (tx, spaceId) => breakOf(tx, spaceId, id));
-  if (!x.proposedItemId) throw new ApiError("invalid_state", "No pair is proposed for this break.");
+  if (!x.proposedItemId) throw new ApiError("invalid_state", "No pair is proposed for this item.");
   await match(ctx, id, [x.proposedItemId], { checkTotals: false, pass: x.proposedPass });
   return breakDetail(ctx, id);
 }
@@ -257,11 +257,11 @@ export async function closeBreak(ctx: Ctx, id: string, b: CloseBreakBody): Promi
     await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [locked] = await tx.select({ v: reconItems.version, status: reconItems.status }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
-    if (locked?.status !== "break" || locked.v !== x.version) throw new ApiError("invalid_state", "This break changed meanwhile. Reload it and try again.");
+    if (locked?.status !== "break" || locked.v !== x.version) throw new ApiError("invalid_state", "This item changed meanwhile. Reload it and try again.");
     await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution: b.resolution, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate), eq(reconItems.version, x.version)));
     const [i] = await itemsOf(tx, spaceId, [x.id]);
-    await recordActivity(tx, ctx, { action: "break.close", target: { type: "break", id: x.id, label: i?.ref ?? "Break" }, before: { state: x.breakState ?? "new" }, after: { resolution: b.resolution, note: b.note } });
+    await recordActivity(tx, ctx, { action: "break.close", target: { type: "break", id: x.id, label: i?.ref ?? "Unmatch item" }, before: { state: x.breakState ?? "new" }, after: { resolution: b.resolution, note: b.note } });
   });
   return breakDetail(ctx, id);
 }

@@ -205,7 +205,7 @@ export function QuarantineTable({ spaceId, id }: { spaceId: string; id: string }
           { key: "raw", header: "Raw line", mobile: "meta", className: `${WRAP} min-w-64`, cell: (r) => <span className="break-all font-mono text-mono">{r.raw}</span> },
           { key: "businessDate", header: "Business date", mobile: "meta", cell: (r) => (r.businessDate ? day(r.businessDate) : none) },
         ]} />
-      <p className="text-caption text-fg-3">Quarantined rows never become breaks and can&apos;t be released by hand. To fix them, the sender sends a corrected file (a new file version, kept beside the old one), or a source admin changes the source in a new version.</p>
+      <p className="text-caption text-fg-3">Quarantined rows never become unmatch items and can&apos;t be released by hand. To fix them, the sender sends a corrected file (a new file version, kept beside the old one), or a source admin changes the source in a new version.</p>
     </>
   );
 }

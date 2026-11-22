@@ -87,7 +87,7 @@ describe("the mapping engine", () => {
   it("refuses to build with a required field empty, a value too long, or a lookup miss — naming the field", () => {
     const op = { request: [{ name: "Ref", type: "string" as const, required: true, maxLength: 4 }, { name: "Note", type: "string" as const, required: true }] };
     const base = { name: "D", when: { all: [] }, operation: OP, per: "item" as const, zeroOrNegative: "skip" as const };
-    expect(buildPayload({ ...base, mapping: { Ref: { kind: "const", value: "ab" } } } as never, op, ctx, setup, new Set())).toMatchObject({ ok: false, code: "build_error", field: "Note", message: "Note is required, and this break has no value for it." });
+    expect(buildPayload({ ...base, mapping: { Ref: { kind: "const", value: "ab" } } } as never, op, ctx, setup, new Set())).toMatchObject({ ok: false, code: "build_error", field: "Note", message: "Note is required, and this item has no value for it." });
     expect(buildPayload({ ...base, mapping: { Ref: { kind: "const", value: "abcdef" }, Note: { kind: "const", value: "x" } } } as never, op, ctx, setup, new Set())).toMatchObject({ ok: false, code: "build_error", field: "Ref", message: "Ref is 6 characters; the bank takes 4. Add a change that keeps the first or the last 4." });
     expect(buildPayload({ ...base, mapping: { Ref: { kind: "lookup", table: "merchants", key: { kind: "const", value: "M9" } }, Note: { kind: "const", value: "x" } } } as never, op, ctx, setup, new Set())).toMatchObject({ ok: false, code: "lookup", field: "Ref", message: "Lookup merchants has no M9." });
     // a field the operation fixes or fills itself needs no mapping

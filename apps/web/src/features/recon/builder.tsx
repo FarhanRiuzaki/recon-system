@@ -536,7 +536,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
 
         {step === 5 && (
           <>
-            <Panel title="Test the draft" description="Nothing is stored and no break is raised">
+            <Panel title="Test the draft" description="Nothing is stored and no item changes">
               <div className="grid gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <ReplayRange value={range} onChange={setRange} disabled={!editable || live || starting} />
@@ -570,8 +570,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                       <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · unmatch checked: {carryText(spec.carry_over_days).toLowerCase()}</span>
                     </div>
                     <div className="grid gap-1 border-l-2 border-line pl-3">
-                      <span className="text-label text-fg-2">Breaks at day close</span>
-                      <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} become breaks · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                      <span className="text-label text-fg-2">Unmatch at day close</span>
+                      <span className={cn("tabular", sim.dim && "opacity-60")}>Items still open at {spec.close_at} {APP_TIME_ZONE_LABEL} stay unmatch · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
                     </div>
                     {currency && (
                       <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>

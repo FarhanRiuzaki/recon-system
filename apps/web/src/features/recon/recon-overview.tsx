@@ -46,9 +46,9 @@ function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string
     <Panel icon={TimeIcon} title="Run" description={scheduleLine(spec.schedule)}>
       <div className="grid gap-4">
         <Rows items={[
-          ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; open items then become breaks`],
+          ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
-          ["Carry over", spec.carry_over_days ? `${spec.carry_over_days} ${spec.carry_over_days === 1 ? "day" : "days"}: earlier breaks can still pair` : "None: each day stands alone"],
+          ["Carry over", spec.carry_over_days ? `${spec.carry_over_days} ${spec.carry_over_days === 1 ? "day" : "days"}: earlier unmatch can still pair` : "None: each day stands alone"],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
               <StatusChip health={chipOf(last).health} label={chipOf(last).label} />
@@ -138,7 +138,7 @@ function Trend({ spaceId, id }: { spaceId: string; id: string }) {
           series={[
             { label: "Matched", values: totals.map((t) => (t ? t.matched : 0)), slot: 0 },
             { label: "Waiting", values: totals.map((t) => (t ? t.waiting + t.suggested : 0)), slot: 2 },
-            { label: "Breaks", values: totals.map((t) => (t ? t.breaks : 0)), tone: "down" as const },
+            { label: "Unmatch", values: totals.map((t) => (t ? t.breaks : 0)), tone: "down" as const },
           ]} />
       </LazyMount>
     </Panel>

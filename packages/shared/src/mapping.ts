@@ -171,7 +171,7 @@ export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }
     return null;
   };
   const gap = missing(op.request, "");
-  if (gap) return { ok: false, code: "build_error", field: gap, message: `${gap} is required, and this break has no value for it.` };
+  if (gap) return { ok: false, code: "build_error", field: gap, message: `${gap} is required, and this item has no value for it.` };
   return { ok: true, payload, sources };
 }
 

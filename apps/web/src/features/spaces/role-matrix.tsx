@@ -12,9 +12,9 @@ const row = (action: string, cells: string) => ({ action, cells: [...cells].map(
  */
 export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cells: Cell[] }[] }[] = [
   { group: "Daily work", rows: [
-    row("View recons, live day, breaks and explanations", "V-VVVVV"),
-    row("Export CSV (summary, breaks, filtered results)", "D-DDDDD"),
-    row("Assign, comment and set a reason on breaks", "----D--"),
+    row("View recons, live day, unmatch and explanations", "V-VVVVV"),
+    row("Export CSV (summary, unmatch, filtered results)", "D-DDDDD"),
+    row("Assign, comment and set a reason on unmatch items", "----D--"),
     row("Manual match within tolerance", "----D--"),
     row("Force match outside tolerance", "----DA-"),
     row("Unmatch a group", "----DA-"),

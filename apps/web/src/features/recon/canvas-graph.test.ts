@@ -54,7 +54,7 @@ describe("builder canvas graph (DEC-041: locked lanes, fixed columns)", () => {
     expect(g.edges.find((e) => e.id === "e-p0-Matched")!.label).toContain("937");
     // per-side counts in the node lines, never on an edge (a long label would run over a node)
     expect(g.nodes.find((n) => n.id === "side-a")!.line).toBe("All records · 1,000 in");
-    expect(g.nodes.find((n) => n.id === "out-unmatched")!.line).toBe("24 source1 · 24 source2; a break at day close");
+    expect(g.nodes.find((n) => n.id === "out-unmatched")!.line).toBe("24 source1 · 24 source2; unmatch at day close");
     expect(g.edges.filter((e) => e.label).every((e) => e.label!.length <= 24)).toBe(true);
   });
 });

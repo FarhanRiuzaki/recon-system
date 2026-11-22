@@ -36,7 +36,7 @@ export function BreakActivity({ spaceId, id }: { spaceId: string; id: string }) 
         flush icon={ActivityIcon} title="Activity" description="Newest first" count={t.count}>
         <DataTable label="Activity" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(e) => e.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           error={t.loadError ? { title: "Couldn't load activity", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-          empty={{ icon: ActivityIcon, title: "No activity yet", description: "Entries appear here when someone takes, assigns or resolves this break." }} />
+          empty={{ icon: ActivityIcon, title: "No activity yet", description: "Entries appear here when someone takes, assigns or resolves this item." }} />
       </Panel>
     </>
   );

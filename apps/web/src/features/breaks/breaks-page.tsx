@@ -70,7 +70,7 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
     try {
       const r = await api<BulkResult>(`/api/spaces/${encodeURIComponent(spaceId)}/breaks/${path}`, { method: "POST", body: JSON.stringify({ ids: [...selected], ...body }) });
       const why = [...new Set(r.skipped.map((s) => SKIP_TEXT[s.code] ?? s.code))].join("; ");
-      toast(`${verb} ${r.done.length === 1 ? "1 break" : `${r.done.length} breaks`}.`, r.skipped.length ? { description: `${r.skipped.length} skipped: ${why}.` } : undefined);
+      toast(`${verb} ${r.done.length === 1 ? "1 item" : `${r.done.length} items`}.`, r.skipped.length ? { description: `${r.skipped.length} skipped: ${why}.` } : undefined);
       setSelected(new Set());
       await qc.invalidateQueries({ queryKey: ENGINE_KEY });
     } catch (e) {
@@ -83,20 +83,20 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
 
   return (
     <div className="grid gap-section">
-      <PageHeader title="Breaks" description="Items no pass paired by day close, and where each one stands." />
+      <PageHeader title="Unmatch" description="Items no pass paired by day close, and where each one stands." />
       <FilterSurface>
-      {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the breaks; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
+      {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the unmatch items; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
       <FilterLayout busy={t.paging.busy} values={{ q: f.q, recon: f.recon, assignee: f.assignee, state: f.state, reason: f.reason, age: f.age }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
-          <FilterSearch label="Search breaks" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
+          <FilterSearch label="Search unmatch" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
           <FilterChecks label="Assignee" value={draft.assignee} options={withCounts([{ value: "me", label: "Mine" }, { value: "none", label: "Unassigned" }], t.facets?.assignee)} onChange={(assignee) => patch({ assignee })} />
           <FilterChecks label="State" value={draft.state} options={withCounts(OPEN_STATES.map((s) => ({ value: s, label: STATE_LABEL[s] })), t.facets?.state)} onChange={(state) => patch({ state })} />
           <FilterChecks label="Reason" value={draft.reason} options={withCounts(BREAK_REASONS.map((r) => ({ value: r, label: r })), t.facets?.reason)} onChange={(reason) => patch({ reason })} />
           <FilterChecks label="Age" value={draft.age} options={withCounts(AGE_BUCKETS.map((a) => ({ value: a, label: AGE_LABEL[a] })), t.facets?.age)} onChange={(age) => patch({ age })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={AlertsIcon} title={`Breaks in ${spaceName}`} count={t.count} description={canWork ? "Select breaks to take, assign or mark them" : undefined}>
+        flush icon={AlertsIcon} title={`Unmatch in ${spaceName}`} count={t.count} description={canWork ? "Select items to take, assign or mark them" : undefined}>
         {summary}
         {canWork && rows.length > 0 && (
           // on a phone, with breaks selected, the bar sticks under the top bar; from 768 px it shows only with a selection
@@ -117,12 +117,12 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
             </>}
           </div>
         )}
-        <DataTable label="Breaks" rowHeight="identity" columns={columns} hidden={t.hidden} rows={rows} rowKey={(r) => r.id} loading={t.loading}
+        <DataTable label="Unmatch" rowHeight="identity" columns={columns} hidden={t.hidden} rows={rows} rowKey={(r) => r.id} loading={t.loading}
           isSelected={(r) => selected.has(r.id)} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
-          error={t.loadError ? { title: "Couldn't load breaks", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
+          error={t.loadError ? { title: "Couldn't load the unmatch items", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={filtered
-            ? { icon: AlertsIcon, title: "No breaks match", description: "Change the filters, or clear them to see every break." }
-            : { icon: AlertsIcon, title: "No breaks", description: "A break appears here when a recon closes a day with items no pass paired." }} />
+            ? { icon: AlertsIcon, title: "Nothing matches these filters", description: "Change the filters, or clear them to see every item." }
+            : { icon: AlertsIcon, title: "No unmatch", description: "An item appears here when a recon run leaves it without a counterpart, until it matches or is settled." }} />
       </Panel>}
       </FilterLayout>
       </FilterSurface>

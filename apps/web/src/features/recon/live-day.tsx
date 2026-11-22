@@ -67,7 +67,7 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
           <StatTile label="Matched" value={tot ? fmt(tot.matched) : "—"} tween={tot ? { value: tot.matched, format: fmt } : undefined} caption="Pairs and groups" />
           <StatTile label="Waiting" value={tot ? fmt(tot.waiting) : "—"} tween={tot ? { value: tot.waiting, format: fmt } : undefined}
             caption={tot ? `${formatNumber(tot.suggested)} suggested, open until accepted` : "Open items of this date"} />
-          <StatTile label="Open breaks" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} broke on this date` : "Every date"} />
+          <StatTile label="Unmatch" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} unmatch on this date` : "Every date"} />
         </StatTiles>
       </Panel>
 

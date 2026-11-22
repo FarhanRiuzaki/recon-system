@@ -56,7 +56,7 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
               <span className="grid min-w-0 flex-1 gap-0.5">
                 <span className="text-body text-fg">{actionSentence(a)}</span>
                 <span className="truncate text-caption text-fg-3">
-                  {a.variants.map((v) => `${v.name}: ${v.when ? conditionText(v.when as Condition, catalog) : "every break"} → ${opOf(ops, v.operation).op?.name ?? (v.operation.key || "nowhere yet")}`).join(" · ")}
+                  {a.variants.map((v) => `${v.name}: ${v.when ? conditionText(v.when as Condition, catalog) : "every item"} → ${opOf(ops, v.operation).op?.name ?? (v.operation.key || "nowhere yet")}`).join(" · ")}
                 </span>
               </span>
               {opsQ.data && (gaps.length

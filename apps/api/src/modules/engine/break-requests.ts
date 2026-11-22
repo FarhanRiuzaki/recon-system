@@ -78,7 +78,7 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
     const x = await breakOf(tx, spaceId, id);
     const [locked] = await tx.select({ v: reconItems.version }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
-    if (locked?.v !== x.version) throw new ApiError("invalid_state", "This break changed meanwhile. Reload it and try again.");
+    if (locked?.v !== x.version) throw new ApiError("invalid_state", "This item changed meanwhile. Reload it and try again.");
     await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [item] = await itemsOf(tx, spaceId, [x.id]);
     let itemIds: string[] = [];
@@ -87,7 +87,7 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
     if (b.kind === "unmatch") {
       mayTouch(ctx, x);
       const g = x.status === "matched" ? await groupOf(tx, spaceId, x.id) : null;
-      if (!g) throw new ApiError("invalid_state", "This break isn't matched, so there is nothing to undo.");
+      if (!g) throw new ApiError("invalid_state", "This item isn't matched, so there is nothing to undo.");
       counterparts = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
     } else {
       mayWork(ctx, x);
@@ -103,14 +103,14 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
       }
     }
     const context = await breakContext(tx, spaceId, x, attributes, counterparts);
-    await openRequest(tx, ctx, { kind: b.kind, configId: x.configId, itemId: x.id, itemIds, label: item?.ref ?? "Break", note: b.note, prevState: x.breakState, attributes, context });
+    await openRequest(tx, ctx, { kind: b.kind, configId: x.configId, itemId: x.id, itemIds, label: item?.ref ?? "Unmatch item", note: b.note, prevState: x.breakState, attributes, context });
     // a break waiting for a force match or write-off leaves the work states (a matched one keeps resolved meanwhile)
     if (b.kind !== "unmatch") {
       await tx.update(reconItems).set({ breakState: "pending_approval", version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
         .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
     }
     await recordActivity(tx, ctx, {
-      action: "break.request", target: { type: "break", id: x.id, label: item?.ref ?? "Break" },
+      action: "break.request", target: { type: "break", id: x.id, label: item?.ref ?? "Unmatch item" },
       before: { state: x.breakState ?? "new" }, after: { kind: b.kind, note: b.note, ...(itemIds.length ? { items: itemIds.length } : {}) },
     });
   });
@@ -133,7 +133,7 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
     await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [locked] = await tx.select({ status: reconItems.status }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
-    if (locked?.status !== "break") throw new ApiError("invalid_state", "This break changed meanwhile. Reject the request and ask again.");
+    if (locked?.status !== "break") throw new ApiError("invalid_state", "This item changed meanwhile. Reject the request and ask again.");
     await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
     return { resolution };
@@ -141,7 +141,7 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
   // unmatch: the group reversed by whoever approved; each member back where a run left it (a break in the queue again,
   // with whoever had it; an item that never broke open for the next run)
   const g = await groupOf(tx, spaceId, x.id);
-  if (!g) throw new ApiError("invalid_state", "This break isn't matched any more. Reject the request.");
+  if (!g) throw new ApiError("invalid_state", "This item isn't matched any more. Reject the request.");
   const days = await tx.select({ d: sql<string>`${reconItems.businessDate}::text` }).from(matchMembers)
     .innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId))).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)));
   await assertNotSigned(tx, spaceId, x.configId, days.map((r) => r.d));

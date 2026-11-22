@@ -98,7 +98,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
           <DialogDescription>
             {item.status === "break"
               // a suggestion day close broke (re-check 5, B2): what it is now, not what it was
-              ? `Break · ${rangeText(item.businessDate, item.businessDate)} · suggested by pass ${g.passNo}, not accepted by day close`
+              ? `Unmatch · ${rangeText(item.businessDate, item.businessDate)} · suggested by pass ${g.passNo}, not accepted by day close`
               : [KIND[g.kind] ?? g.kind, rangeText(g.businessDate, g.businessDate), ev.chosen ? CHOSEN[ev.chosen] ?? "" : ""].filter(Boolean).join(" · ")}
           </DialogDescription>
         </DialogHeader>

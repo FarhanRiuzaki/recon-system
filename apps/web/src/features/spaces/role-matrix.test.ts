@@ -16,7 +16,7 @@ describe("RoleMatrix (Figma 01 Space & shell, RoleMatrix: 7 roles × 16 actions)
     expect(row("Force match outside tolerance")).toEqual(["none", "none", "none", "none", "does", "approves", "none"]);
     expect(row("Write off, above the reviewer limit")).toEqual(["approves", "none", "none", "none", "does", "none", "none"]);
     expect(row("Declare source fields and mapping (source version)")).toEqual(["none", "does", "does", "approves", "none", "none", "none"]);
-    expect(row("View recons, live day, breaks and explanations")).toEqual(["views", "none", "views", "views", "views", "views", "views"]);
+    expect(row("View recons, live day, unmatch and explanations")).toEqual(["views", "none", "views", "views", "views", "views", "views"]);
     expect(row("Prepare a day for sign-off")).toEqual(["none", "none", "none", "none", "none", "does", "none"]);
     expect(row("Approve a day's sign-off")).toEqual(["approves", "none", "none", "none", "none", "approves", "none"]);
     expect(rows.some((r) => r.action === "Sign off a business day")).toBe(false);

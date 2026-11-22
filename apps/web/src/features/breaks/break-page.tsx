@@ -44,7 +44,7 @@ const NoteDialog = dynamic(() => import("./note-dialog"), { ssr: false });
 /** What each request asks, in the dialog that sends it. */
 const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
   force_match: { title: "Request a force match", description: "These items total differently. A reviewer or space admin who didn't ask approves the match.", action: "Send for approval", placeholder: "Why the difference is right" },
-  write_off: { title: "Request a write-off", description: "The break closes as written off once a reviewer or space admin who didn't ask approves it.", action: "Send for approval", placeholder: "Why it is written off" },
+  write_off: { title: "Request a write-off", description: "The item closes as written off once a reviewer or space admin who didn't ask approves it.", action: "Send for approval", placeholder: "Why it is written off" },
   unmatch: { title: "Request to undo the match", description: "Once approved, the match is undone and its items go back to unmatch.", action: "Send for approval", placeholder: "Why the match is wrong" },
   posting: { title: "Request posting", description: "It goes through the recon's posting workflow. On the final approval it closes as posted and its posting action sends it to the bank.", action: "Send for approval", placeholder: "What the posting is for" },
 };
@@ -52,7 +52,7 @@ const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
 const REQUEST_TITLE: Record<NonNullable<BreakDetailDto["request"]>["status"], string> = { pending: "Waiting for approval", approved: "Last request · approved", rejected: "Last request · rejected", cancelled: "Last request · cancelled" };
 const DONE_TEXT: Record<RequestKind, string> = {
   force_match: "The items are matched now, by you, as force matched.",
-  write_off: "The break closes now as written off.",
+  write_off: "The item closes now as written off.",
   unmatch: "The match is undone now; its items go back to unmatch.",
   posting: "It closes now as posted; its posting action sends it to the bank.",
 };
@@ -75,10 +75,10 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialogue | null>(null);
   const b = q.data;
-  const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Breaks" };
+  const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Unmatch" };
 
-  if (isNotFound(q.error)) return <DetailNotFound title="Break" noun="break" list={list} />;
-  if (q.error && !b) return <div className="grid gap-section"><PageHeader title="Break" /><Panel><Failure title="Couldn't load this break" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
+  if (isNotFound(q.error)) return <DetailNotFound title="Unmatch item" noun="item" list={list} />;
+  if (q.error && !b) return <div className="grid gap-section"><PageHeader title="Unmatch item" /><Panel><Failure title="Couldn't load this item" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!b || skeleton) return <LoadingShape sections={BREAK_SHAPE} shown={skeleton} />;
 
   const open = b.state !== "resolved";
@@ -122,7 +122,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
     setBusy("take");
     try {
       await api(`/api/spaces/${encodeURIComponent(spaceId)}/breaks/take`, { method: "POST", body: JSON.stringify({ ids: [id] }) });
-      toast("You have this break now.");
+      toast("You have this item now.");
       await qc.invalidateQueries({ queryKey: ENGINE_KEY });
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); }
   }
@@ -134,15 +134,15 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={b.item.ref ?? "Break"} crumb={b.item.ref ?? "Break"}
+      <PageHeader title={b.item.ref ?? "Unmatch item"} crumb={b.item.ref ?? "Unmatch item"}
         description={`${b.recon.name} · ${b.recon.sides[b.item.side === "a" ? 0 : 1]} · ${STATE_LABEL[b.state]}${b.assignee ? ` · ${b.assignee.id === user.id ? "yours" : b.assignee.name ?? "a removed user"}` : " · Unassigned"}`}
         actions={open && worker && !b.assignee ? (
           <Button type="button" onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>
             {busy === "take" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Take break
           </Button>
         ) : undefined} />
-      {open && !pending && worker && !canWork && b.assignee && !mine && <Notice>{b.assignee.name ?? "Someone"} has this break. A reviewer or space admin can reassign it from Breaks.</Notice>}
-      {open && !pending && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
+      {open && !pending && worker && !canWork && b.assignee && !mine && <Notice>{b.assignee.name ?? "Someone"} has this item. A reviewer or space admin can reassign it from Breaks.</Notice>}
+      {open && !pending && worker && !b.assignee && <Notice>Take this item to resolve it.</Notice>}
 
       {b.request && (
         <Panel title={REQUEST_TITLE[b.request.status]} description={[APPROVAL_KIND_LABEL[b.request.kind], b.request.workflowName, b.request.ruleName && !["Default", "Otherwise"].includes(b.request.ruleName) ? `rule “${b.request.ruleName}”` : null].filter(Boolean).join(" · ")}
@@ -150,7 +150,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             {b.request.canCancel && <Button type="button" variant="ghost" disabled={!!busy} onClick={() => void decide("cancel", {}, "Request cancelled.").catch(() => {})}>Cancel request</Button>}
             {b.request.canOverride && <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Override the approval chain", description: "As Superadmin you approve every level left at once. Your reason is recorded with the request.", action: "Approve by override", placeholder: "Why it can't wait for the chain", onSubmit: async (reason) => { await decide("override", { reason }, "Approved by override."); setDialog(null); } })}>Override</Button>}
             {!b.request.blocked && <>
-              <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the break goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
+              <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the item goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
               <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve level ${b.request!.currentLevel + 1} of ${b.request!.levels.length}`, description: b.request!.currentLevel + 1 < b.request!.levels.length ? "The request moves to the next level." : DONE_TEXT[b.request!.kind], action: "Approve", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await decide("approve", note ? { note } : {}, "Approved."); setDialog(null); } })}>Approve</Button>
             </>}
           </>}>{null}</Toolbar> : undefined}>
@@ -168,7 +168,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 
       {/* an unmatch is usually settled by posting it (owner, 22 Nov): the maker asks, the workflow approves, the posting
           action sends it; undoing a match is rare, so it stays a quiet button */}
-      <Panel icon={AlertsIcon} title="The break" toolbar={b.item.status === "matched" && asks ? <Toolbar end={
+      <Panel icon={AlertsIcon} title="The item" toolbar={b.item.status === "matched" && asks ? <Toolbar end={
         <Button type="button" variant="ghost" disabled={!!busy} onClick={() => ask("unmatch")}>Request undo match</Button>}>{null}</Toolbar>
         : canWork && b.recon.posts ? <Toolbar end={<Button type="button" disabled={!!busy} onClick={() => ask("posting")}>Request posting</Button>}>{null}</Toolbar> : undefined}>
         <ValueRows items={[
@@ -188,7 +188,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         <Panel title="Proposed pair" description={b.proposed.pass ? `A later run's pass ${b.proposed.pass} suggested it` : "A later run suggested it"}>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <span className="min-w-0 flex-1 basis-64 text-body-sm text-fg">{itemLine(b.proposed.item, b.recon.sides)}</span>
-            <BlockedButton type="button" reason={!canWork ? "Take this break first." : !b.proposed.available ? "That item was matched or resolved meanwhile." : null}
+            <BlockedButton type="button" reason={!canWork ? "Take this item first." : !b.proposed.available ? "That item was matched or resolved meanwhile." : null}
               disabled={!!busy} aria-busy={busy === "pair" || undefined} onClick={() => void act("pair", "/match-pair", {}, "Matched with the proposed pair.").catch(() => {})}>
               {busy === "pair" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Match pair
             </BlockedButton>
@@ -197,7 +197,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       )}
 
       {canWork && <Counterparts spaceId={spaceId} id={id} b={b} busy={busy} onMatch={(ids) => act("match", "/match", { itemIds: ids }, "Matched.")} onForce={(ids) => ask("force_match", ids)} />}
-      {canWork && <CloseForm busy={busy} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Break closed.")} onWriteOff={() => ask("write_off")} />}
+      {canWork && <CloseForm busy={busy} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Item closed.")} onWriteOff={() => ask("write_off")} />}
       <BreakActivity spaceId={spaceId} id={id} />
       {dialog && <NoteDialog {...dialog} onClose={() => setDialog(null)} />}
     </div>
@@ -261,7 +261,7 @@ function Counterparts({ spaceId, id, b, busy, onMatch, onForce }: { spaceId: str
     { key: "ref", header: "Reference", mobile: "title", cell: (r) => <span className="font-mono text-body-sm">{r.ref ?? "No reference"}</span> },
     { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular">{money(r)}</span> },
     { key: "date", header: "Business date", mobile: "meta", className: "whitespace-nowrap", cell: (r) => dateText(r.businessDate) },
-    { key: "status", header: "Now", mobile: "meta", cell: (r) => (r.status === "break" ? `Break · ${r.reason ?? ""}` : "Waiting") },
+    { key: "status", header: "Now", mobile: "meta", cell: (r) => (r.status === "break" ? `Unmatch · ${r.reason ?? ""}` : "Unmatch · today") },
   ];
   return (
     <Panel flush title="Find a counterpart" description={`${b.recon.sides[b.item.side === "a" ? 1 : 0]} items free to match, nearest amount first`}
@@ -279,7 +279,7 @@ function Counterparts({ spaceId, id, b, busy, onMatch, onForce }: { spaceId: str
         error={t.loadError ? { title: "Couldn't load the counterparts", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
         empty={t.state.q
           ? { icon: AlertsIcon, title: "No item matches", description: "Change the reference, or clear it to see every free item." }
-          : { icon: AlertsIcon, title: "Nothing free to match", description: "Items of the other side appear here while they wait or are breaks themselves." }} />
+          : { icon: AlertsIcon, title: "Nothing free to match", description: "Items of the other side appear here while they wait or are unmatch themselves." }} />
     </Panel>
   );
 }
@@ -293,7 +293,7 @@ function CloseForm({ busy, onClose, onWriteOff }: { busy: string | null; onClose
   const [tried, setTried] = useState(false);
   const why = !resolution ? "Pick why it closes." : !note.trim() ? "Say why it closes without a match." : null;
   return (
-    <Panel title="Close without a match" description="It leaves the queue and no longer counts as an open break">
+    <Panel title="Close without a match" description="It leaves the queue and no longer counts as unmatch">
       <form noValidate className="grid gap-4 md:max-w-xl" onSubmit={(e) => {
         e.preventDefault();
         setTried(true);

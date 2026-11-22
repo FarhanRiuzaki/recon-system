@@ -178,6 +178,9 @@ numbers from examples.
 | role | group, profile, level | A named set of permissions |
 | permission | right, privilege, access | One capability, named `<resource>.<action>` (`user.view`, `role.edit`) |
 | session | connection, login | One signed-in browser or device |
+| match / unmatch | break, exception, open item | A recon's item is Match (paired) or Unmatch (not yet paired: data still moving, checked again by its carry over). The queue and nav are "Unmatch"; one row is an "item" or "unmatch item" (owner, 22 Nov) |
+| undo match | unmatch (for the action), reverse | Undoing a matched pair; rare |
+| request posting | post, book | An unmatch sent through the posting workflow to the bank; closes as Posted |
 | activity log | history, audit trail | Who changed what: every create, edit and delete |
 | sign-in log | login history, access log | Every sign-in attempt and its result |
 | sign in / sign out | log in, log out, login (verb) | "Sign-in" as noun/adjective: "Last sign-in", "Sign-in log" |
@@ -186,7 +189,7 @@ numbers from examples.
 | recovery code | backup code | Shown once; never display it again |
 | active / inactive | enabled / disabled, on / off | A user's state; an inactive user can't sign in |
 | Healthy / Degraded / Down / Stopped / Unknown | OK, Warning, Error, Offline, N/A | The five health states |
-| Dashboard, Today, Breaks, Approvals, Posting, Recons, Sources, Members, Workflows, Users, Roles, Permissions, Open API, Activity log, Sign-in log, Profile (Projects and Design system are not listed in the navigation; their routes work) | Home, Admin, History, Account | The navigation labels: a new module adds its own (a plural noun, sentence case) to this row. Sessions live at /me/sessions and on a user's detail page, not in the nav. An item of a later release is shown disabled with a "Soon" tag; one caption per group under its label, built from the group's soon items ("Exports arrives in a later release." for one, "Exports and Reports arrive in a later release." for two); none is soon now. Today, Breaks, Approvals and Posting open the current space's page. Recons, Sources and Workflows, like Members, open the current space's page (/recons → /spaces/<id>/recons, /sources → /spaces/<id>/sources); the 64 px rail shows a dot on the icon and the tooltip "Arrives in a later release." (on hover, focus and press) |
+| Dashboard, Today, Unmatch, Approvals, Posting, Recons, Sources, Members, Workflows, Users, Roles, Permissions, Open API, Activity log, Sign-in log, Profile (Projects and Design system are not listed in the navigation; their routes work) | Home, Admin, History, Account | The navigation labels: a new module adds its own (a plural noun, sentence case) to this row. Sessions live at /me/sessions and on a user's detail page, not in the nav. An item of a later release is shown disabled with a "Soon" tag; one caption per group under its label, built from the group's soon items ("Exports arrives in a later release." for one, "Exports and Reports arrive in a later release." for two); none is soon now. Today, Unmatch, Approvals and Posting open the current space's page. Recons, Sources and Workflows, like Members, open the current space's page (/recons → /spaces/<id>/recons, /sources → /spaces/<id>/sources); the 64 px rail shows a dot on the icon and the tooltip "Arrives in a later release." (on hover, focus and press) |
 | Overview, Foundations, Components, Forms, Feedback, Data display, Illustrations, Motion | | The submenu labels under Design system, one per page; each is also its page's title, except Overview, whose page title is "Design system" |
 
 ## 6. Words to avoid

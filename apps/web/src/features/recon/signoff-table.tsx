@@ -46,7 +46,7 @@ export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
   const columns: Column<SignoffRowDto>[] = [
     { key: "date", header: "Business date", sortable: true, mobile: "title", className: "whitespace-nowrap", cell: (r) => <span className="text-fg">{dayText(r.date)}</span> },
     { key: "stage", header: "Stage", mobile: "meta", cell: (r) => STAGE_LABEL[r.stage] },
-    { key: "open", header: "Open breaks", align: "right", mobile: "meta", cell: (r) => <span className="tabular">{formatNumber(r.openBreaks)}</span> },
+    { key: "open", header: "Unmatch", align: "right", mobile: "meta", cell: (r) => <span className="tabular">{formatNumber(r.openBreaks)}</span> },
     { key: "pending", header: "Requests waiting", align: "right", mobile: "meta", cell: (r) => <span className={r.pending ? "tabular text-fg" : "tabular text-fg-3"}>{formatNumber(r.pending)}</span> },
     { key: "prepared", header: "Prepared", mobile: "meta", cell: (r) => <Step by={r.preparedBy} at={r.preparedAt} /> },
     { key: "signed", header: "Signed off", mobile: "meta", cell: (r) => <Step by={r.signedBy} at={r.signedAt} /> },
@@ -72,7 +72,7 @@ export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
       {signing && (
         <ConfirmActionDialog open onOpenChange={(o) => { if (!o) setSigning(null); }} auditFields={false} reasons={[]}
           title={`Sign off ${dayText(signing)}`} description="Signing off closes the day's books for this recon."
-          impact={["Its breaks no longer change: matching, closing and requests on them are refused.", "It can't be reopened in this release."]}
+          impact={["Its unmatch items no longer change: matching, closing and requests on them are refused.", "It can't be reopened in this release."]}
           actionLabel="Sign off day"
           onConfirm={async () => { await step(signing, "sign"); setSigning(null); }} />
       )}

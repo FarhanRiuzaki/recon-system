@@ -98,7 +98,7 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string, arriving: 
     const bad = troubled(r, byId), tot = dayTotals(r);
     nodes.push({
       id: `rec-${r.id}`, lane: 1, title: r.name, chip: reconChip(r, byId), href: hrefOf(r.id), affectedBy: bad.map((s) => s.name), running: r.running?.status, runStartedAt: r.running?.startedAt,
-      line: tot ? `${formatNumber(tot.waiting)} waiting · ${formatNumber(r.openBreaks)} open breaks` : `No run yet · ${formatNumber(r.openBreaks)} open breaks`,
+      line: tot ? `${formatNumber(tot.waiting)} waiting · ${formatNumber(r.openBreaks)} unmatch` : `No run yet · ${formatNumber(r.openBreaks)} unmatch`,
     });
     for (const [i, s] of r.sides.entries()) {
       if (!byId.has(s.sourceId) || (i === 1 && s.sourceId === r.sides[0].sourceId)) continue;

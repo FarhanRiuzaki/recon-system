@@ -27,7 +27,7 @@ export type Selection = { has: (id: string) => boolean; toggle: (id: string) => 
 export function breakColumns(spaceId: string, select?: Selection): Column<BreakRowDto>[] {
   const href = (r: BreakRowDto) => `/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.id)}`;
   const cols: Column<BreakRowDto>[] = [
-    { key: "break", header: "Break", mobile: "title", className: "min-w-56", cell: (r) => (
+    { key: "break", header: "Item", mobile: "title", className: "min-w-56", cell: (r) => (
       <span className="grid min-w-0 max-w-80">
         <Truncate title={r.ref ?? "No reference"}><Link href={href(r)} className="font-mono text-body-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{r.ref ?? "No reference"}</Link></Truncate>
         <span className="truncate text-caption text-fg-3">{r.recon.name} · side {r.side.toUpperCase()}{r.source ? ` · ${r.source}` : ""}</span>
@@ -56,7 +56,7 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
   const all = <input type="checkbox" aria-label={`Select all ${select.all.count} on this page`} checked={select.all.checked} onChange={select.all.toggle} className="size-4 cursor-pointer accent-primary" />;
   return [{ key: "select", header: "Select", headerCell: all, className: "w-8", mobile: "lead", cell: (r) => (
     <label className="inline-grid size-7 cursor-pointer place-items-center">
-      <input type="checkbox" aria-label={`Select ${r.ref ?? "break"}`} checked={select.has(r.id)} onChange={() => select.toggle(r.id)} className="size-4 cursor-pointer accent-primary" />
+      <input type="checkbox" aria-label={`Select ${r.ref ?? "item"}`} checked={select.has(r.id)} onChange={() => select.toggle(r.id)} className="size-4 cursor-pointer accent-primary" />
     </label>
   ) }, ...cols];
 }

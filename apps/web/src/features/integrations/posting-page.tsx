@@ -22,7 +22,7 @@ const FILTER_DEFAULTS: PostingFilters = { q: "", status: "", kind: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "status", label: "Status" }, { key: "kind", label: "Kind" }] as const;
 
 const columns = (spaceId: string): Column<ActionRunRowDto>[] => [
-  { key: "break", header: "Break", mobile: "title", className: "min-w-40", cell: (r) => (
+  { key: "break", header: "Item", mobile: "title", className: "min-w-40", cell: (r) => (
     <span className="grid min-w-0">
       {r.break.id ? <Link href={`/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.break.id)}`} className={LINK}>{r.break.ref ?? "Break"}</Link> : <span className="text-fg">{r.break.ref ?? "The request"}</span>}
       <span className="text-caption text-fg-3">{r.recon.name}</span>

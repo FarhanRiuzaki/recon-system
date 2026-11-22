@@ -104,7 +104,7 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
       <div className="grid gap-1 rounded-lg border border-line-strong bg-tray p-3">
         <span className="text-label text-fg">Sample</span>
         {sample ? <span className="break-all font-mono text-body-sm text-fg">{sample.value === undefined || sample.value === "" ? "(empty)" : JSON.stringify(sample.value)}</span>
-          : <span className="text-body-sm text-fg-3">Shows the value from a real break once this recon has one (What gets posted, under the map).</span>}
+          : <span className="text-body-sm text-fg-3">Shows the value from a real unmatch item once this recon has one (What gets posted, under the map).</span>}
         {sample && <span className="text-caption text-fg-3">From {sample.from}</span>}
       </div>
     </div>
@@ -126,7 +126,7 @@ function Dock({ spaceId, configId, versionId, change, index, draft, accounts, on
   const item = chosen || rows[0]?.id || "";
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<ActionPreviewDto | { error: string } | null>(null);
-  const name = (id: string) => { const b = rows.find((x) => x.id === id); return b ? `${b.ref ?? "No reference"} · ${b.businessDate}` : "a break"; };
+  const name = (id: string) => { const b = rows.find((x) => x.id === id); return b ? `${b.ref ?? "No reference"} · ${b.businessDate}` : "an item"; };
   // an unfinished draft is previewed as the saved action (still answering the break's values); the accounts as edited
   const body = JSON.stringify(previewBody(change, index, item, draft, accounts));
   useEffect(() => {
@@ -147,17 +147,17 @@ function Dock({ spaceId, configId, versionId, change, index, draft, accounts, on
   return (
     <div className="grid gap-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <SectionHeading level={3} title="What gets posted" description="Built from a real break as you edit, masked as the bank's spec masks it" className="min-w-0 flex-1" />
+        <SectionHeading level={3} title="What gets posted" description="Built from a real unmatch item as you edit, masked as the bank's spec masks it" className="min-w-0 flex-1" />
         {rows.length > 0 && (
           <span className="flex items-center gap-2">
             {busy && <Icon icon={SpinnerIcon} className="text-fg-3 motion-safe:animate-spin" aria-label="Updating" />}
-            <Select aria-label="Break to try" value={item} className="w-72" onChange={(e) => setItem(e.target.value)}>
+            <Select aria-label="Item to try" value={item} className="w-72" onChange={(e) => setItem(e.target.value)}>
               {rows.map((b) => <option key={b.id} value={b.id}>{b.ref ?? "No reference"} · {b.businessDate} · {b.reason ?? ""}</option>)}
             </Select>
           </span>
         )}
       </div>
-      {!rows.length && <span className="text-body-sm text-fg-3">{breaks.isPending ? "Loading breaks…" : "This recon has no open break to try it with yet. Breaks appear after its first run."}</span>}
+      {!rows.length && <span className="text-body-sm text-fg-3">{breaks.isPending ? "Loading breaks…" : "This recon has no unmatch item to try it with yet. They appear after its first run."}</span>}
       <div role="status" className="grid gap-2">
         {res && "error" in res && <span className="text-body-sm text-down-ink">{res.error}</span>}
         {res && "variant" in res && (
@@ -205,7 +205,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
             <option value="posting">Posting</option><option value="notify">Notify</option>
           </Select>
         </Field>
-        <span className="text-caption text-fg-3">{a.kind === "posting" ? "A posting marks the break's posting result." : "A notify only shows on the timeline."}</span>
+        <span className="text-caption text-fg-3">{a.kind === "posting" ? "A posting marks the item's posting result." : "A notify only shows on the timeline."}</span>
         <Field id="act-when" label="Runs"><EventPicker value={a.on} onChange={(on) => setA({ ...a, on })} label="Action" /></Field>
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
@@ -217,7 +217,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
                 className={cn("grid w-full gap-0.5 rounded-md border px-3 py-2 text-left transition-colors duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-primary",
                   i === vi ? "border-primary bg-primary-soft" : "border-line-strong bg-card hover:bg-tray")}>
                 <span className="flex items-center gap-2 text-body-sm text-fg"><span className="text-caption text-fg-3 tabular">{i + 1}</span>{x.name || "Unnamed"}</span>
-                <span className="truncate text-caption text-fg-3">{x.when ? conditionText(x.when as Condition, catalog) : "Every break"} → {opOf(ops, x.operation).op?.name ?? "nowhere yet"}</span>
+                <span className="truncate text-caption text-fg-3">{x.when ? conditionText(x.when as Condition, catalog) : "Every item"} → {opOf(ops, x.operation).op?.name ?? "nowhere yet"}</span>
               </button>
             </li>
           ))}
@@ -229,7 +229,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         )}
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
-        <SectionHeading n={3} level={3} title={v.name || "This variant"} description="Its breaks and where it sends"
+        <SectionHeading n={3} level={3} title={v.name || "This variant"} description="Its items and where it sends"
           actions={<span className="flex">
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant earlier" disabled={vi === 0} onClick={() => move(-1)}><Icon icon={ArrowUpIcon} /></Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant later" disabled={vi === a.variants.length - 1} onClick={() => move(1)}><Icon icon={ArrowDownIcon} /></Button>
@@ -238,7 +238,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         <Field id="var-name" label="Variant name" required><Input id="var-name" value={v.name} maxLength={80} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>
         <Field id="var-for" label="Use it for">
           <Select id="var-for" value={v.when ? "some" : "every"} onChange={(e) => setV({ ...v, when: e.target.value === "every" ? null : blankClause } as unknown as VariantSpec)}>
-            <option value="every">Every break</option><option value="some">Breaks where…</option>
+            <option value="every">Every item</option><option value="some">Items where…</option>
           </Select>
         </Field>
         {v.when && <ConditionEditor value={v.when as Condition} catalog={catalog} disabled={false} label="Variant conditions" onChange={(when) => setV({ ...v, when: when as VariantSpec["when"] })} />}
@@ -246,8 +246,8 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
           <OperationPicker stacked value={v.operation.connectorId ? v.operation : null} ops={ops} label="Variant"
             onChange={(operation) => { const o = opOf(ops, operation).op; setV({ ...v, operation, mapping: o ? keepMapping(v.mapping, o) : {} }); setPicked(null); }} />
         </Field>
-        <Field id="var-per" label="A force match with several breaks">
-          <Select id="var-per" value={v.per} onChange={(e) => setV({ ...v, per: e.target.value as VariantSpec["per"] })}><option value="item">One call per break</option><option value="request">One call for the request</option></Select>
+        <Field id="var-per" label="A force match with several items">
+          <Select id="var-per" value={v.per} onChange={(e) => setV({ ...v, per: e.target.value as VariantSpec["per"] })}><option value="item">One call per item</option><option value="request">One call for the request</option></Select>
         </Field>
         <Field id="var-zero" label="An amount of 0">
           <Select id="var-zero" value={v.zeroOrNegative} onChange={(e) => setV({ ...v, zeroOrNegative: e.target.value as VariantSpec["zeroOrNegative"] })}><option value="skip">Skip it, nothing to post</option><option value="absolute_swap">Post it anyway</option></Select>
