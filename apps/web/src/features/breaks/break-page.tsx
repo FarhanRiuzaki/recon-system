@@ -8,7 +8,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { appDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
-import { AlertsIcon, ErrorIcon, ForceMatchIcon, RefreshIcon, SpinnerIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
+import { AlertsIcon, ErrorIcon, ForceMatchIcon, RefreshIcon, SpinnerIcon, TakeIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -262,7 +262,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             <Panel>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                 <p className="min-w-0 flex-1 basis-64 text-body-sm text-fg-2">{takeText(access.take)}</p>
-                <Button type="button" variant={access.take === "first" ? "default" : "secondary"} data-next={access.take === "first" || undefined} onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>{busy === "take" && spin}Take item</Button>
+                <Button type="button" variant={access.take === "first" ? "default" : "secondary"} data-next={access.take === "first" || undefined} onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>{busy === "take" ? spin : <Icon icon={TakeIcon} />}Take item</Button>
               </div>
             </Panel>
           )}

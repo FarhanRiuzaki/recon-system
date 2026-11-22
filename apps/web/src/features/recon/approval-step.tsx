@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Field, Panel, SectionHeading } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, EditIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
@@ -96,7 +96,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
                   </span>
                   {!disabled && (
                     <span className="flex shrink-0 items-center">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? "Done" : "Edit"}</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? <Icon icon={CheckIcon} /> : <Icon icon={EditIcon} />}{open === i ? "Done" : "Edit"}</Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
                       <Button type="button" variant="remove" size="icon" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>

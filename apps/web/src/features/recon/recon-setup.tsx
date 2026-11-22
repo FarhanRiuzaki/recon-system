@@ -7,7 +7,7 @@ import { EmptyState, Failure, Panel } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { DeniedIcon, RefreshIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { ArrowRightIcon, DeniedIcon, RefreshIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { BRAND } from "@starterkit/shared/brand";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -66,7 +66,7 @@ export function ReconSetup({ spaceId, id, step: urlStep }: { spaceId: string; id
       <div className="grid gap-section">
         <PageHeader title={title} trail={trail} />
         <Panel><EmptyState icon={DeniedIcon} title={`Version ${r.draft.version} is in review`} description="A config checker approves or rejects it. It can't be changed meanwhile."
-          action={<Button asChild variant="secondary"><Link href={reconVersionHref(spaceId, id, r.draft.id)}>Open version {r.draft.version}</Link></Button>} /></Panel>
+          action={<Button asChild variant="link"><Link href={reconVersionHref(spaceId, id, r.draft.id)}>Open version {r.draft.version}<Icon icon={ArrowRightIcon} /></Link></Button>} /></Panel>
       </div>
     );
   }

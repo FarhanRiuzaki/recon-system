@@ -7,7 +7,8 @@ import type { Health } from "@starterkit/ui/lib/status";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Input } from "@starterkit/ui/ui/input";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
-import { ActivityIcon, AlertsIcon, BranchIcon, DiskIcon, LogIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { ActivityIcon, AlertsIcon, BranchIcon, DiskIcon, LogIcon, RefreshIcon } from "@starterkit/ui/ui/icons";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type { QuarantineRowDto, SourceFileDto, SourceRecordDto, SourceSnapshotDto, SourceVersionRowDto } from "@starterkit/shared/contracts/sources";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -157,7 +158,7 @@ export function pullAgainReason(row: SourceSnapshotDto, blocked: string | null):
 export function PullAgain({ row, blocked, pending, onPull }: { row: SourceSnapshotDto; blocked: string | null; pending: boolean; onPull: (date: string) => void }) {
   return (
     <BlockedButton size="sm" variant="secondary" caption={false} reason={pullAgainReason(row, blocked)} disabled={pending} aria-busy={pending || undefined}
-      onClick={() => onPull(row.businessDate)}>Pull {day(row.businessDate)} again</BlockedButton>
+      onClick={() => onPull(row.businessDate)}><Icon icon={RefreshIcon} />Pull {day(row.businessDate)} again</BlockedButton>
   );
 }
 

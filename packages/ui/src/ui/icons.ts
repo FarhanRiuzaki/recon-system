@@ -82,6 +82,9 @@ export {
   Delete02Icon as RemoveIcon,
   Link01Icon as ForceMatchIcon, // Force match: items matched across a difference
   MoneyRemove01Icon as WriteOffIcon, // Write off an amount
+  UserCheck01Icon as TakeIcon, // Take an item: it becomes yours
+  UserArrowLeftRightIcon as AssignIcon, // Assign an item to someone
+  HourglassIcon as WaitIcon, // Mark an item as waiting on someone outside
   PlusSignIcon as AddIcon, // An add intent (variant="add"): a row, a condition, an item
   LinkSquare02Icon as ExternalLinkIcon,
   Copy01Icon as CopyIcon,

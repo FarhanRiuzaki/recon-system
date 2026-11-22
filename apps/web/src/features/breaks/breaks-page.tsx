@@ -6,7 +6,8 @@ import { useCallback, useMemo, useState } from "react";
 import { ColumnsMenu, DataTable, FilterChecks, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
-import { AlertsIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AlertsIcon, AssignIcon, SearchIcon, TakeIcon, WaitIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import type { BulkResult } from "@starterkit/shared/contracts/common";
@@ -107,12 +108,12 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
               {selected.size > 0 ? `${selected.size} selected` : `Select all ${rows.length} on this page`}
             </label>
             {selected.size > 0 && <>
-              <Button size="sm" variant="secondary" disabled={!!busy} aria-busy={busy === "take" || undefined} onClick={() => void act("take", "take", {}, "Took").catch(() => {})}>Take</Button>
-              {canAssign && <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => setAssigning(true)}>Assign</Button>}
+              <Button size="sm" variant="secondary" disabled={!!busy} aria-busy={busy === "take" || undefined} onClick={() => void act("take", "take", {}, "Took").catch(() => {})}><Icon icon={TakeIcon} />Take</Button>
+              {canAssign && <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => setAssigning(true)}><Icon icon={AssignIcon} />Assign</Button>}
               <Button size="sm" variant="secondary" disabled={!!busy} aria-busy={busy === "investigating" || undefined}
-                onClick={() => void act("investigating", "state", { state: "investigating" }, "Marked investigating:").catch(() => {})}>Mark investigating</Button>
+                onClick={() => void act("investigating", "state", { state: "investigating" }, "Marked investigating:").catch(() => {})}><Icon icon={SearchIcon} />Mark investigating</Button>
               <Button size="sm" variant="secondary" disabled={!!busy} aria-busy={busy === "pending_external" || undefined}
-                onClick={() => void act("pending_external", "state", { state: "pending_external" }, "Marked pending external:").catch(() => {})}>Mark pending external</Button>
+                onClick={() => void act("pending_external", "state", { state: "pending_external" }, "Marked pending external:").catch(() => {})}><Icon icon={WaitIcon} />Mark pending external</Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear selection</Button>
             </>}
           </div>

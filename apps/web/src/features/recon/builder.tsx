@@ -544,7 +544,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
               <div className="grid gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                   <ReplayRange value={range} onChange={setRange} disabled={!editable || live || starting} />
-                  <BlockedButton type="button" reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
+                  {/* the next step is the primary: the simulation until it lets Next through, then Next (one primary, P6) */}
+                  <BlockedButton type="button" variant={why[5] === null ? "secondary" : "default"} reason={simBlocked} disabled={live || starting} aria-busy={live || starting || undefined} onClick={() => void simulate()}>
                     {(live || starting) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{simulated === "none" ? "Run simulation" : "Run it again"}
                   </BlockedButton>
                 </div>

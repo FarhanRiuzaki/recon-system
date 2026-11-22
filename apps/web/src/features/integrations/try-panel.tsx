@@ -69,7 +69,7 @@ export function TryPanel({ id, operations }: { id: string; operations: readonly 
             </ul>
           </div>
         )}
-        <Button type="button" className="justify-self-start" onClick={() => void send()} disabled={busy || !op} aria-busy={busy || undefined}>
+        <Button type="button" variant="secondary" className="justify-self-start" onClick={() => void send()} disabled={busy || !op} aria-busy={busy || undefined}>
           {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Send to development
         </Button>
         <div role="status" className="grid gap-3">

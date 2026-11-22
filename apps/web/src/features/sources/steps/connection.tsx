@@ -321,7 +321,7 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
           <Button type="button" variant="link" size="sm" onClick={() => {
             setChanging(true);
             requestAnimationFrame(() => document.getElementById("src-host")?.focus());
-          }}>Change<span className="sr-only"> server</span></Button>
+          }}><Icon icon={EditIcon} />Change<span className="sr-only"> server</span></Button>
         </p>
         {!p.connected && <span><ActionButton testing={p.testing} onTest={connect} label="Connect" busy="Connecting…" /></span>}
       </Panel>

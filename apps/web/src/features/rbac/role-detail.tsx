@@ -9,7 +9,8 @@ import { Failure, Notice, Panel } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatNumber, plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
-import { KeyIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { ArrowRightIcon, KeyIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -100,7 +101,7 @@ export function RoleDetail({ id }: { id: string }) {
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title={r.name}
         description={`${plural(r.userCount, "user", "users")} · ${formatNumber(r.permissions.length)} of ${formatNumber(r.catalog.length)} permissions${r.locked ? " · Locked" : ""}`}
-        actions={can("user.view") && r.userCount > 0 && <Button asChild variant="secondary"><Link href={`/users?role=${encodeURIComponent(r.name)}`}>View users</Link></Button>}
+        actions={can("user.view") && r.userCount > 0 && <Button asChild variant="link"><Link href={`/users?role=${encodeURIComponent(r.name)}`}>View users<Icon icon={ArrowRightIcon} /></Link></Button>}
         more={[
           ...(can("role.edit") ? [{ label: "Rename role", reason: editBlock, onSelect: () => { setName(r.name); setDialog("rename"); } }] : []),
           ...(can("role.delete") ? [{ label: "Delete role", reason: deleteBlock(r), destructive: true as const, confirm: {

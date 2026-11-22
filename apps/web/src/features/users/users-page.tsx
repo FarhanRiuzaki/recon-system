@@ -11,8 +11,9 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { HEALTH } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
+import { Icon } from "@starterkit/ui/ui/icon";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import { UsersIcon } from "@starterkit/ui/ui/icons";
+import { ActiveUserIcon, ErrorIcon, KeyIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -133,9 +134,9 @@ export function UsersPage() {
                 : <span className="text-caption text-fg-3">Up to {formatNumber(BULK_ALL_MAX)} users at a time. Narrow the search or filters to select them all.</span>)}
             {selected.size > 0 && <>
               {can("user.edit") && <>
-                <Button size="sm" variant="secondary" onClick={() => setPending({ kind: "bulk", action: "activate", ...scope })}>Activate</Button>
-                <Button size="sm" variant="secondary" onClick={() => setPending({ kind: "bulk", action: "deactivate", ...scope })}>Deactivate</Button>
-                <Button size="sm" variant="secondary" onClick={() => { setRole(roles.more ? "" : roles.names[0] ?? ""); setPending({ kind: "bulk", action: "assignRole", ...scope }); }}>Assign role</Button>
+                <Button size="sm" variant="secondary" onClick={() => setPending({ kind: "bulk", action: "activate", ...scope })}><Icon icon={ActiveUserIcon} />Activate</Button>
+                <Button size="sm" variant="caution" onClick={() => setPending({ kind: "bulk", action: "deactivate", ...scope })}><Icon icon={ErrorIcon} />Deactivate</Button>
+                <Button size="sm" variant="secondary" onClick={() => { setRole(roles.more ? "" : roles.names[0] ?? ""); setPending({ kind: "bulk", action: "assignRole", ...scope }); }}><Icon icon={KeyIcon} />Assign role</Button>
               </>}
               {can("user.delete") && <Button size="sm" variant="destructive" onClick={() => setPending({ kind: "bulk", action: "delete", ...scope })}>Delete</Button>}
               <Button size="sm" variant="ghost" onClick={() => { setSelected(new Set()); setEveryMatch(false); }}>Clear selection</Button>

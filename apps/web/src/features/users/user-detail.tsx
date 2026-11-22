@@ -8,7 +8,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { ActionMenu, BlockedButton, type Column, DataTable, Failure, Notice, Panel, RelativeTime } from "@starterkit/ui/ds";
 import { Stagger, StaggerItem, useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { ActivityIcon, EditIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { ActivityIcon, ArrowRightIcon, EditIcon, KeyIcon, LogIcon, SecureIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { RoleChips } from "@/components/role-chips";
@@ -111,8 +111,8 @@ export function UserDetail({ id }: { id: string }) {
     <div className="grid gap-section">
       <PageHeader title={u.name} status={<UserStatusChip user={u} />} description={`${u.username} · ${u.email}`}
         actions={can("user.edit") && (rank
-          ? <BlockedButton variant="secondary" reason={rank}><Icon icon={EditIcon} />Edit user</BlockedButton>
-          : <Button asChild variant="secondary"><Link href={`/users/${id}/edit`}><Icon icon={EditIcon} />Edit user</Link></Button>)}
+          ? <BlockedButton variant="ghost" reason={rank}><Icon icon={EditIcon} />Edit user</BlockedButton>
+          : <Button asChild variant="ghost"><Link href={`/users/${id}/edit`}><Icon icon={EditIcon} />Edit user</Link></Button>)}
         more={[
           ...(can("user.edit") && !(activating ? !u.isActive : u.isActive) ? [{ label: "Activate user", reason: rank, busy: activating, onSelect: () => void setActive(true) }] : []),
           ...(can("user.edit") ? [
@@ -166,9 +166,9 @@ export function UserDetail({ id }: { id: string }) {
           : <ActionMenu label={`Actions for the session on ${s.device}`} actions={[{ id: "end", label: "End session", destructive: true, disabled: !!rank, hint: rank ?? undefined, onSelect: () => setDialog({ end: s }) }]} />) : undefined} />
       {can("audit.view") && u.recentActivity && (
       <Panel flush icon={LogIcon} title="Recent activity" description="The last 20 actions on this user" count={u.recentActivity.length}
-        actions={<div className="flex flex-wrap items-center gap-2"><span className="text-caption text-fg-3">Activity · Last 90 days</span><Button asChild variant="secondary" size="sm"><Link href={activityHistoryHref("user", u.id)}>View history</Link></Button></div>}>
+        actions={<div className="flex flex-wrap items-center gap-2"><span className="text-caption text-fg-3">Activity · Last 90 days</span><Button asChild variant="link" size="sm"><Link href={activityHistoryHref("user", u.id)}>View history<Icon icon={ArrowRightIcon} /></Link></Button></div>}>
         <DataTable label="Recent activity" columns={ACTIVITY_COLUMNS} rows={u.recentActivity} rowKey={(a) => a.id}
-          rowActions={entry => <Button asChild variant="ghost" size="sm"><Link href={activityHistoryHref("user", u.id, entry.id)}>View entry</Link></Button>}
+          rowActions={entry => <Button asChild variant="link" size="sm"><Link href={activityHistoryHref("user", u.id, entry.id)}>View entry<Icon icon={ArrowRightIcon} /></Link></Button>}
           empty={{ icon: ActivityIcon, title: "No activity yet", description: "Changes to this user appear here." }} />
       </Panel>
       )}

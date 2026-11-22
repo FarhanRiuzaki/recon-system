@@ -59,7 +59,7 @@ function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: Connec
       <DialogContent phone="top">
         <DialogHeader>
           <DialogTitle>Turn off connector</DialogTitle>
-          <DialogDescription>Nothing is sent through it until it is turned on again. Actions that would use it are marked not sent.</DialogDescription>
+          <DialogDescription>Nothing is sent through it until it is turned on again. Recons keep matching; the approved changes they would send through it are marked not sent.</DialogDescription>
         </DialogHeader>
         <DialogBody>
         <Field id="off-reason" label="Reason" required error={error}>
@@ -158,7 +158,8 @@ export function ConnectorEditor({ id }: { id: string }) {
       label: "Discard draft", destructive: true as const,
       confirm: { title: `Discard draft ${draft.version}`, description: c.published ? "The changes in this draft go. The live version keeps working." : "This connector was never published: it goes with its draft.", actionLabel: "Discard draft", onConfirm: async () => { await run("discard", "/draft/discard", undefined, "Draft discarded."); } },
     }] : []),
-    ...(c.canEdit && c.published && !c.disabled ? [{ label: "Turn off connector", onSelect: () => setTurnOff(true) }] : []),
+    // a negative decision with a reason: in the ⋯ menu with the destructive items, its own dialog asks why (audit C2)
+    ...(c.canEdit && c.published && !c.disabled ? [{ label: "Turn off connector", destructive: true as const, onSelect: () => setTurnOff(true) }] : []),
     ...(c.canEdit && c.disabled ? [{ label: "Turn on connector", busy: busy === "on", onSelect: () => void run("on", "/enable", undefined, "Connector turned on.") }] : []),
   ];
   const set = (s: ConnectorSpec) => setSpec(s);
@@ -171,7 +172,7 @@ export function ConnectorEditor({ id }: { id: string }) {
       <PageHeader title={(!readOnly && spec.name.trim()) || c.name} description={`${PROFILE_LABEL[spec.profile]} · ${spec.operations.length} ${spec.operations.length === 1 ? "operation" : "operations"}`}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!c.open && c.canEdit
-          ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
+          ? <Button type="button" variant="ghost" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
               <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit connector
             </Button>
           : draft && c.canEdit

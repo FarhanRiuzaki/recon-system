@@ -23,7 +23,7 @@ export const INTENTS = {
   add: { variant: "add", actions: ["Add"], icon: AddIcon, required: true, note: "Adds a row, level, group, filter, pass, action or variant." },
   remove: { variant: "remove", actions: ["Remove"], icon: RemoveIcon, note: "Takes one out of a list (bin or X)." },
   edit: { variant: "ghost", actions: ["Edit", "Replace"], icon: EditIcon, required: true, note: "Never a bare word; a Change that edits a record (Change server) takes it too." },
-  navigate: { variant: "link", actions: ["Open", "View", "Review"], note: "A link with a trailing arrow." },
+  navigate: { variant: "link", actions: ["Open", "View", "Review"], note: "A link with a trailing arrow (ArrowRightIcon after the words)." },
   output: { variant: "secondary", actions: ["Export"], icon: ExportIcon, required: true, note: "Export, Get token, Show who approves: secondary with its icon." },
   retry: { variant: "secondary", actions: ["Retry", "Try again"], icon: RefreshIcon, required: true, note: "Secondary with Refresh." },
 } as const satisfies Record<string, Intent>;

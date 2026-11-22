@@ -35,11 +35,13 @@ const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")
  * `variant="caution"` (or destructive, a confirm dialog's), and one labelled with an intent whose icon is `required`
  * (Edit, Replace, Export, Retry …) renders an `<Icon icon={…} />` among its children, always: an icon only in an
  * expression (`{busy && <Icon … />}`) doesn't count, nor a named icon component used bare (`<EditIcon />`); icons go
- * through `<Icon icon=…>` (ui/icon.tsx). A self-closing `<Button … />` has no children.
+ * through `<Icon icon=…>` (ui/icon.tsx). A self-closing `<Button … />` has no children. A Button asChild around a Link
+ * labelled with a navigate action (View, Open, Review) is `variant="link"` with its `<Icon>` after the words.
  */
 const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")})\\b`);
 const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
 const CAUTION_VARIANTS: readonly string[] = INTENTS.caution.variant;
+const NAV_LABEL = startsWith(INTENTS.navigate.actions);
 const ICON_LABEL = startsWith(Object.values(INTENTS).filter((i) => "required" in i && i.required && i.variant !== "add").flatMap((i) => i.actions));
 /** `s` without its `{…}` expressions (nested braces counted): what always renders, not `{busy && <Icon … />}`. */
 const outsideExpressions = (s: string) => { let out = "", depth = 0; for (const c of s) { if (c === "{") depth++; else if (c === "}") depth = Math.max(0, depth - 1); else if (!depth) out += c; } return out; };
@@ -71,6 +73,11 @@ function intentViolations(fs: F[]): string[] {
       const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
       if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
       if (ICON_LABEL.test(label) && !/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner))) out.push(`${r}: ${label} without its icon`);
+      // a link that navigates (asChild around a Link) labelled View / Open / Review: variant link, its icon after the words
+      if (/\basChild\b/.test(tag) && /^\s*<Link\b/.test(inner) && NAV_LABEL.test(label)) {
+        if (variant !== "link") out.push(`${r}: ${label} link is variant="${variant}", not link`);
+        if (!/\w[^<]*<Icon\s[^>]*\bicon=[^>]*\/>\s*<\/Link>\s*$/.test(outsideExpressions(inner))) out.push(`${r}: ${label} link without its trailing icon`);
+      }
       if (m[1] === "BlockedButton") continue;
       if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: Remove … is variant="${variant}"`);
       if (/^Add\b/.test(text) && ["ghost", "link", "secondary", "outline"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
@@ -548,6 +555,13 @@ describe("architecture checkers (fixtures)", () => {
       f(`${WEB}features/x/c.tsx`, `<Button variant="secondary"><EditIcon />Edit</Button><Button variant="secondary"><IconBadge />Edit user</Button><Button variant="secondary"><Icon icon={EditIcon} className="size-4" />Edit rule</Button>`),
     ])).toEqual([`${WEB}features/x/b.tsx: Retry without its icon`, `${WEB}features/x/b.tsx: Export CSV without its icon`,
       `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`]);
+  });
+  it("intents: a View / Open / Review link (Button asChild around a Link) is variant link with a trailing icon", () => {
+    expect(intentViolations([
+      f(`${WEB}features/x/a.tsx`, `<Button asChild size="sm"><Link href={h(r)}>Review</Link></Button><Button asChild variant="link"><Link href="/h"><Icon icon={ArrowRightIcon} />View history</Link></Button>`),
+      f(`${WEB}features/x/b.tsx`, `<Button asChild variant="link" size="sm"><Link href={h(r)}>Review<Icon icon={ArrowRightIcon} /></Link></Button><Button variant="secondary" onClick={() => o()}>Open dialog</Button><Button asChild variant="secondary"><Link href="/x">Go to recon</Link></Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Review link is variant="default", not link`, `${WEB}features/x/a.tsx: Review link without its trailing icon`,
+      `${WEB}features/x/a.tsx: View history link without its trailing icon`]);
   });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([

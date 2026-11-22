@@ -7,7 +7,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Failure, Notice, Panel, RelativeTime, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { EditIcon, FolderIcon } from "@starterkit/ui/ui/icons";
+import { ArrowRightIcon, EditIcon, FolderIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -68,7 +68,7 @@ export function ProjectDetail({ id }: { id: string }) {
       <PageHeader title={p.name} status={<StatusChip health={s.health} label={s.label} />} description="A project and its status."
         actions={<>
           {can("project.edit") && <Button asChild variant="secondary"><Link href={`${projectPage(id)}/edit`}><Icon icon={EditIcon} />Edit project</Link></Button>}
-          {can("audit.view") && <div className="grid gap-1"><Button asChild variant="secondary"><Link href={activityHistoryHref("project", p.id)}>View history</Link></Button><span className="text-caption text-fg-3">Activity · Last 90 days</span></div>}
+          {can("audit.view") && <div className="grid gap-1"><Button asChild variant="link"><Link href={activityHistoryHref("project", p.id)}>View history<Icon icon={ArrowRightIcon} /></Link></Button><span className="text-caption text-fg-3">Activity · Last 90 days</span></div>}
         </>}
         more={can("project.delete") ? [{ label: "Delete project", destructive: true, confirm: {
           title: `Delete ${p.name}`, description: p.description ?? "This project has no description.", impact: ["The project is removed.", "This can't be undone."], onConfirm: () => remove(p.name),

@@ -8,8 +8,9 @@ import { Avatar, type Column, DataTable, type Delta, EmptyState, ErrorState, Laz
 import { Reveal } from "@starterkit/ui/motion";
 import { APP_TIME_ZONE_LABEL, appDayStart, formatDate, formatNumber, formatSignedNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
+import { Icon } from "@starterkit/ui/ui/icon";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import { ColumnChartIcon, FailedIcon, IdentityIcon, LogIcon, SessionsIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { ArrowRightIcon, ColumnChartIcon, FailedIcon, IdentityIcon, LogIcon, SessionsIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
@@ -93,14 +94,14 @@ export function DashboardPage() {
               <p className="text-body-sm text-fg-2">{audit ? "Sign-in attempts" : "Successful sign-ins"}</p>
               <p className="border-t border-line pt-4 text-body-sm text-fg-2">{formatNumber(days.reduce((n, x) => n + x.success, 0))} successful{audit && ` · ${formatNumber(days.reduce((n, x) => n + (x.failed ?? 0), 0))} failed`}</p>
               <p className="text-caption text-fg-3">Calendar days in {APP_TIME_ZONE_LABEL}. Active users and sessions are current snapshots.</p>
-              {audit && <Button asChild variant="secondary" className="justify-self-start"><Link href={`/audit/auth?${new URLSearchParams(d.period?.start && d.period.end ? { start: d.period.start, end: d.period.end } : d.period ? { from: d.period.from, to: d.period.to } : days.length ? { from: days[0]!.date, to: days[days.length - 1]!.date } : {})}`}>Open sign-in log</Link></Button>}
+              {audit && <Button asChild variant="link" className="justify-self-start"><Link href={`/audit/auth?${new URLSearchParams(d.period?.start && d.period.end ? { start: d.period.start, end: d.period.end } : d.period ? { from: d.period.from, to: d.period.to } : days.length ? { from: days[0]!.date, to: days[days.length - 1]!.date } : {})}`}>Open sign-in log<Icon icon={ArrowRightIcon} /></Link></Button>}
             </>}
           </Panel>
           </div>
 
           {(d ? d.recent : audit) && (
             <Panel flush icon={LogIcon} title="Recent activity" description="The 5 newest changes"
-              actions={<Button asChild variant="ghost" size="sm"><Link href="/audit/activity">View activity log</Link></Button>}>
+              actions={<Button asChild variant="link" size="sm"><Link href="/audit/activity">View activity log<Icon icon={ArrowRightIcon} /></Link></Button>}>
               <DataTable label="Recent activity" rowHeight="identity" columns={RECENT} rows={d?.recent ?? []} rowKey={(r) => r.id} loading={!d} skeletonRows={5}
                 empty={{ icon: LogIcon, title: "No activity yet", description: "Changes to users, roles and permissions appear here as they happen." }} />
             </Panel>
