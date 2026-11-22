@@ -32,6 +32,9 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "show", label: "Sho
  * bank's answer and reference, when; hidden until chosen: which attempt it is and the recon. The connector shares the
  * action's cell, so seven show at 1440.
  */
+/** Why Export CSV is blocked: no rows; under Needs attention the other results may still be there to export. */
+export const exportBlockedText = (total: number, attention: boolean) =>
+  total > 0 ? null : attention ? "Nothing needs attention; Show all to export every result." : "Nothing to export yet.";
 export const postingColumns = (spaceId: string): Column<ActionRunRowDto>[] => [
   { key: "break", header: "Item", mobile: "title", className: "min-w-32", cell: (r) => (
     r.break.id
@@ -64,8 +67,8 @@ export function PostingPage({ spaceId }: { spaceId: string }) {
   const COLUMNS = useMemo(() => postingColumns(spaceId), [spaceId]);
   const t = useTableQuery<ActionRunRowDto, PostingFilters>(def);
   const [exporting, setExporting] = useState(false);
-  const exportBlocked = t.total === 0 ? "Nothing to export yet." : null;
   const attention = t.state.show === "attention" && !t.state.status;
+  const exportBlocked = t.total === undefined ? null : exportBlockedText(t.total, attention);
   async function exportCsv() {
     setExporting(true);
     try {
