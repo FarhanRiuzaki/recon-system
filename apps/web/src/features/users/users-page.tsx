@@ -113,7 +113,7 @@ export function UsersPage() {
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
       <FilterLayout busy={t.paging.busy} values={{ q: f.q, role: f.role, status: f.status }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => set(values, options)} description="Narrow this list to the people you need."
-        filters={(draft, patch) => <UsersFilters draft={draft} patch={patch} />}>
+        filters={(draft, patch) => <UsersFilters draft={draft} patch={patch} facets={t.facets} />}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
         flush icon={UsersIcon} title={VIEW_TITLE[(selectionValues(f.status).length === 1 ? selectionValues(f.status)[0] : "") as keyof typeof VIEW_TITLE]} count={t.count} description="Select rows for bulk actions" legend={LEGEND}>
         {summary}

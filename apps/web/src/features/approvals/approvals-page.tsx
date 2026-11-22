@@ -11,6 +11,7 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { APPROVALS, type ApprovalFilters } from "@/lib/shared/queries-recon";
 import { approvalColumns } from "./approval-columns";
+import { withCounts } from "@/lib/shared/table-state";
 
 const FILTER_DEFAULTS: ApprovalFilters = { q: "", kind: "", mine: "" };
 const MINE_LABEL = "Waiting for my decision";
@@ -37,7 +38,7 @@ export function ApprovalsPage({ spaceId, spaceName }: { spaceId: string; spaceNa
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search approvals" value={draft.q} onChange={(q) => patch({ q })} placeholder="Name or code" />
           <FilterChecks label="Show" value={draft.mine} options={[{ value: "1", label: MINE_LABEL }]} onChange={(mine) => patch({ mine: mine ? "1" : "" })} />
-          <FilterChecks label="Kind" value={draft.kind} options={KIND_OPTIONS} onChange={(kind) => patch({ kind })} />
+          <FilterChecks label="Kind" value={draft.kind} options={withCounts(KIND_OPTIONS, t.facets?.kind)} onChange={(kind) => patch({ kind })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
         flush icon={SuccessIcon} title={`Waiting in ${spaceName}`} count={t.count}>

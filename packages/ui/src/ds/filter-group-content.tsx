@@ -5,6 +5,7 @@ import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { ChevronDownIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
+import { formatNumber } from "../lib/format";
 import { FILTER_SELECTION_MAX, selectionState, selectionValues } from "../lib/filter-selection";
 import { FilterFocusId, FilterGroups, type FilterChecksProps, type FilterSearchProps } from "./filter-group";
 import { Checkbox } from "./checkbox";
@@ -56,6 +57,8 @@ export function FilterChecksContent({ label, value, options, onChange, search }:
       {search?.error && <div className="grid gap-2"><p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load options. Your selections are kept.</p><Button type="button" variant="secondary" onClick={search.onRetry}>Retry options</Button></div>}
       {choices.map(option => {
         const checked = selected.includes(option.value);
+        // the list's rows with this value (its facet), when the screen passes them
+        const count = (option as { count?: number }).count;
         const id = `${prefix}-${encodeURIComponent(label)}-${encodeURIComponent(option.value)}`;
         return <label key={option.value} htmlFor={id} data-filter-commit className="flex min-h-8 cursor-pointer items-center gap-2 text-body pointer-coarse:min-h-11">
           <Checkbox id={id} label={option.label} checked={checked} reason={!checked && limit ? `Choose up to ${FILTER_SELECTION_MAX} selections. Remove one to add another.` : undefined}
@@ -67,7 +70,8 @@ export function FilterChecksContent({ label, value, options, onChange, search }:
               selectedRef.current = next;
               onChange(selectionState(next));
             }} />
-          <span className="min-w-0 break-words">{option.label}</span>
+          <span className={cn("min-w-0 flex-1 break-words", count === 0 && !checked && "text-fg-3")}>{option.label}</span>
+          {count !== undefined && <span className="shrink-0 text-caption text-fg-3 tabular">{formatNumber(count)}</span>}
         </label>;
       })}
       {!search?.loading && !search?.error && !choices.length && <p className="text-body-sm text-fg-2">No options match. Change the search.</p>}

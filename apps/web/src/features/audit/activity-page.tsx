@@ -12,6 +12,7 @@ import { AuditTable, timeCell } from "./audit-table";
 import { useActivityEntry } from "./use-activity-entry";
 import { ActivityEntryLoader } from "./activity-entry-loader";
 import { EXACT_FILTER_FIELDS, exactFilterClearPatch, exactFilterSummary } from "./activity-filter-state";
+import { withCounts } from "@/lib/shared/table-state";
 
 const ACTIVITY_TABLE: TableDef<ActivityFilters> = { ...ACTIVITY, edit: (source, patch) => writeTableFromSearch(source, patch, ACTIVITY.spec, ACTIVITY.rawFilters!) };
 
@@ -37,7 +38,7 @@ export function ActivityPage() {
       columns={COLUMNS} rowLabel={(r) => `${actionLabel(r.action)}, ${r.target.label}`}
       emptyHint="Entries appear here when someone changes a user, role, permission, profile or project."
       filterFields={[{ key: "action", label: "Action", multiple: true, format: actionLabel }]}
-      filters={(f, set) => <FilterChecks label="Action" value={f.action} options={ACTIONS} onChange={(action) => set({ action })} />}
+      filters={(f, set, facets) => <FilterChecks label="Action" value={f.action} options={withCounts(ACTIONS, facets?.action)} onChange={(action) => set({ action })} />}
       exactFilters={{ values: exactFilterSummary(search), fields: EXACT_FILTER_FIELDS, clearPatch: exactFilterClearPatch, valid: validActivityExactFilters(search) }}
       entryNotice={entryNotice} pendingEntry={pendingEntry} onEntry={(row, trigger) => entry.open(row.id, trigger)} />
     }</ActivityEntryLoader>

@@ -19,6 +19,7 @@ import type { CreatePermissionsResult, PermissionDto } from "@starterkit/shared/
 import { MODULES, PERMISSION_KEY, permissionLabel } from "@starterkit/shared/permissions";
 import { PERMISSION_MODULES, PERMISSIONS_TABLE } from "@/lib/shared/queries";
 import { useAfterRbacChange } from "./use-rbac";
+import { withCounts } from "@/lib/shared/table-state";
 
 /**
  * Opened on click only: the dialog loads then, outside the page's first load (route budget, AGENTS.md §9); the import
@@ -77,7 +78,7 @@ export function PermissionsPage() {
       <FilterLayout busy={t.paging.busy} values={{ q: f.q, module: f.module }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search permissions" value={draft.q} onChange={q => patch({ q })} placeholder="Permission name" />
-          <FilterChecks label="Module" value={draft.module} options={MODULE_OPTIONS} onChange={module => patch({ module })} />
+          <FilterChecks label="Module" value={draft.module} options={withCounts(MODULE_OPTIONS, t.facets?.module)} onChange={module => patch({ module })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
         flush icon={SecureIcon} title="All permissions" count={t.count} description="Grant them to roles on each role's page">

@@ -7,11 +7,11 @@ import type { DataTablePaging } from "@starterkit/ui/ds";
 import type { TableDef } from "@/lib/shared/queries";
 import { api } from "@/lib/client/api";
 import { usePrefs } from "@/lib/client/prefs-context";
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { REMEMBERED_VIEW_QUERY_MAX } from "@starterkit/shared/views";
 import { MAX_PAGE, PAGE_SIZES, type PageSize } from "@starterkit/shared/paging";
 import { savedView, viewPageOf } from "@/lib/shared/prefs";
-import { historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, withOtherTables, writeTable } from "@/lib/shared/table-state";
+import { facetsRequest, historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, withOtherTables, writeTable } from "@/lib/shared/table-state";
 
 /**
  * A server-driven table: page, page size, sort and filters live in the URL (shareable; a change other than the page
@@ -35,7 +35,7 @@ import { historyMode, preserveTableParams, readTable, type SortState, sortState,
  */
 const NONE: readonly string[] = [];
 
-export function useTableQuery<T, F extends Record<string, string>>({ key, path, spec, params, transient = NONE, rawFilters = NONE, edit }: TableDef<F>, enabled = true) {
+export function useTableQuery<T, F extends Record<string, string>>({ key, path, spec, params, transient = NONE, rawFilters = NONE, edit, facets: counted }: TableDef<F>, enabled = true) {
   const sp = useSearchParams();
   const pathname = usePathname();
   const state: TableState<F> = useMemo(() => readTable(sp, spec), [sp, spec]);
@@ -69,6 +69,9 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
 
   const { filterQuery, url } = tableRequest(path, state, spec, params, { search: sp, keys: rawFilters });
   const q = useQuery({ queryKey: [key, url], queryFn: () => api<Page<T>>(url), enabled, placeholderData: keepPreviousData });
+  // the filters' counts (FacetsDto), read beside the rows with the same filters; the previous counts stay while it reloads
+  const facetsUrl = facetsRequest(path, filterQuery);
+  const fq = useQuery({ queryKey: [key, facetsUrl], queryFn: () => api<FacetsDto>(facetsUrl), enabled: enabled && !!counted, placeholderData: keepPreviousData });
 
   const tv = tableView(q, state.page);
   const lastPage = tv.pastEnd && tv.total ? Math.min(Math.ceil(tv.total / state.pageSize), MAX_PAGE) : 0;
@@ -97,7 +100,7 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
   }, [listPage, prefs.hidden, update]);
 
   return {
-    state, set, query: q, filterQuery, paging, hidden, setHidden,
+    state, set, query: q, filterQuery, paging, hidden, setHidden, facets: fq.data,
     viewNotRemembered: view !== null && view.length > REMEMBERED_VIEW_QUERY_MAX,
     rows: tv.rows, total: tv.total, totalCapped: tv.totalCapped, count: tv.count,
     sort: sortState(state.sort),

@@ -8,6 +8,7 @@ import { AUTH_EVENTS, AUTH_METHODS, EVENT_LABEL, METHOD_LABEL } from "@starterki
 import type { AuthLogDto } from "@starterkit/shared/contracts/audit";
 import { AUTH_LOG, type AuthLogFilters } from "@/lib/shared/queries";
 import { AuditTable, timeCell } from "./audit-table";
+import { withCounts } from "@/lib/shared/table-state";
 
 type Event = AuthLogDto["event"];
 const EVENTS = [{ value: "" as const, label: "Any" }, ...AUTH_EVENTS.map((e) => ({ value: e, label: EVENT_LABEL[e] }))];
@@ -48,9 +49,9 @@ export function AuthLogPage() {
         { key: "event", label: "Event", multiple: true, format: value => EVENTS.find(e => e.value === value)?.label ?? value },
         { key: "method", label: "Method", multiple: true, format: value => METHODS.find(m => m.value === value)?.label ?? value },
       ]}
-      filters={(f, set) => <>
-        <FilterChecks label="Event" value={f.event} options={EVENTS} onChange={(event) => set({ event })} />
-        <FilterChecks label="Method" value={f.method} options={METHODS} onChange={(method) => set({ method })} />
+      filters={(f, set, facets) => <>
+        <FilterChecks label="Event" value={f.event} options={withCounts(EVENTS, facets?.event)} onChange={(event) => set({ event })} />
+        <FilterChecks label="Method" value={f.method} options={withCounts(METHODS, facets?.method)} onChange={(method) => set({ method })} />
       </>}
       detail={(r) => ({
         title: EVENT_LABEL[r.event],

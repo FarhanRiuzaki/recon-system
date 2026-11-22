@@ -168,3 +168,10 @@ export function tableView<T>(r: TableResult<T>, page: number) {
     staleError: r.error && data && !r.isPlaceholderData ? r.error : null,
   };
 }
+
+/** A list's filter counts: the same filters as its page (`filterQuery`), at `${path}/facets` (FacetsDto). */
+export const facetsRequest = (path: string, filterQuery: string) => `${path}/facets${filterQuery ? `?${filterQuery}` : ""}`;
+/** A check filter's options with their counts from a facet (FacetsDto[filter]); none while the counts load. */
+export const withCounts = <O extends { value: string }>(options: readonly O[], facet: Record<string, number> | undefined): (O & { count?: number })[] =>
+  options.map((o) => (facet ? { ...o, count: facet[o.value] ?? 0 } : o));
+

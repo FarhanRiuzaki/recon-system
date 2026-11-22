@@ -49,7 +49,8 @@ export function AuditTable<T extends { id: string; at: string }, F extends Audit
   /** Names the row for its "View entry" button. */
   rowLabel: (r: T) => string;
   /** The log's own filter controls. */
-  filters: (f: F, set: (patch: Partial<F>) => void) => ReactNode;
+  /** `facets`: the list's filter counts (FacetsDto), for its check filters (withCounts). */
+  filters: (f: F, set: (patch: Partial<F>) => void, facets?: Record<string, Record<string, number>>) => ReactNode;
   filterFields: readonly FilterField<keyof F & string>[];
   /** Statuses the table shows: the info button in its card header. */
   legend?: readonly LegendItem[];
@@ -106,7 +107,7 @@ export function AuditTable<T extends { id: string; at: string }, F extends Audit
         }}
         filters={(draft, patch) => <>
           <FilterSearch label="Search by user" value={draft.user!} onChange={user => patch({ user })} maxLength={64} placeholder="User name or email" />
-          {filters({ ...f, ...draft }, next => patch(Object.fromEntries(Object.entries(next).map(([k, v]) => [k, String(v ?? "")]))))}
+          {filters({ ...f, ...draft }, next => patch(Object.fromEntries(Object.entries(next).map(([k, v]) => [k, String(v ?? "")]))), t.facets)}
         </>}>
       {({ summary, flush }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} />
           <BlockedButton variant="secondary" reason={exportBlocked}

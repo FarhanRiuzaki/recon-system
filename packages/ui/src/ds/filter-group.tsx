@@ -6,7 +6,8 @@ import { createContext, type ComponentType, type ReactNode, useContext } from "r
 export const FilterGroups = createContext<{ collapsed: Record<string, boolean>; toggle: (label: string) => void } | null>(null);
 export const FilterFocusId = createContext("");
 type Props = { label: string; value: string; children: ReactNode };
-export type FilterChecksProps = { label: string; value: string; options: readonly { value: string; label: string }[]; onChange: (value: string) => void;
+/** `count`: the rows the list would show with that value (its facet); 0 mutes the option, none shows no count. */
+export type FilterChecksProps = { label: string; value: string; options: readonly { value: string; label: string; count?: number }[]; onChange: (value: string) => void;
   search?: { value: string; onChange: (value: string) => void; loading?: boolean; error?: boolean; more?: boolean; onMore?: () => void; onRetry?: () => void } };
 export type FilterSearchProps = { label: string; value: string; onChange: (value: string) => void; placeholder: string; maxLength?: number; onCommit: () => void };
 export const FilterGroupRenderer = createContext<{ Group: ComponentType<Props>; Checks: ComponentType<FilterChecksProps>; Search: ComponentType<FilterSearchProps> } | null>(null);

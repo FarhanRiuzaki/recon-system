@@ -17,7 +17,7 @@ import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery } from "@/lib/shared/queries";
 import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconTrend, RECONS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
-import { readTable, tableRequest } from "@/lib/shared/table-state";
+import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
 
@@ -25,7 +25,8 @@ import { getSession } from "./session";
  * One first-page read of a screen: the browser hook's query key and the `/api/...` URL the hook fetches (null = the
  * request would be the route's 400: nothing to prefetch).
  */
-export type Read = { key: QueryKey; path: string | null };
+/** `also`: reads that go with it (a list's filter counts), prefetched beside it. */
+export type Read = { key: QueryKey; path: string | null; also?: readonly Read[] };
 
 export type SearchParams = Record<string, string | string[] | undefined>;
 /** Next's `searchParams` prop → URLSearchParams (`get` = the first value, as in the browser). */
@@ -40,9 +41,12 @@ export function toSearch(sp: SearchParams): URLSearchParams {
  * A request the route's schema would reject (400) reads nothing.
  */
 export function table<F extends Record<string, string>, Q>(def: TableDef<F>, sp: URLSearchParams, schema: z.ZodType<Q>): Read {
-  const { url } = tableRequest(def.path, readTable(sp, def.spec), def.spec, def.params, { search: sp, keys: def.rawFilters ?? [] });
+  const { url, filterQuery } = tableRequest(def.path, readTable(sp, def.spec), def.spec, def.params, { search: sp, keys: def.rawFilters ?? [] });
   const ok = schema.safeParse(filterQueryValues(new URL(url, "http://local").searchParams)).success;
-  return { key: [def.key, url], path: ok ? url : null };
+  if (!def.facets) return { key: [def.key, url], path: ok ? url : null };
+  // its filter counts too (the screen reads them beside the rows: no request after hydration)
+  const facets = facetsRequest(def.path, filterQuery);
+  return { key: [def.key, url], path: ok ? url : null, also: [{ key: [def.key, facets], path: ok ? facets : null }] };
 }
 
 /** What each screen reads first (app/(main)/** page.tsx lists its own), each the GET its browser hook sends. */
@@ -162,7 +166,8 @@ export async function prefetchState(token: string, list: readonly Read[], req?: 
  * filled on the first paint and the browser doesn't fetch it again. Without a full session nothing is read (the
  * layout sends the browser to sign-in).
  */
-export async function Prefetch({ reads: list, children }: { reads: readonly Read[]; children: ReactNode }) {
+export async function Prefetch({ reads, children }: { reads: readonly Read[]; children: ReactNode }) {
+  const list = reads.flatMap((r) => [r, ...(r.also ?? [])]);
   const s = await getSession();
   const state = s.token && s.csrf ? await prefetchState(s.token, list, { headers: await headers() }) : undefined;
   return <Hydrate state={state}>{children}</Hydrate>;

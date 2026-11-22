@@ -18,6 +18,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import type { ProjectDto } from "@starterkit/shared/contracts/projects";
 import { PROJECT_STATUSES, type ProjectFilters, PROJECTS } from "@/lib/shared/queries";
 import { PROJECT_LEGEND, projectPage, PROJECTS_KEY, projectStatus, projectUrl } from "./use-projects";
+import { withCounts } from "@/lib/shared/table-state";
 
 /**
  * Opened on click only: the dialog loads then, outside the page's first load (route budget, AGENTS.md §9); the import
@@ -74,7 +75,7 @@ export function ProjectsPage() {
       <FilterLayout<ProjectFilters> busy={t.paging.busy} values={{ q: f.q, status: f.status }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search projects" value={draft.q} onChange={q => patch({ q })} placeholder="Project name" />
-          <FilterChecks label="Status" value={draft.status} options={STATUSES} onChange={status => patch({ status })} />
+          <FilterChecks label="Status" value={draft.status} options={withCounts(STATUSES, t.facets?.status)} onChange={status => patch({ status })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
         flush icon={FolderIcon} title={VIEW_TITLE[(selectionValues(f.status).length === 1 ? selectionValues(f.status)[0] : "") as keyof typeof VIEW_TITLE]} count={t.count} legend={PROJECT_LEGEND}>

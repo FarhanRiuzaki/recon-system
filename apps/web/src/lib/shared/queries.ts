@@ -17,6 +17,8 @@ import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type Ta
 export type TableDef<F extends Record<string, string>> = {
   key: string; path: `/api/${string}`; spec: TableSpec<F>; transient?: readonly string[]; rawFilters?: readonly string[]; params?: (filters: F) => Record<string, string>;
   edit?: (source: URLSearchParams, patch: Partial<TableState<F>>) => URLSearchParams | null;
+  /** The list answers its filter counts at `${path}/facets` (useTableQuery's `facets`; the standard of a list with check filters). */
+  facets?: true;
 };
 export type NoFilters = Record<never, string>;
 
@@ -39,6 +41,7 @@ export const USERS_KEY = ["users"] as const;
 export const USER_STATUSES = ["", "active", "inactive"] as const;
 export type UserFilters = { q: string; role: string; status: string };
 export const USERS: TableDef<UserFilters> = {
+  facets: true,
   key: USERS_KEY[0], path: "/api/users",
   spec: { sorts: USER_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), role: multiChoice(), status: multiChoice() } },
 };
@@ -59,6 +62,7 @@ export const ROLES: TableDef<{ q: string }> = {
 };
 export const PERMISSION_MODULES = ["", ...MODULES.map((m) => m.key)];
 export const PERMISSIONS_TABLE: TableDef<{ q: string; module: string }> = {
+  facets: true,
   key: RBAC_KEY[0], path: "/api/permissions",
   spec: { sorts: PERMISSION_SORTS, defaultSort: "module", search: ["q"], filters: { q: text(200), module: multiChoice() } },
 };
@@ -67,6 +71,7 @@ export const PROJECTS_KEY = ["projects"] as const;
 export const PROJECT_STATUSES = ["", "active", "archived"] as const;
 export type ProjectFilters = { q: string; status: string };
 export const PROJECTS: TableDef<ProjectFilters> = {
+  facets: true,
   key: PROJECTS_KEY[0], path: "/api/projects",
   spec: { sorts: PROJECT_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), status: multiChoice() } },
 };
@@ -175,11 +180,13 @@ export type ActivityFilters = AuditFilters & { action: string; actorId: string; 
 const exact: FilterParser<string> = raw => raw ?? "";
 export const ACTIONS = [{ value: "", label: "Any" }, ...ACTION_OPTIONS];
 export const ACTIVITY: TableDef<ActivityFilters> = {
+  facets: true,
   key: AUDIT_KEY[0], path: "/api/audit/activity", params: auditParams, transient: ["entry"], rawFilters: ["actorId", "targetType", "targetId"],
   spec: { sorts: ACTIVITY_SORTS, defaultSort: "-at", search: ["user"], filters: { ...AUDIT_FILTERS, action: multiChoice(), actorId: exact, targetType: exact, targetId: exact } },
 };
 export type AuthLogFilters = AuditFilters & { event: string; method: string };
 export const AUTH_LOG: TableDef<AuthLogFilters> = {
+  facets: true,
   key: AUDIT_KEY[0], path: "/api/audit/auth", params: auditParams,
   spec: {
     sorts: AUTH_LOG_SORTS, defaultSort: "-at", search: ["user"],

@@ -19,6 +19,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
 import { AGE_LABEL, breakColumns, STATE_LABEL } from "./break-columns";
+import { withCounts } from "@/lib/shared/table-state";
 
 const AssignDialog = dynamic(() => import("./assign-dialog"), { ssr: false });
 
@@ -89,10 +90,10 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
       <FilterLayout busy={t.paging.busy} values={{ q: f.q, recon: f.recon, assignee: f.assignee, state: f.state, reason: f.reason, age: f.age }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search breaks" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
-          <FilterChecks label="Assignee" value={draft.assignee} options={[{ value: "me", label: "Mine" }, { value: "none", label: "Unassigned" }]} onChange={(assignee) => patch({ assignee })} />
-          <FilterChecks label="State" value={draft.state} options={OPEN_STATES.map((s) => ({ value: s, label: STATE_LABEL[s] }))} onChange={(state) => patch({ state })} />
-          <FilterChecks label="Reason" value={draft.reason} options={BREAK_REASONS.map((r) => ({ value: r, label: r }))} onChange={(reason) => patch({ reason })} />
-          <FilterChecks label="Age" value={draft.age} options={AGE_BUCKETS.map((a) => ({ value: a, label: AGE_LABEL[a] }))} onChange={(age) => patch({ age })} />
+          <FilterChecks label="Assignee" value={draft.assignee} options={withCounts([{ value: "me", label: "Mine" }, { value: "none", label: "Unassigned" }], t.facets?.assignee)} onChange={(assignee) => patch({ assignee })} />
+          <FilterChecks label="State" value={draft.state} options={withCounts(OPEN_STATES.map((s) => ({ value: s, label: STATE_LABEL[s] })), t.facets?.state)} onChange={(state) => patch({ state })} />
+          <FilterChecks label="Reason" value={draft.reason} options={withCounts(BREAK_REASONS.map((r) => ({ value: r, label: r })), t.facets?.reason)} onChange={(reason) => patch({ reason })} />
+          <FilterChecks label="Age" value={draft.age} options={withCounts(AGE_BUCKETS.map((a) => ({ value: a, label: AGE_LABEL[a] })), t.facets?.age)} onChange={(age) => patch({ age })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
         flush icon={AlertsIcon} title={`Breaks in ${spaceName}`} count={t.count} description={canWork ? "Select breaks to take, assign or mark them" : undefined}>

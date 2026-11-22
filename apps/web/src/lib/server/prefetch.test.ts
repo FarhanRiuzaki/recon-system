@@ -52,6 +52,10 @@ describe("server prefetch = the API's answer to the browser hook's own URL, unde
     expect(read.key).toEqual(tableKey(USERS, params.toString()).key);
     expect(await dataAt([read], read.key)).toEqual(v1(read.path!));
   });
+  it("a list with filter counts prefetches them too, at <list>/facets with the same filters", () => {
+    const read = reads.users(toSearch({ status: ["active"], page: "2" }));
+    expect(read.also?.map((r) => r.path)).toEqual(["/api/users/facets?status=active"]);
+  });
   it("dashboard and profile", async () => {
     const seen = echoApi();
     expect(await dataAt([reads.dashboard()], DASHBOARD_KEY)).toEqual(v1("/api/dashboard"));

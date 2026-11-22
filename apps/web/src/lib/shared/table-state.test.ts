@@ -1,6 +1,6 @@
 import { writeTableFromSearch } from "./raw-table-state";
 import { describe, expect, it } from "vitest";
-import { historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableRequest, tableView, text, toSortParam, type TableSpec, withOtherTables, writeTable } from "./table-state";
+import { facetsRequest, historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableRequest, tableView, text, toSortParam, type TableSpec, withCounts, withOtherTables, writeTable } from "./table-state";
 
 const SPEC = {
   sorts: ["at", "login"], defaultSort: "-at", search: ["user"] as const,
@@ -177,6 +177,18 @@ describe("two lists on one page (TableSpec.ns)", () => {
     // a plain list beside a namespaced one keeps the namespaced keys
     const r = new URLSearchParams("q=abc&page=2&qr.page=5");
     expect(Object.fromEntries(withOtherTables(writeTable(readTable(r, RECORDS), { page: 3 }, RECORDS)!, r, RECORDS))).toEqual({ q: "abc", page: "3", "qr.page": "5" });
+  });
+});
+
+describe("filter counts (facets)", () => {
+  it("read at <list>/facets with the list's own filters, no paging", () => {
+    expect(facetsRequest("/api/users", "status=active&status=inactive")).toBe("/api/users/facets?status=active&status=inactive");
+    expect(facetsRequest("/api/users", "")).toBe("/api/users/facets");
+  });
+  it("each option gets its count (0 when the facet has none); none while the counts load", () => {
+    const opts = [{ value: "new", label: "New" }, { value: "assigned", label: "Assigned" }];
+    expect(withCounts(opts, { new: 4 })).toEqual([{ value: "new", label: "New", count: 4 }, { value: "assigned", label: "Assigned", count: 0 }]);
+    expect(withCounts(opts, undefined)).toEqual(opts);
   });
 });
 

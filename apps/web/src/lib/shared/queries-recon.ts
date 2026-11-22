@@ -32,15 +32,13 @@ const BREAKS_SPEC: TableSpec<BreakFilters> = {
   sorts: BREAK_SORTS, defaultSort: "businessDate", search: ["q"],
   filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice() },
 };
-/** One value of a multi-choice filter when exactly one is ticked (the API takes one), else none. */
-const single = (v: string) => { const x = v.split(",").filter(Boolean); return x.length === 1 ? x[0]! : ""; };
 /**
  * A space's breaks queue (the engine's, Plan 5), oldest business date first: `reason`, `state`, `age` and `assignee`
- * (me, none = Unassigned) reach the API when one is ticked; `recon` one recon (a link from it); `q` the reference.
+ * (me, none = Unassigned) with every ticked value; `recon` one recon (a link from it); `q` the reference; with counts.
  */
 export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
   key: ENGINE_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/breaks`, spec: BREAKS_SPEC,
-  params: ({ reason, state, age, assignee, ...rest }) => ({ ...rest, reason: single(reason), state: single(state), age: single(age), assignee: single(assignee) }),
+  facets: true,
 });
 
 const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
@@ -60,7 +58,7 @@ const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defa
  */
 export const APPROVALS = (spaceId: string): TableDef<ApprovalFilters> => ({
   key: APPROVALS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/approvals`, spec: APPROVALS_SPEC,
-  params: ({ kind, mine, ...rest }) => ({ ...rest, ...(kind ? { kind } : {}), ...(mine ? { mine } : {}) }),
+  facets: true,
 });
 
 const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;
