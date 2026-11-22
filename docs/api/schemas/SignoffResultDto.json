@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SignoffResultDto",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "closed",
+        "prepared",
+        "signed"
+      ]
+    }
+  },
+  "required": [
+    "date",
+    "stage"
+  ],
+  "additionalProperties": false
+}

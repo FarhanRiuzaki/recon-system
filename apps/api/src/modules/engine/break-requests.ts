@@ -14,6 +14,7 @@ import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { breakDetail, breakOf, inSpace, isLead, itemsOf, matchIn, matchItems, mayTouch, mayWork } from "./break-resolve";
 import { approvalRequests, matchGroups, matchMembers, reconItems } from "./schema";
+import { assertNotSigned } from "./signoff";
 
 /** The group the break is matched in now (not reversed). */
 async function groupOf(tx: InTx, spaceId: string, itemId: string) {
@@ -30,6 +31,7 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
     const [locked] = await tx.select({ v: reconItems.version }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
     if (locked?.v !== x.version) throw new ApiError("invalid_state", "This break changed meanwhile. Reload it and try again.");
+    await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     let itemIds: string[] = [];
     if (b.kind === "unmatch") {
       mayTouch(ctx, x);
@@ -88,6 +90,7 @@ export async function approveRequest(ctx: Ctx, id: string, b: ApproveRequestBody
     if (rq.kind === "force_match") {
       await matchIn(tx, ctx, spaceId, x, rq.itemIds, { note: rq.note, checkTotals: false, resolution: "FORCE_MATCHED", action: "break.approve", extra });
     } else if (rq.kind === "write_off") {
+      await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
       const [locked] = await tx.select({ v: reconItems.version, status: reconItems.status }).from(reconItems)
         .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
       if (locked?.status !== "break") throw new ApiError("invalid_state", "This break changed meanwhile. Reject the request and ask again.");
@@ -99,6 +102,9 @@ export async function approveRequest(ctx: Ctx, id: string, b: ApproveRequestBody
       // with whoever had it; an item that never broke open for the next run)
       const g = await groupOf(tx, spaceId, x.id);
       if (!g) throw new ApiError("invalid_state", "This break isn't matched any more. Reject the request.");
+      const days = await tx.select({ d: sql<string>`${reconItems.businessDate}::text` }).from(matchMembers)
+        .innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId))).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)));
+      await assertNotSigned(tx, spaceId, x.configId, days.map((r) => r.d));
       await tx.update(matchGroups).set({ reversedBy: ctx.user.id, reverseReason: "unmatch", reversedAt: sql`now()` }).where(and(eq(matchGroups.spaceId, spaceId), eq(matchGroups.id, g.id)));
       const ids = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
       await tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, ids))).for("update");

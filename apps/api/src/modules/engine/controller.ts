@@ -7,13 +7,14 @@
 import { Elysia } from "elysia";
 import { ApproveRequestBody, AssignBreaksBody, BreakCandidateQuery, BreakListQuery, BreakStateBody, CloseBreakBody, MatchBreakBody, RejectRequestBody, RequestBreakBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
 import { TargetActivityQuery } from "@starterkit/shared/contracts/audit";
-import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody } from "@starterkit/shared/contracts/recon";
+import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody, SignoffBody, SignoffListQuery } from "@starterkit/shared/contracts/recon";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { assignBreaks, breakPage, setBreakState, takeBreaks } from "./break-queue";
 import { breakActivity, breakDetail, candidatePage, closeBreak, matchBreak, matchPair } from "./break-resolve";
 import { approveRequest, rejectRequest, requestChange } from "./break-requests";
+import { signoffPage, signoffStep } from "./signoff";
 import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
@@ -54,6 +55,16 @@ export const engineController = () =>
     .post("/v1/spaces/:spaceId/breaks/:itemId/request/reject", async (c) => {
       const b = await body(c, RejectRequestBody);
       return rejectRequest(c.ctx, idParam(c.params.itemId, "break"), b);
+    }, { guard: { space: ["reviewer", "space_admin"] } })
+    // a recon's closed days and their sign-off (Task 4): any role reads; a reviewer or space admin prepares, another signs
+    .get("/v1/spaces/:spaceId/recons/:configId/signoffs", ({ ctx, params, query }) => signoffPage(ctx, idParam(params.configId, "recon"), query), { query: SignoffListQuery, guard: { space: SPACE_ROLES } })
+    .post("/v1/spaces/:spaceId/recons/:configId/signoffs/prepare", async (c) => {
+      const b = await body(c, SignoffBody);
+      return signoffStep(c.ctx, idParam(c.params.configId, "recon"), b, "prepare");
+    }, { guard: { space: ["reviewer", "space_admin"] } })
+    .post("/v1/spaces/:spaceId/recons/:configId/signoffs/sign", async (c) => {
+      const b = await body(c, SignoffBody);
+      return signoffStep(c.ctx, idParam(c.params.configId, "recon"), b, "sign");
     }, { guard: { space: ["reviewer", "space_admin"] } })
     /** Live day: one recon's current business date. */
     .get("/v1/spaces/:spaceId/recons/:configId/live", ({ ctx, params }) => reconLive(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })

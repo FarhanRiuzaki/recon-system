@@ -330,6 +330,13 @@
       "when": 1795325257867,
       "tag": "0046_approval_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795329349672,
+      "tag": "0047_day_signoff",
+      "breakpoints": true
     }
   ]
 }

@@ -25,6 +25,7 @@ import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
 import { approvalRequests, matchGroups, matchMembers, reconItems } from "./schema";
+import { assertNotSigned } from "./signoff";
 
 export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
@@ -201,6 +202,7 @@ export async function matchItems(tx: InTx, spaceId: string, x: { id: string; con
 /** The match itself, in the caller's transaction, after its rules (match, or an approved force match). */
 export async function matchIn(tx: InTx, ctx: Ctx, spaceId: string, x: { id: string; configId: string; breakState: string | null }, otherIds: readonly string[], o: MatchOptions): Promise<void> {
     const { ids, items, v, differ, mixed } = await matchItems(tx, spaceId, x, otherIds);
+    await assertNotSigned(tx, spaceId, x.configId, items.map((i) => i.businessDate));
     if (o.checkTotals && mixed) throw new ApiError("bad_request", mixed);
     if (o.checkTotals && differ) throw new ApiError("invalid_state", `${differ} A match across a difference needs approval (force match).`);
     const gid = Bun.randomUUIDv7();
@@ -242,6 +244,7 @@ export async function closeBreak(ctx: Ctx, id: string, b: CloseBreakBody): Promi
   await inSpace(ctx, async (tx, spaceId) => {
     const x = await breakOf(tx, spaceId, id);
     mayWork(ctx, x);
+    await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [locked] = await tx.select({ v: reconItems.version, status: reconItems.status }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
     if (locked?.status !== "break" || locked.v !== x.version) throw new ApiError("invalid_state", "This break changed meanwhile. Reload it and try again.");

@@ -61,6 +61,7 @@ const COMPOSED = {
   ApprovalPage: pageOf(approvals.ApprovalRowDto),
   BreakPage: pageOf(breaks.BreakRowDto),
   BreakItemPage: pageOf(breaks.BreakItemDto),
+  SignoffPage: pageOf(recon.SignoffRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
@@ -140,6 +141,8 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "break.request": ["break", "`{ state }`", "`{ kind, note, items? }` (force_match, unmatch or write_off; items = the other items of a force match)"],
   "break.approve": ["break", "`{ state }` or `{ resolution }`", "`{ kind, requestedBy, decisionNote?, note }` and `{ resolution, items }` (force match), `{ resolution }` (write-off) or `{ unmatched }` (unmatch)"],
   "break.reject": ["break", "`{ state }`", "`{ kind, note, requestedBy }`"],
+  "day.prepare": ["recon", "`{ stage }`", "`{ date, stage }` (prepared)"],
+  "day.sign": ["recon", "`{ stage }`", "`{ date, stage }` (signed)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };

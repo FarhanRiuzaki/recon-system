@@ -33,6 +33,8 @@ export const RECON_VERSION_SORTS = ["version", "updatedAt"] as const;
 export const BREAK_SORTS = ["businessDate"] as const;
 /** GET /api/spaces/{spaceId}/approvals (waiting longest first by default). */
 export const APPROVAL_SORTS = ["submittedAt", "name"] as const;
+/** A recon's closed days to sign off (Plan 5 Task 4): newest first by default (`-date`). */
+export const SIGNOFF_SORTS = ["date"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/runs (newest first by default). */
 export const RECON_RUN_SORTS = ["startedAt"] as const;
 /** GET …/runs/{runId}/items. */

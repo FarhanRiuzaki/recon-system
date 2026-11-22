@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS } from "../paging";
+import { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS } from "../paging";
 import {
   AMOUNT_SIGNS, BREAK_REASONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
@@ -458,3 +458,28 @@ export type ReconTrendDto = z.infer<typeof ReconTrendDto>;
 /** GET /api/spaces/{spaceId}/recons/{configId}/live: one recon's current business date and its two sources. */
 export const ReconLiveDto = z.object({ recon: LiveReconDto, sources: z.array(LiveSourceDto) });
 export type ReconLiveDto = z.infer<typeof ReconLiveDto>;
+
+// ------------------------------------------------------------------------------------------ day sign-off (Plan 5 Task 4)
+/** Where a closed day stands: closed (nobody prepared it), prepared, signed (frozen). */
+export const SIGNOFF_STAGES = ["closed", "prepared", "signed"] as const;
+/** GET …/recons/{configId}/signoffs: the recon's closed days, newest first; `stage` keeps one stage. */
+export const SignoffListQuery = ListQuery.omit({ q: true }).extend({ sort: sortParam(SIGNOFF_SORTS), stage: z.enum(SIGNOFF_STAGES).optional() });
+export type SignoffListQuery = z.infer<typeof SignoffListQuery>;
+const Person = z.object({ id: z.string(), name: z.string().nullable() }).nullable();
+/**
+ * One closed day: its breaks left open at close, the break requests still waiting on its items, who prepared and
+ * signed it and when, and why the caller can't take its next step (`blocked`; null = they can; signed = no next step).
+ */
+export const SignoffRowDto = z.object({
+  date: z.string(), closedAt: z.string().nullable(), openBreaks: z.number().int(), pending: z.number().int(),
+  stage: z.enum(SIGNOFF_STAGES), preparedBy: Person, preparedAt: z.string().nullable(), signedBy: Person, signedAt: z.string().nullable(),
+  blocked: z.string().nullable(),
+});
+export type SignoffRowDto = z.infer<typeof SignoffRowDto>;
+/** POST …/recons/{configId}/signoffs/prepare and …/sign: the business date. */
+export const SignoffBody = z.strictObject({ date: isoDate });
+export type SignoffBody = z.infer<typeof SignoffBody>;
+/** Their answer: the day and the stage it is at now. */
+export const SignoffResultDto = z.object({ date: z.string(), stage: z.enum(SIGNOFF_STAGES) });
+export type SignoffResultDto = z.infer<typeof SignoffResultDto>;
+

@@ -158,6 +158,14 @@ export const reconDays = pgTable("recon_days", {
   counters: jsonb("counters"),
   closingAt: timestamp("closing_at", { withTimezone: true }).notNull().defaultNow(),
   closedAt: timestamp("closed_at", { withTimezone: true }),
+  /**
+   * Sign-off of a closed day (Plan 5 Task 4, spec §11b): a reviewer or space admin prepares it, another one signs it
+   * (not the preparer, nor anyone who resolved an item of that day); signed, the day's items are frozen (day_closed).
+   */
+  preparedBy: uuid("prepared_by"),
+  preparedAt: timestamp("prepared_at", { withTimezone: true }),
+  signedBy: uuid("signed_by"),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
 }, (t) => [
   primaryKey({ name: "recon_days_pkey", columns: [t.spaceId, t.configId, t.businessDate] }),
   foreignKey({ name: "recon_days_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),

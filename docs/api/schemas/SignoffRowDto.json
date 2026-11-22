@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SignoffRowDto",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string"
+    },
+    "closedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "openBreaks": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "pending": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "closed",
+        "prepared",
+        "signed"
+      ]
+    },
+    "preparedBy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "preparedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "signedBy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "signedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "blocked": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "date",
+    "closedAt",
+    "openBreaks",
+    "pending",
+    "stage",
+    "preparedBy",
+    "preparedAt",
+    "signedBy",
+    "signedAt",
+    "blocked"
+  ],
+  "additionalProperties": false
+}
