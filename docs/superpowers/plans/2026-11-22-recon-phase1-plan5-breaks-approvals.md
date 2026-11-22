@@ -37,4 +37,8 @@ Status per task dicatat di bawah saat selesai, dengan commit dan tes buktinya.
   `engine/tests/integration/break-queue.test.ts` 5/5), halaman `91f44dc` (`features/breaks`, menu Breaks aktif `G B`).
   Dicek di :3000 dengan 1.087 break live: daftar, Take, Mine, Assign/Unassign. Dibangun di atas perbaikan tabel ganda
   per tab (`TableSpec.ns`, `fc013e3`).
-- Task 2–7: belum.
+- Task 2: **selesai 22 Nov** — API `90d3dff` (`engine/break-resolve.ts`, migrasi 0045: `match_groups.run_id` boleh
+  null untuk grup manual; tes `break-resolve.test.ts` 5/5), halaman `f44e09d` (`/spaces/[id]/breaks/[itemId]`).
+  Match manual hanya bila total sisi A = sisi B; selisih ditolak dengan angkanya (force match = Task 3). Dicek di :3000
+  pada break live (Take, kandidat 156 item, penolakan selisih 5,500.00), lalu dikembalikan ke Unassigned.
+- Task 3–7: belum.
