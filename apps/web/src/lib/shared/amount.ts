@@ -8,3 +8,16 @@ export function amountText(minor: string | null, ccy: string | null): string {
   const exp = ccy ? CURRENCY_EXPONENT[ccy] : undefined;
   return exp === undefined ? minor : formatMinor(BigInt(minor), exp);
 }
+
+/**
+ * The open amount as one tile: the largest currency as the value, the others in the caption ("Also 5.00 EUR"); none
+ * open is 0 without a unit.
+ */
+export function amountTile(amounts: readonly { currency: string; amountMinor: string }[]): { value: string; unit?: string; caption?: string } {
+  const [first, ...rest] = amounts;
+  if (!first) return { value: "0" };
+  return {
+    value: amountText(first.amountMinor, first.currency), unit: first.currency,
+    caption: rest.length ? `Also ${rest.map((a) => `${amountText(a.amountMinor, a.currency)} ${a.currency}`).join(", ")}` : undefined,
+  };
+}

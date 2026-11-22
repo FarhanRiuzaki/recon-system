@@ -44,9 +44,10 @@ export const RECON_RUN_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[12, 640]] },
 ];
 
-/** /spaces/[spaceId]/today: the header, the space map and the recons table. */
+/** /spaces/[spaceId]/today: the header, the KPI tray, the space map and the recons table. */
 export const TODAY_SHAPE: readonly Section[] = [
   { kind: "header", h: 68 },
+  { kind: "kpi", h: 136, count: 4 },
   { kind: "panels", panels: [[12, 420]] },
   { kind: "table", chrome: 96, rows: 5, rowHeight: 56 },
 ];

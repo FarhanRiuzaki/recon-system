@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { amountTile } from "./break-summary";
+import { amountTile } from "@/lib/shared/amount";
 
 describe("unmatch KPI tray: the open amount tile (audit Q1)", () => {
   it("the largest currency as the value, the others in the caption; none open is 0", () => {

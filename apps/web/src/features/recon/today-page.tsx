@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChunkBoundary } from "@starterkit/ui/ds/chunk-boundary";
-import { EmptyState, Failure, Notice, Panel, RelativeTime, Segmented, StatusChip } from "@starterkit/ui/ds";
+import { EmptyState, Failure, Notice, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { BranchIcon } from "@starterkit/ui/ui/icons";
@@ -21,10 +21,10 @@ import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { StateChip } from "@/components/state-chip";
-import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap } from "./live-model";
+import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
 import { useArrivals } from "./live-hooks";
-import { reconHref, reconsHref, useToday } from "./use-recons";
+import { reconHref, reconsHref, useMyApprovals, useToday } from "./use-recons";
 
 function MapShape() {
   return (
@@ -59,6 +59,7 @@ function MapList({ t, spaceId }: { t: TodayDto; spaceId: string }) {
 
 export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const q = useToday(spaceId);
+  const waiting = useMyApprovals(spaceId);
   const skeleton = useDelayedFlag(!q.data && !q.error);
   const arrivals = useArrivals(q.data?.sources);
   const sp = useSearchParams(), pathname = usePathname();
@@ -78,11 +79,19 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
   const postingHref = `/spaces/${encodeURIComponent(spaceId)}/posting?status=${encodeURIComponent(selectionState(["failed", "timeout", "not_sent"]))}&kind=posting`;
   const map = spaceMap(t, (id) => liveHref(spaceId, id), arrivals);
   const affected = map.nodes.filter((n) => n.affectedBy?.length).length;
+  const k = todayKpis(t);
 
   return (
     <div className="grid gap-section">
       {header}
       {q.error && <Notice tone="warn" live>Couldn&apos;t refresh Today; showing what was read <RelativeTime at={q.dataUpdatedAt} />.</Notice>}
+      {/* the space at a glance first (audit T1): what needs someone today */}
+      <StatTiles>
+        <StatTile label="Unmatch open" value={formatNumber(k.unmatch)} caption="Every date of these recons" />
+        <StatTile label="Waiting for my approval" value={waiting.data ? formatNumber(waiting.data.total) : "—"} caption={waiting.error && !waiting.data ? "Couldn't load the approvals" : undefined} />
+        <StatTile label="Postings needing attention" value={formatNumber(k.posting)} caption="Failed, timeout or not sent in 24 h" />
+        <StatTile label="Sources behind" value={formatNumber(k.behind)} caption={`Degraded or down, of ${formatNumber(t.sources.length)}`} />
+      </StatTiles>
       {t.capped && <Notice>The space has more than {formatNumber(TODAY_RECONS_MAX)} recons; Today shows the first {formatNumber(TODAY_RECONS_MAX)} by name.</Notice>}
       {!t.recons.length ? (
         <Panel><EmptyState icon={BranchIcon} title="No recon is running in this space yet"

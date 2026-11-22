@@ -5,7 +5,7 @@
 import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS, WORKFLOW_SORTS } from "@starterkit/shared/paging";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
 import { APPROVALS_KEY, ENGINE_KEY, type NoFilters, RECON_KEY, type TableDef, trailTable, type TrailFilters } from "./queries";
-import { isoDate, multiChoice, oneOf, type TableSpec, text } from "./table-state";
+import { isoDate, multiChoice, oneOf, readTable, tableRequest, type TableSpec, text } from "./table-state";
 
 const RECONS_SPEC: TableSpec<{ q: string }> = { sorts: RECON_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
 const reconsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/recons` as const;
@@ -48,6 +48,11 @@ export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
 /** The queue's headline numbers under the list's filters (`filterQuery` of useTableQuery), keyed beside its rows. */
 export const breakSummaryUrl = (spaceId: string, filterQuery: string) =>
   `/api/spaces/${encodeURIComponent(spaceId)}/breaks/summary${filterQuery ? `?${filterQuery}` : ""}`;
+/** One recon's open unmatch totals (its Overview's open amount, audit R3): the queue's summary for that recon. */
+export const reconOpenSummary = (spaceId: string, configId: string) => {
+  const url = breakSummaryUrl(spaceId, new URLSearchParams({ recon: configId }).toString());
+  return { key: [ENGINE_KEY[0], url] as const, url };
+};
 
 const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
 /** One break: its item, recon, state, resolution, proposed pair. */
@@ -69,6 +74,13 @@ export const APPROVALS = (spaceId: string): TableDef<ApprovalFilters> => ({
   key: APPROVALS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/approvals`, spec: APPROVALS_SPEC,
   facets: true, params: (f) => ({ q: f.q, kind: f.kind, mine: f.mine === "1" ? "1" : "" }),
 });
+
+/** The first page of the approvals inbox as it opens (Waiting for me): Today's count of what waits for the viewer, under the inbox's own key. */
+export const myApprovals = (spaceId: string) => {
+  const d = APPROVALS(spaceId);
+  const { url } = tableRequest(d.path, readTable(new URLSearchParams(), d.spec), d.spec, d.params);
+  return { key: [d.key, url] as const, url };
+};
 
 const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;
 /** A draft's simulations, newest first: the first row is the one the builder shows. */

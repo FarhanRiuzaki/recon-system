@@ -18,5 +18,5 @@ export default async function Page({ params }: { params: Params }) {
   const { spaceId } = await params;
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
-  return <Prefetch reads={[reads.spaceToday(spaceId)]}><TodayPage spaceId={spaceId} spaceName={space.name} /></Prefetch>;
+  return <Prefetch reads={[reads.spaceToday(spaceId), reads.myApprovals(spaceId)]}><TodayPage spaceId={spaceId} spaceName={space.name} /></Prefetch>;
 }

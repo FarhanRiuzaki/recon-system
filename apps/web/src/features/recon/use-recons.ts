@@ -2,13 +2,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
+import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
+import type { BreakSummaryDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDto, ReconLiveDto, ReconRunDto, ReconTrendDto, ReconVersionDetailDto, ReconVersionDto, RunRangeBody, TodayDto } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { RECON_KEY, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
-import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, reconLive, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
+import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, myApprovals, reconLive, reconOpenSummary, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
 import { isLive, recordDates, replayGap, suggestedReplay } from "./run-model";
 import { appDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
@@ -159,6 +161,18 @@ export function useReconLive(spaceId: string, id: string, enabled: boolean) {
   const { key, url } = reconLive(spaceId, id);
   return useQuery({ queryKey: key, queryFn: () => api<ReconLiveDto>(url), enabled, retry: retryUnlessNotFound, refetchOnWindowFocus: true,
     refetchInterval: (q) => (q.state.data?.recon.running ? LIVE_RUN_POLL_MS : LIVE_POLL_MS) });
+}
+
+/** What waits for the viewer's decision in the space: the inbox's first page as it opens, for its total (Today). */
+export function useMyApprovals(spaceId: string) {
+  const { key, url } = myApprovals(spaceId);
+  return useQuery({ queryKey: key, queryFn: () => api<Page<ApprovalRowDto>>(url), refetchOnWindowFocus: true, refetchInterval: LIVE_POLL_MS });
+}
+
+/** A recon's open unmatch items and their amount per currency (the queue's summary for it), polled as the live day. */
+export function useOpenSummary(spaceId: string, id: string, enabled: boolean) {
+  const { key, url } = reconOpenSummary(spaceId, id);
+  return useQuery({ queryKey: key, queryFn: () => api<BreakSummaryDto>(url), enabled, refetchOnWindowFocus: true, refetchInterval: LIVE_POLL_MS });
 }
 
 /** A recon's last TREND_DAYS business dates; read again every minute (a day's numbers move once per run). */

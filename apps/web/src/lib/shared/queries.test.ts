@@ -86,3 +86,12 @@ describe("lists that open on a default view (audit §5.2, §5.3)", () => {
     expect(request(qr.BREAKS("s")).get("sort")).toBe("-amount");
   });
 });
+
+describe("Today's count of approvals waiting for the viewer", () => {
+  it("is the inbox's first page as it opens, under the inbox's own key", () => {
+    const def = qr.APPROVALS("s");
+    const { url } = tableRequest(def.path, readTable(new URLSearchParams(), def.spec), def.spec, def.params);
+    expect(qr.myApprovals("s")).toEqual({ key: [def.key, url], url });
+    expect(new URL(url, "http://x").searchParams.get("mine")).toBe("1");
+  });
+});

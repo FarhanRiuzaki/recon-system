@@ -110,3 +110,15 @@ export function spaceMap(t: TodayDto, hrefOf: (id: string) => string, arriving: 
   return { nodes, edges };
 }
 
+
+/**
+ * Today's KPI tray (audit T1): open unmatch items of its recons, posting runs of the last 24 hours that need someone
+ * (failed, timeout, not sent), and sources whose health is degraded or down (behind their business date).
+ */
+export function todayKpis(t: Pick<TodayDto, "recons" | "sources" | "posting">) {
+  return {
+    unmatch: t.recons.reduce((n, r) => n + r.openBreaks, 0),
+    posting: t.posting.reduce((n, p) => n + p.failed + p.timeout + p.notSent, 0),
+    behind: t.sources.filter((s) => s.health?.state === "degraded" || s.health?.state === "down").length,
+  };
+}
