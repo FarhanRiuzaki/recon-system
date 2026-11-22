@@ -724,7 +724,7 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   Resolved 3, Pending approval 4), reason (No counterpart neutral, Amount differs 2, Date differs 5, the rest 6), change
   kind (Posting 1, Force match 4, Write-off 2, Unmatch 6, versions neutral), environment (Development neutral,
   Production 2), space role (Space admin 4, Source admin 3, Config maker 1, Config checker 6, Operator 5, Reviewer 2,
-  Viewer neutral), action kind (Posting 1, Notify neutral), a recon's day (Open neutral, Closing 5, Closed 3).
+  Viewer neutral), action kind (Posting 1, Notify neutral), a recon's day (Open neutral, Closing 4, Closed 1; never 2, 3 or 5, which beside its Stale / Source down chip read as Degraded or Healthy).
   All-neutral sets need no entry: source kind, engine, read mode, run kind, Fixed / Auto generated, Simulated.
   Never a health colour for a non-health value; version state, posting result and a credential set / not set stay
   StatusChips. A value that is health in some states and a category in others (a recon's day: Stale or Source down,

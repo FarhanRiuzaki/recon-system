@@ -26,7 +26,10 @@ describe("categories (audit §1.1 chip map): one slot per categorical value, nev
   it("an action's kind and a recon's day state: posting as the posting change kind, a day open neutral, never health", () => {
     expect(["posting", "notify"].map((k) => categoryChip("actionKind", k))).toEqual([1, "neutral"]);
     expect(categoryChip("actionKind", "posting")).toBe(categoryChip("changeKind", "posting"));
-    expect(["open", "closing", "closed"].map((d) => categoryChip("dayState", d))).toEqual(["neutral", 5, 3]);
+    expect(["open", "closing", "closed"].map((d) => categoryChip("dayState", d))).toEqual(["neutral", 4, 1]);
+  });
+  it("a day state never takes slot 2, 3 or 5: beside a Stale / Source down chip they read as Degraded or Healthy (§1.1)", () => {
+    for (const slot of Object.values(CATEGORIES.dayState)) expect([2, 3, 5]).not.toContain(slot);
   });
   it("an unknown value is neutral", () => {
     expect(categoryChip("workState", "archived")).toBe("neutral");

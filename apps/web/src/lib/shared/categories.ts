@@ -24,7 +24,7 @@ export const CATEGORIES = {
   // what an approved change ran: a posting as the posting change kind; a notification only tells
   actionKind: { posting: 1, notify: "neutral" } satisfies Record<ActionRunRowDto["kind"], CategorySlot>,
   // a recon's business date: open is the plain state (not Healthy); closing waits as Pending external; closed is done as Resolved
-  dayState: { open: "neutral", closing: 5, closed: 3 } satisfies Record<LiveReconDto["state"], CategorySlot>,
+  dayState: { open: "neutral", closing: 4, closed: 1 } satisfies Record<LiveReconDto["state"], CategorySlot>,
   environment: { dev: "neutral", prod: 2 } satisfies Record<Environment, CategorySlot>,
   spaceRole: { space_admin: 4, source_admin: 3, config_maker: 1, config_checker: 6, operator: 5, reviewer: 2, viewer: "neutral" } satisfies Record<SpaceRole, CategorySlot>,
 } as const;

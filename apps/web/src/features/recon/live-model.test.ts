@@ -50,7 +50,7 @@ describe("Today and Live day model (REC-F4)", () => {
   it("a source's lag: a pull's minutes behind, else what it is complete through", () => {
     expect(sourceLag({ ...src("s", "healthy"), health: health("healthy", { lagSeconds: 1260 }) })).toBe("21 min behind");
     expect(sourceLag({ ...src("s", "healthy"), health: null })).toBe("Not ingesting yet");
-    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map())).toEqual({ slot: 3, label: "Closed" });
+    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map())).toEqual({ slot: 1, label: "Closed" });
   });
 });
 
