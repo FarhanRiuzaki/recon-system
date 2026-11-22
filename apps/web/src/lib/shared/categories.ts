@@ -1,7 +1,7 @@
 import type { CategorySlot, StatusChipProps } from "@starterkit/ui/ds";
 import type { ApprovalKind } from "@starterkit/shared/approvals";
 import type { ActionRunRowDto } from "@starterkit/shared/contracts/breaks";
-import type { LiveReconDto } from "@starterkit/shared/contracts/recon";
+import type { LiveReconDto, SignoffRowDto } from "@starterkit/shared/contracts/recon";
 import type { Environment } from "@starterkit/shared/integrations";
 import type { BreakReason, BreakState } from "@starterkit/shared/recon";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -25,6 +25,8 @@ export const CATEGORIES = {
   actionKind: { posting: 1, notify: "neutral" } satisfies Record<ActionRunRowDto["kind"], CategorySlot>,
   // a recon's business date: open is the plain state (not Healthy); closing waits as Pending external; closed is done as Resolved
   dayState: { open: "neutral", closing: 4, closed: 1 } satisfies Record<LiveReconDto["state"], CategorySlot>,
+  // a closed day's sign-off: waiting for it as Pending approval, prepared as Assigned, signed off as Resolved
+  signoffStage: { closed: 4, prepared: 1, signed: 3 } satisfies Record<SignoffRowDto["stage"], CategorySlot>,
   environment: { dev: "neutral", prod: 2 } satisfies Record<Environment, CategorySlot>,
   spaceRole: { space_admin: 4, source_admin: 3, config_maker: 1, config_checker: 6, operator: 5, reviewer: 2, viewer: "neutral" } satisfies Record<SpaceRole, CategorySlot>,
 } as const;

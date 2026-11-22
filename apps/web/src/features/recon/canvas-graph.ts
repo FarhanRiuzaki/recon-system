@@ -26,6 +26,13 @@ export const NODE_H = 68;
 /** Between two lanes (room for a short edge label) and between two nodes of a lane. */
 export const LANE_GAP = 120;
 export const ROW_GAP = 20;
+/** The Live day shows its pipeline as a canvas only at this zoom or more (audit R6); below, the list reads better. */
+export const PIPELINE_MIN_ZOOM = 0.85;
+/**
+ * Whether the four lanes fit a card `width` px wide at PIPELINE_MIN_ZOOM: lanes plus gaps, and the 32 px the fit keeps
+ * free on each side (`FIT` in @starterkit/ui/flow, not imported: React Flow stays out of the page's first load).
+ */
+export const pipelineFits = (width: number) => (width - 64) / (LANES.length * NODE_W + (LANES.length - 1) * LANE_GAP) >= PIPELINE_MIN_ZOOM;
 
 /**
  * The builder canvas of `spec`: pass ids from `keys` (stable across a reorder, as the builder keeps them); counts on the

@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { BlockedButton, type Column, ColumnsMenu, ConfirmActionDialog, DataTable, Notice, Panel, RelativeTime, Toolbar } from "@starterkit/ui/ds";
+import { BlockedButton, CategoryChip, type Column, ColumnsMenu, ConfirmActionDialog, DataTable, Notice, Panel, RelativeTime, Toolbar } from "@starterkit/ui/ds";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon, SuccessIcon } from "@starterkit/ui/ui/icons";
@@ -12,6 +12,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { ENGINE_KEY } from "@/lib/shared/queries";
+import { categoryChip } from "@/lib/shared/categories";
 import { reconSignoffs, type SignoffFilters } from "@/lib/shared/queries-recon";
 
 const dayText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
@@ -45,11 +46,11 @@ export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
 
   const columns: Column<SignoffRowDto>[] = [
     { key: "date", header: "Business date", sortable: true, mobile: "title", className: "whitespace-nowrap", cell: (r) => <span className="text-fg">{dayText(r.date)}</span> },
-    { key: "stage", header: "Stage", mobile: "meta", cell: (r) => STAGE_LABEL[r.stage] },
-    { key: "open", header: "Unmatch", align: "right", mobile: "meta", cell: (r) => <span className="tabular">{formatNumber(r.openBreaks)}</span> },
+    { key: "stage", header: "Stage", mobile: "meta", cell: (r) => <CategoryChip slot={categoryChip("signoffStage", r.stage)} label={STAGE_LABEL[r.stage]} /> },
+    { key: "open", header: "Open", align: "right", mobile: "meta", cell: (r) => <span className="tabular">{formatNumber(r.openBreaks)}</span> },
     { key: "pending", header: "Requests waiting", align: "right", mobile: "meta", cell: (r) => <span className={r.pending ? "tabular text-fg" : "tabular text-fg-3"}>{formatNumber(r.pending)}</span> },
-    { key: "prepared", header: "Prepared", mobile: "meta", cell: (r) => <Step by={r.preparedBy} at={r.preparedAt} /> },
-    { key: "signed", header: "Signed off", mobile: "meta", cell: (r) => <Step by={r.signedBy} at={r.signedAt} /> },
+    { key: "prepared", header: "Prepared by", mobile: "meta", cell: (r) => <Step by={r.preparedBy} at={r.preparedAt} /> },
+    { key: "signed", header: "Signed by", mobile: "meta", cell: (r) => <Step by={r.signedBy} at={r.signedAt} /> },
     { key: "action", header: "Next step", mobile: "meta", hideable: false, className: "min-w-40", cell: (r) => r.stage === "signed"
       ? <span className="text-body-sm text-fg-3">Frozen</span>
       : (

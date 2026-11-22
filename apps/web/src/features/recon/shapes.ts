@@ -15,13 +15,13 @@ export const NEW_RECON_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[12, 320]] },
 ];
 
-/** A recon (its Overview, the default tab): the header, the tabs, the day's numbers, Run beside Run history, the trend. */
+/** A recon (its Overview, the default tab): the header, the tabs, Today (the day's numbers, the Run card), Needs action. */
 export const RECON_SHAPE: readonly Section[] = [
   { kind: "header", h: 50 },
   { kind: "bar", h: 28 },
   { kind: "panels", panels: [[12, 150]] },
-  { kind: "panels", panels: [[6, 320], [6, 320]] },
-  { kind: "panels", panels: [[12, 300]] },
+  { kind: "panels", panels: [[12, 220]] },
+  { kind: "panels", panels: [[12, 320]] },
 ];
 
 /** A recon's setup (versions/new): the header, the step's panels beside the steps rail. */
@@ -52,11 +52,11 @@ export const TODAY_SHAPE: readonly Section[] = [
   { kind: "table", chrome: 96, rows: 5, rowHeight: 56 },
 ];
 
-/** A recon's Live day tab: the header, the tabs, the day's numbers, the pipeline and the sources. */
+/** A recon's live day (its Overview's frame): the header, the tabs, the day's numbers, the Run card, Needs action. */
 export const LIVE_DAY_SHAPE: readonly Section[] = [
   { kind: "header", h: 50 },
   { kind: "bar", h: 28 },
-  { kind: "panels", panels: [[12, 96]] },
-  { kind: "panels", panels: [[12, 420]] },
-  { kind: "panels", panels: [[12, 160]] },
+  { kind: "panels", panels: [[12, 150]] },
+  { kind: "panels", panels: [[12, 220]] },
+  { kind: "panels", panels: [[12, 320]] },
 ];

@@ -350,7 +350,7 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
         </Field>
         {/* owner, 22 Nov: unmatch is data still moving (late data); some recons check it on its day only, some up to
             day + N, some on every run until it matches */}
-        <Field id="rs-carry" label="Unmatch is checked" required error={err("Carry over")}>
+        <Field id="rs-carry" label="Carry over" required error={err("Carry over")}>
           <span className="grid gap-2">
             <Select id="rs-carry" value={spec.carry_over_days === null ? "always" : spec.carry_over_days === 0 ? "own" : "days"}
               onChange={(e) => onChange({ ...spec, carry_over_days: e.target.value === "always" ? null : e.target.value === "own" ? 0 : Math.max(1, spec.carry_over_days ?? 1) })}>

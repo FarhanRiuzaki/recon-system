@@ -53,6 +53,11 @@ export const reconOpenSummary = (spaceId: string, configId: string) => {
   const url = breakSummaryUrl(spaceId, new URLSearchParams({ recon: configId }).toString());
   return { key: [ENGINE_KEY[0], url] as const, url };
 };
+/** One recon's open unmatch per reason (its Overview's Unmatch by reason, audit R2): the queue's filter counts for that recon. */
+export const reconReasons = (spaceId: string, configId: string) => {
+  const url = `/api/spaces/${encodeURIComponent(spaceId)}/breaks/facets?${new URLSearchParams({ recon: configId })}`;
+  return { key: [ENGINE_KEY[0], url] as const, url };
+};
 
 const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
 /** One break: its item, recon, state, resolution, proposed pair. */

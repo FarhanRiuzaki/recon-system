@@ -5,7 +5,7 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import { appDate } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ChevronDownIcon } from "@starterkit/ui/ui/icons";
+import { CalendarIcon } from "@starterkit/ui/ui/icons";
 import { Popover, PopoverContent, PopoverTrigger } from "@starterkit/ui/ui/popover";
 import { rangeText, replayEnd } from "./run-model";
 
@@ -29,8 +29,9 @@ export function ReplayRange({ value, onChange, disabled, label = "Replay" }: { v
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); setStart(null); }}>
       <PopoverTrigger asChild>
-        <Button type="button" variant="secondary" disabled={disabled} className="justify-between gap-2 max-md:w-full">
-          {label} {rangeText(value.from, value.to)}<Icon icon={ChevronDownIcon} className="text-fg-3" />
+        {/* the dates themselves, as "22 Nov 2026" with a calendar icon (audit R5); the label names it for a screen reader */}
+        <Button type="button" variant="secondary" disabled={disabled} aria-label={`${label} ${rangeText(value.from, value.to)}`} className="gap-2 max-md:w-full">
+          <Icon icon={CalendarIcon} className="text-fg-3" />{rangeText(value.from, value.to)}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" aria-label={what} className="w-auto p-0">

@@ -13,7 +13,7 @@ import { ChartDefs, useChartId } from "./chart-defs";
 import { ChartFrame } from "./chart-frame";
 import { ChartTooltipBox } from "./chart-tooltip";
 import { useSettled } from "./use-settled";
-import { AXIS_TICK, BASELINE, CHART_HEIGHT, DASH, DOWN_COLOR, GRID, MARGIN, type SeriesTone, seriesColor, softColor, TICK_GAP, X_AXIS_HEIGHT } from "./chart-theme";
+import { AXIS_TICK, BASELINE, CHART_HEIGHT, DASH, GRID, MARGIN, type SeriesTone, softColor, TICK_GAP, toneColor, X_AXIS_HEIGHT } from "./chart-theme";
 
 type Row = { c: string; i: number } & Record<string, string | number | null>;
 const val = (r: Row | undefined, k: string): number | null => (r && typeof r[k] === "number" ? (r[k] as number) : null);
@@ -22,7 +22,8 @@ type Props = {
    * `slot` = the entity's fixed 0-based colour slot (seriesSlots); without it, colours follow position.
    * Every bar carries the 45° stripe texture (spec §6.3). `striped` = secondary / partial series: the same hue's soft
    * tint (35 %), still striped.
-   * `tone: "down"` = a failure count: Down mark colour instead of a palette slot.
+   * `tone: "down"` = a failure count: Down mark colour instead of a palette slot; `tone: "neutral"` = a count that is
+   * neither success nor failure (still waiting): the neutral mark.
    */
   label: string; categories: string[]; series: { label: string; values: (number | null)[]; slot?: number; striped?: boolean; tone?: SeriesTone }[];
   stacked?: boolean; format: (v: number) => string; height?: number;
@@ -62,7 +63,7 @@ export function BarChart({ label, categories, series, stacked, format, height = 
   const meta = new Map(series.map((x) => [x.label, x]));
   const s = foldBarSeries(series).map((x, i) => {
     const m = meta.get(x.label);
-    const color = m?.tone === "down" ? DOWN_COLOR : seriesColor(x.label, m?.slot ?? i);
+    const color = toneColor({ label: x.label, slot: m?.slot, tone: m?.tone }, i);
     const striped = !!m?.striped;
     return { ...x, key: `s${i}`, color, striped, fill: striped ? softColor(color) : color };
   });
