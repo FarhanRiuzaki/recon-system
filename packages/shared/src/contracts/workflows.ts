@@ -7,8 +7,8 @@ import { REVIEW_COMMENT_MAX } from "../sources";
 import { WORKFLOW_SORTS } from "../paging";
 import { ListQuery, sortParam } from "./common";
 
-// Approval workflows (DEC-052, revised 22 Nov): the global library of workflows (named chains of levels), a space's
-// approval rules per trigger that pick one, the "Who approves" preview, and the requests they route.
+// Approval workflows (DEC-052 rev 2): a space's workflows (named chains of levels), the "Who approves" preview, and
+// the requests they route. Which workflow a change takes lives in the recon version (contracts/recon ReconApprovalSpec).
 
 const Condition = z.strictObject({
   attr: z.enum(ATTRS),
@@ -36,12 +36,8 @@ const Name = z.string().trim().min(1, "Name it.").max(RULE_NAME_MAX);
 /** A library workflow: its name and its levels, in order. */
 export const ChainSpec = z.strictObject({ name: Name, levels: z.array(Level).min(1).max(LEVELS_MAX) });
 export type ChainSpec = z.infer<typeof ChainSpec>;
-const BindingRule = z.strictObject({ name: z.string().trim().min(1, "Name the rule.").max(RULE_NAME_MAX), when: z.array(Condition).max(CONDITIONS_MAX), workflowId: z.uuid() });
-/** A space's approval rules for a trigger, in order: the first whose conditions all hold picks its workflow, else `otherwise` (null = the default chain). */
-export const BindingSpec = z.strictObject({ rules: z.array(BindingRule).max(RULES_MAX), otherwise: z.uuid().nullable() });
-export type BindingSpec = z.infer<typeof BindingSpec>;
 
-export const TriggerParam = z.enum(TRIGGERS);
+
 const Person = z.object({ id: z.string(), name: z.string().nullable() });
 export const WORKFLOW_STATUSES = ["draft", "in_review", "published", "retired"] as const;
 const versionFields = {
@@ -59,7 +55,8 @@ export type ChainVersionDto = z.infer<typeof ChainVersionDto>;
 export const LibraryRowDto = z.object({
   id: z.string(), name: z.string(), levels: z.number().int(), archived: z.boolean(),
   published: z.object({ version: z.number().int(), decidedAt: z.string().nullable() }).nullable(), open: OpenDto.nullable(),
-  rulesUsing: z.number().int(), spacesUsing: z.number().int(), updatedAt: z.string(),
+  /** Recons whose live version picks it. */
+  reconsUsing: z.number().int(), updatedAt: z.string(),
 });
 export type LibraryRowDto = z.infer<typeof LibraryRowDto>;
 /**
@@ -72,10 +69,13 @@ export const LibraryDetailDto = z.object({
   globalRoles: z.array(z.string()), people: z.array(Person), ...reviewFields,
 });
 export type LibraryDetailDto = z.infer<typeof LibraryDetailDto>;
-/** GET /workflows/{id}/used-by: a space's approval rules version that uses it; `short` the levels that would lack people there. */
+/**
+ * GET …/workflows/{id}/used-by: a recon version (live or open) that picks it for a change; `pinned` the workflow version
+ * it pins, `outdated` when a newer one is live (applies once the recon is published again).
+ */
 export const UsedByRowDto = z.object({
-  spaceId: z.string(), spaceName: z.string(), trigger: z.enum(TRIGGERS), ruleName: z.string(), rulesVersion: z.number().int(),
-  rulesStatus: z.enum(["published", "draft", "in_review"]), short: z.array(z.string()),
+  reconId: z.string(), reconName: z.string(), change: z.enum(TRIGGERS), rules: z.array(z.string()), reconVersion: z.number().int(),
+  reconStatus: z.enum(["published", "draft", "in_review"]), pinned: z.number().int(), outdated: z.boolean(),
 });
 export type UsedByRowDto = z.infer<typeof UsedByRowDto>;
 /** GET /workflows: `q` = name. */
@@ -91,39 +91,12 @@ export type CreateWorkflowBody = z.infer<typeof CreateWorkflowBody>;
 export const SaveChainBody = z.strictObject({ spec: ChainSpec });
 export type SaveChainBody = z.infer<typeof SaveChainBody>;
 
-/** One version of a space's approval rules for a trigger. */
-export const RulesVersionDto = z.object({ ...versionFields, spec: BindingSpec });
-export type RulesVersionDto = z.infer<typeof RulesVersionDto>;
-/** GET …/approval-rules: one row per trigger (TRIGGERS, fixed); `otherwise` the name of the workflow it falls back to (null = default). */
-export const RulesRowDto = z.object({
-  trigger: z.enum(TRIGGERS),
-  published: z.object({ version: z.number().int(), rules: z.number().int(), otherwise: z.string().nullable(), decidedAt: z.string().nullable() }).nullable(),
-  open: OpenDto.nullable(),
-});
-export type RulesRowDto = z.infer<typeof RulesRowDto>;
-export const RulesListDto = z.object({ items: z.array(RulesRowDto) });
-export type RulesListDto = z.infer<typeof RulesListDto>;
-/** GET …/approval-rules/{trigger}: its versions and the library workflows a rule may pick (live, not archived). */
-export const RulesDetailDto = z.object({
-  trigger: z.enum(TRIGGERS), published: RulesVersionDto.nullable(), open: RulesVersionDto.nullable(),
-  library: z.array(z.object({ id: z.string(), name: z.string(), levels: z.number().int() })), ...reviewFields,
-});
-export type RulesDetailDto = z.infer<typeof RulesDetailDto>;
-/** PATCH …/approval-rules/{trigger}/draft: the draft's rules (autosave). */
-export const SaveRulesBody = z.strictObject({ spec: BindingSpec });
-export type SaveRulesBody = z.infer<typeof SaveRulesBody>;
-/** POST /workflows/{id}/review/approve|reject and …/approval-rules/{trigger}/review/…: a comment (required to reject, and as the reason of an override). */
+/** POST …/workflows/{id}/review/approve|reject: a comment (required to reject, and as the reason of an override). */
 export const ReviewWorkflowBody = z.strictObject({ comment: z.string().trim().max(REVIEW_COMMENT_MAX).optional(), override: z.boolean().optional() });
 export type ReviewWorkflowBody = z.infer<typeof ReviewWorkflowBody>;
 
-/** POST …/approval-rules/{trigger}/preview ("Who approves"): sample attributes against `spec` (the draft) or the live rules. */
-export const PreviewRulesBody = z.strictObject({
-  spec: BindingSpec.optional(),
-  attributes: z.strictObject({ amount: z.string().regex(/^\d{1,18}$/).optional(), currency: z.string().max(8).optional(), recon: z.uuid().optional(), ageDays: z.number().int().min(0).max(100_000).optional() }),
-});
-export type PreviewRulesBody = z.infer<typeof PreviewRulesBody>;
 const NeedDto = z.object({ kind: z.enum(["any", "all", "count"]), n: z.number().int().optional() });
-/** The rule and workflow (null = the default chain) a request with those attributes would take, and who could approve each group now (`short`: not enough). */
+/** The rule and workflow (null = the default chain) a request would take, and who could approve each group now (`short`: not enough). */
 export const PreviewDto = z.object({
   rule: z.object({ name: z.string(), index: z.number().int().nullable() }), workflow: z.object({ id: z.string(), name: z.string() }).nullable(),
   levels: z.array(z.object({ name: z.string(), groups: z.array(z.object({ need: NeedDto, approvers: z.array(Person), short: z.boolean() })) })),

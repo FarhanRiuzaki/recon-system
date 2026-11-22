@@ -3,13 +3,13 @@
   "title": "UsedByRowDto",
   "type": "object",
   "properties": {
-    "spaceId": {
+    "reconId": {
       "type": "string"
     },
-    "spaceName": {
+    "reconName": {
       "type": "string"
     },
-    "trigger": {
+    "change": {
       "type": "string",
       "enum": [
         "force_match",
@@ -17,15 +17,18 @@
         "write_off"
       ]
     },
-    "ruleName": {
-      "type": "string"
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     },
-    "rulesVersion": {
+    "reconVersion": {
       "type": "integer",
       "minimum": -9007199254740991,
       "maximum": 9007199254740991
     },
-    "rulesStatus": {
+    "reconStatus": {
       "type": "string",
       "enum": [
         "published",
@@ -33,21 +36,24 @@
         "in_review"
       ]
     },
-    "short": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
+    "pinned": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "outdated": {
+      "type": "boolean"
     }
   },
   "required": [
-    "spaceId",
-    "spaceName",
-    "trigger",
-    "ruleName",
-    "rulesVersion",
-    "rulesStatus",
-    "short"
+    "reconId",
+    "reconName",
+    "change",
+    "rules",
+    "reconVersion",
+    "reconStatus",
+    "pinned",
+    "outdated"
   ],
   "additionalProperties": false
 }

@@ -1,8 +1,7 @@
-// Approval workflows (DEC-052; docs/superpowers/specs/2026-11-22-workflow-library-and-bindings-design.md), zod-free:
-// the triggers approval rules bind, the attributes their conditions read, the limits, and the pure evaluation the API
-// and the editors' "Who approves" share. A workflow (global library) = named chain of levels; a level passes when every
-// group in it has its approvals (any / all / N of its eligible people). A space's approval rules for a trigger = ordered
-// rules, the first whose conditions all hold picks the workflow; none holds = `otherwise` (null = the default chain).
+// Approval workflows (DEC-052 rev 2; docs/superpowers/specs/2026-11-22-recon-approval-and-posting-design.md), zod-free:
+// the changes a recon binds a workflow to, the limits, and the pure helpers the API and the editors share. A workflow
+// (owned by a space) = named chain of levels; a level passes when every group in it has its approvals (any / all / N of
+// its eligible people). Which workflow a change takes is set in the recon version (conditions.ts).
 import type { SpaceRole } from "./spaces";
 
 /** What approval rules bind: phase A the changes of a break; phase B adds versions, sign-off, reopen and rerun. */
@@ -41,9 +40,7 @@ export type Group = { spaceRoles: SpaceRole[]; globalRoles: string[]; users: str
 export type Level = { name: string; groups: Group[] };
 /** A library workflow's content. */
 export type Chain = { name: string; levels: Level[] };
-/** One approval rule: when its conditions all hold, the request takes `workflowId`'s live version. */
-export type BindingRule = { name: string; when: Condition[]; workflowId: string };
-export type BindingSpecShape = { rules: BindingRule[]; otherwise: string | null };
+
 /** The attributes of one request (amount as a decimal string of minor units: bigint-safe over JSON). */
 export type Attributes = { amount?: string; currency?: string | null; recon?: string; ageDays?: number };
 
@@ -67,15 +64,6 @@ export function holds(c: Condition, a: Attributes): boolean {
   const x = num(raw as string | number), y = num(Array.isArray(c.value) ? c.value[0] : c.value);
   if (x === null || y === null) return false;
   return c.op === "gte" ? x >= y : c.op === "gt" ? x > y : c.op === "lte" ? x <= y : c.op === "lt" ? x < y : x === y;
-}
-/**
- * The workflow approval rules give a request: the first rule whose conditions all hold, else `otherwise`; no rules at
- * all = the default chain (workflowId null).
- */
-export function pickBinding(spec: BindingSpecShape | null, a: Attributes): { index: number | null; ruleName: string; workflowId: string | null } {
-  if (!spec) return { index: null, ruleName: "Default", workflowId: null };
-  const i = spec.rules.findIndex((r) => r.when.every((c) => holds(c, a)));
-  return i >= 0 ? { index: i, ruleName: spec.rules[i]!.name, workflowId: spec.rules[i]!.workflowId } : { index: null, ruleName: "Otherwise", workflowId: spec.otherwise };
 }
 
 /**

@@ -10,7 +10,7 @@ import type { RequestViewDto } from "@starterkit/shared/contracts/workflows";
 import type { ApproveBody, OverrideBody, RejectBody } from "@starterkit/shared/contracts/workflows";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { ROLE_LABEL } from "@starterkit/shared/spaces";
-import { type Attributes, type BindingSpecShape, type Chain, DEFAULT_CHAIN, type Group, groupNeeds, type Level, pickBinding, TRIGGER_LABEL, type Trigger } from "@starterkit/shared/workflows";
+import { type Attributes, type Chain, DEFAULT_CHAIN, type Group, groupNeeds, type Level, type Trigger } from "@starterkit/shared/workflows";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
@@ -20,7 +20,7 @@ import { applyBreakChange, revertBreakRequest } from "../engine";
 import { roles, userRoles } from "../rbac";
 import { spaceMembers, withSpace } from "../spaces";
 import { users } from "../users";
-import { approvalBindings, approvalDecisions, approvalRequests, workflowVersions } from "./schema";
+import { approvalDecisions, approvalRequests } from "./schema";
 
 type Person = { id: string; name: string | null };
 type RequestRow = typeof approvalRequests.$inferSelect;
@@ -58,17 +58,8 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
   kind: Trigger; configId: string; itemId: string; itemIds: string[]; label: string; note: string; prevState: string | null; attributes: Attributes;
 }): Promise<string> {
   const spaceId = ctx.space!.id;
-  const [rules] = await tx.select({ id: approvalBindings.id, spec: approvalBindings.spec }).from(approvalBindings)
-    .where(and(eq(approvalBindings.spaceId, spaceId), eq(approvalBindings.trigger, r.kind), eq(approvalBindings.status, "published")));
-  const pick = pickBinding(rules ? (rules.spec as BindingSpecShape) : null, r.attributes);
-  let chain: Chain = DEFAULT_CHAIN, versionId: string | null = null;
-  if (pick.workflowId) {
-    const [v] = await tx.select({ id: workflowVersions.id, spec: workflowVersions.spec }).from(workflowVersions)
-      .where(and(eq(workflowVersions.workflowId, pick.workflowId), eq(workflowVersions.status, "published")));
-    if (!v) throw new ApiError("invalid_state", `The ${TRIGGER_LABEL[r.kind]} approval rules point to a workflow with no live version. Ask a space admin to fix the rules.`);
-    chain = v.spec as Chain;
-    versionId = v.id;
-  }
+  // stage 1 task 4 resolves the recon version's approval setup here; until then every change takes the default chain
+  const chain: Chain = DEFAULT_CHAIN, versionId: string | null = null, configVersionId: string | null = null, ruleName = "Default";
   const me = new Set([ctx.user.id]);
   for (const [i, level] of chain.levels.entries()) {
     for (const g of level.groups) {
@@ -82,8 +73,8 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
   try {
     await tx.insert(approvalRequests).values({
       id, spaceId, configId: r.configId, kind: r.kind, itemId: r.itemId, itemIds: r.itemIds, label: r.label, note: r.note, prevState: r.prevState,
-      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: versionId, bindingVersionId: rules?.id ?? null, workflowName: versionId ? chain.name : null,
-      ruleName: pick.ruleName, chain: chain.levels, currentLevel: 0,
+      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: versionId, configVersionId, workflowName: versionId ? chain.name : null,
+      ruleName, chain: chain.levels, currentLevel: 0,
     });
   } catch (e) {
     if (isUniqueViolation(e)) throw new ApiError("invalid_state", "A change of this break already waits for a decision.");

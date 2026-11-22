@@ -83,12 +83,7 @@
               }
             ]
           },
-          "rulesUsing": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "spacesUsing": {
+          "reconsUsing": {
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
@@ -104,8 +99,7 @@
           "archived",
           "published",
           "open",
-          "rulesUsing",
-          "spacesUsing",
+          "reconsUsing",
           "updatedAt"
         ],
         "additionalProperties": false

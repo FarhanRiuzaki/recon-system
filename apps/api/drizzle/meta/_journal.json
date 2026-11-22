@@ -351,6 +351,13 @@
       "when": 1795341153272,
       "tag": "0049_workflow_library",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1795347630688,
+      "tag": "0050_workflows_per_space",
+      "breakpoints": true
     }
   ]
 }

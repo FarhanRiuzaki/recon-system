@@ -2,4 +2,5 @@
 // their transaction (openRequest, the request's view, its table for the inbox and the day sign-off's pending check).
 export { approvalsController } from "./controller";
 export { openRequest, pendingOf, requestView } from "./requests";
-export { approvalBindings, approvalDecisions, approvalRequests, workflows, workflowVersions } from "./schema";
+export { approvalDecisions, approvalRequests, workflows, workflowVersions } from "./schema";
+export { pinnedVersion, workflowFacts } from "./workflows";

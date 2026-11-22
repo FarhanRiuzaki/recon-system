@@ -246,7 +246,6 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/recons/:configId/days": "a recon's last TREND_DAYS business dates (14), fixed",
   "GET /v1/spaces/:spaceId/recons/:configId/live": "one recon's current business date and its two sources",
   "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",
-  "GET /v1/spaces/:spaceId/approval-rules": "one row per TRIGGERS (fixed), the space's approval rules for each",
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };
 const ONE_RECORD = /\/:\w+$/;
@@ -261,7 +260,6 @@ const IN_HANDLER_GATES: Record<string, string> = {
 };
 /** Non-GET routes that change no record of the activity log's kind (an auth step, a viewer's own list preference), so they record no entry. */
 const NO_ACTIVITY: Record<string, string> = {
-  "POST /v1/spaces/:spaceId/approval-rules/:trigger/preview": "a read sent as POST for its body (a draft's rules and sample attributes): who would approve, nothing changes",
   "POST /v1/me/reauth": "proves the user again on this session (stamps reauth_at); an auth step, and the sign-in log has no event for it",
   "POST /v1/me/views": "saves the caller's own named list view: a viewer preference like the prefs cookie, seen by no one else",
   "DELETE /v1/me/views/:id": "deletes the caller's own saved list view: a viewer preference, seen by no one else",
@@ -281,14 +279,15 @@ const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controlle
  */
 /**
  * Routes whose `or` permission reaches space data on purpose. workflow.manage (DEC-052): a governance role configures
- * the approval rules of any space; it reads and writes only approval_bindings (not the space's business data).
+ * the workflows of any space; it reads and writes only workflows (not the space's business data).
  */
-const WF = "workflow.manage configures any space's approval rules (DEC-052); approval_bindings only";
+const WF = "workflow.manage configures any space's workflows (DEC-052 rev 2); workflows only";
 const OR_WITH_SPACE: Record<string, string> = {
-  "GET /v1/spaces/:spaceId/approval-rules": WF, "GET /v1/spaces/:spaceId/approval-rules/:trigger": WF, "POST /v1/spaces/:spaceId/approval-rules/:trigger/preview": WF,
-  "POST /v1/spaces/:spaceId/approval-rules/:trigger/draft": WF, "PATCH /v1/spaces/:spaceId/approval-rules/:trigger/draft": WF,
-  "POST /v1/spaces/:spaceId/approval-rules/:trigger/draft/submit": WF, "POST /v1/spaces/:spaceId/approval-rules/:trigger/draft/discard": WF,
-  "POST /v1/spaces/:spaceId/approval-rules/:trigger/review/approve": WF, "POST /v1/spaces/:spaceId/approval-rules/:trigger/review/reject": WF,
+  "GET /v1/spaces/:spaceId/workflows": WF, "POST /v1/spaces/:spaceId/workflows": WF, "GET /v1/spaces/:spaceId/workflows/:id": WF,
+  "GET /v1/spaces/:spaceId/workflows/:id/used-by": WF, "POST /v1/spaces/:spaceId/workflows/:id/draft": WF, "PATCH /v1/spaces/:spaceId/workflows/:id/draft": WF,
+  "POST /v1/spaces/:spaceId/workflows/:id/draft/submit": WF, "POST /v1/spaces/:spaceId/workflows/:id/draft/discard": WF,
+  "POST /v1/spaces/:spaceId/workflows/:id/review/approve": WF, "POST /v1/spaces/:spaceId/workflows/:id/review/reject": WF,
+  "POST /v1/spaces/:spaceId/workflows/:id/archive": WF,
 };
 const REAL_ALLOW: Allow = { nonList: NON_LIST_GETS, gates: IN_HANDLER_GATES, authFiles: AUTH_ROUTE_FILES, noActivity: NO_ACTIVITY, orWithSpace: OR_WITH_SPACE };
 

@@ -3,10 +3,10 @@ import { boolean, check, foreignKey, index, integer, pgTable, smallint, text, ti
 import { jsonb } from "../../kernel/columns";
 import { reconConfigs } from "../recon/schema";
 
-// The approval workflow engine (DEC-052, revised 22 Nov: docs/superpowers/specs/2026-11-22-workflow-library-and-bindings-design.md):
-// the global workflow library (named chains of levels, versioned), each space's approval rules per trigger that pick a
-// library workflow (versioned, space-owned under row level security), the requests they route and every decision on
-// them. Migrations: drizzle/0048_approval_workflows.sql, drizzle/0049_workflow_library.sql.
+// The approval workflow engine (DEC-052 rev 2: docs/superpowers/specs/2026-11-22-recon-approval-and-posting-design.md):
+// each space's workflows (named chains of levels, versioned, space-owned under row level security), the requests they
+// route and every decision on them. Which workflow a change takes lives in the recon version (recon module).
+// Migrations: drizzle/0048_approval_workflows.sql, 0049_workflow_library.sql, 0050_workflows_per_space.sql.
 
 const versionColumns = {
   version: integer("version").notNull(),
@@ -24,20 +24,23 @@ const versionColumns = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 };
 
-/** A library workflow (global, no space): `name` follows its published version (its draft's until one is published). */
+/** A space's workflow: `name` follows its published version (its draft's until one is published), unique in the space. */
 export const workflows = pgTable("workflows", {
   id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
   name: text("name").notNull(),
   archivedAt: timestamp("archived_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [uniqueIndex("workflows_name").on(sql`lower(${t.name})`)]);
+}, (t) => [uniqueIndex("workflows_space_name").on(t.spaceId, sql`lower(${t.name})`)]);
 
 /**
- * One version of a library workflow: `spec` = ChainSpec (name and levels). draft → in_review → published (the one
- * before retired); a workflow.manage holder edits, another one publishes. One open and one published per workflow.
+ * One version of a space's workflow: `spec` = ChainSpec (name and levels). draft → in_review → published (the one
+ * before retired); a space admin or workflow.manage holder edits, another one publishes. One open and one published per
+ * workflow.
  */
 export const workflowVersions = pgTable("workflow_versions", {
   id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
   workflowId: uuid("workflow_id").notNull().references(() => workflows.id, { onDelete: "cascade" }),
   ...versionColumns,
 }, (t) => [
@@ -45,23 +48,6 @@ export const workflowVersions = pgTable("workflow_versions", {
   uniqueIndex("workflow_versions_one_published").on(t.workflowId).where(sql`${t.status} = 'published'`),
   uniqueIndex("workflow_versions_version").on(t.workflowId, t.version),
   check("workflow_versions_status_check", sql`status in ('draft', 'in_review', 'published', 'retired')`),
-]);
-
-/**
- * One version of a space's approval rules for one trigger (TRIGGERS): `spec` = BindingSpec (rules that pick a library
- * workflow, and `otherwise`). Same versioning as a workflow; a space admin of the space or a workflow.manage holder
- * edits, another one publishes. One open version and one published per trigger, by partial unique indexes.
- */
-export const approvalBindings = pgTable("approval_bindings", {
-  id: uuid("id").primaryKey(),
-  spaceId: uuid("space_id").notNull(),
-  trigger: text("trigger").notNull(),
-  ...versionColumns,
-}, (t) => [
-  uniqueIndex("approval_bindings_one_open").on(t.spaceId, t.trigger).where(sql`${t.status} in ('draft', 'in_review')`),
-  uniqueIndex("approval_bindings_one_published").on(t.spaceId, t.trigger).where(sql`${t.status} = 'published'`),
-  uniqueIndex("approval_bindings_version").on(t.spaceId, t.trigger, t.version),
-  check("approval_bindings_status_check", sql`status in ('draft', 'in_review', 'published', 'retired')`),
 ]);
 
 /**
@@ -87,9 +73,9 @@ export const approvalRequests = pgTable("approval_requests", {
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   decisionNote: text("decision_note"),
   attributes: jsonb("attributes").notNull().default(sql`'{}'::jsonb`),
-  /** The library workflow version, the approval rules version and the names the request was opened with (snapshot). */
+  /** The workflow version, the recon version whose approval setup chose it, and the names it was opened with (snapshot). */
   workflowVersionId: uuid("workflow_version_id"),
-  bindingVersionId: uuid("binding_version_id"),
+  configVersionId: uuid("config_version_id"),
   workflowName: text("workflow_name"),
   ruleName: text("rule_name"),
   chain: jsonb("chain").notNull().default(sql`'[]'::jsonb`),
