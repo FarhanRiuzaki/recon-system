@@ -28,15 +28,15 @@ export const ChainSpec = z.strictObject({ name: Name, levels: z.array(Level).min
 export type ChainSpec = z.infer<typeof ChainSpec>;
 
 
-const Person = z.object({ id: z.string(), name: z.string().nullable() });
+export const Person = z.object({ id: z.string(), name: z.string().nullable() });
 export const WORKFLOW_STATUSES = ["draft", "in_review", "published", "retired"] as const;
-const versionFields = {
+export const versionFields = {
   id: z.string(), version: z.number().int(), status: z.enum(WORKFLOW_STATUSES),
   maker: Person.nullable(), submittedBy: Person.nullable(), submittedAt: z.string().nullable(), decidedBy: Person.nullable(), decidedAt: z.string().nullable(),
   reviewComment: z.string().nullable(), overrideReason: z.string().nullable(), updatedAt: z.string(),
 };
 const OpenDto = z.object({ version: z.number().int(), status: z.enum(["draft", "in_review"]), updatedAt: z.string() });
-const reviewFields = { canEdit: z.boolean(), reviewBlocked: z.string().nullable(), overrideOnly: z.boolean() };
+export const reviewFields = { canEdit: z.boolean(), reviewBlocked: z.string().nullable(), overrideOnly: z.boolean() };
 
 /** One version of a library workflow, with who made, sent and decided it. */
 export const ChainVersionDto = z.object({ ...versionFields, spec: ChainSpec });

@@ -26,6 +26,7 @@ import * as recon from "@starterkit/shared/contracts/recon";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
 import * as users from "@starterkit/shared/contracts/users";
+import * as integrations from "@starterkit/shared/contracts/integrations";
 
 export const SCHEMA_DIR = path.resolve(import.meta.dirname, "../../../docs/api/schemas");
 
@@ -66,6 +67,7 @@ const COMPOSED = {
   BreakItemPage: pageOf(breaks.BreakItemDto),
   SignoffPage: pageOf(recon.SignoffRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
+  ConnectorPage: pageOf(integrations.ConnectorRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
   ReconRunItemPage: pageOf(recon.ReconRunItemDto),
@@ -76,7 +78,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, workflows, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -153,6 +155,16 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "workflow.reject": ["workflow", "—", "`{ version, comment }`"],
   "workflow.discard": ["workflow", "`{ version }`", "—"],
   "workflow.archive": ["workflow", "`{ archived: false }`", "`{ archived: true }`"],
+  "integration.create": ["connector", "—", "`{ name, operations }`"],
+  "integration.save": ["connector", "—", "`{ version, from? }` (a new draft) or `{ version, operations }`"],
+  "integration.submit": ["connector", "—", "`{ version }`"],
+  "integration.publish": ["connector", "—", "`{ version, comment?, override? }`"],
+  "integration.reject": ["connector", "—", "`{ version, comment }`"],
+  "integration.discard": ["connector", "`{ version }`", "—"],
+  "integration.secrets": ["connector", "—", "`{ environment, replaced }` (the names of the values replaced, never the values)"],
+  "integration.disable": ["connector", "`{ disabled: false }`", "`{ disabled: true, reason }`"],
+  "integration.enable": ["connector", "`{ disabled: true }`", "`{ disabled: false }`"],
+  "integration.try": ["connector", "—", "`{ operation, outcome, status, externalId }` (no body, no response)"],
   "rules.save": ["approval_rules", "—", "`{ version, from? }` (a new draft) or `{ version, rules }`"],
   "rules.submit": ["approval_rules", "—", "`{ version }`"],
   "rules.publish": ["approval_rules", "—", "`{ version, comment?, override? }`"],

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OperationSpec",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{0,39}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "POST",
+        "GET",
+        "PUT"
+      ]
+    },
+    "path": {
+      "type": "string",
+      "maxLength": 300,
+      "pattern": "^\\/[^\\s]*$"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1000,
+      "maximum": 60000
+    },
+    "request": {
+      "maxItems": 400,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "response": {
+      "maxItems": 400,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/__schema0"
+      }
+    },
+    "success": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "field": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            },
+            "equals": {
+              "type": "string",
+              "maxLength": 40
+            }
+          },
+          "required": [
+            "field",
+            "equals"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "reference": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "masked": {
+      "maxItems": 400,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      }
+    },
+    "presets": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      },
+      "additionalProperties": {
+        "type": "string",
+        "maxLength": 500
+      }
+    }
+  },
+  "required": [
+    "key",
+    "name",
+    "method",
+    "path",
+    "timeoutMs",
+    "request",
+    "response",
+    "success",
+    "reference",
+    "masked",
+    "presets"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "__schema0": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "string",
+            "numeric",
+            "boolean",
+            "object",
+            "array"
+          ]
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "children": {
+          "maxItems": 400,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/__schema0"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "required"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

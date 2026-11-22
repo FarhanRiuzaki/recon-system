@@ -1,0 +1,115 @@
+import { z } from "zod";
+import { CONNECTOR_SORTS } from "../paging";
+import { ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
+import { ListQuery, sortParam } from "./common";
+import { Person, reviewFields, versionFields } from "./workflows";
+
+// Open API connectors (DEC-053, spec §4.2): a connector's reviewed version (its environments' settings and its
+// operations with their field trees) and its secrets per environment, which no answer ever carries.
+
+const OpField: z.ZodType<OpFieldT> = z.lazy(() => z.strictObject({
+  name: z.string().trim().min(1).max(80),
+  type: z.enum(FIELD_TYPES),
+  maxLength: z.number().int().min(1).max(10000).optional(),
+  required: z.boolean(),
+  children: z.array(OpField).max(FIELDS_MAX).optional(),
+}));
+const count = (fs: readonly OpFieldT[]): number => fs.reduce((n, f) => n + 1 + (f.children ? count(f.children) : 0), 0);
+const DotPath = z.string().trim().min(1).max(300);
+
+export const OperationSpec = z.strictObject({
+  key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/, "Use lowercase letters, digits and _ for the key, starting with a letter."),
+  name: z.string().trim().min(1, "Name the operation.").max(80),
+  method: z.enum(["POST", "GET", "PUT"]),
+  path: z.string().trim().regex(/^\/[^\s]*$/, "Start the path with /, without spaces.").max(300),
+  timeoutMs: z.number().int().min(TIMEOUT_MIN_MS).max(TIMEOUT_MAX_MS),
+  request: z.array(OpField).max(FIELDS_MAX),
+  response: z.array(OpField).max(FIELDS_MAX),
+  /** Success when the response field at `field` equals `equals` (e.g. ResponseCode = "00"); null = any readable answer. */
+  success: z.strictObject({ field: DotPath, equals: z.string().max(40) }).nullable(),
+  /** The response field kept as the bank's reference. */
+  reference: DotPath.nullable(),
+  /** Request or response fields shown and stored masked. */
+  masked: z.array(DotPath).max(FIELDS_MAX),
+  /** Fixed values of request fields (dot path → value). */
+  presets: z.record(DotPath, z.string().max(500)),
+}).superRefine((o, ctx) => {
+  if (count(o.request) + count(o.response) > FIELDS_MAX) ctx.addIssue({ code: "custom", message: `An operation has at most ${FIELDS_MAX} fields.` });
+  const res = new Set(fieldPaths(o.response)), req = new Set(fieldPaths(o.request));
+  if (o.success && !res.has(o.success.field)) ctx.addIssue({ code: "custom", path: ["success", "field"], message: "Pick a response field for success." });
+  if (o.reference && !res.has(o.reference)) ctx.addIssue({ code: "custom", path: ["reference"], message: "Pick a response field for the reference." });
+  for (const p of Object.keys(o.presets)) if (!req.has(p)) ctx.addIssue({ code: "custom", path: ["presets", p], message: "A fixed value is for a request field." });
+});
+export type OperationSpec = z.infer<typeof OperationSpec>;
+
+export const EnvironmentSettings = z.strictObject({
+  baseUrl: z.string().trim().max(300).refine((u) => /^https:\/\/[^\s/]+(\/[^\s]*)?$/.test(u), "Use an https:// address."),
+  host: z.string().trim().max(200),
+  partnerId: z.string().trim().max(64),
+  channelId: z.string().trim().max(64),
+});
+export type EnvironmentSettings = z.infer<typeof EnvironmentSettings>;
+
+/** A connector's version: its name, security profile, active environment, environments and operations. */
+export const ConnectorSpec = z.strictObject({
+  name: z.string().trim().min(1, "Name the connector.").max(80),
+  profile: z.enum(PROFILES),
+  active: z.enum(ENVIRONMENTS),
+  environments: z.strictObject({ dev: EnvironmentSettings, prod: EnvironmentSettings }),
+  operations: z.array(OperationSpec).max(OPERATIONS_MAX),
+}).superRefine((c, ctx) => {
+  const keys = c.operations.map((o) => o.key);
+  if (new Set(keys).size !== keys.length) ctx.addIssue({ code: "custom", path: ["operations"], message: "Give each operation its own key." });
+});
+export type ConnectorSpec = z.infer<typeof ConnectorSpec>;
+
+export const ConnectorVersionDto = z.object({ ...versionFields, spec: ConnectorSpec });
+export type ConnectorVersionDto = z.infer<typeof ConnectorVersionDto>;
+const SecretFlags = z.object({ clientId: z.boolean(), clientSecret: z.boolean(), publicKey: z.boolean(), caBundle: z.boolean() });
+/** GET /integrations/connectors: a connector, its live and open version. */
+export const ConnectorRowDto = z.object({
+  id: z.string(), name: z.string(), profile: z.enum(PROFILES), active: z.enum(ENVIRONMENTS).nullable(), operations: z.number().int(),
+  published: z.object({ version: z.number().int(), decidedAt: z.string().nullable() }).nullable(),
+  open: z.object({ version: z.number().int(), status: z.enum(["draft", "in_review"]), updatedAt: z.string() }).nullable(),
+  disabled: z.boolean(), updatedAt: z.string(),
+});
+export type ConnectorRowDto = z.infer<typeof ConnectorRowDto>;
+/** GET /integrations/connectors/{id}: its versions, which secrets are set per environment (never their values). */
+export const ConnectorDetailDto = z.object({
+  id: z.string(), name: z.string(), published: ConnectorVersionDto.nullable(), open: ConnectorVersionDto.nullable(),
+  secrets: z.object({ dev: SecretFlags, prod: SecretFlags }),
+  disabled: z.object({ at: z.string(), reason: z.string(), by: Person.nullable() }).nullable(),
+  ...reviewFields,
+});
+export type ConnectorDetailDto = z.infer<typeof ConnectorDetailDto>;
+
+export const ConnectorListQuery = ListQuery.extend({ sort: sortParam(CONNECTOR_SORTS) });
+export type ConnectorListQuery = z.infer<typeof ConnectorListQuery>;
+export const CreateConnectorBody = z.strictObject({ spec: ConnectorSpec });
+export type CreateConnectorBody = z.infer<typeof CreateConnectorBody>;
+export const SaveConnectorBody = z.strictObject({ spec: ConnectorSpec });
+export type SaveConnectorBody = z.infer<typeof SaveConnectorBody>;
+/** PUT …/secrets: the values to replace in one environment (left out = kept). */
+export const ReplaceSecretsBody = z.strictObject({
+  environment: z.enum(ENVIRONMENTS),
+  clientId: z.string().trim().min(1).max(200).optional(),
+  clientSecret: z.string().trim().min(1).max(500).optional(),
+  publicKey: z.string().trim().min(1).max(10000).optional(),
+  caBundle: z.string().trim().min(1).max(60000).optional(),
+}).refine((b) => b.clientId || b.clientSecret || b.publicKey || b.caBundle, "Enter at least one value to replace.");
+export type ReplaceSecretsBody = z.infer<typeof ReplaceSecretsBody>;
+export const DisableConnectorBody = z.strictObject({ reason: z.string().trim().min(1, "Say why it is turned off.").max(500) });
+export type DisableConnectorBody = z.infer<typeof DisableConnectorBody>;
+export const TokenCheckBody = z.strictObject({ environment: z.enum(ENVIRONMENTS) });
+export type TokenCheckBody = z.infer<typeof TokenCheckBody>;
+export const TokenCheckDto = z.object({ ok: z.boolean(), expiresIn: z.number().int().nullable(), message: z.string() });
+export type TokenCheckDto = z.infer<typeof TokenCheckDto>;
+/** POST …/try: one operation of the connector's open or live version, to the dev environment, with a JSON body. */
+export const TryBody = z.strictObject({ operation: z.string().max(40), body: z.unknown() });
+export type TryBody = z.infer<typeof TryBody>;
+export const TryDto = z.object({
+  ok: z.boolean(), outcome: z.enum(["ok", "rejected", "not_sent", "timeout"]), status: z.number().int().nullable(), ms: z.number().int(),
+  externalId: z.string().nullable(), success: z.boolean().nullable(), reference: z.string().nullable(), response: z.unknown().nullable(), raw: z.string().nullable(),
+  message: z.string(),
+});
+export type TryDto = z.infer<typeof TryDto>;

@@ -343,6 +343,16 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `workflow.discard` | Workflow draft discarded | workflow | `{ version }` | — |
 | `workflow.create` | Workflow created | workflow | — | `{ name, levels }` |
 | `workflow.archive` | Workflow archived | workflow | `{ archived: false }` | `{ archived: true }` |
+| `integration.create` | Connector created | connector | — | `{ name, operations }` |
+| `integration.save` | Connector draft saved | connector | — | `{ version, from? }` (a new draft) or `{ version, operations }` |
+| `integration.submit` | Connector sent for approval | connector | — | `{ version }` |
+| `integration.publish` | Connector published | connector | — | `{ version, comment?, override? }` |
+| `integration.reject` | Connector sent back | connector | — | `{ version, comment }` |
+| `integration.discard` | Connector draft discarded | connector | `{ version }` | — |
+| `integration.secrets` | Connector credentials replaced | connector | — | `{ environment, replaced }` (the names of the values replaced, never the values) |
+| `integration.disable` | Connector turned off | connector | `{ disabled: false }` | `{ disabled: true, reason }` |
+| `integration.enable` | Connector turned on | connector | `{ disabled: true }` | `{ disabled: false }` |
+| `integration.try` | Connector operation tried | connector | — | `{ operation, outcome, status, externalId }` (no body, no response) |
 | `rules.save` | Approval rules draft saved | approval_rules | — | `{ version, from? }` (a new draft) or `{ version, rules }` |
 | `rules.submit` | Approval rules sent for approval | approval_rules | — | `{ version }` |
 | `rules.publish` | Approval rules published | approval_rules | — | `{ version, comment?, override? }` |

@@ -1,6 +1,6 @@
 export type Action = "view" | "create" | "edit" | "delete" | "manage";
 
-export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space" | "workflow"; actions: Action[] }[] = [
+export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project" | "space" | "workflow" | "integration"; actions: Action[] }[] = [
   { key: "user", actions: ["view", "create", "edit", "delete"] },
   { key: "role", actions: ["view", "create", "edit", "delete"] },
   { key: "permission", actions: ["view", "create"] },
@@ -10,6 +10,8 @@ export const MODULES: { key: "user" | "role" | "permission" | "audit" | "project
   { key: "space", actions: ["view", "manage"] },
   /** `workflow.view` reads the workflow library; `workflow.manage` creates and edits it and any space's approval rules (DEC-052; a space admin edits its own space's rules). */
   { key: "workflow", actions: ["view", "manage"] },
+  /** `integration.view` reads the Open API connectors; `integration.manage` creates and edits them and their credentials (DEC-053). */
+  { key: "integration", actions: ["view", "manage"] },
 ];
 
 export type PermissionName =
@@ -19,7 +21,8 @@ export type PermissionName =
   | "audit.view"
   | "project.view" | "project.create" | "project.edit" | "project.delete"
   | "space.view" | "space.manage"
-  | "workflow.view" | "workflow.manage";
+  | "workflow.view" | "workflow.manage"
+  | "integration.view" | "integration.manage";
 
 /** A permission name: `<module>.<action>`, an action of lowercase letters, digits or underscores (the module is checked against MODULES separately). */
 export const PERMISSION_KEY = /^[a-z]+\.[a-z][a-z0-9_]{0,31}$/;

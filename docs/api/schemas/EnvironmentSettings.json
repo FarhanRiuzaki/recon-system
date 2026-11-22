@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EnvironmentSettings",
+  "type": "object",
+  "properties": {
+    "baseUrl": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "host": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "partnerId": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "channelId": {
+      "type": "string",
+      "maxLength": 64
+    }
+  },
+  "required": [
+    "baseUrl",
+    "host",
+    "partnerId",
+    "channelId"
+  ],
+  "additionalProperties": false
+}

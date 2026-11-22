@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TryDto",
+  "type": "object",
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "rejected",
+        "not_sent",
+        "timeout"
+      ]
+    },
+    "status": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "ms": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "externalId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "success": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "reference": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "response": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "raw": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "ok",
+    "outcome",
+    "status",
+    "ms",
+    "externalId",
+    "success",
+    "reference",
+    "response",
+    "raw",
+    "message"
+  ],
+  "additionalProperties": false
+}

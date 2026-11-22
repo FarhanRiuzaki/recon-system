@@ -49,7 +49,8 @@
             "audit",
             "project",
             "space",
-            "workflow"
+            "workflow",
+            "integration"
           ]
         },
         {
@@ -64,7 +65,8 @@
               "audit",
               "project",
               "space",
-              "workflow"
+              "workflow",
+              "integration"
             ]
           }
         }
