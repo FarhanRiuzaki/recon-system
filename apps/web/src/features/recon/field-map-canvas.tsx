@@ -43,11 +43,11 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   const [moved, setMoved] = useState<Record<string, { x: number; y: number }>>({});
   const build = (): TableNodeType[] => [
     ...graph.sources.map((t): TableNodeType => ({
-      id: t.id, type: "table", position: moved[t.id] ?? home[t.id]!, deletable: false,
+      id: t.id, type: "table", position: moved[t.id] ?? home[t.id]!, deletable: false, width: COL,
       data: { title: t.title, caption: t.caption, side: "source", rows: t.rows.map((r): TableRow => ({ id: r.key, label: r.label, connectable: true, state: graph.edges.some((e) => e.row === r.key) ? "mapped" : null })) },
     })),
     {
-      id: "request", type: "table", position: moved.request ?? home.request!, deletable: false,
+      id: "request", type: "table", position: moved.request ?? home.request!, deletable: false, width: COL,
       data: {
         title, caption, side: "target", onRowSelect: (id) => onSelect(id),
         rows: graph.request.map((r): TableRow => ({
