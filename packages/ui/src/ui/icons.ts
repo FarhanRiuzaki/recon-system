@@ -80,6 +80,8 @@ export {
   Upload01Icon as UploadIcon,
   File02Icon as FileIcon,
   Delete02Icon as RemoveIcon,
+  Link01Icon as ForceMatchIcon, // Force match: items matched across a difference
+  MoneyRemove01Icon as WriteOffIcon, // Write off an amount
   PlusSignIcon as AddIcon, // An add intent (variant="add"): a row, a condition, an item
   LinkSquare02Icon as ExternalLinkIcon,
   Copy01Icon as CopyIcon,
