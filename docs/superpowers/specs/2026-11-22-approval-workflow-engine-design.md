@@ -1,7 +1,7 @@
 # Approval workflow engine — riset, benchmark, desain
 
-Status: **draft untuk keputusan owner** (22 Nov 2026, core-recon). Belum ada kode. Plan 5 Task 5–7 ditahan sampai ini
-diputuskan.
+Status: **disetujui arahnya** (22 Nov 2026, DEC-052). Q1, Q2, Q5, Q8 diputuskan pemilik (lihat §9); Q3, Q4, Q6, Q7
+masih terbuka dengan usulan default. Belum ada kode.
 
 Permintaan owner: approval tidak lagi di-hardcode. Admin bisa menyiapkan workflow per space (mis. Treasury). Workflow
 itu diikat ke aksi yang butuh approval (unmatch, write-off, recon baru, …), dengan beberapa tingkat (mis. 3 level)
@@ -210,7 +210,11 @@ sesudahnya.
 - **Percabangan dan paralel antar level** (BPMN). Paralel cukup lewat grup AND di dalam satu level.
 - **Hierarki atasan otomatis** (AME chain of authority). Aplikasi ini tidak punya data struktur organisasi.
 
-## 9. Keputusan yang saya perlukan dari owner
+## 9. Keputusan
+
+Diputuskan pemilik 22 Nov (DEC-052): **Q1 → (c) override** dengan alasan wajib, dicatat terpisah (menggantikan
+maker-checker DEC-051 saat fase A rilis); **Q2 → space admin + izin global `workflow.manage`**; **Q5 → request selesai**;
+**Q8 → fase C menyusul**. Pertanyaan aslinya:
 
 1. **Superadmin di rantai bertingkat.** DEC-051 sekarang: Superadmin memutuskan apa saja, termasuk miliknya sendiri.
    Untuk 3 level, pilihannya:

@@ -548,3 +548,28 @@ dan Approver; Admin dan Viewer beserta user demo hanya dari seed demo (tes dan E
 (`scripts/docker-dev.sh`). Superadmin stack dev dibuat dari `SEED_SUPERADMIN_*` di `docker-compose.dev.yml`. Di database
 dev, user selain superadmin, maker dan approver serta role Admin dan Viewer dihapus.
 
+
+## DEC-052 — Approval jadi workflow engine yang diatur admin; Superadmin lewat override
+
+22 November 2026 — pemilik (sesi core-recon), atas desain `docs/superpowers/specs/2026-11-22-approval-workflow-engine-design.md`
+(benchmark Oracle AME, SAP release strategy, Salesforce, ServiceNow, Power Automate, PeopleSoft write-off). Approval
+tidak lagi di-hardcode per modul: satu engine untuk semua aksi yang butuh approval (force match, unmatch, write-off,
+versi source/recon termasuk recon baru, sign-off, reopen hari, rerun). Workflow diatur per space dan per aksi: aturan
+berkondisi atas atribut aksi (yang pertama cocok dipakai), tiap aturan 1–N level berurutan, tiap level satu atau lebih
+grup approver (role space, role global, user) dengan any / all / N, grup dalam satu level digabung AND. Lantai SoD
+tidak bisa dimatikan: peminta tidak menyetujui permintaannya sendiri, satu orang satu level per request. Rantai
+di-snapshot saat request diajukan. Mengubah workflow sendiri butuh approval orang lain dengan rantai tetap di kode.
+
+Jawaban pemilik atas empat pertanyaan desain:
+- **Superadmin: hanya lewat override.** Superadmin tidak lagi otomatis lolos maker-checker. Ia tidak ikut rantai
+  biasa, tetapi bisa memaksa approve dengan alasan wajib, dicatat terpisah (keputusan `override`). Ini **menggantikan
+  bagian maker-checker dari DEC-051** saat engine fase A dirilis (sampai itu, perilaku DEC-051 berlaku). Akses
+  Superadmin ke semua space dan semua role space tetap.
+- **Yang mengedit workflow:** space admin di space-nya dan pemegang izin global baru `workflow.manage`. Perubahan tetap
+  disetujui orang lain.
+- **Reject di level mana pun:** request selesai dan kembali ke peminta dengan catatan. Peminta mengajukan ulang.
+- **Delegasi, SLA/eskalasi, notifikasi email:** fase C, menyusul. Fase A: engine, rantai bertingkat, editor dengan
+  "Who approves", timeline, inbox, migrasi request break. Fase B: versi source/recon, sign-off, reopen, rerun.
+
+Yang masih terbuka (desain §9): template global lintas space, perilaku saat tidak ada aturan cocok (usulan: rantai
+default), ambang nominal per mata uang tanpa konversi kurs, dan cakupan "360 derajat".
