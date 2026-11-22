@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -77,7 +77,9 @@ describe("words of the page", () => {
     expect(recheckText({ kind: "until", date: "2026-11-03" }, "2026-11-03")).toBe("Checked again on each run until 3 Nov");
     expect(recheckText({ kind: "until", date: "2026-11-03" }, "2026-11-04")).toBe("Checked again until 3 Nov; no longer checked");
     expect(recheckText({ kind: "always" }, "2026-11-04")).toBe("Checked again on each run until it matches or is settled");
-    expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again — settle it here");
+    expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again – settle it here");
+    // a request that waits holds it out of the runs; settling here is not what is next
+    expect(recheckText({ kind: "no" }, "2026-11-04", true)).toBe("Not checked again while a request waits");
   });
   it("where a request goes: the connector it calls, or that it is turned off as a warning; only a refused route blocks", () => {
     expect(routeText(recon(), "posting")).toBe("Sent through Bank Mega");
@@ -121,6 +123,12 @@ describe("what the summary compares", () => {
     const picked = new Map([["b1", item({ id: "b1" })]]);
     expect(findToggled(picked, false).size).toBe(0);
     expect(findToggled(picked, true)).toBe(picked);
+  });
+  it("a new proposed pair clears the ticks, so nothing picked against the old one stays hidden behind it", () => {
+    const picked = new Map([["b1", item({ id: "b1" })]]);
+    expect(picksAfter(picked, "p1", "p2").size).toBe(0);
+    expect(picksAfter(picked, "p1", null).size).toBe(0);
+    expect(picksAfter(picked, "p1", "p1")).toBe(picked);
   });
 });
 

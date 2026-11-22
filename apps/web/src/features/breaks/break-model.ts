@@ -80,10 +80,13 @@ export function sidesOf(item: BreakItemDto, counterparts: readonly BreakItemDto[
   return { mine: combined([item, ...others.filter((i) => i.side === item.side)])!, theirs: combined(others.filter((i) => i.side !== item.side)) };
 }
 
-/** Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day has gone. */
-export function recheckText(r: BreakDetailDto["recon"]["recheck"], today: string): string {
+/**
+ * Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day
+ * has gone. `pending`: a request waits for a decision, which is what holds it out of the runs.
+ */
+export function recheckText(r: BreakDetailDto["recon"]["recheck"], today: string, pending = false): string {
   if (r.kind === "always") return "Checked again on each run until it matches or is settled";
-  if (r.kind === "no") return "Not checked again — settle it here";
+  if (r.kind === "no") return pending ? "Not checked again while a request waits" : "Not checked again – settle it here";
   return r.date < today ? `Checked again until ${dateText(r.date)}; no longer checked` : `Checked again on each run until ${dateText(r.date)}`;
 }
 
@@ -145,6 +148,8 @@ export function counterpartOf(o: { picked: readonly BreakItemDto[]; request: Bre
 }
 /** The ticks once Find another counterpart opens or closes: closing it clears them, so nothing hidden is matched. */
 export const findToggled = <T>(picked: ReadonlyMap<string, T>, open: boolean): ReadonlyMap<string, T> => (open ? picked : new Map());
+/** The ticks once the proposed pair (its item id, null = none) changes: cleared, since Find another closes behind a new pair. */
+export const picksAfter = <T>(picked: ReadonlyMap<string, T>, before: string | null, now: string | null): ReadonlyMap<string, T> => (before === now ? picked : new Map());
 
 export type SettleKey = "posting" | "match" | "force" | "writeOff" | "close";
 export type Settle = { key: SettleKey; title: string; consequence: string; meta?: string; warning?: string; label: string; blocked: string | null; primary: boolean };

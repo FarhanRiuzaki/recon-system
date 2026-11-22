@@ -8,7 +8,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { appDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
-import { AlertsIcon, ErrorIcon, ForceMatchIcon, SpinnerIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
+import { AlertsIcon, ErrorIcon, ForceMatchIcon, RefreshIcon, SpinnerIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -31,7 +31,7 @@ import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { STATE_LABEL } from "./break-columns";
-import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, recheckText, type Settle, settleActions, sidesOf, takeText, workAccess } from "./break-model";
+import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
@@ -93,6 +93,10 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
     focusTo.current = null;
   }, [focusTick, q.data]);
   const b = q.data;
+  // a new proposed pair clears the ticks: Find another closes behind it, and nothing hidden is matched
+  const pairKey = b && b.state !== "resolved" && b.proposed?.available ? b.proposed.item.id : null;
+  const [pairSeen, setPairSeen] = useState(pairKey);
+  if (pairKey !== pairSeen) { setPairSeen(pairKey); setPicked((p) => picksAfter(p, pairSeen, pairKey)); }
   const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Unmatch" };
 
   if (isNotFound(q.error)) return <DetailNotFound title="Unmatch item" noun="item" list={list} />;
@@ -187,7 +191,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         </span>}
         description={<span className="grid gap-0.5">
           {b.item.ref ? <CopyValue value={b.item.ref} label="reference" /> : <span>No reference</span>}
-          <span>{[b.recon.name, dateText(b.item.businessDate), open ? recheckText(b.recon.recheck, today) : b.resolution ? RESOLUTION_LABEL[b.resolution] ?? null : null].filter(Boolean).join(" · ")}</span>
+          <span>{[b.recon.name, dateText(b.item.businessDate), open ? recheckText(b.recon.recheck, today, pending) : b.resolution ? RESOLUTION_LABEL[b.resolution] ?? null : null].filter(Boolean).join(" · ")}</span>
         </span>} />
 
       <PageZone title="Summary">
@@ -238,6 +242,16 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
               )}
             </div>
           </Panel>
+        </PageZone>
+      ) : open && !pending && rolesQ.error && !rolesQ.data ? (
+        // who may act comes with the space's roles: without them say so, never hide the zone
+        <PageZone title="What you can do">
+          <Notice tone="warn">
+            <span className="grid justify-items-start gap-2">
+              <span>Couldn&apos;t load your roles in this space, so the ways to settle this item can&apos;t be shown. {errorText(rolesQ.error)}</span>
+              <Button type="button" variant="secondary" size="sm" disabled={rolesQ.isFetching} aria-busy={rolesQ.isFetching || undefined} onClick={() => void rolesQ.refetch()}><Icon icon={rolesQ.isFetching ? SpinnerIcon : RefreshIcon} className={rolesQ.isFetching ? "motion-safe:animate-spin" : undefined} />Try again</Button>
+            </span>
+          </Notice>
         </PageZone>
       ) : open && !pending && rolesQ.isPending ? (
         // who may act comes with the space's roles: the zone's shape holds its place until they are in

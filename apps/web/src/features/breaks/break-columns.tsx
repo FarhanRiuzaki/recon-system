@@ -44,7 +44,7 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
     ) },
     { key: "reason", header: "Reason", mobile: "meta", className: "min-w-40", cell: (r) => (
       <span className="grid">
-        <span>{r.reason ?? "—"}</span>
+        <span>{r.reason ?? "–"}</span>
         {r.proposedRef && <span className="truncate text-caption text-fg-3" title={r.proposedRef}>Pair proposed: {r.proposedRef}</span>}
       </span>
     ) },
