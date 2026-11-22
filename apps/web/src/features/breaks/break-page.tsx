@@ -61,6 +61,8 @@ const spin = <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />;
 const SETTLE_ICON: Partial<Record<Settle["key"], IconData>> = { force: ForceMatchIcon, writeOff: WriteOffIcon };
 /** Where focus goes once a change has rendered: the next primary (else the page title), or Close item's button. */
 const NEXT = '[data-next="true"]', CLOSE_BUTTON = '[data-settle="close"]';
+/** After a request or a decision: the next primary, else the waiting request's heading, else the page title. */
+const LANDING = [NEXT, '[data-focus="request"]'];
 
 /**
  * One unmatch item (/spaces/[spaceId]/breaks/[itemId], audit B1–B12): Summary (this item beside its counterpart and
@@ -80,14 +82,14 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const [picked, setPicked] = useState<ReadonlyMap<string, BreakItemDto>>(new Map());
   const [finding, setFinding] = useState(false);
   const [closing, setClosing] = useState(false);
-  const focusTo = useRef<string | null>(null);
+  const focusTo = useRef<readonly string[] | null>(null);
   const [focusTick, setFocusTick] = useState(0);
-  const focusNext = (sel: string) => { focusTo.current = sel; setFocusTick((n) => n + 1); };
+  const focusNext = (sel: string | readonly string[]) => { focusTo.current = typeof sel === "string" ? [sel] : sel; setFocusTick((n) => n + 1); };
   const [today] = useState(() => appDate(Date.now())); // read once: a render stays pure
   // focus moves once the change has rendered (the new state's next step, or the title when the zone is gone)
   useEffect(() => {
     if (!focusTo.current) return;
-    focusBack(null, document, { skipOrigin: true, fallbacks: [focusTo.current] });
+    focusBack(null, document, { skipOrigin: true, fallbacks: focusTo.current });
     focusTo.current = null;
   }, [focusTick, q.data]);
   const b = q.data;
@@ -113,7 +115,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       const next = await api<BreakDetailDto>(`/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}${path}`, { method: "POST", body: JSON.stringify(body) });
       qc.setQueryData(d.key, next);
       toast(done);
-      focusNext(NEXT);
+      focusNext(LANDING);
       void qc.invalidateQueries({ queryKey: ENGINE_KEY });
     } catch (e) {
       toast.error(errorText(e));
@@ -129,6 +131,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       await api(`/api/spaces/${encodeURIComponent(spaceId)}/approval-requests/${encodeURIComponent(b!.request!.id)}/${how}`, { method: "POST", body: JSON.stringify(body) });
       toast(done);
       await Promise.all([qc.invalidateQueries({ queryKey: ENGINE_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
+      focusNext(LANDING);
     } catch (e) {
       toast.error(errorText(e));
       throw e;
@@ -215,14 +218,14 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 
       {r?.status === "pending" ? (
         <PageZone title="Waiting for a decision">
-          <Panel title={REQUEST_TITLE[r.status]} description={[r.workflowName ?? "Default chain", r.ruleName && !["Default", "Otherwise", "Every request"].includes(r.ruleName) ? `rule “${r.ruleName}”` : null].filter(Boolean).join(" · ")}
+          <Panel title={<span data-focus="request">{REQUEST_TITLE[r.status]}</span>} description={[r.workflowName ?? "Default chain", r.ruleName && !["Default", "Otherwise", "Every request"].includes(r.ruleName) ? `rule “${r.ruleName}”` : null].filter(Boolean).join(" · ")}
             actions={<CategoryChip label={APPROVAL_KIND_LABEL[r.kind]} slot={categoryChip("changeKind", r.kind)} />}>
             <div className="grid gap-4">
               {r.blocked && <p className="text-body-sm text-fg-2">{r.blocked}</p>}
               <RequestChain r={r} />
               {(r.canCancel || r.canOverride || !r.blocked) && (
                 <div className="flex flex-wrap items-start gap-2 border-t border-line pt-4">
-                  {!r.blocked && <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve level ${r.currentLevel + 1} of ${r.levels.length}`, description: r.currentLevel + 1 < r.levels.length ? "The request moves to the next level." : DONE_TEXT[r.kind], action: "Approve", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await decide("approve", note ? { note } : {}, "Approved."); setDialog(null); } })}>Approve</Button>}
+                  {!r.blocked && <Button type="button" data-next="true" disabled={!!busy} onClick={() => setDialog({ title: `Approve level ${r.currentLevel + 1} of ${r.levels.length}`, description: r.currentLevel + 1 < r.levels.length ? "The request moves to the next level." : DONE_TEXT[r.kind], action: "Approve", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await decide("approve", note ? { note } : {}, "Approved."); setDialog(null); } })}>Approve</Button>}
                   {!r.blocked && <Button type="button" variant="caution" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The request ends and the item goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await decide("reject", { note }, "Request rejected."); setDialog(null); } })}><Icon icon={ErrorIcon} />Reject</Button>}
                   {r.canOverride && (
                     <span className="grid gap-1">
@@ -277,7 +280,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         )}
         <BreakActivity spaceId={spaceId} id={id} />
       </PageZone>
-      {dialog && <NoteDialog {...dialog} onClose={() => setDialog(null)} />}
+      {dialog && <NoteDialog {...dialog} landing={LANDING} onClose={() => setDialog(null)} />}
     </div>
   );
 }
