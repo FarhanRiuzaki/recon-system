@@ -162,7 +162,11 @@ export function Mapper({ mapping, onChange, op, catalog, setup, disabled }: {
                 onClick={() => setPicked(picked === f.key ? null : f.key)}
                 className={cn("flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-body-sm transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary",
                   picked === f.key ? "bg-primary-soft text-primary" : used.has(f.key) ? "text-fg" : "text-fg-2")}>
-                <span className="min-w-0 truncate">{f.label}</span>
+                {/* "Source · file · Field": the field first, where it comes from under it */}
+                <span className="grid min-w-0">
+                  <span className="truncate">{f.label.split(" · ").at(-1)}</span>
+                  {f.label.includes(" · ") && <span className="truncate text-caption text-fg-3">{f.label.split(" · ").slice(0, -1).join(" · ")}</span>}
+                </span>
                 <span className="shrink-0 text-caption text-fg-3">{GROUP[f.group]}</span>
               </button>
             </li>
