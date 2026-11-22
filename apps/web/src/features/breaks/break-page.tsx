@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RequiredNote, Toolbar } from "@starterkit/ui/ds";
+import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RelativeTime, RequiredNote, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -11,6 +12,7 @@ import { AlertsIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
+import { APPROVAL_KIND_LABEL, type RequestKind } from "@starterkit/shared/approvals";
 import { BRAND } from "@starterkit/shared/brand";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
@@ -35,6 +37,20 @@ const RESOLUTION_LABEL: Record<string, string> = {
   MATCHED_MANUAL: "Matched by a person", FORCE_MATCHED: "Force matched", WRITTEN_OFF: "Written off", ADJUSTED: "Adjusted",
   AUTO_MATCHED_LATE_DATA: "Matched by a later run", DUPLICATE: "Duplicate", NO_ACTION: "No action needed",
 };
+type Dialogue = { title: string; description: string; action: string; optional?: boolean; placeholder: string; onSubmit: (note: string) => Promise<void> };
+const NoteDialog = dynamic(() => import("./note-dialog"), { ssr: false });
+/** What each request asks, in the dialog that sends it. */
+const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
+  force_match: { title: "Request a force match", description: "These items total differently. A reviewer or space admin who didn't ask approves the match.", action: "Send for approval", placeholder: "Why the difference is right" },
+  write_off: { title: "Request a write-off", description: "The break closes as written off once a reviewer or space admin who didn't ask approves it.", action: "Send for approval", placeholder: "Why it is written off" },
+  unmatch: { title: "Request an unmatch", description: "Once approved, the match is undone and its breaks go back in the queue.", action: "Send for approval", placeholder: "Why the match is wrong" },
+};
+/** What approving does. */
+const DONE_TEXT: Record<RequestKind, string> = {
+  force_match: "The items are matched now, by you, as force matched.",
+  write_off: "The break closes now as written off.",
+  unmatch: "The match is undone now; its breaks go back in the queue.",
+};
 const dateText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 const money = (i: Pick<BreakItemDto, "amountMinor" | "currency">) => `${amountText(i.amountMinor, i.currency)}${i.currency ? ` ${i.currency}` : ""}`;
 const itemLine = (i: BreakItemDto, sides: readonly [string, string]) => `${i.ref ?? "No reference"} · ${sides[i.side === "a" ? 0 : 1]} · ${money(i)} · ${dateText(i.businessDate)}`;
@@ -52,6 +68,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
   const skeleton = useDelayedFlag(!q.data && !q.error);
   const [busy, setBusy] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Dialogue | null>(null);
   const b = q.data;
   const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Breaks" };
 
@@ -63,7 +80,9 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const lead = isSuperadmin(user.roles) || roles.some((r) => r === "space_admin" || r === "reviewer");
   const worker = lead || roles.includes("operator");
   const mine = b.assignee?.id === user.id;
-  const canWork = open && (lead || mine);
+  const pending = b.state === "pending_approval";
+  const canWork = open && !pending && (lead || mine);
+  const asks = !b.request && (lead || mine);
 
   /** A change of the break: its answer replaces the page's copy; the queue is read again. */
   async function act(label: string, path: string, body: object, done: string) {
@@ -89,6 +108,11 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); }
   }
 
+  const ask = (kind: RequestKind, itemIds?: string[]) => setDialog({ ...ASK[kind], onSubmit: async (note) => {
+    await act("request", "/request", { kind, note, ...(itemIds ? { itemIds } : {}) }, "Sent for approval.");
+    setDialog(null);
+  } });
+
   return (
     <div className="grid gap-section">
       <PageHeader title={b.item.ref ?? "Break"} crumb={b.item.ref ?? "Break"}
@@ -99,9 +123,25 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
           </Button>
         ) : undefined} />
       {open && worker && !canWork && b.assignee && <Notice>{b.assignee.name ?? "Someone"} has this break. A reviewer or space admin can reassign it from Breaks.</Notice>}
-      {open && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
+      {open && !pending && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
 
-      <Panel icon={AlertsIcon} title="The break">
+      {b.request && (
+        <Panel title="Waiting for a decision" description={`${APPROVAL_KIND_LABEL[b.request.kind]} asked by ${b.request.requester?.name ?? "a removed user"}`}
+          toolbar={b.request.blocked ? undefined : <Toolbar end={<>
+            <Button type="button" variant="secondary" disabled={!!busy} onClick={() => setDialog({ title: "Reject the request", description: "The break goes back to where it stood. Your note tells whoever asked why.", action: "Reject request", placeholder: "What is missing", onSubmit: async (note) => { await act("reject", "/request/reject", { note }, "Request rejected."); setDialog(null); } })}>Reject</Button>
+            <Button type="button" disabled={!!busy} onClick={() => setDialog({ title: `Approve the ${APPROVAL_KIND_LABEL[b.request!.kind].toLowerCase()}`, description: DONE_TEXT[b.request!.kind], action: "Approve request", optional: true, placeholder: "What you checked", onSubmit: async (note) => { await act("approve", "/request/approve", note ? { note } : {}, "Request approved."); setDialog(null); } })}>Approve</Button>
+          </>}>{null}</Toolbar>}>
+          <ValueRows items={[
+            ["Why", b.request.note],
+            ["Asked", <RelativeTime key="at" at={Date.parse(b.request.requestedAt)} />],
+            ...(b.request.items.length ? [["Match with", <span key="i" className="grid">{b.request.items.map((i) => <span key={i.id}>{itemLine(i, b.recon.sides)}</span>)}</span>] as const] : []),
+          ]} />
+          {b.request.blocked && <p className="px-4 pb-3 text-body-sm text-fg-3">{b.request.blocked}</p>}
+        </Panel>
+      )}
+
+      <Panel icon={AlertsIcon} title="The break" toolbar={b.item.status === "matched" && asks ? <Toolbar end={
+        <Button type="button" variant="secondary" disabled={!!busy} onClick={() => ask("unmatch")}>Request unmatch</Button>}>{null}</Toolbar> : undefined}>
         <ValueRows items={[
           ["Recon", b.recon.name],
           ["Side", b.recon.sides[b.item.side === "a" ? 0 : 1]],
@@ -127,15 +167,16 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         </Panel>
       )}
 
-      {canWork && <Counterparts spaceId={spaceId} id={id} b={b} busy={busy} onMatch={(ids) => act("match", "/match", { itemIds: ids }, "Matched.")} />}
-      {canWork && <CloseForm busy={busy} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Break closed.")} />}
+      {canWork && <Counterparts spaceId={spaceId} id={id} b={b} busy={busy} onMatch={(ids) => act("match", "/match", { itemIds: ids }, "Matched.")} onForce={(ids) => ask("force_match", ids)} />}
+      {canWork && <CloseForm busy={busy} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Break closed.")} onWriteOff={() => ask("write_off")} />}
       <BreakActivity spaceId={spaceId} id={id} />
+      {dialog && <NoteDialog {...dialog} onClose={() => setDialog(null)} />}
     </div>
   );
 }
 
 /** The other side's free items, nearest amount first; tick the counterpart (or several, for a group) and match. */
-function Counterparts({ spaceId, id, b, busy, onMatch }: { spaceId: string; id: string; b: BreakDetailDto; busy: string | null; onMatch: (ids: string[]) => Promise<void> }) {
+function Counterparts({ spaceId, id, b, busy, onMatch, onForce }: { spaceId: string; id: string; b: BreakDetailDto; busy: string | null; onMatch: (ids: string[]) => Promise<void>; onForce: (ids: string[]) => void }) {
   const def = useMemo(() => breakCandidates(spaceId, id), [spaceId, id]);
   const t = useTableQuery<BreakItemDto, { q: string }>(def);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
@@ -153,6 +194,7 @@ function Counterparts({ spaceId, id, b, busy, onMatch }: { spaceId: string; id: 
     <Panel flush title="Find a counterpart" description={`${b.recon.sides[b.item.side === "a" ? 1 : 0]} items free to match, nearest amount first`}
       toolbar={<Toolbar end={<>
         <SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} />
+        <BlockedButton type="button" variant="secondary" reason={picked.size ? null : "Pick the counterpart first."} disabled={!!busy} onClick={() => onForce([...picked])}>Request force match</BlockedButton>
         <BlockedButton type="button" reason={picked.size ? null : "Pick the counterpart first."} disabled={!!busy} aria-busy={busy === "match" || undefined}
           onClick={() => void onMatch([...picked]).then(() => setPicked(new Set())).catch(() => {})}>
           {busy === "match" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Match {picked.size > 1 ? `${picked.size} items` : "item"}
@@ -172,7 +214,7 @@ function Counterparts({ spaceId, id, b, busy, onMatch }: { spaceId: string; id: 
 const CLOSE_LABEL: Record<(typeof CLOSE_RESOLUTIONS)[number], string> = { DUPLICATE: "Duplicate", NO_ACTION: "No action needed" };
 
 /** Close without a match: why (duplicate, no action) and a note, both required. */
-function CloseForm({ busy, onClose }: { busy: string | null; onClose: (resolution: string, note: string) => Promise<void> }) {
+function CloseForm({ busy, onClose, onWriteOff }: { busy: string | null; onClose: (resolution: string, note: string) => Promise<void>; onWriteOff: () => void }) {
   const [resolution, setResolution] = useState("");
   const [note, setNote] = useState("");
   const [tried, setTried] = useState(false);
@@ -194,10 +236,11 @@ function CloseForm({ busy, onClose }: { busy: string | null; onClose: (resolutio
         <Field id="close-note" label="Note" required error={tried && !note.trim() ? "Say why it closes without a match." : null}>
           <Textarea id="close-note" value={note} limit={RESOLUTION_NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} placeholder="What you checked" />
         </Field>
-        <span>
+        <span className="flex flex-wrap gap-2">
           <Button type="submit" variant="secondary" disabled={!!busy} aria-busy={busy === "close" || undefined}>
             {busy === "close" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Close break
           </Button>
+          <Button type="button" variant="ghost" disabled={!!busy} onClick={onWriteOff}>Request write-off</Button>
         </span>
       </form>
     </Panel>

@@ -29,7 +29,7 @@ export function ApprovalsPage({ spaceId, spaceName }: { spaceId: string; spaceNa
   const filtered = !!(t.state.q || t.state.kind || t.state.mine);
   return (
     <div className="grid gap-section">
-      <PageHeader title="Approvals" description="Source and recon versions sent for approval in this space." />
+      <PageHeader title="Approvals" description="Versions and break changes waiting for a checker in this space." />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the approvals; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
@@ -47,9 +47,9 @@ export function ApprovalsPage({ spaceId, spaceName }: { spaceId: string; spaceNa
           error={t.loadError ? { title: "Couldn't load approvals", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={filtered
             ? t.state.mine && !t.state.q && !t.state.kind
-              ? { icon: SuccessIcon, title: "Nothing waiting for your decision", description: "A request appears here when someone else sends a version and you are a config checker of this space." }
+              ? { icon: SuccessIcon, title: "Nothing waiting for your decision", description: "A request appears here when someone else sends a version (for a config checker) or asks to change a break (for a reviewer or space admin)." }
               : { icon: SuccessIcon, title: "No approvals match", description: "Change the filters, or clear them to see every request." }
-            : { icon: SuccessIcon, title: "Nothing waiting", description: "A request appears here when someone sends a source or recon version for approval." }} />
+            : { icon: SuccessIcon, title: "Nothing waiting", description: "A request appears here when someone sends a version for approval or asks for a force match, unmatch or write-off." }} />
       </Panel>}
       </FilterLayout>
       </FilterSurface>

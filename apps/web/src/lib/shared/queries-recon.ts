@@ -55,12 +55,12 @@ export const breakActivity = (spaceId: string, id: string): TableDef<TrailFilter
 export type ApprovalFilters = { q: string; kind: string; mine: string };
 const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["", "1"], "") } };
 /**
- * A space's approvals inbox, waiting longest first; `kind` picks one kind (both ticked, or none, = every kind), `q`
+ * A space's approvals inbox, waiting longest first; `kind` the ticked kinds (none = every kind), `q`
  * matches the source's or recon's code or name, `mine` = only what the viewer may decide. Deciding a version invalidates APPROVALS_KEY.
  */
 export const APPROVALS = (spaceId: string): TableDef<ApprovalFilters> => ({
   key: APPROVALS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/approvals`, spec: APPROVALS_SPEC,
-  params: ({ kind, mine, ...rest }) => { const k = kind.split(",").filter(Boolean); return { ...rest, ...(k.length === 1 ? { kind: k[0]! } : {}), ...(mine ? { mine } : {}) }; },
+  params: ({ kind, mine, ...rest }) => ({ ...rest, ...(kind ? { kind } : {}), ...(mine ? { mine } : {}) }),
 });
 
 const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;

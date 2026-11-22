@@ -7,9 +7,15 @@ export { APPROVAL_SORTS };
 
 /**
  * GET /api/spaces/{spaceId}/approvals: what waits for a checker in the space, waiting longest first. `q` = name or code;
- * `mine=1`: only what the caller may decide (a config checker of the space who had no hand in it; none for anyone else).
+ * `kind`: one or more kinds; `mine=1`: only what the caller may decide (a config checker of the space who had no hand in it; none for anyone else).
  */
-export const ApprovalListQuery = ListQuery.extend({ sort: sortParam(APPROVAL_SORTS), kind: z.enum(APPROVAL_KINDS).optional(), mine: z.literal("1").optional() });
+const KIND = APPROVAL_KINDS.join("|");
+export const ApprovalListQuery = ListQuery.extend({
+  sort: sortParam(APPROVAL_SORTS),
+  /** One kind or several, comma-separated (`force_match,write_off`). */
+  kind: z.string().regex(new RegExp(`^(${KIND})(,(${KIND}))*$`), "Pick kinds of the approvals inbox.").optional(),
+  mine: z.literal("1").optional(),
+});
 export type ApprovalListQuery = z.infer<typeof ApprovalListQuery>;
 
 /**

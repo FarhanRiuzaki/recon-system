@@ -34,13 +34,7 @@
     },
     "kind": {
       "type": "string",
-      "enum": [
-        "source_version",
-        "recon_version",
-        "force_match",
-        "unmatch",
-        "write_off"
-      ]
+      "pattern": "^(source_version|recon_version|force_match|unmatch|write_off)(,(source_version|recon_version|force_match|unmatch|write_off))*$"
     },
     "mine": {
       "type": "string",

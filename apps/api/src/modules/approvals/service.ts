@@ -19,6 +19,8 @@ import { users } from "../users";
 export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
   const spaceId = ctx.space!.id;
   return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
+    const kinds = q.kind ? q.kind.split(",") : [];
+    const reqKinds = kinds.filter(isRequestKind);
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const checker = ctx.space!.roles.includes("config_checker");
     const superadmin = isSuperadmin(ctx.user.roles);
@@ -48,9 +50,13 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
       makerId: sql<string | null>`${approvalRequests.requestedBy}`.as("maker_id"), contributorIds: sql<string[]>`'{}'::uuid[]`.as("contributor_ids"),
       submittedBy: sql<string | null>`${approvalRequests.requestedBy}`.as("submitted_by"), submittedAt: sql<Date | null>`${approvalRequests.requestedAt}`.as("submitted_at"),
     }).from(approvalRequests).innerJoin(reconConfigs, and(eq(reconConfigs.spaceId, approvalRequests.spaceId), eq(reconConfigs.id, approvalRequests.configId)))
-      .where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"), q.kind && isRequestKind(q.kind) ? eq(approvalRequests.kind, q.kind) : undefined, reqMine,
+      .where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"), reqKinds.length ? inArray(approvalRequests.kind, reqKinds) : undefined, reqMine,
         like ? or(ilike(reconConfigs.name, like), ilike(approvalRequests.label, like)) : undefined));
-    const u = (q.kind === "source_version" ? src : q.kind === "recon_version" ? rec : q.kind ? req : unionAll(src, rec, req)).as("u");
+    const arms = [!kinds.length || kinds.includes("source_version") ? src : null, !kinds.length || kinds.includes("recon_version") ? rec : null, !kinds.length || reqKinds.length ? req : null]
+      // one row shape for all three (the union needs it; drizzle types each arm by its own table)
+      .filter((a) => !!a) as unknown as (typeof src)[];
+    const [first, second, ...rest] = arms;
+    const u = (second ? unionAll(first!, second, ...rest) : first!).as("u");
     const page = await pageQuery({
       rows: tx.select().from(u).$dynamic(),
       count: tx.select(one).from(u).$dynamic(),

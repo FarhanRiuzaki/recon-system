@@ -76,6 +76,10 @@ describe("break requests: asked by whoever works the break, decided by another l
     const inbox = await json<{ items: ApprovalRowDto[] }>(call("GET", `/v1/spaces/${A}/approvals?mine=1`, { token: t.rev }));
     expect(inbox.items).toMatchObject([{ kind: "force_match", target: { id: I.a1, code: "P1" }, version: null, blocked: null }]);
     expect((await json<{ items: ApprovalRowDto[] }>(call("GET", `/v1/spaces/${A}/approvals?mine=1`, { token: t.op }))).items).toEqual([]);
+    // several kinds at once; none of them = nothing
+    const kinds = async (k: string) => (await json<{ items: ApprovalRowDto[] }>(call("GET", `/v1/spaces/${A}/approvals?kind=${k}`, { token: t.rev }))).items.length;
+    expect([await kinds("recon_version,force_match"), await kinds("recon_version,write_off")]).toEqual([1, 0]);
+    expect((await call("GET", `/v1/spaces/${A}/approvals?kind=force_match,nope`, { token: t.rev })).status).toBe(400);
     const done = await json<BreakDetailDto>(decide(I.a1, "approve", { note: "Checked the fee schedule" }));
     expect(done).toMatchObject({ state: "resolved", resolution: "FORCE_MATCHED", request: null, matchedWith: [{ ref: "P2" }] });
     expect(await state(I.b2)).toEqual({ s: "matched", st: "resolved", r: "FORCE_MATCHED" });
