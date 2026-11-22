@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UsedByRowDto",
+  "type": "object",
+  "properties": {
+    "spaceId": {
+      "type": "string"
+    },
+    "spaceName": {
+      "type": "string"
+    },
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "force_match",
+        "unmatch",
+        "write_off"
+      ]
+    },
+    "ruleName": {
+      "type": "string"
+    },
+    "rulesVersion": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "rulesStatus": {
+      "type": "string",
+      "enum": [
+        "published",
+        "draft",
+        "in_review"
+      ]
+    },
+    "short": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "spaceId",
+    "spaceName",
+    "trigger",
+    "ruleName",
+    "rulesVersion",
+    "rulesStatus",
+    "short"
+  ],
+  "additionalProperties": false
+}

@@ -1,5 +1,6 @@
-// The runtime of the approval workflow engine (DEC-052): a request takes the chain of the first rule of its space's
-// published workflow whose conditions hold (else the default chain), snapshotted; its levels pass in order, a level
+// The runtime of the approval workflow engine (DEC-052, revised): a request takes the live version of the library
+// workflow its space's published approval rules pick for its trigger (the first rule whose conditions hold, else
+// `otherwise`, else the default chain), snapshotted with its names; its levels pass in order, a level
 // when every group in it has its approvals from people eligible now (the one who asked and anyone who decided this
 // request already never count: one decision per person per request). One reject ends it; the one who asked may cancel
 // while it waits; a Superadmin approves what is left only by override, with a reason, and never their own request.
@@ -9,7 +10,7 @@ import type { RequestViewDto } from "@starterkit/shared/contracts/workflows";
 import type { ApproveBody, OverrideBody, RejectBody } from "@starterkit/shared/contracts/workflows";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { ROLE_LABEL } from "@starterkit/shared/spaces";
-import { type Attributes, type Group, groupNeeds, type Level, pickRule, WORKFLOW_ACTION_LABEL, type WorkflowAction } from "@starterkit/shared/workflows";
+import { type Attributes, type BindingSpecShape, type Chain, DEFAULT_CHAIN, type Group, groupNeeds, type Level, pickBinding, TRIGGER_LABEL, type Trigger } from "@starterkit/shared/workflows";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
@@ -19,7 +20,7 @@ import { applyBreakChange, revertBreakRequest } from "../engine";
 import { roles, userRoles } from "../rbac";
 import { spaceMembers, withSpace } from "../spaces";
 import { users } from "../users";
-import { approvalDecisions, approvalRequests, approvalWorkflows } from "./schema";
+import { approvalBindings, approvalDecisions, approvalRequests, workflowVersions } from "./schema";
 
 type Person = { id: string; name: string | null };
 type RequestRow = typeof approvalRequests.$inferSelect;
@@ -27,7 +28,10 @@ type DecisionRow = typeof approvalDecisions.$inferSelect;
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
 
-/** The active people a group names now (its space roles in this space, its global roles, its users), minus `exclude`. */
+/**
+ * The active people a group names now (its space roles in this space, its global roles, its users), minus `exclude`;
+ * only members of the space count (any role): nobody approves in a space they can't open (DEC-052 revision §4.2).
+ */
 export async function approversOf(tx: InTx, spaceId: string, g: Group, exclude: ReadonlySet<string>): Promise<Person[]> {
   const ids = new Set<string>();
   if (g.spaceRoles.length) for (const r of await tx.select({ id: spaceMembers.userId }).from(spaceMembers).where(and(eq(spaceMembers.spaceId, spaceId), inArray(spaceMembers.role, g.spaceRoles)))) ids.add(r.id);
@@ -35,7 +39,9 @@ export async function approversOf(tx: InTx, spaceId: string, g: Group, exclude: 
   for (const u of g.users) ids.add(u);
   for (const x of exclude) ids.delete(x);
   if (!ids.size) return [];
-  return tx.select({ id: users.id, name: users.name }).from(users).where(and(inArray(users.id, [...ids]), eq(users.isActive, true))).orderBy(sql`lower(${users.name})`);
+  const members = tx.select({ id: spaceMembers.userId }).from(spaceMembers).where(eq(spaceMembers.spaceId, spaceId));
+  return tx.select({ id: users.id, name: users.name }).from(users)
+    .where(and(inArray(users.id, [...ids]), inArray(users.id, members), eq(users.isActive, true))).orderBy(sql`lower(${users.name})`);
 }
 
 /** A group in words: "Reviewer, Space admin, Budi". */
@@ -49,18 +55,26 @@ const needText = (g: Group) => (g.need.kind === "any" ? "1 of" : g.need.kind ===
  * workflow, refused when a level could never pass (nobody besides the one who asks).
  */
 export async function openRequest(tx: InTx, ctx: Ctx, r: {
-  kind: WorkflowAction; configId: string; itemId: string; itemIds: string[]; label: string; note: string; prevState: string | null; attributes: Attributes;
+  kind: Trigger; configId: string; itemId: string; itemIds: string[]; label: string; note: string; prevState: string | null; attributes: Attributes;
 }): Promise<string> {
   const spaceId = ctx.space!.id;
-  const [wf] = await tx.select({ id: approvalWorkflows.id, spec: approvalWorkflows.spec }).from(approvalWorkflows)
-    .where(and(eq(approvalWorkflows.spaceId, spaceId), eq(approvalWorkflows.action, r.kind), eq(approvalWorkflows.status, "published")));
-  const { rule, index } = pickRule(wf ? (wf.spec as { rules: never[] }) : null, r.attributes);
+  const [rules] = await tx.select({ id: approvalBindings.id, spec: approvalBindings.spec }).from(approvalBindings)
+    .where(and(eq(approvalBindings.spaceId, spaceId), eq(approvalBindings.trigger, r.kind), eq(approvalBindings.status, "published")));
+  const pick = pickBinding(rules ? (rules.spec as BindingSpecShape) : null, r.attributes);
+  let chain: Chain = DEFAULT_CHAIN, versionId: string | null = null;
+  if (pick.workflowId) {
+    const [v] = await tx.select({ id: workflowVersions.id, spec: workflowVersions.spec }).from(workflowVersions)
+      .where(and(eq(workflowVersions.workflowId, pick.workflowId), eq(workflowVersions.status, "published")));
+    if (!v) throw new ApiError("invalid_state", `The ${TRIGGER_LABEL[r.kind]} approval rules point to a workflow with no live version. Ask a space admin to fix the rules.`);
+    chain = v.spec as Chain;
+    versionId = v.id;
+  }
   const me = new Set([ctx.user.id]);
-  for (const [i, level] of rule.levels.entries()) {
+  for (const [i, level] of chain.levels.entries()) {
     for (const g of level.groups) {
       const n = (await approversOf(tx, spaceId, g, me)).length;
       if (groupNeeds(g.need, n, 0).short) {
-        throw new ApiError("invalid_state", `Level ${i + 1}${level.name ? ` (${level.name})` : ""} of the ${WORKFLOW_ACTION_LABEL[r.kind]} workflow has nobody else who can approve it. Ask a space admin to fix the workflow.`);
+        throw new ApiError("invalid_state", `Level ${i + 1}${level.name ? ` (${level.name})` : ""} of ${versionId ? `the “${chain.name}” workflow` : "the default chain"} has nobody else who can approve it. ${versionId ? "Ask a workflow manager to fix it." : "Ask a space admin to add a reviewer."}`);
       }
     }
   }
@@ -68,7 +82,8 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
   try {
     await tx.insert(approvalRequests).values({
       id, spaceId, configId: r.configId, kind: r.kind, itemId: r.itemId, itemIds: r.itemIds, label: r.label, note: r.note, prevState: r.prevState,
-      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: index === null ? null : wf!.id, ruleName: rule.name, chain: rule.levels, currentLevel: 0,
+      requestedBy: ctx.user.id, attributes: r.attributes, workflowVersionId: versionId, bindingVersionId: rules?.id ?? null, workflowName: versionId ? chain.name : null,
+      ruleName: pick.ruleName, chain: chain.levels, currentLevel: 0,
     });
   } catch (e) {
     if (isUniqueViolation(e)) throw new ApiError("invalid_state", "A change of this break already waits for a decision.");
@@ -139,7 +154,7 @@ export async function requestView(tx: InTx, ctx: Ctx, rq: RequestRow): Promise<R
   }));
   const pending = rq.status === "pending";
   return {
-    id: rq.id, kind: rq.kind as WorkflowAction, status: rq.status as RequestViewDto["status"], note: rq.note, ruleName: rq.ruleName,
+    id: rq.id, kind: rq.kind as Trigger, status: rq.status as RequestViewDto["status"], note: rq.note, ruleName: rq.ruleName, workflowName: rq.workflowName,
     requester: person(rq.requestedBy), requestedAt: rq.requestedAt.toISOString(), currentLevel: rq.currentLevel, levels,
     rejection: rejected ? { user: person(rejected.userId)!, at: rejected.at.toISOString(), note: rejected.note, level: rejected.level } : null,
     override: override ? { user: person(override.userId)!, at: override.at.toISOString(), reason: override.note ?? "" } : null,

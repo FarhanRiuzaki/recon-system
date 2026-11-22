@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UsedByPage",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "spaceId": {
+            "type": "string"
+          },
+          "spaceName": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "force_match",
+              "unmatch",
+              "write_off"
+            ]
+          },
+          "ruleName": {
+            "type": "string"
+          },
+          "rulesVersion": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "rulesStatus": {
+            "type": "string",
+            "enum": [
+              "published",
+              "draft",
+              "in_review"
+            ]
+          },
+          "short": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "spaceId",
+          "spaceName",
+          "trigger",
+          "ruleName",
+          "rulesVersion",
+          "rulesStatus",
+          "short"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "total": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "page": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "pageSize": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "totalCapped": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "items",
+    "total",
+    "page",
+    "pageSize"
+  ],
+  "additionalProperties": false
+}

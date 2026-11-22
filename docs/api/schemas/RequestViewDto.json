@@ -32,6 +32,12 @@
         "null"
       ]
     },
+    "workflowName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "requester": {
       "anyOf": [
         {
@@ -316,6 +322,7 @@
     "status",
     "note",
     "ruleName",
+    "workflowName",
     "requester",
     "requestedAt",
     "currentLevel",

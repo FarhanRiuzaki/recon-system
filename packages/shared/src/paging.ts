@@ -31,6 +31,8 @@ export const RECON_SORTS = ["name", "createdAt"] as const;
 export const RECON_VERSION_SORTS = ["version", "updatedAt"] as const;
 /** GET /api/spaces/{spaceId}/breaks (oldest business date first by default). */
 export const BREAK_SORTS = ["businessDate"] as const;
+/** GET /api/workflows (the workflow library, by name by default). */
+export const WORKFLOW_SORTS = ["name", "createdAt"] as const;
 /** GET /api/spaces/{spaceId}/approvals (waiting longest first by default). */
 export const APPROVAL_SORTS = ["submittedAt", "name"] as const;
 /** A recon's closed days to sign off (Plan 5 Task 4): newest first by default (`-date`). */

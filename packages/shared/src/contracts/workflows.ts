@@ -4,6 +4,8 @@ import {
   ATTRS, CONDITIONS_MAX, GROUPS_MAX, LEVELS_MAX, NUMBER_OPS, NUMERIC_ATTRS, OVERRIDE_REASON_MAX, PEOPLE_MAX, RULE_NAME_MAX, RULES_MAX, SET_OPS, TRIGGERS,
 } from "../workflows";
 import { REVIEW_COMMENT_MAX } from "../sources";
+import { WORKFLOW_SORTS } from "../paging";
+import { ListQuery, sortParam } from "./common";
 
 // Approval workflows (DEC-052, revised 22 Nov): the global library of workflows (named chains of levels), a space's
 // approval rules per trigger that pick one, the "Who approves" preview, and the requests they route.
@@ -76,6 +78,12 @@ export const UsedByRowDto = z.object({
   rulesStatus: z.enum(["published", "draft", "in_review"]), short: z.array(z.string()),
 });
 export type UsedByRowDto = z.infer<typeof UsedByRowDto>;
+/** GET /workflows: `q` = name. */
+export const WorkflowListQuery = ListQuery.extend({ sort: sortParam(WORKFLOW_SORTS) });
+export type WorkflowListQuery = z.infer<typeof WorkflowListQuery>;
+/** GET /workflows/{id}/used-by: paged, by space. */
+export const UsedByQuery = ListQuery.pick({ page: true, pageSize: true });
+export type UsedByQuery = z.infer<typeof UsedByQuery>;
 /** POST /workflows: a new workflow with its first draft. */
 export const CreateWorkflowBody = z.strictObject({ spec: ChainSpec });
 export type CreateWorkflowBody = z.infer<typeof CreateWorkflowBody>;

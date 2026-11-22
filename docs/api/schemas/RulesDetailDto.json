@@ -1,0 +1,564 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RulesDetailDto",
+  "type": "object",
+  "properties": {
+    "trigger": {
+      "type": "string",
+      "enum": [
+        "force_match",
+        "unmatch",
+        "write_off"
+      ]
+    },
+    "published": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "published",
+                "retired"
+              ]
+            },
+            "maker": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "submittedBy": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "submittedAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "decidedBy": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "decidedAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reviewComment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "overrideReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "spec": {
+              "type": "object",
+              "properties": {
+                "rules": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "when": {
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "attr": {
+                              "type": "string",
+                              "enum": [
+                                "amount",
+                                "currency",
+                                "recon",
+                                "ageDays"
+                              ]
+                            },
+                            "op": {
+                              "type": "string",
+                              "enum": [
+                                "gte",
+                                "gt",
+                                "lte",
+                                "lt",
+                                "eq",
+                                "in",
+                                "not_in"
+                              ]
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                {
+                                  "minItems": 1,
+                                  "maxItems": 20,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "attr",
+                            "op",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "workflowId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "when",
+                      "workflowId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "otherwise": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "rules",
+                "otherwise"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "status",
+            "maker",
+            "submittedBy",
+            "submittedAt",
+            "decidedBy",
+            "decidedAt",
+            "reviewComment",
+            "overrideReason",
+            "updatedAt",
+            "spec"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "open": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "published",
+                "retired"
+              ]
+            },
+            "maker": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "submittedBy": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "submittedAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "decidedBy": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "decidedAt": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "reviewComment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "overrideReason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "spec": {
+              "type": "object",
+              "properties": {
+                "rules": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "when": {
+                        "maxItems": 8,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "attr": {
+                              "type": "string",
+                              "enum": [
+                                "amount",
+                                "currency",
+                                "recon",
+                                "ageDays"
+                              ]
+                            },
+                            "op": {
+                              "type": "string",
+                              "enum": [
+                                "gte",
+                                "gt",
+                                "lte",
+                                "lt",
+                                "eq",
+                                "in",
+                                "not_in"
+                              ]
+                            },
+                            "value": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 64
+                                },
+                                {
+                                  "minItems": 1,
+                                  "maxItems": 20,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 64
+                                  }
+                                }
+                              ]
+                            }
+                          },
+                          "required": [
+                            "attr",
+                            "op",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "workflowId": {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "when",
+                      "workflowId"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "otherwise": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "rules",
+                "otherwise"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "id",
+            "version",
+            "status",
+            "maker",
+            "submittedBy",
+            "submittedAt",
+            "decidedBy",
+            "decidedAt",
+            "reviewComment",
+            "overrideReason",
+            "updatedAt",
+            "spec"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "library": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "levels": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "levels"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "canEdit": {
+      "type": "boolean"
+    },
+    "reviewBlocked": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "overrideOnly": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "trigger",
+    "published",
+    "open",
+    "library",
+    "canEdit",
+    "reviewBlocked",
+    "overrideOnly"
+  ],
+  "additionalProperties": false
+}

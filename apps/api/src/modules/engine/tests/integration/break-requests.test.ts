@@ -13,7 +13,7 @@ import { activity } from "../../../audit";
 import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { approvalRequests } from "../../../approvals";
+import { approvalRequests, workflows, workflowVersions } from "../../../approvals";
 import { matchGroups, reconItems } from "../../schema";
 import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
@@ -66,12 +66,24 @@ const detail = (id: string, token = t.op) => json<BreakDetailDto>(call("GET", pa
 const decide = async (id: string, how: "approve" | "reject" | "override" | "cancel", b: unknown, token = t.rev) =>
   call("POST", `/v1/spaces/${A}/approval-requests/${(await detail(id, token)).request!.id}/${how}`, { token, body: b });
 const state = async (id: string) => (await db.select({ s: reconItems.status, st: reconItems.breakState, r: reconItems.resolution }).from(reconItems).where(eq(reconItems.id, id)))[0]!;
-/** Publish `spec` as the space's workflow for `action` (made by the admin, published by the Superadmin). */
-async function publish(action: string, rules: unknown[]) {
-  expect((await call("POST", `/v1/spaces/${A}/workflows/${action}/draft`, { token: t.adm })).status).toBe(200);
-  expect((await call("PATCH", `/v1/spaces/${A}/workflows/${action}/draft`, { token: t.adm, body: { spec: { rules } } })).status).toBe(200);
-  expect((await call("POST", `/v1/spaces/${A}/workflows/${action}/draft/submit`, { token: t.adm })).status).toBe(200);
-  expect((await call("POST", `/v1/spaces/${A}/workflows/${action}/review/approve`, { token: t.sa, body: {} })).status).toBe(200);
+/**
+ * Each rule's levels become a live library workflow named after the rule; the rules (picking them) are published for
+ * `action` as the space's approval rules (made by the admin, published by the Superadmin). Returns the workflow ids.
+ */
+async function publish(action: string, rules: { name: string; when: unknown[]; levels: unknown[] }[]) {
+  const ids: string[] = [];
+  for (const r of rules) {
+    const id = Bun.randomUUIDv7();
+    await db.insert(workflows).values({ id, name: r.name });
+    await db.insert(workflowVersions).values({ id: Bun.randomUUIDv7(), workflowId: id, version: 1, status: "published", spec: { name: r.name, levels: r.levels } });
+    ids.push(id);
+  }
+  const spec = { rules: rules.map((r, i) => ({ name: r.name, when: r.when, workflowId: ids[i] })), otherwise: null };
+  expect((await call("POST", `/v1/spaces/${A}/approval-rules/${action}/draft`, { token: t.adm })).status).toBe(200);
+  expect((await call("PATCH", `/v1/spaces/${A}/approval-rules/${action}/draft`, { token: t.adm, body: { spec } })).status).toBe(200);
+  expect((await call("POST", `/v1/spaces/${A}/approval-rules/${action}/draft/submit`, { token: t.adm })).status).toBe(200);
+  expect((await call("POST", `/v1/spaces/${A}/approval-rules/${action}/review/approve`, { token: t.sa, body: {} })).status).toBe(200);
+  return ids;
 }
 const group = (o: object) => ({ spaceRoles: [], globalRoles: [], users: [], need: { kind: "any" }, ...o });
 
@@ -150,7 +162,7 @@ describe("a published workflow: rules by amount, levels in order, groups AND'd, 
     ]);
     await req(I.a1, { kind: "write_off", note: "Stale" }); // 100.00
     let d = await detail(I.a1, t.adm);
-    expect(d.request).toMatchObject({ ruleName: "Large", currentLevel: 0, levels: [{ name: "Review", state: "waiting" }, { name: "Head", state: "next" }] });
+    expect(d.request).toMatchObject({ ruleName: "Large", workflowName: "Large", currentLevel: 0, levels: [{ name: "Review", state: "waiting" }, { name: "Head", state: "next" }] });
     expect(d.request!.blocked).toBe("Level 1 (Review) waits for 1 of Reviewer."); // the admin is level 2
     expect(await json(decide(I.a1, "approve", {}))).toEqual({ status: "pending" });
     expect((await state(I.a1)).st).toBe("pending_approval"); // nothing happens until the last level
@@ -160,12 +172,28 @@ describe("a published workflow: rules by amount, levels in order, groups AND'd, 
     expect(await state(I.a1)).toMatchObject({ s: "closed", r: "WRITTEN_OFF" });
   });
 
+  it("a later publish of the workflow never moves an open request", async () => {
+    const [w] = await publish("write_off", [{ name: "Head", when: [], levels: [{ name: "Head", groups: [group({ spaceRoles: ["space_admin"] })] }] }]);
+    await req(I.a1, { kind: "write_off", note: "Stale" });
+    await db.update(workflowVersions).set({ status: "retired" }).where(eq(workflowVersions.workflowId, w!));
+    await db.insert(workflowVersions).values({ id: Bun.randomUUIDv7(), workflowId: w!, version: 2, status: "published", spec: { name: "Head", levels: [
+      { name: "Review", groups: [group({ spaceRoles: ["reviewer"] })] }, { name: "Head", groups: [group({ spaceRoles: ["space_admin"] })] },
+    ] } });
+    expect((await detail(I.a1, t.adm)).request!.levels.map((l) => l.name)).toEqual(["Head"]);
+  });
+
+  it("a person the workflow names who isn't a member of the space doesn't count", async () => {
+    await publish("write_off", [{ name: "Outsider", when: [], levels: [{ name: "Named", groups: [group({ users: [await idOf("twofa")] })] }] }]);
+    const r = await req(I.a1, { kind: "write_off", note: "x" });
+    expect(await message(r)).toBe("Level 1 (Named) of the “Outsider” workflow has nobody else who can approve it. Ask a workflow manager to fix it.");
+  });
+
   it("one person decides one level; a level nobody else could pass is refused when asked", async () => {
     // all of the reviewers, but the only reviewer asks: refused with the level named
     await publish("force_match", [{ name: "Only", when: [], levels: [{ name: "Reviewers", groups: [group({ spaceRoles: ["reviewer"], need: { kind: "all" } })] }] }]);
     await call("POST", `/v1/spaces/${A}/breaks/assign`, { token: t.rev, body: { ids: [I.b2], assigneeId: await idOf("google") } });
     const r = await req(I.b2, { kind: "force_match", itemIds: [I.a1], note: "x" }, t.rev);
-    expect(await message(r)).toBe("Level 1 (Reviewers) of the Force match workflow has nobody else who can approve it. Ask a space admin to fix the workflow.");
+    expect(await message(r)).toBe("Level 1 (Reviewers) of the “Only” workflow has nobody else who can approve it. Ask a workflow manager to fix it.");
     // the reviewer is in both levels: after level 1 they can't decide level 2, which then needs the admin
     await publish("write_off", [{ name: "Two", when: [], levels: [{ name: "A", groups: [group({ spaceRoles: ["reviewer", "space_admin"] })] }, { name: "B", groups: [group({ spaceRoles: ["reviewer", "space_admin"] })] }] }]);
     await req(I.a1, { kind: "write_off", note: "x" });

@@ -1,9 +1,9 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "WorkflowRowDto",
+  "title": "RulesRowDto",
   "type": "object",
   "properties": {
-    "action": {
+    "trigger": {
       "type": "string",
       "enum": [
         "force_match",
@@ -26,10 +26,11 @@
               "minimum": -9007199254740991,
               "maximum": 9007199254740991
             },
-            "levels": {
-              "type": "integer",
-              "minimum": -9007199254740991,
-              "maximum": 9007199254740991
+            "otherwise": {
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "decidedAt": {
               "type": [
@@ -41,7 +42,7 @@
           "required": [
             "version",
             "rules",
-            "levels",
+            "otherwise",
             "decidedAt"
           ],
           "additionalProperties": false
@@ -86,7 +87,7 @@
     }
   },
   "required": [
-    "action",
+    "trigger",
     "published",
     "open"
   ],
