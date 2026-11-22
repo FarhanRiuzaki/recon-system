@@ -9,7 +9,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { APPROVALS, type ApprovalFilters } from "@/lib/shared/queries";
+import { APPROVALS, type ApprovalFilters } from "@/lib/shared/queries-recon";
 import { approvalColumns } from "./approval-columns";
 
 const FILTER_DEFAULTS: ApprovalFilters = { q: "", kind: "", mine: "" };

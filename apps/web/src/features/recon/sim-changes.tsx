@@ -12,7 +12,7 @@ import type { SimChange } from "@starterkit/shared/recon";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { draftSimulations, reconSimChanges } from "@/lib/shared/queries";
+import { draftSimulations, reconSimChanges } from "@/lib/shared/queries-recon";
 import { amountText } from "./run-model";
 import { reconRunHref } from "./use-recons";
 

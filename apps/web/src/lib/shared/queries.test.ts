@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import * as q from "./queries";
+import * as qr from "./queries-recon";
 
 /**
  * Query keys start with the module that owns the data, so one invalidation by module refreshes all of it. The modules
@@ -11,8 +12,8 @@ const MODULES = readdirSync(path.resolve(import.meta.dirname, "../../../../api/s
   .filter((d) => d.isDirectory()).map((d) => d.name);
 
 describe("query keys: one scheme", () => {
-  it("every key and table key exported by queries.ts starts with a module name", () => {
-    const firsts = Object.entries(q).flatMap(([name, v]): [string, unknown][] => {
+  it("every key and table key exported by queries.ts and queries-recon.ts starts with a module name", () => {
+    const firsts = [...Object.entries(q), ...Object.entries(qr)].flatMap(([name, v]): [string, unknown][] => {
       if (Array.isArray(v)) return name.endsWith("_KEY") ? [[name, v[0]]] : [];
       if (v && typeof v === "object" && "key" in v) return [[name, Array.isArray(v.key) ? v.key[0] : v.key]];
       if (typeof v === "function" && v.length === 1) {
@@ -45,7 +46,7 @@ it("relative timestamp filters stay in stable API paths and keys for refresh and
 
 describe("reconRunItems: the request a results tab sends", () => {
   const passes = [{ accept: "auto", cardinality: "1:1" }, { accept: "suggest", cardinality: "N:1" }];
-  const params = (f: Partial<q.RunItemFilters>) => q.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", reason: "", ...f });
+  const params = (f: Partial<qr.RunItemFilters>) => qr.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", reason: "", ...f });
   it("no tab = pass 1's pairs: its own outcome, one row per group from side A", () => {
     expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
   });

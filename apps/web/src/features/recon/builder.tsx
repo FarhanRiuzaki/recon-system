@@ -20,7 +20,8 @@ import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
+import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
+import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
   addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,

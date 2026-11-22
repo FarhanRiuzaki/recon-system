@@ -20,7 +20,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries";
+import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
 import { writeTable } from "@/lib/shared/table-state";
 import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays } from "./run-model";
 import { RunSummary } from "./run-summary";

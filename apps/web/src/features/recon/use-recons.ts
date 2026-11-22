@@ -7,7 +7,8 @@ import type { ReconDto, ReconLiveDto, ReconRunDto, ReconTrendDto, ReconVersionDe
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, RECON_KEY, reconLive, reconTrend, reconDetail, reconRun, reconVersion, sideSourceOptions, sourceDetail, spaceDetail, spaceToday } from "@/lib/shared/queries";
+import { RECON_KEY, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
+import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, reconLive, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
 import { isLive, recordDates, replayGap, suggestedReplay } from "./run-model";
 import { appDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";

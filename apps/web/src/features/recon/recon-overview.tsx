@@ -15,7 +15,8 @@ import { ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from 
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDto, ReconRunDto } from "@starterkit/shared/contracts/recon";
 import { api, errorText } from "@/lib/client/api";
-import { ENGINE_KEY, RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries";
+import { ENGINE_KEY } from "@/lib/shared/queries";
+import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";

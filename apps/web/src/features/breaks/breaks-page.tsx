@@ -16,7 +16,8 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { BREAKS, type BreakFilters, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
+import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
+import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
 import { AGE_LABEL, breakColumns, STATE_LABEL } from "./break-columns";
 
 const AssignDialog = dynamic(() => import("./assign-dialog"), { ssr: false });

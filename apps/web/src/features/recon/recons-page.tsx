@@ -10,7 +10,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { RECONS } from "@/lib/shared/queries";
+import { RECONS } from "@/lib/shared/queries-recon";
 import { RECON_LEGEND } from "@/lib/shared/recon-status";
 import { type LiveIndex, reconColumns } from "./recon-columns";
 import { NEW_RECON_REASON, newReconHref, useSpaceRoles, useToday } from "./use-recons";

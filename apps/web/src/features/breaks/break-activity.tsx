@@ -8,7 +8,8 @@ import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { breakActivity, type TrailFilters } from "@/lib/shared/queries";
+import { type TrailFilters } from "@/lib/shared/queries";
+import { breakActivity } from "@/lib/shared/queries-recon";
 
 const field = (o: unknown, k: string): unknown => (o && typeof o === "object" ? (o as Record<string, unknown>)[k] : undefined);
 /** What an entry did, in words: its action, then the note or resolution it carries. */

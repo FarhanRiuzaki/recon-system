@@ -8,7 +8,8 @@ import { toast } from "@starterkit/ui/ui/toast";
 import type { ReconDto } from "@starterkit/shared/contracts/recon";
 import type { HeaderAction, HeaderConfirm } from "@/components/shell/page-header";
 import { api } from "@/lib/client/api";
-import { ENGINE_KEY, RECON_KEY, reconDetail, reconVersion } from "@/lib/shared/queries";
+import { ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
+import { reconDetail, reconVersion } from "@/lib/shared/queries-recon";
 import { discardConfirm } from "./discard-dialog";
 import { reconApi, reconHref, reconsHref } from "./use-recons";
 

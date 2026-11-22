@@ -10,7 +10,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { NoFilters, TrailFilters } from "@/lib/shared/queries";
-import { reconActivity, reconVersions } from "@/lib/shared/queries";
+import { reconActivity, reconVersions } from "@/lib/shared/queries-recon";
 import { RECON_VERSION_LEGEND, reconVersionChip } from "@/lib/shared/recon-status";
 import { activitySentence, at } from "./recon-text";
 import { reconVersionHref } from "./use-recons";
