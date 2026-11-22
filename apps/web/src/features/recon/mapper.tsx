@@ -150,17 +150,17 @@ export function Mapper({ mapping, onChange, op, catalog, setup, disabled }: {
       <svg aria-hidden="true" className="pointer-events-none absolute inset-0 hidden h-full w-full xl:block">
         {lines.map((l) => <path key={l.key} d={l.d} fill="none" className="stroke-primary" strokeWidth={1.25} opacity={0.5} />)}
       </svg>
-      <section aria-label="Recon fields" className="grid content-start gap-1.5">
+      <section aria-label="Recon fields" className="grid grid-cols-1 content-start gap-1.5">
         <h4 className="text-label text-fg">Recon fields</h4>
         <p className="text-caption text-fg-3">{picked ? "Now pick the request field it fills." : "Pick one, then the request field it fills."}</p>
-        <ul className="grid gap-1">
+        <ul className="grid grid-cols-1 gap-1">
           {catalog.map((f) => (
             <li key={f.key}>
               <button type="button" data-left={f.key} disabled={disabled} aria-pressed={picked === f.key}
                 onClick={() => setPicked(picked === f.key ? null : f.key)}
                 className={cn("flex w-full items-center justify-between gap-2 rounded-md px-3 py-1.5 text-left text-body-sm transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary",
                   picked === f.key ? "bg-primary-soft text-primary" : used.has(f.key) ? "text-fg" : "text-fg-2")}>
-                <span className="truncate">{f.label}</span>
+                <span className="min-w-0 truncate">{f.label}</span>
                 <span className="shrink-0 text-caption text-fg-3">{GROUP[f.group]}</span>
               </button>
             </li>
@@ -169,10 +169,10 @@ export function Mapper({ mapping, onChange, op, catalog, setup, disabled }: {
       </section>
       {/* the lines' lane between the two lists */}
       <span aria-hidden="true" className="hidden xl:block" />
-      <section aria-label="Request fields" className="grid content-start gap-1.5">
+      <section aria-label="Request fields" className="grid grid-cols-1 content-start gap-1.5">
         <h4 className="text-label text-fg">Request fields</h4>
         <p className="text-caption text-fg-3">Pick one to set where its value comes from.</p>
-        <ul className="grid gap-1.5">{leaves.map(row)}</ul>
+        <ul className="grid grid-cols-1 gap-1.5">{leaves.map(row)}</ul>
       </section>
       {picked && <Button type="button" variant="ghost" size="sm" className="justify-self-start xl:col-span-3" onClick={() => setPicked(null)}>Cancel connecting</Button>}
     </div>
