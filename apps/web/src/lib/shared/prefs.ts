@@ -21,7 +21,7 @@ export const DEFAULT_PREFS: Prefs = { sidebar: "expanded", density: "comfortable
  */
 export const VIEW_PAGES = [
   "/users", "/roles", "/permissions", "/audit/activity", "/audit/auth", "/projects", "/spaces/[spaceId]/members", "/spaces/[spaceId]/sources",
-  "/spaces/[spaceId]/sources/[sourceId]", "/spaces/[spaceId]/recons", "/spaces/[spaceId]/recons/[configId]",
+  "/spaces/[spaceId]/sources/[sourceId]", "/spaces/[spaceId]/recons", "/spaces/[spaceId]/recons/[configId]", "/spaces/[spaceId]/approvals",
   "/spaces/[spaceId]/recons/[configId]/runs/[runId]",
 ] as const;
 export type ViewPage = (typeof VIEW_PAGES)[number];

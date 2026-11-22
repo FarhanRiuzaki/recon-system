@@ -29,6 +29,8 @@ export const SOURCE_VERSION_SORTS = ["version", "updatedAt"] as const;
 export const RECON_SORTS = ["name", "createdAt"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/versions (newest version first by default). */
 export const RECON_VERSION_SORTS = ["version", "updatedAt"] as const;
+/** GET /api/spaces/{spaceId}/approvals (waiting longest first by default). */
+export const APPROVAL_SORTS = ["submittedAt", "name"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/runs (newest first by default). */
 export const RECON_RUN_SORTS = ["startedAt"] as const;
 /** GET …/runs/{runId}/items. */

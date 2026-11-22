@@ -7,7 +7,7 @@ export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" 
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
 /**
- * One caption for a group's `soon` items: "Breaks and Approvals arrive in a later release."; one item says only
+ * One caption for a group's `soon` items: "Breaks and Exports arrive in a later release."; one item says only
  * SOON_REASON (its label is beside it); null when it has none.
  */
 export function soonCaption(items: readonly NavItem[]): string | null {
@@ -30,7 +30,7 @@ export type NavItem = {
   space?: SpacePage;
 };
 /** The pages every space has (/spaces/<id>/<page>). */
-export const SPACE_PAGES = ["members", "sources", "recons", "today"] as const;
+export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals"] as const;
 export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
@@ -39,7 +39,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/", label: "Dashboard", icon: "dashboard", shortcut: "G D", group: "main", perm: null },
   { href: "/today", label: "Today", icon: "today", shortcut: "G T", group: "work", perm: null, space: "today" },
   { href: "/breaks", label: "Breaks", icon: "breaks", shortcut: "", group: "work", perm: null, soon: true },
-  { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "", group: "work", perm: null, soon: true },
+  { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "G V", group: "work", perm: null, space: "approvals" },
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },

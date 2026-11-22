@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { approvalsController } from "./approvals";
 import { auditController } from "./audit";
 import { authController } from "./auth";
 import { dashboardController } from "./dashboard";
@@ -37,4 +38,5 @@ export const modules = (deps: AppDeps = {}) =>
     .use(sourcesController())
     .use(ingestController())
     .use(reconController())
-    .use(engineController());
+    .use(engineController())
+    .use(approvalsController());

@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { VersionDecision, VersionLayout } from "@/components/version-layout";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, isNotFound } from "@/lib/client/api";
-import { RECON_KEY } from "@/lib/shared/queries";
+import { APPROVALS_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconVersionChip } from "@/lib/shared/recon-status";
 import { at, reviewReason } from "./recon-text";
 import { RECON_VERSION_SHAPE } from "./shapes";
@@ -72,7 +72,7 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   async function decide(act: "approve" | "reject", comment: string) {
     await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
     toast(act === "approve" ? `Version ${v!.version} of ${r!.name} approved. It runs from its next schedule.` : `Version ${v!.version} of ${r!.name} sent back to its maker with your comment.`);
-    await qc.invalidateQueries({ queryKey: RECON_KEY });
+    await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
   }
 
   return (

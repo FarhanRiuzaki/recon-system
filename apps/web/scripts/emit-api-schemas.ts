@@ -19,6 +19,7 @@ import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
+import * as approvals from "@starterkit/shared/contracts/approvals";
 import * as recon from "@starterkit/shared/contracts/recon";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
@@ -56,6 +57,7 @@ const COMPOSED = {
   SourceRecordPage: pageOf(sources.SourceRecordDto),
   SourcePullPage: pageOf(sources.SourcePullDto),
   SourceVersionPage: pageOf(sources.SourceVersionRowDto),
+  ApprovalPage: pageOf(approvals.ApprovalRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
@@ -67,7 +69,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [audit, auth, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;

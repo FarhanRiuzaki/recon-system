@@ -20,7 +20,7 @@ import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
+import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY, reconDetail } from "@/lib/shared/queries";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
   addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
@@ -315,7 +315,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
     try {
       setSaved(await api<ReconVersionDto>(reconApi(spaceId, recon.id, `/versions/${encodeURIComponent(saved.id)}/submit`), { method: "POST", body: "{}" }));
       toast(`Draft v${saved.version} of ${recon.name} sent for approval. A config checker approves or rejects it.`);
-      await qc.invalidateQueries({ queryKey: RECON_KEY });
+      await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
       onSubmitted();
     } catch (e) {
       setSubmitError(errorText(e));

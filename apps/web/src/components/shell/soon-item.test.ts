@@ -5,7 +5,9 @@ import { describe, expect, it } from "vitest";
 import { NAV } from "@/lib/shared/nav";
 import { SoonCaption, SoonItem } from "./soon-item";
 
-const work = NAV.filter((n) => n.group === "work" && n.soon);
+// two soon items (Breaks, and one more as a later release would add), so the caption names both
+const breaks = NAV.find((n) => n.soon)!;
+const work = [breaks, { ...breaks, href: "/later", label: "Approvals" }];
 
 describe("SoonItem", () => {
   it("one caption for the group; each item points at it and has no caption or tooltip text of its own", () => {

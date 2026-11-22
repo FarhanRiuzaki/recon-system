@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import type { TrailCrumb } from "@/lib/client/crumb-trail";
 import { ApiError, api, errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
-import { SOURCES_KEY } from "@/lib/shared/queries";
+import { APPROVALS_KEY, SOURCES_KEY } from "@/lib/shared/queries";
 import { WIZARD_SHAPE } from "./shapes";
 import { ARRIVED_DATE, attrNameOf, fieldError, fieldMessage, fieldsOfColumns, looksLikeHeader, mergeFields, sampleColumns, sampleHead, storedNameProblem } from "./spec-draft";
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
@@ -663,7 +663,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       await api<SourceVersionDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/submit`), { method: "POST", body: "{}" });
       setDone(true);
       toast(`Version ${ids.version} of ${d.name.trim()} sent for approval. A config checker in ${spaceName} approves it.`);
-      await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+      await Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
       router.push(versionHref(spaceId, ids.sourceId, ids.versionId));
     } catch (e) {
       setFormError(errorText(e));

@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { Hydrate } from "@/lib/client/hydrate";
+import { ApprovalListQuery } from "@starterkit/shared/contracts/approvals";
 import { ActivityQuery, AuthLogQuery } from "@starterkit/shared/contracts/audit";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
@@ -14,7 +15,7 @@ import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import {
-  ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
+  ACTIVITY, APPROVALS, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS,
   draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconTrend, RECONS, reconVersion, reconVersions, sideSourceOptions, spaceToday,
   sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions,
   type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery,
@@ -80,6 +81,7 @@ export const reads = {
   sourceVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceVersions(spaceId, id), sp, SourceVersionListQuery),
   sourceActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceActivity(spaceId, id), sp, IngestListQuery),
   sourceVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: sourceVersion(spaceId, id, versionId).key, path: sourceVersion(spaceId, id, versionId).url }),
+  approvals: (spaceId: string, sp: URLSearchParams) => table(APPROVALS(spaceId), sp, ApprovalListQuery),
   recons: (spaceId: string, sp: URLSearchParams) => table(RECONS(spaceId), sp, ReconListQuery),
   recon: (spaceId: string, id: string): Read => ({ key: reconDetail(spaceId, id).key, path: reconDetail(spaceId, id).url }),
   reconVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(reconVersions(spaceId, id), sp, ReconVersionListQuery),

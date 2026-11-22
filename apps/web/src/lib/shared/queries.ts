@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { APPROVAL_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX } from "@starterkit/shared/recon";
@@ -156,6 +156,18 @@ export const reconVersion = (spaceId: string, id: string, versionId: string) => 
   url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
 });
 /** Runs of a recon belong to the engine module. */
+export const APPROVALS_KEY = ["approvals"] as const;
+export type ApprovalFilters = { q: string; kind: string };
+const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice() } };
+/**
+ * A space's approvals inbox, waiting longest first; `kind` picks one kind (both ticked, or none, = every kind), `q`
+ * matches the source's or recon's code or name. Deciding a version invalidates APPROVALS_KEY.
+ */
+export const APPROVALS = (spaceId: string): TableDef<ApprovalFilters> => ({
+  key: APPROVALS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/approvals`, spec: APPROVALS_SPEC,
+  params: ({ kind, ...rest }) => { const k = kind.split(",").filter(Boolean); return { ...rest, ...(k.length === 1 ? { kind: k[0]! } : {}) }; },
+});
+
 export const ENGINE_KEY = ["engine"] as const;
 const runsPath = (spaceId: string, id: string) => `${reconsPath(spaceId)}/${encodeURIComponent(id)}/runs` as const;
 /** A draft's simulations, newest first: the first row is the one the builder shows. */

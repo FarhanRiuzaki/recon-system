@@ -21,7 +21,7 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound } from "@/lib/client/api";
-import { SOURCES_KEY } from "@/lib/shared/queries";
+import { APPROVALS_KEY, SOURCES_KEY } from "@/lib/shared/queries";
 import { versionChip } from "@/lib/shared/source-status";
 import { VERSION_SHAPE } from "./shapes";
 import { at } from "./source-text";
@@ -89,7 +89,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   async function decide(act: "approve" | "reject", comment: string) {
     await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
     toast(act === "approve" ? `Version ${v!.version} of ${s!.name} approved. It is in use from the next run.` : `Version ${v!.version} of ${s!.name} sent back to its maker with your comment.`);
-    await qc.invalidateQueries({ queryKey: SOURCES_KEY });
+    await Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
   }
 
   const table = (
