@@ -71,14 +71,16 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
   const { pos, tall } = useMemo(() => layout(input, links), [input, links]);
   // cards move freely (a whiteboard) until Reset layout; a new set of cards starts from the layout again
   const shape = input.map((n) => n.id).join("|");
-  const [moved, setMoved] = useState<{ shape: string; at: Map<string, { x: number; y: number }> }>({ shape, at: new Map() });
-  const at = (id: string) => (moved.shape === shape ? moved.at.get(id) : undefined) ?? pos.get(id)!;
-  const port = useMemo(() => ports(links, (id) => (moved.shape === shape ? moved.at.get(id)?.y : undefined) ?? pos.get(id)?.y ?? 0), [links, moved, shape, pos]);
+  // React Flow's own view of each card (where it was dragged, its measured size): kept, or the edges can't be drawn
+  const [moved, setMoved] = useState<{ shape: string; at: Map<string, Node<Data>> }>({ shape, at: new Map() });
+  const mine = (id: string) => (moved.shape === shape ? moved.at.get(id) : undefined);
+  const at = (id: string) => mine(id)?.position ?? pos.get(id)!;
+  const port = useMemo(() => ports(links, (id) => (moved.shape === shape ? moved.at.get(id)?.position.y : undefined) ?? pos.get(id)?.y ?? 0), [links, moved, shape, pos]);
   const health = useMemo(() => new Map(input.map((n) => [n.id, n.chip.health])), [input]);
   const hover = useHotNode();
   const lit = useMemo(() => pathOf(hover.hot, links), [hover.hot, links]);
   const nodes: Node<Data>[] = useMemo(() => input.map(({ id, ...data }) => ({
-    id, type: "card", className: lit && !lit.nodes.has(id) ? "is-dim" : undefined, position: at(id), width: W, height: H, data: { ...data, ...portsOf(id, links, port) }, draggable: true, selectable: false,
+    id, type: "card", className: lit && !lit.nodes.has(id) ? "is-dim" : undefined, position: at(id), ...(mine(id)?.measured ? { measured: mine(id)!.measured } : {}), width: W, height: H, data: { ...data, ...portsOf(id, links, port) }, draggable: true, selectable: false,
     ariaLabel: `${LANES[data.lane]}: ${data.title}. ${data.chip.label}. ${data.affectedBy?.length ? `Reads ${data.affectedBy.join(", ")}` : data.line}${data.href ? ". Enter opens its live day" : ""}`,
   })), [input, pos, lit, moved, port, links]); // eslint-disable-line react-hooks/exhaustive-deps -- at reads moved and pos
   // packets travel from each source into a recon whose run is under way
@@ -94,7 +96,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
   }), [links, lit, health]);
   const onNodesChange = (c: NodeChangeset<Node<Data>>) => {
     const next = c.applyTo(nodes);
-    setMoved({ shape, at: new Map(next.map((n) => [n.id, n.position])) });
+    setMoved({ shape, at: new Map(next.map((n) => [n.id, n])) });
   };
   useFitToCard(wrap, `${input.length}:${links.length}`);
   const focus = (id: string | undefined) => { if (id) wrap.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus(); };
@@ -120,7 +122,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
         fitView fitViewOptions={FIT} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
         aria-label="Space map: the sources of the space and the recons that read them">
         <FlowBoard />
-        <Controls showInteractive={false}><ResetLayout onReset={() => setMoved({ shape, at: new Map() })} /></Controls>
+        <Controls showInteractive={false}><ResetLayout onReset={() => setMoved({ shape, at: new Map([...moved.at].map(([id, n]) => [id, { ...n, position: pos.get(id)! }])) })} /></Controls>
         <ViewportPortal>
           {LANES.map((name, l) => <LaneTitle key={name} x={l * (W + GAP_X)} label={name} count={input.filter((n) => n.lane === l).length} />)}
         </ViewportPortal>
