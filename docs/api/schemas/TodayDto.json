@@ -464,12 +464,46 @@
     },
     "capped": {
       "type": "boolean"
+    },
+    "posting": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "reconId": {
+            "type": "string"
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "timeout": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "notSent": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "reconId",
+          "failed",
+          "timeout",
+          "notSent"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [
     "recons",
     "sources",
-    "capped"
+    "capped",
+    "posting"
   ],
   "additionalProperties": false
 }

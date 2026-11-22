@@ -15,6 +15,8 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { BRAND } from "@starterkit/shared/brand";
 import type { TodayDto } from "@starterkit/shared/contracts/recon";
+import { selectionState } from "@starterkit/shared/filter-selection";
+import { attentionText } from "@/lib/shared/posting";
 import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
@@ -71,6 +73,8 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
   const t = q.data;
   if (!t || skeleton) return <LoadingShape sections={TODAY_SHAPE} shown={skeleton} />;
   const byId = new Map(t.sources.map((s) => [s.id, s]));
+  const attention = new Map(t.posting.map((p) => [p.reconId, p]));
+  const postingHref = `/spaces/${encodeURIComponent(spaceId)}/posting?status=${encodeURIComponent(selectionState(["failed", "timeout", "not_sent"]))}`;
   const map = spaceMap(t, (id) => liveHref(spaceId, id), arrivals);
   const affected = map.nodes.filter((n) => n.affectedBy?.length).length;
 
@@ -107,6 +111,9 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
                         <span className="grid gap-0.5">
                           <Link className="text-fg underline-offset-4 hover:underline" href={liveHref(spaceId, r.id)}>{r.name}</Link>
                           <span className="text-caption text-fg-3">{scheduleLine(r.schedule)}</span>
+                          {attention.get(r.id) && (
+                            <Link className="text-caption text-down-ink underline-offset-4 hover:underline" href={postingHref}>Posting: {attentionText(attention.get(r.id)!)} in 24 h</Link>
+                          )}
                         </span>
                       </TableCell>
                       <TableCell><span className="flex items-center gap-2 whitespace-nowrap">{formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StatusChip health={chip.health} label={chip.label} /></span></TableCell>

@@ -5,7 +5,12 @@ import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, ReplaceS
 import { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
 import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
-import { actionRunPage } from "./actions";
+import { csvFileName } from "@starterkit/ui/lib/csv";
+import { actionRunCsv, actionRunPage } from "./actions";
+
+/** A CSV attachment `<prefix>-<date in the app time zone>.csv`, never cached. */
+const csvResponse = (prefix: string, text: string): Response =>
+  new Response(text, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${csvFileName(prefix, Date.now())}"`, "Cache-Control": "no-store" } });
 import type { ZodType } from "zod";
 import { $ZodError } from "zod/v4/core";
 import { ApiError } from "../../kernel/errors";
@@ -25,7 +30,7 @@ export const integrationsController = () => new Elysia().use(guard)
   // the space's approval action runs (stage 4): any role of the space reads them
   // what a recon's action may pick: the connectors' published versions and operations (no settings, no secrets)
   .get("/v1/spaces/:spaceId/connector-operations", () => connectorOperations(), { guard: { space: SPACE_ROLES } })
-  .get("/v1/spaces/:spaceId/action-runs", ({ ctx, query }) => actionRunPage(ctx, query), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
+  .get("/v1/spaces/:spaceId/action-runs", async ({ ctx, query }) => (query.format === "csv" ? csvResponse("posting", await actionRunCsv(ctx, query)) : actionRunPage(ctx, query)), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
   .get("/v1/integrations/connectors", ({ query }) => connectorPage(query), { query: ConnectorListQuery, guard: "integration.view" })
   .post("/v1/integrations/connectors", async (c) => {
     const b = await body(c, CreateConnectorBody);

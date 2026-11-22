@@ -74,6 +74,14 @@
         "posting",
         "notify"
       ]
+    },
+    "format": {
+      "default": "json",
+      "type": "string",
+      "enum": [
+        "json",
+        "csv"
+      ]
     }
   }
 }

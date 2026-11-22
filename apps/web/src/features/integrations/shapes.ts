@@ -12,3 +12,8 @@ export const CONNECTOR_SHAPE: readonly Section[] = [
   { kind: "header", h: 68 },
   { kind: "panels", panels: [[6, 520], [6, 520]] },
 ];
+/** /spaces/[spaceId]/posting: the header and the runs table. */
+export const POSTING_SHAPE: readonly Section[] = [
+  { kind: "header", h: 68 },
+  { kind: "table", chrome: 144, rows: "page", rowHeight: 56 },
+];

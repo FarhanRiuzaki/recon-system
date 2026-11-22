@@ -195,6 +195,23 @@ describe("posting results of the space", () => {
     expect(page.items.map((r) => [r.action, r.status, r.break.ref, r.recon.name, r.code])).toEqual([["Post", "failed", "P1", "R", "51"]]);
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs`, { token: t.op }))).total).toBe(2);
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs?q=P1`, { token: t.op }))).total).toBe(2);
+    const csv = await call("GET", `/v1/spaces/${A}/action-runs?status=failed&format=csv`, { token: t.op });
+    expect(csv.headers.get("content-disposition")).toMatch(/attachment; filename="posting-\d{4}-\d{2}-\d{2}\.csv"/);
+    const lines = (await csv.text()).replace(/^\uFEFF/, "").trim().split("\r\n");
+    expect(lines[0]).toBe("Time (UTC),Recon,Break,Action,Event,Status,Code,Message,Bank reference,External ID");
+    expect(lines.slice(1).map((l) => l.split(",").slice(1, 7))).toEqual([["R", "P1", "Post", "Approved", "Failed", "51"]]);
+  });
+
+  it("Today counts each recon's runs of the last 24 hours that need someone: failed, timeout, not sent", async () => {
+    await setup("write_off", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
+    await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
+    await decide(I.a1, "approve", {}, t.rev);
+    const today = async () => (await json<{ posting: { reconId: string; failed: number; timeout: number; notSent: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }))).posting;
+    expect(await today()).toEqual([]);
+    await db.update(actionRuns).set({ status: "timeout" });
+    expect(await today()).toEqual([{ reconId: cfg, failed: 0, timeout: 1, notSent: 0 }]);
+    await db.update(actionRuns).set({ createdAt: new Date(Date.now() - 25 * 3_600_000) });
+    expect(await today()).toEqual([]);
   });
 });
 

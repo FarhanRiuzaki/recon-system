@@ -558,7 +558,11 @@ export type LiveReconDto = z.infer<typeof LiveReconDto>;
  * GET /api/spaces/{spaceId}/today: the space's active recons with a published version, by name, and the sources they
  * read (the Space map's nodes). `capped` = the space has more than TODAY_RECONS_MAX.
  */
-export const TodayDto = z.object({ recons: z.array(LiveReconDto), sources: z.array(LiveSourceDto), capped: z.boolean() });
+export const TodayDto = z.object({
+  recons: z.array(LiveReconDto), sources: z.array(LiveSourceDto), capped: z.boolean(),
+  /** Per recon, its approval actions of the last 24 hours that need someone (stage 4); a recon with none is left out. */
+  posting: z.array(z.object({ reconId: z.string(), failed: z.number().int(), timeout: z.number().int(), notSent: z.number().int() })),
+});
 export type TodayDto = z.infer<typeof TodayDto>;
 /**
  * GET /api/spaces/{spaceId}/recons/{configId}/days: the TREND_DAYS business dates up to its current one, oldest first,

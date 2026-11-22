@@ -84,6 +84,8 @@ export const ActionRunListQuery = ListQuery.extend({
   sort: sortParam(ACTION_RUN_SORTS),
   status: filterSelection(z.enum(ACTION_STATUSES)).optional(),
   kind: z.enum(["posting", "notify"]).optional(),
+  // csv = the whole filtered list (newest first, CSV_MAX_ROWS at most) instead of a page
+  format: z.enum(["json", "csv"]).default("json"),
 });
 export type ActionRunListQuery = z.infer<typeof ActionRunListQuery>;
 /** One action run of the space, with its break's reference and its recon. */

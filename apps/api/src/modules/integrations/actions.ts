@@ -5,12 +5,15 @@
 // item: a second click finds it there) and its job, in the same transaction. Nothing is sent here.
 import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
-import type { ReconApprovalSpec } from "@starterkit/shared/contracts/recon";
+import type { ReconApprovalSpec, TodayDto } from "@starterkit/shared/contracts/recon";
 import { buildPayload, pickVariant } from "@starterkit/shared/mapping";
-import { and, asc, eq, ilike, inArray, isNull, max, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
+import { POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
 import type { ActionRunDto, ActionRunListQuery, ActionRunRowDto, BreakDetailDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
 import { likeEscape, pageQuery, sortSql } from "../../kernel/pagination";
+import { CSV_MAX_ROWS } from "@starterkit/shared/audit";
 import { withSpace } from "../spaces";
 import { encryptSecret } from "../../kernel/crypto";
 import { maskTree } from "@starterkit/shared/integrations";
@@ -115,31 +118,55 @@ export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemI
   return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null };
 }
 
-/** GET …/action-runs: the space's action runs, newest first; `status` one or more, `kind`, `q` = reference, external id or bank reference. */
+/** The space's action runs that `q` filters, with their recon; `status` one or more, `kind`, `q` = reference, external id or bank reference. */
+function runsWhere(spaceId: string, q: ActionRunListQuery) {
+  const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
+  return and(
+    eq(actionRuns.spaceId, spaceId),
+    q.status?.length ? inArray(actionRuns.status, q.status) : undefined,
+    q.kind ? eq(actionRuns.kind, q.kind) : undefined,
+    like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like)) : undefined,
+  );
+}
+const runRows = (tx: InTx, where: ReturnType<typeof runsWhere>) =>
+  tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name }).from(actionRuns)
+    .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
+    .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId)).where(where).$dynamic();
+const toRunRow = ({ r, reconId, recon }: { r: typeof actionRuns.$inferSelect; reconId: string; recon: string }): ActionRunRowDto => ({
+  id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
+  code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
+  break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
+});
+
+/** Today: per recon, its runs created in the last 24 hours that ended failed, timeout or not sent (none = left out). */
+export async function postingAttention(tx: InTx, spaceId: string, now = new Date()): Promise<TodayDto["posting"]> {
+  const n = (s: string) => sql<number>`count(*) filter (where ${actionRuns.status} = ${s})::int`;
+  return tx.select({ reconId: reconConfigVersions.configId, failed: n("failed"), timeout: n("timeout"), notSent: n("not_sent") }).from(actionRuns)
+    .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
+    .where(and(eq(actionRuns.spaceId, spaceId), inArray(actionRuns.status, ["failed", "timeout", "not_sent"]), gte(actionRuns.createdAt, new Date(now.getTime() - 86_400_000))))
+    .groupBy(reconConfigVersions.configId);
+}
+
+/** GET …/action-runs: the space's action runs, newest first. */
 export function actionRunPage(ctx: Ctx, q: ActionRunListQuery): Promise<Page<ActionRunRowDto>> {
   return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
-    const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
-    const where = and(
-      eq(actionRuns.spaceId, ctx.space!.id),
-      q.status?.length ? inArray(actionRuns.status, q.status) : undefined,
-      q.kind ? eq(actionRuns.kind, q.kind) : undefined,
-      like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like)) : undefined,
-    );
+    const where = runsWhere(ctx.space!.id, q);
     const page = await pageQuery({
-      rows: tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name }).from(actionRuns)
-        .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
-        .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId)).where(where).$dynamic(),
-      count: tx.select({ id: actionRuns.id }).from(actionRuns).where(where).$dynamic(),
+      rows: runRows(tx, where), count: tx.select({ id: actionRuns.id }).from(actionRuns).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { createdAt: actionRuns.createdAt }, "-createdAt", actionRuns.id), query: q, map: (x) => x, on: tx,
     });
-    return {
-      ...page,
-      items: page.items.map(({ r, reconId, recon }): ActionRunRowDto => ({
-        id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
-        code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
-        break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
-      })),
-    };
+    return { ...page, items: page.items.map(toRunRow) };
+  });
+}
+
+/** GET …/action-runs?format=csv: CSV text (with BOM) of the filtered runs, newest first, at most CSV_MAX_ROWS rows. */
+export function actionRunCsv(ctx: Ctx, q: ActionRunListQuery): Promise<string> {
+  return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
+    const rows = (await runRows(tx, runsWhere(ctx.space!.id, q)).orderBy(desc(actionRuns.createdAt), desc(actionRuns.id)).limit(CSV_MAX_ROWS)).map(toRunRow);
+    return CSV_BOM + toCsv([
+      ["Time (UTC)", "Recon", "Break", "Action", "Event", "Status", "Code", "Message", "Bank reference", "External ID"],
+      ...rows.map((r) => [r.at, r.recon.name, r.break.ref, r.action, postingEvent(r), POSTING_STATUS_LABEL[r.status], r.code, r.message, r.bankReference, r.externalId]),
+    ]);
   });
 }
 

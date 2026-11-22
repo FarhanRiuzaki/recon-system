@@ -14,7 +14,7 @@ const recon = (id: string, a: string, b: string, o: Partial<LiveReconDto> = {}):
 
 describe("Today and Live day model (REC-F4)", () => {
   it("a Degraded or Down source marks every recon that reads it; a stale recon is Stale before that", () => {
-    const t: TodayDto = { capped: false, sources: [src("s1", "healthy", 400), src("s2", "down", 100), src("s3", "healthy", 0)],
+    const t: TodayDto = { capped: false, posting: [], sources: [src("s1", "healthy", 400), src("s2", "down", 100), src("s3", "healthy", 0)],
       recons: [recon("x", "s1", "s2"), recon("y", "s1", "s3"), recon("z", "s3", "s3", { stale: true })] };
     const g = spaceMap(t, (id) => `/r/${id}`);
     const node = (id: string) => g.nodes.find((n) => n.id === id)!;

@@ -3,9 +3,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
-import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RequiredNote, Toolbar } from "@starterkit/ui/ds";
+import { BlockedButton, type Column, ColumnsMenu, DataTable, Failure, Field, FilterSearch, Notice, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { formatDate } from "@starterkit/ui/lib/format";
+import { formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AlertsIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -28,6 +28,7 @@ import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { amountText } from "@/lib/shared/amount";
+import { postingChip, postingEvent } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
@@ -161,6 +162,8 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         </Panel>
       )}
 
+      {b.actions.length > 0 && <PostingPanel b={b} />}
+
       <Panel icon={AlertsIcon} title="The break" toolbar={b.item.status === "matched" && asks ? <Toolbar end={
         <Button type="button" variant="secondary" disabled={!!busy} onClick={() => ask("unmatch")}>Request unmatch</Button>}>{null}</Toolbar> : undefined}>
         <ValueRows items={[
@@ -197,6 +200,50 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 }
 
 /** The other side's free items, nearest amount first; tick the counterpart (or several, for a group) and match. */
+/**
+ * What its latest request sent to the bank (stage 4): each action in sending order with its status, the bank's code
+ * and reference; the masked request and answer behind a disclosure, for an Open API reader or the space admin.
+ */
+function PostingPanel({ b }: { b: BreakDetailDto }) {
+  const chip = b.posting ? postingChip(b.posting.status) : null;
+  return (
+    <Panel title="Posting" description={b.posting ? `${b.posting.action}: ${chip!.label.toLowerCase()}${b.posting.bankReference ? ` · bank reference ${b.posting.bankReference}` : ""}` : "What the approval sent to the bank"}
+      actions={chip ? <StatusChip health={chip.health} label={chip.label} /> : undefined}>
+      <ol className="grid divide-y divide-line">
+        {b.actions.map((a) => {
+          const c = postingChip(a.status);
+          return (
+            <li key={a.id} className="grid gap-1 py-2.5 first:pt-0 last:pb-0">
+              <span className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-body-sm text-fg">{a.name}<span className="text-fg-3"> · {postingEvent(a)}{a.override ? " (override)" : ""}{a.variant ? ` · ${a.variant}` : ""}</span></span>
+                <StatusChip health={c.health} label={c.label} />
+              </span>
+              {(a.message || a.code || a.bankReference || a.externalId) && (
+                <span className="flex flex-wrap gap-x-4 text-caption text-fg-3">
+                  {a.message && <span className={a.status === "posted" ? "" : "text-down-ink"}>{a.message}</span>}
+                  {a.code && <span>Code <span className="font-mono">{a.code}</span></span>}
+                  {a.bankReference && <span>Bank reference <span className="font-mono">{a.bankReference}</span></span>}
+                  {a.externalId && <span>External ID <span className="font-mono">{a.externalId}</span></span>}
+                  <span>{formatDateTime(Date.parse(a.at))}</span>
+                </span>
+              )}
+              {(a.payload !== null || a.response !== null) && (
+                <details className="text-caption">
+                  <summary className="cursor-pointer text-fg-2">Request and answer (masked)</summary>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    <ScrollFade className="max-h-64 rounded-md border border-line bg-tray" tabIndex={0} aria-label="Request sent"><pre className="p-2 font-mono text-fg">{JSON.stringify(a.payload, null, 2)}</pre></ScrollFade>
+                    <ScrollFade className="max-h-64 rounded-md border border-line bg-tray" tabIndex={0} aria-label="Bank's answer"><pre className="p-2 font-mono text-fg">{a.response === null ? "No answer" : JSON.stringify(a.response, null, 2)}</pre></ScrollFade>
+                  </div>
+                </details>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </Panel>
+  );
+}
+
 function Counterparts({ spaceId, id, b, busy, onMatch, onForce }: { spaceId: string; id: string; b: BreakDetailDto; busy: string | null; onMatch: (ids: string[]) => Promise<void>; onForce: (ids: string[]) => void }) {
   const def = useMemo(() => breakCandidates(spaceId, id), [spaceId, id]);
   const t = useTableQuery<BreakItemDto, { q: string }>(def);

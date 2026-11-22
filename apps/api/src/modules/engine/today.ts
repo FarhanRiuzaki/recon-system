@@ -3,6 +3,7 @@
 // RunDay (recon_runs.days, written when it finalized, again after a close): a screen read never counts items (S1: ~18M
 // a side a day), so the numbers move once per run, as §11a's "animates once per tick". A handful of queries for every
 // recon of the space at once, all under the viewer's withSpace (RLS).
+import { postingAttention } from "../integrations";
 import { type LiveReconDto, ReconSpec, type ReconLiveDto, type ReconTrendDto, RunDay, type TodayDto } from "@starterkit/shared/contracts/recon";
 import { TODAY_RECONS_MAX, TREND_DAYS } from "@starterkit/shared/recon";
 import { and, count, desc, eq, inArray, isNotNull, isNull, max, min, ne, or, sql } from "drizzle-orm";
@@ -24,7 +25,7 @@ export function todayDto(ctx: Ctx, now = new Date()): Promise<TodayDto> {
     const all = await liveRecons(tx, spaceId, null, now);
     const recons = all.slice(0, TODAY_RECONS_MAX);
     const ids = [...new Set(recons.flatMap((r) => r.sides.map((s) => s.sourceId)))];
-    return { recons, sources: await liveSources(tx, spaceId, ids), capped: all.length > TODAY_RECONS_MAX };
+    return { recons, sources: await liveSources(tx, spaceId, ids), capped: all.length > TODAY_RECONS_MAX, posting: await postingAttention(tx, spaceId, now) };
   });
 }
 
