@@ -96,7 +96,7 @@ describe("a space's workflows", () => {
     const recon = await reconPinning(A, "BI-FAST credit", w.id);
     const r = await call("POST", W(A, `/${w.id}/archive`), { token: t.m1 });
     expect(r.status).toBe(409);
-    expect((await err(r)).message).toContain("BI-FAST credit · Unmatch");
+    expect((await err(r)).message).toContain("BI-FAST credit · Undo match");
     // version 2 goes live: the recon still pins 1
     await call("POST", W(A, `/${w.id}/draft`), { token: t.m1 });
     await publish(w.id, t.m2, t.m1);

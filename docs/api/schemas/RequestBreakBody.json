@@ -69,6 +69,25 @@
         "note"
       ],
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "posting"
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "kind",
+        "note"
+      ],
+      "additionalProperties": false
     }
   ]
 }

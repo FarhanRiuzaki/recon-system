@@ -5,12 +5,14 @@
 import type { SpaceRole } from "./spaces";
 
 /** What approval rules bind: phase A the changes of a break; phase B adds versions, sign-off, reopen and rerun. */
-export const TRIGGERS = ["force_match", "unmatch", "write_off"] as const;
+// posting first: the usual way an unmatch is settled (owner, 22 Nov); undoing a match is rare
+export const TRIGGERS = ["posting", "force_match", "write_off", "unmatch"] as const;
 export type Trigger = (typeof TRIGGERS)[number];
-export const TRIGGER_LABEL: Record<Trigger, string> = { force_match: "Force match", unmatch: "Unmatch", write_off: "Write-off" };
+export const TRIGGER_LABEL: Record<Trigger, string> = { posting: "Posting", force_match: "Force match", unmatch: "Undo match", write_off: "Write-off" };
 /** The module whose change a trigger is, for grouping on the approval rules page. */
-export const TRIGGER_MODULE: Record<Trigger, "Breaks"> = { force_match: "Breaks", unmatch: "Breaks", write_off: "Breaks" };
+export const TRIGGER_MODULE: Record<Trigger, "Breaks"> = { posting: "Breaks", force_match: "Breaks", unmatch: "Breaks", write_off: "Breaks" };
 export const TRIGGER_TEXT: Record<Trigger, string> = {
+  posting: "Posting an unmatch to the bank",
   force_match: "Matching a break across a difference in totals",
   unmatch: "Undoing a break's match",
   write_off: "Closing a break as written off",

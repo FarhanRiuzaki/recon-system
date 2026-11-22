@@ -160,6 +160,31 @@ describe("actions written with the decision", () => {
   });
 });
 
+describe("request posting (owner, 22 Nov: an unmatch is posted through the workflow)", () => {
+  it("a maker asks to post an unmatch; on final approval it closes as POSTED and its posting action is queued", async () => {
+    await setup("posting", [{ name: "Post to GL", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
+    expect((await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "posting", note: "Post to suspense" } })).status).toBe(200);
+    await decide(I.a1, "approve", {}, t.rev);
+    const d = await detail(I.a1);
+    expect([d.item.status, d.resolution]).toEqual(["closed", "POSTED"]);
+    expect((await runs()).map((x) => [x.actionName, x.event, x.status])).toEqual([["Post to GL", "approved", "queued"]]);
+  });
+});
+
+describe("posting by configuration (owner, 22 Nov: some recons don't post)", () => {
+  it("a recon without a posting action doesn't offer or take a posting request", async () => {
+    await setup("write_off", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
+    expect((await detail(I.a1)).recon.posts).toBe(false);
+    const r = await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "posting", note: "Post it" } });
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { error: { message: string } }).error.message).toBe("This recon doesn't post its unmatch. Set up a posting action under Posting in its Approval step.");
+  });
+  it("one with a posting action under Posting does", async () => {
+    await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
+    expect((await detail(I.a1)).recon.posts).toBe(true);
+  });
+});
+
 describe("the posting result on the break (read side)", () => {
   it("shows its actions and the last posting; the payload only to the space admin or an Open API reader", async () => {
     await setup("write_off", [

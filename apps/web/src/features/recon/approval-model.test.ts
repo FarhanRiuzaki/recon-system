@@ -34,7 +34,7 @@ describe("what a version changes in the approval setup", () => {
   it("names the changes whose setup differs from the live version, nothing when there is no live version", () => {
     const live = { changes: { unmatch: { workflow: { default: W, rules: [] } } } };
     const next = { changes: { unmatch: { workflow: { default: W, rules: [done] } }, write_off: { workflow: { default: W, rules: [] } } } };
-    expect(approvalChanges(live, next, true)).toEqual(["unmatch", "write_off"]);
+    expect(approvalChanges(live, next, true)).toEqual(["write_off", "unmatch"]); // in TRIGGERS order: posting first, undo match last
     expect(approvalChanges(live, live, true)).toEqual([]);
     expect(approvalChanges(undefined, next, false)).toEqual([]);
   });

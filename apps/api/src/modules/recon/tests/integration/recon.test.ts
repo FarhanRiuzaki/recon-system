@@ -407,7 +407,7 @@ describe("approval setup in the recon version (DEC-052 rev 2)", () => {
     const v = r.draft!.id;
     const saved = await patch(t.mk, r.id, v, withApprovals(w, { all: [{ field: "side_a.attrs.nope", op: "eq", value: "1" }] }));
     expect(saved.status).toBe(200);
-    const why = "Unmatch · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.nope).";
+    const why = "Undo match · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.nope).";
     expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");
@@ -422,7 +422,7 @@ describe("approval setup in the recon version (DEC-052 rev 2)", () => {
     await db.update(workflows).set({ archivedAt: new Date() }).where(eq(workflows.id, w));
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");
-    expect([sent.status, await message(sent)]).toEqual([400, "Unmatch: workflow “Treasury head” is archived. Pick another one."]);
+    expect([sent.status, await message(sent)]).toEqual([400, "Undo match: workflow “Treasury head” is archived. Pick another one."]);
   });
 });
 
@@ -440,7 +440,7 @@ describe("actions in the recon version (stage 4)", () => {
       variants: [{ name: "Default", operation: { connectorId: cid, version: 1, key: "misc_dc" }, mapping: { Amount: { kind: "field", key: "break.amount", transforms: [] } } }] }] } } };
     const saved = await patch(t.mk, r.id, v, { ...gate(S1, S2), approvals });
     expect(saved.status).toBe(200);
-    const why = "Unmatch · Post to GL · Default: Remark is required. Map it, or give it a fixed or auto value.";
+    const why = "Undo match · Post to GL · Default: Remark is required. Map it, or give it a fixed or auto value.";
     expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");

@@ -229,14 +229,14 @@ describe("checkApprovals (DEC-052 rev 2)", () => {
     expect(checkApprovals(setup(), cat, facts(), S)).toEqual([]);
   });
   it("names the change and the problem for each wrong reference", () => {
-    expect(checkApprovals(setup(), cat, new Map(), S)).toContain("Unmatch: a picked workflow no longer exists. Pick another one.");
-    expect(checkApprovals(setup(), cat, facts({ archived: true }), S)).toContain("Unmatch: workflow “Treasury head” is archived. Pick another one.");
-    expect(checkApprovals(setup(undefined, 2), cat, facts(), S)).toContain("Unmatch: version 2 of “Treasury head” was never published. Pick a published version.");
-    expect(checkApprovals(setup(), cat, facts({ spaceId: Bun.randomUUIDv7() }), S)).toContain("Unmatch: a picked workflow no longer exists. Pick another one.");
+    expect(checkApprovals(setup(), cat, new Map(), S)).toContain("Undo match: a picked workflow no longer exists. Pick another one.");
+    expect(checkApprovals(setup(), cat, facts({ archived: true }), S)).toContain("Undo match: workflow “Treasury head” is archived. Pick another one.");
+    expect(checkApprovals(setup(undefined, 2), cat, facts(), S)).toContain("Undo match: version 2 of “Treasury head” was never published. Pick a published version.");
+    expect(checkApprovals(setup(), cat, facts({ spaceId: Bun.randomUUIDv7() }), S)).toContain("Undo match: a picked workflow no longer exists. Pick another one.");
     expect(checkApprovals(setup({ all: [{ field: "side_a.attrs.branch", op: "eq", value: "01" }] }), cat, facts(), S))
-      .toContain("Unmatch · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.branch).");
+      .toContain("Undo match · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.branch).");
     expect(checkApprovals(setup({ all: [{ field: "break.amount", op: "starts_with", value: "1" }] }), cat, facts(), S))
-      .toContain("Unmatch · rule “Large”: Amount can't be compared with “starts with”.");
+      .toContain("Undo match · rule “Large”: Amount can't be compared with “starts with”.");
   });
 });
 
@@ -254,7 +254,7 @@ describe("checkActions (stage 4)", () => {
     expect(checkActions(setup(variant()), cat, facts)).toEqual([]);
   });
   it("names change, action and variant for each problem", () => {
-    const where = "Unmatch · Post to GL · Default";
+    const where = "Undo match · Post to GL · Default";
     expect(checkActions(setup(variant({ operation: { connectorId: Bun.randomUUIDv7(), version: 2, key: "misc_dc" } })), cat, facts)).toEqual([`${where}: the connector picked no longer exists. Pick another one.`]);
     expect(checkActions(setup(variant({ operation: { connectorId: C, version: 9, key: "misc_dc" } })), cat, facts)).toEqual([`${where}: version 9 of “Bank Mega” was never published. Pick a published version.`]);
     expect(checkActions(setup(variant({ operation: { connectorId: C, version: 2, key: "nope" } })), cat, facts)).toEqual([`${where}: “Bank Mega” version 2 has no operation nope.`]);

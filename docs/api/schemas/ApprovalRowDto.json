@@ -8,6 +8,7 @@
       "enum": [
         "source_version",
         "recon_version",
+        "posting",
         "force_match",
         "unmatch",
         "write_off"

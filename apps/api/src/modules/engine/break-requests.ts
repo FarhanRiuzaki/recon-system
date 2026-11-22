@@ -15,7 +15,7 @@ import { openRequest } from "../approvals";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { records, todayIn } from "../ingest";
-import { breakDetail, breakOf, inSpace, itemsOf, matchIn, matchItems, mayTouch, mayWork, recordSpaces } from "./break-resolve";
+import { liveSpec, postsUnmatch, breakDetail, breakOf, inSpace, itemsOf, matchIn, matchItems, mayTouch, mayWork, recordSpaces } from "./break-resolve";
 import { matchGroups, matchMembers, reconItems } from "./schema";
 import { assertNotSigned } from "./signoff";
 
@@ -91,6 +91,8 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
       counterparts = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
     } else {
       mayWork(ctx, x);
+      if (b.kind === "posting" && !postsUnmatch(await liveSpec(tx, spaceId, x.configId)))
+        throw new ApiError("invalid_state", "This recon doesn't post its unmatch. Set up a posting action under Posting in its Approval step.");
       if (b.kind === "force_match") {
         const m = await matchItems(tx, spaceId, x, b.itemIds);
         if (m.mixed) throw new ApiError("bad_request", m.mixed);
@@ -125,14 +127,16 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
     await matchIn(tx, ctx, spaceId, x, rq.itemIds, { note: rq.note, checkTotals: false, resolution: "FORCE_MATCHED", action: "break.approve", extra: { requestedBy: rq.requestedBy }, quiet: true });
     return { resolution: "FORCE_MATCHED", items: rq.itemIds.length + 1 };
   }
-  if (rq.kind === "write_off") {
+  // write-off and posting close the break (posting: on final approval, its posting action sends it; owner, 22 Nov)
+  if (rq.kind === "write_off" || rq.kind === "posting") {
+    const resolution = rq.kind === "posting" ? "POSTED" : "WRITTEN_OFF";
     await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [locked] = await tx.select({ status: reconItems.status }).from(reconItems)
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate))).for("update");
     if (locked?.status !== "break") throw new ApiError("invalid_state", "This break changed meanwhile. Reject the request and ask again.");
-    await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution: "WRITTEN_OFF", version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
+    await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
-    return { resolution: "WRITTEN_OFF" };
+    return { resolution };
   }
   // unmatch: the group reversed by whoever approved; each member back where a run left it (a break in the queue again,
   // with whoever had it; an item that never broke open for the next run)

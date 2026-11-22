@@ -1,0 +1,2 @@
+ALTER TABLE "approval_requests" DROP CONSTRAINT "approval_requests_kind_check";--> statement-breakpoint
+ALTER TABLE "approval_requests" ADD CONSTRAINT "approval_requests_kind_check" CHECK (kind in ('force_match', 'unmatch', 'write_off', 'posting'));

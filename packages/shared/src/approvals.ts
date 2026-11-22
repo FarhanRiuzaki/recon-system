@@ -4,13 +4,13 @@
  * What a checker can be asked to decide in a space (spec §11 maker-checker): a source or recon version sent for
  * approval, and a change of a break (Plan 5 Task 3: force match, unmatch, write-off). Reopen and rerun follow.
  */
-export const REQUEST_KINDS = ["force_match", "unmatch", "write_off"] as const;
+export const REQUEST_KINDS = ["posting", "force_match", "unmatch", "write_off"] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 export const APPROVAL_KINDS = ["source_version", "recon_version", ...REQUEST_KINDS] as const;
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 /** Each kind as the inbox names it. */
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
-  source_version: "Source version", recon_version: "Recon version", force_match: "Force match", unmatch: "Unmatch", write_off: "Write-off",
+  source_version: "Source version", recon_version: "Recon version", posting: "Posting", force_match: "Force match", unmatch: "Undo match", write_off: "Write-off",
 };
 export const isRequestKind = (k: string): k is RequestKind => (REQUEST_KINDS as readonly string[]).includes(k);
 

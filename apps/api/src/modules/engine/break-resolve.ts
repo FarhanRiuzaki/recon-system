@@ -85,14 +85,22 @@ async function published(tx: InTx, spaceId: string, configId: string) {
 export const free = (i: { status: string; state: string | null }) => i.status === "open" || (i.status === "break" && i.state !== "resolved" && i.state !== "pending_approval");
 
 /** GET …/breaks/{itemId}. */
+/** Whether a recon spec posts its unmatch: a posting action under its Posting change (owner, 22 Nov: by configuration). */
+export const postsUnmatch = (spec: ReconSpec | null) => !!spec?.approvals?.changes.posting?.actions.some((a) => a.kind === "posting");
+/** The live version's spec of recon `configId`, or null before its first approval. */
+export async function liveSpec(tx: InTx, spaceId: string, configId: string): Promise<ReconSpec | null> {
+  const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
+  return v ? ReconSpec.parse(v.spec) : null;
+}
+
 export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<BreakDetailDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const x = await breakOf(tx, spaceId, id);
     const [item] = await itemsOf(tx, spaceId, [x.id]);
     const [c] = await tx.select({ name: reconConfigs.name }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, x.configId)));
-    const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
-      .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, x.configId), eq(reconConfigVersions.status, "published")));
-    const sides = v ? ReconSpec.parse(v.spec).sides.map((s) => s.label) as [string, string] : ["Side A", "Side B"] as [string, string];
+    const live = await liveSpec(tx, spaceId, x.configId);
+    const sides = live ? live.sides.map((s) => s.label) as [string, string] : ["Side A", "Side B"] as [string, string];
     // the group it is matched in now (not reversed): its other members
     const g = x.status === "matched"
       ? (await tx.select({ id: matchMembers.groupId }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
@@ -108,7 +116,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
     return {
-      item: plain(item!), recon: { id: x.configId, name: c?.name ?? "Recon", sides }, state: (x.breakState ?? "new") as BreakState,
+      item: plain(item!), recon: { id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live) }, state: (x.breakState ?? "new") as BreakState,
       assignee: x.assigneeId ? { id: x.assigneeId, name } : null,
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),

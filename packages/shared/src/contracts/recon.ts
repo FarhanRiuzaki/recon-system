@@ -173,7 +173,7 @@ export const ReconApprovalSpec = z.strictObject({
     name: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the name."),
     rows: z.array(z.strictObject({ key: z.string().max(200), value: z.string().max(500) })).max(LOOKUP_ROWS_MAX),
   })).max(LOOKUPS_MAX).default([]),
-  changes: z.strictObject({ force_match: ChangeApproval.optional(), unmatch: ChangeApproval.optional(), write_off: ChangeApproval.optional() }),
+  changes: z.strictObject({ posting: ChangeApproval.optional(), force_match: ChangeApproval.optional(), unmatch: ChangeApproval.optional(), write_off: ChangeApproval.optional() }),
 }).superRefine((a, ctx) => {
   const accounts = new Set(a.accounts.map((x) => x.key)), lookups = new Set(a.lookups.map((x) => x.name));
   const visit = (src: SourceT, path: PropertyKey[]) => {
@@ -193,7 +193,7 @@ export type ReconApprovalSpec = z.infer<typeof ReconApprovalSpec>;
 export type ReconApprovalInput = z.input<typeof ReconApprovalSpec>;
 /** POST …/recons/{id}/versions/{versionId}/actions/preview: what an action would send for a real break (stage 4). */
 export const PreviewActionBody = z.strictObject({
-  change: z.enum(["force_match", "unmatch", "write_off"]), action: z.number().int().min(0).max(ACTIONS_MAX - 1), itemId: z.uuid(),
+  change: z.enum(["posting", "force_match", "unmatch", "write_off"]), action: z.number().int().min(0).max(ACTIONS_MAX - 1), itemId: z.uuid(),
   /** The action as it is being edited (the editor, before Done): previewed in place of action `action`. */
   draft: Action.optional(),
   /** The accounts as edited (small: at most 50), read in place of the saved ones; lookup tables stay as saved (their
@@ -210,7 +210,7 @@ export const ActionPreviewDto = z.object({
 export type ActionPreviewDto = z.infer<typeof ActionPreviewDto>;
 /** POST …/recons/{id}/versions/{versionId}/approvals/preview: who would approve a change on typed field values. */
 export const PreviewApprovalBody = z.strictObject({
-  change: z.enum(["force_match", "unmatch", "write_off"]),
+  change: z.enum(["posting", "force_match", "unmatch", "write_off"]),
   values: z.record(z.string().max(120), z.string().max(200)).refine((v) => Object.keys(v).length <= 50, "Give at most 50 values."),
 });
 export type PreviewApprovalBody = z.infer<typeof PreviewApprovalBody>;

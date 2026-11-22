@@ -6,6 +6,7 @@
     "change": {
       "type": "string",
       "enum": [
+        "posting",
         "force_match",
         "unmatch",
         "write_off"

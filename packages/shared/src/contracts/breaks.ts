@@ -97,7 +97,8 @@ export const ActionRunRowDto = z.object({
 export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;
 export const BreakDetailDto = z.object({
   item: BreakItemDto,
-  recon: z.object({ id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]) }),
+  /** `posts`: its live version posts its unmatch (a posting action under Posting): the page offers Request posting. */
+  recon: z.object({ id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean() }),
   state: z.enum(BREAK_STATES),
   assignee: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
   ageDays: z.number().int(),
@@ -136,6 +137,8 @@ export const RequestBreakBody = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("force_match"), itemIds: z.array(z.uuid()).min(1).max(MATCH_ITEMS_MAX), note: why }),
   z.strictObject({ kind: z.literal("unmatch"), note: why }),
   z.strictObject({ kind: z.literal("write_off"), note: why }),
+  // an unmatch posted to the bank through the workflow; it closes as POSTED on final approval (owner, 22 Nov)
+  z.strictObject({ kind: z.literal("posting"), note: why }),
 ]);
 export type RequestBreakBody = z.infer<typeof RequestBreakBody>;
 

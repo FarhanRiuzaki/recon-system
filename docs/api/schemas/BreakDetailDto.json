@@ -102,12 +102,16 @@
           "items": false,
           "minItems": 2,
           "maxItems": 2
+        },
+        "posts": {
+          "type": "boolean"
         }
       },
       "required": [
         "id",
         "name",
-        "sides"
+        "sides",
+        "posts"
       ],
       "additionalProperties": false
     },
@@ -162,6 +166,7 @@
             "MATCHED_MANUAL",
             "FORCE_MATCHED",
             "WRITTEN_OFF",
+            "POSTED",
             "ADJUSTED",
             "AUTO_MATCHED_LATE_DATA",
             "DUPLICATE",
@@ -374,9 +379,10 @@
             "kind": {
               "type": "string",
               "enum": [
+                "posting",
                 "force_match",
-                "unmatch",
-                "write_off"
+                "write_off",
+                "unmatch"
               ]
             },
             "status": {

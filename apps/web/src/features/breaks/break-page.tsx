@@ -36,7 +36,7 @@ import { STATE_LABEL } from "./break-columns";
 import { BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
-  MATCHED_MANUAL: "Matched by a person", FORCE_MATCHED: "Force matched", WRITTEN_OFF: "Written off", ADJUSTED: "Adjusted",
+  MATCHED_MANUAL: "Matched by a person", FORCE_MATCHED: "Force matched", WRITTEN_OFF: "Written off", POSTED: "Posted", ADJUSTED: "Adjusted",
   AUTO_MATCHED_LATE_DATA: "Matched by a later run", DUPLICATE: "Duplicate", NO_ACTION: "No action needed",
 };
 type Dialogue = { title: string; description: string; action: string; optional?: boolean; placeholder: string; onSubmit: (note: string) => Promise<void> };
@@ -45,14 +45,16 @@ const NoteDialog = dynamic(() => import("./note-dialog"), { ssr: false });
 const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
   force_match: { title: "Request a force match", description: "These items total differently. A reviewer or space admin who didn't ask approves the match.", action: "Send for approval", placeholder: "Why the difference is right" },
   write_off: { title: "Request a write-off", description: "The break closes as written off once a reviewer or space admin who didn't ask approves it.", action: "Send for approval", placeholder: "Why it is written off" },
-  unmatch: { title: "Request an unmatch", description: "Once approved, the match is undone and its breaks go back in the queue.", action: "Send for approval", placeholder: "Why the match is wrong" },
+  unmatch: { title: "Request to undo the match", description: "Once approved, the match is undone and its items go back to unmatch.", action: "Send for approval", placeholder: "Why the match is wrong" },
+  posting: { title: "Request posting", description: "It goes through the recon's posting workflow. On the final approval it closes as posted and its posting action sends it to the bank.", action: "Send for approval", placeholder: "What the posting is for" },
 };
 /** What approving does. */
 const REQUEST_TITLE: Record<NonNullable<BreakDetailDto["request"]>["status"], string> = { pending: "Waiting for approval", approved: "Last request · approved", rejected: "Last request · rejected", cancelled: "Last request · cancelled" };
 const DONE_TEXT: Record<RequestKind, string> = {
   force_match: "The items are matched now, by you, as force matched.",
   write_off: "The break closes now as written off.",
-  unmatch: "The match is undone now; its breaks go back in the queue.",
+  unmatch: "The match is undone now; its items go back to unmatch.",
+  posting: "It closes now as posted; its posting action sends it to the bank.",
 };
 const dateText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 const money = (i: Pick<BreakItemDto, "amountMinor" | "currency">) => `${amountText(i.amountMinor, i.currency)}${i.currency ? ` ${i.currency}` : ""}`;
@@ -164,8 +166,11 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 
       {b.actions.length > 0 && <PostingPanel b={b} />}
 
+      {/* an unmatch is usually settled by posting it (owner, 22 Nov): the maker asks, the workflow approves, the posting
+          action sends it; undoing a match is rare, so it stays a quiet button */}
       <Panel icon={AlertsIcon} title="The break" toolbar={b.item.status === "matched" && asks ? <Toolbar end={
-        <Button type="button" variant="secondary" disabled={!!busy} onClick={() => ask("unmatch")}>Request unmatch</Button>}>{null}</Toolbar> : undefined}>
+        <Button type="button" variant="ghost" disabled={!!busy} onClick={() => ask("unmatch")}>Request undo match</Button>}>{null}</Toolbar>
+        : canWork && b.recon.posts ? <Toolbar end={<Button type="button" disabled={!!busy} onClick={() => ask("posting")}>Request posting</Button>}>{null}</Toolbar> : undefined}>
         <ValueRows items={[
           ["Recon", b.recon.name],
           ["Side", b.recon.sides[b.item.side === "a" ? 0 : 1]],
