@@ -4,6 +4,8 @@
 // (title, caption, row count) and one row per field. A row that takes a connection has a handle on the table's side —
 // right on a source table, left on a target — so a line is drawn from the end of one row to the end of another. A row
 // says its state in words as well as colour: required (red *), not mapped, fixed, auto generated, mapped.
+import "@xyflow/react/dist/base.css";
+import "./flow.css";
 import { Handle, type Node, type NodeProps, Position } from "@xyflow/react";
 import { memo } from "react";
 import { cn } from "../lib/cn";

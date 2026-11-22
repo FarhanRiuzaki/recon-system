@@ -7,6 +7,8 @@
 // flashes once when the run ends; an edge into it carries packets along its path (SMIL animateMotion on the edge's own
 // path, timed by DUR); hovering or focusing a node lights its whole path and dims the rest. Reduced motion: no sweep,
 // bar, packets or flash; the primary stroke and the words stay.
+import "@xyflow/react/dist/base.css";
+import "./flow.css";
 import { Background, BackgroundVariant, BaseEdge, ControlButton, type Edge, EdgeLabelRenderer, type EdgeProps, getBezierPath, getSmoothStepPath, Handle, Position, useNodeId, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { DUR, usePrefersReducedMotion } from "../motion";

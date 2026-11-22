@@ -1,8 +1,7 @@
 // The canvases' layer (DEC-041; owner 22 Nov: the canvas parts live in the design system): React Flow, themed on the
 // tokens (flow.css, under a `.flow-canvas` wrapper), and the parts every canvas shares. Only this folder imports
-// @xyflow/react (architecture.test.ts); a canvas loads on demand (next/dynamic), so none of it is in a first load.
-import "@xyflow/react/dist/base.css";
-import "./flow.css";
+// @xyflow/react (architecture.test.ts); the styles are imported by the parts themselves (flow-parts, table-node), since
+// the package is side-effect free but for CSS and a bundler skips this index; a canvas loads on demand (next/dynamic), so none of it is in a first load.
 
 export {
   Background, BackgroundVariant, BaseEdge, ControlButton, Controls, type Connection, type Edge, type EdgeProps, getBezierPath, type OnConnect,
