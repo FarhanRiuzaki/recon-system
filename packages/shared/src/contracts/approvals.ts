@@ -8,7 +8,8 @@ export { APPROVAL_SORTS };
 
 /**
  * GET /api/spaces/{spaceId}/approvals: what waits for a checker in the space, waiting longest first. `q` = name or code;
- * `kind`: one or more kinds; `mine=1`: only what the caller may decide (a config checker of the space who had no hand in it; none for anyone else).
+ * `kind`: one or more kinds; `mine=1`: only what the caller may decide (a config checker of the space who had no hand in it; none for anyone else;
+ * of break requests, the 500 oldest pending are checked, and with more the page says `totalCapped`).
  */
 export const ApprovalListQuery = ListQuery.extend({
   sort: sortParam(APPROVAL_SORTS),

@@ -15,6 +15,9 @@ import { decidable } from "./requests";
 import { approvalRequests } from "./schema";
 import { users } from "../users";
 
+/** Pending break requests "Waiting for me" checks at most, oldest first; past it the page says `totalCapped`. */
+export const INBOX_REQUESTS_MAX = 500;
+
 /**
  * GET …/approvals: the space's source and recon versions in review, waiting longest first unless `sort` says otherwise;
  * each says whether the caller may decide it (approvalBlocked). One union, paged in the database.
@@ -45,11 +48,16 @@ async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pa
     }).from(reconConfigVersions).innerJoin(reconConfigs, and(eq(reconConfigs.spaceId, reconConfigVersions.spaceId), eq(reconConfigs.id, reconConfigVersions.configId)))
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.status, "in_review"), mine(reconConfigVersions), like ? or(ilike(reconConfigs.name, like), ilike(reconConfigs.code, like)) : undefined));
     // a break's request (DEC-052): who may decide it follows its chain's current level, so "mine" is read request by
-    // request in code (ponytail: every pending request of the space; a space with thousands waiting needs it in SQL)
+    // request in code, over the INBOX_REQUESTS_MAX oldest pending ones (`capped` when there are more).
+    // ponytail: a space with more than that waiting needs the level check in SQL
     const lead = superadmin || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
     let reqMine: SQL | undefined;
+    let capped = false;
     if (q.mine) {
-      const pending = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"))).limit(500);
+      const read = await tx.select().from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending")))
+        .orderBy(approvalRequests.requestedAt, approvalRequests.id).limit(INBOX_REQUESTS_MAX + 1);
+      capped = read.length > INBOX_REQUESTS_MAX;
+      const pending = read.slice(0, INBOX_REQUESTS_MAX);
       const ok = [...(await decidable(tx, ctx, pending))].filter(([, why]) => why === null).map(([id]) => id);
       reqMine = ok.length ? inArray(approvalRequests.id, ok) : sql`false`;
     }
@@ -66,7 +74,7 @@ async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pa
       .filter((a) => !!a) as unknown as (typeof src)[];
     const [first, second, ...rest] = arms;
     const u = (second ? unionAll(first!, second, ...rest) : first!).as("u");
-    return { u, me, checker, lead, superadmin };
+    return { u, me, checker, lead, superadmin, capped };
 }
 
 /** GET …/approvals/facets: what waits per kind, with the other filters (search, mine) applied. */
@@ -80,7 +88,7 @@ export function approvalFacets(ctx: Ctx, q: ApprovalListQuery): Promise<FacetsDt
 export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
   const spaceId = ctx.space!.id;
   return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {
-    const { u, me, checker, superadmin } = await inbox(tx, ctx, q);
+    const { u, me, checker, superadmin, capped } = await inbox(tx, ctx, q);
     const page = await pageQuery({
       rows: tx.select().from(u).$dynamic(),
       count: tx.select(one).from(u).$dynamic(),
@@ -110,6 +118,7 @@ export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<Appro
     };
     return {
       ...page,
+      ...(capped ? { totalCapped: true } : {}),
       items: page.items.map((r) => ({
         kind: r.kind, id: r.id, target: { id: r.targetId, code: r.code, name: r.name }, version: r.version,
         submitter: r.submittedBy ? { id: r.submittedBy, name: names.get(r.submittedBy) ?? null } : null,

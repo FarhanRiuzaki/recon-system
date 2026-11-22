@@ -204,10 +204,10 @@ export async function requestView(tx: InTx, ctx: Ctx, rq: RequestRow): Promise<R
 /** Whether the caller may decide each of `rqs` now (the inbox's "Waiting for my decision"). */
 export async function decidable(tx: InTx, ctx: Ctx, rqs: RequestRow[]): Promise<Map<string, string | null>> {
   const out = new Map<string, string | null>();
-  for (const rq of rqs) {
-    const decisions = await tx.select().from(approvalDecisions).where(eq(approvalDecisions.requestId, rq.id));
-    out.set(rq.id, await blockedFor(tx, ctx, rq, decisions));
-  }
+  // every request's decisions in one query
+  const all = rqs.length ? await tx.select().from(approvalDecisions).where(inArray(approvalDecisions.requestId, rqs.map((r) => r.id))) : [];
+  const of = Map.groupBy(all, (d) => d.requestId);
+  for (const rq of rqs) out.set(rq.id, await blockedFor(tx, ctx, rq, of.get(rq.id) ?? []));
   return out;
 }
 

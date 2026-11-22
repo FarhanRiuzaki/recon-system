@@ -21,7 +21,7 @@ import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { StateChip } from "@/components/state-chip";
-import { dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayTotals, reconChip, scheduleLine, sourceChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 import { TODAY_SHAPE } from "./shapes";
 import { useArrivals } from "./live-hooks";
 import { reconHref, reconsHref, useMyApprovals, useToday } from "./use-recons";
@@ -88,7 +88,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
       {/* the space at a glance first (audit T1): what needs someone today */}
       <StatTiles>
         <StatTile label="Unmatch open" value={formatNumber(k.unmatch)} caption="Every date of these recons" />
-        <StatTile label="Waiting for my approval" value={waiting.data ? formatNumber(waiting.data.total) : "—"} caption={waiting.error && !waiting.data ? "Couldn't load the approvals" : undefined} />
+        <StatTile label="Waiting for my approval" value={waiting.data ? countText(waiting.data.total, waiting.data.totalCapped) : "—"} caption={waiting.error && !waiting.data ? "Couldn't load the approvals" : undefined} />
         <StatTile label="Postings needing attention" value={formatNumber(k.posting)} caption="Failed, timeout or not sent in 24 h" />
         <StatTile label="Sources behind" value={formatNumber(k.behind)} caption={`Degraded or down, of ${formatNumber(t.sources.length)}`} />
       </StatTiles>

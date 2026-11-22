@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LiveReconDto, LiveSourceDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { dayCounters, dayTotals, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayCounters, dayTotals, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 
 const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
   ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
@@ -62,5 +62,11 @@ describe("Today's KPI tray (audit T1)", () => {
       sources: [src("healthy"), src("degraded"), src("down"), src(null)],
       posting: [{ reconId: "r", failed: 1, timeout: 2, notSent: 3 }],
     })).toEqual({ unmatch: 7, posting: 6, behind: 2 });
+  });
+
+  it("a count the server stopped at reads N+ (Waiting for my approval past 500 requests)", () => {
+    expect(countText(500, true)).toBe("500+");
+    expect(countText(1234, false)).toBe("1,234");
+    expect(countText(3)).toBe("3");
   });
 });

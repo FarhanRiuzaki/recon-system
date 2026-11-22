@@ -122,3 +122,6 @@ export function todayKpis(t: Pick<TodayDto, "recons" | "sources" | "posting">) {
     behind: t.sources.filter((s) => s.health?.state === "degraded" || s.health?.state === "down").length,
   };
 }
+
+/** A count as a tile shows it: "500+" when the server stopped counting there (`capped`). */
+export const countText = (n: number, capped = false) => `${formatNumber(n)}${capped ? "+" : ""}`;

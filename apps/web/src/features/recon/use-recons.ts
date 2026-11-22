@@ -10,7 +10,7 @@ import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sourc
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { RECON_KEY, sideSourceOptions, sourceDetail, spaceDetail } from "@/lib/shared/queries";
-import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, myApprovals, reconLive, reconOpenSummary, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
+import { draftSimulations, LIVE_POLL_MS, LIVE_RUN_POLL_MS, MY_APPROVALS_POLL_MS, myApprovals, reconLive, reconOpenSummary, reconTrend, reconDetail, reconRun, reconVersion, spaceToday } from "@/lib/shared/queries-recon";
 import { isLive, recordDates, replayGap, suggestedReplay } from "./run-model";
 import { appDate } from "@starterkit/ui/lib/format";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
@@ -163,10 +163,13 @@ export function useReconLive(spaceId: string, id: string, enabled: boolean) {
     refetchInterval: (q) => (q.state.data?.recon.running ? LIVE_RUN_POLL_MS : LIVE_POLL_MS) });
 }
 
-/** What waits for the viewer's decision in the space: the inbox's first page as it opens, for its total (Today). */
+/**
+ * What waits for the viewer's decision in the space: the inbox's first page as it opens, for its total (Today). Read at
+ * most every MY_APPROVALS_POLL_MS (stale until then, so a window focus doesn't read it sooner), not on the live poll.
+ */
 export function useMyApprovals(spaceId: string) {
   const { key, url } = myApprovals(spaceId);
-  return useQuery({ queryKey: key, queryFn: () => api<Page<ApprovalRowDto>>(url), refetchOnWindowFocus: true, refetchInterval: LIVE_POLL_MS });
+  return useQuery({ queryKey: key, queryFn: () => api<Page<ApprovalRowDto>>(url), staleTime: MY_APPROVALS_POLL_MS, refetchOnWindowFocus: true, refetchInterval: MY_APPROVALS_POLL_MS });
 }
 
 /** A recon's open unmatch items and their amount per currency (the queue's summary for it), polled as the live day. */

@@ -121,6 +121,11 @@ export const reconLive = (spaceId: string, id: string) => ({
  * SSE; a day's numbers move once per run, at most every minute).
  */
 export const LIVE_POLL_MS = 15_000;
+/**
+ * How often Today reads "Waiting for my approval" again: the inbox's Waiting for me checks each pending request's chain
+ * (up to 500 per read, API INBOX_REQUESTS_MAX), so it is not read on every live poll.
+ */
+export const MY_APPROVALS_POLL_MS = 60_000;
 /** While a run of the recon (or of one of the space's) is queued or under way: its numbers move with every step. */
 export const LIVE_RUN_POLL_MS = 5_000;
 export type RunItemFilters = { pass: string; status: string; side: string; date: string; reason: string };

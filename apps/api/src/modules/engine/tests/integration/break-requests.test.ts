@@ -4,6 +4,8 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { BreakDetailDto } from "@starterkit/shared/contracts/breaks";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
+import type { Page } from "@starterkit/shared/contracts/common";
+import { DEFAULT_LEVELS } from "@starterkit/shared/workflows";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { and, eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -280,4 +282,22 @@ describe("the recon's pinned workflows: rules over break and side fields, levels
     expect(await message(await decide(I.a1, "approve", {}))).toBe("You decided this request already. Each person decides one level.");
     expect(await json(decide(I.a1, "approve", {}, t.adm))).toEqual({ status: "approved" });
   });
+});
+
+describe("Waiting for me: at most INBOX_REQUESTS_MAX pending requests, oldest first", () => {
+  it("501 pending: the 500 oldest are read, the total says capped, and the newest is left out", async () => {
+    const t0 = Date.parse("2026-11-01T00:00:00Z");
+    const rows = Array.from({ length: 501 }, (_, i) => ({
+      id: Bun.randomUUIDv7(), spaceId: A, configId: cfg, kind: "write_off", itemId: Bun.randomUUIDv7(), label: `R${String(i).padStart(3, "0")}`, note: "x",
+      requestedAt: new Date(t0 + i * 60_000), chain: DEFAULT_LEVELS, workflowName: "Default", ruleName: "Default",
+    }));
+    // inserted newest first, so a read without an order would not come oldest first
+    await db.insert(approvalRequests).values([...rows].reverse());
+    const page = await json<Page<ApprovalRowDto>>(call("GET", `/v1/spaces/${A}/approvals?mine=1&sort=-submittedAt&pageSize=15`, { token: t.rev }));
+    expect([page.total, page.totalCapped]).toEqual([500, true]);
+    expect(page.items[0]!.target.code).toBe("R499");
+    // every request (mine=0) is a plain count
+    const all = await json<Page<ApprovalRowDto>>(call("GET", `/v1/spaces/${A}/approvals?pageSize=15`, { token: t.rev }));
+    expect([all.total, all.totalCapped]).toEqual([501, undefined]);
+  }, 30_000);
 });
