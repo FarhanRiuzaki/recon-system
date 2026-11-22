@@ -135,7 +135,7 @@ describe("run-model", () => {
     const run = { counters: gate, days, live, from: "2026-11-02", to: "2026-11-05" };
     const t = standingTotals(run, spec);
     expect(t).toMatchObject({ matched: 937, suggested: 0, duplicate: 30, waiting: { a: 0, b: 0 }, breaks: { a: 48, b: 48 }, items: 2000 });
-    expect(countLine(t, ["source1", "source2"])).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 waiting per side · 48 breaks per side · match rate 93.7%");
+    expect(countLine(t, ["source1", "source2"])).toBe("937 matched · 0 suggested (open) · 30 duplicate · 0 waiting per side · 48 unmatch per side · match rate 93.7%");
     expect(dayPasses(days)["1"]).toMatchObject({ matched: 937, broken: 30 });
     expect(dayTotals(days[0]!, spec)).toMatchObject({ breaks: { a: 12, b: 13 }, closed: true });
     // a carry-over date before the run (1 Nov) is a tile of its own and never counts in the totals or the pass tabs
@@ -158,7 +158,7 @@ describe("run-model", () => {
 
   it("names the sides in a per-side count, one number when both agree (R4-1)", () => {
     const L = ["src1 r2", "src2 r2b"] as const;
-    expect(sidesText({ a: 48, b: 48 }, L, "breaks")).toBe("48 breaks per side");
+    expect(sidesText({ a: 48, b: 48 }, L, "unmatch")).toBe("48 unmatch per side");
     expect(sidesText({ a: 7, b: 8 }, L, "waiting")).toBe("7 src1 r2 · 8 src2 r2b waiting");
   });
 
@@ -221,9 +221,9 @@ describe("run-model", () => {
     const byReason = { Duplicate: { a: 15, b: 15 }, "Date differs": { a: 10, b: 10 }, "Amount differs": { a: 15, b: 15 }, "No counterpart": { a: 20, b: 20 }, "Currency differs": { a: 3, b: 3 } };
     const live = { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 }, items: { a: 1000, b: 1000 }, breakReasons: byReason };
     const run = { mode: "manual" as const, counters: gate, days: [], live, from: "2026-11-02", to: "2026-11-05" };
-    expect(runLine(run, spec, L)).toBe("937 matched · 63 breaks per side (15 duplicate per side) · match rate 93.7%");
-    expect(breaksText({ breaks: { a: 63, b: 62 }, duplicate: { a: 15, b: 14 } }, L)).toBe("63 src1 r2 · 62 src2 r2b breaks (15 src1 r2 · 14 src2 r2b duplicate)");
-    expect(breaksText({ breaks: { a: 48, b: 48 }, duplicate: { a: 0, b: 0 } }, L)).toBe("48 breaks per side");
+    expect(runLine(run, spec, L)).toBe("937 matched · 63 unmatch per side (15 duplicate per side) · match rate 93.7%");
+    expect(breaksText({ breaks: { a: 63, b: 62 }, duplicate: { a: 15, b: 14 } }, L)).toBe("63 src1 r2 · 62 src2 r2b unmatch (15 src1 r2 · 14 src2 r2b duplicate)");
+    expect(breaksText({ breaks: { a: 48, b: 48 }, duplicate: { a: 0, b: 0 } }, L)).toBe("48 unmatch per side");
     expect(breaksText(breaksOf(byReason)!, L, false)).toBe("63 per side (15 duplicate per side)");
     // a simulation keeps its own counts: duplicates by their pass, never relabeled as breaks
     expect(runLine({ ...run, mode: "simulation" as const }, spec, L)).toBe(countLine(standingTotals(run, spec), L));

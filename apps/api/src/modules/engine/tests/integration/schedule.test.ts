@@ -156,6 +156,32 @@ describe("the schedule", () => {
     expect((await itemsOf(k7.configId)).map((i) => [i.side, i.status])).toEqual([["a", "break"], ["b", "open"]]);
   }, 60_000);
 
+  it("always (null) still takes in late data dated before the oldest unmatch: a floor of 31 days (blind review I1)", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], null as unknown as number));
+    const D5 = new Date(Date.parse(`${D}T00:00:00Z`) - 5 * 86_400_000).toISOString().slice(0, 10);
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => ensureMonthPartitions(tx, records, new Date(`${D5}T00:00:00Z`), 2));
+    await put(sa, [{ ref: "L5", amount: 500n, date: D5 }]);
+    await put(sb, [{ ref: "L5", amount: 500n, date: D5 }]);
+    const run = await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status])).toEqual([["a", "matched"], ["b", "matched"]]);
+    // the run keeps the carry it used, so its windows don't move as other unmatch closes later (blind review I3)
+    expect(((await runOf(run.runId)).counters as { carry?: number }).carry).toBe(31);
+  }, 60_000);
+
+  it("always never changes a signed-off day: its late unmatch stays out of later passes (blind review I5)", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], null as unknown as number));
+    await put(sa, [{ ref: "S1", amount: 100n, date: D }]);
+    const after = at("2026-12-31T00:00:00");
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await closeDay(probe, r, D, after)).toBe("closed");
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => tx.update(reconDays).set({ signedAt: new Date() }).where(and(eq(reconDays.configId, r.configId), eq(reconDays.businessDate, D))));
+    await put(sb, [{ ref: "S1", amount: 100n, date: D1 }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D1 });
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status])).toEqual([["a", "break"], ["b", "open"]]);
+  }, 60_000);
+
   it("catch-up: a daily recon whose worker was down fails the stale run, runs every date since the last closed one and closes each", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1)); // daily at 23:30, offset 0, grace 30

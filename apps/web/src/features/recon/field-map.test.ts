@@ -29,7 +29,7 @@ describe("the field map as a graph (ERD)", () => {
 
   it("source tables per group that has fields, the field named first and where it comes from as the table's caption", () => {
     expect(g.sources.map((t) => [t.id, t.title, t.caption, t.rows.map((r) => r.label)])).toEqual([
-      ["break", "Break", null, ["Amount", "Business date"]],
+      ["break", "Unmatch item", null, ["Amount", "Business date"]],
       ["side_a", "Side A", "BI-FAST switch · settlement", ["Reference"]],
       ["approval", "Approval", null, ["Approved by"]],
       ["accounts", "Accounts", null, ["Suspense"]],

@@ -84,10 +84,10 @@ describe("day sign-off: prepared by one lead, signed by another; a signed day is
   it("whoever resolved a break of the day can't sign it; a pending request blocks both steps", async () => {
     await so("prepare", t.rev);
     await call("POST", path(I.a1, "/match"), { token: t.op2, body: { itemIds: [I.b1] } }); // apple (a lead) resolves one
-    expect((await rows(t.op2))[0]!.blocked).toBe("You resolved breaks of this day. Another reviewer or space admin signs it off.");
+    expect((await rows(t.op2))[0]!.blocked).toBe("You settled unmatch items of this day. Another reviewer or space admin signs it off.");
     expect(await code(await so("sign", t.op2))).toBe("self_approval");
     await call("POST", path(I.b2, "/request"), { token: t.rev, body: { kind: "write_off", note: "x" } });
     const blocked = await so("sign", await signIn("superadmin"));
-    expect([blocked.status, await message(blocked)]).toEqual([409, "A break request waits for a checker. Decide it first."]);
+    expect([blocked.status, await message(blocked)]).toEqual([409, "A request waits for a checker. Decide it first."]);
   });
 });

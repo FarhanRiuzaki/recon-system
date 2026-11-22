@@ -21,6 +21,7 @@ import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
+import { carryText } from "./spec-model";
 import { isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
@@ -48,7 +49,7 @@ function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string
         <Rows items={[
           ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
-          ["Carry over", spec.carry_over_days ? `${spec.carry_over_days} ${spec.carry_over_days === 1 ? "day" : "days"}: earlier unmatch can still pair` : "None: each day stands alone"],
+          ["Carry over", carryText(spec.carry_over_days)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
               <StatusChip health={chipOf(last).health} label={chipOf(last).label} />

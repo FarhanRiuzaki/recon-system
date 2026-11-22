@@ -17,7 +17,7 @@ export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cell
     row("Assign, comment and set a reason on unmatch items", "----D--"),
     row("Manual match within tolerance", "----D--"),
     row("Force match outside tolerance", "----DA-"),
-    row("Unmatch a group", "----DA-"),
+    row("Undo a match", "----DA-"),
     row("Write off, within the reviewer limit", "----DA-"),
     row("Write off, above the reviewer limit", "A---D--"),
     row("Prepare a day for sign-off", "-----D-"),

@@ -159,7 +159,7 @@ export function breaksOf(byReason: Readonly<Record<string, PerSide>> | null | un
  * · 14 src2 r2b duplicate)"); no brackets without duplicates. `noun` false drops "breaks" (the Breaks tab's title).
  */
 export function breaksText(x: Breaks, labels: readonly [string, string], noun = true): string {
-  const main = noun ? sidesText(x.breaks, labels, "breaks") : x.breaks.a === x.breaks.b ? `${formatNumber(x.breaks.a)} per side` : `${formatNumber(x.breaks.a)} ${labels[0]} · ${formatNumber(x.breaks.b)} ${labels[1]}`;
+  const main = noun ? sidesText(x.breaks, labels, "unmatch") : x.breaks.a === x.breaks.b ? `${formatNumber(x.breaks.a)} per side` : `${formatNumber(x.breaks.a)} ${labels[0]} · ${formatNumber(x.breaks.b)} ${labels[1]}`;
   return x.duplicate.a || x.duplicate.b ? `${main} (${sidesText(x.duplicate, labels, "duplicate")})` : main;
 }
 
@@ -272,7 +272,7 @@ export function sidesText(x: PerSide, labels: readonly [string, string], noun: s
  * line, sides named per R4-1); breaks per side after waiting once there are any ("48 unmatch per side").
  */
 export function countLine(t: Totals, labels: readonly [string, string]): string {
-  const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [sidesText(t.breaks, labels, "breaks")] : [];
+  const breaks = t.breaks && (t.breaks.a || t.breaks.b) ? [sidesText(t.breaks, labels, "unmatch")] : [];
   return [`${formatNumber(t.matched)} matched`, `${formatNumber(t.suggested)} suggested (open)`, `${formatNumber(t.duplicate)} duplicate`,
     ...(t.ambiguous ? [`${formatNumber(t.ambiguous)} ambiguous`] : []), sidesText(t.waiting, labels, "waiting"), ...breaks, `match rate ${rateText(t.rate)}`].join(" · ");
 }

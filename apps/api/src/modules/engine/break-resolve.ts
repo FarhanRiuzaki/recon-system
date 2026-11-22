@@ -78,7 +78,7 @@ export async function breakOf(tx: InTx, spaceId: string, id: string) {
 async function published(tx: InTx, spaceId: string, configId: string) {
   const [v] = await tx.select({ id: reconConfigVersions.id, spec: reconConfigVersions.spec }).from(reconConfigVersions)
     .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.configId, configId), eq(reconConfigVersions.status, "published")));
-  if (!v) throw new ApiError("invalid_state", "This recon has no approved version running, so its breaks can't change.");
+  if (!v) throw new ApiError("invalid_state", "This recon has no approved version running, so its items can't change.");
   return { id: v.id, spec: ReconSpec.parse(v.spec) };
 }
 /** An item free to match: live, open or a break nobody resolved and no request holds. */

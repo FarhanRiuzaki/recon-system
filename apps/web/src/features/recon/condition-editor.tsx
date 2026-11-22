@@ -11,7 +11,7 @@ import { type CatalogField, type Clause, type Condition, LIST_OPS, NO_VALUE_OPS,
 // A rule's condition as sentences (DEC-052 rev 2 §4.3, Figma 06 Rules frames): "All of" / "Any of" the clauses, each
 // "field · comparison · value", the fields from the recon version's catalog (break, recon, side A, side B).
 
-const GROUP = { break: "Break", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
+const GROUP = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
 const CLAUSES_MAX = 20;
 const isClause = (x: Clause | Condition): x is Clause => "field" in x;
 

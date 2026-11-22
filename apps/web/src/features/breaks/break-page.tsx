@@ -138,10 +138,10 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         description={`${b.recon.name} · ${b.recon.sides[b.item.side === "a" ? 0 : 1]} · ${STATE_LABEL[b.state]}${b.assignee ? ` · ${b.assignee.id === user.id ? "yours" : b.assignee.name ?? "a removed user"}` : " · Unassigned"}`}
         actions={open && worker && !b.assignee ? (
           <Button type="button" onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>
-            {busy === "take" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Take break
+            {busy === "take" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Take item
           </Button>
         ) : undefined} />
-      {open && !pending && worker && !canWork && b.assignee && !mine && <Notice>{b.assignee.name ?? "Someone"} has this item. A reviewer or space admin can reassign it from Breaks.</Notice>}
+      {open && !pending && worker && !canWork && b.assignee && !mine && <Notice>{b.assignee.name ?? "Someone"} has this item. A reviewer or space admin can reassign it from Unmatch.</Notice>}
       {open && !pending && worker && !b.assignee && <Notice>Take this item to resolve it.</Notice>}
 
       {b.request && (

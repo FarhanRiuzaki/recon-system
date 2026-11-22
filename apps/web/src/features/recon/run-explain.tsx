@@ -67,7 +67,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
       <Dialog open {...close}>
         <DialogContent className="max-w-160" onCloseAutoFocus={focusBack}>
           <DialogHeader>
-            <DialogTitle>{item.breakReason ?? "Break"}</DialogTitle>
+            <DialogTitle>{item.breakReason ?? "Unmatch"}</DialogTitle>
             <DialogDescription>
               Break · {rangeText(item.businessDate, item.businessDate)} · {p ? `pair proposed by pass ${p.passNo}${by ? ` · ${by.name}` : ""}` : item.breakPass ? `pass ${item.breakPass}` : "left open at day close"}
             </DialogDescription>

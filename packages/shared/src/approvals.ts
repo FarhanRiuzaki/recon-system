@@ -21,7 +21,7 @@ export const isRequestKind = (k: string): k is RequestKind => (REQUEST_KINDS as 
 export function requestBlocked(requestedBy: string | null, me: string, lead: boolean, superadmin = false): string | null {
   if (superadmin) return null;
   if (requestedBy === me) return "You asked for this. A reviewer or space admin who didn't ask decides it.";
-  if (!lead) return "Only a reviewer or space admin of this space decides break requests.";
+  if (!lead) return "Only a reviewer or space admin of this space decides unmatch requests.";
   return null;
 }
 

@@ -27,7 +27,7 @@ export const dayLabel = (date: string) => (date ? rangeText(date, date).replace(
 /** A tile's breaks: by the one definition when the API counts them by reason, else the breaks of time it has; "" for none. */
 export function tileBreaks({ t, b }: DayTile, labels: Labels): string {
   if (b) return b.breaks.a || b.breaks.b ? breaksText(b, labels) : "";
-  return t.breaks && (t.breaks.a || t.breaks.b) ? sidesText(t.breaks, labels, "breaks") : "";
+  return t.breaks && (t.breaks.a || t.breaks.b) ? sidesText(t.breaks, labels, "unmatch") : "";
 }
 /** The phone select's option text of a tile. */
 export const tileOption = (x: DayTile, labels: Labels) =>

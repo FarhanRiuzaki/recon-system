@@ -14,16 +14,16 @@ const counters = { intake: { a: 1000, b: 1000 }, replaced: { a: 0, b: 0 }, open:
 const run = { mode: "manual", counters, days: [day], from: "2026-11-02", to: "2026-11-05",
   live: { matched: 937, suggested: 0, breaks: { a: 48, b: 48 }, open: { a: 0, b: 0 }, items: { a: 1000, b: 1000 }, breakReasons: { Duplicate: { a: 15, b: 15 }, "No counterpart": { a: 48, b: 48 } } } } as unknown as ReconRunDto;
 
-describe("a run's date tiles: breaks per side with the date's duplicates in them", () => {
+describe("a run's date tiles: unmatch per side with the date's duplicates in them", () => {
   it("a real run's day: 21 · 19 breaks with 6 duplicate per side, marked closed; All dates by the run's line", () => {
     const [all, d2] = dayTilesOf(run, spec);
-    expect(tileBreaks(d2!, L)).toBe("21 src1 r2 · 19 src2 r2b breaks (6 duplicate per side)");
-    expect(tileOption(d2!, L)).toBe("2 Nov · closed · 312 matched · 0 suggested · 21 src1 r2 · 19 src2 r2b breaks (6 duplicate per side)");
-    expect(tileBreaks(all!, L)).toBe("63 breaks per side (15 duplicate per side)");
+    expect(tileBreaks(d2!, L)).toBe("21 src1 r2 · 19 src2 r2b unmatch (6 duplicate per side)");
+    expect(tileOption(d2!, L)).toBe("2 Nov · closed · 312 matched · 0 suggested · 21 src1 r2 · 19 src2 r2b unmatch (6 duplicate per side)");
+    expect(tileBreaks(all!, L)).toBe("63 unmatch per side (15 duplicate per side)");
   });
   it("a simulation's day keeps its duplicates by their pass, not as breaks", () => {
     const [, d2] = dayTilesOf({ ...run, mode: "simulation" } as ReconRunDto, spec);
     expect(d2!.b).toBeNull();
-    expect(tileBreaks(d2!, L)).toBe("12 src1 r2 · 13 src2 r2b breaks");
+    expect(tileBreaks(d2!, L)).toBe("12 src1 r2 · 13 src2 r2b unmatch");
   });
 });

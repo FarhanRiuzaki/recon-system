@@ -15,12 +15,12 @@ export const ROLE_LABEL: Record<SpaceRole, string> = {
 };
 export const ROLE_DESCRIPTION: Record<SpaceRole, string> = {
   space_admin: "Adds and removes members, changes roles, approves write-offs above the reviewer limit and reopened days.",
-  source_admin: "Sets up source connections and credentials, and declares source fields. No access to recon config or breaks.",
+  source_admin: "Sets up source connections and credentials, and declares source fields. No access to recon config or unmatch.",
   config_maker: "Edits config drafts and source mappings, runs simulations, sends them for approval.",
   config_checker: "Approves config and source versions that someone else made.",
-  operator: "Works breaks: assigns, matches, and requests force matches, unmatches and write-offs.",
+  operator: "Works unmatch: assigns, matches, and requests postings, force matches, write-offs and undo matches.",
   reviewer: "Approves operators' requests and signs off business days.",
-  viewer: "Sees recons, breaks and explanations, and exports CSV.",
+  viewer: "Sees recons, unmatch and explanations, and exports CSV.",
 };
 
 /** Why a member action is off (Build notes 01 final copy): the role checklist and the members page show them. */

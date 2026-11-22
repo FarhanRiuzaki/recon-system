@@ -86,7 +86,7 @@ export function ConfirmActionDialog(p: Props) {
       <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[minmax(0,1fr)]" onCloseAutoFocus={p.onCloseAutoFocus} {...(p.alert ? { role: "alertdialog" } : {})}>
         <form onSubmit={submit} noValidate className="flex min-h-0 flex-col">
           {/* 16 + 1 + 3 px keeps the 20 px gap of a dialog that fits; the rule shows only while the body is scrolled. */}
-          <DialogHeader className="shrink-0 border-b border-transparent pb-4 transition-colors duration-(--dur-fast) data-scrolled:border-line" data-scrolled={scrolled || undefined}>
+          <DialogHeader className="shrink-0 border-b border-transparent transition-colors duration-(--dur-fast) data-scrolled:border-line" data-scrolled={scrolled || undefined}>
             <DialogTitle>{p.title}</DialogTitle>
             <DialogDescription>{p.description}</DialogDescription>
           </DialogHeader>

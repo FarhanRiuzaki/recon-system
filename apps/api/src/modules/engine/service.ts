@@ -60,6 +60,8 @@ export type PassCounters = {
  */
 export type RunCounters = {
   intake: { a: number; b: number }; replaced: { a: number; b: number }; passes: Record<string, PassCounters>; open: { a: number; b: number };
+  /** The carry over this run resolved (always = from the oldest unmatch): its windows read it back, so they don't move later. */
+  carry?: number;
 };
 export type RunInput = {
   spaceId: string; configId: string; versionId: string; mode: RunMode;
@@ -106,11 +108,13 @@ export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00
  */
 export async function effectiveCarry(tx: InTx, k: { spaceId: string; configId: string; simRunId?: string | null }, carry: number | null, from: string): Promise<number> {
   if (carry !== null) return carry;
+  // the live unmatch (a simulation starts with none of its own: it reads the live recon's, blind review I2)
   const [r] = await tx.select({ d: sql<string | null>`min(${reconItems.businessDate})::text` }).from(reconItems)
-    .where(and(eq(reconItems.spaceId, k.spaceId), eq(reconItems.configId, k.configId), k.simRunId ? eq(reconItems.simRunId, k.simRunId) : isNull(reconItems.simRunId),
+    .where(and(eq(reconItems.spaceId, k.spaceId), eq(reconItems.configId, k.configId), isNull(reconItems.simRunId),
       or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), eq(reconItems.lateMatch, true), eq(reconItems.breakReason, "No counterpart")))));
   const days = r?.d ? Math.round((Date.parse(`${from}T00:00:00Z`) - Date.parse(`${r.d}T00:00:00Z`)) / DAY) : 0;
-  return Math.min(3660, Math.max(1, days));
+  // at least 31 (as far back as day + N goes): late data dated before the oldest unmatch still comes in (blind review I1)
+  return Math.min(3660, Math.max(31, days));
 }
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
 
@@ -245,7 +249,11 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       if (run.status === "queued") await tx.update(reconRuns).set({ status: "running" }).where(and(mine, eq(reconRuns.status, "queued")));
       return load(tx, spaceId, ReconSpec.parse(v.spec));
     }, on);
-    const carry = await withSpace(scope, (tx) => effectiveCarry(tx, { spaceId, configId, simRunId: run.mode === "simulation" ? runId : null }, spec.carry_over_days, run.dateFrom), on);
+    // resolved once per run against its last date (so every date of a catch-up keeps the oldest unmatch in its window),
+    // kept in the run's counters for always (a number of days never moves): what a run read stays what it read (blind review I2, I3)
+    const kept = (run.counters as RunCounters | null)?.carry;
+    const carry = kept ?? await withSpace(scope, (tx) => effectiveCarry(tx, { spaceId, configId }, spec.carry_over_days, run.dateTo), on);
+    if (kept === undefined && spec.carry_over_days === null) await withSpace(scope, (tx) => tx.update(reconRuns).set({ counters: sql`coalesce(${reconRuns.counters}, '{}'::jsonb) || jsonb_build_object('carry', ${carry}::int)` }).where(mine), on);
     const first = addDays(run.dateFrom, -carry), to = run.dateTo;
     const months = (Number(to.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(first.slice(5, 7)) + 1;
     await on.transaction((tx) => ensureMonthPartitions(tx, reconItems, new Date(`${first}T00:00:00Z`), months));
@@ -256,7 +264,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
       const [r] = await tx.select().from(reconRuns).where(mine).for("update");
       if (r?.status !== "running") return "over" as const;
       const had = r.counters as RunCounters;
-      const counters = had.passes ? { ...had, passes: Object.fromEntries(Object.entries(had.passes).map(([k, v]) => [k, { ...zeroPass(), ...v }])) } : emptyCounters(spec);
+      const counters = had.passes ? { ...had, passes: Object.fromEntries(Object.entries(had.passes).map(([k, v]) => [k, { ...zeroPass(), ...v }])) } : { ...emptyCounters(spec), ...(spec.carry_over_days === null ? { carry } : {}) };
       return fn(tx, r, counters);
     }, on);
     const analyze = (table: "records" | "recon_items", lo: string, hi: string, added: number) => on.transaction((tx) => one<{ n: number }>(tx, analyzeSql(table, lo, hi, added)));
@@ -383,7 +391,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
 export async function projectDayClose(tx: InTx, run: RunRow): Promise<RunProjection> {
   const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions)
     .where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId)));
-  const from = addDays(run.dateFrom, -(await effectiveCarry(tx, { spaceId: run.spaceId, configId: run.configId, simRunId: run.id }, ReconSpec.parse(v!.spec).carry_over_days, run.dateFrom)));
+  const from = addDays(run.dateFrom, -((run.counters as RunCounters | null)?.carry ?? await effectiveCarry(tx, { spaceId: run.spaceId, configId: run.configId }, ReconSpec.parse(v!.spec).carry_over_days, run.dateTo)));
   const misses = await classifyUnmatched(tx, { spaceId: run.spaceId, configId: run.configId, versionId: run.configVersionId, simRunId: run.id, from, to: run.dateTo });
   const suggested = await tx.select({ side: reconItems.side, d: matchGroups.businessDate, n: count() }).from(reconItems)
     .innerJoin(matchMembers, and(eq(matchMembers.spaceId, reconItems.spaceId), eq(matchMembers.itemId, reconItems.id)))
@@ -616,7 +624,7 @@ export async function finalizeRun(on: Tx, spaceId: string, runId: string, o: { b
     const { spec, recordSpaces } = await versionRead(tx, spaceId, r.configVersionId);
     const { days, refs } = await daysOf(tx, {
       spaceId, configId: r.configId, simRunId: r.mode === "simulation" ? r.id : null, passes: spec.passes.map((p) => p.no),
-      first: addDays(r.dateFrom, -(await effectiveCarry(tx, { spaceId, configId: r.configId, simRunId: r.mode === "simulation" ? r.id : null }, spec.carry_over_days, r.dateFrom))), from: r.dateFrom, to: r.dateTo, recordSpaces,
+      first: addDays(r.dateFrom, -((r.counters as RunCounters | null)?.carry ?? await effectiveCarry(tx, { spaceId, configId: r.configId }, spec.carry_over_days, r.dateTo))), from: r.dateFrom, to: r.dateTo, recordSpaces,
     });
     // a reference broken on two dates of the run counts once: the steps counted it per date, the window's breaks count
     // each reference once. ponytail: the smaller of the two; it can still be high when the run re-broke a reference
@@ -769,7 +777,7 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
   return inSpace(ctx, async (tx, spaceId) => {
     const run = await runOfConfig(tx, spaceId, configId, runId);
     const { spec, recordSpaces } = await versionRead(tx, spaceId, run.configVersionId);
-    const carry = await effectiveCarry(tx, { spaceId, configId, simRunId: run.mode === "simulation" ? run.id : null }, spec.carry_over_days, run.dateFrom);
+    const carry = (run.counters as RunCounters | null)?.carry ?? await effectiveCarry(tx, { spaceId, configId }, spec.carry_over_days, run.dateTo);
     const scopeI = run.mode === "simulation" ? eq(reconItems.simRunId, run.id) : isNull(reconItems.simRunId);
     const inWindow = (c: typeof reconItems.businessDate | typeof matchGroups.businessDate) =>
       sql`${c} between ${addDays(run.dateFrom, -carry)}::date and ${run.dateTo}::date`;

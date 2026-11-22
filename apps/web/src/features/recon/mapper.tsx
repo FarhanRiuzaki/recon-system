@@ -17,7 +17,7 @@ import { ChangeChips } from "./change-chips";
 // connect them (a line is drawn between them on a wide screen); pick a right field to set its source in words: a field
 // with changes, a fixed value, a template, a lookup or a named account. Keyboard and touch never need to drag.
 
-const GROUP = { break: "Break", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
+const GROUP = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
 type Setup = { accounts: readonly { key: string; label: string }[]; lookups: readonly { name: string }[] };
 type Op = { request: readonly OpField[]; fixed: readonly string[]; auto: readonly string[] };
 const KIND_LABEL = { field: "From a field", const: "Fixed value", template: "Template", lookup: "Lookup", account: "Account" } as const;

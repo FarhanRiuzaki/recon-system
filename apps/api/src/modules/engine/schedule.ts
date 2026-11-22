@@ -163,7 +163,7 @@ export async function runScheduled(on: Tx, data: { spaceId: string; runId: strin
   const k = { spaceId: run.spaceId, configId: run.configId };
   const [v] = await withSpace({ spaceIds: [run.spaceId], userId: null },
     (tx) => tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, run.spaceId), eq(reconConfigVersions.id, run.configVersionId))), on);
-  const carry = await withSpace({ spaceIds: [run.spaceId], userId: null }, (tx) => effectiveCarry(tx, k, ReconSpec.parse(v!.spec).carry_over_days, run.dateFrom), on);
+  const carry = (run.counters as { carry?: number } | null)?.carry ?? await withSpace({ spaceIds: [run.spaceId], userId: null }, (tx) => effectiveCarry(tx, k, ReconSpec.parse(v!.spec).carry_over_days, run.dateFrom), on);
   const swept = await sweepClosed(on, k, addDays(run.dateFrom, -Math.max(carry, 1)), addDays(run.dateFrom, -1));
   await refreshCovering(on, k, swept.dates);
   for (let d = run.dateFrom; d <= run.dateTo; d = addDays(d, 1)) {

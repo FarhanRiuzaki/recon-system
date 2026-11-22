@@ -33,7 +33,7 @@ import { Mapper } from "./mapper";
 
 type Account = { key: string; label: string; number: string; currency: string };
 type Setup = { accounts: readonly Account[]; lookups: readonly { name: string }[] };
-const GROUP = { break: "Break", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
+const GROUP = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
 const KIND_LABEL = { field: "A recon field", const: "A fixed value", template: "A template", lookup: "A lookup table", account: "An account" } as const;
 const blankClause = { all: [{ field: "", op: "eq", value: "" }] } as const;
 
@@ -157,7 +157,7 @@ function Dock({ spaceId, configId, versionId, change, index, draft, accounts, on
           </span>
         )}
       </div>
-      {!rows.length && <span className="text-body-sm text-fg-3">{breaks.isPending ? "Loading breaks…" : "This recon has no unmatch item to try it with yet. They appear after its first run."}</span>}
+      {!rows.length && <span className="text-body-sm text-fg-3">{breaks.isPending ? "Loading items…" : "This recon has no unmatch item to try it with yet. They appear after its first run."}</span>}
       <div role="status" className="grid gap-2">
         {res && "error" in res && <span className="text-body-sm text-down-ink">{res.error}</span>}
         {res && "variant" in res && (

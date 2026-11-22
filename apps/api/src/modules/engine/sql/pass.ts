@@ -141,8 +141,13 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
  * and that reason: DEC-047, Captain). A near miss (currency, amount or date
  * differs), a Duplicate or an unconfirmed suggestion's break keeps its own decision and stays out.
  */
+// a late-match break waiting for a decision (posting, write-off) or on a signed-off date stays out: a person is deciding
+// it, or the day is frozen (blind review I5; live only, a simulation's own items are never signed off)
 const poolStatus = (c: StepCtx): SQL => (c.late
-  ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}))`
+  ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}
+      and i.break_state is distinct from 'pending_approval'
+      and (i.sim_run_id is not null or not exists (select 1 from recon_days rd where rd.space_id = i.space_id and rd.config_id = i.config_id
+        and rd.business_date = i.business_date and rd.signed_at is not null))))`
   : sql`i.status = 'open'`);
 /** The one break reason that rejoins the pool across days (breaks.ts NEAR_MISS.none; not imported: breaks.ts imports this file). */
 const NO_COUNTERPART = "No counterpart";

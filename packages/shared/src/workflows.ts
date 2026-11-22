@@ -13,9 +13,9 @@ export const TRIGGER_LABEL: Record<Trigger, string> = { posting: "Posting", forc
 export const TRIGGER_MODULE: Record<Trigger, "Breaks"> = { posting: "Breaks", force_match: "Breaks", unmatch: "Breaks", write_off: "Breaks" };
 export const TRIGGER_TEXT: Record<Trigger, string> = {
   posting: "Posting an unmatch to the bank",
-  force_match: "Matching a break across a difference in totals",
-  unmatch: "Undoing a break's match",
-  write_off: "Closing a break as written off",
+  force_match: "Matching an unmatch item across a difference in totals",
+  unmatch: "Undoing a match",
+  write_off: "Closing an unmatch item as written off",
 };
 
 /** What a rule can test. `amount` is in minor units of the break's currency (no FX), positive. */

@@ -57,10 +57,10 @@ const lead = (ctx: Ctx) => isSuperadmin(ctx.user.roles) || ctx.space!.roles.some
 function nextBlocked(ctx: Ctx, d: Day, resolved: boolean): string | null {
   if (d.stage === "signed") return "Signed off.";
   if (!lead(ctx)) return "Only a reviewer or space admin of this space signs off days.";
-  if (d.pending) return `${d.pending === 1 ? "A break request waits" : `${d.pending} break requests wait`} for a checker. Decide ${d.pending === 1 ? "it" : "them"} first.`;
+  if (d.pending) return `${d.pending === 1 ? "A request waits" : `${d.pending} requests wait`} for a checker. Decide ${d.pending === 1 ? "it" : "them"} first.`;
   if (d.stage === "closed" || isSuperadmin(ctx.user.roles)) return null;
   if (d.preparedBy === ctx.user.id) return "You prepared this day. Another reviewer or space admin signs it off.";
-  if (resolved) return "You resolved breaks of this day. Another reviewer or space admin signs it off.";
+  if (resolved) return "You settled unmatch items of this day. Another reviewer or space admin signs it off.";
   return null;
 }
 
