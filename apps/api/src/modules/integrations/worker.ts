@@ -21,13 +21,19 @@ const STALE_MS = 120_000;
 type Run = typeof actionRuns.$inferSelect;
 type Finish = Partial<Pick<Run, "status" | "payloadMasked" | "responseMasked" | "filled" | "externalId" | "bankReference" | "httpStatus" | "code" | "message">>;
 
-const finish = (tx: InTx, id: string, f: Finish) => tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(eq(actionRuns.id, id));
+/** Ends run `id` with `f`, only while it is still `from` (two workers never overwrite each other's outcome). */
+const finish = (tx: InTx, id: string, f: Finish, from: "queued" | "sending" = "queued") =>
+  tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(and(eq(actionRuns.id, id), eq(actionRuns.status, from)));
+/** A run that never left (it failed while being prepared) ends not sent, naming only the error's kind. */
+const notPrepared = (e: unknown) => ({ status: "not_sent", message: `Not sent: Recon couldn't prepare the call (${e instanceof Error ? e.name : "error"}). Check the connector's settings and secrets, then post it by hand if it is still needed.` }) as const;
+const QUEUED_MAX_MS = 15 * 60_000;
 /** A failure before any answer that says the bank (or the way to it) is down, as opposed to a refusal. */
 const transport = (r: SendResult) => (r.outcome === "not_sent" && /couldn't be reached|certificate|No token from the bank/.test(r.message)) || (r.outcome === "timeout" && r.status === null);
 
 /** Sends run `runId`: "sent", "waiting" (an earlier run of its request isn't finished) or "skip" (not queued, or taken by another). */
 export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"sent" | "waiting" | "skip"> {
   const scope = { spaceIds: [spaceId], userId: null };
+  // anything that throws here rolls the transaction back (the claim too); the run is then ended below, in a fresh one
   const taken = await withSpace(scope, async (tx) => {
     const [r] = await tx.select().from(actionRuns).where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.id, runId)));
     if (!r || r.status !== "queued") return "skip" as const;
@@ -48,10 +54,24 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
     const [claimed] = await tx.update(actionRuns).set({ status: "sending", sendingAt: sql`now()` }).where(and(eq(actionRuns.id, r.id), eq(actionRuns.status, "queued"))).returning({ id: actionRuns.id });
     if (!claimed) return "skip" as const;
     return { r, op, env, settings: spec.environments[env], secrets: await secretsOf(tx, c.id, env), payload, masked };
-  }, on);
+  }, on).catch((e: unknown) => ({ failed: e }) as const);
+  if (typeof taken === "object" && "failed" in taken) {
+    log.warn({ err: taken.failed instanceof Error ? taken.failed.name : "error" }, "action run failed before its call");
+    await withSpace(scope, (tx) => tx.update(actionRuns).set({ ...notPrepared(taken.failed), payloadEnc: null, finishedAt: sql`now()` })
+      .where(and(eq(actionRuns.id, runId), inArray(actionRuns.status, ["queued", "sending"]))), on);
+    return "skip";
+  }
   if (typeof taken === "string") return taken;
   const { r, op, env, settings, secrets, payload, masked } = taken;
-  const res = await sendOperation({ connectorId: r.connectorId!, env, op, settings, secrets, body: payload });
+  let res: Awaited<ReturnType<typeof sendOperation>>;
+  try {
+    // sendOperation throws only before its fetch (token, external id, sealing): the call never left
+    res = await sendOperation({ connectorId: r.connectorId!, env, op, settings, secrets, body: payload });
+  } catch (e) {
+    log.warn({ err: e instanceof Error ? e.name : "error" }, "action run failed before its call");
+    await withSpace(scope, (tx) => finish(tx, r.id, { ...notPrepared(e), payloadMasked: masked }, "sending"), on);
+    return "skip";
+  }
   const code = res.json !== null && op.success ? String(readPath(res.json, op.success.field) ?? "") : null;
   const ok = res.outcome === "ok" && (!op.success || code === op.success.equals);
   const ref = res.json !== null && op.reference ? readPath(res.json, op.reference) : null;
@@ -62,7 +82,7 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
       message: ok ? null : res.outcome === "ok" ? `The bank answered ${code || "without a code"}.` : res.message,
       payloadMasked: masked, responseMasked: res.json === null ? null : maskTree(res.json, op.masked), filled: res.filled,
       externalId: res.externalId, bankReference: ref === null || ref === undefined ? null : String(ref), httpStatus: res.status,
-    });
+    }, "sending");
     // the circuit: transport failures in a row open it for 60 s; any answer closes it
     const failed = transport(res);
     await tx.insert(connectorCircuits).values({ connectorId: r.connectorId!, environment: env, failures: failed ? 1 : 0 })
@@ -77,7 +97,10 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
   return "sent";
 }
 
-/** Runs left `sending` past STALE_MS (their worker died after the call left) become timeout; answers how many. */
+/**
+ * Runs left `sending` past STALE_MS (their worker died after the call left) become timeout, and runs still `queued`
+ * past QUEUED_MAX_MS (no worker took them, so nothing waits behind them forever) not sent; answers how many.
+ */
 export async function sweepStale(on: Tx): Promise<number> {
   const ids = (await on.select({ id: spaces.id }).from(spaces)).map((s) => s.id);
   if (!ids.length) return 0;
@@ -86,7 +109,11 @@ export async function sweepStale(on: Tx): Promise<number> {
       status: "timeout", payloadEnc: null, finishedAt: sql`now()`,
       message: "No answer recorded: the worker stopped while the call was out. Check with the bank before acting.",
     }).where(and(eq(actionRuns.status, "sending"), lt(actionRuns.sendingAt, new Date(Date.now() - STALE_MS)))).returning({ id: actionRuns.id });
-    return rows.length;
+    const left = await tx.update(actionRuns).set({
+      status: "not_sent", payloadEnc: null, finishedAt: sql`now()`,
+      message: "Not sent: no worker took it within 15 minutes. Check the worker, then post it by hand if it is still needed.",
+    }).where(and(eq(actionRuns.status, "queued"), lt(actionRuns.createdAt, new Date(Date.now() - QUEUED_MAX_MS)))).returning({ id: actionRuns.id });
+    return rows.length + left.length;
   }, on);
 }
 

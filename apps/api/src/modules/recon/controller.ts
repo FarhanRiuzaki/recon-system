@@ -56,7 +56,7 @@ export const reconController = () =>
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/actions/preview", async (c) => {
       const b = await body(c, PreviewActionBody);
       return previewVersionAction(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
-    }, { guard: { space: SPACE_ROLES } })
+    }, { guard: { space: ["config_maker", "config_checker", "space_admin"] } }) // who sets up or reviews the recon: the payload is a break's data
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/submit", ({ ctx, params }) =>
       submitVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: ["config_maker"] } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/approve", ({ ctx, params }) =>

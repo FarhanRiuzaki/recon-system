@@ -46,10 +46,18 @@ type VariantLike = { name: string; when: Condition | null; mapping: Readonly<Rec
 export type Built = { ok: true; payload: Record<string, unknown>; sources: Record<string, string> } | { ok: false; code: "build_error" | "lookup" | "skipped"; field: string; message: string };
 
 const exponent = (ccy?: string) => (ccy && CURRENCY_EXPONENT[ccy.toUpperCase()] !== undefined ? CURRENCY_EXPONENT[ccy.toUpperCase()]! : 2);
+/** Thrown by an amount change on a value that isn't whole minor units: buildPayload refuses it, naming the field. */
+export class NotWholeAmount extends Error { constructor(readonly value: string) { super(); } }
+/** `v` as whole minor units ("-150"); "" stays "" (a required check names it); anything else (2500.50, 1,000) refuses. */
+function wholeMinor(v: string): string {
+  const t = v.trim();
+  if (t === "" || /^-?\d+$/.test(t)) return t;
+  throw new NotWholeAmount(v);
+}
 /** A whole number of minor units as major units with `n` decimals (half up), exact (BigInt). */
 function major(minor: string, exp: number, n: number): string {
-  const m = /^-?\d+/.exec(minor.trim())?.[0];
-  if (!m) return minor;
+  const m = wholeMinor(minor);
+  if (!m) return m;
   let v = BigInt(m);
   const neg = v < 0n; if (neg) v = -v;
   if (n >= exp) v *= 10n ** BigInt(n - exp);
@@ -66,7 +74,7 @@ export function applyTransforms(value: string, ts: readonly Transform[], at: { c
       if (!v) continue;
       const d = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00+07:00`) : new Date(v);
       if (!Number.isNaN(d.getTime())) v = formatNow(m[1]!, d);
-    } else if (t === "amount:minor") v = /^-?\d+/.exec(v.trim())?.[0] ?? v;
+    } else if (t === "amount:minor") v = wholeMinor(v);
     else if ((m = /^amount:major:(\d)$/.exec(t))) v = major(v, exponent(at.currency), Number(m[1]));
     else if ((m = /^pad_left:(\d+):(.)$/.exec(t))) v = v.padStart(Number(m[1]), m[2]);
     else if ((m = /^pad_right:(\d+):(.)$/.exec(t))) v = v.padEnd(Number(m[1]), m[2]);
@@ -144,6 +152,7 @@ export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }
     let value: string;
     try { value = resolve(src, ctx, setup); } catch (e) {
       if (e instanceof Miss) return { ok: false, code: "lookup", field: path, message: `Lookup ${e.table} has no ${e.key || "value"}.` };
+      if (e instanceof NotWholeAmount) return { ok: false, code: "build_error", field: path, message: `${path}: “${e.value}” isn't a whole amount in minor units, so an amount change can't read it.` };
       throw e;
     }
     const f = fieldAt(op.request, path);

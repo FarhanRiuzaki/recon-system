@@ -99,4 +99,30 @@ describe("the action worker", () => {
     expect(await row(r)).toMatchObject({ status: "timeout", message: "No answer recorded: the worker stopped while the call was out. Check with the bank before acting." });
     expect(await sendRun(db, A, r)).toBe("skip");
   });
+
+  it("a run that fails before its call ends not sent, and the next run of its request goes (final review I3)", async () => {
+    const c = await connector(), rq = Bun.randomUUIDv7();
+    const first = await run(c, { requestId: rq, seq: 1 }), second = await run(c, { requestId: rq, seq: 2 });
+    await db.update(actionRuns).set({ payloadEnc: "v1:not-a-sealed-payload" }).where(eq(actionRuns.id, first));
+    expect(await sendRun(db, A, first)).toBe("skip");
+    expect(await row(first)).toMatchObject({ status: "not_sent", payloadEnc: null });
+    expect((await row(first)).message).toMatch(/^Not sent: Recon couldn't prepare the call/);
+    expect(await sendRun(db, A, second)).toBe("sent");
+  });
+
+  it("a call that can't be sealed ends not sent, never timeout (final review m2)", async () => {
+    const c = await connector();
+    await db.update(connectorSecrets).set({ secretEnc: encryptSecret(JSON.stringify({ clientId: bank.clientId, clientSecret: bank.clientSecret, publicKey: "not a key" })) }).where(eq(connectorSecrets.connectorId, c));
+    const r = await run(c);
+    await sendRun(db, A, r);
+    expect(await row(r)).toMatchObject({ status: "not_sent", payloadEnc: null });
+  });
+
+  it("a run no worker took within 15 minutes ends not sent", async () => {
+    const r = await run(await connector());
+    await db.update(actionRuns).set({ createdAt: new Date(Date.now() - 16 * 60_000) }).where(eq(actionRuns.id, r));
+    expect(await sweepStale(db)).toBe(1);
+    expect(await row(r)).toMatchObject({ status: "not_sent", message: "Not sent: no worker took it within 15 minutes. Check the worker, then post it by hand if it is still needed." });
+  });
 });
+

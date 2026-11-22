@@ -203,7 +203,8 @@ describe("posting results of the space", () => {
   });
 
   it("Today counts each recon's runs of the last 24 hours that need someone: failed, timeout, not sent", async () => {
-    await setup("write_off", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
+    // a notify that fails is not a posting (final review I5)
+    await setup("write_off", [{ name: "Tell", kind: "notify", on: { event: "approved" }, variants: [variant()] }, { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
     await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
     await decide(I.a1, "approve", {}, t.rev);
     const today = async () => (await json<{ posting: { reconId: string; failed: number; timeout: number; notSent: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }))).posting;
@@ -223,11 +224,18 @@ describe("what gets posted (preview)", () => {
     ] }], 1);
     const [v] = await db.select({ id: reconConfigVersions.id }).from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
     const at = `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/actions/preview`;
+    // config roles and the space admin only (final review I2): an operator sees no payload here either
+    expect((await call("POST", at, { token: t.op, body: { change: "write_off", action: 0, itemId: I.a1 } })).status).toBe(403);
     const p = await json<{ variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null }>(
-      call("POST", at, { token: t.op, body: { change: "write_off", action: 0, itemId: I.a1 } }));
+      call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1 } }));
     expect(p).toEqual({ variant: "Default", payload: { Amount: 10000, Remark: "P1-1", Note: "fixed" }, sources: { Amount: "break.amount", Remark: "template", Note: "fixed" }, problem: null });
-    const none = await json<{ variant: string | null; problem: { message: string } | null }>(call("POST", at, { token: t.op, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
+    const none = await json<{ variant: string | null; problem: { message: string } | null }>(call("POST", at, { token: t.adm, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
     expect(none).toMatchObject({ variant: null, problem: { message: "This change has no such action." } });
+    // a break of another recon, or none, is 404
+    expect((await call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: Bun.randomUUIDv7() } })).status).toBe(404);
+    const other = (await recon(A, spec(Bun.randomUUIDv7(), Bun.randomUUIDv7(), []))).configId;
+    await db.update(reconItems).set({ configId: other }).where(eq(reconItems.id, I.b2));
+    expect((await call("POST", at, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.b2 } })).status).toBe(404);
   });
 });
 

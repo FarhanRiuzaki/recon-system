@@ -138,12 +138,12 @@ const toRunRow = ({ r, reconId, recon }: { r: typeof actionRuns.$inferSelect; re
   break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
 });
 
-/** Today: per recon, its runs created in the last 24 hours that ended failed, timeout or not sent (none = left out). */
+/** Today: per recon, its posting runs (not notify) created in the last 24 hours that ended failed, timeout or not sent (none = left out). */
 export async function postingAttention(tx: InTx, spaceId: string, now = new Date()): Promise<TodayDto["posting"]> {
   const n = (s: string) => sql<number>`count(*) filter (where ${actionRuns.status} = ${s})::int`;
   return tx.select({ reconId: reconConfigVersions.configId, failed: n("failed"), timeout: n("timeout"), notSent: n("not_sent") }).from(actionRuns)
     .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
-    .where(and(eq(actionRuns.spaceId, spaceId), inArray(actionRuns.status, ["failed", "timeout", "not_sent"]), gte(actionRuns.createdAt, new Date(now.getTime() - 86_400_000))))
+    .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.kind, "posting"), inArray(actionRuns.status, ["failed", "timeout", "not_sent"]), gte(actionRuns.createdAt, new Date(now.getTime() - 86_400_000))))
     .groupBy(reconConfigVersions.configId);
 }
 

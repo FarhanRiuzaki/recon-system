@@ -20,6 +20,7 @@ import { and, desc, eq, ilike, inArray, isNull, max, min, or, sql } from "drizzl
 import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
+import { reconItems } from "../engine";
 import { sourceFieldsLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { canStep, matchingHash, specHash } from "../../kernel/versions";
@@ -419,6 +420,9 @@ export function previewVersionAction(ctx: Ctx, id: string, versionId: string, b:
   return inSpace(ctx, async (tx, spaceId) => {
     const c = await configOf(tx, spaceId, id);
     const v = await versionOf(tx, c, versionId);
+    // only a break of this recon (final review I2)
+    const [x] = await tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, c.id), eq(reconItems.id, b.itemId))).limit(1);
+    if (!x) throw notFound("break");
     return previewAction(tx, ctx, (v.spec as ReconSpec).approvals, c.code, b.change, b.action, b.itemId) as Promise<ActionPreviewDto>;
   });
 }

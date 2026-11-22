@@ -74,7 +74,7 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
   if (!t || skeleton) return <LoadingShape sections={TODAY_SHAPE} shown={skeleton} />;
   const byId = new Map(t.sources.map((s) => [s.id, s]));
   const attention = new Map(t.posting.map((p) => [p.reconId, p]));
-  const postingHref = `/spaces/${encodeURIComponent(spaceId)}/posting?status=${encodeURIComponent(selectionState(["failed", "timeout", "not_sent"]))}`;
+  const postingHref = `/spaces/${encodeURIComponent(spaceId)}/posting?status=${encodeURIComponent(selectionState(["failed", "timeout", "not_sent"]))}&kind=posting`;
   const map = spaceMap(t, (id) => liveHref(spaceId, id), arrivals);
   const affected = map.nodes.filter((n) => n.affectedBy?.length).length;
 

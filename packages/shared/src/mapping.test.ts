@@ -102,3 +102,18 @@ describe("the mapping engine", () => {
     expect(pickVariant(vs.slice(0, 1) as never, ctx)).toBeNull();
   });
 });
+
+describe("amount changes refuse a value that isn't whole minor units (final review I1)", () => {
+  const op = { request: [{ name: "Fee", type: "numeric", required: true }] } as never;
+  const v = (t: string) => ({ name: "V", when: null, zeroOrNegative: "absolute_swap" as const, mapping: { Fee: { kind: "field" as const, key: "side_a.attrs.fee", transforms: [t] } } });
+  it("names the field instead of truncating 2500.50 or 1,000.00", () => {
+    for (const [value, t] of [["2500.50", "amount:major:2"], ["1,000.00", "amount:major:2"], ["1000.50", "amount:minor"]] as const) {
+      const b = buildPayload(v(t), op, { "side_a.attrs.fee": value, "break.amount": "1" }, { accounts: [], lookups: [] }, new Set());
+      expect(b).toMatchObject({ ok: false, code: "build_error", field: "Fee" });
+    }
+  });
+  it("still converts whole minor units", () => {
+    expect(applyTransforms("250050", ["amount:major:2"], { currency: "IDR" })).toBe("2500.50");
+    expect(applyTransforms(" -150 ", ["amount:minor"], {})).toBe("-150");
+  });
+});
