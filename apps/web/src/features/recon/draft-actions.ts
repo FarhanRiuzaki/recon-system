@@ -31,8 +31,9 @@ export function useDraftEndings(spaceId: string, r: ReconDto | undefined, roles:
       onConfirm: async () => {
         await api(reconApi(spaceId, r.id, `/versions/${encodeURIComponent(r.draft!.id)}`), { method: "DELETE" });
         toast(`Discarded Draft v${v}. Version ${live} keeps running.`);
-        await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: ENGINE_KEY })]);
+        // away from the draft's page first: a refetch there would ask for the version just removed
         router.push(reconHref(spaceId, r.id));
+        await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: ENGINE_KEY })]);
       },
     };
     out.push({ label: `Discard draft v${v}`, destructive: true, confirm });
@@ -41,8 +42,8 @@ export function useDraftEndings(spaceId: string, r: ReconDto | undefined, roles:
     out.push({ label: "Delete draft recon", destructive: true, confirm: discardConfirm(r.name, async () => {
       await api(reconApi(spaceId, r.id), { method: "DELETE" });
       toast(`Deleted the draft recon ${r.name}.`);
-      await qc.invalidateQueries({ queryKey: RECON_KEY });
       router.push(reconsHref(spaceId));
+      await qc.invalidateQueries({ queryKey: RECON_KEY });
     }) });
   }
   return out;
