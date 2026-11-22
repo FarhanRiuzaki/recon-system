@@ -17,7 +17,7 @@ import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { StateChip } from "@/components/state-chip";
 import { breakLabel } from "./run-model";
-import { CanvasLoader } from "./canvas-loader";
+import { CanvasLoader, CanvasShape } from "./canvas-loader";
 import { pipelineFits } from "./canvas-graph";
 import { useArrivals, useElapsed } from "./live-hooks";
 import { dayCounters, dayTotals, kpiCaption, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
@@ -37,7 +37,8 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
   const arrivals = useArrivals(q.data?.sources);
   const sp = useSearchParams(), pathname = usePathname();
   // the canvas where it fits its card at PIPELINE_MIN_ZOOM (audit R6), else the list; a choice in the URL wins.
-  // Measured once the card is on screen (null until then: the list, which every width can show).
+  // Measured once the card is on screen; until then (the server render too) the canvas's loading shape from 768 px, so
+  // the card never shows the list first and then swaps it (a phone shows only the list, at once).
   const [fits, setFits] = useState<boolean | null>(null);
   const measure = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
@@ -46,7 +47,7 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
     return () => o.disconnect();
   }, []);
   const asked = sp.get("view");
-  const view: "pipeline" | "list" = asked === "list" || asked === "pipeline" ? asked : fits ? "pipeline" : "list";
+  const view: "pipeline" | "list" | null = asked === "list" || asked === "pipeline" ? asked : fits === null ? null : fits ? "pipeline" : "list";
   const setView = (v: "pipeline" | "list") => {
     const next = new URLSearchParams(window.location.search);
     next.set("view", v);
@@ -95,8 +96,9 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
 
       <PageZone title="How it works">
         <Panel flush title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
-          actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
+          actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view ?? "pipeline"} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
           <div ref={measure}>
+            {view === null && <div className="max-md:hidden"><CanvasShape /></div>}
             {view === "pipeline" && (
               <div className="max-md:hidden">
                 <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"} arriving={arriving}
@@ -104,7 +106,7 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
               </div>
             )}
             {/* the list view: the same numbers, sources first, by keyboard and screen reader; a phone's only view (DEC-041) */}
-            <div className={view === "pipeline" ? "md:hidden" : undefined}>
+            <div className={view === "list" ? undefined : "md:hidden"}>
               <Table aria-label="Sources of the live day">
                 <TableHeader><TableRow>
                   <TableHead>Side</TableHead><TableHead>Source</TableHead><TableHead>Health</TableHead><TableHead>How far</TableHead><TableHead className="text-right">Records today</TableHead>
@@ -130,7 +132,7 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
               </Table>
               <Table aria-label="Passes of the live day">
                 <TableHeader><TableRow>
-                  <TableHead>Pass</TableHead><TableHead className="text-right">Matched</TableHead><TableHead className="text-right">Suggested</TableHead><TableHead className="text-right">Broken</TableHead>
+                  <TableHead>Pass</TableHead><TableHead className="text-right">Matched</TableHead><TableHead className="text-right">Suggested</TableHead><TableHead className="text-right">Unmatch</TableHead>
                 </TableRow></TableHeader>
                 <TableBody>
                   {spec.passes.map((p, i) => {
