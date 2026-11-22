@@ -18,7 +18,7 @@ function whatText(e: ActivityDto): string {
 }
 
 /**
- * A break's own trail (GET …/breaks/{id}/activity), newest first: time, who, what. The page's History zone, so a quiet
+ * A break's own trail (GET …/breaks/{id}/activity), newest first: time, who, what. The page's Activity log zone, so a quiet
  * panel without saved views or a column chooser (three fixed columns; architecture.test.ts allowlist).
  */
 export function BreakActivity({ spaceId, id }: { spaceId: string; id: string }) {

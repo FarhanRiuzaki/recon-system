@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, combined, compareRows, dayDelta, recheckText, routeText, settleActions } from "./break-model";
+import { amountDelta, combined, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -10,7 +10,7 @@ const debit = (amount: string, o: Partial<BreakItemDto> = {}) => item({ amountMi
 const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, connectorOff: false, blocked: null, ...o });
 const recon = (o: Partial<BreakDetailDto["recon"]> = {}): BreakDetailDto["recon"] => ({
   id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheck: { kind: "until", date: "2026-11-03" },
-  routes: [route("posting", { workflowName: "Two levels", levels: 2, connector: "Bank Mega" }), route("force_match"), route("write_off"), route("unmatch")], ...o,
+  routes: [route("posting", { workflowName: "Treasury head", levels: 2, connector: "Bank Mega" }), route("force_match"), route("write_off"), route("unmatch")], ...o,
 });
 
 describe("the difference between this item and its counterpart", () => {
@@ -57,15 +57,53 @@ describe("words of the page", () => {
     expect(recheckText({ kind: "always" }, "2026-11-04")).toBe("Checked again on each run until it matches or is settled");
     expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again — settle it here");
   });
-  it("where a request goes: the workflow or the default chain, its levels, the connector", () => {
-    expect(routeText(recon(), "posting")).toBe("Two levels · 2 levels · sent through Bank Mega");
-    expect(routeText(recon(), "write_off")).toBe("Default chain · 1 level");
-    expect(routeText(recon({ routes: [] }), "write_off")).toBeNull();
+  it("where a request goes: the connector it calls, or that it is turned off; why it can't be asked", () => {
+    expect(routeText(recon(), "posting")).toBe("Sent through Bank Mega");
+    expect(routeText(recon(), "write_off")).toBeNull();
+    const off = recon({ routes: [route("posting", { connector: "Bank Mega", connectorOff: true }), route("write_off", { blocked: "The workflow is gone." })] });
+    expect(routeText(off, "posting")).toBe("Bank Mega is turned off");
+    expect(routeBlocked(off, "posting")).toBe("Bank Mega is turned off: nothing is sent to the bank until it is on again.");
+    expect(routeBlocked(off, "write_off")).toBe("The workflow is gone.");
+    expect(routeBlocked(recon(), "posting")).toBeNull();
+  });
+});
+
+describe("who works the item", () => {
+  const base = { lead: false, operator: true, mine: false, assignee: null, open: true, pending: false };
+  it("an operator takes an unassigned item first; Take is then the only next step", () => {
+    expect(workAccess(base)).toEqual({ worker: true, canWork: false, take: "first", blocked: "Take this item first." });
+    expect(takeText("first")).toBe("Step 1 · Take this item. Whoever has it settles it; it shows as yours in Unmatch.");
+  });
+  it("a lead works an unassigned item as it is; Take is offered beside, not first", () => {
+    expect(workAccess({ ...base, lead: true, operator: false })).toEqual({ worker: true, canWork: true, take: "offer", blocked: null });
+    expect(takeText("offer")).toBe("Nobody has this item. You can settle it as it is, or take it so it shows as yours in Unmatch.");
+  });
+  it("someone else's item: an operator waits, a lead works it; nobody is offered Take", () => {
+    expect(workAccess({ ...base, assignee: "Ana" })).toMatchObject({ canWork: false, take: null, blocked: "Ana has this item. A reviewer or space admin can reassign it from Unmatch." });
+    expect(workAccess({ ...base, lead: true, assignee: "Ana" })).toMatchObject({ canWork: true, take: null, blocked: null });
+    expect(workAccess({ ...base, mine: true, assignee: "Me" })).toMatchObject({ canWork: true, take: null, blocked: null });
+  });
+});
+
+describe("what the summary compares", () => {
+  const proposed = { item: item({ id: "p1", side: "b", ref: "Q9" }), pass: 3, available: true };
+  const none = { request: null, matchedWith: [], proposed: null, open: true, picked: [] };
+  it("the ticked items once anything is ticked, never the proposed pair behind them", () => {
+    const picked = [item({ id: "b1", side: "b" }), item({ id: "b2", side: "b" })];
+    expect(counterpartOf({ ...none, proposed, picked })).toMatchObject({ items: picked, label: "Picked" });
+    expect(counterpartOf({ ...none, proposed })).toMatchObject({ items: [proposed.item], label: "Proposed pair", note: "Proposed by pass 3 of a later run." });
+    expect(counterpartOf(none)).toBeNull();
+  });
+  it("closing Find another counterpart clears the ticks; opening keeps them", () => {
+    const picked = new Map([["b1", item({ id: "b1" })]]);
+    expect(findToggled(picked, false).size).toBe(0);
+    expect(findToggled(picked, true)).toBe(picked);
   });
 });
 
 describe("what you can do", () => {
-  const base = { recon: recon(), blocked: null, target: { proposed: false, count: 0 } };
+  const access = { worker: true, canWork: true, take: null, blocked: null } as const;
+  const base = { recon: recon(), access, target: { kind: "none" } as const };
   it("in order, with one primary: Request posting when the recon posts", () => {
     const a = settleActions(base);
     expect(a.map((x) => x.key)).toEqual(["posting", "match", "force", "writeOff", "close"]);
@@ -73,17 +111,32 @@ describe("what you can do", () => {
     expect(a.find((x) => x.key === "match")!.blocked).toBe("Pick the counterpart below first.");
   });
   it("without posting the proposed pair is the primary; nothing is primary while the item must be taken first", () => {
-    const a = settleActions({ ...base, recon: recon({ posts: false }), target: { proposed: true, count: 1 } });
+    const a = settleActions({ ...base, recon: recon({ posts: false }), target: { kind: "proposed" } });
     expect(a.map((x) => x.key)).toEqual(["match", "force", "writeOff", "close"]);
     expect(a.filter((x) => x.primary).map((x) => x.key)).toEqual(["match"]);
-    const taken = settleActions({ ...base, blocked: "Take this item first." });
+    const taken = settleActions({ ...base, access: { ...access, canWork: false, take: "first", blocked: "Take this item first." } });
     expect(taken.every((x) => x.blocked === "Take this item first." && !x.primary)).toBe(true);
   });
-  it("each says its consequence and, for a request, where it goes", () => {
-    const a = settleActions({ ...base, target: { proposed: false, count: 2 } });
-    expect(a.find((x) => x.key === "posting")!.meta).toBe("Two levels · 2 levels · sent through Bank Mega");
-    expect(a.find((x) => x.key === "match")).toMatchObject({ blocked: null, label: "Match 2 items" });
-    expect(a.find((x) => x.key === "force")!.meta).toBe("Default chain · 1 level");
+  it("a lead on an unassigned item has one primary in the cards (Take is secondary)", () => {
+    const a = settleActions({ ...base, access: { ...access, take: "offer" } });
+    expect(a.filter((x) => x.primary)).toHaveLength(1);
+  });
+  it("Match and Force match name what they act on and say so in their consequence", () => {
+    const picked = settleActions({ ...base, target: { kind: "picked", count: 2 } });
+    expect(picked.find((x) => x.key === "match")).toMatchObject({ blocked: null, label: "Match with 2 picked items" });
+    expect(picked.find((x) => x.key === "force")).toMatchObject({ label: "Force match with 2 picked items", consequence: "Matches it with the 2 items you picked although the totals differ. A reviewer or space admin approves first." });
+    expect(settleActions({ ...base, target: { kind: "picked", count: 1 } }).find((x) => x.key === "match")!.label).toBe("Match with picked item");
+    const pair = settleActions({ ...base, target: { kind: "proposed" } });
+    expect(pair.find((x) => x.key === "match")!.label).toBe("Match pair");
+    expect(pair.find((x) => x.key === "force")).toMatchObject({ label: "Force match pair", consequence: "Matches it with the proposed pair although the totals differ. A reviewer or space admin approves first." });
+  });
+  it("each request names who approves it, from its route; a blocked route blocks its button", () => {
+    const a = settleActions(base);
+    expect(a.find((x) => x.key === "posting")).toMatchObject({ consequence: "It goes for approval: Treasury head, 2 levels approves. On the final approval it closes as posted and is sent to the bank.", meta: "Sent through Bank Mega" });
+    expect(a.find((x) => x.key === "writeOff")!.consequence).toBe("Closes it as written off once a reviewer or space admin approves.");
     expect(a.find((x) => x.key === "close")!.meta).toBeUndefined();
+    const off = settleActions({ ...base, recon: recon({ routes: [route("posting", { connector: "Bank Mega", connectorOff: true })] }), target: { kind: "proposed" } });
+    expect(off.find((x) => x.key === "posting")).toMatchObject({ blocked: "Bank Mega is turned off: nothing is sent to the bank until it is on again.", primary: false });
+    expect(off.filter((x) => x.primary).map((x) => x.key)).toEqual(["match"]);
   });
 });

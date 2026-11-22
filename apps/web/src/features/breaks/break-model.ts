@@ -77,33 +77,88 @@ export function recheckText(r: BreakDetailDto["recon"]["recheck"], today: string
   return r.date < today ? `Checked again until ${dateText(r.date)}; no longer checked` : `Checked again on each run until ${dateText(r.date)}`;
 }
 
-/** Where a request of `kind` goes by default: "Two levels · 2 levels · sent through Bank Mega"; null when unknown. */
-export function routeText(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
-  const x = r.routes.find((t) => t.kind === kind);
-  if (!x) return null;
-  return [x.workflowName ?? "Default chain", plural(x.levels, "level"), x.connector ? `sent through ${x.connector}` : null].filter(Boolean).join(" · ");
+type Route = BreakDetailDto["recon"]["routes"][number];
+const routeOf = (r: BreakDetailDto["recon"], kind: RequestKind): Route | undefined => r.routes.find((t) => t.kind === kind);
+/** Who approves a request of `kind` by default: "Treasury head, 2 levels", or the default chain's reviewer or space admin. */
+export function approverText(r: BreakDetailDto["recon"], kind: RequestKind): string {
+  const x = routeOf(r, kind);
+  return x?.workflowName ? `${x.workflowName}, ${plural(x.levels, "level")}` : "a reviewer or space admin";
 }
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/** The connector a request of `kind` calls: "Sent through Bank Mega", or that it is turned off; null when none. */
+export function routeText(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
+  const x = routeOf(r, kind);
+  if (!x?.connector) return null;
+  return x.connectorOff ? `${x.connector} is turned off` : `Sent through ${x.connector}`;
+}
+/** Why a request of `kind` can't be asked now: its workflow version is gone, or its connector is turned off. */
+export function routeBlocked(r: BreakDetailDto["recon"], kind: RequestKind): string | null {
+  const x = routeOf(r, kind);
+  return x?.blocked ?? (x?.connector && x.connectorOff ? `${x.connector} is turned off: nothing is sent to the bank until it is on again.` : null);
+}
+
+export type Access = { worker: boolean; canWork: boolean; take: "first" | "offer" | null; blocked: string | null };
+/**
+ * Who may work an open item: a lead (reviewer, space admin, Superadmin) always, an operator once it is theirs. Take is
+ * the first step only for whoever can't work it without taking it (an operator on an unassigned item); a lead is
+ * offered it beside the ways to settle. `assignee` = the name of whoever has it, null when nobody does.
+ */
+export function workAccess(o: { lead: boolean; operator: boolean; mine: boolean; assignee: string | null; open: boolean; pending: boolean }): Access {
+  const worker = o.lead || o.operator;
+  const live = o.open && !o.pending;
+  const canWork = live && (o.lead || o.mine);
+  const take = live && worker && o.assignee === null ? (canWork ? "offer" : "first") : null;
+  const blocked = canWork ? null : take === "first" ? "Take this item first." : `${o.assignee ?? "Someone"} has this item. A reviewer or space admin can reassign it from Unmatch.`;
+  return { worker, canWork, take, blocked };
+}
+export const takeText = (take: "first" | "offer") => (take === "first"
+  ? "Step 1 · Take this item. Whoever has it settles it; it shows as yours in Unmatch."
+  : "Nobody has this item. You can settle it as it is, or take it so it shows as yours in Unmatch.");
+
+/**
+ * What the summary compares the item with: the items ticked in the picker once any is, else the request's items, the
+ * ones it is matched with, the proposed pair; null when there is none.
+ */
+export function counterpartOf(o: { picked: readonly BreakItemDto[]; request: BreakDetailDto["request"]; matchedWith: readonly BreakItemDto[]; proposed: BreakDetailDto["proposed"]; open: boolean }) {
+  if (o.picked.length) return { items: o.picked, label: "Picked", note: null };
+  if (o.request?.status === "pending" && o.request.items.length) return { items: o.request.items, label: "In the request", note: null };
+  if (o.matchedWith.length) return { items: o.matchedWith, label: "Matched with", note: null };
+  if (o.open && o.proposed) {
+    const p = o.proposed;
+    return { items: [p.item], label: "Proposed pair", note: `Proposed by ${p.pass ? `pass ${p.pass} of ` : ""}a later run${p.available ? "" : "; that item was matched or resolved meanwhile"}.` };
+  }
+  return null;
+}
+/** The ticks once Find another counterpart opens or closes: closing it clears them, so nothing hidden is matched. */
+export const findToggled = <T>(picked: ReadonlyMap<string, T>, open: boolean): ReadonlyMap<string, T> => (open ? picked : new Map());
 
 export type SettleKey = "posting" | "match" | "force" | "writeOff" | "close";
 export type Settle = { key: SettleKey; title: string; consequence: string; meta?: string; label: string; blocked: string | null; primary: boolean };
+export type Target = { kind: "proposed" } | { kind: "picked"; count: number } | { kind: "none" };
 
 /**
  * The ways to settle an open unmatch item, in this order: Request posting (only when the recon posts), Match with a
- * counterpart, Force match, Write off, Close without a match. `blocked` = why nothing can be done yet (take it first);
- * `target` = what Match and Force match act on (the proposed pair, or the items ticked below). The primary is the next
- * step: posting when the recon posts, else the proposed pair; none while the item is blocked.
+ * counterpart, Force match, Write off, Close without a match. `access.blocked` = why nothing can be done yet; `target`
+ * = what Match and Force match act on (the proposed pair, or the items ticked below), named on their buttons. A request
+ * names who approves it and is blocked while its route is. The primary is the next step: posting when the recon posts
+ * (and it can be asked), else the proposed pair; none while the item is blocked.
  */
-export function settleActions(o: { recon: BreakDetailDto["recon"]; blocked: string | null; target: { proposed: boolean; count: number } }): Settle[] {
-  const { recon: r, blocked, target } = o;
-  const pick = target.count ? null : "Pick the counterpart below first.";
-  const matchLabel = target.proposed ? "Match pair" : target.count > 1 ? `Match ${target.count} items` : "Match item";
+export function settleActions(o: { recon: BreakDetailDto["recon"]; access: Access; target: Target }): Settle[] {
+  const { recon: r, target: t } = o;
+  const blocked = o.access.blocked;
+  const pick = t.kind === "none" ? "Pick the counterpart below first." : null;
+  const picked = t.kind === "picked" ? t.count : 0;
+  const items = (n: number) => (n === 1 ? "picked item" : `${n} picked items`);
+  const what = t.kind === "proposed" ? "the proposed pair" : picked ? `the ${picked === 1 ? "item" : `${picked} items`} you picked` : "the items you pick";
+  const req = (kind: RequestKind) => blocked ?? routeBlocked(r, kind);
   const all: Settle[] = [
-    ...(r.posts ? [{ key: "posting" as const, title: "Request posting", consequence: "It goes for approval. On the final approval it closes as posted and is sent to the bank.", meta: routeText(r, "posting") ?? undefined, label: "Request posting", blocked, primary: false }] : []),
-    { key: "match", title: "Match with counterpart", consequence: target.proposed ? "Matches it with the proposed pair. No approval needed." : "Matches it with the items you pick, when the totals are the same. No approval needed.", label: matchLabel, blocked: blocked ?? pick, primary: false },
-    { key: "force", title: "Force match", consequence: "Matches it with the picked items although the totals differ. A checker approves first.", meta: routeText(r, "force_match") ?? undefined, label: "Request force match", blocked: blocked ?? pick, primary: false },
-    { key: "writeOff", title: "Write off", consequence: "Closes it as written off once a checker approves.", meta: routeText(r, "write_off") ?? undefined, label: "Request write-off", blocked, primary: false },
+    ...(r.posts ? [{ key: "posting" as const, title: "Request posting", consequence: `It goes for approval: ${approverText(r, "posting")} approves. On the final approval it closes as posted and is sent to the bank.`, meta: routeText(r, "posting") ?? undefined, label: "Request posting", blocked: req("posting"), primary: false }] : []),
+    { key: "match", title: "Match with counterpart", consequence: `Matches it with ${what}${t.kind === "proposed" ? "" : ", when the totals are the same"}. No approval needed.`, label: t.kind === "proposed" ? "Match pair" : picked ? `Match with ${items(picked)}` : "Match item", blocked: blocked ?? pick, primary: false },
+    { key: "force", title: "Force match", consequence: `Matches it with ${what} although the totals differ. ${cap(approverText(r, "force_match"))} approves first.`, meta: routeText(r, "force_match") ?? undefined, label: t.kind === "proposed" ? "Force match pair" : picked ? `Force match with ${items(picked)}` : "Force match", blocked: req("force_match") ?? pick, primary: false },
+    { key: "writeOff", title: "Write off", consequence: `Closes it as written off once ${approverText(r, "write_off")} approves.`, meta: routeText(r, "write_off") ?? undefined, label: "Request write-off", blocked: req("write_off"), primary: false },
     { key: "close", title: "Close without a match", consequence: "Closes it as a duplicate or as needing no action, with your note. No approval needed.", label: "Close item", blocked, primary: false },
   ];
-  const next = blocked ? null : r.posts ? "posting" : target.proposed ? "match" : null;
+  const posting = all.find((a) => a.key === "posting");
+  const next = blocked ? null : posting && !posting.blocked ? "posting" : t.kind === "proposed" ? "match" : null;
   return all.map((a) => (a.key === next && !a.blocked ? { ...a, primary: true } : a));
 }

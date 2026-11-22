@@ -2,13 +2,13 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
-import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Failure, Field, FilterSearch, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { appDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
-import { Icon } from "@starterkit/ui/ui/icon";
-import { AlertsIcon, ErrorIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { Icon, type IconData } from "@starterkit/ui/ui/icon";
+import { AlertsIcon, ErrorIcon, ForceMatchIcon, SpinnerIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -31,8 +31,8 @@ import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { STATE_LABEL } from "./break-columns";
-import { amountDelta, combined, compareRows, dateText, DIRECTION_LABEL, money, oppositeWays, recheckText, type Settle, settleActions } from "./break-model";
-import { BREAK_SHAPE } from "./shapes";
+import { amountDelta, approverText, combined, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, recheckText, type Settle, settleActions, takeText, workAccess } from "./break-model";
+import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
   MATCHED_MANUAL: "Matched by a person", FORCE_MATCHED: "Force matched", WRITTEN_OFF: "Written off", POSTED: "Posted", ADJUSTED: "Adjusted",
@@ -40,13 +40,14 @@ const RESOLUTION_LABEL: Record<string, string> = {
 };
 type Dialogue = { title: string; description: string; action: string; optional?: boolean; placeholder: string; onSubmit: (note: string) => Promise<void> };
 const NoteDialog = dynamic(() => import("./note-dialog"), { ssr: false });
-/** What each request asks, in the dialog that sends it. */
-const ASK: Record<RequestKind, Omit<Dialogue, "onSubmit">> = {
-  force_match: { title: "Request a force match", description: "These items total differently. A reviewer or space admin who didn't ask approves the match.", action: "Send for approval", placeholder: "Why the difference is right" },
-  write_off: { title: "Request a write-off", description: "The item closes as written off once a reviewer or space admin who didn't ask approves it.", action: "Send for approval", placeholder: "Why it is written off" },
-  unmatch: { title: "Request to undo the match", description: "Once approved, the match is undone and its items go back to unmatch.", action: "Send for approval", placeholder: "Why the match is wrong" },
-  posting: { title: "Request posting", description: "It goes through the recon's posting workflow. On the final approval it closes as posted and its posting action sends it to the bank.", action: "Send for approval", placeholder: "What the posting is for" },
+/** What each request asks, in the dialog that sends it; `who` = who approves it by default (approverText). */
+const ASK: Record<RequestKind, (who: string) => Omit<Dialogue, "onSubmit">> = {
+  force_match: (who) => ({ title: "Request a force match", description: `These items total differently. ${cap(who)} approves the match; not whoever asks.`, action: "Send for approval", placeholder: "Why the difference is right" }),
+  write_off: (who) => ({ title: "Request a write-off", description: `The item closes as written off once ${who} approves; not whoever asks.`, action: "Send for approval", placeholder: "Why it is written off" }),
+  unmatch: (who) => ({ title: "Request to undo the match", description: `Once ${who} approves, the match is undone and its items go back to unmatch.`, action: "Send for approval", placeholder: "Why the match is wrong" }),
+  posting: (who) => ({ title: "Request posting", description: `${cap(who)} approves. On the final approval it closes as posted and its posting action sends it to the bank.`, action: "Send for approval", placeholder: "What the posting is for" }),
 };
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
 const REQUEST_TITLE: Record<NonNullable<BreakDetailDto["request"]>["status"], string> = { pending: "Waiting for approval", approved: "Last request · approved", rejected: "Last request · rejected", cancelled: "Last request · cancelled" };
 /** What approving does. */
 const DONE_TEXT: Record<RequestKind, string> = {
@@ -56,24 +57,39 @@ const DONE_TEXT: Record<RequestKind, string> = {
   posting: "It closes now as posted; its posting action sends it to the bank.",
 };
 const spin = <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />;
+/** The verb icons of the second choices (intent table). */
+const SETTLE_ICON: Partial<Record<Settle["key"], IconData>> = { force: ForceMatchIcon, writeOff: WriteOffIcon };
+/** Where focus goes once a change has rendered: the next primary (else the page title), or Close item's button. */
+const NEXT = '[data-next="true"]', CLOSE_BUTTON = '[data-settle="close"]';
 
 /**
  * One unmatch item (/spaces/[spaceId]/breaks/[itemId], audit B1–B12): Summary (this item beside its counterpart and
  * what differs, the posting result), then what you can do (take it; the ways to settle it, each with its consequence;
- * or the request that waits), then its history.
+ * or the request that waits), then its activity log.
  */
 export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const d = breakDetail(spaceId, id);
   const q = useQuery({ queryKey: d.key, queryFn: () => api<BreakDetailDto>(d.url), retry: retryUnlessNotFound });
-  const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
+  const rolesQ = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) });
+  const roles = rolesQ.data?.roles ?? [];
   const skeleton = useDelayedFlag(!q.data && !q.error);
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialogue | null>(null);
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [picked, setPicked] = useState<ReadonlyMap<string, BreakItemDto>>(new Map());
+  const [finding, setFinding] = useState(false);
   const [closing, setClosing] = useState(false);
+  const focusTo = useRef<string | null>(null);
+  const [focusTick, setFocusTick] = useState(0);
+  const focusNext = (sel: string) => { focusTo.current = sel; setFocusTick((n) => n + 1); };
   const [today] = useState(() => appDate(Date.now())); // read once: a render stays pure
+  // focus moves once the change has rendered (the new state's next step, or the title when the zone is gone)
+  useEffect(() => {
+    if (!focusTo.current) return;
+    focusBack(null, document, { skipOrigin: true, fallbacks: [focusTo.current] });
+    focusTo.current = null;
+  }, [focusTick, q.data]);
   const b = q.data;
   const list = { href: `/spaces/${encodeURIComponent(spaceId)}/breaks`, label: "Unmatch" };
 
@@ -83,14 +99,12 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
 
   const open = b.state !== "resolved";
   const lead = isSuperadmin(user.roles) || roles.some((r) => r === "space_admin" || r === "reviewer");
-  const worker = lead || roles.includes("operator");
   const mine = b.assignee?.id === user.id;
   const pending = b.state === "pending_approval";
-  const canWork = open && !pending && (lead || mine);
+  const access = workAccess({ lead, operator: roles.includes("operator"), mine, assignee: b.assignee ? b.assignee.name ?? "A removed user" : null, open, pending });
   const asks = b.request?.status !== "pending" && (lead || mine);
   const side = (s: "a" | "b") => b.recon.sides[s === "a" ? 0 : 1];
   const other = side(b.item.side === "a" ? "b" : "a");
-  const takeFirst = open && !pending && worker && !b.assignee;
 
   /** A change of the item: its answer replaces the page's copy; the queue is read again. */
   async function act(label: string, path: string, body: object, done: string) {
@@ -99,6 +113,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       const next = await api<BreakDetailDto>(`/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}${path}`, { method: "POST", body: JSON.stringify(body) });
       qc.setQueryData(d.key, next);
       toast(done);
+      focusNext(NEXT);
       void qc.invalidateQueries({ queryKey: ENGINE_KEY });
     } catch (e) {
       toast.error(errorText(e));
@@ -127,35 +142,35 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       await api(`/api/spaces/${encodeURIComponent(spaceId)}/breaks/take`, { method: "POST", body: JSON.stringify({ ids: [id] }) });
       toast("You have this item now.");
       await qc.invalidateQueries({ queryKey: ENGINE_KEY });
+      focusNext(NEXT);
     } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); }
   }
-  const ask = (kind: RequestKind, itemIds?: string[]) => setDialog({ ...ASK[kind], onSubmit: async (note) => {
+  const ask = (kind: RequestKind, itemIds?: string[]) => setDialog({ ...ASK[kind](approverText(b.recon, kind)), onSubmit: async (note) => {
     await act("request", "/request", { kind, note, ...(itemIds ? { itemIds } : {}) }, "Sent for approval.");
-    setPicked(new Set());
+    setPicked(new Map());
     setDialog(null);
   } });
 
-  // the counterpart the summary compares with: the request's items, the matched ones, else the proposed pair
+  // the counterpart the summary compares with: the ticked items, the request's, the matched ones, else the proposed pair
   const proposedFree = open && b.proposed?.available ? b.proposed : null;
-  const shown = b.request?.status === "pending" && b.request.items.length ? { items: b.request.items, label: "In the request", note: null }
-    : b.matchedWith.length ? { items: b.matchedWith, label: "Matched with", note: null }
-    : open && b.proposed ? { items: [b.proposed.item], label: "Proposed pair", note: `Proposed by ${b.proposed.pass ? `pass ${b.proposed.pass} of ` : ""}a later run${b.proposed.available ? "" : "; that item was matched or resolved meanwhile"}.` }
-    : null;
+  const shown = counterpartOf({ picked: [...picked.values()], request: b.request, matchedWith: b.matchedWith, proposed: b.proposed, open });
   const counterpart = shown ? combined(shown.items) : null;
   // Match and Force match act on the items ticked below, else on the proposed pair
-  const target = picked.size ? [...picked] : proposedFree ? [proposedFree.item.id] : [];
-  const blocked = canWork ? null : takeFirst ? "Take this item first." : `${b.assignee?.name ?? "Someone"} has this item. A reviewer or space admin can reassign it from Unmatch.`;
-  const settle = open && !pending && worker ? settleActions({ recon: b.recon, blocked, target: { proposed: !picked.size && !!proposedFree, count: target.length } }) : [];
+  const target = picked.size ? [...picked.keys()] : proposedFree ? [proposedFree.item.id] : [];
+  const settle = open && !pending && access.worker
+    ? settleActions({ recon: b.recon, access, target: picked.size ? { kind: "picked", count: picked.size } : proposedFree ? { kind: "proposed" } : { kind: "none" } }) : [];
   const run: Record<Settle["key"], () => void> = {
     posting: () => ask("posting"),
     match: () => void (picked.size
-      ? act("match", "/match", { itemIds: target }, "Matched.").then(() => setPicked(new Set()))
+      ? act("match", "/match", { itemIds: target }, "Matched.").then(() => setPicked(new Map()))
       : act("match", "/match-pair", {}, "Matched with the proposed pair.")).catch(() => {}),
     force: () => ask("force_match", target),
     writeOff: () => ask("write_off"),
     close: () => setClosing(true),
   };
+  const onFind = (o: boolean) => { setFinding(o); setPicked((p) => findToggled(p, o)); };
   const r = b.request;
+  const picker = (panel?: boolean) => <Counterparts spaceId={spaceId} id={id} other={other} item={b.item} picked={picked} onPick={setPicked} panel={panel} />;
 
   return (
     <div className="grid gap-zone">
@@ -175,6 +190,8 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
           <div className="grid gap-2">
             <CompareCard title="This item and its counterpart" sides={["This item", `${shown.label} · ${other}`]}
               rows={compareRows(b.item, counterpart)} />
+            {/* several counterparts: each one, so whoever approves sees exactly what they approve */}
+            {shown.items.length > 1 && <CounterpartList items={shown.items} side={side} />}
             {(shown.note || (b.item.status === "matched" && asks)) && (
               <p className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-caption text-fg-3">
                 {shown.note && <span>{shown.note}</span>}
@@ -217,36 +234,40 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             </div>
           </Panel>
         </PageZone>
+      ) : open && !pending && rolesQ.isPending ? (
+        // who may act comes with the space's roles: the zone's shape holds its place until they are in
+        <LoadingShape sections={BREAK_ACT_SHAPE} shown />
       ) : settle.length > 0 && (
         <PageZone title="What you can do">
-          {takeFirst && (
+          {access.take && (
             <Panel>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <p className="min-w-0 flex-1 basis-64 text-body-sm text-fg-2"><span className="font-semibold text-fg">Step 1 · Take this item.</span> Whoever has it settles it; it shows as yours in Unmatch.</p>
-                <Button type="button" onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>{busy === "take" && spin}Take item</Button>
+                <p className="min-w-0 flex-1 basis-64 text-body-sm text-fg-2">{takeText(access.take)}</p>
+                <Button type="button" variant={access.take === "first" ? "default" : "secondary"} data-next={access.take === "first" || undefined} onClick={() => void take()} disabled={!!busy} aria-busy={busy === "take" || undefined}>{busy === "take" && spin}Take item</Button>
               </div>
             </Panel>
           )}
-          {!takeFirst && blocked && <Notice>{blocked}</Notice>}
+          {!access.take && access.blocked && <Notice>{access.blocked}</Notice>}
           <div className="grid items-stretch gap-gutter md:grid-cols-2 xl:grid-cols-3">
             {settle.map((s) => (
               <ActionCard key={s.key} title={s.title} consequence={s.consequence} meta={s.meta} className={s.key === "close" && closing ? "md:col-span-full" : undefined}
                 action={s.key === "close" && closing
-                  ? <CloseForm busy={busy} onCancel={() => setClosing(false)} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Item closed.")} />
+                  ? <CloseForm busy={busy} onCancel={() => { setClosing(false); focusNext(CLOSE_BUTTON); }} onClose={(resolution, note) => act("close", "/close", { resolution, note }, "Item closed.")} />
                   : (
-                    <BlockedButton type="button" variant={s.primary ? "default" : "secondary"} reason={s.blocked} disabled={!!busy} aria-busy={(s.key === "match" && busy === "match") || undefined} onClick={run[s.key]}>
-                      {s.key === "match" && busy === "match" && spin}{s.label}
+                    <BlockedButton type="button" variant={s.primary ? "default" : "secondary"} reason={s.blocked} disabled={!!busy} data-next={s.primary || undefined} data-settle={s.key}
+                      aria-busy={(s.key === "match" && busy === "match") || undefined} onClick={run[s.key]}>
+                      {s.key === "match" && busy === "match" ? spin : SETTLE_ICON[s.key] && <Icon icon={SETTLE_ICON[s.key]!} />}{s.label}
                     </BlockedButton>
                   )} />
             ))}
           </div>
-          {canWork && (proposedFree
-            ? <Disclosure summary="Find another counterpart"><Counterparts spaceId={spaceId} id={id} other={other} item={b.item} picked={picked} onPick={setPicked} /></Disclosure>
-            : <Counterparts spaceId={spaceId} id={id} other={other} item={b.item} picked={picked} onPick={setPicked} panel />)}
+          {access.canWork && (proposedFree
+            ? <Disclosure summary="Find another counterpart" onToggle={onFind}>{finding && picker()}</Disclosure>
+            : picker(true))}
         </PageZone>
       )}
 
-      <PageZone title="History">
+      <PageZone title="Activity log">
         {r && r.status !== "pending" && (
           <Panel tone="quiet" title={REQUEST_TITLE[r.status]} actions={<CategoryChip label={APPROVAL_KIND_LABEL[r.kind]} slot={categoryChip("changeKind", r.kind)} />}>
             <RequestChain r={r} />
@@ -256,6 +277,24 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       </PageZone>
       {dialog && <NoteDialog {...dialog} onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+/** Each counterpart of a comparison of several (a force match's request, a group): reference, side, amount, date. */
+function CounterpartList({ items, side }: { items: readonly BreakItemDto[]; side: (s: "a" | "b") => string }) {
+  return (
+    <Panel title={`${items.length} items`} flush>
+      <ul className="grid divide-y divide-line text-body-sm">
+        {items.map((i) => (
+          <li key={i.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 px-3 py-2 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_auto_7rem]">
+            <span className="min-w-0 font-mono wrap-anywhere text-fg">{i.ref ?? "No reference"}</span>
+            <span className="text-fg-3 max-md:order-last">{side(i.side)}</span>
+            <span className="tabular text-right whitespace-nowrap text-fg">{money(i)}{i.direction && <span className="text-fg-3"> · {DIRECTION_LABEL[i.direction]}</span>}</span>
+            <span className="whitespace-nowrap text-fg-2 md:text-right">{dateText(i.businessDate)}</span>
+          </li>
+        ))}
+      </ul>
+    </Panel>
   );
 }
 
@@ -309,14 +348,14 @@ const PICKER_ROWS = 5;
  * and Force match above act on them. Five rows, then Show more pages on. No saved views or column chooser: it is a
  * picker inside the page, not a list page (architecture.test.ts allowlist).
  */
-function Counterparts({ spaceId, id, other, item, picked, onPick, panel }: { spaceId: string; id: string; other: string; item: BreakItemDto; picked: ReadonlySet<string>; onPick: (s: ReadonlySet<string>) => void; panel?: boolean }) {
+function Counterparts({ spaceId, id, other, item, picked, onPick, panel }: { spaceId: string; id: string; other: string; item: BreakItemDto; picked: ReadonlyMap<string, BreakItemDto>; onPick: (s: ReadonlyMap<string, BreakItemDto>) => void; panel?: boolean }) {
   const def = useMemo(() => breakCandidates(spaceId, id), [spaceId, id]);
   const t = useTableQuery<BreakItemDto, { q: string }>(def);
   const [all, setAll] = useState(false);
-  const toggle = (x: string) => { const n = new Set(picked); if (!n.delete(x)) n.add(x); onPick(n); };
+  const toggle = (x: BreakItemDto) => { const n = new Map(picked); if (!n.delete(x.id)) n.set(x.id, x); onPick(n); };
   const columns: Column<BreakItemDto>[] = [
     { key: "pick", header: "Pick", className: "w-8", mobile: "lead", cell: (r) => (
-      <label className="inline-grid size-7 cursor-pointer place-items-center"><input type="checkbox" aria-label={`Pick ${r.ref ?? "item"}`} checked={picked.has(r.id)} onChange={() => toggle(r.id)} className="size-4 cursor-pointer accent-primary" /></label>
+      <label className="inline-grid size-7 cursor-pointer place-items-center"><input type="checkbox" aria-label={`Pick ${r.ref ?? "item"}`} checked={picked.has(r.id)} onChange={() => toggle(r)} className="size-4 cursor-pointer accent-primary" /></label>
     ) },
     { key: "ref", header: "Reference", mobile: "title", cell: (r) => <span className="font-mono text-body-sm">{r.ref ?? "No reference"}</span> },
     { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular">{money(r)}{oppositeWays(item, r) && r.direction && <span className="text-fg-3"> · {DIRECTION_LABEL[r.direction]}</span>}</span> },
@@ -355,6 +394,8 @@ function CloseForm({ busy, onClose, onCancel }: { busy: string | null; onClose: 
   const [resolution, setResolution] = useState("");
   const [note, setNote] = useState("");
   const [tried, setTried] = useState(false);
+  const first = useRef<HTMLSelectElement>(null);
+  useEffect(() => first.current?.focus(), []);
   const why = !resolution ? "Pick why it closes." : !note.trim() ? "Say why it closes without a match." : null;
   return (
     <form noValidate className="grid w-full animate-enter gap-4 md:max-w-xl" onSubmit={(e) => {
@@ -364,7 +405,7 @@ function CloseForm({ busy, onClose, onCancel }: { busy: string | null; onClose: 
     }}>
       <RequiredNote />
       <Field id="close-why" label="Why" required error={tried && !resolution ? "Pick why it closes." : null}>
-        <Select id="close-why" value={resolution} className="w-full" onChange={(e) => setResolution(e.target.value)}>
+        <Select ref={first} id="close-why" value={resolution} className="w-full" onChange={(e) => setResolution(e.target.value)}>
           <option value="">Choose a reason</option>
           {CLOSE_RESOLUTIONS.map((r) => <option key={r} value={r}>{CLOSE_LABEL[r]}</option>)}
         </Select>

@@ -15,4 +15,6 @@ export const BREAK_SHAPE: readonly Section[] = [
   { kind: "panels", panels: [[6, 180], [6, 180]] },
   { kind: "panels", panels: [[12, 280]] },
 ];
+/** Its What you can do zone alone, while the space's roles (who may act) load. */
+export const BREAK_ACT_SHAPE: readonly Section[] = [BREAK_SHAPE[2]!];
 
