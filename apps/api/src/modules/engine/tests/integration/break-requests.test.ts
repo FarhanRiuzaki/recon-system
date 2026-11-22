@@ -3,7 +3,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { BreakDetailDto } from "@starterkit/shared/contracts/breaks";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
-import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
