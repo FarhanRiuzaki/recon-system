@@ -15,6 +15,8 @@ import { withCounts } from "@/lib/shared/table-state";
 
 const FILTER_DEFAULTS: ApprovalFilters = { q: "", kind: "", mine: "1" };
 const MINE_LABEL = "Waiting for me";
+/** The no-match hint: clearing the filters goes back to Waiting for me, so showing every request is said apart. */
+export const noMatchText = (mine: boolean) => (mine ? `Change the search or kinds, or untick ${MINE_LABEL} to show all requests.` : "Change the search or kinds.");
 const kindLabel = (v: string) => APPROVAL_KIND_LABEL[v as keyof typeof APPROVAL_KIND_LABEL] ?? v;
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "mine", label: "Show", format: (v: string) => (v === "0" ? "Every request" : MINE_LABEL) }, { key: "kind", label: "Kind", multiple: true, format: kindLabel }] as const;
 const KIND_OPTIONS = APPROVAL_KINDS.map((k) => ({ value: k, label: APPROVAL_KIND_LABEL[k] }));
@@ -47,7 +49,7 @@ export function ApprovalsPage({ spaceId }: { spaceId: string }) {
           sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           error={t.loadError ? { title: "Couldn't load approvals", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={searched
-            ? { icon: SuccessIcon, title: "No approvals match", description: "Change the filters, or clear them to see every request." }
+            ? { icon: SuccessIcon, title: "No approvals match", description: noMatchText(t.state.mine === "1") }
             : t.state.mine === "1"
               ? { icon: SuccessIcon, title: "Nothing waits for your decision", description: "Requests appear when a maker asks for a posting, force match, write-off or undo match, or sends a version." }
               : { icon: SuccessIcon, title: "Nothing waiting", description: "A request appears here when someone sends a version for approval or asks for a posting, force match, write-off or undo match." }} />

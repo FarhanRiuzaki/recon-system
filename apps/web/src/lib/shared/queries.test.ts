@@ -83,6 +83,9 @@ describe("lists that open on a default view (audit §5.2, §5.3)", () => {
   it("Approvals asks for mine unless every request is shown; Unmatch opens on the largest amount", () => {
     expect(request(qr.APPROVALS("s")).get("mine")).toBe("1");
     expect(request(qr.APPROVALS("s"), "mine=0").get("mine")).toBeNull();
+    // a link or saved view from before Waiting for me was the default: mine= (empty) meant every request
+    expect(request(qr.APPROVALS("s"), "mine=").get("mine")).toBeNull();
+    expect(readTable(new URLSearchParams("mine="), qr.APPROVALS("s").spec).mine).toBe("0");
     expect(request(qr.BREAKS("s")).get("sort")).toBe("-amount");
   });
 });

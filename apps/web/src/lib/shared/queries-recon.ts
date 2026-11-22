@@ -64,7 +64,10 @@ export const breakCandidates = (spaceId: string, id: string): TableDef<{ q: stri
 export const breakActivity = (spaceId: string, id: string): TableDef<TrailFilters> => trailTable(ENGINE_KEY[0], `${breakPath(spaceId, id)}/activity`);
 
 export type ApprovalFilters = { q: string; kind: string; mine: string };
-const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["1", "0"], "1") } };
+const mineOf = oneOf(["1", "0"], "1");
+/** `mine` 1 or 0; an empty one is a link or saved view from when every request was the default (mine=), so 0. */
+const mineFilter = (raw: string | null) => (raw === "" ? "0" : mineOf(raw));
+const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: mineFilter } };
 /**
  * A space's approvals inbox, waiting longest first; `kind` the ticked kinds (none = every kind), `q`
  * matches the source's or recon's code or name, `mine` 1 (the default, audit §5.2) = only what the viewer may decide,
