@@ -9,14 +9,14 @@ const M: SpaceMemberDto = { userId: "u1", name: "Rina Hapsari", username: "rina.
 const cell = (key: string, m: SpaceMemberDto = M) =>
   renderToStaticMarkup(h(TooltipProvider, null, h(Fragment, null, MEMBER_COLUMNS.find((c) => c.key === key)!.cell(m))));
 
-describe("members table columns (Build notes: Member · Roles in this space · Status · Username · Last sign-in)", () => {
-  it("in that order, the member is the phone card's title, the username stays off the card", () => {
-    expect(MEMBER_COLUMNS.map((c) => c.header)).toEqual(["Member", "Roles in this space", "Status", "Username", "Last sign-in"]);
-    expect(MEMBER_COLUMNS.map((c) => c.mobile ?? "meta")).toEqual(["title", "meta", "meta", "hidden", "meta"]);
+describe("members table columns (audit §5.6: Member · Roles in this space · Status · Last sign-in · hidden Username)", () => {
+  it("in that order, the member is the phone card's title, the username hidden until chosen and off the card", () => {
+    expect(MEMBER_COLUMNS.map((c) => c.header)).toEqual(["Member", "Roles in this space", "Status", "Last sign-in", "Username"]);
+    expect(MEMBER_COLUMNS.map((c) => c.mobile ?? "meta")).toEqual(["title", "meta", "meta", "meta", "hidden"]);
+    expect(MEMBER_COLUMNS.filter((c) => c.defaultHidden).map((c) => c.key)).toEqual(["username"]);
   });
-  it("a tablet (768–1279) hides Username and Last sign-in; the phone card keeps Last sign-in", () => {
+  it("a tablet (768–1279) hides Last sign-in; the phone card keeps it", () => {
     const tablet = (key: string) => MEMBER_COLUMNS.find((c) => c.key === key)!.className ?? "";
-    expect(tablet("username")).toMatch(/\bmax-xl:hidden\b/);
     expect(tablet("lastSignInAt")).toMatch(/\bmd:max-xl:hidden\b/);
     for (const k of ["name", "roles", "status"]) expect(tablet(k)).not.toMatch(/hidden/);
   });

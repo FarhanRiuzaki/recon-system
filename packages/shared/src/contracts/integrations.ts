@@ -89,6 +89,14 @@ export const ConnectorRowDto = z.object({
   published: z.object({ version: z.number().int(), decidedAt: z.string().nullable() }).nullable(),
   open: z.object({ version: z.number().int(), status: z.enum(["draft", "in_review"]), updatedAt: z.string() }).nullable(),
   disabled: z.boolean(), updatedAt: z.string(),
+  /**
+   * The bank link in the live version's active environment, from its circuit: `answered` (the last call got an answer),
+   * `failing` (`failures` calls in a row got none, or the pause after them ended without an answer since), `paused` (calls
+   * not sent for now), `none` (never called there).
+   */
+  link: z.object({ state: z.enum(["answered", "failing", "paused", "none"]), failures: z.number().int() }),
+  /** Recons, in every space, whose live version has an action that calls it. */
+  usedBy: z.number().int(),
 });
 export type ConnectorRowDto = z.infer<typeof ConnectorRowDto>;
 /** GET /integrations/connectors/{id}: its versions, which secrets are set per environment (never their values). */

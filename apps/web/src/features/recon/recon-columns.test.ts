@@ -3,12 +3,13 @@ import { reconCaption } from "./recon-columns";
 
 describe("reconCaption: the list's second line says the recon's state as its chip does", () => {
   it("names the published version, else the open version's state", () => {
-    expect(reconCaption({ publishedVersion: 2, draftStatus: null, code: "bifast" })).toBe("Version 2 · bifast");
+    // no code: a slug is a machine value (audit P10, §5.4)
+    expect(reconCaption({ publishedVersion: 2, draftStatus: null })).toBe("Version 2");
     // a version waiting behind the live one says so, as the sources list does (owner, 22 Nov)
-    expect(reconCaption({ publishedVersion: 2, draftStatus: "in_review", code: "bifast" })).toBe("Version 2 · bifast · a new version in review");
-    expect(reconCaption({ publishedVersion: 2, draftStatus: "draft", code: "bifast" })).toBe("Version 2 · bifast · a new version drafted");
-    expect(reconCaption({ publishedVersion: null, draftStatus: "in_review", code: "abc" })).toBe("In review · abc");
-    expect(reconCaption({ publishedVersion: null, draftStatus: "draft", code: "abc" })).toBe("Draft · abc");
+    expect(reconCaption({ publishedVersion: 2, draftStatus: "in_review" })).toBe("Version 2 · a new version in review");
+    expect(reconCaption({ publishedVersion: 2, draftStatus: "draft" })).toBe("Version 2 · a new version drafted");
+    expect(reconCaption({ publishedVersion: null, draftStatus: "in_review" })).toBe("In review");
+    expect(reconCaption({ publishedVersion: null, draftStatus: "draft" })).toBe("Draft");
   });
 });
 
@@ -41,5 +42,14 @@ describe("the recons list's live columns (owner, 22 Nov: as the sources list)", 
   });
   it("a dash while Today loads or for a recon without an approved version", () => {
     for (const k of ["sides", "schedule", "today", "lastRun", "rate", "waiting", "breaks"]) expect(cell(k, null)).toContain("—");
+  });
+});
+
+describe("the recons list's column set (audit §5.4)", () => {
+  it("seven shown at 1440 in order; waiting, runs and created start hidden; no header info buttons", () => {
+    const cols = reconColumns("s", null);
+    expect(cols.filter((c) => !c.defaultHidden).map((c) => c.key)).toEqual(["name", "state", "sides", "today", "rate", "breaks", "lastRun"]);
+    expect(cols.filter((c) => c.defaultHidden).map((c) => c.key)).toEqual(["schedule", "waiting", "createdAt"]);
+    expect(cols.some((c) => c.help)).toBe(false);
   });
 });

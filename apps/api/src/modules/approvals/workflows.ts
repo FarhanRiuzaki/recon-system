@@ -94,7 +94,7 @@ export function workflowPage(ctx: Ctx, q: WorkflowListQuery): Promise<Page<Libra
       const [{ n } = { n: 0 }] = await tx.select({ n: sql<number>`count(distinct ${reconConfigVersions.configId})::int` }).from(reconConfigVersions)
         .where(and(pinsWhere(spaceId, w.id), eq(reconConfigVersions.status, "published")));
       items.push({
-        id: w.id, name: w.name, levels: spec?.levels.length ?? 0, archived: !!w.archivedAt,
+        id: w.id, name: w.name, levels: spec?.levels.length ?? 0, levelNames: spec?.levels.map((l) => l.name) ?? [], archived: !!w.archivedAt,
         published: pub ? { version: pub.version, decidedAt: pub.decidedAt?.toISOString() ?? null } : null,
         open: open ? { version: open.version, status: open.status as "draft" | "in_review", updatedAt: open.updatedAt.toISOString() } : null,
         reconsUsing: n, updatedAt: ((open ?? pub)?.updatedAt ?? w.createdAt).toISOString(),

@@ -17,6 +17,12 @@
     "archived": {
       "type": "boolean"
     },
+    "levelNames": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "published": {
       "anyOf": [
         {
@@ -92,6 +98,7 @@
     "name",
     "levels",
     "archived",
+    "levelNames",
     "published",
     "open",
     "reconsUsing",

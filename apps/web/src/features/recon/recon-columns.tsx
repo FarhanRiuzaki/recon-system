@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { type Column, MeterFill, meterTrack, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import type { LiveReconDto, LiveSourceDto, ReconRowDto } from "@starterkit/shared/contracts/recon";
 import { StateChip } from "@/components/state-chip";
@@ -16,13 +16,13 @@ const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-
 const none = <span className="text-fg-3">—</span>;
 
 /**
- * "Version 2 · bifast-credit", with a version waiting after it ("· a new version in review"); before the first approval
- * the open version's state, as the chip says it: "Draft · code", "In review · code".
+ * "Version 2", with a version waiting after it ("· a new version in review"); before the first approval the open
+ * version's state, as the chip says it: "Draft", "In review". No code: a slug is a machine value (audit P10).
  */
-export const reconCaption = (r: Pick<ReconRowDto, "publishedVersion" | "draftStatus" | "code">) =>
+export const reconCaption = (r: Pick<ReconRowDto, "publishedVersion" | "draftStatus">) =>
   r.publishedVersion
-    ? [`Version ${r.publishedVersion}`, r.code, r.draftStatus === "in_review" ? "a new version in review" : r.draftStatus === "draft" ? "a new version drafted" : null].filter(Boolean).join(" · ")
-    : `${r.draftStatus === "in_review" ? "In review" : "Draft"} · ${r.code}`;
+    ? [`Version ${r.publishedVersion}`, r.draftStatus === "in_review" ? "a new version in review" : r.draftStatus === "draft" ? "a new version drafted" : null].filter(Boolean).join(" · ")
+    : r.draftStatus === "in_review" ? "In review" : "Draft";
 
 /** What Today knows of the space (GET …/today): each live recon by id and the sources they read. */
 export type LiveIndex = { recons: ReadonlyMap<string, LiveReconDto>; sources: ReadonlyMap<string, LiveSourceDto> };
@@ -36,10 +36,10 @@ function LastRun({ r }: { r: LiveReconDto }) {
 
 
 /**
- * Columns of a space's recons (owner, 22 Nov: as the sources list, what an admin needs at a glance): the recon and its
- * version, the two sources it reads with their health, how often it runs, its current business date (state, match
- * rate, waiting) and its open breaks, its last run. The live columns come from Today (`live`; null while it loads, a
- * recon without an approved version has none). Name and created sort (RECON_SORTS).
+ * Columns of a space's recons (audit §5.4): the recon and its version, its state, the two sources it reads with their
+ * health, its current business date and day chip, match rate, open unmatch, its last run; hidden until chosen: waiting,
+ * how often it runs, created. The live columns come from Today (`live`; null while it loads, a recon without an
+ * approved version has none). Name and created sort (RECON_SORTS).
  */
 export function reconColumns(spaceId: string, live: LiveIndex | null): Column<ReconRowDto>[] {
   const of = (r: ReconRowDto) => live?.recons.get(r.id) ?? null;
@@ -51,7 +51,7 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
       </span>
     ) },
     { key: "state", header: "State", mobile: "meta", cell: (r) => { const s = reconStatus(r); return <StatusChip health={s.health} label={s.label} />; } },
-    { key: "sides", header: "Sources", mobile: "meta", className: "min-w-56", help: "The source each side reads, with its health; a source that is degraded or down holds the recon's day back.", cell: (r) => {
+    { key: "sides", header: "Sources", mobile: "meta", className: "min-w-56", cell: (r) => {
       const x = of(r);
       if (!x) return none;
       return (
@@ -71,11 +71,11 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
         </span>
       );
     } },
-    { key: "schedule", header: "Runs", mobile: "meta", className: "whitespace-nowrap md:max-xl:hidden", cell: (r) => {
+    { key: "schedule", header: "Runs", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => {
       const s = of(r)?.schedule;
       return s ? (s.kind === "interval" ? `Every ${s.every_minutes} min` : `Daily at ${s.at}`) : none;
     } },
-    { key: "today", header: "Business date", mobile: "meta", className: "whitespace-nowrap", help: "Its current business date (today for a recon that runs through the day, the last date due for a daily one) and where that day stands.", cell: (r) => {
+    { key: "today", header: "Business date", mobile: "meta", className: "whitespace-nowrap", cell: (r) => {
       const x = of(r);
       if (!x) return none;
       const chip = reconChip(x, live!.sources);
@@ -86,13 +86,16 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
         </span>
       );
     } },
-    { key: "lastRun", header: "Last run", mobile: "meta", className: "whitespace-nowrap md:max-xl:hidden", cell: (r) => { const x = of(r); return x ? <LastRun r={x} /> : none; } },
-    { key: "rate", header: "Match rate", mobile: "meta", align: "right", className: "md:max-xl:hidden",
-      help: "Side A items matched on its business date, of side A items in; suggested pairs count as not matched until accepted.", cell: (r) => {
+    { key: "rate", header: "Match rate", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => {
       const x = of(r), rate = x ? (dayTotals(x)?.rate ?? null) : null;
-      return rate === null ? none : <span className="tabular">{rateText(rate)}</span>;
+      return rate === null ? none : (
+        <span className="inline-flex items-center gap-2">
+          <span aria-hidden="true" className={`relative h-1.5 w-12 rounded-full ${meterTrack()}`}><MeterFill ratio={rate} tone="normal" /></span>
+          <span className="tabular">{rateText(rate)}</span>
+        </span>
+      );
     } },
-    { key: "waiting", header: "Waiting", mobile: "meta", align: "right", className: "md:max-xl:hidden", help: "Items of its business date still without a counterpart, both sides; suggested pairs not accepted yet after them.", cell: (r) => {
+    { key: "waiting", header: "Waiting", mobile: "meta", align: "right", defaultHidden: true, cell: (r) => {
       const t = of(r) ? dayTotals(of(r)!) : null;
       return !t ? none : (
         <span className="grid justify-items-end">
@@ -101,10 +104,11 @@ export function reconColumns(spaceId: string, live: LiveIndex | null): Column<Re
         </span>
       );
     } },
-    { key: "breaks", header: "Unmatch", mobile: "meta", align: "right", help: "Unmatch items of every date not settled yet.", cell: (r) => {
+    { key: "breaks", header: "Unmatch", mobile: "meta", align: "right", cell: (r) => {
       const x = of(r);
       return x ? <span className="tabular">{formatNumber(x.openBreaks)}</span> : none;
     } },
-    { key: "createdAt", header: "Created", sortable: true, mobile: "meta", className: "whitespace-nowrap md:max-xl:hidden", cell: (r) => formatDate(Date.parse(r.createdAt)) },
+    { key: "lastRun", header: "Last run", mobile: "meta", className: "whitespace-nowrap", cell: (r) => { const x = of(r); return x ? <LastRun r={x} /> : none; } },
+    { key: "createdAt", header: "Created", sortable: true, mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => formatDate(Date.parse(r.createdAt)) },
   ];
 }

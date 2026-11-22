@@ -22,7 +22,13 @@ const FILTER_DEFAULTS = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 const empty = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
 
-const COLUMNS: Column<ConnectorRowDto>[] = [
+/** The last call's result in the live environment as a health chip; null = never called there. */
+export const linkChip = (l: ConnectorRowDto["link"]): { health: "healthy" | "degraded" | "down"; label: string } | null =>
+  l.state === "none" ? null : l.state === "answered" ? { health: "healthy", label: "Answering" }
+    : l.state === "paused" ? { health: "down", label: "Calls paused" } : { health: "degraded", label: l.failures > 1 ? `${l.failures} calls unanswered` : "Last call unanswered" };
+
+/** The connectors list (audit §5.8): seven columns at 1440, Changed hidden until chosen. */
+export const COLUMNS: Column<ConnectorRowDto>[] = [
   { key: "name", header: "Connector", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
     <span className="grid min-w-0">
       <Link href={`/integrations/${encodeURIComponent(r.id)}`} className={LINK}>{r.name}</Link>
@@ -32,11 +38,13 @@ const COLUMNS: Column<ConnectorRowDto>[] = [
   { key: "status", header: "Status", mobile: "meta", cell: (r) => (r.disabled ? <StatusChip health="down" label="Turned off" />
     : r.open ? <StatusChip health={r.open.status === "draft" ? "unknown" : "degraded"} label={r.open.status === "draft" ? `Draft ${r.open.version}` : `Version ${r.open.version} waits`} />
       : r.published ? <StatusChip health="healthy" label="Live" /> : <StatusChip health="stopped" label="Not live" />) },
-  { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published
-    ? <span className="flex items-center gap-2">Version {r.published.version}<CategoryChip label={ENVIRONMENT_LABEL[r.active!]} slot={categoryChip("environment", r.active!)} /></span>
-    : <span className="text-fg-3">Not live</span>) },
-  { key: "operations", header: "Operations", mobile: "meta", className: "tabular", cell: (r) => r.operations },
-  { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => <RelativeTime at={Date.parse(r.updatedAt)} /> },
+  { key: "environment", header: "Environment", mobile: "meta", cell: (r) => (r.published && r.active
+    ? <CategoryChip label={ENVIRONMENT_LABEL[r.active]} slot={categoryChip("environment", r.active)} /> : <span className="text-fg-3">—</span>) },
+  { key: "live", header: "Version", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published ? `Version ${r.published.version}` : <span className="text-fg-3">Not live</span>) },
+  { key: "link", header: "Bank link", mobile: "meta", className: "whitespace-nowrap", cell: (r) => { const l = linkChip(r.link); return l ? <StatusChip health={l.health} label={l.label} /> : <span className="text-fg-3">No calls yet</span>; } },
+  { key: "operations", header: "Operations", mobile: "meta", align: "right", className: "tabular", cell: (r) => r.operations },
+  { key: "usedBy", header: "Used by", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.usedBy ? `${r.usedBy} ${r.usedBy === 1 ? "recon" : "recons"}` : <span className="text-fg-3">Not used</span>) },
+  { key: "updatedAt", header: "Changed", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => <RelativeTime at={Date.parse(r.updatedAt)} /> },
 ];
 
 /**

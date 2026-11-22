@@ -19,5 +19,5 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
   // the viewer's roles in the space (New source is a source admin's) come with the first page
-  return <Prefetch reads={[reads.space(spaceId), reads.sourceSummary(spaceId), reads.sources(spaceId, toSearch(await searchParams))]}><SourcesPage spaceId={spaceId} spaceName={space.name} /></Prefetch>;
+  return <Prefetch reads={[reads.space(spaceId), reads.sourceSummary(spaceId), reads.sources(spaceId, toSearch(await searchParams))]}><SourcesPage spaceId={spaceId} /></Prefetch>;
 }

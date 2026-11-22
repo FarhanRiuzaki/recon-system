@@ -13,20 +13,21 @@ const S: SourceRowDto = {
 };
 const cell = (key: string, s: SourceRowDto = S) => renderToStaticMarkup(h(TooltipProvider, null, h(Fragment, null, COLS.find((c) => c.key === key)!.cell(s))));
 
-describe("sources columns (Build notes 02 + owner 21 Nov: what it reads, last read, used by)", () => {
-  it("in that order; the source is the phone card's title; a tablet keeps Reads and State", () => {
-    expect(COLS.map((c) => c.header)).toEqual(["Source", "Reads", "State", "Complete through", "Last read", "Records today", "Used by"]);
-    expect(COLS.map((c) => c.mobile)).toEqual(["title", "meta", "meta", "meta", "meta", "meta", "meta"]);
+describe("sources columns (audit §5.5 + owner 21 Nov: what it reads, last read, used by)", () => {
+  it("in that order; the source is the phone card's title; a tablet keeps Kind and State; Reads hidden until chosen", () => {
+    expect(COLS.map((c) => c.header)).toEqual(["Source", "Kind", "Reads", "State", "Complete through", "Last read", "Records today", "Used by"]);
+    expect(COLS.map((c) => c.mobile)).toEqual(["title", "meta", "meta", "meta", "meta", "meta", "meta", "meta"]);
+    expect(COLS.filter((c) => c.defaultHidden).map((c) => c.key)).toEqual(["reads"]);
     for (const k of ["complete", "lastRead", "rowsToday", "usedBy"]) expect(COLS.find((c) => c.key === k)!.className).toMatch(/\bmd:max-xl:hidden\b/);
   });
-  it("Reads names the engine, the table or folder and, for a source admin, the server; Used by counts recons", () => {
-    expect(cell("kind")).toContain("/inbox/bi · bisettle{yyyyMMdd}.txt");
+  it("Kind names the kind and engine, Reads the table or folder and, for a source admin, the server; Used by counts recons", () => {
+    expect(cell("reads")).toContain("/inbox/bi · bisettle{yyyyMMdd}.txt");
     const db = { ...S, kind: "db_watermark" as const, engine: "postgres" as const, reads: "core.source1", server: "recon_ro@db:5432/core" };
     // the kind (with its read mode) and the engine: a neutral chip each (audit §1.1)
     expect(cell("kind", db)).toContain(">Database · watermark</span>");
     expect(cell("kind", db)).toContain(">PostgreSQL</span>");
     expect(cell("kind", db).match(/data-slot="category-chip"/g)).toHaveLength(2);
-    expect(cell("kind", db)).toContain("recon_ro@db:5432/core");
+    expect(cell("reads", db)).toContain("recon_ro@db:5432/core");
     expect(cell("usedBy")).toBe("2 recons");
     expect(cell("name", { ...S, pending: { version: 2, status: "in_review" } })).toContain("version 2 in review");
     expect(cell("lastRead", { ...S, health: { ...S.health!, lastError: "Can't reach the database." } })).toContain("Can&#x27;t reach the database.");

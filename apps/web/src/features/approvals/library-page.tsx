@@ -3,12 +3,13 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, Toolbar } from "@starterkit/ui/ds";
+import { type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { LibraryDetailDto, LibraryRowDto } from "@starterkit/shared/contracts/workflows";
+import { DEFAULT_LEVELS } from "@starterkit/shared/workflows";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
@@ -20,19 +21,39 @@ const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-
 const FILTER_DEFAULTS: LibraryFilters = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 
-const usedText = (r: LibraryRowDto) => (r.reconsUsing ? `${r.reconsUsing} ${r.reconsUsing === 1 ? "recon" : "recons"}` : "Not used");
-const columns = (spaceId: string): Column<LibraryRowDto>[] => [
-  { key: "name", header: "Workflow", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
-    <span className="grid min-w-0">
-      <Link href={`/spaces/${encodeURIComponent(spaceId)}/workflows/${encodeURIComponent(r.id)}`} className={LINK}>{r.name}</Link>
-      {(r.open || r.archived) && <span className="text-caption text-fg-3">{r.archived ? "Archived" : r.open!.status === "in_review" ? `Version ${r.open!.version} waits for approval` : `Draft ${r.open!.version}`}</span>}
-    </span>
-  ) },
-  { key: "levels", header: "Levels", mobile: "meta", cell: (r) => <LevelDots n={Math.max(1, r.levels)} muted={!r.published} /> },
-  { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published ? `Version ${r.published.version}` : <span className="text-fg-3">Not live</span>) },
-  { key: "usedBy", header: "Used by", mobile: "meta", cell: (r) => <span className={r.reconsUsing ? "" : "text-fg-3"}>{usedText(r)}</span> },
-  { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => <RelativeTime at={Date.parse(r.updatedAt)} /> },
-];
+/** The built-in default chain as the list's first row, read only (audit §5.7): what a change without a workflow takes. */
+export const DEFAULT_ROW_ID = "default";
+const DEFAULT_ROW: LibraryRowDto = {
+  id: DEFAULT_ROW_ID, name: "Default chain", levels: DEFAULT_LEVELS.length, levelNames: DEFAULT_LEVELS.map((l) => l.name), archived: false,
+  published: null, open: null, reconsUsing: 0, updatedAt: "",
+};
+/** "Checker · Treasury head", or how many levels when they have no names. */
+export const levelsText = (r: Pick<LibraryRowDto, "levels" | "levelNames">) => {
+  const named = r.levelNames.filter((n) => n.trim());
+  return named.length === r.levels && named.length ? named.join(" · ") : `${r.levels} ${r.levels === 1 ? "level" : "levels"}`;
+};
+const usedText = (n: number) => `${n} ${n === 1 ? "recon" : "recons"}`;
+export const libraryColumns = (spaceId: string): Column<LibraryRowDto>[] => {
+  const href = (r: LibraryRowDto) => `/spaces/${encodeURIComponent(spaceId)}/workflows/${encodeURIComponent(r.id)}`;
+  const builtIn = (r: LibraryRowDto) => r.id === DEFAULT_ROW_ID;
+  return [
+    { key: "name", header: "Workflow", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
+      <span className="grid min-w-0">
+        {builtIn(r) ? <span className="font-medium text-fg">{r.name}</span> : <Link href={href(r)} className={LINK}>{r.name}</Link>}
+        {builtIn(r) ? <span className="text-caption text-fg-3">Built in · read only · one of Reviewer or Space admin</span>
+          : (r.open || r.archived) && <span className="text-caption text-fg-3">{r.archived ? "Archived" : r.open!.status === "in_review" ? `Version ${r.open!.version} waits for approval` : `Draft ${r.open!.version}`}</span>}
+      </span>
+    ) },
+    { key: "levels", header: "Levels", mobile: "meta", className: "min-w-40", cell: (r) => (
+      <span className="flex min-w-0 items-center gap-2"><LevelDots n={Math.max(1, r.levels)} muted={!r.published && !builtIn(r)} /><span className="truncate" title={levelsText(r)}>{levelsText(r)}</span></span>
+    ) },
+    { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (builtIn(r) ? <StatusChip health="healthy" label="Always" />
+      : r.published ? <StatusChip health="healthy" label={`Version ${r.published.version}`} /> : <StatusChip health="stopped" label="Not live" />) },
+    { key: "usedBy", header: "Used by", mobile: "meta", cell: (r) => (builtIn(r) ? <span className="text-fg-3">Changes without a workflow</span>
+      : r.reconsUsing ? <Link href={`${href(r)}#used-by`} className={LINK}>{usedText(r.reconsUsing)}</Link> : <span className="text-fg-3">Not used</span>) },
+    { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.updatedAt ? <RelativeTime at={Date.parse(r.updatedAt)} /> : <span className="text-fg-3">—</span>) },
+  ];
+};
 
 /**
  * A space's workflows (DEC-052 rev 2 §4.1): named chains of levels that the space's recons pin for a change.
@@ -41,9 +62,11 @@ const columns = (spaceId: string): Column<LibraryRowDto>[] => [
 export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string; spaceName: string; canManage: boolean }) {
   const router = useRouter();
   const def = useMemo(() => WORKFLOWS(spaceId), [spaceId]);
-  const COLUMNS = useMemo(() => columns(spaceId), [spaceId]);
+  const COLUMNS = useMemo(() => libraryColumns(spaceId), [spaceId]);
   const t = useTableQuery<LibraryRowDto, LibraryFilters>(def);
   const [busy, setBusy] = useState(false);
+  // the built-in chain leads the first page of the unsearched list (not counted: it isn't a workflow of the space)
+  const rows = !t.state.q && t.state.page === 1 && !t.loadError && (t.rows.length || !t.loading) ? [DEFAULT_ROW, ...t.rows] : t.rows;
   async function create() {
     setBusy(true);
     try {
@@ -68,7 +91,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
             <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
               flush icon={BranchIcon} title="All workflows" count={t.count}>
               {summary}
-              <DataTable label="Workflows" columns={COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading}
+              <DataTable label="Workflows" columns={COLUMNS} hidden={t.hidden} rows={rows} rowKey={(r) => r.id} loading={t.loading}
                 sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
                 error={t.loadError ? { title: "Couldn't load workflows", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
                 empty={t.state.q

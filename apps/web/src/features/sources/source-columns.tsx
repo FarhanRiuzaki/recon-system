@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { CategoryChip, type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, RelativeTime, Truncate } from "@starterkit/ui/ds";
 import { Sparkline } from "@starterkit/ui/charts";
 import { formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
-import { sourceStatus } from "@/lib/shared/source-status";
 import { completeText, KIND_LABEL, lagText, withDays } from "./source-text";
+import { SourceStatusChip } from "./source-status-chip";
 import { sourceHref } from "./use-sources";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -27,12 +27,6 @@ function PullText({ p }: { p: NonNullable<SourceRowDto["lastPull"]> }) {
   );
 }
 
-/** A source's state chip with the API's reason (or last error) as its description. */
-export function SourceStatusChip({ s }: { s: SourceRowDto }) {
-  const st = sourceStatus(s);
-  const why = s.health?.reason ?? s.health?.lastError ?? null;
-  return <StatusChip strong health={st.health} label={st.label} description={why ? withDays(why) : null} />;
-}
 
 /** "Version 1 · bi-settlement · version 2 in review", "Draft · code", or, through a share, who owns it. */
 export const sourceCaption = (s: SourceRowDto) =>
@@ -43,9 +37,10 @@ export const sourceCaption = (s: SourceRowDto) =>
 const ENGINE: Record<NonNullable<SourceRowDto["engine"]>, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
 
 /**
- * Columns of a space's sources (Figma 17:5543, Build notes 02: Source · Kind · State · Complete through · Quarantined
- * today; rows of the business date in progress beside it). Phone card: the source is the title, the rest lines under
- * it. Tablet (768–1279) shows Kind and State only. Name and created sort (the API's SOURCE_SORTS).
+ * Columns of a space's sources (audit §5.5): source, kind and engine chips, state, complete through, last read (what
+ * the last pull brought in fg-2), records today with its week, used by; what it reads and where hidden until chosen.
+ * Phone card: the source is the title, the rest lines under it. Tablet (768–1279) shows Kind and State only. Name and
+ * created sort (the API's SOURCE_SORTS).
  */
 export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
   return [
@@ -56,16 +51,20 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
       </span>
     ) },
     // kind (with its read mode) and engine as neutral chips: facts, not states (audit §1.1); a shared source names its owner
-    // what it reads and where (owner, 21 Nov: an admin sees the engine, the table or folder, and the server at a glance)
-    { key: "kind", header: "Reads", mobile: "meta", className: "min-w-56", help: "How the data arrives, from which engine and table or folder; the server it connects to shows for a source admin.", cell: (s) => (
-      <span className="grid min-w-0 max-w-80 justify-items-start gap-1">
-        <span className="flex max-w-full flex-wrap gap-1">
-          <CategoryChip slot="neutral" label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} />
-          {!s.owner && s.engine && <CategoryChip slot="neutral" label={ENGINE[s.engine]} />}
-        </span>
-        {s.reads && <span className={`${ONE_LINE} text-fg-2`} title={s.reads}>{s.reads}</span>}
-        {s.server && <span className={`${ONE_LINE} text-fg-3`} title={s.server}>{s.server}</span>}
+    { key: "kind", header: "Kind", mobile: "meta", cell: (s) => (
+      <span className="flex max-w-56 flex-wrap gap-1">
+        <CategoryChip slot="neutral" label={s.owner ? `Shared from ${s.owner.name}` : KIND_LABEL[s.kind]} />
+        {!s.owner && s.engine && <CategoryChip slot="neutral" label={ENGINE[s.engine]} />}
       </span>
+    ) },
+    // what it reads and where (owner, 21 Nov: the table or folder, and the server for a source admin); hidden until chosen (audit §5.5)
+    { key: "reads", header: "Reads", mobile: "meta", defaultHidden: true, className: "min-w-48", cell: (s) => (
+      !s.reads && !s.server ? none : (
+        <span className="grid min-w-0 max-w-80">
+          {s.reads && <span className={`${ONE_LINE} text-fg-2`} title={s.reads}>{s.reads}</span>}
+          {s.server && <span className={`${ONE_LINE} text-fg-3`} title={s.server}>{s.server}</span>}
+        </span>
+      )
     ) },
     // the reason in the cell, not only in the chip's tooltip (owner, 22 Nov: why it needs attention at a glance)
     { key: "state", header: "State", mobile: "meta", cell: (s) => {
@@ -87,7 +86,7 @@ export function sourceColumns(spaceId: string): Column<SourceRowDto>[] {
         <span className="grid max-w-64 whitespace-nowrap">
           {s.health.lastReadAt ? <RelativeTime at={Date.parse(s.health.lastReadAt)} touchDate={false} /> : <span className="text-fg-3">Not yet</span>}
           {s.health.lastError ? <span className="line-clamp-2 text-caption text-down-ink" title={s.health.lastError}>{s.health.lastError}</span>
-            : s.lastPull && <span className="text-caption text-fg-3"><PullText p={s.lastPull} /></span>}
+            : s.lastPull && <span className="text-caption text-fg-2"><PullText p={s.lastPull} /></span>}
           {s.nextRunAt && <span className="text-caption text-fg-3">Next read {formatTime(Date.parse(s.nextRunAt))}</span>}
         </span>
       )

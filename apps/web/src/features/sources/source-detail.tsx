@@ -23,7 +23,7 @@ import type { PlainAction } from "@/components/shell/page-header";
 import { PullHistory } from "./pull-history";
 import { SourceConfig } from "./source-config";
 import { ActivityTable, FilesTable, QuarantineTable, RecordsTable, SnapshotsTable, VersionsTable } from "./ingest-tables";
-import { SourceStatusChip } from "./source-columns";
+import { SourceStatusChip } from "./source-status-chip";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
 import { SOURCE_TABS, type SourceTab } from "./source-text";
 import { at, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";

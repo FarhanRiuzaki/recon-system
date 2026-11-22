@@ -34,7 +34,7 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "state", label: "St
  * the business date in progress (page.tsx has checked the viewer holds a role in the space and prefetched the first
  * page). Create source opens the wizard for a source admin; anyone else gets the reason.
  */
-export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export function SourcesPage({ spaceId }: { spaceId: string }) {
   const def = useMemo(() => SOURCES(spaceId), [spaceId]);
   const columns = useMemo(() => sourceColumns(spaceId), [spaceId]);
   const t = useTableQuery<SourceRowDto, SourceFilters>(def);
@@ -64,7 +64,7 @@ export function SourcesPage({ spaceId, spaceName }: { spaceId: string; spaceName
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) =>
           <FilterSearch label="Search sources" value={draft.q} onChange={q => patch({ q })} placeholder="Name or code" />}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={DiskIcon} title={`Sources in ${spaceName}`} count={t.count} legend={SOURCE_LEGEND}>
+        flush icon={DiskIcon} title="All sources" count={t.count} legend={SOURCE_LEGEND}>
         {summary}
         <DataTable label="Sources" rowHeight="identity" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(s) => s.id} loading={t.loading}
           sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}

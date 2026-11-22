@@ -171,7 +171,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
           </Field>
           <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} reveal={reveal} />
         </div>
-        <div className="min-w-0 xl:sticky xl:top-(--topbar-h)">
+        <div id="used-by" className="min-w-0 scroll-mt-(--topbar-h) xl:sticky xl:top-(--topbar-h)">
           <UsedBy spaceId={spaceId} id={id} />
         </div>
       </div>

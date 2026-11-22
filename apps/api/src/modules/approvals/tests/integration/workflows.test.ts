@@ -64,6 +64,7 @@ describe("a space's workflows", () => {
     expect((await json<LibraryDetailDto>(call("POST", W(A, `/${w.id}/review/approve`), { token: t.m1, body: {} }))).published).toMatchObject({ version: 1 });
     const list = await json<Page<LibraryRowDto>>(call("GET", W(A), { token: t.rev }));
     expect(list.items.map((r) => [r.name, r.published?.version, r.levels, r.reconsUsing])).toEqual([["Checker only", 1, 1, 0]]);
+    expect(list.items[0]!.levelNames).toEqual([reviewers[0]!.name]); // the levels summary of the list (audit §5.7)
     expect((await call("POST", W(A), { token: t.rev, body: { spec: { name: "x", levels: reviewers } } })).status).toBe(403);
     const acts = await db.select({ action: activity.action }).from(activity).where(eq(activity.targetId, w.id));
     expect(acts.map((a) => a.action).sort()).toEqual(["workflow.create", "workflow.publish", "workflow.submit"]);

@@ -87,7 +87,7 @@ export function MembersPage({ id }: { id: string }) {
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) =>
           <FilterSearch label="Search members" value={draft.q} onChange={q => patch({ q })} placeholder="Name or username" />}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={MEMBER_COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={UsersIcon} title={`Members of ${name}`} count={t.count} legend={LEGEND}>
+        flush icon={UsersIcon} title="All members" count={t.count} legend={LEGEND}>
         {summary}
         <DataTable label="Members" rowHeight="identity" columns={MEMBER_COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(m) => m.userId} loading={t.loading}
           sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}

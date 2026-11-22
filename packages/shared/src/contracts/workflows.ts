@@ -50,6 +50,8 @@ export type ChainVersionDto = z.infer<typeof ChainVersionDto>;
 /** GET /workflows: a library workflow, its live and open versions and how many approval rules use it. */
 export const LibraryRowDto = z.object({
   id: z.string(), name: z.string(), levels: z.number().int(), archived: z.boolean(),
+  /** Its levels' names in order (the live version's, else the open one's): the list's levels summary. */
+  levelNames: z.array(z.string()),
   published: z.object({ version: z.number().int(), decidedAt: z.string().nullable() }).nullable(), open: OpenDto.nullable(),
   /** Recons whose live version picks it. */
   reconsUsing: z.number().int(), updatedAt: z.string(),

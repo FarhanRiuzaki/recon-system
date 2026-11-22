@@ -18,7 +18,9 @@ import { reviewRule, userNames, type VersionRow, versionDto, versionPeople } fro
 import { recordActivity } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import { publicKeyPem } from "./profile";
-import { connectors, connectorSecrets, connectorTokens, connectorVersions } from "./schema";
+import { reconConfigVersions } from "../recon";
+import { spaces, withSpace } from "../spaces";
+import { connectorCircuits, connectors, connectorSecrets, connectorTokens, connectorVersions } from "./schema";
 import { accessToken, NotSent, sendOperation } from "./transport";
 
 const EDITORS = "an Open API manager";
@@ -56,6 +58,16 @@ export function connectorPage(q: ConnectorListQuery): Promise<Page<ConnectorRowD
     });
     const ids = page.items.map((c) => c.id);
     const vs = ids.length ? await tx.select().from(connectorVersions).where(and(inArray(connectorVersions.connectorId, ids), inArray(connectorVersions.status, ["draft", "in_review", "published"]))) : [];
+    const circuits = ids.length ? await tx.select().from(connectorCircuits).where(inArray(connectorCircuits.connectorId, ids)) : [];
+    const used = await usedByCounts(ids);
+    const now = new Date();
+    const linkOf = (id: string, env: Environment | null): ConnectorRowDto["link"] => {
+      const k = env ? circuits.find((x) => x.connectorId === id && x.environment === env) : undefined;
+      if (!k) return { state: "none", failures: 0 };
+      // any answer clears openUntil; a pause that ended without one since still reads failing
+      const state = k.openUntil && k.openUntil > now ? "paused" : k.failures > 0 || k.openUntil ? "failing" : "answered";
+      return { state, failures: k.failures };
+    };
     const items = page.items.map((c): ConnectorRowDto => {
       const pub = vs.find((v) => v.connectorId === c.id && v.status === "published");
       const open = vs.find((v) => v.connectorId === c.id && v.status !== "published");
@@ -65,10 +77,29 @@ export function connectorPage(q: ConnectorListQuery): Promise<Page<ConnectorRowD
         published: pub ? { version: pub.version, decidedAt: pub.decidedAt?.toISOString() ?? null } : null,
         open: open ? { version: open.version, status: open.status as "draft" | "in_review", updatedAt: open.updatedAt.toISOString() } : null,
         disabled: !!c.disabledAt, updatedAt: ((open ?? pub)?.updatedAt ?? c.createdAt).toISOString(),
+        link: linkOf(c.id, pub ? (pub.spec as ConnectorSpec).active : null), usedBy: used.get(c.id) ?? 0,
       };
     });
     return { ...page, items };
   });
+}
+
+/**
+ * Per connector of `ids`: the recons of every space whose live version has an action variant that calls it. A
+ * connector is global, so this reads every space (as the outbox sweep does) and answers counts only, never a recon.
+ * ponytail: one jsonb path scan per connector of the page (≤ 100); an index on the pinned connector ids if recons get many
+ */
+async function usedByCounts(ids: readonly string[]): Promise<Map<string, number>> {
+  if (!ids.length) return new Map();
+  const all = (await db.select({ id: spaces.id }).from(spaces)).map((x) => x.id);
+  if (!all.length) return new Map();
+  return withSpace({ spaceIds: all, userId: null }, async (tx) => new Map(await Promise.all(ids.map(async (id) => {
+    const [r] = await tx.select({ n: sql<number>`count(distinct ${reconConfigVersions.configId})::int` }).from(reconConfigVersions).where(and(
+      eq(reconConfigVersions.status, "published"),
+      sql`jsonb_path_exists(${reconConfigVersions.spec}, '$.approvals.changes.*.actions[*].variants[*].operation ? (@.connectorId == $id)', jsonb_build_object('id', ${id}::text))`,
+    ));
+    return [id, r?.n ?? 0] as const;
+  }))));
 }
 
 async function detail(tx: InTx, ctx: Ctx, id: string): Promise<ConnectorDetailDto> {

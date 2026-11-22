@@ -19,5 +19,5 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
   // the viewer's roles in the space (New recon is a config maker's) come with the first page
-  return <Prefetch reads={[reads.space(spaceId), reads.recons(spaceId, toSearch(await searchParams)), reads.spaceToday(spaceId)]}><ReconsPage spaceId={spaceId} spaceName={space.name} /></Prefetch>;
+  return <Prefetch reads={[reads.space(spaceId), reads.recons(spaceId, toSearch(await searchParams)), reads.spaceToday(spaceId)]}><ReconsPage spaceId={spaceId} /></Prefetch>;
 }

@@ -11,7 +11,9 @@ import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
 import { roles, rolePermissions, userRoles } from "../../../rbac";
 import { users } from "../../../users";
-import { connectors, connectorSecrets } from "../../schema";
+import { reconConfigs, reconConfigVersions } from "../../../recon";
+import { spaces } from "../../../spaces";
+import { connectorCircuits, connectors, connectorSecrets } from "../../schema";
 
 const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
 const err = async (r: Response) => ((await r.json()) as { error: { code: string; message: string } }).error;
@@ -101,5 +103,33 @@ describe("connectors", () => {
     expect(JSON.stringify({ spec: big }).length).toBeGreaterThan(64 * 1024);
     const r = await call("PATCH", `${C}/${c.id}/draft`, { token: t.m1, body: { spec: big } });
     expect(r.status).toBe(200);
+  });
+});
+
+describe("the connectors list: bank link and used by (audit §5.8)", () => {
+  it("the active environment's last call result from its circuit, and how many recons' live versions call it, across spaces", async () => {
+    const c = await create(t.m1);
+    await publish(c.id, t.m1, t.m2);
+    const row = async () => (await json<Page<ConnectorRowDto>>(call("GET", C, { token: t.viewer }))).items[0]!;
+    expect(await row()).toMatchObject({ link: { state: "none", failures: 0 }, usedBy: 0 });
+    await db.insert(connectorCircuits).values({ connectorId: c.id, environment: "dev", failures: 0 });
+    expect((await row()).link).toEqual({ state: "answered", failures: 0 });
+    await db.update(connectorCircuits).set({ failures: 2 });
+    expect((await row()).link).toEqual({ state: "failing", failures: 2 });
+    await db.update(connectorCircuits).set({ failures: 0, openUntil: new Date(Date.now() + 60_000) });
+    expect((await row()).link.state).toBe("paused");
+    // the prod circuit is not the active environment's
+    await db.insert(connectorCircuits).values({ connectorId: c.id, environment: "prod", failures: 9 });
+    expect((await row()).link.failures).toBe(0);
+    // two spaces' live recons call it, a draft doesn't count
+    await db.delete(spaces);
+    const posting = { approvals: { changes: { write_off: { actions: [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [{ name: "D", operation: { connectorId: c.id, version: 1, key: "post" } }] }] } } } };
+    for (const [i, status] of (["published", "published", "draft"] as const).entries()) {
+      const sp = Bun.randomUUIDv7(), cfg = Bun.randomUUIDv7();
+      await db.insert(spaces).values({ id: sp, code: `s${i}`, name: `S${i}` });
+      await db.insert(reconConfigs).values({ id: cfg, spaceId: sp, code: `r${i}`, name: `R${i}` });
+      await db.insert(reconConfigVersions).values({ id: Bun.randomUUIDv7(), configId: cfg, spaceId: sp, version: 1, status, spec: posting, specHash: "h", matchingHash: "h", makerId: Bun.randomUUIDv7() });
+    }
+    expect((await row()).usedBy).toBe(2);
   });
 });

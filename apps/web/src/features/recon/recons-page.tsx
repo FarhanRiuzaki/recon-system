@@ -22,7 +22,7 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
  * A space's recons, server-paged (page.tsx has checked the viewer holds a role in the space and prefetched the first
  * page). Create recon opens the create form for a config maker; anyone else gets the reason.
  */
-export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export function ReconsPage({ spaceId }: { spaceId: string }) {
   const def = useMemo(() => RECONS(spaceId), [spaceId]);
   // the live columns read Today (the recons' current days and their sources), joined by id
   const today = useToday(spaceId).data;
@@ -44,7 +44,7 @@ export function ReconsPage({ spaceId, spaceName }: { spaceId: string; spaceName:
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) =>
           <FilterSearch label="Search recons" value={draft.q} onChange={q => patch({ q })} placeholder="Name or code" />}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={NetworkIcon} title={`Recons in ${spaceName}`} count={t.count} legend={RECON_LEGEND}>
+        flush icon={NetworkIcon} title="All recons" count={t.count} legend={RECON_LEGEND}>
         {summary}
         <DataTable label="Recons" rowHeight="identity" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading}
           sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}

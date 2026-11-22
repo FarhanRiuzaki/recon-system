@@ -100,6 +100,35 @@
     },
     "updatedAt": {
       "type": "string"
+    },
+    "link": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "answered",
+            "failing",
+            "paused",
+            "none"
+          ]
+        },
+        "failures": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "state",
+        "failures"
+      ],
+      "additionalProperties": false
+    },
+    "usedBy": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
     }
   },
   "required": [
@@ -111,7 +140,9 @@
     "published",
     "open",
     "disabled",
-    "updatedAt"
+    "updatedAt",
+    "link",
+    "usedBy"
   ],
   "additionalProperties": false
 }
