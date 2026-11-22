@@ -9,10 +9,10 @@
 // bar, packets or flash; the primary stroke and the words stay.
 import { Background, BackgroundVariant, BaseEdge, ControlButton, type Edge, EdgeLabelRenderer, type EdgeProps, getBezierPath, getSmoothStepPath, Handle, Position, useNodeId, useReactFlow, useUpdateNodeInternals } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
-import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
-import { cn } from "@starterkit/ui/lib/cn";
-import { Icon, type IconData } from "@starterkit/ui/ui/icon";
-import { ResetIcon } from "@starterkit/ui/ui/icons";
+import { DUR, usePrefersReducedMotion } from "../motion";
+import { cn } from "../lib/cn";
+import { Icon, type IconData } from "../ui/icon";
+import { ResetIcon } from "../ui/icons";
 
 /** The status colours an outcome or a marked node may carry (status colours are for health states only, AGENTS.md §6). */
 export type Accent = "healthy" | "degraded" | "down" | "stopped" | "primary" | null;
@@ -75,7 +75,7 @@ export const LaneTitle = ({ x, label, count }: { x: number; label: string; count
   </div>
 );
 
-/** The board: dots on the canvas's surface (their colour from --xy-background-pattern-color, recon-canvas.css). */
+/** The board: dots on the canvas's surface (their colour from --xy-background-pattern-color, flow.css). */
 export const FlowBoard = () => <Background variant={BackgroundVariant.Dots} gap={20} size={1.6} />;
 
 /**

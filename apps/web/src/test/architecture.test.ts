@@ -13,10 +13,10 @@ const SHARED = "packages/shared/src/";
 const files: F[] = scan([WEB_SRC, UI_SRC, SHARED_SRC]).map((f) => ({ r: repoRel(f), src: read(f), imp: importsOf(f) }));
 const cssFiles: F[] = scan([WEB_SRC, UI_SRC], /\.css$/).map((f) => ({ r: repoRel(f), src: read(f), imp: [] }));
 
-/** ui/motion/lib = primitives (0) → ds (1) → charts (2) → shell (3) → features (4). */
+/** ui/motion/lib = primitives (0) → ds (1) → charts and flow (2) → shell (3) → features (4). */
 const layer = (r: string) =>
   [`${UI}ui/`, `${UI}motion/`, `${UI}lib/`].some((p) => r.startsWith(p)) ? 0 : r.startsWith(`${UI}ds/`) ? 1
-    : r.startsWith(`${UI}charts/`) ? 2 : r.startsWith(`${WEB}components/shell/`) ? 3 : r.startsWith(`${WEB}features/`) ? 4 : null;
+    : r.startsWith(`${UI}charts/`) || r.startsWith(`${UI}flow/`) ? 2 : r.startsWith(`${WEB}components/shell/`) ? 3 : r.startsWith(`${WEB}features/`) ? 4 : null;
 /** Import specifier → repo-relative path ("@/x", "@starterkit/ui/x", "./x" all resolve); other packages → null. */
 const resolveSpec = (fromRel: string, spec: string): string | null =>
   spec.startsWith("@/") ? WEB + spec.slice(2)
@@ -358,6 +358,9 @@ describe("architecture", () => {
     expect(files.filter(({ src }) => src.includes("dangerouslySetInnerHTML")).map((f) => f.r)).toEqual([]);
   });
 
+  it("only the flow layer imports @xyflow/react (the canvases' parts live in the design system)", () => {
+    expect(files.filter(({ r, imp }) => imp.some((i) => i.startsWith("@xyflow/react")) && !r.startsWith(`${UI}flow/`)).map((f) => f.r)).toEqual([]);
+  });
   it("only charts imports recharts", () => {
     expect(files.filter(({ r, imp }) => imp.includes("recharts") && !r.startsWith(`${UI}charts/`)).map((f) => f.r)).toEqual([]);
   });

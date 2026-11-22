@@ -1,5 +1,5 @@
 /* React Flow's --xy-* variables mapped onto the theme tokens (light, dark and every palette follow). */
-.recon-canvas .react-flow {
+.flow-canvas .react-flow {
   --xy-background-color: var(--bg);
   --xy-background-pattern-color: var(--line-strong);
   --xy-edge-stroke: var(--fg-4);
@@ -25,49 +25,49 @@
   --xy-selection-border: 1px solid var(--primary);
   --xy-attribution-background-color: var(--card);
 }
-.recon-canvas .react-flow__attribution a { color: var(--fg-3); }
-.recon-canvas .react-flow__node:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-lg); }
-.recon-canvas .react-flow__edge-textbg { fill: var(--card); stroke: var(--line); stroke-width: 1; }
-.recon-canvas .react-flow__edge-text { fill: var(--fg-2); }
+.flow-canvas .react-flow__attribution a { color: var(--fg-3); }
+.flow-canvas .react-flow__node:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: var(--radius-lg); }
+.flow-canvas .react-flow__edge-textbg { fill: var(--card); stroke: var(--line); stroke-width: 1; }
+.flow-canvas .react-flow__edge-text { fill: var(--fg-2); }
 /* base.css leaves the Controls buttons unstyled (style.css would style them with its own greys). */
-.recon-canvas .react-flow__controls { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.recon-canvas .react-flow__controls-button { background: var(--card); color: var(--fg-2); border-bottom: 1px solid var(--line); }
-.recon-canvas .react-flow__controls-button:hover { background: var(--tray); color: var(--fg); }
+.flow-canvas .react-flow__controls { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+.flow-canvas .react-flow__controls-button { background: var(--card); color: var(--fg-2); border-bottom: 1px solid var(--line); }
+.flow-canvas .react-flow__controls-button:hover { background: var(--tray); color: var(--fg); }
 /* a selected node shows by its border (the inspector beside it says which); React Flow's own selection shadow is off */
-.recon-canvas .react-flow__node.selected, .recon-canvas .react-flow__node:focus { box-shadow: none; }
-.recon-canvas .react-flow__node.draggable { cursor: grab; }
-.recon-canvas .react-flow__node.dragging { cursor: grabbing; }
+.flow-canvas .react-flow__node.selected, .flow-canvas .react-flow__node:focus { box-shadow: none; }
+.flow-canvas .react-flow__node.draggable { cursor: grab; }
+.flow-canvas .react-flow__node.dragging { cursor: grabbing; }
 /* the parts' card draws the node: React Flow's own node box stays invisible, its handles too (nothing connects by hand) */
-.recon-canvas .react-flow__node { border-radius: var(--radius-lg); }
-.recon-canvas .react-flow__handle { opacity: 0; }
+.flow-canvas .react-flow__node { border-radius: var(--radius-lg); }
+.flow-canvas .react-flow__handle { opacity: 0; }
 /* live (flow-parts.tsx): a running card's primary sweep, on the shimmer keyframes (base.css), behind its content */
-.recon-canvas .flow-sweep { overflow: hidden; }
-.recon-canvas .flow-sweep::after {
+.flow-canvas .flow-sweep { overflow: hidden; }
+.flow-canvas .flow-sweep::after {
   content: ""; position: absolute; inset: 0; transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, var(--primary-soft) 50%, transparent);
   animation: shimmer var(--dur-flash) linear infinite;
 }
 /* a packet travelling a live edge (SMIL along the edge's path) */
-.recon-canvas .flow-packet { fill: var(--primary); stroke: var(--card); stroke-width: 1.5; }
-.recon-canvas .flow-halo { fill: var(--primary-soft); stroke: var(--primary); stroke-opacity: 0.25; }
-.recon-canvas .react-flow__edge.is-live path.react-flow__edge-path { stroke: var(--primary); stroke-width: 2; }
+.flow-canvas .flow-packet { fill: var(--primary); stroke: var(--card); stroke-width: 1.5; }
+.flow-canvas .flow-halo { fill: var(--primary-soft); stroke: var(--primary); stroke-opacity: 0.25; }
+.flow-canvas .react-flow__edge.is-live path.react-flow__edge-path { stroke: var(--primary); stroke-width: 2; }
 /* a hovered or focused node's path at full strength, the rest dimmed (opacity only) */
-.recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: opacity var(--dur-fast) var(--ease-standard); }
-.recon-canvas .react-flow__node.is-dim, .recon-canvas .react-flow__edge.is-dim { opacity: 0.35; }
-.recon-canvas .react-flow__edge.is-lit path.react-flow__edge-path { stroke: var(--fg-2); }
-.recon-canvas .react-flow__edge.is-lit.is-live path.react-flow__edge-path { stroke: var(--primary); }
+.flow-canvas .react-flow__node, .flow-canvas .react-flow__edge { transition: opacity var(--dur-fast) var(--ease-standard); }
+.flow-canvas .react-flow__node.is-dim, .flow-canvas .react-flow__edge.is-dim { opacity: 0.35; }
+.flow-canvas .react-flow__edge.is-lit path.react-flow__edge-path { stroke: var(--fg-2); }
+.flow-canvas .react-flow__edge.is-lit.is-live path.react-flow__edge-path { stroke: var(--primary); }
 @media (prefers-reduced-motion: reduce) {
-  .recon-canvas .flow-sweep::after { display: none; }
-  .recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: none; }
+  .flow-canvas .flow-sweep::after { display: none; }
+  .flow-canvas .react-flow__node, .flow-canvas .react-flow__edge { transition: none; }
 }
 /* an edge's count (flow-parts.tsx FlowEdge): a pill on the curve, over it */
-.recon-canvas .flow-label {
+.flow-canvas .flow-label {
   position: absolute; pointer-events: none; padding: 1px 8px; border-radius: 999px;
   background: var(--card); color: var(--fg-2); box-shadow: 0 0 0 1px var(--line);
   font-size: var(--text-caption); line-height: var(--text-caption--line-height); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-.recon-canvas .flow-label.is-quiet { color: var(--fg-4); }
+.flow-canvas .flow-label.is-quiet { color: var(--fg-4); }
 /* a card being dragged sits over the others */
-.recon-canvas .react-flow__node.dragging { z-index: 10 !important; }
+.flow-canvas .react-flow__node.dragging { z-index: 10 !important; }
 /* Controls style their svg as a filled glyph; the reset icon is a stroke icon */
-.recon-canvas .react-flow__controls-button svg.flow-reset { fill: none; max-width: 14px; max-height: 14px; }
+.flow-canvas .react-flow__controls-button svg.flow-reset { fill: none; max-width: 14px; max-height: 14px; }

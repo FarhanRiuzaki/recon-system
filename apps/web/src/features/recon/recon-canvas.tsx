@@ -4,14 +4,12 @@
 // ELK), the same data and actions as the list: choosing a side or a pass opens it in the inspector, a pass moves by
 // drag (up and down its lane only) or Alt+↑/↓, and the simulation's counts sit on the edges, dimmed while the draft
 // differs from what was simulated. Loaded on demand (canvas-loader.tsx); never on a phone (the list is, DEC-041).
-import { Controls, Handle, type Edge, type Node, type NodeChangeset, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
-import "@xyflow/react/dist/base.css";
-import "./recon-canvas.css";
+import { type Accent, arrowOf, Controls, EDGE_TYPES, type Edge, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, Handle, LaneTitle, type Node, type NodeChangeset, type NodeProps, pathOf, PortHandles, ports, portsOf, Position, ReactFlow, ReactFlowProvider, ResetLayout, useFitToCard, useHotNode, ViewportPortal } from "@starterkit/ui/flow";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { DiskIcon, FilterIcon, SuccessIcon, SuggestedIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { dropIndex, type GNode, LANES, laneLayout, NODE_H, NODE_W, specGraph } from "./canvas-graph";
-import { type Accent, arrowOf, EDGE_TYPES, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, PortHandles, ports, portsOf, ResetLayout, useFitToCard, useHotNode } from "./flow-parts";
+
 
 type Data = {
   title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null; badge?: GNode["badge"]; interactive: boolean; running: boolean;
@@ -161,7 +159,7 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   const height = Math.min(720, Math.max(360, tallest * (NODE_H + 24) + 140));
   const laneX = LANES.map((_, l) => pos.get(graph.nodes.find((n) => n.lane === l)?.id ?? "")?.x);
   return (
-    <div ref={wrap} className="recon-canvas" style={{ height }} onKeyDownCapture={onKeyDownCapture} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
+    <div ref={wrap} className="flow-canvas" style={{ height }} onKeyDownCapture={onKeyDownCapture} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
       <ReactFlow nodes={shown} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} onNodeMouseEnter={hover.onNodeMouseEnter} onNodeMouseLeave={hover.onNodeMouseLeave} onNodesChange={onNodesChange} onNodeDragStop={onNodeDragStop}
         onNodeClick={(_, n) => { const g = graph.nodes.find((x) => x.id === n.id); if (g?.select && onSelect) onSelect(g.select); }}
         nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={FIT} minZoom={0.25} maxZoom={1.5}

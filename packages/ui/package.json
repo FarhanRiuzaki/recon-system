@@ -16,6 +16,7 @@
     "./ds": "./src/ds/index.ts",
     "./ds/*": "./src/ds/*.tsx",
     "./charts": "./src/charts/index.ts",
+    "./flow": "./src/flow/index.ts",
     "./lib/*": "./src/lib/*.ts",
     "./styles/*": "./src/styles/*"
   },
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "@hugeicons/core-free-icons": "4.3.5",
+    "@xyflow/react": "13.0.2",
     "class-variance-authority": "0.7.1",
     "cmdk": "1.1.1",
     "cn": "0.4.0",

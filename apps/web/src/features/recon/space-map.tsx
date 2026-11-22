@@ -5,16 +5,14 @@
 // recon reading a Degraded or Down source is marked (border and its line say which). A recon opens its Live day (click
 // or Enter); arrows move the focus in and across the two lanes; a recon whose run is under way says Running and its
 // edges flow. Always fits its card (flow-parts.tsx). Loaded on demand (today-page.tsx).
-import { Controls, type Edge, type Node, type NodeChangeset, type NodeProps, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
-import "@xyflow/react/dist/base.css";
-import "./recon-canvas.css";
+import { type Accent, arrowOf, Controls, EDGE_TYPES, type Edge, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, type Node, type NodeChangeset, type NodeProps, pathOf, PortHandles, ports, portsOf, ReactFlow, ReactFlowProvider, ResetLayout, useFitToCard, useHotNode, ViewportPortal } from "@starterkit/ui/flow";
 import { useRouter } from "next/navigation";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
 import { StatusChip } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
-import { type Accent, arrowOf, EDGE_TYPES, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, PortHandles, ports, portsOf, ResetLayout, useFitToCard, useHotNode } from "./flow-parts";
+
 import { sourceKindIcon, useElapsed } from "./live-hooks";
 import type { MapEdge, MapNode } from "./live-model";
 
@@ -116,7 +114,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
     focus(col.reduce<MapNode | undefined>((b, x) => (!b || Math.abs(pos.get(x.id)!.y - y) < Math.abs(pos.get(b.id)!.y - y) ? x : b), undefined)?.id);
   };
   return (
-    <div ref={wrap} className="recon-canvas" style={{ height: Math.min(640, Math.max(320, tall + 120)) }} onKeyDownCapture={onKey} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
+    <div ref={wrap} className="flow-canvas" style={{ height: Math.min(640, Math.max(320, tall + 120)) }} onKeyDownCapture={onKey} onFocusCapture={hover.onFocusCapture} onBlurCapture={hover.onBlurCapture}>
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} edgeTypes={EDGE_TYPES} onNodeMouseEnter={hover.onNodeMouseEnter} onNodeMouseLeave={hover.onNodeMouseLeave} onNodesChange={onNodesChange} nodesConnectable={false} elementsSelectable={false} edgesFocusable={false}
         onNodeClick={(_, n) => { const h = input.find((x) => x.id === n.id)?.href; if (h) router.push(h); }}
         fitView fitViewOptions={FIT} minZoom={0.3} maxZoom={1.5} proOptions={{ hideAttribution: true }}
