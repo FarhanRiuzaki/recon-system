@@ -40,7 +40,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
         ) : (
           <div className="grid gap-3">
             <span className="text-body-sm text-fg">{read.operations.length} {read.operations.length === 1 ? "operation" : "operations"} found</span>
-            <ScrollFade className="max-h-80 rounded-lg border border-line" tabIndex={0} aria-label="Operations found">
+            <ScrollFade className="rounded-lg border border-line" style={{ height: `${Math.min(20, read.operations.length * 4.75)}rem` }} tabIndex={0} aria-label="Operations found">
               <ul className="grid divide-y divide-line">
                 {read.operations.map((o) => (
                   <li key={o.key} className="grid gap-0.5 px-3 py-2 motion-safe:animate-enter">
