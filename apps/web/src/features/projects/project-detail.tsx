@@ -67,7 +67,7 @@ export function ProjectDetail({ id }: { id: string }) {
     <div className="grid gap-section">
       <PageHeader title={p.name} status={<StatusChip health={s.health} label={s.label} />} description="A project and its status."
         actions={<>
-          {can("project.edit") && <Button asChild variant="secondary"><Link href={`${projectPage(id)}/edit`}><Icon icon={EditIcon} />Edit project</Link></Button>}
+          {can("project.edit") && <Button asChild variant="ghost"><Link href={`${projectPage(id)}/edit`}><Icon icon={EditIcon} />Edit project</Link></Button>}
           {can("audit.view") && <div className="grid gap-1"><Button asChild variant="link"><Link href={activityHistoryHref("project", p.id)}>View history<Icon icon={ArrowRightIcon} /></Link></Button><span className="text-caption text-fg-3">Activity · Last 90 days</span></div>}
         </>}
         more={can("project.delete") ? [{ label: "Delete project", destructive: true, confirm: {

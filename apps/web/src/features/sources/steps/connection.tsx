@@ -122,7 +122,7 @@ export function ConnectionStep(p: ConnectionStepProps) {
         ) : (
           <p className="flex flex-wrap items-center gap-1 text-caption text-fg-3">
             <span>Code: <span className="font-mono">{d.code || "–"}</span></span>
-            {!created && <><span aria-hidden="true">·</span><Button type="button" variant="link" size="sm" className="text-caption" onClick={() => {
+            {!created && <><span aria-hidden="true">·</span><Button type="button" variant="ghost" size="sm" className="text-caption" onClick={() => {
               setCodeOpen(true);
               requestAnimationFrame(() => document.getElementById("src-code")?.focus());
             }}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button></>}

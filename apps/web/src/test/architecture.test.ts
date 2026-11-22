@@ -36,7 +36,8 @@ const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")
  * (Edit, Replace, Export, Retry …) renders an `<Icon icon={…} />` among its children, always: an icon only in an
  * expression (`{busy && <Icon … />}`) doesn't count, nor a named icon component used bare (`<EditIcon />`); icons go
  * through `<Icon icon=…>` (ui/icon.tsx). A self-closing `<Button … />` has no children. A Button asChild around a Link
- * labelled with a navigate action (View, Open, Review) is `variant="link"` with its `<Icon>` after the words.
+ * labelled with a navigate action (View, Open, Review) is `variant="link"` with its `<Icon>` after the words. A Button or
+ * BlockedButton labelled Edit … is `variant="ghost"` (`INTENTS.edit`), as every Edit on every page.
  */
 const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")})\\b`);
 const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
@@ -72,6 +73,7 @@ function intentViolations(fs: F[]): string[] {
       const close = selfClosing ? -1 : src.indexOf(`</${m[1]}>`, i), inner = close < 0 ? "" : src.slice(i + 1, close);
       const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
       if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
+      if (/^Edit\b/.test(label) && variant !== INTENTS.edit.variant) out.push(`${r}: ${label} is variant="${variant}", not ${INTENTS.edit.variant}`);
       if (ICON_LABEL.test(label) && !/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner))) out.push(`${r}: ${label} without its icon`);
       // a link that navigates (asChild around a Link) labelled View / Open / Review: variant link, its icon after the words
       if (/\basChild\b/.test(tag) && /^\s*<Link\b/.test(inner) && NAV_LABEL.test(label)) {
@@ -543,16 +545,23 @@ describe("architecture checkers (fixtures)", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="secondary" onClick={() => open({ a: 1 })}>Reject</Button><BlockedButton variant="ghost" reason={r}>Cancel request</BlockedButton>`),
       f(`${WEB}features/x/b.tsx`, `<Button variant="caution" onClick={() => x()}><Icon icon={ErrorIcon} />Reject</Button><Button variant="destructive">Turn off connector</Button><Button>Turn the page</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button><Button asChild variant="secondary"><Link href={\`/u/\${id}/edit\`}>Edit user</Link></Button><Button variant="secondary" onClick={retry}>Retry</Button>`),
-      f(`${WEB}features/x/d.tsx`, `<Button variant="ghost" onClick={() => go()}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button><Button asChild variant="secondary"><Link href="/e"><Icon icon={EditIcon} />Edit user</Link></Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button>Editor settings</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button><Button asChild variant="ghost"><Link href={\`/u/\${id}/edit\`}>Edit user</Link></Button><Button variant="secondary" onClick={retry}>Retry</Button>`),
+      f(`${WEB}features/x/d.tsx`, `<Button variant="ghost" onClick={() => go()}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button><Button asChild variant="ghost"><Link href="/e"><Icon icon={EditIcon} />Edit user</Link></Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button>Editor settings</Button>`),
     ])).toEqual([`${WEB}features/x/a.tsx: Reject is variant="secondary", not caution`, `${WEB}features/x/a.tsx: Cancel request is variant="ghost", not caution`,
       `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`, `${WEB}features/x/c.tsx: Retry without its icon`]);
+  });
+  it("intents: a Button labelled Edit … is variant ghost, as every other Edit (a BlockedButton too)", () => {
+    expect(intentViolations([
+      f(`${WEB}features/x/a.tsx`, `<Button asChild variant="secondary"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><BlockedButton variant="secondary" reason={r}><Icon icon={EditIcon} />Edit rule</BlockedButton>`),
+      f(`${WEB}features/x/b.tsx`, `<Button asChild variant="ghost"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><Button variant="secondary">Editor settings</Button><Button><Icon icon={EditIcon} />Edit</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Edit project is variant="secondary", not ghost`, `${WEB}features/x/a.tsx: Edit rule is variant="secondary", not ghost`,
+      `${WEB}features/x/b.tsx: Edit is variant="default", not ghost`]);
   });
   it("intents: a self-closing Button has no children (the next button's are not its own); a conditional or bare icon is no icon", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button variant="secondary" {...props} /><Button variant="caution" onClick={() => r()}>Reject</Button><Button variant="ghost" aria-label="Close" />Add a row`),
       f(`${WEB}features/x/b.tsx`, `<Button variant="secondary" onClick={retry}>{busy && <Icon icon={RetryIcon} />}Retry</Button><Button variant="secondary">{busy ? <Spinner /> : <Icon icon={ExportIcon} />}Export CSV</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="secondary"><EditIcon />Edit</Button><Button variant="secondary"><IconBadge />Edit user</Button><Button variant="secondary"><Icon icon={EditIcon} className="size-4" />Edit rule</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost"><EditIcon />Edit</Button><Button variant="ghost"><IconBadge />Edit user</Button><Button variant="ghost"><Icon icon={EditIcon} className="size-4" />Edit rule</Button>`),
     ])).toEqual([`${WEB}features/x/b.tsx: Retry without its icon`, `${WEB}features/x/b.tsx: Export CSV without its icon`,
       `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`]);
   });
