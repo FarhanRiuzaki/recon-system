@@ -19,6 +19,7 @@ import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { applyBreakChange, revertBreakRequest } from "../engine";
+import { type ActionEvent, enqueueActions } from "../integrations";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { roles, userRoles } from "../rbac";
 import { spaceMembers, withSpace } from "../spaces";
@@ -242,6 +243,9 @@ export function approveRequest(ctx: Ctx, id: string, b: ApproveBody): Promise<{ 
     let after: Record<string, unknown> = { kind: rq.kind, level: rq.currentLevel + 1, of: chain.length, ...(b.note ? { note: b.note } : {}) };
     if (last) after = { ...after, final: true, ...(await finish(tx, ctx, rq, b.note ?? null)) };
     else if (levelDone) await tx.update(approvalRequests).set({ currentLevel: rq.currentLevel + 1 }).where(eq(approvalRequests.id, rq.id));
+    // the recon version's actions on these events go to the outbox in this transaction (stage 4); nothing is sent here
+    const events: ActionEvent[] = levelDone ? [{ event: "level_approved", level: rq.currentLevel + 1 }, ...(last ? [{ event: "approved" } as const] : [])] : [];
+    await enqueueActions(tx, ctx, rq, events);
     await recordActivity(tx, ctx, { action: "break.approve", target: target(rq), before: { level: rq.currentLevel + 1 }, after });
     return { status: last ? "approved" : "pending" };
   });
@@ -255,6 +259,7 @@ export function rejectRequest(ctx: Ctx, id: string, b: RejectBody): Promise<{ st
     if (why) throw new ApiError(rq.requestedBy === ctx.user.id ? "self_approval" : rq.status !== "pending" ? "invalid_state" : "forbidden", why);
     await insertDecision(tx, rq, { level: rq.currentLevel, groupIndex: null, userId: ctx.user.id, decision: "reject", note: b.note });
     await revertBreakRequest(tx, rq);
+    await enqueueActions(tx, ctx, rq, [{ event: "rejected" }]);
     await tx.update(approvalRequests).set({ status: "rejected", decidedBy: ctx.user.id, decidedAt: sql`now()`, decisionNote: b.note }).where(eq(approvalRequests.id, rq.id));
     await recordActivity(tx, ctx, { action: "break.reject", target: target(rq), before: { level: rq.currentLevel + 1 }, after: { kind: rq.kind, note: b.note, requestedBy: rq.requestedBy } });
     return { status: "rejected" };
@@ -271,6 +276,9 @@ export function overrideRequest(ctx: Ctx, id: string, b: OverrideBody): Promise<
     if (decisions.some((d) => d.userId === ctx.user.id)) throw new ApiError("invalid_state", "You decided this request already.");
     await insertDecision(tx, rq, { level: rq.currentLevel, groupIndex: null, userId: ctx.user.id, decision: "approve", note: b.reason, override: true });
     const done = await finish(tx, ctx, rq, b.reason);
+    // the levels it skips fire in order (the bank's status update before the posting), then approved, all marked override
+    const skipped: ActionEvent[] = Array.from({ length: Math.max(0, (rq.chain as Level[]).length - rq.currentLevel) }, (_, i) => ({ event: "level_approved", level: rq.currentLevel + 1 + i }));
+    await enqueueActions(tx, ctx, rq, [...skipped, { event: "approved" }], true);
     await recordActivity(tx, ctx, { action: "break.override", target: target(rq), before: { level: rq.currentLevel + 1 }, after: { kind: rq.kind, reason: b.reason, ...done } });
     return { status: "approved" };
   });

@@ -60,6 +60,18 @@ async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: st
   return out;
 }
 
+/**
+ * A break's context for an approval action (stage 4): what breakContext gives a workflow rule, read again when the
+ * action fires (the amount, currency and age as they stand now), with `counterparts` under their sides.
+ */
+export async function breakContextOf(tx: InTx, spaceId: string, itemId: string, counterparts: readonly string[]): Promise<Context> {
+  const [x] = await tx.select().from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, itemId))).limit(1);
+  if (!x) return {};
+  const [item] = await itemsOf(tx, spaceId, [itemId]);
+  const at: Attributes = { amount: abs(item?.amountMinor ?? null), currency: item?.currency ?? null, recon: x.configId, ageDays: ageOf(x.businessDate) };
+  return breakContext(tx, spaceId, x, at, counterparts);
+}
+
 /** POST …/breaks/{itemId}/request. */
 export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): Promise<BreakDetailDto> {
   await inSpace(ctx, async (tx, spaceId) => {

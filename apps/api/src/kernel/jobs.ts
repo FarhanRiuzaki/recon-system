@@ -20,12 +20,13 @@ export const QUEUES = {
   reconDaily: "recon.daily",
   reconHeavy: "recon.heavy",
   breaksSla: "breaks.sla",
+  integrationsAction: "integrations.action",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 /** Jobs of one queue a worker process runs at once, so EOD runs and reruns don't starve the 2-minute ticks. */
 export const CONCURRENCY: Record<QueueName, number> = {
-  "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.schedule": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1,
+  "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.schedule": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1, "integrations.action": 4,
 };
 
 /**
@@ -47,6 +48,8 @@ export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "ingest.snapshot": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "maintenance.partitions": { heartbeatSeconds: 30, expireInSeconds: 600 },
   "recon.schedule": { heartbeatSeconds: 30, expireInSeconds: 300 }, "recon.tick": { heartbeatSeconds: 30, expireInSeconds: 600 },
   "recon.daily": { heartbeatSeconds: 30, expireInSeconds: 3600 }, "recon.heavy": { heartbeatSeconds: 30, expireInSeconds: 28_800 }, "breaks.sla": { heartbeatSeconds: 30 },
+  // one bank call per job (an operation's limit is at most 60 s); never retried: a run is sent at most once (O4)
+  "integrations.action": { heartbeatSeconds: 30, expireInSeconds: 300, retryLimit: 0 },
 };
 
 /** The cron time zone of every schedule. */

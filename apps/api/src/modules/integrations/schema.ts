@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, date, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, index, integer, pgTable, primaryKey, smallint, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { jsonb } from "../../kernel/columns";
 
 // Open API connectors (DEC-053; spec 2026-11-22-recon-approval-and-posting §4.2): global (no space), so no row level
@@ -65,3 +65,50 @@ export const connectorExternalIds = pgTable("connector_external_ids", {
   day: date("day").notNull(),
   n: bigint("n", { mode: "number" }).notNull(),
 }, (t) => [primaryKey({ name: "connector_external_ids_pkey", columns: [t.connectorId, t.day] })]);
+
+/**
+ * The outbox of approval actions (stage 4, design §4.6): one row per (request, action, event, item), written in the
+ * decision's transaction, sent at most once by the worker (queued → sending → posted | failed | not_sent | timeout), or
+ * finished at once (no_rule, skipped, failed build). `payload_enc` = the JSON body encrypted while queued, cleared once
+ * sent; `payload_masked`/`response_masked` = what was sent and answered, masked. Space-owned (row level security).
+ */
+export const actionRuns = pgTable("action_runs", {
+  id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
+  requestId: uuid("request_id").notNull(),
+  configVersionId: uuid("config_version_id").notNull(),
+  actionIndex: smallint("action_index").notNull(),
+  actionName: text("action_name").notNull(),
+  variantName: text("variant_name"),
+  kind: text("kind").notNull(),
+  event: text("event").notNull(),
+  level: smallint("level"),
+  /** The break it was built for; null = one run for the whole request (per: request). */
+  itemId: uuid("item_id"),
+  /** Order of sending within the request: a run waits for the ones before it. */
+  seq: integer("seq").notNull(),
+  override: boolean("override").notNull().default(false),
+  connectorId: uuid("connector_id"),
+  connectorVersion: integer("connector_version"),
+  operationKey: text("operation_key"),
+  status: text("status").notNull(),
+  payloadEnc: text("payload_enc"),
+  payloadMasked: jsonb("payload_masked"),
+  responseMasked: jsonb("response_masked"),
+  sources: jsonb("sources"),
+  filled: jsonb("filled"),
+  externalId: text("external_id"),
+  bankReference: text("bank_reference"),
+  httpStatus: smallint("http_status"),
+  code: text("code"),
+  message: text("message"),
+  sendingAt: timestamp("sending_at", { withTimezone: true }),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("action_runs_once").on(t.requestId, t.actionIndex, t.event, sql`coalesce(${t.level}, 0)`, sql`coalesce(${t.itemId}, '00000000-0000-0000-0000-000000000000'::uuid)`),
+  index("action_runs_request").on(t.spaceId, t.requestId, t.seq),
+  index("action_runs_item").on(t.spaceId, t.itemId),
+  index("action_runs_sending").on(t.status, t.sendingAt),
+  check("action_runs_status_check", sql`status in ('queued', 'sending', 'posted', 'failed', 'not_sent', 'timeout', 'no_rule', 'skipped')`),
+]);
