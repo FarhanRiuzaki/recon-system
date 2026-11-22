@@ -2,7 +2,8 @@
 
 Tanggal: 22 Nov 2026 · Status: disetujui owner (22 Nov; O1–O10). Tahap 1–2 (workflow milik space, katalog dan
 evaluator kondisi, approval di versi recon) dikirim 22 Nov (`docs/superpowers/plans/2026-11-22-recon-approval-stage-1.md`);
-tahap 3 (connector Open API, DEC-053) dikirim 22 Nov (`docs/superpowers/plans/2026-11-22-open-api-connectors-stage-3.md`); tahap 4–5 belum.
+tahap 3 (connector Open API, DEC-053) dikirim 22 Nov (`docs/superpowers/plans/2026-11-22-open-api-connectors-stage-3.md`); tahap 4
+(aksi, outbox, worker, posting; DEC-052 amandemen 3) dikirim 22 Nov (`docs/superpowers/plans/2026-11-22-approval-actions-stage-4.md`); tahap 5 belum.
 
 Menggantikan `2026-11-22-workflow-library-and-bindings-design.md` (library global + approval rules per space) di bagian
 kepemilikan workflow dan letak binding. Yang tetap berlaku dari `2026-11-22-approval-workflow-engine-design.md`: rantai

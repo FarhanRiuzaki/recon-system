@@ -597,6 +597,24 @@ saat simpan hal itu peringatan. Arsip workflow ditolak selama versi recon (live 
 `approval_bindings` dihapus (migrasi 0050). Tahap 3–5 (connector Open API, aksi posting per level, mode grup; O2, O4–O10
 dan keputusan builder §10) menyusul dengan rencana sendiri.
 
+**Amandemen 3, 22 November 2026 (tahap 4, aksi dan posting; rencana
+`docs/superpowers/plans/2026-11-22-approval-actions-stage-4.md`):** tiap perubahan di `spec.approvals` boleh punya
+sampai 10 **aksi** (`posting` atau `notify`) yang dipicu `level_approved` (level N), `approved` atau `rejected`. Aksi
+punya varian (maks 20): varian pertama yang kondisinya cocok dipakai, `when` kosong = setiap break; varian menyematkan
+operasi `{connectorId, version, key}` dari versi connector yang sudah direview, mapping field request (field dengan
+transform, nilai tetap, template, lookup, akun bernama), `per` (satu panggilan per break atau per request) dan perlakuan
+amount 0. Akun dan tabel lookup ada di setup recon (`accounts`, `lookups`). Submit versi recon menolak aksi yang memakai
+connector/operasi yang tak ada, field yang tak dibaca versi itu, akun tanpa nomor, dan field request wajib yang kosong.
+Keputusan approve/reject/override menulis baris **outbox** `action_runs` (milik space, RLS) di transaksi yang sama;
+indeks unik (request, aksi, event, level, break) membuat event yang sama tak pernah mengirim dua kali. Worker
+(`integrations.action`) mengambil run sekali (queued → sending), menunggu run sebelumnya dari request yang sama,
+memakai env aktif di versi connector yang disematkan, dan menutup run sebagai `posted`, `failed`, `not_sent` atau
+`timeout`; payload hanya disimpan tersamar setelah dikirim. Lima kegagalan transport berturut-turut menahan panggilan
+connector 60 detik; connector yang dimatikan tidak dipanggil; run `sending` lebih dari 120 detik jadi `timeout` dan
+tidak dikirim ulang (cek ke bank sebelum bertindak). Tampilan: panel Posting di halaman break, halaman Posting (Work)
+dengan filter status/jenis dan CSV, hitungan gagal/timeout/tidak terkirim 24 jam terakhir per recon di Today, dan
+"What gets posted" di langkah Approval yang memakai break nyata. Tahap 5 (mode grup) menyusul.
+
 ## DEC-053 — Connector Open API global, berversi dengan maker-checker; rahasia per environment di luar versi
 
 22 November 2026 — pemilik ("go" atas rencana `docs/superpowers/plans/2026-11-22-open-api-connectors-stage-3.md`, tahap 3
