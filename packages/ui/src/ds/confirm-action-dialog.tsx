@@ -4,7 +4,7 @@ import { type ReactNode, useId, useRef, useState } from "react";
 import { Icon } from "../ui/icon";
 import { SpinnerIcon } from "../ui/icons";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
 import { type ActionInput, validateActionInput, validateConfirmText } from "../lib/action-input";
@@ -90,7 +90,7 @@ export function ConfirmActionDialog(p: Props) {
             <DialogTitle>{p.title}</DialogTitle>
             <DialogDescription>{p.description}</DialogDescription>
           </DialogHeader>
-          <div className="scroll-quiet grid min-h-0 gap-4 overflow-y-auto px-6 pt-0.75 pb-5" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}>
+          <DialogBody onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 0)}>
             {p.lead}
             {p.impact.length > 0 && (
               <div className="grid gap-1.5 rounded-lg border border-line bg-tray px-3 py-2.5 text-body-sm text-fg-2">
@@ -130,7 +130,7 @@ export function ConfirmActionDialog(p: Props) {
             {p.unavailableReason && <p className="rounded-md bg-primary-soft px-3 py-2 text-body-sm text-primary-ink">{p.unavailableReason}</p>}
             {busy && p.pendingNote && <p role="status" className="rounded-md bg-primary-soft px-3 py-2 text-body-sm text-primary-ink">{p.pendingNote}</p>}
             {failure && <p role="alert" className="rounded-md bg-down-soft px-3 py-2 text-body-sm text-down-ink">{failure}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter className="shrink-0">
             {canDetach
               ? <Button type="button" variant="ghost" onClick={detach}>Close</Button>

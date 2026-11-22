@@ -6,7 +6,7 @@ import { useState } from "react";
 import { activeElement, Field, focusBack, useForm } from "@starterkit/ui/ds";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
@@ -62,7 +62,8 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
             <DialogTitle>Create space</DialogTitle>
             <DialogDescription>A space holds one team&apos;s work. Add its first space admin on the members page next.</DialogDescription>
           </DialogHeader>
-          <fieldset disabled={busy} className="grid gap-4 px-6 py-5">
+          <DialogBody>
+            <fieldset disabled={busy} className="grid min-w-0 gap-4">
             <Field id={f.id("code")} label="Code" required note="2 to 32 letters, digits or hyphens. Unique, ignoring letter case." error={f.error("code")}>
               <Input {...f.text("code")} autoComplete="off" autoFocus className="font-mono" />
             </Field>
@@ -71,6 +72,7 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
             </Field>
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Create space</Button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { CopyValue } from "./copy-value";
 
 /**
@@ -22,7 +22,7 @@ export function SecretOnceDialog({ title, secret, label, notes, warning, onClose
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{notes[0]}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 px-6 py-5">
+        <DialogBody>
           <div data-testid="secret-once" className="rounded-lg border border-line bg-tray px-3 py-2.5">
             {typeof secret === "string"
               ? <CopyValue value={secret} label={label} />
@@ -30,7 +30,7 @@ export function SecretOnceDialog({ title, secret, label, notes, warning, onClose
           </div>
           <ul className="grid list-disc gap-1.5 pl-5 text-body-sm text-fg-2">{notes.slice(1).map((n) => <li key={n}>{n}</li>)}</ul>
           {warning && <p role="alert" className="rounded-md bg-degraded-soft px-3 py-2 text-body-sm text-degraded-ink">{warning}</p>}
-        </div>
+        </DialogBody>
         <DialogFooter><Button type="button" onClick={onClose}>Close and clear</Button></DialogFooter>
       </DialogContent>
     </Dialog>

@@ -397,6 +397,12 @@ describe("architecture", () => {
   it("add and remove buttons say their intent by colour: variant add (blue) and remove (red)", () => {
     expect(intentViolations(files)).toEqual([]);
   });
+  it("a dialog with a footer holds its content in DialogBody (owner, 22 Nov: modals tidy and symmetric)", () => {
+    // DialogBody gives every dialog the same 24 px sides and bottom, 16 px under the header; a body padded by hand drifted
+    const bare = files.filter(({ r, src }) => r.endsWith(".tsx") && !r.startsWith(VENDORED) && !r.endsWith("ui/dialog.tsx")
+      && /<DialogFooter\b/.test(src) && !/<DialogBody\b/.test(src)).map(({ r }) => r);
+    expect(bare).toEqual([]);
+  });
   it("only charts imports recharts", () => {
     expect(files.filter(({ r, imp }) => imp.includes("recharts") && !r.startsWith(`${UI}charts/`)).map((f) => f.r)).toEqual([]);
   });

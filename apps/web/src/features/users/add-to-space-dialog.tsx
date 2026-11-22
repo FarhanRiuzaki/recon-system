@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
@@ -60,7 +60,8 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
             <DialogTitle>{`Add ${user.name} to a space`}</DialogTitle>
             <DialogDescription>Roles apply to the space you pick only. Change or remove them later on the space&apos;s Members page.</DialogDescription>
           </DialogHeader>
-          <fieldset disabled={busy} className="scroll-quiet grid min-h-0 gap-4 overflow-y-auto px-6 pt-0.75 pb-5">
+          <DialogBody>
+            <fieldset disabled={busy} className="grid min-w-0 gap-4">
             <Field id="add-to-space-space" label="Space" note={note}>
               <Select id="add-to-space-space" value={spaceId} onChange={(e) => setSpaceId(e.target.value)} disabled={open.length === 0}>
                 <option value="" disabled>Pick a space</option>
@@ -75,6 +76,7 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
             <RoleChecklist legend={space ? `Roles in ${space.name}` : "Roles"} value={roles} onChange={setRoles} canSourceAdmin lockedSpaceAdmin={false} />
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>
+          </DialogBody>
           <DialogFooter className="shrink-0">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Add to space</Button>

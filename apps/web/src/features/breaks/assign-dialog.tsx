@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
@@ -40,12 +40,14 @@ export default function AssignDialog({ spaceId, count, onAssign, onClose }: {
           <DialogTitle>Assign {count === 1 ? "1 break" : `${count} breaks`}</DialogTitle>
           <DialogDescription>Whoever you pick sees them under Mine. Unassigned puts them back in the queue.</DialogDescription>
         </DialogHeader>
+        <DialogBody>
         <Field id="assign-to" label="Assign to" required error={q.error ? errorText(q.error) : error}>
           <Select id="assign-to" value={who} className="w-full" onChange={(e) => setWho(e.target.value)} disabled={q.isPending || busy}>
             <option value={NOBODY}>{q.isPending ? "Loading members…" : "Unassigned"}</option>
             {people.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
           </Select>
         </Field>
+        </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void go()} disabled={busy || q.isPending} aria-busy={busy || undefined}>

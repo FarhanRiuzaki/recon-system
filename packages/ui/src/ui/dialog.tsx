@@ -86,7 +86,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="absolute top-5 right-5 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-tray hover:text-fg [&_svg]:size-4"
+            className="absolute top-6 right-6 inline-flex size-8 cursor-pointer items-center justify-center rounded-md text-fg-3 transition-colors hover:bg-tray hover:text-fg [&_svg]:size-4"
           >
             <Icon icon={CloseIcon} />
             <span className="sr-only">Close</span>
@@ -105,6 +105,15 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
       {...props}
     />
   )
+}
+
+/**
+ * The dialog's content between header and footer (owner, 22 Nov: modals tidy and symmetric): 24 px on both sides and
+ * above the footer's line, 16 px under the header, its children 16 px apart; it scrolls inside the dialog when tall
+ * (the header and footer stay). Every dialog with a footer holds its content here (architecture.test.ts).
+ */
+function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
+  return <div data-slot="dialog-body" className={cn("scroll-quiet grid min-h-0 content-start gap-4 overflow-y-auto px-6 pt-4 pb-6", className)} {...props} />
 }
 
 function DialogFooter({
@@ -163,6 +172,7 @@ function DialogDescription({
 
 export {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,

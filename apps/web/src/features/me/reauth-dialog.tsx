@@ -3,7 +3,7 @@
 import { type FormEvent, useRef, useState } from "react";
 import { Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
@@ -53,7 +53,7 @@ export function ReauthDialog({ user, provider, label, onCancel }: {
                 : `Connecting ${label} adds a way to sign in. Enter your ${user.isLdap ? "directory password" : "password"} to continue.`}
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 px-6 py-5">
+          <DialogBody>
             <Field id="reauth-proof" label={field}>
               {code
                 ? <Input ref={inputRef} id="reauth-proof" autoComplete="one-time-code" autoFocus
@@ -62,7 +62,7 @@ export function ReauthDialog({ user, provider, label, onCancel }: {
                     value={proof} onChange={(e) => setProof(e.target.value)} aria-invalid={error ? true : undefined} aria-errormessage={error ? "reauth-error" : undefined} />}
             </Field>
             {error && <p id="reauth-error" role="alert" className="text-body-sm text-down-ink">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy || !proof} aria-busy={busy || undefined}>

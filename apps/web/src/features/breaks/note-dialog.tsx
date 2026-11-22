@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Textarea } from "@starterkit/ui/ui/textarea";
@@ -37,9 +37,11 @@ export default function NoteDialog({ title, description, action, optional = fals
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        <DialogBody>
         <Field id="request-note" label={optional ? "Note (optional)" : "Note"} required={!optional} error={tried && missing ? "Say why." : error}>
           <Textarea id="request-note" value={note} limit={RESOLUTION_NOTE_MAX} rows={3} onChange={(e) => setNote(e.target.value)} placeholder={placeholder} disabled={busy} />
         </Field>
+        </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void go()} disabled={busy} aria-busy={busy || undefined}>

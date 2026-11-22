@@ -782,6 +782,11 @@ radius, padding 16. The re-skin changed only their radii (§3.7). Tooltip (UI): 
 padding 24, title `title-1`, footer buttons right; confirm copy per copy guide. Below 768 px the dialog is a bottom
 sheet (§0): full width, top corners 20, at most 90 dvh, content scrolls, footer sticky at the bottom.
 
+- Dialog anatomy (owner, 22 Nov: tidy and symmetric): `DialogHeader` (24 px top and sides, the close X level with the
+  title, 24 px from the corner), `DialogBody` (24 px sides and above the footer's line, 16 px under the header, children
+  16 px apart, scrolls inside when tall), `DialogFooter` (16 px, a line above, Cancel then the action on the right).
+  Every dialog with a footer holds its content in `DialogBody` (`architecture.test.ts`); no body is padded by hand.
+
 ### 5.15 Forms and flows (`packages/ui/src/ds`, shown on /ds/forms "Forms and flows")
 Sources: WAI-ARIA APG (combobox, disclosure), GOV.UK Design System (error summary, error message, character count,
 file upload, question pages, check answers), NN/g (wizards, form errors, progress indicators, toggle switches,

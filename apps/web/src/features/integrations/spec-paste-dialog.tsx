@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Checkbox, Field, ScrollFade } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import { fieldPaths, operationsFromSpec } from "@starterkit/shared/integrations";
@@ -31,7 +31,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
           <DialogTitle>Paste a whole spec</DialogTitle>
           <DialogDescription>Copy the bank&apos;s spec (PDF or Word) and paste it here. Each section with a Method line becomes an operation, with its path and fields.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 px-6 py-4">
+        <DialogBody>
         {!read || !read.operations.length ? (
           <Field id="spec-text" label="The spec" error={read && !read.operations.length ? "No operations were found. Paste the sections with their Method, Path, Request and Response." : null}>
             <Textarea id="spec-text" rows={12} className="font-mono" value={text} onChange={(e) => { setText(e.target.value); setRead(null); }}
@@ -64,7 +64,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
             )}
           </div>
         )}
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={read?.operations.length ? () => setRead(null) : onClose}>{read?.operations.length ? "Back" : "Cancel"}</Button>
           {read?.operations.length

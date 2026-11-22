@@ -3,7 +3,7 @@
 import { type FormEvent, useState } from "react";
 import { CopyValue, QrCode, SecretOnceDialog } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
@@ -40,7 +40,7 @@ export function TwoFactorSetup({ setup, onCancel, onDone }: {
             <DialogTitle>Turn on two-factor authentication</DialogTitle>
             <DialogDescription>Scan the QR code with an authenticator app, then enter the 6-digit code it shows.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 px-6 py-5">
+          <DialogBody>
             <QrCode value={setup.otpauthUrl} label="QR code for your authenticator app" className="mx-auto size-44" />
             <div className="grid gap-1">
               <span className="text-body-sm text-fg-3">Can&apos;t scan? Enter this key in the app.</span>
@@ -52,7 +52,7 @@ export function TwoFactorSetup({ setup, onCancel, onDone }: {
                 autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} aria-invalid={error ? true : undefined} aria-describedby={error ? "tf-error" : undefined} />
             </div>
             {error && <p id="tf-error" role="alert" className="text-body-sm text-down-ink">{error}</p>}
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onCancel} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy || code.length !== 6}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Verify and turn on</Button>

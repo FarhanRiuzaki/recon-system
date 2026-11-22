@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useCallback, useState } from "react";
 import { type ComboOption, Combobox, ConfirmActionDialog, Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -53,10 +53,12 @@ function RolesDialog({ title, description, phone, busy, error, submitLabel, canS
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
           </DialogHeader>
-          <fieldset disabled={busy} className="scroll-quiet grid min-h-0 gap-4 overflow-y-auto px-6 pt-4 pb-5">
+          <DialogBody>
+            <fieldset disabled={busy} className="grid min-w-0 gap-4">
             {children}
             {error && <p role="alert" className={ERROR}>{error}</p>}
           </fieldset>
+          </DialogBody>
           <DialogFooter className="shrink-0">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
             <Button type="submit" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{submitLabel}</Button>
