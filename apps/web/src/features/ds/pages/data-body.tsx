@@ -3,7 +3,7 @@
 import { selectionValues } from "@starterkit/shared/filter-selection";
 import { BarChart, BreakdownCard, CHART_HEIGHT, HBarChart, Heatmap } from "@starterkit/ui/charts";
 import {
-  ActionMenu, Avatar, BlockedButton, BulkActionBar, CategoryChip, ColumnsMenu, ConfirmActionDialog, CopyValue, DataRegion, DataTable, FilterChecks, FilterLayout, FilterSearch,
+  ActionMenu, Avatar, BlockedButton, BulkActionBar, CategoryChip, ColumnsMenu, CompareCard, ConfirmActionDialog, CopyValue, DataRegion, DataTable, FilterChecks, FilterLayout, FilterSearch,
   LazyMount, Panel, ProgressBar, RelativeTime, Segmented, StatusChip, Toolbar, Truncate, UserCard,
   type Column, type SortDir,
 } from "@starterkit/ui/ds";
@@ -107,6 +107,12 @@ export function DataSections() {
       </div>
 
       <section id="ds-data" className="grid scroll-mt-20 gap-6" aria-label="Data compositions">
+        <CompareCard title="Statement and ledger" sides={["Bank statement", "Ledger"]} rows={[
+          { label: "Amount", a: "IDR 1,250,000", b: "IDR 1,200,000", delta: "IDR 50,000", differs: true },
+          { label: "Value date", a: "3 Nov 2026", b: "3 Nov 2026", differs: false },
+          { label: "Reference", a: "TRF-20261103-0042", b: "TRF-20261103-0042", differs: false },
+          { label: "Status", a: <CategoryChip label="Simulated" slot="neutral" />, b: <CategoryChip label="Simulated" slot="neutral" />, differs: false },
+        ]} />
         <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2"><UserCard name="Alex Morgan" email="alex@example.com" badges={<CategoryChip label="Admin" slot={1} />} detail="Password + 2FA" activity={`Today, 09:41 ${APP_TIME_ZONE_LABEL}`} actions={<Button variant="ghost" size="icon" aria-label="Sample user actions" onClick={sample}><Icon icon={MoreIcon} /></Button>} /><Panel title="Values and progress"><div className="grid gap-5"><CopyValue label="sample key" value="sample-key-7K2A" /><RelativeTime at={Date.UTC(2026, 10, 7, 2, 41)} now={Date.UTC(2026, 10, 7, 2, 46)} /><ProgressBar label="Import progress" value={64} /><div className="flex items-center gap-3"><Avatar name="Alex Morgan" /><Avatar name="Priya Shah" /><Avatar name="Noor Chen" /></div></div></Panel></div>
         <BulkActionBar selectionLabel={`${count} users selected`} scope="Selection applies to this page. Deactivation requires confirmation." onClear={() => setCount(0)}><BlockedButton reason={count ? null : "Select at least one user."} variant="destructive" onClick={() => setConfirm(true)}>Deactivate sample</BlockedButton><Button variant="secondary" onClick={() => setCount(3)}>Select sample rows</Button></BulkActionBar>
         <ConfirmActionDialog open={confirm} onOpenChange={setConfirm} title={`Deactivate ${count} sample users?`} description="This changes the preview only. In the app, selected users would lose access." impact={[`${count} sample users lose access.`]} reasons={[]} auditFields={false} actionLabel="Deactivate sample users" onConfirm={async () => { setCount(0); setConfirm(false); sample(); }} />

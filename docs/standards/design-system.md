@@ -127,6 +127,7 @@ starterkit.
 | Gap | Value | Use |
 |---|---|---|
 | `--gap-section` | 24 px | Between page sections (header → tiles → toolbar → panels) |
+| `--gap-zone` | 40 px | Between page zones (`PageZone`: Summary, Act, History; class `gap-zone`, §5.19) |
 | `--gap-grid` | 16 px | Between sibling panels/tiles (row and column) |
 | `--gap-tray` | 4 px | Tray padding around its inner card(s); between tiles inside a KPI tray |
 | `--gap-panel` | 16 px | Inside a card |
@@ -557,6 +558,7 @@ ancestors fg-2 (links). Header controls share a 32 px drawn height, radius 10 an
 | Danger | `--down-soft` → `--down-soft-hover` on hover | Down ink | none, no shadow; disabled: 1 px `--down-mark` | 32 |
 | Add (intent) | transparent → `--add-soft` on hover, `--add-soft-hover` pressed | `--add-ink` (`#1d5fcc`, dark `#7aaeff`) | none | 32 (28 sm, icon 32/28) |
 | Remove (intent) | transparent → `--down-soft` on hover, `--down-soft-hover` pressed | Down ink | none | 32 (icon 32/28) |
+| Caution (intent) | transparent → `--down-soft` on hover, `--down-soft-hover` pressed | Down ink | 1 px `--line` | 32 (28 sm) |
 Padding 0 12, icon 16 + 6 gap, radius 10, `label`→ `body` 14/500. Press: scale 0.97 (`--press-scale`, §7.5).
 Intents (owner, 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a quiet button that adds a row,
 a condition or an item is `variant="add"` (blue); one that takes an item out of a list is `variant="remove"` (red),
@@ -564,6 +566,14 @@ whether it shows a bin or an X. An X that closes (a dialog, a sheet, a chip's fi
 nothing. The page's main create action stays Primary; a confirm dialog's "Remove …" stays Danger. Pinned by
 `architecture.test.ts` "add and remove buttons say their intent by colour"; `--add-ink` ≥ 4.5:1 on every surface and on
 its soft fills (`tokens.test.ts`).
+Intent rule (audit 23 Nov, P5): **colour marks what changes data; everything else is neutral and carries its verb
+icon.** The table is data in `ds/intent.ts` (`INTENTS`): the next step is Primary (one per page); a second choice
+(Force match, Write-off, Close, Assign) Secondary with its verb icon; a negative decision (Reject, Turn off, Cancel
+request) `variant="caution"` with `ErrorIcon`, its confirm inside a dialog Danger; Add / Remove as above; Edit and
+Replace a Ghost with `EditIcon`, never the bare word; Open / View / Review a link with a trailing arrow; Export a
+Secondary with `ExportIcon`; Retry / Try again a Secondary with `RefreshIcon`. `architecture.test.ts` reads
+`INTENTS`: a Button or BlockedButton labelled Reject / Turn off / Cancel request is caution (or Danger), one labelled
+Edit / Replace / Export / Retry renders an `<Icon>`.
 Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. One
 primary per page. The primary's gradient, edge and ring are drawn by `base.css` on
 `.bg-action[data-variant="default"]` (under an `asChild` trigger the `data-slot` is the trigger's, so the rule keys on
@@ -580,10 +590,12 @@ tests: §3.7.
 │  footnote / StaleNote (optional, caption, padding 8 12)                  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
-- Title `title-2` with a 16 px fg-3 icon; optional count pill; actions right. A tray may hold 2–4 cards side by side
+- Title `title-3` (14/600) with a 16 px fg-2 icon; optional count pill; actions right. A tray may hold 2–4 cards side by side
   with a 4 px gap (KPI strip, legend cards).
 - Tables: the table **is** the card (header row on the card top uses `--tray`, rows `--card`).
 - Every standalone content card, including login, forms and Home summaries, uses the outer tray. `flat` is reserved for content already enclosed by a floating dialog.
+- `tone="quiet"`: a history region (run history, activity, past decisions), last on the page (Summary → Act →
+  History): no tray fill (the 1 px line stays), the title in fg-2; the card inside is unchanged.
 
 ### 5.5 KPI tile (`StatTile`)
 Lives in a KPI tray (4 tiles, 4 px gap). Tile = card, padding 16, min-height 104.
@@ -703,6 +715,15 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
 - **Category chip** (role, team, event type): 22 px, radius 6, padding 0 8, soft tint of its categorical slot
   (10 % on card) with text in `--fg` (never the series colour, per text-token rule) and a 6 px slot-colour dot.
   `slot="neutral"` (inset fill, `--fg-4` dot) is the plain, lowest member of a set (Viewer).
+- **Categories** (audit P4, `apps/web/src/lib/shared/categories.ts`): a categorical value that is not health is a
+  Category chip whose slot comes from one map, `CATEGORIES`, read through `categoryChip(domain, value)` (an unknown
+  value is neutral): work state (New neutral, Assigned and Investigating 1, Pending external 5, Proposed resolution and
+  Resolved 3, Pending approval 4), reason (No counterpart neutral, Amount differs 2, Date differs 5, the rest 6), change
+  kind (Posting 1, Force match 4, Write-off 2, Unmatch 6, versions neutral), environment (Development neutral,
+  Production 2), space role (Space admin 4, Source admin 3, Config maker 1, Config checker 6, Operator 5, Reviewer 2,
+  Viewer neutral). All-neutral sets need no entry: source kind, engine, read mode, Fixed / Auto generated, Simulated.
+  Never a health colour for a non-health value; version state, posting result and a credential set / not set stay
+  StatusChips.
 - **Count badge**: 18 px pill, `--tray` (in tray: `--card`), `label` fg-2, tabular.
 - **Result chip** (sign-in Success / Failed, or any pass / block outcome): use slot 1 / slot 2 dots, not status
   colours (a failed sign-in is an event, not a system failure).
@@ -905,6 +926,25 @@ set up, in named groups, with the progress as a count and a bar. Written for the
   changes, "template") a pill; selected = primary, 2.5 px. Every canvas has a list view (DEC-041) and on a phone the
   list only; the action editor's field map has no list toggle beside it (owner, 22 Nov: "klo sudah ada map, list gaperlu"):
   its keyboard path is the request rows as buttons and the inspector, and below 768 px it shows the list.
+
+### 5.19 Page zones, editor rows, comparisons and action cards (audit, 23 Nov)
+
+- **PageZone** (`ds/page-zone.tsx`; /ds/components): one part of a page (Summary, Act, History) under an `eyebrow`
+  heading in fg-3, its panels 16 px apart (`gap-gutter`). Zones stack in `grid gap-zone` (40 px, `--gap-zone`).
+  History comes last and its panels take `tone="quiet"` (§5.4).
+- **EditorRow** (`ds/editor-row.tsx`; /ds/components): a row of an editor on the fixed grid
+  `grid-cols-[9rem_minmax(0,1fr)_2rem] items-start gap-2`: lead (a label or a level name), main (the controls), trailing
+  (a remove button). The trailing column is reserved when the row has none (an invisible cell), so rows line up and
+  nothing moves when one gains a remove button. One column below 768 px.
+- **CompareCard** (`ds/compare-card.tsx`; /ds/data): two sides of one comparison in a Panel, a row per field (`rows`:
+  `{ label, a, b, delta?, differs }`, `sides` names the columns), a Difference column when any row has a delta. A row
+  that differs has a 2 px `--line-strong` left rule, bold values and a screen-reader "differs".
+- **ActionCard** (`ds/action-card.tsx`; /ds/components): an action that says its consequence before the press: title
+  (`title-3`), consequence (`body-sm` fg-2), optional meta (`caption` fg-3, "Two-level approval · Core banking") and the
+  button (Primary, Secondary or a `BlockedButton` with its reason) pinned to the bottom (`mt-auto`); `h-full`, so cards
+  in a grid row are as tall as the row and their buttons sit on one line.
+- **Hidden by default** (`Column.defaultHidden`, `ds/data-table.tsx`): a table shows at most 7 columns at 1440 px; the rest start
+  hidden until the viewer turns them on in ColumnsMenu (saved per viewer; "Reset to default" goes back to these).
 
 ## 6. Charts
 

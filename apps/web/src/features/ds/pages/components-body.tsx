@@ -1,14 +1,14 @@
 "use client";
 
 import {
-  ActionMenu, Avatar, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
-  Kbd, Meter, NavigationPreview, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
+  ActionCard, ActionMenu, Avatar, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
+  EditorRow, Kbd, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
 } from "@starterkit/ui/ds";
 import { HEALTH, type Health } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, CloseIcon, ExportIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, ErrorIcon, ExportIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -50,6 +50,8 @@ export function ComponentsSections() {
               <Button variant="remove" size="icon" aria-label="Remove condition 1"><Icon icon={RemoveIcon} /></Button>
               <Button variant="remove" size="icon" aria-label="Remove change 1"><Icon icon={CloseIcon} /></Button>
               <Button variant="ghost" size="icon" aria-label="Close panel"><Icon icon={CloseIcon} /></Button>
+              {/* caution: a negative decision that changes data (Reject, Turn off, Cancel request), quieter than Danger */}
+              <Button variant="caution"><Icon icon={ErrorIcon} />Reject request</Button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1.5"><label htmlFor="ds-email" className="text-label text-fg-2">Email</label><Input id="ds-email" defaultValue="alex@example.com" /><span className="text-body-sm text-fg-3">Used to sign in and to reset the password.</span></div>
@@ -68,7 +70,7 @@ export function ComponentsSections() {
             <div className="flex flex-wrap gap-2">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} description={HEALTH[h].description} />)}<StatusChip health="healthy" label="Starting" pending /></div>
             <div className="flex flex-wrap gap-2" data-status-static="">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} strong />)}</div>
             <div className="flex flex-wrap items-center gap-2">
-              <CategoryChip label="api" slot={1} /><CategoryChip label="web" slot={2} /><CategoryChip label="worker" slot={3} /><CountBadge>312</CountBadge>
+              <CategoryChip label="api" slot={1} /><CategoryChip label="web" slot={2} /><CategoryChip label="worker" slot={3} /><CategoryChip label="Simulated" slot="neutral" /><CountBadge>312</CountBadge>
             </div>
             <Tabs defaultValue="overview">
               <TabsList aria-label="Sample sections">
@@ -117,6 +119,24 @@ export function ComponentsSections() {
             <p className="text-body-sm text-fg-3">Dialog for risky actions: impact, a required reason and audit note, and the typed name.</p>
           </div>
         </Panel>
+        {/* Page zones 40 px apart (gap-zone), panels 16 px apart inside one; actions as cards; editor rows on one grid */}
+        <div className="col-span-12 grid gap-zone">
+          <PageZone title="Act">
+            <div className="grid gap-gutter md:grid-cols-3">
+              <ActionCard title="Request posting" consequence="Sends the correcting entry to core banking once the approvers agree." meta="Two-level approval · Core banking" action={<Button onClick={sample}>Request posting</Button>} />
+              <ActionCard title="Force match" consequence="Closes the item against the pair you pick, without a rule." action={<Button variant="secondary" onClick={sample}>Force match</Button>} />
+              <ActionCard title="Write off" consequence="Closes the item and books the difference to the write-off account." meta="One approval" action={<BlockedButton variant="secondary" reason="Only a checker in this space can write off an item.">Write off</BlockedButton>} />
+            </div>
+          </PageZone>
+          <PageZone title="Edit">
+            <Panel title="Approval levels" tone="quiet">
+              <div className="grid gap-3">
+                <EditorRow lead={<span className="text-body-sm text-fg-2">Level 1</span>}><Input aria-label="Approvers of level 1" defaultValue="Config checker" /></EditorRow>
+                <EditorRow lead={<span className="text-body-sm text-fg-2">Level 2</span>} trailing={<Button variant="remove" size="icon" aria-label="Remove level 2"><Icon icon={RemoveIcon} /></Button>}><Input aria-label="Approvers of level 2" defaultValue="Space admin" /></EditorRow>
+              </div>
+            </Panel>
+          </PageZone>
+        </div>
       </div>
 
       <section id="ds-navigation" className="grid scroll-mt-20 gap-6" aria-label="Navigation patterns">

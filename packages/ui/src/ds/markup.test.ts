@@ -9,6 +9,11 @@ import { StatTile } from "./stat-tile";
 import { PasswordChecks } from "./password-checks";
 import { Segmented } from "./segmented";
 import { Pagination } from "./pagination";
+import { Button } from "../ui/button";
+import { ActionCard } from "./action-card";
+import { CompareCard } from "./compare-card";
+import { EditorRow } from "./editor-row";
+import { PageZone } from "./page-zone";
 
 /** Server markup of the v3 signature components (spec §5.4, §5.5): structure and copy, not pixels. */
 const html = (el: ReturnType<typeof h>) => renderToStaticMarkup(el);
@@ -146,5 +151,61 @@ describe("TableCell", () => {
     for (const c of CELL_WRAP.split(" ")) expect(out).toContain(c);
     expect(out).not.toContain("whitespace-nowrap");
     expect(html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, { className: "whitespace-nowrap" }, "14:05")))))).toContain("whitespace-nowrap");
+  });
+});
+
+const classOf = (out: string, slot: string) => new RegExp(`data-slot="${slot}" class="([^"]*)"`).exec(out)![1]!.split(" ");
+
+describe("PageZone (audit P2)", () => {
+  it("an eyebrow heading and its panels, 16 px apart", () => {
+    const out = html(h(PageZone, { title: "History", children: h("p", null, "panel") }));
+    expect(classOf(out, "page-zone")).toEqual(expect.arrayContaining(["grid", "gap-gutter"]));
+    expect(out).toContain('<h2 class="eyebrow text-fg-3">History</h2><p>panel</p>');
+  });
+});
+
+describe("EditorRow (audit P7)", () => {
+  it("the fixed grid: 9rem lead, main, 2rem trailing, tops aligned; one column on a phone", () => {
+    const c = classOf(html(h(EditorRow, { lead: "Level 1", children: "x" })), "editor-row");
+    expect(c).toEqual(expect.arrayContaining(["grid", "grid-cols-1", "items-start", "gap-2", "md:grid-cols-[9rem_minmax(0,1fr)_2rem]"]));
+  });
+  it("the trailing column is reserved when absent (invisible), filled when given", () => {
+    const empty = html(h(EditorRow, { lead: "Level 1", children: "x" }));
+    expect(empty).toMatch(/<div aria-hidden="true" class="invisible max-md:hidden"><\/div><\/div>$/);
+    const filled = html(h(EditorRow, { lead: "Level 2", trailing: h("button", null, "Remove"), children: "x" }));
+    expect(filled).toContain("<button>Remove</button>");
+    expect(filled).not.toContain("invisible");
+  });
+});
+
+describe("CompareCard (audit P8)", () => {
+  const rows = [
+    { label: "Amount", a: "1,250,000", b: "1,200,000", delta: "50,000", differs: true },
+    { label: "Date", a: "3 Nov", b: "3 Nov", differs: false },
+  ];
+  const out = html(h(CompareCard, { title: "Bank and ledger", sides: ["Bank statement", "Ledger"], rows }));
+  it("a column per side and a difference column", () => {
+    expect(out).toMatch(/<th scope="col"[^>]*>Bank statement<\/th><th scope="col"[^>]*>Ledger<\/th><th scope="col"[^>]*>Difference<\/th>/);
+  });
+  it("a differing row: 2 px line-strong rule, bold values, 'differs' for a screen reader; a same row neither", () => {
+    const [, , diff, same] = out.split("<tr ") as [string, string, string, string];
+    expect(diff).toMatch(/border-l-2 [^"]*border-l-line-strong[^"]*">Amount<span class="sr-only">, differs<\/span>/);
+    expect(diff).toMatch(/font-semibold">1,250,000</);
+    expect(same).toContain("border-l-transparent");
+    expect(same).not.toContain("font-semibold");
+  });
+  it("no difference column when no row has one", () => {
+    expect(html(h(CompareCard, { title: "x", sides: ["A", "B"], rows: [{ label: "Ref", a: "1", b: "2", differs: true }] }))).not.toContain("Difference");
+  });
+});
+
+describe("ActionCard (audit P9)", () => {
+  it("title, consequence, meta, and the button pinned to the bottom; full height in its grid row", () => {
+    const out = html(h(ActionCard, { title: "Request posting", consequence: "Sends the entry to core banking after approval.", meta: "Two-level approval · Core banking", action: h(Button, null, "Request posting") }));
+    expect(classOf(out, "action-card")).toEqual(expect.arrayContaining(["flex", "h-full", "flex-col"]));
+    expect(out).toMatch(/<h3[^>]*>Request posting<\/h3><p[^>]*>Sends the entry to core banking after approval\.<\/p><p class="text-caption text-fg-3">Two-level approval · Core banking<\/p><div class="mt-auto[^"]*"><button/);
+  });
+  it("without meta, no empty line", () => {
+    expect(html(h(ActionCard, { title: "Write off", consequence: "Closes the item.", action: "x" }))).not.toContain("text-caption");
   });
 });

@@ -73,3 +73,7 @@ export { ScrollFade } from "./scroll-fade";
 export { type SqlContext, SqlEditor, type SqlSuggest, type SqlSuggestion, sqlContext, sqlTokens } from "./sql-editor";
 
 export { ColumnsMenu } from "./toolbar";
+export { PageZone } from "./page-zone";
+export { EditorRow } from "./editor-row";
+export { CompareCard, type CompareRow } from "./compare-card";
+export { ActionCard } from "./action-card";

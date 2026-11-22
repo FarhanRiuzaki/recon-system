@@ -91,6 +91,7 @@
   --card-highlight: none;
   /* rhythm (spec §2.2) */
   --gap-section: 24px;
+  --gap-zone: 40px; /* between page zones (PageZone: Summary, Act, History) */
   --gap-grid: 16px;
   --gap-tray: 4px;
   --gap-panel: 16px;

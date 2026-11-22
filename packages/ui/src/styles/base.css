@@ -85,6 +85,7 @@
 
   /* rhythm (spec §2.2): gap-section, p-tray, gap-gutter (--gap-grid), … */
   --spacing-section: 24px;
+  --spacing-zone: 40px; /* gap-zone: between PageZones */
   --spacing-gutter: 16px; /* not "grid": Tailwind 4.3 inline-<spacing> would turn `inline-grid` into inline-size: 16px */
   --spacing-tray: 4px;
   --spacing-panel: 16px;
