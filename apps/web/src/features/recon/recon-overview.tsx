@@ -20,6 +20,7 @@ import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
+import { SignoffTable } from "./signoff-table";
 import { isLive, rangeText, rateText, STOPPED_CHIP } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
@@ -167,6 +168,7 @@ export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId:
           <RunHistory spaceId={spaceId} id={id} />
         </div>
         <Trend spaceId={spaceId} id={id} />
+        <SignoffTable spaceId={spaceId} id={id} />
       </>
     } />
   );

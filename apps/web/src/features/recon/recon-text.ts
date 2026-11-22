@@ -40,6 +40,8 @@ export function activitySentence(e: Entry): string {
     case "recon.version_discard": return `${who} discarded Draft v${String(field(e.before, "version") ?? "")}; the live version kept running.`;
     case "recon.run": return `${who} ran version ${v}${dates(e.after)}.`;
     case "recon.simulate": return `${who} simulated draft v${v}${dates(e.after)}.`;
+    case "day.prepare": { const d = field(e.after, "date"); return `${who} prepared ${typeof d === "string" ? rangeText(d, d) : "a day"} for sign-off.`; }
+    case "day.sign": { const d = field(e.after, "date"); return `${who} signed off ${typeof d === "string" ? rangeText(d, d) : "a day"}.`; }
     default: return `${who} changed the recon.`;
   }
 }

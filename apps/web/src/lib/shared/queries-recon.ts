@@ -2,7 +2,7 @@
 // (the users, audit and source screens, every route's shell) don't carry them in their first load (bundle budget,
 // DEC-040). Keys still start with the owning module (queries.test.ts reads both files); the module keys themselves
 // (RECON_KEY, ENGINE_KEY, APPROVALS_KEY) stay in queries.ts, so any screen invalidates them.
-import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS } from "@starterkit/shared/paging";
+import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS } from "@starterkit/shared/paging";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
 import { APPROVALS_KEY, ENGINE_KEY, type NoFilters, RECON_KEY, type TableDef, trailTable, type TrailFilters } from "./queries";
 import { isoDate, multiChoice, oneOf, type TableSpec, text } from "./table-state";
@@ -27,6 +27,11 @@ export const reconVersion = (spaceId: string, id: string, versionId: string) => 
   url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
 });
 /** Runs of a recon belong to the engine module. */
+export type SignoffFilters = { stage: string };
+const SIGNOFF_SPEC: TableSpec<SignoffFilters> = { sorts: SIGNOFF_SORTS, defaultSort: "-date", filters: { stage: oneOf(["", "closed", "prepared", "signed"], "") }, ns: "s" };
+/** A recon's closed days and their sign-off (Plan 5 Task 4), newest first; its own paging keys (s.page) on the Overview. */
+export const reconSignoffs = (spaceId: string, id: string): TableDef<SignoffFilters> =>
+  ({ key: ENGINE_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/signoffs`, spec: SIGNOFF_SPEC, transient: ["tab"] });
 export type BreakFilters = { q: string; recon: string; reason: string; state: string; age: string; assignee: string };
 const BREAKS_SPEC: TableSpec<BreakFilters> = {
   sorts: BREAK_SORTS, defaultSort: "businessDate", search: ["q"],

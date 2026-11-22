@@ -6,6 +6,7 @@ const e = (action: string, after: unknown = null, before: unknown = null) => ({ 
 describe("activitySentence", () => {
   it("one sentence per event, never a hash", () => {
     expect(activitySentence(e("recon.create", { code: "x", name: "X", version: 1, specHash: "abc" }))).toBe("Dimas Arya created the recon with Draft v1.");
+    expect(activitySentence(e("day.sign", { date: "2026-11-21", stage: "signed" }))).toMatch(/^Dimas Arya signed off 21 Nov( 2026)?\.$/);
     expect(activitySentence(e("recon.version_update", { version: 2, specHash: "abc" }))).toBe("Dimas Arya saved Draft v2.");
     expect(activitySentence(e("recon.version_create", { version: 2, from: 1 }))).toBe("Dimas Arya started Draft v2 from version 1.");
     expect(activitySentence(e("recon.version_approve", { version: 2, specHash: "h", retired: 1 }))).toBe("Dimas Arya approved version 2; version 1 retired.");

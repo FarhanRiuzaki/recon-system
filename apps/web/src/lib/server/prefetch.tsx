@@ -10,13 +10,13 @@ import { ActivityQuery, AuthLogQuery, TargetActivityQuery } from "@starterkit/sh
 import { BreakCandidateQuery, BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
 import { ProjectListQuery } from "@starterkit/shared/contracts/projects";
-import { ReconActivityQuery, ReconListQuery, ReconRunItemQuery, ReconVersionListQuery } from "@starterkit/shared/contracts/recon";
+import { ReconActivityQuery, ReconListQuery, ReconRunItemQuery, ReconVersionListQuery, SignoffListQuery } from "@starterkit/shared/contracts/recon";
 import { IngestListQuery, RecordListQuery, SourceListQuery, SourceVersionListQuery } from "@starterkit/shared/contracts/sources";
 import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { ACTIVITY, AUTH_LOG, activityEntry, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery } from "@/lib/shared/queries";
-import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconTrend, RECONS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
+import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
@@ -91,6 +91,7 @@ export const reads = {
   recon: (spaceId: string, id: string): Read => ({ key: reconDetail(spaceId, id).key, path: reconDetail(spaceId, id).url }),
   reconVersions: (spaceId: string, id: string, sp: URLSearchParams) => table(reconVersions(spaceId, id), sp, ReconVersionListQuery),
   reconActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(reconActivity(spaceId, id), sp, ReconActivityQuery),
+  reconSignoffs: (spaceId: string, id: string, sp: URLSearchParams) => table(reconSignoffs(spaceId, id), sp, SignoffListQuery),
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
