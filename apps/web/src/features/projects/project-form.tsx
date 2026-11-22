@@ -9,7 +9,7 @@ import { rules, type Rule, type Schema } from "@starterkit/ui/lib/validate";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { RefreshIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -127,7 +127,7 @@ export function EditProject({ id }: { id: string }) {
     {q.error && <Notice tone="warn" live>
       Couldn&apos;t refresh this project; showing the last loaded details.
       <Button type="button" variant="link" size="sm" className="ml-2" disabled={q.isFetching} aria-busy={refreshing || undefined} onClick={() => void q.refetch()}>
-        {refreshing && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Retry refresh
+        <Icon icon={refreshing ? SpinnerIcon : RefreshIcon} className={refreshing ? "motion-safe:animate-spin" : undefined} />Retry refresh
       </Button>
     </Notice>}
     <ProjectForm key={q.data.id} project={q.data} />

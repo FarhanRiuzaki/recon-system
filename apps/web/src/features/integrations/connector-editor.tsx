@@ -10,7 +10,7 @@ import { formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, EditIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
@@ -172,7 +172,7 @@ export function ConnectorEditor({ id }: { id: string }) {
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!c.open && c.canEdit
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
-              {busy === "start" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Edit connector
+              <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit connector
             </Button>
           : draft && c.canEdit
             ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending || save.state === "error"} aria-busy={busy === "submit" || undefined}>

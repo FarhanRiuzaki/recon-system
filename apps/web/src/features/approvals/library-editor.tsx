@@ -8,7 +8,7 @@ import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, EditIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
@@ -124,7 +124,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
           ? <Button type="button" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
-              {busy === "start" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Edit workflow
+              <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit workflow
             </Button>
           : draft && w.canEdit
             ? <Button type="button" onClick={() => void run("submit", "/draft/submit", undefined, "Sent for approval.")} disabled={!!busy || pending || !complete} aria-busy={busy === "submit" || undefined}>

@@ -50,7 +50,7 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void save()} disabled={busy} aria-busy={busy || undefined}>
-            {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Replace {SECRET_LABEL[what].toLowerCase()}
+            <Icon icon={busy ? SpinnerIcon : EditIcon} className={busy ? "motion-safe:animate-spin" : undefined} />Replace {SECRET_LABEL[what].toLowerCase()}
           </Button>
         </DialogFooter>
       </DialogContent>
