@@ -31,7 +31,7 @@ import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { STATE_LABEL } from "./break-columns";
-import { amountDelta, approverText, combined, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, recheckText, type Settle, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, recheckText, type Settle, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
@@ -154,7 +154,9 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   // the counterpart the summary compares with: the ticked items, the request's, the matched ones, else the proposed pair
   const proposedFree = open && b.proposed?.available ? b.proposed : null;
   const shown = counterpartOf({ picked: [...picked.values()], request: b.request, matchedWith: b.matchedWith, proposed: b.proposed, open });
-  const counterpart = shown ? combined(shown.items) : null;
+  // side against side: this item with its own side's members (a group on both sides) against the other side's
+  const compared = shown ? sidesOf(b.item, shown.items) : null;
+  const counterpart = compared?.theirs ?? null;
   // Match and Force match act on the items ticked below, else on the proposed pair
   const target = picked.size ? [...picked.keys()] : proposedFree ? [proposedFree.item.id] : [];
   const settle = open && !pending && access.worker
@@ -189,7 +191,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         {counterpart && shown ? (
           <div className="grid gap-2">
             <CompareCard title="This item and its counterpart" sides={["This item", `${shown.label} · ${other}`]}
-              rows={compareRows(b.item, counterpart)} />
+              rows={compareRows(compared!.mine, counterpart)} />
             {/* several counterparts: each one, so whoever approves sees exactly what they approve */}
             {shown.items.length > 1 && <CounterpartList items={shown.items} side={side} />}
             {(shown.note || (b.item.status === "matched" && asks)) && (

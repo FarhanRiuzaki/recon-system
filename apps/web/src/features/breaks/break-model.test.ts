@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, combined, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -47,6 +47,28 @@ describe("the difference between this item and its counterpart", () => {
     // a credit of 150 and a debit of 50 net 100
     expect(combined([item({ amountMinor: "15000" }), debit("5000")])).toMatchObject({ amountMinor: "10000", signedMinor: "10000" });
     expect(combined([])).toBeNull();
+  });
+  it("one counterpart or several show the same way: the unsigned net, and the direction the net counts as", () => {
+    expect(combined([item({ amountMinor: "15000", direction: "credit" }), debit("5000")])).toMatchObject({ amountMinor: "10000", direction: "credit" });
+    // a side whose amount_sign negates: the net's sign is that of its credits, so it is still a credit
+    const neg = (amount: string, direction: "debit" | "credit") => item({ amountMinor: amount, signedMinor: direction === "credit" ? `-${amount}` : amount, direction });
+    expect(combined([neg("15000", "credit"), neg("5000", "debit")])).toMatchObject({ amountMinor: "10000", signedMinor: "-10000", direction: "credit" });
+    expect(combined([neg("5000", "credit"), neg("15000", "debit")])).toMatchObject({ amountMinor: "10000", direction: "debit" });
+    expect(combined([neg("5000", "credit")])).toMatchObject({ amountMinor: "5000", direction: "credit" });
+  });
+  it("a group with members on both sides compares side totals: this item with its side's members against the other side", () => {
+    const a1 = item({ id: "a1", amountMinor: "10000" }), a2 = item({ id: "a2", ref: "P2", amountMinor: "5000" }), b1 = item({ id: "b1", side: "b", ref: "Q1", amountMinor: "15000" });
+    const { mine, theirs } = sidesOf(a1, [a2, b1]);
+    expect([mine.amountMinor, theirs?.amountMinor]).toEqual(["15000", "15000"]);
+    expect(compareRows(mine, theirs!).find((r) => r.label === "Amount")).toMatchObject({ delta: "Same", differs: false });
+    // only the other side's items: this item alone against them
+    expect(sidesOf(a1, [b1]).mine).toBe(a1);
+    expect(sidesOf(a1, [a2]).theirs).toBeNull();
+  });
+  it("Direction shows only when the directions differ, not when only the signs do", () => {
+    const negated = item({ id: "b1", side: "b", direction: "credit", signedMinor: "-3607350000" });
+    expect(compareRows(item({ direction: "credit" }), negated).some((r) => r.label === "Direction")).toBe(false);
+    expect(compareRows(item({ direction: "credit" }), item({ id: "b1", side: "b", direction: null })).some((r) => r.label === "Direction")).toBe(false);
   });
 });
 

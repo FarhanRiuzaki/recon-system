@@ -43,7 +43,7 @@ export function compareRows(a: BreakItemDto, b: BreakItemDto): CompareLine[] {
   return [
     { label: "Reference", a: a.ref ?? "No reference", b: b.ref ?? "No reference", differs: false },
     { label: "Amount", a: money(a), b: money(b), delta: amount ?? undefined, differs: amount !== null && amount !== "Same" },
-    ...(oppositeWays(a, b) && (a.direction || b.direction)
+    ...(a.direction && b.direction && a.direction !== b.direction
       ? [{ label: "Direction", a: a.direction ? DIRECTION_LABEL[a.direction] : "–", b: b.direction ? DIRECTION_LABEL[b.direction] : "–", differs: true }] : []),
     { label: "Business date", a: dateText(a.businessDate), b: dateText(b.businessDate), delta: dayDelta(a.businessDate, b.businessDate), differs: a.businessDate !== b.businessDate },
     { label: "Source", a: a.source ?? "–", b: b.source ?? "–", differs: false },
@@ -51,23 +51,33 @@ export function compareRows(a: BreakItemDto, b: BreakItemDto): CompareLine[] {
 }
 
 /**
- * Several counterparts as one side: their net signed total (one currency, else none) shown unsigned, the latest date,
- * the first reference. A direction only when they all share it.
+ * Several items of one side as one: their net signed total (one currency, else none) shown unsigned, the direction the
+ * net counts as (that of an item whose signed amount has the net's sign: the side shares one amount_sign), the latest
+ * date, the first reference. One item is itself, which reads the same way.
  */
 export function combined(items: readonly BreakItemDto[]): BreakItemDto | null {
   const [first] = items;
   if (!first || items.length === 1) return first ?? null;
   const one = items.every((i) => i.currency === first.currency && i.signedMinor !== null);
   const net = one ? items.reduce((t, i) => t + BigInt(i.signedMinor!), 0n) : null;
+  const like = net === null || net === 0n ? undefined : items.find((i) => i.direction && BigInt(i.signedMinor!) < 0n === net < 0n);
   return {
     ...first,
     ref: `${first.ref ?? "No reference"} and ${items.length - 1} more`,
     amountMinor: net === null ? null : String(net < 0n ? -net : net),
     signedMinor: net === null ? null : String(net),
-    direction: items.every((i) => i.direction === first.direction) ? first.direction : null,
+    direction: like?.direction ?? (items.every((i) => i.direction === first.direction) ? first.direction : null),
     businessDate: items.reduce((d, i) => (i.businessDate > d ? i.businessDate : d), first.businessDate),
     source: new Set(items.map((i) => i.source)).size === 1 ? first.source : "Several sources",
   };
+}
+/**
+ * What the summary compares, side against side as a match totals them: this item with the counterparts on its own
+ * side (a group of several on both sides), against the other side's; `theirs` null when no item is on the other side.
+ */
+export function sidesOf(item: BreakItemDto, counterparts: readonly BreakItemDto[]) {
+  const others = counterparts.filter((i) => i.id !== item.id);
+  return { mine: combined([item, ...others.filter((i) => i.side === item.side)])!, theirs: combined(others.filter((i) => i.side !== item.side)) };
 }
 
 /** Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day has gone. */
