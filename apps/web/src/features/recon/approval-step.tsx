@@ -61,7 +61,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled }: {
   kind: Trigger; recon: string; setup: Setup; onChange: (s: Setup) => void; rows: readonly LibraryRowDto[]; catalog: readonly CatalogField[]; disabled: boolean;
 }) {
   const w = setup.workflow;
-  const setRules = (rules: Rule[]) => onChange({ workflow: { ...w, rules } });
+  const setRules = (rules: Rule[]) => onChange({ ...setup, workflow: { ...w, rules } });
   const setRule = (i: number, r: Rule) => setRules(w.rules.map((x, j) => (j === i ? r : x)));
   const [open, setOpen] = useState<number | null>(null);
   const change = TRIGGER_LABEL[kind].toLowerCase();
@@ -72,9 +72,9 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled }: {
           <span className="flex flex-wrap items-center gap-2 text-body-sm text-fg-2">
             {w.rules.length ? `Every other ${change} in ${recon} is approved by` : `Every ${change} in ${recon} is approved by`}
             <WorkflowSelect value={w.default} rows={rows} disabled={disabled} allowDefault label={`${TRIGGER_LABEL[kind]}: workflow for every request`}
-              onChange={(d) => onChange({ workflow: { ...w, default: d } })} />
+              onChange={(d) => onChange({ ...setup, workflow: { ...w, default: d } })} />
           </span>
-          {w.default && <Newer pin={w.default} rows={rows} disabled={disabled} onUse={(v) => onChange({ workflow: { ...w, default: { ...w.default!, version: v } } })} />}
+          {w.default && <Newer pin={w.default} rows={rows} disabled={disabled} onUse={(v) => onChange({ ...setup, workflow: { ...w, default: { ...w.default!, version: v } } })} />}
         </div>
         {w.rules.length > 0 && (
           <ol className="grid gap-2" aria-label={`${TRIGGER_LABEL[kind]}: rules, first match wins`}>
@@ -201,13 +201,13 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
   // finished parts save into the draft as they change; an unfinished rule (the contract refuses it) is kept in this
   // browser per draft with the saved setup it was based on, and comes back on reload only while that still holds
   const key = `recon-approval-draft:${versionId}`;
-  const [local, setLocal] = useState<ReconApprovalSpec>(spec.approvals ?? { changes: {} });
+  const [local, setLocal] = useState<ReconApprovalSpec>(spec.approvals ?? { accounts: [], lookups: [], changes: {} });
   useEffect(() => {
     if (disabled) return;
     let stored: string | null = null;
     try { stored = localStorage.getItem(key); } catch { /* storage off: start from the draft */ }
     const kept = keptCopy(stored, spec.approvals);
-    if (kept) setLocal(kept); // eslint-disable-line react-hooks/set-state-in-effect -- browser storage is read after mount, so the server render matches
+    if (kept) setLocal(kept as ReconApprovalSpec); // eslint-disable-line react-hooks/set-state-in-effect -- browser storage is read after mount, so the server render matches
     else if (stored) try { localStorage.removeItem(key); } catch { /* storage off */ }
   }, [key, disabled]); // eslint-disable-line react-hooks/exhaustive-deps -- read once per draft; later saves come from this step
   const { unfinished } = savable(local);
@@ -221,7 +221,7 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
     } catch { /* storage off: kept until the page goes */ }
     onChange(r.approvals);
   }
-  const empty: Setup = { workflow: { default: null, rules: [] } };
+  const empty: Setup = { workflow: { default: null, rules: [] }, actions: [] };
   return (
     <div className="grid gap-section">
       <div className="grid min-w-0 gap-section">
@@ -229,7 +229,7 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
         {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it. The rest is saved.</p>}
         {TRIGGERS.map((k) => (
           <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
-            onChange={(s) => set({ changes: { ...local.changes, [k]: s } })} />
+            onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })} />
         ))}
       </div>
       <div className="min-w-0">

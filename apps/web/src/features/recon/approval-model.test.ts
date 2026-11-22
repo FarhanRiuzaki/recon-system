@@ -10,7 +10,7 @@ describe("the Approval step's draft", () => {
   it("saves what is finished and keeps only unfinished rules out", () => {
     const r = savable({ changes: { unmatch: { workflow: { default: W, rules: [done, open] } }, write_off: { workflow: { default: null, rules: [] } } } });
     expect(r.unfinished).toBe(true);
-    expect(r.approvals).toEqual({ changes: { unmatch: { workflow: { default: W, rules: [done] } } } });
+    expect(r.approvals).toEqual({ accounts: [], lookups: [], changes: { unmatch: { workflow: { default: W, rules: [done] }, actions: [] } } });
     expect(savable({ changes: { write_off: { workflow: { default: null, rules: [] } } } })).toEqual({ approvals: undefined, unfinished: false });
   });
   it("brings a kept copy back only while the saved draft is still what it was based on", () => {
@@ -37,5 +37,15 @@ describe("what a version changes in the approval setup", () => {
     expect(approvalChanges(live, next, true)).toEqual(["unmatch", "write_off"]);
     expect(approvalChanges(live, live, true)).toEqual([]);
     expect(approvalChanges(undefined, next, false)).toEqual([]);
+  });
+});
+
+describe("the workflow part never drops the rest of the setup (stage 4)", () => {
+  it("keeps actions, accounts and lookups, also for a change left on the default chain", () => {
+    const action = { name: "Post", kind: "posting" as const, on: { event: "approved" as const }, variants: [] };
+    const a = { accounts: [{ key: "susp", label: "Suspense", number: "1", currency: "IDR" }], lookups: [{ name: "m", rows: [] }],
+      changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [action] }, write_off: { workflow: { default: null, rules: [] }, actions: [] } } };
+    expect(savable(a).approvals).toEqual({ accounts: a.accounts, lookups: a.lookups, changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [action] } } });
+    expect(savable({ accounts: [], lookups: [], changes: {} }).approvals).toBeUndefined();
   });
 });

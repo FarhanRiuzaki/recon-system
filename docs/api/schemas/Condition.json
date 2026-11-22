@@ -16,7 +16,7 @@
                 "properties": {
                   "field": {
                     "type": "string",
-                    "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                   },
                   "op": {
                     "type": "string",
@@ -73,7 +73,7 @@
                           "properties": {
                             "field": {
                               "type": "string",
-                              "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                             },
                             "op": {
                               "type": "string",
@@ -135,7 +135,7 @@
                           "properties": {
                             "field": {
                               "type": "string",
-                              "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                             },
                             "op": {
                               "type": "string",
@@ -210,7 +210,7 @@
                 "properties": {
                   "field": {
                     "type": "string",
-                    "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                    "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                   },
                   "op": {
                     "type": "string",
@@ -267,7 +267,7 @@
                           "properties": {
                             "field": {
                               "type": "string",
-                              "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                             },
                             "op": {
                               "type": "string",
@@ -329,7 +329,7 @@
                           "properties": {
                             "field": {
                               "type": "string",
-                              "pattern": "^(break|recon|side_a|side_b)\\.[a-z0-9_.]{1,80}$"
+                              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[a-z0-9_.]{1,80}$"
                             },
                             "op": {
                               "type": "string",

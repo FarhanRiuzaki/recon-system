@@ -8,6 +8,7 @@ import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMi
 import { TargetActivityQuery } from "./audit";
 import { ListQuery, sortParam } from "./common";
 import { OPS } from "../conditions";
+import { ACCOUNTS_MAX, ACTIONS_MAX, isTransform, LOOKUP_ROWS_MAX, LOOKUPS_MAX, MAPPED_MAX, type Source as SourceT, templateParts, VARIANTS_MAX } from "../mapping";
 import { SourceHealthDto } from "./sources";
 
 export { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS };
@@ -100,7 +101,7 @@ const clock = z.string().regex(CLOCK_TIME, "Use HH:MM, 00:00–23:59");
 
 /** One clause of a rule: a catalog field (conditions.ts buildCatalog), a comparison, a value or several. */
 const Clause = z.strictObject({
-  field: z.string().regex(/^(break|recon|side_a|side_b)\.[a-z0-9_.]{1,80}$/),
+  field: z.string().regex(/^(break|recon|side_a|side_b|approval|request)\.[a-z0-9_.]{1,80}$/i),
   op: z.enum(OPS),
   value: z.union([z.string().max(64), z.array(z.string().max(64)).min(1).max(50)]).optional(),
 });
@@ -112,7 +113,44 @@ export type ConditionBody = z.infer<typeof Condition>;
 /** A workflow of the recon's space at one version (pinned: a newer version applies once the recon is published again). */
 export const WorkflowRef = z.strictObject({ id: z.uuid(), version: z.number().int().min(1) });
 export type WorkflowRef = z.infer<typeof WorkflowRef>;
+const Transform = z.string().max(110).superRefine((t, ctx) => { if (!isTransform(t)) ctx.addIssue({ code: "custom", message: `Unknown change: ${t}.` }); });
+const Source: z.ZodType<SourceT> = z.lazy(() => z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("field"), key: z.string().regex(/^(break|recon|side_a|side_b|approval|request)\.[A-Za-z0-9_.]{1,80}$/), transforms: z.array(Transform).max(10).default([]) }),
+  z.strictObject({ kind: z.literal("const"), value: z.string().max(500) }),
+  z.strictObject({ kind: z.literal("template"), text: z.string().min(1).max(500) }),
+  z.strictObject({ kind: z.literal("lookup"), table: z.string().min(1).max(40), key: Source, fallback: z.string().max(500).optional() }),
+  z.strictObject({ kind: z.literal("account"), account: z.string().min(1).max(40), part: z.enum(["number", "label", "currency"]) }),
+])) as z.ZodType<SourceT>;
+/** A bank operation of a connector's reviewed version (DEC-053): pinned like a workflow. */
+export const OperationRef = z.strictObject({ connectorId: z.uuid(), version: z.number().int().min(1), key: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/) });
+const Variant = z.strictObject({
+  name: z.string().trim().min(1, "Name the variant.").max(80),
+  /** The first variant whose condition holds is used; none → no posting rule (O6). */
+  when: Condition,
+  operation: OperationRef,
+  /** Request field (dot path) → where its value comes from. */
+  mapping: z.record(z.string().min(1).max(300), Source).refine((m) => Object.keys(m).length <= MAPPED_MAX, `A variant maps at most ${MAPPED_MAX} fields.`),
+  /** A request with several breaks (force match): one call per break, or one for the request (O9). */
+  per: z.enum(["item", "request"]).default("item"),
+  /** An amount of 0 or below: no call, or the amount without its sign (and the sides swapped by the mapping). */
+  zeroOrNegative: z.enum(["skip", "absolute_swap"]).default("skip"),
+});
+const Action = z.strictObject({
+  name: z.string().trim().min(1, "Name the action.").max(80),
+  /** Only "posting" actions mark a break's posting result; "notify" ones show on its timeline. */
+  kind: z.enum(["posting", "notify"]),
+  on: z.discriminatedUnion("event", [
+    z.strictObject({ event: z.literal("level_approved"), level: z.number().int().min(1).max(10) }),
+    z.strictObject({ event: z.literal("approved") }),
+    z.strictObject({ event: z.literal("rejected") }),
+  ]),
+  variants: z.array(Variant).min(1).max(VARIANTS_MAX, `An action has at most ${VARIANTS_MAX} variants.`),
+});
+export type ActionSpec = z.infer<typeof Action>;
+export type VariantSpec = z.infer<typeof Variant>;
 const ChangeApproval = z.strictObject({
+  /** What is sent to the bank at the change's approval events (stage 4). */
+  actions: z.array(Action).max(ACTIONS_MAX, `A change has at most ${ACTIONS_MAX} actions.`).default([]),
   workflow: z.strictObject({
     /** null = the default chain (1 of Reviewer or Space admin). */
     default: WorkflowRef.nullable(),
@@ -122,9 +160,34 @@ const ChangeApproval = z.strictObject({
 });
 /** A recon version's approval setup (DEC-052 rev 2 §4.4, stage 1: who approves each change). */
 export const ReconApprovalSpec = z.strictObject({
+  /** Named accounts the mapping refers to (O2: accounts come from the recon setup). */
+  accounts: z.array(z.strictObject({
+    key: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the key."), label: z.string().trim().min(1).max(80),
+    number: z.string().trim().min(1).max(40), currency: z.string().trim().length(3),
+  })).max(ACCOUNTS_MAX).default([]),
+  /** Small tables (key → value) the mapping looks values up in. */
+  lookups: z.array(z.strictObject({
+    name: z.string().regex(/^[a-z0-9_]{1,40}$/, "Use lowercase letters, digits and _ for the name."),
+    rows: z.array(z.strictObject({ key: z.string().max(200), value: z.string().max(500) })).max(LOOKUP_ROWS_MAX),
+  })).max(LOOKUPS_MAX).default([]),
   changes: z.strictObject({ force_match: ChangeApproval.optional(), unmatch: ChangeApproval.optional(), write_off: ChangeApproval.optional() }),
+}).superRefine((a, ctx) => {
+  const accounts = new Set(a.accounts.map((x) => x.key)), lookups = new Set(a.lookups.map((x) => x.name));
+  const visit = (src: SourceT, path: PropertyKey[]) => {
+    if (src.kind === "account" && !accounts.has(src.account)) ctx.addIssue({ code: "custom", path, message: "Pick an account of this recon." });
+    if (src.kind === "lookup") { if (!lookups.has(src.table)) ctx.addIssue({ code: "custom", path, message: "Pick a lookup table of this recon." }); visit(src.key, [...path, "key"]); }
+    if (src.kind === "template") for (const p of templateParts(src.text)) {
+      if (p.account && !accounts.has(p.account.key)) ctx.addIssue({ code: "custom", path, message: `A template names an account this recon doesn't have: ${p.account.key}.` });
+      for (const t of p.field?.transforms ?? []) if (!isTransform(t)) ctx.addIssue({ code: "custom", path, message: `Unknown change: ${t}.` });
+    }
+  };
+  for (const [kind, c] of Object.entries(a.changes)) c?.actions.forEach((act, ai) => act.variants.forEach((v, vi) => {
+    for (const [field, src] of Object.entries(v.mapping)) visit(src, ["changes", kind, "actions", ai, "variants", vi, "mapping", field]);
+  }));
 });
 export type ReconApprovalSpec = z.infer<typeof ReconApprovalSpec>;
+/** The setup as a draft may hold it (actions, accounts and lookups left out before stage 4). */
+export type ReconApprovalInput = z.input<typeof ReconApprovalSpec>;
 /** POST …/recons/{id}/versions/{versionId}/approvals/preview: who would approve a change on typed field values. */
 export const PreviewApprovalBody = z.strictObject({
   change: z.enum(["force_match", "unmatch", "write_off"]),

@@ -4,7 +4,7 @@
 import { CORE_FIELDS, FIELD_LABEL, type RecordField } from "./recon";
 
 export type CatalogKind = "number" | "money" | "text" | "date" | "list";
-export type CatalogGroup = "break" | "recon" | "side_a" | "side_b";
+export type CatalogGroup = "break" | "recon" | "side_a" | "side_b" | "approval";
 export type CatalogField = { key: string; label: string; group: CatalogGroup; kind: CatalogKind };
 
 export const OPS = ["eq", "ne", "in", "not_in", "starts_with", "contains", "gte", "gt", "lte", "lt", "empty", "not_empty"] as const;
@@ -39,6 +39,18 @@ export const BREAK_FIELDS: readonly CatalogField[] = [
   { key: "break.state", label: "Break state", group: "break", kind: "list" },
   { key: "break.reference", label: "Reference", group: "break", kind: "text" },
   { key: "recon.code", label: "Recon code", group: "recon", kind: "text" },
+];
+
+/**
+ * What an action's variant may also read (stage 4): the approval event that fires it and the request. Not in a
+ * workflow rule's catalog: a request is opened before any approval.
+ */
+export const APPROVAL_FIELDS: readonly CatalogField[] = [
+  { key: "approval.level", label: "Level approved", group: "approval", kind: "number" },
+  { key: "approval.by", label: "Approved by", group: "approval", kind: "text" },
+  { key: "approval.at", label: "Approved at", group: "approval", kind: "date" },
+  { key: "request.kind", label: "Change asked", group: "approval", kind: "list" },
+  { key: "request.note", label: "Request note", group: "approval", kind: "text" },
 ];
 
 /** "e2e_id" → "E2e id". */
