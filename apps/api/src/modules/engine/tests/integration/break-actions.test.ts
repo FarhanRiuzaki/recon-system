@@ -185,6 +185,15 @@ describe("posting by configuration (owner, 22 Nov: some recons don't post)", () 
   });
 });
 
+describe("where each change goes, on the break's page", () => {
+  it("the recon's default workflow per change (name, levels) and the connector its posting action calls", async () => {
+    await setup("posting", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }]);
+    const d = await detail(I.a1);
+    expect(d.recon.routes.find((r) => r.kind === "posting")).toEqual({ kind: "posting", workflowName: "Two levels", levels: 2, connector: "Bank Mega" });
+    expect(d.recon.routes.find((r) => r.kind === "write_off")).toEqual({ kind: "write_off", workflowName: null, levels: 1, connector: null });
+  });
+});
+
 describe("the posting result on the break (read side)", () => {
   it("shows its actions and the last posting; the payload only to the space admin or an Open API reader", async () => {
     await setup("write_off", [

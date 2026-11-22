@@ -12,6 +12,7 @@ import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { activity } from "../../../audit";
 import { records } from "../../../ingest";
+import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { matchGroups, matchMembers, reconItems } from "../../schema";
@@ -67,6 +68,23 @@ describe("a break's page and candidates", () => {
     expect(c.items.map((x) => x.ref)).toEqual(["P1", "P3", "P2"]); // 0 off (P1, P3), then 100 off; a1's own side never
     expect((await json<Page<BreakItemDto>>(call("GET", path(I.a1, "/candidates?q=P2"), { token: t.op }))).items.map((x) => x.ref)).toEqual(["P2"]);
     expect((await call("GET", path(I.b1), { token: t.op })).status).toBe(404); // b1 never broke
+  });
+});
+
+describe("carry over on a break's page", () => {
+  it("says how long the item is checked again: business date + carry over days, null when carry over is always", async () => {
+    let d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
+    expect(d.recon).toMatchObject({ carryOverDays: 1, recheckUntil: "2026-11-03" });
+    const [v] = await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
+    for (const [carry, until] of [[0, "2026-11-02"], [null, null]] as const) {
+      await db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), carry_over_days: carry } }).where(eq(reconConfigVersions.id, v!.id));
+      d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
+      expect(d.recon).toMatchObject({ carryOverDays: carry, recheckUntil: until });
+    }
+  });
+  it("every change kind goes to the default chain when the recon names no workflow, with nothing sent to the bank", async () => {
+    const d = await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }));
+    expect(d.recon.routes).toEqual((["posting", "force_match", "write_off", "unmatch"] as const).map((kind) => ({ kind, workflowName: null, levels: 1, connector: null })));
   });
 });
 

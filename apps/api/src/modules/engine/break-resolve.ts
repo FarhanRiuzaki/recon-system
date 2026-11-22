@@ -10,6 +10,7 @@ import type { ActivityDto, TargetActivityQuery } from "@starterkit/shared/contra
 import type { Page } from "@starterkit/shared/contracts/common";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/shared/recon";
+import { DEFAULT_CHAIN, TRIGGERS } from "@starterkit/shared/workflows";
 import { CURRENCY_EXPONENT, DEBIT_CODES } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
 import { and, desc, eq, ilike, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm";
@@ -23,9 +24,10 @@ import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { approvalRequests, requestView } from "../approvals";
-import { runsOf } from "../integrations";
+import { approvalRequests, pinnedVersion, requestView } from "../approvals";
+import { connectors, runsOf } from "../integrations";
 import { matchGroups, matchMembers, reconItems } from "./schema";
+import { addDays } from "./service";
 import { assertNotSigned } from "./signoff";
 
 export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -94,6 +96,26 @@ export async function liveSpec(tx: InTx, spaceId: string, configId: string): Pro
   return v ? ReconSpec.parse(v.spec) : null;
 }
 
+/**
+ * Where each change kind's request goes by default on the live spec: its default workflow (name, levels) or the
+ * default chain, and the connector its first posting action calls. A pinned version that is gone leaves the kind out
+ * (asking for it is refused with the reason).
+ */
+async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Promise<BreakDetailDto["recon"]["routes"]> {
+  const changes = spec?.approvals?.changes ?? {};
+  const ops = TRIGGERS.map((k) => changes[k]?.actions.find((a) => a.kind === "posting")?.variants[0]?.operation.connectorId ?? null);
+  const ids = [...new Set(ops.filter((x): x is string => !!x))];
+  const names = new Map(ids.length ? (await tx.select({ id: connectors.id, name: connectors.name }).from(connectors).where(inArray(connectors.id, ids))).map((c) => [c.id, c.name]) : []);
+  const out: BreakDetailDto["recon"]["routes"] = [];
+  for (const [i, kind] of TRIGGERS.entries()) {
+    const ref = changes[kind]?.workflow.default ?? null;
+    const v = ref ? await pinnedVersion(tx, spaceId, ref) : null;
+    if (ref && !v) continue;
+    out.push({ kind, workflowName: v?.name ?? null, levels: (v?.spec ?? DEFAULT_CHAIN).levels.length, connector: ops[i] ? names.get(ops[i]!) ?? null : null });
+  }
+  return out;
+}
+
 export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<BreakDetailDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const x = await breakOf(tx, spaceId, id);
@@ -116,7 +138,12 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
     return {
-      item: plain(item!), recon: { id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live) }, state: (x.breakState ?? "new") as BreakState,
+      item: plain(item!), recon: {
+        id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live),
+        // carry over is calendar days from the business date (engine addDays); before a first approval it reads as always
+        carryOverDays: live?.carry_over_days ?? null, recheckUntil: live && live.carry_over_days !== null ? addDays(x.businessDate, live.carry_over_days) : null,
+        routes: await routesOf(tx, spaceId, live),
+      }, state: (x.breakState ?? "new") as BreakState,
       assignee: x.assigneeId ? { id: x.assigneeId, name } : null,
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),

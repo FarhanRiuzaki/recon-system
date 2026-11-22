@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AGE_BUCKETS, BREAK_BULK_MAX, BREAK_REASONS, BREAK_STATES, CLOSE_RESOLUTIONS, ITEM_STATUSES, MATCH_ITEMS_MAX, RESOLUTION_NOTE_MAX, RESOLUTIONS, WORK_STATES } from "../recon";
 import { ACTION_RUN_SORTS, BREAK_SORTS } from "../paging";
+import { REQUEST_KINDS } from "../approvals";
 import { ListQuery, sortParam } from "./common";
 import { filterSelection } from "./filter-selection";
 import { RequestViewDto } from "./workflows";
@@ -97,8 +98,18 @@ export const ActionRunRowDto = z.object({
 export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;
 export const BreakDetailDto = z.object({
   item: BreakItemDto,
-  /** `posts`: its live version posts its unmatch (a posting action under Posting): the page offers Request posting. */
-  recon: z.object({ id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean() }),
+  /**
+   * `posts`: its live version posts its unmatch (a posting action under Posting): the page offers Request posting.
+   * `carryOverDays`: the live version's carry over (null = always); `recheckUntil`: the last business date a run still
+   * looks for its counterpart (business date + carry over), null while carry over is always. `routes`: per change kind,
+   * the workflow its request goes to by default (`workflowName` null = the default chain; a rule may pick another on
+   * the request's values) with its level count, and the connector its first posting action calls (null = none).
+   */
+  recon: z.object({
+    id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean(),
+    carryOverDays: z.number().int().nullable(), recheckUntil: z.string().nullable(),
+    routes: z.array(z.object({ kind: z.enum(REQUEST_KINDS), workflowName: z.string().nullable(), levels: z.number().int(), connector: z.string().nullable() })),
+  }),
   state: z.enum(BREAK_STATES),
   assignee: z.object({ id: z.string(), name: z.string().nullable() }).nullable(),
   ageDays: z.number().int(),

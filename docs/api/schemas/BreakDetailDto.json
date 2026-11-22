@@ -105,13 +105,75 @@
         },
         "posts": {
           "type": "boolean"
+        },
+        "carryOverDays": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recheckUntil": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "posting",
+                  "force_match",
+                  "unmatch",
+                  "write_off"
+                ]
+              },
+              "workflowName": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "levels": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "connector": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "kind",
+              "workflowName",
+              "levels",
+              "connector"
+            ],
+            "additionalProperties": false
+          }
         }
       },
       "required": [
         "id",
         "name",
         "sides",
-        "posts"
+        "posts",
+        "carryOverDays",
+        "recheckUntil",
+        "routes"
       ],
       "additionalProperties": false
     },
