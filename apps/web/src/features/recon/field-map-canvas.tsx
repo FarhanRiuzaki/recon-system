@@ -20,12 +20,12 @@ const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 320, LANE = 160;
 
 /**
  * Where each table sits at first: the sources in columns on the left (a new column once one is as tall as the request
- * or 640 px), the request on the right of them, level with the top, so the map fits the screen at reading size.
+ * or 900 px: two columns for a usual recon), the request on the right of them, level with the top, so the map fits the screen at reading size.
  */
 function layout(g: Graph): Record<string, { x: number; y: number }> {
   const at: Record<string, { x: number; y: number }> = {};
   const tall = (rows: number) => HEAD_H + rows * ROW_H;
-  const max = Math.max(640, tall(g.request.length));
+  const max = Math.max(900, tall(g.request.length));
   let col = 0, y = 0;
   for (const t of g.sources) {
     if (y > 0 && y + tall(t.rows.length) > max) { col++; y = 0; }

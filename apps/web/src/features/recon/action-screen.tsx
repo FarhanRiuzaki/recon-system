@@ -113,7 +113,7 @@ function FieldInspector({ path, graph, source, onChange, onClose, catalog, setup
       <div className="grid gap-1 rounded-lg border border-line-strong bg-tray p-3">
         <span className="text-label text-fg">Sample</span>
         {sample ? <span className="break-all font-mono text-body-sm text-fg">{sample.value === undefined || sample.value === "" ? "(empty)" : JSON.stringify(sample.value)}</span>
-          : <span className="text-body-sm text-fg-3">Pick a break under the map and show what gets posted to see this field&apos;s value.</span>}
+          : <span className="text-body-sm text-fg-3">Shows the value from a real break once this recon has one (What gets posted, under the map).</span>}
         {sample && <span className="text-caption text-fg-3">From {sample.from}</span>}
       </div>
     </div>
