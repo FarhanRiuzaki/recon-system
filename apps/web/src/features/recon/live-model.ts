@@ -39,13 +39,16 @@ export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceD
 export const scheduleLine = (s: LiveReconDto["schedule"]) => (s.kind === "interval" ? `Runs every ${formatDuration(s.every_minutes * 60)}` : `Runs daily at ${s.at}`);
 
 /**
- * When the schedule starts the next run (the Run card, audit R5): an interval recon's last scheduled start plus its
- * interval (the schedule looks every minute, so once that has passed it is due now), a daily one's time today or
- * tomorrow. ponytail: a date waiting for data or a failed run's backoff can hold it longer (engine rules.ts planRun);
+ * When the schedule starts the next run (the Run card, audit R5): an interval recon's last scheduled start (its newest
+ * tick run, `reconLastTick`) plus its interval (the schedule looks every minute, so once that has passed it is due now),
+ * a daily one's time today, now during its minute, or tomorrow. ponytail: a date waiting for data or a failed run's backoff can hold it longer (engine rules.ts planRun);
  * the API would need the planner's own next moment to say so.
  */
 export function nextRunText(s: LiveReconDto["schedule"], lastScheduledAt: string | null, now = Date.now()): string {
-  if (s.kind === "daily") return `Next run at ${s.at} ${APP_TIME_ZONE_LABEL} ${formatTime(now) < s.at ? "today" : "tomorrow"}`;
+  if (s.kind === "daily") {
+    const clock = formatTime(now);
+    return clock === s.at ? "Next run due now" : `Next run at ${s.at} ${APP_TIME_ZONE_LABEL} ${clock < s.at ? "today" : "tomorrow"}`;
+  }
   const next = lastScheduledAt ? Date.parse(lastScheduledAt) + s.every_minutes * 60_000 : 0;
   return next > now ? `Next run due at ${formatTime(next)} ${APP_TIME_ZONE_LABEL}` : "Next run due now";
 }

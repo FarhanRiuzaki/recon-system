@@ -92,6 +92,7 @@ describe("the Run card's next run (audit R5)", () => {
     const daily = { kind: "daily" as const, at: "06:00", business_date_offset: 1 };
     expect(nextRunText(daily, null, at("2026-11-22T22:00:00.000Z"))).toBe("Next run at 06:00 WIB today"); // 05:00 WIB
     expect(nextRunText(daily, null, at("2026-11-23T00:00:00.000Z"))).toBe("Next run at 06:00 WIB tomorrow"); // 07:00 WIB
+    expect(nextRunText(daily, null, at("2026-11-22T23:00:30.000Z"))).toBe("Next run due now"); // 06:00 WIB, its minute
   });
 });
 

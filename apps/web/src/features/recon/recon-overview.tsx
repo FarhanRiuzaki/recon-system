@@ -20,7 +20,7 @@ import type { ReconDto, ReconRunDto } from "@starterkit/shared/contracts/recon";
 import { StateChip } from "@/components/state-chip";
 import { api, errorText } from "@/lib/client/api";
 import { ENGINE_KEY } from "@/lib/shared/queries";
-import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
+import { RUN_PAGE, reconLastTick, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
 import { nextRunText, scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
@@ -70,7 +70,8 @@ function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: strin
           ) : "No run yet"],
         ]} />
         <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-          <p role="status" className="min-h-5 text-body-sm text-fg-2">{now != null && nextRunText(spec.schedule, scheduledAt, now)}</p>
+          {/* no live region: the line is read again every 30 s, and a due time is not news to announce */}
+          <p className="min-h-5 text-body-sm text-fg-2">{now != null && nextRunText(spec.schedule, scheduledAt, now)}</p>
           {runner
             ? <RunControl spaceId={spaceId} id={id} spec={spec} />
             : <p className="text-body-sm text-fg-3">Operators and config makers start a run of chosen dates.</p>}
@@ -184,6 +185,9 @@ const ReasonBreakdown = dynamic(() => import("./reason-breakdown").then((m) => m
 export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId: string; id: string; r: ReconDto; runner: boolean; configHref: string }) {
   const firstQ = reconRunsFirst(spaceId, id);
   const runs = useQuery({ queryKey: firstQ.key, queryFn: () => api<Page<ReconRunDto>>(firstQ.url), enabled: !!r.published, refetchInterval: 30_000 });
+  // the last scheduled start of an interval recon from its own read: the first page of every run can hold none of them
+  const tickQ = reconLastTick(spaceId, id);
+  const ticks = useQuery({ queryKey: tickQ.key, queryFn: () => api<Page<ReconRunDto>>(tickQ.url), enabled: r.published?.spec.schedule.kind === "interval", refetchInterval: 30_000 });
   if (!r.published) {
     return (
       <Panel><EmptyState icon={ComponentsIcon} title="Not running yet" description="The recon runs once a config checker approves its first version. Its draft, passes and simulation are in Configuration."
@@ -191,10 +195,9 @@ export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId:
     );
   }
   const last = runs.data?.items.find((x) => x.mode !== "simulation");
-  const scheduled = runs.data?.items.find((x) => x.mode === "tick" || x.mode === "daily");
   return (
     <LiveDay spaceId={spaceId} id={id} spec={r.published.spec}
-      run={<RunCard spaceId={spaceId} id={id} r={r} runner={runner} last={last} scheduledAt={scheduled?.startedAt ?? null} />}
+      run={<RunCard spaceId={spaceId} id={id} r={r} runner={runner} last={last} scheduledAt={ticks.data?.items[0]?.startedAt ?? null} />}
       act={
         <div className="grid items-stretch gap-gutter xl:grid-cols-3">
           <ReasonBreakdown spaceId={spaceId} id={id} />

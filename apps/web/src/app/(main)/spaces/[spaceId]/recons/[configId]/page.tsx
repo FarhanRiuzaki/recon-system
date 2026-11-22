@@ -23,7 +23,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   if (!space?.roles.length) notFound();
   const sp = toSearch(await searchParams);
   const tab = reconTabOf(sp.get("tab"));
-  const tables = tab === "overview" ? [reads.reconLive(spaceId, configId), reads.reconTrend(spaceId, configId), reads.reconOpenSummary(spaceId, configId), reads.reconReasons(spaceId, configId), reads.reconRunsFirst(spaceId, configId), reads.sideSourceOptions(spaceId), reads.reconSignoffs(spaceId, configId, sp)]
+  const tables = tab === "overview" ? [reads.reconLive(spaceId, configId), reads.reconTrend(spaceId, configId), reads.reconOpenSummary(spaceId, configId), reads.reconReasons(spaceId, configId), reads.reconRunsFirst(spaceId, configId), reads.reconLastTick(spaceId, configId), reads.sideSourceOptions(spaceId), reads.reconSignoffs(spaceId, configId, sp)]
     : tab === "history" ? [reads.reconVersions(spaceId, configId, sp), reads.reconActivity(spaceId, configId, sp)]
     : await reconSourceReads(spaceId, configId);
   return (

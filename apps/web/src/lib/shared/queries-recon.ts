@@ -120,6 +120,10 @@ export const RUN_PAGE = 15;
 export const reconRunsFirst = (spaceId: string, id: string) => ({
   key: [...ENGINE_KEY, "runs-first", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ pageSize: String(RUN_PAGE) })}`,
 });
+/** A recon's newest scheduled interval runs (mode tick, newest first): the Run card's next run counts from the first. */
+export const reconLastTick = (spaceId: string, id: string) => ({
+  key: [...ENGINE_KEY, "runs-tick", spaceId, id] as const, url: `${runsPath(spaceId, id)}?${new URLSearchParams({ mode: "tick", pageSize: String(RUN_PAGE) })}`,
+});
 /** Live day: one recon's current day, polled as Today. */
 export const reconLive = (spaceId: string, id: string) => ({
   key: [...ENGINE_KEY, "live", spaceId, id] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/live` as const,
