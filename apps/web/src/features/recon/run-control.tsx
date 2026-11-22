@@ -42,7 +42,7 @@ export function RunControl({ spaceId, id, spec }: { spaceId: string; id: string;
       setBusy(false);
     }
   };
-  const days = (n: number) => (n === 1 ? "1 day is past close; its open items stay unmatch." : `${n} days are past close; their open items stay unmatch.`);
+  const days = (n: number) => (n === 1 ? "1 day is past close; its open items stay unmatched." : `${n} days are past close; their open items stay unmatched.`);
   return (
     <section aria-label="Run recon" className="flex flex-wrap items-center justify-end gap-2">
       <ReplayRange label="Dates" value={range} onChange={setRange} disabled={busy} />
