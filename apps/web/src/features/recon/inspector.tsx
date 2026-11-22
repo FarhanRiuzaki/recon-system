@@ -348,8 +348,20 @@ export function SettingsEditor({ spec, place, onChange }: { spec: ReconSpec; pla
         <Field id="rs-grace" label="Grace (minutes)" required error={err("Grace")}>
           <NumberInput id="rs-grace" label="Grace in minutes" min={0} max={1440} value={spec.grace_minutes} onValueChange={(m) => onChange({ ...spec, grace_minutes: m === "" ? 0 : m })} />
         </Field>
-        <Field id="rs-carry" label="Carry over (days)" required error={err("Carry over")}>
-          <NumberInput id="rs-carry" label="Carry over in days" min={0} max={31} value={spec.carry_over_days} onValueChange={(d) => onChange({ ...spec, carry_over_days: d === "" ? 0 : d })} />
+        {/* owner, 22 Nov: unmatch is data still moving (late data); some recons check it on its day only, some up to
+            day + N, some on every run until it matches */}
+        <Field id="rs-carry" label="Unmatch is checked" required error={err("Carry over")}>
+          <span className="grid gap-2">
+            <Select id="rs-carry" value={spec.carry_over_days === null ? "always" : spec.carry_over_days === 0 ? "own" : "days"}
+              onChange={(e) => onChange({ ...spec, carry_over_days: e.target.value === "always" ? null : e.target.value === "own" ? 0 : Math.max(1, spec.carry_over_days ?? 1) })}>
+              <option value="own">Only on its own day</option>
+              <option value="days">Up to day + N</option>
+              <option value="always">Always, until matched or closed</option>
+            </Select>
+            {spec.carry_over_days !== null && spec.carry_over_days > 0 && (
+              <NumberInput id="rs-carry-days" label="Days after its own day" min={1} max={31} value={spec.carry_over_days} onValueChange={(d) => onChange({ ...spec, carry_over_days: d === "" ? 1 : d })} />
+            )}
+          </span>
         </Field>
       </div>
       <Field id="rs-close" label={`Day closes at (${APP_TIME_ZONE_LABEL})`} required error={err("Close time")}>

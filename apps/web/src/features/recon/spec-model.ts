@@ -317,7 +317,8 @@ export function carryOverGates(spec: ReconSpec): string[] {
   if (spec.schedule.kind !== "daily") return [];
   return spec.passes.flatMap((p) => {
     const w = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
-    return w > spec.carry_over_days
+    // always (null) checks unmatch on every run: no window is too wide
+    return spec.carry_over_days !== null && w > spec.carry_over_days
       ? [`Pass ${p.no} allows dates ${daysText(w)} apart, but carry over is ${daysText(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${daysText(w)}.`]
       : [];
   });
@@ -361,6 +362,8 @@ export function scheduleText(s: ReconSpec["schedule"]): string {
 }
 export const graceText = (m: number) => (m === 0 ? "None" : m % 60 === 0 ? `${plural(m / 60, "hour")}` : `${m} min`);
 export const daysText = (n: number) => plural(n, "day");
+/** Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. */
+export const carryText = (c: number | null) => (c === null ? "Always, until matched or closed" : c === 0 ? "Only on its own day" : `Up to day + ${c}`);
 /** The measure: the amount by default, compared per currency. */
 export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : "Amount, per currency");
 

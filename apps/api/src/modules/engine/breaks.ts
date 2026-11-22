@@ -17,7 +17,7 @@ import { reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { closeMoment } from "./rules";
 import { reconDays, reconRuns } from "./schema";
-import { addDays, load, type Seen } from "./service";
+import { addDays, effectiveCarry, load, type Seen } from "./service";
 import { closeDaySql } from "./sql/days";
 
 /**
@@ -96,7 +96,7 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
       if (!day) await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, status: "closing" }).onConflictDoNothing();
       return "closing";
     }
-    const carry = v.spec.carry_over_days;
+    const carry = await effectiveCarry(tx, k, v.spec.carry_over_days, d);
     const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as DayBroken[];
     // the closing date's counters: its own items; carried-over items of dates closed before count on those dates
     const own = rows.find((r) => r.d === d) ?? { open: 0, suggested: 0 };
@@ -126,7 +126,7 @@ export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string
     const v = r?.lo && r.hi ? await published(tx, k.spaceId, k.configId) : null;
     if (!v || !r?.lo || !r.hi) return none;
     // ponytail: a gap (a date never closed) between closed dates of the window would be swept too; closes run in order
-    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: v.spec.carry_over_days }, r.lo, r.hi))) as unknown as DayBroken[];
+    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: await effectiveCarry(tx, k, v.spec.carry_over_days, r.hi) }, r.lo, r.hi))) as unknown as DayBroken[];
     await addCounters(tx, k, rows);
     return { ...total(rows), dates: rows.filter((x) => x.open || x.suggested).map((x) => x.d) };
   }, on);

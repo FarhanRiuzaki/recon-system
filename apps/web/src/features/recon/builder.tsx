@@ -24,7 +24,7 @@ import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -520,7 +520,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           <>
             {gates.map((w) => {
               const fix = editable ? carryOverFix(w) : null;
-              return <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days < fix
+              return <Banner key={w} tone="warn" action={fix !== null && spec.carry_over_days !== null && spec.carry_over_days < fix
                 ? <Button type="button" variant="secondary" size="sm" onClick={() => change({ ...spec, carry_over_days: fix })}>Set carry over to {daysText(fix)}</Button> : undefined}>{w}</Banner>;
             })}
             <Panel title="Schedule and day close">
@@ -567,7 +567,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                   <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Waiting during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
-                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over {daysText(spec.carry_over_days)}</span>
+                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · unmatch checked: {carryText(spec.carry_over_days).toLowerCase()}</span>
                     </div>
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Breaks at day close</span>

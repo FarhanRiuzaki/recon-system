@@ -304,3 +304,14 @@ describe("the setup's steps (owner, 22 Nov: Next says what is missing)", () => {
     expect(stepReasons({ ...ok, submit: "Run a simulation on this draft first." })[6]).toBe("Run a simulation on this draft first.");
   });
 });
+
+import { carryText } from "./spec-model";
+
+describe("carry over modes (owner, 22 Nov: match / unmatch)", () => {
+  it("says each mode in words", () => {
+    expect(carryText(0)).toBe("Only on its own day");
+    expect(carryText(1)).toBe("Up to day + 1");
+    expect(carryText(7)).toBe("Up to day + 7");
+    expect(carryText(null)).toBe("Always, until matched or closed");
+  });
+});

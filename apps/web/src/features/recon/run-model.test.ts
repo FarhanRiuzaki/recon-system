@@ -177,6 +177,9 @@ describe("run-model", () => {
     expect(carryOverText("2026-11-04", 1)).toBe("Carry over is 1 day, so a 4 Nov item is looked for on 3 and 4 Nov.");
     expect(carryOverText("2026-11-04", 0)).toBe("Carry over is 0 days, so a 4 Nov item is looked for on 4 Nov.");
     expect(carryOverText("2026-11-04", 2)).toBe("Carry over is 2 days, so a 4 Nov item is looked for on 2–4 Nov.");
+    // always (owner, 22 Nov): an unmatch is looked for on every run, whatever its age
+    expect(carryOverText("2026-11-04", null)).toBe("Carry over is always, so a 4 Nov item is looked for on every run until it matches or is closed.");
+    expect(counterpartWindow("2026-11-04", null)).toBe("4 Nov 2026 or later");
     expect(carryOverText("2026-12-01", 1)).toBe("Carry over is 1 day, so a 1 Dec item is looked for on 30 Nov and 1 Dec.");
   });
 

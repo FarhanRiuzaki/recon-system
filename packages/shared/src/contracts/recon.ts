@@ -226,8 +226,11 @@ export const ReconSpec = z.strictObject({
   /** The measure the passes' amounts are (spec §8 "measure opsional"); a decimal field of both sides. */
   measure: z.strictObject({ field: FieldRef }).optional(),
   grace_minutes: z.number().int().min(0).max(1440),
-  /** Business days an unmatched item stays open for a counterpart of a later date (DEC-043). */
-  carry_over_days: z.number().int().min(0).max(31),
+  /**
+   * Business days an unmatch stays checked for a counterpart of a later date (DEC-043): 0 = only on its own day, 1–31
+   * = up to day + N, null = always, until it matches or someone closes it (owner, 22 Nov: match / unmatch).
+   */
+  carry_over_days: z.number().int().min(0).max(31).nullable(),
   close_at: clock,
   schedule: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("interval"), every_minutes: z.number().int().min(1).max(1440) }),

@@ -132,7 +132,8 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
     for (const c of untolerated) warnings.push(`${c} has no tolerance in pass ${p.no}; ${c} pairs must match exactly.`);
 
     const window = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
-    if (spec.schedule.kind === "daily" && window > spec.carry_over_days) {
+    // carry over always (null) checks unmatch on every run: no window is too wide for it
+    if (spec.schedule.kind === "daily" && spec.carry_over_days !== null && window > spec.carry_over_days) {
       gates.push(`Pass ${p.no} allows dates ${days(window)} apart, but carry over is ${days(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${days(window)}.`);
     }
   });

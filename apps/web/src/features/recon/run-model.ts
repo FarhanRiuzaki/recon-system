@@ -220,14 +220,15 @@ export function pairDifference(a: Rec, b: Rec): string {
  * own date and up to carry over before it (engine sql/breaks.ts nearMissSql: o.bd between m.bd − carry and m.bd):
  * "2–3 Nov 2026" for 3 Nov with 1 day.
  */
-export const counterpartWindow = (date: string, carry: number) => rangeText(shiftDate(date, -carry), date);
+export const counterpartWindow = (date: string, carry: number | null) =>
+  carry === null ? `${rangeText(date, date)} or later` : rangeText(shiftDate(date, -carry), date);
 
 /**
  * The other side's card in Explain for a break without a pair to show (no group, no proposal): what day close or the
  * pass found there, by the break's reason (engine sql/breaks.ts). No counterpart: "No item with reference … on 3–4 Nov
  * 2026." (Figma 206:6372).
  */
-export function lonePairText(item: { extRef: string | null; businessDate: string; breakReason: string | null; breakPass: number | null }, carry: number): string {
+export function lonePairText(item: { extRef: string | null; businessDate: string; breakReason: string | null; breakPass: number | null }, carry: number | null): string {
   const ref = item.extRef ?? "—", on = counterpartWindow(item.businessDate, carry);
   switch (item.breakReason) {
     case "Duplicate": return `Reference ${ref} is on more than one item of a side, so pass ${item.breakPass ?? "—"} paired none of them.`;
@@ -244,8 +245,9 @@ export function lonePairText(item: { extRef: string | null; businessDate: string
  * Explain's sentence for a lone break (Figma 206:6372): "Carry over is 1 day, so a 4 Nov item is looked for on 3 and 4
  * Nov." The dates are day close's window, the item's date and the carry-over days before it.
  */
-export function carryOverText(date: string, carry: number): string {
+export function carryOverText(date: string, carry: number | null): string {
   const day = (d: string) => formatDate(appDayStart(d));
+  if (carry === null) return `Carry over is always, so a ${day(date)} item is looked for on every run until it matches or is closed.`;
   const start = shiftDate(date, -carry), first = start.slice(0, 7) === date.slice(0, 7) ? String(Number(start.slice(8))) : day(start);
   const on = carry === 0 ? day(date) : carry === 1 ? `${first} and ${day(date)}` : `${first}–${day(date)}`;
   return `Carry over is ${carry} ${carry === 1 ? "day" : "days"}, so a ${day(date)} item is looked for on ${on}.`;

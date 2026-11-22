@@ -141,6 +141,21 @@ describe("the schedule", () => {
     expect((await itemsOf(k7.configId)).map((i) => [i.side, i.status, i.resolution])).toEqual([["a", "matched", "AUTO_MATCHED_LATE_DATA"], ["b", "matched", null]]);
   }, 60_000);
 
+  it("carry over always (null): an unmatch 40 days old still pairs with late data; carry over 7 no longer checks it", async () => {
+    const [sa, sb] = await sides();
+    const kAll = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], null as unknown as number));
+    const k7 = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 7));
+    const D40 = new Date(Date.parse(`${D}T00:00:00Z`) + 40 * 86_400_000).toISOString().slice(0, 10);
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => ensureMonthPartitions(tx, records, new Date(`${D40}T00:00:00Z`), 1));
+    await put(sa, [{ ref: "K9", amount: 900n, date: D }]);
+    const after = at("2026-12-31T00:00:00");
+    for (const r of [kAll, k7]) { await runRecon(probe, { ...r, mode: "daily", from: D }); expect(await closeDay(probe, r, D, after)).toBe("closed"); }
+    await put(sb, [{ ref: "K9", amount: 900n, date: D40 }]);
+    for (const r of [kAll, k7]) await runRecon(probe, { ...r, mode: "daily", from: D40 });
+    expect((await itemsOf(kAll.configId)).map((i) => [i.side, i.status, i.resolution])).toEqual([["a", "matched", "AUTO_MATCHED_LATE_DATA"], ["b", "matched", null]]);
+    expect((await itemsOf(k7.configId)).map((i) => [i.side, i.status])).toEqual([["a", "break"], ["b", "open"]]);
+  }, 60_000);
+
   it("catch-up: a daily recon whose worker was down fails the stale run, runs every date since the last closed one and closes each", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1)); // daily at 23:30, offset 0, grace 30

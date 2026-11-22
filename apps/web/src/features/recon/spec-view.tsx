@@ -15,7 +15,7 @@ import { recordFields } from "@starterkit/shared/recon";
 import { buildCatalog, type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
+import { carryText, conditionParts, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { approvalChanges } from "./approval-model";
 import { useSideSource } from "./use-recons";
 import { api } from "@/lib/client/api";
@@ -146,7 +146,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
 
       <Panel title="Schedule and day close" actions={edit(3)}>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
-          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", daysText(spec.carry_over_days)],
+          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Unmatch is checked", carryText(spec.carry_over_days)],
             ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
             <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
           ))}
