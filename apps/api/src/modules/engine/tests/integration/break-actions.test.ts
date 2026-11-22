@@ -261,6 +261,13 @@ describe("posting results of the space", () => {
     const page = await json<{ items: { action: string; status: string; break: { id: string; ref: string | null }; recon: { name: string }; code: string | null }[]; total: number }>(
       call("GET", `/v1/spaces/${A}/action-runs?status=failed&kind=posting`, { token: t.op }));
     expect(page.items.map((r) => [r.action, r.status, r.break.ref, r.recon.name, r.code])).toEqual([["Post", "failed", "P1", "R", "51"]]);
+    // the break's amount, the connector it calls and its attempt (audit §5.3): a second request on the same item is attempt 2
+    expect(page.items[0]).toMatchObject({ amount: { minor: "10000", currency: "IDR" }, connector: { id: cid, name: "Bank Mega" }, attempts: 1 });
+    const [first] = await db.select().from(actionRuns).where(eq(actionRuns.actionName, "Post"));
+    await db.insert(actionRuns).values({ ...first!, id: Bun.randomUUIDv7(), requestId: Bun.randomUUIDv7(), createdAt: new Date(first!.createdAt.getTime() + 1000), status: "posted" });
+    const two = await json<{ items: { status: string; attempts: number }[] }>(call("GET", `/v1/spaces/${A}/action-runs?kind=posting`, { token: t.op }));
+    expect(two.items.map((r) => [r.status, r.attempts])).toEqual([["posted", 2], ["failed", 1]]);
+    await db.delete(actionRuns).where(eq(actionRuns.status, "posted"));
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs`, { token: t.op }))).total).toBe(2);
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs?q=P1`, { token: t.op }))).total).toBe(2);
     const csv = await call("GET", `/v1/spaces/${A}/action-runs?status=failed&format=csv`, { token: t.op });

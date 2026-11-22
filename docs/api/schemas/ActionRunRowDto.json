@@ -113,6 +113,60 @@
         "name"
       ],
       "additionalProperties": false
+    },
+    "amount": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "minor": {
+              "type": "string"
+            },
+            "currency": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "minor",
+            "currency"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "connector": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attempts": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
     }
   },
   "required": [
@@ -128,7 +182,10 @@
     "externalId",
     "at",
     "break",
-    "recon"
+    "recon",
+    "amount",
+    "connector",
+    "attempts"
   ],
   "additionalProperties": false
 }

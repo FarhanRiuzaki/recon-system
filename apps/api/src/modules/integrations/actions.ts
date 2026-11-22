@@ -20,9 +20,9 @@ import { maskTree, maskValue } from "@starterkit/shared/integrations";
 import type { InTx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
-import { breakContextOf } from "../engine";
+import { breakContextOf, itemsOf } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
-import { actionRuns, connectorVersions } from "./schema";
+import { actionRuns, connectors, connectorVersions } from "./schema";
 
 export type ActionEvent = { event: "level_approved"; level: number } | { event: "approved" } | { event: "rejected" };
 type Rq = {
@@ -129,14 +129,33 @@ function runsWhere(spaceId: string, q: ActionRunListQuery) {
   );
 }
 const runRows = (tx: InTx, where: ReturnType<typeof runsWhere>) =>
-  tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name }).from(actionRuns)
+  tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name, connector: connectors.name }).from(actionRuns)
     .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
-    .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId)).where(where).$dynamic();
-const toRunRow = ({ r, reconId, recon }: { r: typeof actionRuns.$inferSelect; reconId: string; recon: string }): ActionRunRowDto => ({
+    .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId))
+    .leftJoin(connectors, eq(connectors.id, actionRuns.connectorId)).where(where).$dynamic();
+type RunRow = { r: typeof actionRuns.$inferSelect; reconId: string; recon: string; connector: string | null };
+const toRunRow = ({ r, reconId, recon, connector }: RunRow, extra?: { amount: ActionRunRowDto["amount"]; attempts: number }): ActionRunRowDto => ({
   id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
   code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
   break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
+  connector: r.connectorId && connector ? { id: r.connectorId, name: connector } : null,
+  amount: extra?.amount ?? null, attempts: extra?.attempts ?? 1,
 });
+/**
+ * A page of runs with their break's amount and which attempt each is: the runs of the same action for the same break
+ * created up to it (a per-request run is its request's only one).
+ */
+async function withExtras(tx: InTx, spaceId: string, rows: RunRow[]): Promise<ActionRunRowDto[]> {
+  const itemIds = [...new Set(rows.flatMap((x) => (x.r.itemId ? [x.r.itemId] : [])))];
+  const items = new Map((await itemsOf(tx, spaceId, itemIds)).map((i) => [i.id, i]));
+  const tries = itemIds.length ? await tx.select({ itemId: actionRuns.itemId, action: actionRuns.actionName, at: actionRuns.createdAt }).from(actionRuns)
+    .where(and(eq(actionRuns.spaceId, spaceId), inArray(actionRuns.itemId, itemIds))) : [];
+  return rows.map((x) => {
+    const i = x.r.itemId ? items.get(x.r.itemId) : undefined;
+    const attempts = x.r.itemId ? tries.filter((t) => t.itemId === x.r.itemId && t.action === x.r.actionName && t.at <= x.r.createdAt).length : 1;
+    return toRunRow(x, { amount: i?.amountMinor ? { minor: i.amountMinor, currency: i.currency } : null, attempts: Math.max(1, attempts) });
+  });
+}
 
 /** The recon fields a source reads (a field, a lookup's key, a template's fields). */
 function readsOf(s: Source | undefined): string[] {
@@ -164,14 +183,14 @@ export function actionRunPage(ctx: Ctx, q: ActionRunListQuery): Promise<Page<Act
       rows: runRows(tx, where), count: tx.select({ id: actionRuns.id }).from(actionRuns).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { createdAt: actionRuns.createdAt }, "-createdAt", actionRuns.id), query: q, map: (x) => x, on: tx,
     });
-    return { ...page, items: page.items.map(toRunRow) };
+    return { ...page, items: await withExtras(tx, ctx.space!.id, page.items) };
   });
 }
 
 /** GET …/action-runs?format=csv: CSV text (with BOM) of the filtered runs, newest first, at most CSV_MAX_ROWS rows. */
 export function actionRunCsv(ctx: Ctx, q: ActionRunListQuery): Promise<string> {
   return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
-    const rows = (await runRows(tx, runsWhere(ctx.space!.id, q)).orderBy(desc(actionRuns.createdAt), desc(actionRuns.id)).limit(CSV_MAX_ROWS)).map(toRunRow);
+    const rows = (await runRows(tx, runsWhere(ctx.space!.id, q)).orderBy(desc(actionRuns.createdAt), desc(actionRuns.id)).limit(CSV_MAX_ROWS)).map((x) => toRunRow(x));
     return CSV_BOM + toCsv([
       ["Time (UTC)", "Recon", "Break", "Action", "Event", "Status", "Code", "Message", "Bank reference", "External ID"],
       ...rows.map((r) => [r.at, r.recon.name, r.break.ref, r.action, postingEvent(r), POSTING_STATUS_LABEL[r.status], r.code, r.message, r.bankReference, r.externalId]),

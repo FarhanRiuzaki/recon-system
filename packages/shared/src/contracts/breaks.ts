@@ -120,6 +120,12 @@ export const ActionRunRowDto = z.object({
   id: z.string(), action: z.string(), kind: z.enum(["posting", "notify"]), event: z.enum(["level_approved", "approved", "rejected"]), level: z.number().int().nullable(),
   status: z.enum(ACTION_STATUSES), code: z.string().nullable(), message: z.string().nullable(), bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string(),
   break: z.object({ id: z.string().nullable(), ref: z.string().nullable() }), recon: z.object({ id: z.string(), name: z.string() }),
+  /** Its break's amount as written (minor units); null for a run of the whole request or an item without one. */
+  amount: z.object({ minor: z.string(), currency: z.string().nullable() }).nullable(),
+  /** The connector it calls (null for a run that calls none, e.g. no posting rule fit). */
+  connector: z.object({ id: z.string(), name: z.string() }).nullable(),
+  /** Which attempt this is of the same action for the same break, oldest first (1 = the first time it was sent). */
+  attempts: z.number().int(),
 });
 export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;
 export const BreakDetailDto = z.object({

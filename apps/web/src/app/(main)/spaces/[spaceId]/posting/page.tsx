@@ -17,5 +17,5 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const { spaceId } = await params;
   const space = await openSpace(spaceId);
   if (!space?.roles.length) notFound();
-  return <Prefetch reads={[reads.space(spaceId), reads.actionRuns(spaceId, toSearch(await searchParams))]}><PostingPage spaceId={spaceId} spaceName={space.name} /></Prefetch>;
+  return <Prefetch reads={[reads.space(spaceId), reads.actionRuns(spaceId, toSearch(await searchParams))]}><PostingPage spaceId={spaceId} /></Prefetch>;
 }

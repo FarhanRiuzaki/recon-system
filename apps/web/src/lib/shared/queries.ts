@@ -10,6 +10,7 @@ import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRan
 import { ACTION_RUN_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
+import { selectionState } from "@starterkit/shared/filter-selection";
 import { timeRange } from "./time-controls";
 import { type FilterParser, isoDate, multiChoice, oneOf, type TableSpec, type TableState, text } from "./table-state";
 
@@ -146,11 +147,17 @@ export const INTEGRATIONS_KEY = ["integrations"] as const;
 export const CONNECTORS: TableDef<{ q: string }> = {
   key: INTEGRATIONS_KEY[0], path: "/api/integrations/connectors", spec: { sorts: CONNECTOR_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
 };
-export type PostingFilters = { q: string; status: string; kind: string };
-/** A space's approval action runs (stage 4), newest first: `status` every ticked value, `kind` posting or notify, `q` a reference. */
+export type PostingFilters = { q: string; status: string; kind: string; show: string };
+/** The results that need someone (audit §5.3): what the Posting list shows until the viewer picks statuses or shows all. */
+export const POSTING_ATTENTION = ["failed", "timeout", "not_sent"] as const;
+/**
+ * A space's approval action runs (stage 4), newest first: `status` every ticked value, `kind` posting or notify, `q` a
+ * reference; `show` attention (the default) asks for POSTING_ATTENTION while no status is ticked, all for every status.
+ */
 export const ACTION_RUNS = (spaceId: string): TableDef<PostingFilters> => ({
   key: INTEGRATIONS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/action-runs`,
-  spec: { sorts: ACTION_RUN_SORTS, defaultSort: "-createdAt", search: ["q"], filters: { q: text(200), status: multiChoice(), kind: oneOf(["", "posting", "notify"], "") } },
+  spec: { sorts: ACTION_RUN_SORTS, defaultSort: "-createdAt", search: ["q"], filters: { q: text(200), status: multiChoice(), kind: oneOf(["", "posting", "notify"], ""), show: oneOf(["attention", "all"], "attention") } },
+  params: (f) => ({ q: f.q, kind: f.kind, status: f.status || f.show === "all" ? f.status : selectionState([...POSTING_ATTENTION]) }),
 });
 export const connectorDetail = (id: string) => ({ key: [...INTEGRATIONS_KEY, "connector", id] as const, url: `/api/integrations/connectors/${encodeURIComponent(id)}` as const });
 

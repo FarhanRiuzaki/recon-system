@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import * as q from "./queries";
 import * as qr from "./queries-recon";
+import { readTable, tableRequest } from "./table-state";
 
 /**
  * Query keys start with the module that owns the data, so one invalidation by module refreshes all of it. The modules
@@ -69,5 +70,19 @@ describe("reconRunItems: the request a results tab sends", () => {
   });
   it("a pair outcome ignores a side left in the URL", () => {
     expect(params({ pass: "1", status: "matched", side: "b" })).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
+  });
+});
+
+describe("lists that open on a default view (audit §5.2, §5.3)", () => {
+  const request = <F extends Record<string, string>>(def: q.TableDef<F>, sp = "") => new URL(tableRequest(def.path, readTable(new URLSearchParams(sp), def.spec), def.spec, def.params).url, "http://x").searchParams;
+  it("Posting asks for failed, timeout and not sent until a status is ticked or all is shown", () => {
+    expect(request(q.ACTION_RUNS("s")).getAll("status")).toEqual(["failed", "not_sent", "timeout"]);
+    expect(request(q.ACTION_RUNS("s"), "show=all").getAll("status")).toEqual([]);
+    expect(request(q.ACTION_RUNS("s"), "status=posted").getAll("status")).toEqual(["posted"]);
+  });
+  it("Approvals asks for mine unless every request is shown; Unmatch opens on the largest amount", () => {
+    expect(request(qr.APPROVALS("s")).get("mine")).toBe("1");
+    expect(request(qr.APPROVALS("s"), "mine=0").get("mine")).toBeNull();
+    expect(request(qr.BREAKS("s")).get("sort")).toBe("-amount");
   });
 });
