@@ -9,7 +9,8 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { LibraryDetailDto, LibraryRowDto } from "@starterkit/shared/contracts/workflows";
-import { DEFAULT_LEVELS } from "@starterkit/shared/workflows";
+import { ROLE_LABEL } from "@starterkit/shared/spaces";
+import { DEFAULT_LEVELS, type Level } from "@starterkit/shared/workflows";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
@@ -27,6 +28,17 @@ const DEFAULT_ROW: LibraryRowDto = {
   id: DEFAULT_ROW_ID, name: "Default chain", levels: DEFAULT_LEVELS.length, levelNames: DEFAULT_LEVELS.map((l) => l.name), archived: false,
   published: null, open: null, reconsUsing: 0, updatedAt: "",
 };
+/** Who decides a chain, level by level: "one of Reviewer or Space admin" (the built-in chain's words, from DEFAULT_LEVELS). */
+export const defaultChainText = (levels: readonly Level[] = DEFAULT_LEVELS) => levels.map((l) => l.groups.map((g) => {
+  const need = g.need.kind === "any" ? "one" : g.need.kind === "all" ? "all" : String(g.need.n);
+  return `${need} of ${g.spaceRoles.map((r) => ROLE_LABEL[r]).join(" or ")}`;
+}).join(" and ")).join(", then ");
+/**
+ * The list's rows: the built-in chain leads the first page of the unsearched list once it has loaded workflows (it
+ * isn't one of the space's, nor counted), so a space without any still shows No workflows yet.
+ */
+export const libraryRows = (rows: LibraryRowDto[], s: { q: string; page: number; failed: boolean }) =>
+  !s.q && s.page === 1 && !s.failed && rows.length ? [DEFAULT_ROW, ...rows] : rows;
 /** "Checker · Treasury head", or how many levels when they have no names. */
 export const levelsText = (r: Pick<LibraryRowDto, "levels" | "levelNames">) => {
   const named = r.levelNames.filter((n) => n.trim());
@@ -40,7 +52,7 @@ export const libraryColumns = (spaceId: string): Column<LibraryRowDto>[] => {
     { key: "name", header: "Workflow", sortable: true, mobile: "title", className: "min-w-56", cell: (r) => (
       <span className="grid min-w-0">
         {builtIn(r) ? <span className="font-medium text-fg">{r.name}</span> : <Link href={href(r)} className={LINK}>{r.name}</Link>}
-        {builtIn(r) ? <span className="text-caption text-fg-3">Built in · read only · one of Reviewer or Space admin</span>
+        {builtIn(r) ? <span className="text-caption text-fg-3">Built in · read only · {defaultChainText()}</span>
           : (r.open || r.archived) && <span className="text-caption text-fg-3">{r.archived ? "Archived" : r.open!.status === "in_review" ? `Version ${r.open!.version} waits for approval` : `Draft ${r.open!.version}`}</span>}
       </span>
     ) },
@@ -65,8 +77,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
   const COLUMNS = useMemo(() => libraryColumns(spaceId), [spaceId]);
   const t = useTableQuery<LibraryRowDto, LibraryFilters>(def);
   const [busy, setBusy] = useState(false);
-  // the built-in chain leads the first page of the unsearched list (not counted: it isn't a workflow of the space)
-  const rows = !t.state.q && t.state.page === 1 && !t.loadError && (t.rows.length || !t.loading) ? [DEFAULT_ROW, ...t.rows] : t.rows;
+  const rows = libraryRows(t.rows, { q: t.state.q, page: t.state.page, failed: !!t.loadError });
   async function create() {
     setBusy(true);
     try {
@@ -96,7 +107,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
                 error={t.loadError ? { title: "Couldn't load workflows", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
                 empty={t.state.q
                   ? { icon: BranchIcon, title: "No workflows match", description: "Change the search, or clear it to see every workflow." }
-                  : { icon: BranchIcon, title: "No workflows yet", description: "A workflow appears here once a space admin creates one. Until a recon uses one, its changes take the default chain: one of Reviewer or Space admin." }} />
+                  : { icon: BranchIcon, title: "No workflows yet", description: `A workflow appears here once a space admin creates one. Until a recon uses one, its changes take the built-in default chain: ${defaultChainText()}.` }} />
             </Panel>
           )}
         </FilterLayout>
