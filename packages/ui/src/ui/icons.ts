@@ -80,6 +80,7 @@ export {
   Upload01Icon as UploadIcon,
   File02Icon as FileIcon,
   Delete02Icon as RemoveIcon,
+  PlusSignIcon as AddIcon, // An add intent (variant="add"): a row, a condition, an item
   LinkSquare02Icon as ExternalLinkIcon,
   Copy01Icon as CopyIcon,
   Tick02Icon as CheckIcon,

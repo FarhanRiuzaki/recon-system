@@ -24,6 +24,27 @@ export function FormSection({ title, description, children, className, split = t
 }
 
 /**
+ * A numbered section of a long editor (owner 22 Nov: "section ga keliatan … abu2 dan putih semua"): its number in the
+ * primary marker (the order to fill it in), the title as a heading, what the section is for under it, actions on the
+ * right. Without `n` it is a plain section title. The marker is decorative: the heading carries the name.
+ */
+export function SectionHeading({ n, title, description, actions, level = 2, className }: {
+  n?: number; title: string; description?: ReactNode; actions?: ReactNode; level?: 2 | 3 | 4; className?: string;
+}) {
+  const H = `h${level}` as const;
+  return (
+    <div className={cn("flex items-start gap-3", className)}>
+      {n !== undefined && <span aria-hidden="true" className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary-soft text-label text-primary tabular ring-1 ring-primary/20">{n}</span>}
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <H className="text-title-3 text-fg">{title}</H>
+        {description && <span className="text-body-sm text-fg-3">{description}</span>}
+      </span>
+      {actions && <span className="flex shrink-0 items-center gap-2">{actions}</span>}
+    </div>
+  );
+}
+
+/**
  * The form's buttons, last in the card: the primary action first, then Cancel (ui-standard §5). Sticky to the bottom of
  * the window while the form is taller than it, so Save stays in reach on a long form; it takes the card's padding back
  * (`-mx-4 -mb-4`) so its hairline runs edge to edge. Pass `sticky={false}` in a dialog or a short form.

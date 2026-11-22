@@ -9,7 +9,8 @@ import { Select } from "@starterkit/ui/ui/select";
 import type { CatalogField } from "@starterkit/shared/conditions";
 import type { OpField } from "@starterkit/shared/integrations";
 import type { Source } from "@starterkit/shared/mapping";
-import { type Leaf, parseTransforms, requestLeaves } from "./actions-model";
+import { type Leaf, requestLeaves } from "./actions-model";
+import { ChangeChips } from "./change-chips";
 
 // The field mapper (design §4.5, owner 22 Nov: "kiri data recon, kanan kolom openapi, tinggal tarik garis"): the
 // recon's fields on the left, the operation's request fields on the right. Pick a left field, then a right one, to
@@ -34,8 +35,6 @@ export function sourceText(s: Source | undefined, catalog: readonly CatalogField
 
 function SourceEditor({ path, value, onChange, catalog, setup, disabled }: { path: string; value: Source | undefined; onChange: (s: Source | undefined) => void; catalog: readonly CatalogField[]; setup: Setup; disabled: boolean }) {
   const kind = value?.kind ?? "none";
-  const [changes, setChanges] = useState(value?.kind === "field" ? value.transforms.join(", ") : "");
-  const parsed = parseTransforms(changes);
   const fieldPick = (v: string | undefined, set: (k: string) => void, label: string) => (
     <Combobox label={label} value={v ? [v] : []} disabled={disabled} placeholder="Pick a field" searchPlaceholder="Search fields"
       options={catalog.map((f) => ({ value: f.key, label: f.label, group: GROUP[f.group] }))} onValueChange={([k]) => k && set(k)} />
@@ -58,11 +57,7 @@ function SourceEditor({ path, value, onChange, catalog, setup, disabled }: { pat
       {value?.kind === "field" && (
         <div className="grid gap-2 md:grid-cols-2">
           {fieldPick(value.key, (key) => onChange({ ...value, key }), `${path}: field`)}
-          <span className="grid gap-1">
-            <Input aria-label={`${path}: changes`} value={changes} disabled={disabled} placeholder="Changes, e.g. amount:minor, pad_left:16:0" className="h-8 font-mono"
-              onChange={(e) => { setChanges(e.target.value); onChange({ ...value, transforms: parseTransforms(e.target.value).list }); }} />
-            {parsed.bad.length > 0 && <span className="text-caption text-down-ink">Not a change: {parsed.bad.join(", ")}</span>}
-          </span>
+          <ChangeChips label={`${path}: changes`} value={value.transforms} disabled={disabled} onChange={(transforms) => onChange({ ...value, transforms })} />
         </div>
       )}
       {value?.kind === "const" && <Input aria-label={`${path}: fixed value`} value={value.value} disabled={disabled} maxLength={500} className="h-8" onChange={(e) => onChange({ ...value, value: e.target.value })} />}

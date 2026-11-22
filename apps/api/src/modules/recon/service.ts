@@ -423,7 +423,11 @@ export function previewVersionAction(ctx: Ctx, id: string, versionId: string, b:
     // only a break of this recon (final review I2)
     const [x] = await tx.select({ id: reconItems.id }).from(reconItems).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, c.id), eq(reconItems.id, b.itemId))).limit(1);
     if (!x) throw notFound("break");
-    return previewAction(tx, ctx, (v.spec as ReconSpec).approvals, c.code, b.change, b.action, b.itemId) as Promise<ActionPreviewDto>;
+    // the action being edited, in place of the saved one (or after the saved ones, a new action)
+    const saved = (v.spec as ReconSpec).approvals;
+    const base = saved ?? ({ accounts: [], lookups: [], changes: {} } as unknown as NonNullable<typeof saved>);
+    const approvals = b.draft ? { ...base, changes: { ...base.changes, [b.change]: { workflow: { default: null, rules: [] }, ...base.changes[b.change], actions: Object.assign([...(base.changes[b.change]?.actions ?? [])], { [b.action]: b.draft }) } } } as typeof saved : saved;
+    return previewAction(tx, ctx, approvals, c.code, b.change, b.action, b.itemId) as Promise<ActionPreviewDto>;
   });
 }
 

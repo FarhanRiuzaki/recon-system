@@ -2,10 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { Field, Panel } from "@starterkit/ui/ds";
+import { Field, Panel, SectionHeading } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
@@ -73,8 +73,10 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
   const [open, setOpen] = useState<number | null>(null);
   const change = TRIGGER_LABEL[kind].toLowerCase();
   return (
-    <Panel title={TRIGGER_LABEL[kind]}>
-      <div className="grid gap-4">
+    <Panel title={TRIGGER_LABEL[kind]} description={`What happens when someone asks for a ${change} in ${recon}`}>
+      <div className="grid gap-6">
+        <section className="grid gap-4">
+        <SectionHeading n={1} level={3} title="Who approves" description="The workflow every request goes through; rules can pick another one in some cases" />
         <div className="grid gap-1.5">
           <span className="flex flex-wrap items-center gap-2 text-body-sm text-fg-2">
             {w.rules.length ? `Every other ${change} in ${recon} is approved by` : `Every ${change} in ${recon} is approved by`}
@@ -86,7 +88,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
         {w.rules.length > 0 && (
           <ol className="grid gap-2" aria-label={`${TRIGGER_LABEL[kind]}: rules, first match wins`}>
             {w.rules.map((r, i) => (
-              <li key={i} className="grid gap-2 rounded-lg border border-line bg-card p-3 motion-safe:animate-enter">
+              <li key={i} className="grid gap-2 rounded-lg border border-line-strong bg-card p-3 shadow-xs motion-safe:animate-enter">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 text-body-sm">
                     <span className="text-label text-fg">{r.name.trim() || `Rule ${i + 1}`}</span>
@@ -120,12 +122,18 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled, chi
           </ol>
         )}
         {!disabled && w.rules.length < RULES_MAX && (
-          <button type="button" className="rounded-lg border border-dashed border-line-strong px-3 py-2.5 text-left text-body-sm text-fg-2 transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary"
+          <Button type="button" variant="add" className="justify-self-start"
             onClick={() => { setRules([...w.rules, { name: "", when: { all: [{ field: "", op: "eq", value: "" }] }, workflow: { id: "", version: 1 } }]); setOpen(w.rules.length); }}>
-            Use another workflow in some cases
-          </button>
+            <Icon icon={AddIcon} />Add a rule for some cases
+          </Button>
         )}
-        {children && <div className="border-t border-line pt-4">{children}</div>}
+        </section>
+        {children && (
+          <section className="grid gap-4 border-t border-line-strong pt-6">
+            <SectionHeading n={2} level={3} title="What is sent to the bank" description="Actions that run on this change's approval events, through an Open API connector" />
+            {children}
+          </section>
+        )}
       </div>
     </Panel>
   );
@@ -239,8 +247,8 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
         {TRIGGERS.map((k) => (
           <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
             onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })}>
-            <ActionsEditor kind={k} actions={(local.changes[k] ?? empty).actions ?? []} spaceId={spaceId} configId={configId} versionId={versionId}
-              catalog={actionCatalog} setup={{ accounts: local.accounts ?? [], lookups: local.lookups ?? [] }} disabled={disabled} dirty={dirty || unfinished}
+            <ActionsEditor kind={k} changeLabel={TRIGGER_LABEL[k]} actions={(local.changes[k] ?? empty).actions ?? []} spaceId={spaceId} configId={configId} versionId={versionId}
+              catalog={actionCatalog} setup={{ accounts: local.accounts ?? [], lookups: local.lookups ?? [] }} disabled={disabled}
               onChange={(actions) => set({ ...local, changes: { ...local.changes, [k]: { ...(local.changes[k] ?? empty), actions } } })} />
           </ChangeCard>
         ))}
