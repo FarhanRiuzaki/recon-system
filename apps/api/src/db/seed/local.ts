@@ -8,8 +8,9 @@ import { DEFAULT_PEOPLE } from "./users";
 export const LOCAL_ROLES: readonly SpaceRole[] = ["space_admin", "source_admin", "config_maker"];
 /** The default maker's and approver's roles in Treasury: the maker sets up sources and recons, the approver checks them. */
 export const PEOPLE_ROLES: Record<(typeof DEFAULT_PEOPLE)[number]["username"], readonly SpaceRole[]> = {
-  maker: ["source_admin", "config_maker"],
-  approver: ["config_checker"],
+  // maker also works breaks and asks for their changes; approver also decides them (the default approval chain, DEC-052)
+  maker: ["source_admin", "config_maker", "operator"],
+  approver: ["config_checker", "reviewer"],
 };
 
 /**
