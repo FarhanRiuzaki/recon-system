@@ -11,7 +11,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/shared/recon";
 import { DEFAULT_CHAIN, TRIGGERS } from "@starterkit/shared/workflows";
-import { CURRENCY_EXPONENT, DEBIT_CODES } from "@starterkit/shared/sources";
+import { CURRENCY_EXPONENT, DEBIT_CODES, directionOf } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
 import { and, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
@@ -43,7 +43,7 @@ export async function recordSpaces(tx: InTx, spaceId: string): Promise<string[]>
 }
 
 /** Live items `ids` of the space with their records, as the break's page shows them; in the order of `ids`. */
-export async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[]): Promise<(BreakItemDto & { configId: string; signed: bigint | null; v: number; state: string | null; assigneeId: string | null })[]> {
+export async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[]): Promise<(Omit<BreakItemDto, "signedMinor"> & { configId: string; signed: bigint | null; v: number; state: string | null; assigneeId: string | null })[]> {
   if (!ids.length) return [];
   const spaces = await recordSpaces(tx, spaceId);
   const rows = await tx.select({
@@ -62,14 +62,16 @@ export async function itemsOf(tx: InTx, spaceId: string, ids: readonly string[])
     const signed = r.amount === null || r.amount === undefined ? null : DEBIT_CODES.includes((r.dir ?? "").trim().toUpperCase()) ? -r.amount : r.amount;
     return [{
       id: r.id, configId: r.configId, side: r.side as "a" | "b", businessDate: r.bd, status: r.status as ItemStatus, reason: r.reason,
-      ref: r.ref ?? null, amountMinor: r.amount === null || r.amount === undefined ? null : String(r.amount), currency: r.ccy ?? null,
+      ref: r.ref ?? null, direction: r.dir ? directionOf(r.dir) : null, amountMinor: r.amount === null || r.amount === undefined ? null : String(r.amount), currency: r.ccy ?? null,
       eventTime: r.at ? r.at.toISOString() : null, source: r.source ?? null, signed, v: r.v, state: r.state, assigneeId: r.assigneeId,
     }];
   });
 }
-export const plain = ({ id, side, businessDate, status, reason, ref, amountMinor, currency, eventTime, source }: BreakItemDto): BreakItemDto =>
-  ({ id, side, businessDate, status, reason, ref, amountMinor, currency, eventTime, source });
-
+/** The item as the page shows it; `signedMinor` on `spec`'s sign convention (pass.ts comparedAmount; as is without a spec). */
+export const plain = ({ id, side, businessDate, status, reason, ref, amountMinor, direction, signed, currency, eventTime, source }: Omit<BreakItemDto, "signedMinor"> & { signed: bigint | null }, spec: ReconSpec | null): BreakItemDto => ({
+  id, side, businessDate, status, reason, ref, amountMinor, direction, currency, eventTime, source,
+  signedMinor: signed === null ? null : String(spec?.sides[side === "a" ? 0 : 1].amount_sign === "negate" ? -signed : signed),
+});
 /** The break `id` of the space: a live item that broke (open, resolved or matched since); else 404. */
 export async function breakOf(tx: InTx, spaceId: string, id: string) {
   const [x] = await tx.select().from(reconItems)
@@ -154,7 +156,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
     return {
-      item: plain(item!), recon: {
+      item: plain(item!, live), recon: {
         id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live),
         // carry over is calendar days from the business date (engine addDays); before a first approval it reads as always
         carryOverDays: live?.carry_over_days ?? null, recheck: await recheckOf(tx, spaceId, x, live),
@@ -162,9 +164,9 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       }, state: (x.breakState ?? "new") as BreakState,
       assignee: x.assigneeId ? { id: x.assigneeId, name } : null,
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
-      resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),
-      proposed: p ? { item: plain(p), pass: x.proposedPass, available: free(p) } : null,
-      request: rq ? { ...(await requestView(tx, ctx, rq)), items: (await itemsOf(tx, spaceId, rq.itemIds)).map(plain) } : null,
+      resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map((i) => plain(i, live)),
+      proposed: p ? { item: plain(p, live), pass: x.proposedPass, available: free(p) } : null,
+      request: rq ? { ...(await requestView(tx, ctx, rq)), items: (await itemsOf(tx, spaceId, rq.itemIds)).map((i) => plain(i, live)) } : null,
       // its actions and posting result (stage 4); the masked payload and answer for an Open API reader or the space admin
       ...(rq ? await runsOf(tx, spaceId, rq.id, x.id, ctx.perms.has("integration.view") || !!ctx.space?.roles.includes("space_admin")) : { actions: [], posting: null }),
     };
@@ -194,7 +196,8 @@ export function candidatePage(ctx: Ctx, id: string, q: BreakCandidateQuery): Pro
       map: (r) => r.id as string,
       on: tx,
     });
-    return { ...page, items: (await itemsOf(tx, spaceId, page.items)).map(plain) };
+    const live = await liveSpec(tx, spaceId, x.configId);
+    return { ...page, items: (await itemsOf(tx, spaceId, page.items)).map((i) => plain(i, live)) };
   });
 }
 

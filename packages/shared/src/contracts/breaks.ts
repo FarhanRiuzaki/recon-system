@@ -52,7 +52,11 @@ export type TakeBreaksBody = z.infer<typeof TakeBreaksBody>;
 export const BreakStateBody = z.strictObject({ ids, state: z.enum(WORK_STATES) });
 export type BreakStateBody = z.infer<typeof BreakStateBody>;
 
-/** An item as the break's page shows it: its side, record (reference, amount, currency, dates) and where it stands. */
+/**
+ * An item as the break's page shows it: its side, record (reference, amount, currency, dates) and where it stands.
+ * `amountMinor` is the record's amount as written; `signedMinor` the one a match totals (a debit code negated, then
+ * its side's amount_sign on the live version), null without an amount.
+ */
 export const BreakItemDto = z.object({
   id: z.string(),
   side: z.enum(["a", "b"]),
@@ -61,6 +65,8 @@ export const BreakItemDto = z.object({
   reason: z.string().nullable(),
   ref: z.string().nullable(),
   amountMinor: z.string().nullable(),
+  signedMinor: z.string().nullable(),
+  direction: z.enum(["debit", "credit"]).nullable(),
   currency: z.string().nullable(),
   eventTime: z.string().nullable(),
   source: z.string().nullable(),

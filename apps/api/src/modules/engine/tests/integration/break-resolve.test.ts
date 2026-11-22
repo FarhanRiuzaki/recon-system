@@ -71,6 +71,21 @@ describe("a break's page and candidates", () => {
   });
 });
 
+describe("signed amounts on a break's page", () => {
+  it("each item's amount as the totals compare it: a debit code negated, then its side's amount_sign", async () => {
+    const signedOf = async () => Object.fromEntries((await json<Page<BreakItemDto>>(call("GET", path(I.a1, "/candidates"), { token: t.op }))).items.map((x) => [x.ref, x.signedMinor]));
+    expect((await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }))).item.signedMinor).toBe("10000");
+    const [b1] = await db.select({ rec: reconItems.recordId }).from(reconItems).where(eq(reconItems.id, I.b1));
+    await db.update(records).set({ direction: "DR" }).where(eq(records.id, b1!.rec));
+    expect(await signedOf()).toMatchObject({ P1: "-10000", P2: "9900" });
+    expect((await json<Page<BreakItemDto>>(call("GET", path(I.a1, "/candidates?q=P1"), { token: t.op }))).items[0]).toMatchObject({ amountMinor: "10000", direction: "debit" });
+    const [v] = await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
+    const sp = v!.spec as { sides: object[] };
+    await db.update(reconConfigVersions).set({ spec: { ...sp, sides: [sp.sides[0], { ...sp.sides[1], amount_sign: "negate" }] } }).where(eq(reconConfigVersions.id, v!.id));
+    expect(await signedOf()).toMatchObject({ P1: "10000", P2: "-9900" });
+  });
+});
+
 describe("carry over on a break's page", () => {
   it("says whether runs check the item again, by the engine's pool rules: until business date + carry over, always, or not", async () => {
     const recheck = async () => (await json<BreakDetailDto>(call("GET", path(I.a1), { token: t.op }))).recon.recheck;

@@ -12,16 +12,23 @@ export const money = (i: Pick<BreakItemDto, "amountMinor" | "currency">) => `${a
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 const signed = (n: bigint | number, text: string) => `${n > 0 ? "+" : "−"}${text}`;
 
-/** The counterpart's amount minus this item's, in the item's currency; null without both amounts. */
+/**
+ * The counterpart's amount minus this item's, on the signed amounts a match totals (debit negated, then each side's
+ * amount_sign), in the item's currency; null without both amounts.
+ */
 export function amountDelta(a: BreakItemDto, b: BreakItemDto): string | null {
-  if (a.amountMinor === null || b.amountMinor === null) return null;
+  if (a.signedMinor === null || b.signedMinor === null) return null;
   if (a.currency !== b.currency) return "Another currency";
-  const d = BigInt(b.amountMinor) - BigInt(a.amountMinor);
+  const d = BigInt(b.signedMinor) - BigInt(a.signedMinor);
   if (d === 0n) return "Same";
   const exp = a.currency ? CURRENCY_EXPONENT[a.currency] : undefined;
   const abs = d < 0n ? -d : d;
   return signed(d, `${exp === undefined ? String(abs) : formatMinor(abs, exp)}${a.currency ? ` ${a.currency}` : ""}`);
 }
+/** Whether two items count the opposite way in a match (their signed amounts differ in sign): the unsigned amounts alone would mislead. */
+export const oppositeWays = (a: BreakItemDto, b: BreakItemDto) =>
+  a.signedMinor !== null && b.signedMinor !== null && a.signedMinor.startsWith("-") !== b.signedMinor.startsWith("-");
+export const DIRECTION_LABEL = { debit: "Debit", credit: "Credit" } as const;
 
 /** Days from business date `a` to `b`. */
 export function dayDelta(a: string, b: string): string {
@@ -36,20 +43,28 @@ export function compareRows(a: BreakItemDto, b: BreakItemDto): CompareLine[] {
   return [
     { label: "Reference", a: a.ref ?? "No reference", b: b.ref ?? "No reference", differs: false },
     { label: "Amount", a: money(a), b: money(b), delta: amount ?? undefined, differs: amount !== null && amount !== "Same" },
+    ...(oppositeWays(a, b) && (a.direction || b.direction)
+      ? [{ label: "Direction", a: a.direction ? DIRECTION_LABEL[a.direction] : "–", b: b.direction ? DIRECTION_LABEL[b.direction] : "–", differs: true }] : []),
     { label: "Business date", a: dateText(a.businessDate), b: dateText(b.businessDate), delta: dayDelta(a.businessDate, b.businessDate), differs: a.businessDate !== b.businessDate },
-    { label: "Source", a: a.source ?? "—", b: b.source ?? "—", differs: false },
+    { label: "Source", a: a.source ?? "–", b: b.source ?? "–", differs: false },
   ];
 }
 
-/** Several counterparts as one side: their total (one currency, else none), the latest date, the first reference. */
+/**
+ * Several counterparts as one side: their net signed total (one currency, else none) shown unsigned, the latest date,
+ * the first reference. A direction only when they all share it.
+ */
 export function combined(items: readonly BreakItemDto[]): BreakItemDto | null {
   const [first] = items;
   if (!first || items.length === 1) return first ?? null;
-  const one = items.every((i) => i.currency === first.currency && i.amountMinor !== null);
+  const one = items.every((i) => i.currency === first.currency && i.signedMinor !== null);
+  const net = one ? items.reduce((t, i) => t + BigInt(i.signedMinor!), 0n) : null;
   return {
     ...first,
     ref: `${first.ref ?? "No reference"} and ${items.length - 1} more`,
-    amountMinor: one ? String(items.reduce((t, i) => t + BigInt(i.amountMinor!), 0n)) : null,
+    amountMinor: net === null ? null : String(net < 0n ? -net : net),
+    signedMinor: net === null ? null : String(net),
+    direction: items.every((i) => i.direction === first.direction) ? first.direction : null,
     businessDate: items.reduce((d, i) => (i.businessDate > d ? i.businessDate : d), first.businessDate),
     source: new Set(items.map((i) => i.source)).size === 1 ? first.source : "Several sources",
   };

@@ -31,7 +31,7 @@ import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { STATE_LABEL } from "./break-columns";
-import { amountDelta, combined, compareRows, dateText, money, recheckText, type Settle, settleActions } from "./break-model";
+import { amountDelta, combined, compareRows, dateText, DIRECTION_LABEL, money, oppositeWays, recheckText, type Settle, settleActions } from "./break-model";
 import { BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
@@ -186,7 +186,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         ) : (
           <Panel title="This item" description={open ? `No ${other} item is proposed for it yet; each run looks for one.` : undefined}>
             <dl className="grid gap-x-6 gap-y-2 text-body-sm md:grid-cols-[9rem_minmax(0,1fr)]">
-              <dt className="text-fg-3">Source</dt><dd className="text-fg">{b.item.source ?? "—"}</dd>
+              <dt className="text-fg-3">Source</dt><dd className="text-fg">{b.item.source ?? "–"}</dd>
               <dt className="text-fg-3">Age</dt><dd className="text-fg">{b.ageDays === 0 ? "Today" : `${b.ageDays} ${b.ageDays === 1 ? "day" : "days"} old`}</dd>
             </dl>
           </Panel>
@@ -319,8 +319,8 @@ function Counterparts({ spaceId, id, other, item, picked, onPick, panel }: { spa
       <label className="inline-grid size-7 cursor-pointer place-items-center"><input type="checkbox" aria-label={`Pick ${r.ref ?? "item"}`} checked={picked.has(r.id)} onChange={() => toggle(r.id)} className="size-4 cursor-pointer accent-primary" /></label>
     ) },
     { key: "ref", header: "Reference", mobile: "title", cell: (r) => <span className="font-mono text-body-sm">{r.ref ?? "No reference"}</span> },
-    { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular">{money(r)}</span> },
-    { key: "difference", header: "Difference", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular text-fg-2">{amountDelta(item, r) ?? "—"}</span> },
+    { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular">{money(r)}{oppositeWays(item, r) && r.direction && <span className="text-fg-3"> · {DIRECTION_LABEL[r.direction]}</span>}</span> },
+    { key: "difference", header: "Difference", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular text-fg-2">{amountDelta(item, r) ?? "–"}</span> },
     { key: "date", header: "Business date", mobile: "meta", className: "whitespace-nowrap", cell: (r) => dateText(r.businessDate) },
     { key: "reason", header: "Reason", mobile: "meta", cell: (r) => (r.status === "break" && r.reason ? <CategoryChip label={r.reason} slot={categoryChip("reason", r.reason)} /> : <span className="text-fg-3">Waiting</span>) },
   ];

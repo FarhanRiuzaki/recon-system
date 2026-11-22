@@ -49,6 +49,26 @@
               "null"
             ]
           },
+          "signedMinor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "direction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "debit",
+                  "credit"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "currency": {
             "type": [
               "string",
@@ -76,6 +96,8 @@
           "reason",
           "ref",
           "amountMinor",
+          "signedMinor",
+          "direction",
           "currency",
           "eventTime",
           "source"

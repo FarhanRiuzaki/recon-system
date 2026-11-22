@@ -3,8 +3,10 @@ import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/
 import { amountDelta, combined, compareRows, dayDelta, recheckText, routeText, settleActions } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
-  id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking", ...o,
+  id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
+  direction: null, ...o, signedMinor: o.signedMinor !== undefined ? o.signedMinor : o.amountMinor !== undefined ? o.amountMinor : "3607350000",
 });
+const debit = (amount: string, o: Partial<BreakItemDto> = {}) => item({ amountMinor: amount, signedMinor: `-${amount}`, direction: "debit", ...o });
 const route = (kind: BreakDetailDto["recon"]["routes"][number]["kind"], o: object = {}) => ({ kind, workflowName: null, levels: 1, connector: null, ...o });
 const recon = (o: Partial<BreakDetailDto["recon"]> = {}): BreakDetailDto["recon"] => ({
   id: "r", name: "BI-FAST", sides: ["Core banking", "BI-FAST"], posts: true, carryOverDays: 1, recheck: { kind: "until", date: "2026-11-03" },
@@ -18,6 +20,14 @@ describe("the difference between this item and its counterpart", () => {
     expect(amountDelta(item(), item())).toBe("Same");
     expect(amountDelta(item(), item({ currency: "EUR" }))).toBe("Another currency");
     expect(amountDelta(item({ amountMinor: null }), item())).toBeNull();
+  });
+  it("amount: on the signed amounts the totals compare, so a credit and a debit of one amount are not the same", () => {
+    expect(amountDelta(item({ amountMinor: "10000", direction: "credit" }), debit("10000"))).toBe("−200.00 IDR");
+    const rows = compareRows(item({ amountMinor: "10000", direction: "credit" }), debit("10000", { id: "b1", side: "b" }));
+    expect(rows.find((r) => r.label === "Amount")).toMatchObject({ a: "100.00 IDR", b: "100.00 IDR", differs: true });
+    expect(rows.find((r) => r.label === "Direction")).toMatchObject({ a: "Credit", b: "Debit", differs: true });
+    // the same direction needs no hint
+    expect(compareRows(item(), item({ id: "b1" })).some((r) => r.label === "Direction")).toBe(false);
   });
   it("business date: days between, Same day when equal", () => {
     expect(dayDelta("2026-11-02", "2026-11-03")).toBe("+1 day");
@@ -34,6 +44,8 @@ describe("the difference between this item and its counterpart", () => {
     const c = combined([item({ id: "b1", ref: "Q1", amountMinor: "100" }), item({ id: "b2", ref: "Q2", amountMinor: "50", businessDate: "2026-11-04" })]);
     expect(c).toMatchObject({ ref: "Q1 and 1 more", amountMinor: "150", businessDate: "2026-11-04" });
     expect(combined([item({ currency: "IDR" }), item({ currency: "EUR" })])?.amountMinor).toBeNull();
+    // a credit of 150 and a debit of 50 net 100
+    expect(combined([item({ amountMinor: "15000" }), debit("5000")])).toMatchObject({ amountMinor: "10000", signedMinor: "10000" });
     expect(combined([])).toBeNull();
   });
 });
