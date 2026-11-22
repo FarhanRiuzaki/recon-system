@@ -386,6 +386,13 @@
       "when": 1795356110160,
       "tag": "0054_action_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1795356326117,
+      "tag": "0055_connector_circuits",
+      "breakpoints": true
     }
   ]
 }

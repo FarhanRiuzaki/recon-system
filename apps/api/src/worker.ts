@@ -6,11 +6,12 @@ import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
 import { engineHandlers } from "./modules/engine";
 import { ingestHandlers } from "./modules/ingest";
+import { integrationsHandlers } from "./modules/integrations";
 
 const { API_HOST, WORKER_HEALTH_PORT } = loadWorkerConfig(process.env);
 
-/** The job handlers, on the worker's pool (DEC-036): ingest (Plan 2), recon runs and simulations (Plan 3); Plan 4 adds SLA. */
-const HANDLERS = { ...ingestHandlers(workerDb), ...engineHandlers(workerDb) };
+/** The job handlers, on the worker's pool (DEC-036): ingest (Plan 2), recon runs and simulations (Plan 3), approval actions (stage 4). */
+const HANDLERS = { ...ingestHandlers(workerDb), ...engineHandlers(workerDb), ...integrationsHandlers(workerDb) };
 
 const stopWorker = await startWorker(HANDLERS);
 // Partitions daily at 00:10 Asia/Jakarta, and once now: a fresh install has none, and ingest makes one only as a fallback.
@@ -20,6 +21,8 @@ await enqueue(QUEUES.maintenancePartitions, {}, { key: "start" });
 // that was down catches up on its first minute.
 await scheduleEvery(QUEUES.reconSchedule, "schedule", "* * * * *", {});
 await unschedule(QUEUES.reconTick, "schedule"); // its first home (wt/task6 before review): a tick slot each minute
+// approval actions left sending by a worker that died after the call went out become timeout, never sent again (O4)
+await scheduleEvery(QUEUES.integrationsAction, "sweep", "* * * * *", { sweep: true });
 // 200 while the queue loops are alive (fetched within 60 s or holding a job), else 503; anything else 404.
 const server = Bun.serve({
   hostname: API_HOST,

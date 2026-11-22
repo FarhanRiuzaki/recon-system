@@ -112,3 +112,11 @@ export const actionRuns = pgTable("action_runs", {
   index("action_runs_sending").on(t.status, t.sendingAt),
   check("action_runs_status_check", sql`status in ('queued', 'sending', 'posted', 'failed', 'not_sent', 'timeout', 'no_rule', 'skipped')`),
 ]);
+
+/** Transport failures in a row per connector and environment; 5 open the circuit until `open_until` (calls not sent). */
+export const connectorCircuits = pgTable("connector_circuits", {
+  connectorId: uuid("connector_id").notNull().references(() => connectors.id, { onDelete: "cascade" }),
+  environment: text("environment").notNull(),
+  failures: integer("failures").notNull().default(0),
+  openUntil: timestamp("open_until", { withTimezone: true }),
+}, (t) => [primaryKey({ name: "connector_circuits_pkey", columns: [t.connectorId, t.environment] })]);
