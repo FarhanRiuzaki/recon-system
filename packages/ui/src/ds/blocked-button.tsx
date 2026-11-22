@@ -12,13 +12,15 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
  * the layout is the same as a bare button). `caption={false}` for dense rows (table row actions) that show the same
  * reason elsewhere on touch; the reason then stays screen-reader only there.
  * `onBlockedPress` runs on a press while blocked (show where the problem is); the action itself never runs then.
+ * A `disabled` passed with a reason is ignored (aria-disabled instead), so keyboard and mouse still reach the reason.
  * `className` stays on the button, blocked or not. Under a coarse pointer the button and its caption are one box:
  * `wrapClassName` places that box where the button alone would sit (`w-full` beside a full-width button, `ml-auto
  * items-end` for a button pushed right); with a fine pointer the wrapper has no box, so it changes nothing there.
  */
-export function BlockedButton({ reason, caption = true, children, onClick, onBlockedPress, className, wrapClassName, ...props }: ComponentProps<typeof Button> & { reason: string | null; caption?: boolean; wrapClassName?: string; onBlockedPress?: () => void }) {
+export function BlockedButton({ reason, caption = true, children, onClick, onBlockedPress, className, wrapClassName, disabled, ...props }: ComponentProps<typeof Button> & { reason: string | null; caption?: boolean; wrapClassName?: string; onBlockedPress?: () => void }) {
   const id = useId();
-  if (!reason) return <Button onClick={onClick} className={className} {...props}>{children}</Button>;
+  if (!reason) return <Button onClick={onClick} className={className} disabled={disabled} {...props}>{children}</Button>;
+  // with a reason, a native `disabled` is ignored: it would take the button out of focus and hover, and the reason with it
   return (
     // Only `display` changes with the pointer; the flex classes act once the wrapper is a box (coarse).
     <span className={cn("contents flex-col items-start gap-1 pointer-coarse:inline-flex", wrapClassName)} data-slot="blocked-button">

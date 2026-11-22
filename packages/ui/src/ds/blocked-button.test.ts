@@ -49,3 +49,18 @@ describe("BlockedButton layout classes", () => {
     expect(wrap).not.toContain("items-start");
   });
 });
+
+/** A caller often passes `disabled` with the reason; a native disabled button takes no focus or hover, so the reason never reaches anyone. */
+describe("BlockedButton with disabled and a reason", () => {
+  it("stays focusable: aria-disabled, no native disabled, the reason still its description", () => {
+    const out = html({ disabled: true });
+    const btn = /<button[^>]*>/.exec(out)?.[0] ?? "";
+    expect(btn).toContain('aria-disabled="true"');
+    expect(btn).not.toMatch(/\sdisabled(=|\s|>)/);
+    expect(btn).toMatch(/aria-describedby=/);
+  });
+
+  it("without a reason, disabled stays a native disabled button", () => {
+    expect(html({ reason: null, disabled: true })).toMatch(/^<button[^>]*\sdisabled/);
+  });
+});
