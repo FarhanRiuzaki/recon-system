@@ -38,6 +38,7 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
           <DialogTitle>Replace {SECRET_LABEL[what].toLowerCase()} · {ENVIRONMENT_LABEL[env]}</DialogTitle>
           <DialogDescription>It is stored encrypted and never shown again. Calls use it from now on.</DialogDescription>
         </DialogHeader>
+        <div className="grid gap-4 px-6 py-4">
         <Field id="secret-value" label={SECRET_LABEL[what]} required error={error}>
           {pem
             ? <Textarea id="secret-value" rows={6} value={value} onChange={(e) => setValue(e.target.value)} className="font-mono" placeholder="-----BEGIN PUBLIC KEY-----" disabled={busy} />
@@ -45,6 +46,7 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
               ? <PasswordInput id="secret-value" value={value} autoComplete="off" onChange={(e) => setValue(e.target.value)} disabled={busy} />
               : <Input id="secret-value" value={value} autoComplete="off" onChange={(e) => setValue(e.target.value)} disabled={busy} />}
         </Field>
+        </div>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void save()} disabled={busy} aria-busy={busy || undefined}>

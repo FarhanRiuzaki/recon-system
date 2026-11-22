@@ -61,9 +61,11 @@ function TurnOffDialog({ id, onDone, onClose }: { id: string; onDone: (d: Connec
           <DialogTitle>Turn off connector</DialogTitle>
           <DialogDescription>Nothing is sent through it until it is turned on again. Actions that would use it are marked not sent.</DialogDescription>
         </DialogHeader>
+        <div className="grid gap-4 px-6 py-4">
         <Field id="off-reason" label="Reason" required error={error}>
           <Textarea id="off-reason" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} disabled={busy} placeholder="The bank asked us to stop during their incident" />
         </Field>
+        </div>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="button" onClick={() => void go()} disabled={busy} aria-busy={busy || undefined}>
