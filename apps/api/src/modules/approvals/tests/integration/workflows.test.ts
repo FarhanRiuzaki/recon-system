@@ -90,6 +90,23 @@ describe("a space's workflows", () => {
     expect((await err(r)).code).toBe("invalid_state");
   });
 
+  it("an incomplete draft saves (no name, a group naming nobody); sending it is refused with the reason, then allowed once complete", async () => {
+    const w = await create(t.m1, "Checker only");
+    const nobody: Level[] = [...reviewers, { name: "", groups: [{ spaceRoles: [], globalRoles: [], users: [], need: { kind: "any" } }] }];
+    const saved = await call("PATCH", W(A, `/${w.id}/draft`), { token: t.m1, body: { spec: { name: "  ", levels: nobody } } });
+    expect(saved.status).toBe(200);
+    const d = await json<LibraryDetailDto>(saved);
+    expect(d.open?.spec).toEqual({ name: "", levels: nobody });
+    expect(d.name).toBe("Checker only"); // an empty draft name never renames the workflow
+    const noName = await err(await call("POST", W(A, `/${w.id}/draft/submit`), { token: t.m1 }));
+    expect(noName).toEqual({ code: "invalid_state", message: "Name the workflow to send it for approval." });
+    await call("PATCH", W(A, `/${w.id}/draft`), { token: t.m1, body: { spec: { name: "Checker only", levels: nobody } } });
+    const noOne = await err(await call("POST", W(A, `/${w.id}/draft/submit`), { token: t.m1 }));
+    expect(noOne).toEqual({ code: "invalid_state", message: "Pick who approves level 2, group 1 to send it for approval." });
+    await call("PATCH", W(A, `/${w.id}/draft`), { token: t.m1, body: { spec: { name: "Checker only", levels: reviewers } } });
+    expect((await call("POST", W(A, `/${w.id}/draft/submit`), { token: t.m1 })).status).toBe(200);
+  });
+
   it("archive is refused while a recon version pins it, then allowed; used by marks an older pin", async () => {
     const w = await create(t.m1, "Checker only");
     await publish(w.id, t.m2, t.m1);

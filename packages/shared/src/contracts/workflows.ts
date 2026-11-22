@@ -15,17 +15,23 @@ const Need = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("all") }),
   z.strictObject({ kind: z.literal("count"), n: z.number().int().min(2).max(PEOPLE_MAX) }),
 ]);
-const Group = z.strictObject({
+const DraftGroup = z.strictObject({
   spaceRoles: z.array(z.enum(SPACE_ROLES)).max(SPACE_ROLES.length),
   globalRoles: z.array(z.string().min(1).max(40)).max(PEOPLE_MAX),
   users: z.array(z.uuid()).max(PEOPLE_MAX),
   need: Need,
-}).refine((g) => g.spaceRoles.length + g.globalRoles.length + g.users.length > 0, "Pick who approves.");
-const Level = z.strictObject({ name: z.string().trim().max(RULE_NAME_MAX), groups: z.array(Group).min(1).max(GROUPS_MAX) });
+});
+const Group = DraftGroup.refine((g) => g.spaceRoles.length + g.globalRoles.length + g.users.length > 0, "Pick who approves.");
+const levelOf = <G extends z.ZodType>(g: G) => z.strictObject({ name: z.string().trim().max(RULE_NAME_MAX), groups: z.array(g).min(1).max(GROUPS_MAX) });
 const Name = z.string().trim().min(1, "Name it.").max(RULE_NAME_MAX);
-/** A library workflow: its name and its levels, in order. */
-export const ChainSpec = z.strictObject({ name: Name, levels: z.array(Level).min(1).max(LEVELS_MAX) });
+/** A library workflow: its name and its levels, in order. What is sent for approval and published. */
+export const ChainSpec = z.strictObject({ name: Name, levels: z.array(levelOf(Group)).min(1).max(LEVELS_MAX) });
 export type ChainSpec = z.infer<typeof ChainSpec>;
+/**
+ * A draft as it is being written (autosave): the same shape, but the name may be empty and a group may name nobody
+ * yet, so nothing typed is lost. Sending it for approval checks it against `ChainSpec`.
+ */
+export const DraftChainSpec = z.strictObject({ name: z.string().trim().max(RULE_NAME_MAX), levels: z.array(levelOf(DraftGroup)).min(1).max(LEVELS_MAX) });
 
 
 export const Person = z.object({ id: z.string(), name: z.string().nullable() });
@@ -39,7 +45,7 @@ const OpenDto = z.object({ version: z.number().int(), status: z.enum(["draft", "
 export const reviewFields = { canEdit: z.boolean(), reviewBlocked: z.string().nullable(), overrideOnly: z.boolean() };
 
 /** One version of a library workflow, with who made, sent and decided it. */
-export const ChainVersionDto = z.object({ ...versionFields, spec: ChainSpec });
+export const ChainVersionDto = z.object({ ...versionFields, spec: DraftChainSpec });
 export type ChainVersionDto = z.infer<typeof ChainVersionDto>;
 /** GET /workflows: a library workflow, its live and open versions and how many approval rules use it. */
 export const LibraryRowDto = z.object({
@@ -77,8 +83,8 @@ export type UsedByQuery = z.infer<typeof UsedByQuery>;
 /** POST /workflows: a new workflow with its first draft. */
 export const CreateWorkflowBody = z.strictObject({ spec: ChainSpec });
 export type CreateWorkflowBody = z.infer<typeof CreateWorkflowBody>;
-/** PATCH /workflows/{id}/draft: the draft (autosave). */
-export const SaveChainBody = z.strictObject({ spec: ChainSpec });
+/** PATCH /workflows/{id}/draft: the draft (autosave), complete or not. */
+export const SaveChainBody = z.strictObject({ spec: DraftChainSpec });
 export type SaveChainBody = z.infer<typeof SaveChainBody>;
 
 /** POST …/workflows/{id}/review/approve|reject: a comment (required to reject, and as the reason of an override). */

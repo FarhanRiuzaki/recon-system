@@ -202,10 +202,21 @@ export async function saveWorkflowDraft(ctx: Ctx, id: string, b: SaveChainBody):
     await assertMaker(tx, ctx, d);
     if (JSON.stringify(d.spec) === JSON.stringify(b.spec)) return;
     await tx.update(workflowVersions).set({ spec: b.spec, updatedAt: sql`now()`, reviewComment: null }).where(eq(workflowVersions.id, d.id));
-    if (!(await hasPublished(tx, id)) && w.name !== b.spec.name) await tx.update(workflows).set({ name: b.spec.name }).where(eq(workflows.id, id));
-    await recordActivity(tx, ctx, { action: "workflow.save", target: target(id, b.spec.name), after: { version: d.version, levels: b.spec.levels.length } });
+    // a draft may be unnamed while it is written: the workflow keeps its last name until the draft has one
+    if (b.spec.name && !(await hasPublished(tx, id)) && w.name !== b.spec.name) await tx.update(workflows).set({ name: b.spec.name }).where(eq(workflows.id, id));
+    await recordActivity(tx, ctx, { action: "workflow.save", target: target(id, b.spec.name || w.name), after: { version: d.version, levels: b.spec.levels.length } });
   }));
   return workflowDetail(ctx, id);
+}
+
+/** Why a draft can't be sent for approval yet (an autosaved draft may be unnamed or have a group naming nobody), or null. */
+function notReady(spec: ChainSpec): string | null {
+  if (!spec.name.trim()) return "Name the workflow to send it for approval.";
+  for (const [li, l] of spec.levels.entries()) {
+    const gi = l.groups.findIndex((g) => g.spaceRoles.length + g.globalRoles.length + g.users.length === 0);
+    if (gi >= 0) return `Pick who approves level ${li + 1}, group ${gi + 1} to send it for approval.`;
+  }
+  return null;
 }
 
 /** POST …/workflows/{id}/draft/submit. */
@@ -215,6 +226,8 @@ export async function submitWorkflowDraft(ctx: Ctx, id: string): Promise<Library
     const w = await workflowOf(tx, spaceId, id, true);
     const d = await draftOf(tx, id);
     if (d.status !== "draft") throw new ApiError("invalid_state", "This version waits for approval already.");
+    const missing = notReady(d.spec as ChainSpec);
+    if (missing) throw new ApiError("invalid_state", missing);
     ChainSchema.parse(d.spec);
     await tx.update(workflowVersions).set({ status: "in_review", submittedBy: ctx.user.id, submittedAt: sql`now()`, updatedAt: sql`now()` }).where(eq(workflowVersions.id, d.id));
     await recordActivity(tx, ctx, { action: "workflow.submit", target: target(id, w.name), after: { version: d.version } });
