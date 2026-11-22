@@ -33,4 +33,8 @@ Status per task dicatat di bawah saat selesai, dengan commit dan tes buktinya.
 
 ## Status
 
-- Task 1: dikerjakan 22 Nov.
+- Task 1: **selesai 22 Nov** — API `5bd6c38` (migrasi 0044, `engine/break-queue.ts`, tes
+  `engine/tests/integration/break-queue.test.ts` 5/5), halaman `91f44dc` (`features/breaks`, menu Breaks aktif `G B`).
+  Dicek di :3000 dengan 1.087 break live: daftar, Take, Mine, Assign/Unassign. Dibangun di atas perbaikan tabel ganda
+  per tab (`TableSpec.ns`, `fc013e3`).
+- Task 2–7: belum.
