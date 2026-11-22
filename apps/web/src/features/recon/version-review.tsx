@@ -94,6 +94,6 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
           effect={`Approving publishes version ${v.version}${published ? ` and retires version ${published}` : ""}. Runs use it from the next schedule.`} />
       )}
       changes={v.status === "in_review" && <SimChanges spaceId={spaceId} id={id} versionId={v.id} live={r.published?.version ?? null} />}
-      settings={<SpecView spaceId={spaceId} spec={v.spec} />} />
+      settings={<SpecView spaceId={spaceId} spec={v.spec} live={published ? r.published!.spec : undefined} />} />
   );
 }

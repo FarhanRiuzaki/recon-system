@@ -176,6 +176,13 @@ describe("checkReconSpec", () => {
     ]);
   });
 
+  it("usedFields: the fields an approval rule reads count for their side, so a source version can't drop them unseen", () => {
+    const g = { ...gate(A, B), approvals: { changes: { unmatch: { workflow: { default: null, rules: [{ name: "RTGS", workflow: { id: "0190f5a0-0000-7000-8000-00000000000a", version: 1 },
+      when: { all: [{ field: "side_a.attrs.channel", op: "in", value: ["RTGS"] }, { field: "side_b.account_ref", op: "not_empty" }, { field: "break.amount", op: "gte", value: "1" }] } }] } } } } };
+    const [a, b] = usedFields(parse(g));
+    expect([a.includes("attrs.channel"), b.includes("account_ref"), a.includes("break.amount")]).toEqual([true, true, false]);
+  });
+
   it("a side reads its amount as it is or negated (amount_sign); negating needs an amount, which it then uses", () => {
     expect(parse(gate(A, B)).sides.map((x) => x.amount_sign)).toEqual(["as_is", "as_is"]);
     const g = gate(A, B);

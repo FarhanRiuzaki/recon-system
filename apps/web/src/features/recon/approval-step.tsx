@@ -1,20 +1,21 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Field, Panel } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
-import { buildCatalog, type CatalogField, type Clause, type Condition, conditionFields, conditionText, NO_VALUE_OPS } from "@starterkit/shared/conditions";
+import { buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconApprovalSpec, ReconSpec, WorkflowRef } from "@starterkit/shared/contracts/recon";
 import type { LibraryRowDto, PreviewDto } from "@starterkit/shared/contracts/workflows";
 import { type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
+import { condDone, keptCopy, savable } from "./approval-model";
 import { ConditionEditor } from "./condition-editor";
 import type { Fields } from "./spec-model";
 
@@ -26,22 +27,6 @@ type Setup = NonNullable<ReconApprovalSpec["changes"][Trigger]>;
 type Rule = Setup["workflow"]["rules"][number];
 const RULES_MAX = 20;
 const DEFAULT_TEXT = "Default · 1 of Reviewer or Space admin";
-
-const clauseDone = (c: Clause) => !!c.field && (NO_VALUE_OPS.includes(c.op) || (Array.isArray(c.value) ? c.value.some((v) => v.trim()) : !!c.value?.trim()));
-const condDone = (c: Condition): boolean => { const p = "all" in c ? c.all : c.any; return p.length > 0 && p.every((x) => ("field" in x ? clauseDone(x) : condDone(x))); };
-/** The setup as the contract takes it, or null while a rule is unfinished (it stays on screen, unsaved). */
-function complete(a: ReconApprovalSpec): ReconApprovalSpec | null {
-  const changes: ReconApprovalSpec["changes"] = {};
-  for (const k of TRIGGERS) {
-    const s = a.changes[k];
-    if (!s) continue;
-    if (s.workflow.rules.some((r) => !r.name.trim() || !condDone(r.when) || !r.workflow.id)) return null;
-    // a change left on the default chain with no rules says nothing: it goes
-    if (!s.workflow.default && !s.workflow.rules.length) continue;
-    changes[k] = { workflow: { default: s.workflow.default, rules: s.workflow.rules.map((r) => ({ ...r, name: r.name.trim() })) } };
-  }
-  return { changes };
-}
 
 /** "Version 3 is newer · Use it" beside a pin older than the workflow's live version. */
 function Newer({ pin, rows, onUse, disabled }: { pin: WorkflowRef; rows: readonly LibraryRowDto[]; onUse: (v: number) => void; disabled: boolean }) {
@@ -98,7 +83,7 @@ function ChangeCard({ kind, recon, setup, onChange, rows, catalog, disabled }: {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="min-w-0 text-body-sm">
                     <span className="text-label text-fg">{r.name.trim() || `Rule ${i + 1}`}</span>
-                    {open !== i && <span className="text-fg-2"> · {condDone(r.when) ? conditionText(r.when, catalog) : "unfinished"} → {rows.find((x) => x.id === r.workflow.id)?.name ?? "pick a workflow"}</span>}
+                    {open !== i && <span className="text-fg-2"> · {condDone(r.when as Condition) ? conditionText(r.when as Condition, catalog) : "unfinished"} → {rows.find((x) => x.id === r.workflow.id)?.name ?? "pick a workflow"}</span>}
                   </span>
                   {!disabled && (
                     <span className="flex shrink-0 items-center">
@@ -200,12 +185,12 @@ function WhoApproves({ spaceId, configId, versionId, approvals, catalog, dirty }
 }
 
 /**
- * The Approval step. Unfinished rules stay on screen and out of the saved draft until they are complete; the step is
- * optional (no setup = the default chain for every change).
+ * The Approval step. Unfinished rules stay on screen and out of the saved draft until they are complete (they hold the
+ * step and the submit); the step is optional (no setup = the default chain for every change).
  */
-export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields, onChange, disabled, dirty }: {
+export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields, onChange, onUnfinished, disabled, dirty }: {
   spaceId: string; configId: string; versionId: string; recon: string; spec: ReconSpec; fields: Fields;
-  onChange: (approvals: ReconApprovalSpec | undefined) => void; disabled: boolean; dirty: boolean;
+  onChange: (approvals: ReconApprovalSpec | undefined) => void; onUnfinished: (open: boolean) => void; disabled: boolean; dirty: boolean;
 }) {
   const q = workflowOptions(spaceId);
   const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`) });
@@ -213,26 +198,35 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
   const catalog = useMemo(() => buildCatalog([
     { label: spec.sides[0].label, fields: fields[0] ?? new Map() }, { label: spec.sides[1].label, fields: fields[1] ?? new Map() },
   ]), [fields, spec.sides]);
-  // an unfinished rule can't be saved in the draft (the contract refuses it): it is kept in this browser per draft, so a
-  // reload brings it back; dropped once the setup is complete again
+  // finished parts save into the draft as they change; an unfinished rule (the contract refuses it) is kept in this
+  // browser per draft with the saved setup it was based on, and comes back on reload only while that still holds
   const key = `recon-approval-draft:${versionId}`;
-  const [local, setLocal] = useState<ReconApprovalSpec>(() => {
-    try { const kept = localStorage.getItem(key); if (kept) return JSON.parse(kept) as ReconApprovalSpec; } catch { /* storage off: start from the draft */ }
-    return spec.approvals ?? { changes: {} };
-  });
-  const unfinished = complete(local) === null;
+  const [local, setLocal] = useState<ReconApprovalSpec>(spec.approvals ?? { changes: {} });
+  useEffect(() => {
+    if (disabled) return;
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(key); } catch { /* storage off: start from the draft */ }
+    const kept = keptCopy(stored, spec.approvals);
+    if (kept) setLocal(kept); // eslint-disable-line react-hooks/set-state-in-effect -- browser storage is read after mount, so the server render matches
+    else if (stored) try { localStorage.removeItem(key); } catch { /* storage off */ }
+  }, [key, disabled]); // eslint-disable-line react-hooks/exhaustive-deps -- read once per draft; later saves come from this step
+  const { unfinished } = savable(local);
+  useEffect(() => { onUnfinished(unfinished); }, [unfinished, onUnfinished]);
   function set(next: ReconApprovalSpec) {
     setLocal(next);
-    const done = complete(next);
-    try { if (done) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(next)); } catch { /* storage off: kept until the page goes */ }
-    if (done) onChange(Object.keys(done.changes).length ? done : undefined);
+    const r = savable(next);
+    try {
+      if (r.unfinished) localStorage.setItem(key, JSON.stringify({ base: JSON.stringify(r.approvals ?? null), approvals: next }));
+      else localStorage.removeItem(key);
+    } catch { /* storage off: kept until the page goes */ }
+    onChange(r.approvals);
   }
   const empty: Setup = { workflow: { default: null, rules: [] } };
   return (
     <div className="grid gap-section">
       <div className="grid min-w-0 gap-section">
         {wf.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load the space&apos;s workflows. {errorText(wf.error)}</p>}
-        {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow to save it.</p>}
+        {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it. The rest is saved.</p>}
         {TRIGGERS.map((k) => (
           <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
             onChange={(s) => set({ changes: { ...local.changes, [k]: s } })} />

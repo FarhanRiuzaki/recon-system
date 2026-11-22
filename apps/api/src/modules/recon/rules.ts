@@ -144,7 +144,10 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
  */
 export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, boolean] = [false, false]): [string[], string[]] {
   const pairs = spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]);
-  const of = (i: 0 | 1) => [...new Set([
+  // an approval rule's side fields (side_a.attrs.channel) bind the source too (DEC-052 rev 2 §4.3)
+  const ruled = Object.values(spec.approvals?.changes ?? {}).flatMap((c) => c?.workflow.rules.flatMap((r) => conditionFields(r.when as Condition)) ?? []);
+  const sideOf = (i: 0 | 1) => ruled.filter((k) => k.startsWith(`side_${i ? "b" : "a"}.`)).map((k) => k.slice(7));
+  const of = (i: 0 | 1) => [...new Set([...sideOf(i),
     ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)),
     ...(spec.measure ? [spec.measure.field] : []), ...(directionMapped[i] ? ["direction"] : []),
     ...(spec.sides[i].amount_sign === "negate" ? ["amount_minor"] : []),

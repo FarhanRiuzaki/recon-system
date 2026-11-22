@@ -218,6 +218,27 @@ describe("the recon's pinned workflows: rules over break and side fields, levels
     expect([none.rule.name, none.workflow]).toEqual(["Default", null]);
   });
 
+  it("a force match reads the counterpart's side too: a rule on side B picks for a break of side A", async () => {
+    await publish("force_match", [
+      { name: "RTGS desk", when: { all: [{ field: "side_b.attrs.channel", op: "in", value: ["RTGS"] }, { field: "side_a.ext_ref", op: "eq", value: "P1" }] }, levels: [{ name: "Desk", groups: [group({ spaceRoles: ["space_admin"] })] }] },
+    ]);
+    await db.update(records).set({ attrs: { channel: "RTGS" } }).where(eq(records.id, (await db.select({ r: reconItems.recordId }).from(reconItems).where(eq(reconItems.id, I.b2)))[0]!.r));
+    await req(I.a1, { kind: "force_match", itemIds: [I.b2], note: "Fee taken by the switch" });
+    expect((await detail(I.a1, t.adm)).request).toMatchObject({ ruleName: "RTGS desk", workflowName: "RTGS desk" });
+  });
+
+  it("a workflow of another space pinned in this recon is never resolved: preview and request refuse it", async () => {
+    const B = Bun.randomUUIDv7(), w = Bun.randomUUIDv7();
+    await db.insert(spaces).values({ id: B, code: "payments", name: "Payments" });
+    await db.insert(workflows).values({ id: w, spaceId: B, name: "Other space" });
+    await db.insert(workflowVersions).values({ id: Bun.randomUUIDv7(), spaceId: B, workflowId: w, version: 1, status: "published", spec: { name: "Other space", levels: [{ name: "Theirs", groups: [group({ spaceRoles: ["reviewer"] })] }] } });
+    const [v] = await db.select().from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
+    await db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), approvals: { changes: { write_off: { workflow: { default: { id: w, version: 1 }, rules: [] } } } } } }).where(eq(reconConfigVersions.id, v!.id));
+    const p = await call("POST", `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/approvals/preview`, { token: t.op, body: { change: "write_off", values: {} } });
+    expect([p.status, await code(p)]).toEqual([409, "invalid_state"]);
+    expect(await code(await req(I.a1, { kind: "write_off", note: "x" }))).toBe("invalid_state");
+  });
+
   it("a later publish of the workflow never moves an open request", async () => {
     const [w] = await publish("write_off", [{ name: "Head", levels: [{ name: "Head", groups: [group({ spaceRoles: ["space_admin"] })] }] }]);
     await req(I.a1, { kind: "write_off", note: "Stale" });

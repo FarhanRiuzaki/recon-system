@@ -300,9 +300,9 @@ export async function workflowFacts(tx: InTx, spaceId: string, ids: readonly str
   for (const w of ws) out.set(w.id, { spaceId: w.spaceId, name: w.name, archived: !!w.archivedAt, versions: new Set(vs.filter((v) => v.workflowId === w.id).map((v) => v.version)) });
   return out;
 }
-/** A workflow's version (any status that was published once): its chain, for a request or a preview. */
-export async function pinnedVersion(tx: InTx, ref: { id: string; version: number }): Promise<{ id: string; name: string; spec: ChainSpec } | null> {
+/** A workflow version of the space (any status that was published once): its chain, for a request or a preview. Another space's is null. */
+export async function pinnedVersion(tx: InTx, spaceId: string, ref: { id: string; version: number }): Promise<{ id: string; name: string; spec: ChainSpec } | null> {
   const [v] = await tx.select({ id: workflowVersions.id, spec: workflowVersions.spec }).from(workflowVersions)
-    .where(and(eq(workflowVersions.workflowId, ref.id), eq(workflowVersions.version, ref.version), inArray(workflowVersions.status, ["published", "retired"])));
+    .where(and(eq(workflowVersions.spaceId, spaceId), eq(workflowVersions.workflowId, ref.id), eq(workflowVersions.version, ref.version), inArray(workflowVersions.status, ["published", "retired"])));
   return v ? { id: v.id, name: (v.spec as ChainSpec).name, spec: v.spec as ChainSpec } : null;
 }

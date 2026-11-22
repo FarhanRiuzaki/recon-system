@@ -538,15 +538,17 @@ export const SETUP_STEPS: Record<SetupStep, string> = { 1: "Sources", 2: "Matchi
 export function stepReasons(d: {
   loaded: boolean; sideProblem: string | null; passes: number; needs: readonly (readonly string[])[]; incomplete: string | null;
   settingProblem: string | null; simulation: "none" | "stale" | "current"; running: boolean; submit: string | null;
+  /** Why the approval setup can't be saved whole yet (an unfinished rule); it holds step 4 and the submit. */
+  approval?: string | null;
 }): Record<SetupStep, string | null> {
   const at = d.needs.findIndex((x) => x.length > 0);
   return {
     1: !d.loaded ? "The sides' sources are still loading." : d.sideProblem,
     2: !d.passes ? "Add a pass first." : at >= 0 ? `Pass ${at + 1} needs: ${d.needs[at]!.join(", ").toLowerCase()}.` : d.incomplete,
     3: d.settingProblem,
-    4: null,
+    4: d.approval ?? null,
     5: d.running ? "Wait for the simulation to finish." : d.simulation === "current" ? null
       : d.simulation === "stale" ? "The draft changed since the last simulation. Run it again." : "Run a simulation of this draft first.",
-    6: d.submit,
+    6: d.approval ?? d.submit,
   };
 }

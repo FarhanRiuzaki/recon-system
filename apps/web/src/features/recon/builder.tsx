@@ -207,6 +207,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   useEffect(() => { if (editable) void import("@starterkit/ui/ds/combobox-command"); }, [editable]);
 
   const passIndex = sel.k === "pass" ? keys.indexOf(sel.key) : -1;
+  // an unfinished approval rule (Approval step) holds the step and the submit until it is finished or removed
+  const [approvalOpen, setApprovalOpen] = useState(false);
   const change = (next: ReconSpec) => { setSpec(next); setProblem(null); setSubmitError(null); };
   /** The toast of a removal whose Undo applies `restore` to the current spec; `passKey` = the pass it belongs to. */
   const offerUndo = (message: string, passKey: string | null, restore: (cur: ReconSpec, at: number) => ReconSpec | null) => {
@@ -428,6 +430,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
     loaded: !!fields[0] && !!fields[1], sideProblem: placed?.side !== undefined ? `Side ${placed.side === 0 ? "A" : "B"}: ${placed.text}` : null,
     passes: spec.passes.length, needs: spec.passes.map((_, j) => passNeeds(spec, j, gaps, placed?.pass === j + 1 ? placed.text : null)), incomplete,
     settingProblem: placed?.setting ? `${placed.setting}: ${placed.text}` : null, simulation: simulated, running: live || starting, submit: blocked,
+    approval: approvalOpen ? "A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it." : null,
   });
   const STEP_LABEL = SETUP_STEPS;
   const wizardSteps = ([1, 2, 3, 4, 5, 6] as const).map((n) => ({
@@ -527,7 +530,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         )}
 
         {step === 4 && (
-          <ApprovalStep spaceId={spaceId} configId={recon.id} versionId={saved.id} recon={recon.name} spec={spec} fields={fields} disabled={!editable} dirty={dirty}
+          <ApprovalStep spaceId={spaceId} configId={recon.id} versionId={saved.id} recon={recon.name} spec={spec} fields={fields} disabled={!editable} dirty={dirty} onUnfinished={setApprovalOpen}
             onChange={(approvals) => { const { approvals: _, ...rest } = spec; change(approvals ? { ...rest, approvals } : rest); }} />
         )}
 

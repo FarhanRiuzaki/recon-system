@@ -60,12 +60,12 @@ const MISSING = "The approval setup of this recon points to a workflow version t
  * The chain an approval setup gives a change on `context`: the first rule whose condition holds, else the default
  * workflow ("Every request"), else the default chain ("Default"). A pinned version that is gone is 409.
  */
-export async function resolveChain(tx: InTx, approvals: ReconApprovalSpec | undefined, kind: Trigger, context: Context): Promise<Resolved> {
+export async function resolveChain(tx: InTx, spaceId: string, approvals: ReconApprovalSpec | undefined, kind: Trigger, context: Context): Promise<Resolved> {
   const w = approvals?.changes[kind]?.workflow;
   const i = w ? w.rules.findIndex((r) => evaluate(r.when, context)) : -1;
   const ref = i >= 0 ? w!.rules[i]!.workflow : w?.default ?? null;
   if (!ref) return { chain: DEFAULT_CHAIN, versionId: null, workflow: null, rule: { name: "Default", index: null } };
-  const v = await pinnedVersion(tx, ref);
+  const v = await pinnedVersion(tx, spaceId, ref);
   if (!v) throw new ApiError("invalid_state", MISSING);
   return { chain: v.spec, versionId: v.id, workflow: { id: ref.id, name: v.name, version: ref.version }, rule: i >= 0 ? { name: w!.rules[i]!.name, index: i } : { name: "Every request", index: null } };
 }
@@ -87,7 +87,7 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
 }): Promise<string> {
   const spaceId = ctx.space!.id;
   const live = await liveSetup(tx, spaceId, r.configId);
-  const { chain, versionId, workflow, rule } = await resolveChain(tx, live?.approvals, r.kind, { ...r.context, "recon.code": live?.code ?? null });
+  const { chain, versionId, workflow, rule } = await resolveChain(tx, spaceId, live?.approvals, r.kind, { ...r.context, "recon.code": live?.code ?? null });
   const configVersionId = live?.id ?? null, ruleName = rule.name;
   const me = new Set([ctx.user.id]);
   for (const [i, level] of chain.levels.entries()) {
@@ -115,7 +115,7 @@ export async function openRequest(tx: InTx, ctx: Ctx, r: {
 /** Who would approve a change of a recon version on typed `values` (the setup step's preview; nothing is written). */
 export async function previewApproval(tx: InTx, spaceId: string, configId: string, approvals: ReconApprovalSpec | undefined, kind: Trigger, values: Context): Promise<PreviewDto> {
   const [c] = await tx.select({ code: reconConfigs.code }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
-  const { chain, workflow, rule } = await resolveChain(tx, approvals, kind, { "recon.code": c?.code ?? null, ...values });
+  const { chain, workflow, rule } = await resolveChain(tx, spaceId, approvals, kind, { "recon.code": c?.code ?? null, ...values });
   const none = new Set<string>();
   const levels = await Promise.all(chain.levels.map(async (l, i) => ({
     name: l.name || `Level ${i + 1}`,

@@ -16,6 +16,7 @@ import { buildCatalog, type CatalogField, type Condition, conditionText } from "
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { conditionParts, daysText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
+import { approvalChanges } from "./approval-model";
 import { useSideSource } from "./use-recons";
 import { api } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
@@ -112,8 +113,10 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
  * A recon version's spec as text (ui-standard §1a "Version": values as text, never disabled inputs, no inspector): in the
  * setup's order, the two sides, the passes in run order, then the schedule and day close as steps (owner, 22 Nov: tidy and clear for a reader).
  */
-export function SpecView({ spaceId, spec, onEdit }: {
+export function SpecView({ spaceId, spec, onEdit, live }: {
   spaceId: string; spec: ReconSpec;
+  /** On a version's review: the live version's spec, to show what this one changes in the approval setup. */
+  live?: ReconSpec;
   /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule, 4 Approval). */
   onEdit?: (step: 1 | 2 | 3 | 4) => void;
 }) {
@@ -151,27 +154,40 @@ export function SpecView({ spaceId, spec, onEdit }: {
       </Panel>
 
       <Panel title="Approval" description="Who approves each change; the first rule that holds picks its workflow" actions={edit(4)}>
-        <ApprovalSummary spaceId={spaceId} approvals={spec.approvals} catalog={catalog} />
+        <ApprovalSummary spaceId={spaceId} approvals={spec.approvals} catalog={catalog} live={live} />
       </Panel>
     </>
   );
 }
 
 /** The approval setup as sentences: per change, its rules in order and who approves every other request. */
-function ApprovalSummary({ spaceId, approvals, catalog }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[] }) {
+function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[]; live?: ReconSpec }) {
   const q = workflowOptions(spaceId);
-  const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`), enabled: !!approvals });
+  const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`), enabled: !!approvals || !!live?.approvals });
+  const changed = approvalChanges(live?.approvals, approvals, !!live);
   const name = (id: string) => wf.data?.items.find((r) => r.id === id)?.name ?? "a workflow";
   const pin = (w: { id: string; version: number } | null) => (w ? `${name(w.id)} (version ${w.version})` : "the default chain (1 of Reviewer or Space admin)");
   return (
     <ul className="grid gap-3">
       {TRIGGERS.map((k) => {
-        const w = approvals?.changes[k]?.workflow;
+        const lines = (w: NonNullable<ReconSpec["approvals"]>["changes"][typeof k] | undefined) => (
+          <>
+            {w?.workflow.rules.map((r, i) => <span key={i}>{r.name}: when {conditionText(r.when as Condition, catalog)} → {pin(r.workflow)}</span>)}
+            <span>{w?.workflow.rules.length ? "Every other request" : "Every request"} → {pin(w?.workflow.default ?? null)}</span>
+          </>
+        );
+        const diff = changed.includes(k);
         return (
           <li key={k} className="grid gap-1 text-body-sm">
-            <span className="text-label text-fg">{TRIGGER_LABEL[k]}</span>
-            {w?.rules.map((r, i) => <span key={i} className="text-fg-2">{r.name}: when {conditionText(r.when as Condition, catalog)} → {pin(r.workflow)}</span>)}
-            <span className="text-fg-2">{w?.rules.length ? "Every other request" : "Every request"} → {pin(w?.default ?? null)}</span>
+            <span className="flex flex-wrap items-center gap-2 text-label text-fg">
+              {TRIGGER_LABEL[k]}{diff && <span className="rounded-sm bg-degraded-soft px-1.5 py-0.5 text-caption text-degraded-ink">Changed from the live version</span>}
+            </span>
+            <span className="grid gap-1 text-fg-2">{lines(approvals?.changes[k])}</span>
+            {diff && (
+              <span className="grid gap-1 border-l-2 border-line pl-3 text-caption text-fg-3">
+                <span>Live version:</span>{lines(live?.approvals?.changes[k])}
+              </span>
+            )}
           </li>
         );
       })}

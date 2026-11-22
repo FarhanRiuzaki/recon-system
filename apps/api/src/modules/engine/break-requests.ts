@@ -31,19 +31,26 @@ const ageOf = (d: string, now = new Date()) => Math.max(0, Math.round((Date.pars
 
 /**
  * The fields an approval rule reads for a break (DEC-052 rev 2 §4.3): the break's own (amount as the rule attributes
- * have it, minor units), and its record's core columns and attrs under its side (`side_a.attrs.channel`). The other
- * side's fields are absent, so a clause on them fails. recon.code is added by openRequest.
+ * have it, minor units), and the core columns and attrs of its record under its side (`side_a.attrs.channel`), then of
+ * its counterparts (the force match's items, the unmatched group's other members) under theirs; the first record of a
+ * side wins. A side with no record has no fields, so a clause on it fails. recon.code is added by openRequest.
  */
-async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: string; businessDate: string; breakReason: string | null; breakState: string | null; status: string }, at: Attributes): Promise<Context> {
-  const [r] = await tx.select().from(reconItems)
+async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: string; businessDate: string; breakReason: string | null; breakState: string | null },
+  at: Attributes, counterparts: readonly string[]): Promise<Context> {
+  const ids = [x.id, ...counterparts.filter((c) => c !== x.id)];
+  const rows = await tx.select({ id: reconItems.id, side: reconItems.side, rec: records }).from(reconItems)
     .innerJoin(records, and(inArray(records.spaceId, await recordSpaces(tx, spaceId)), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
-    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
+    .where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, ids)));
+  const own = rows.find((r) => r.id === x.id);
   const out: Record<string, string | number | null> = {
     "break.amount": at.amount ?? null, "break.currency": at.currency ?? null, "break.business_date": x.businessDate, "break.age_days": at.ageDays ?? null,
-    "break.side": x.side, "break.reason": x.breakReason, "break.state": x.breakState ?? "new", "break.reference": r?.records.extRef ?? null,
+    "break.side": x.side, "break.reason": x.breakReason, "break.state": x.breakState ?? "new", "break.reference": own?.rec.extRef ?? null,
   };
-  if (r) {
-    const rec = r.records, p = `side_${x.side}.`;
+  const filled = new Set<string>();
+  for (const r of ids.map((id) => rows.find((row) => row.id === id)).filter((r) => !!r)) {
+    if (filled.has(r.side)) continue;
+    filled.add(r.side);
+    const rec = r.rec, p = `side_${r.side}.`;
     Object.assign(out, {
       [`${p}ext_ref`]: rec.extRef, [`${p}account_ref`]: rec.accountRef, [`${p}amount_minor`]: rec.amountMinor?.toString() ?? null, [`${p}currency`]: rec.currency,
       [`${p}direction`]: rec.direction, [`${p}event_time`]: rec.eventTime?.toISOString() ?? null, [`${p}business_date`]: rec.businessDate,
@@ -63,10 +70,13 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
     await assertNotSigned(tx, spaceId, x.configId, [x.businessDate]);
     const [item] = await itemsOf(tx, spaceId, [x.id]);
     let itemIds: string[] = [];
+    let counterparts: string[] = [];
     const attributes: Attributes = { amount: abs(item?.amountMinor ?? null), currency: item?.currency ?? null, recon: x.configId, ageDays: ageOf(x.businessDate) };
     if (b.kind === "unmatch") {
       mayTouch(ctx, x);
-      if (x.status !== "matched" || !(await groupOf(tx, spaceId, x.id))) throw new ApiError("invalid_state", "This break isn't matched, so there is nothing to undo.");
+      const g = x.status === "matched" ? await groupOf(tx, spaceId, x.id) : null;
+      if (!g) throw new ApiError("invalid_state", "This break isn't matched, so there is nothing to undo.");
+      counterparts = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
     } else {
       mayWork(ctx, x);
       if (b.kind === "force_match") {
@@ -74,10 +84,11 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
         if (m.mixed) throw new ApiError("bad_request", m.mixed);
         if (!m.differ) throw new ApiError("invalid_state", "These totals agree: match them without approval.");
         itemIds = m.ids.slice(1);
+        counterparts = itemIds;
         attributes.amount = m.gap.toString();
       }
     }
-    const context = await breakContext(tx, spaceId, x, attributes);
+    const context = await breakContext(tx, spaceId, x, attributes, counterparts);
     await openRequest(tx, ctx, { kind: b.kind, configId: x.configId, itemId: x.id, itemIds, label: item?.ref ?? "Break", note: b.note, prevState: x.breakState, attributes, context });
     // a break waiting for a force match or write-off leaves the work states (a matched one keeps resolved meanwhile)
     if (b.kind !== "unmatch") {
