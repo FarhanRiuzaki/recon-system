@@ -3,7 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SessionsIcon } from "../ui/icons";
-import { DataTable, hiddenColumns } from "./data-table";
+import { columnChoice, DataTable, hiddenColumns } from "./data-table";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -55,26 +55,39 @@ describe("DataTable on a phone: the sort select and the compact pagination are r
 describe("DataTable hidden columns (ColumnsMenu)", () => {
   const headers = () => [...document.querySelectorAll("thead th")].map((th) => th.textContent);
   it("drops a hidden column from the header and the rows; the identity (mobile title) column can't be hidden", async () => {
-    await mount({ hidden: ["at", "name"] });
+    await mount({ hidden: { shown: [], hidden: ["at", "name"] } });
     expect(headers()).toEqual(["Name"]);
     expect(document.querySelectorAll("tbody tr:first-child td")).toHaveLength(1);
   });
-  it("defaultHidden: off until the viewer chooses (hidden undefined); a saved choice wins, [] shows every column", async () => {
+  it("defaultHidden: off until the viewer shows it; showing it keeps it on", async () => {
     const columns = [{ key: "name", header: "Name", cell: (r: S) => r.id }, { key: "at", header: "Created", defaultHidden: true, cell: (r: S) => r.id }];
     await mount({ columns });
     expect(headers()).toEqual(["Name"]);
     await act(async () => root?.unmount()); document.body.innerHTML = "";
-    await mount({ columns, hidden: [] });
+    await mount({ columns, hidden: { shown: ["at"], hidden: [] } });
     expect(headers()).toEqual(["Name", "Created"]);
   });
-  it("hiddenColumns: the saved keys, or the defaultHidden ones when nothing is saved", () => {
+  it("hiddenColumns: the defaults changed by the viewer's choice; a column added later as defaultHidden starts hidden despite a saved choice", () => {
     const columns = [{ key: "a", header: "A", cell: () => null }, { key: "b", header: "B", defaultHidden: true, cell: () => null }];
     expect(hiddenColumns(undefined, columns)).toEqual(["b"]);
-    expect(hiddenColumns([], columns)).toEqual([]);
-    expect(hiddenColumns(["a"], columns)).toEqual(["a"]);
+    expect(hiddenColumns({ shown: [], hidden: [] }, columns)).toEqual(["b"]);
+    expect(hiddenColumns({ shown: ["b"], hidden: [] }, columns)).toEqual([]);
+    expect(hiddenColumns({ shown: [], hidden: ["a"] }, columns)).toEqual(["a", "b"]);
+    const later = [...columns, { key: "created_at", header: "Created", defaultHidden: true, cell: () => null }];
+    expect(hiddenColumns({ shown: ["b"], hidden: ["a"] }, later)).toEqual(["a", "created_at"]);
+  });
+  it("columnChoice: the hidden list as changes against the defaults; the defaults themselves are no choice (Reset)", () => {
+    const columns = [{ key: "a", header: "A", cell: () => null }, { key: "b", header: "B", defaultHidden: true, cell: () => null }, { key: "c", header: "C", cell: () => null }];
+    expect(columnChoice(["b"], columns)).toBeNull();
+    expect(columnChoice([], columns)).toEqual({ shown: ["b"], hidden: [] });
+    expect(columnChoice(["a", "b"], columns)).toEqual({ shown: [], hidden: ["a"] });
+    // show / hide round trip
+    const choice = columnChoice(["c"], columns)!;
+    expect(hiddenColumns(choice, columns)).toEqual(["c"]);
+    expect(columnChoice(hiddenColumns(choice, columns).filter((k) => k !== "c").concat("b"), columns)).toBeNull();
   });
   it("a column with hideable: false stays", async () => {
-    await mount({ hidden: ["at"], columns: [{ key: "name", header: "Name", cell: (r: S) => r.id }, { key: "at", header: "Created", hideable: false, cell: (r: S) => r.id }] });
+    await mount({ hidden: { shown: [], hidden: ["at"] }, columns: [{ key: "name", header: "Name", cell: (r: S) => r.id }, { key: "at", header: "Created", hideable: false, cell: (r: S) => r.id }] });
     expect(headers()).toEqual(["Name", "Created"]);
   });
 });

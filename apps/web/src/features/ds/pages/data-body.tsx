@@ -3,7 +3,7 @@
 import { selectionValues } from "@starterkit/shared/filter-selection";
 import { BarChart, BreakdownCard, CHART_HEIGHT, HBarChart, Heatmap } from "@starterkit/ui/charts";
 import {
-  ActionMenu, Avatar, BlockedButton, BulkActionBar, CategoryChip, ColumnsMenu, CompareCard, ConfirmActionDialog, CopyValue, DataRegion, DataTable, FilterChecks, FilterLayout, FilterSearch,
+  ActionMenu, Avatar, BlockedButton, BulkActionBar, CategoryChip, type ColumnChoice, ColumnsMenu, CompareCard, ConfirmActionDialog, CopyValue, DataRegion, DataTable, FilterChecks, FilterLayout, FilterSearch,
   LazyMount, Panel, ProgressBar, RelativeTime, Segmented, StatusChip, Toolbar, Truncate, UserCard,
   type Column, type SortDir,
 } from "@starterkit/ui/ds";
@@ -43,7 +43,7 @@ export function DataSections() {
   const [role, setRole] = useState("");
   const [server, setServer] = useState({ page: 1, pageSize: 15, sort: { key: "name", dir: "asc" as SortDir } });
   const [perms, setPerms] = useState<ReadonlySet<string>>(() => new Set(MATRIX_START));
-  const [hidden, setHidden] = useState<string[] | undefined>(undefined);
+  const [hidden, setHidden] = useState<ColumnChoice | undefined>(undefined);
   const [count, setCount] = useState(3), [confirm, setConfirm] = useState(false);
   const [region, setRegion] = useState<(typeof REGION_STATES)[number]>("data");
   const [parts, setParts] = useState<(typeof REGION_STATES)[number]>("data"), [step, setStep] = useState(0);

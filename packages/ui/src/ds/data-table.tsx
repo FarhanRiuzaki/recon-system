@@ -34,9 +34,23 @@ export type Column<T> = {
   defaultHidden?: boolean;
 };
 
-/** The columns to hide: the viewer's saved choice, or (`undefined`, nothing saved) the `defaultHidden` ones. */
-export const hiddenColumns = <T,>(saved: readonly string[] | undefined, columns: readonly Column<T>[]): readonly string[] =>
-  saved ?? columns.filter((c) => c.defaultHidden).map((c) => c.key);
+/**
+ * The viewer's column choice as changes against the defaults: `shown` = `defaultHidden` columns turned on, `hidden` =
+ * the others turned off. Kept as changes, so a column added later as `defaultHidden` starts hidden for everyone who
+ * hasn't shown it, whatever else they chose.
+ */
+export type ColumnChoice = { shown: readonly string[]; hidden: readonly string[] };
+
+/** The columns to hide: the `defaultHidden` ones the viewer didn't show, and the others the viewer hid (`undefined` = no choice). */
+export const hiddenColumns = <T,>(choice: ColumnChoice | undefined, columns: readonly Column<T>[]): readonly string[] =>
+  columns.filter((c) => (c.defaultHidden ? !choice?.shown.includes(c.key) : !!choice?.hidden.includes(c.key))).map((c) => c.key);
+
+/** The choice that hides exactly `hidden`; `null` when that is the defaults (nothing to keep, "Reset to default"). */
+export function columnChoice<T>(hidden: readonly string[], columns: readonly Column<T>[]): ColumnChoice | null {
+  const shown = columns.filter((c) => c.defaultHidden && !hidden.includes(c.key)).map((c) => c.key);
+  const off = columns.filter((c) => !c.defaultHidden && hidden.includes(c.key)).map((c) => c.key);
+  return shown.length || off.length ? { shown, hidden: off } : null;
+}
 
 /** Whether ColumnsMenu may hide this column: not the identity (mobile title), not the row checkbox (lead), not `hideable: false`. */
 export const canHide = <T,>(c: Column<T>, role: MobileRole) => c.hideable !== false && role !== "title" && role !== "lead";
@@ -125,9 +139,9 @@ type Props<T> = {
   highlightScope?: string;
   /** Skeleton rows while loading (default 8; `server` paging uses its page size): match the loaded row count, no layout shift. */
   skeletonRows?: number;
-  /** Column keys the viewer hid (ColumnsMenu); a column that can't be hidden (`canHide`) stays. `undefined` = no
-   *  choice saved: the `defaultHidden` columns are hidden. */
-  hidden?: readonly string[];
+  /** The viewer's column choice (ColumnsMenu, `ColumnChoice`); a column that can't be hidden (`canHide`) stays.
+   *  `undefined` = no choice saved: the `defaultHidden` columns are hidden. */
+  hidden?: ColumnChoice;
 };
 
 /**

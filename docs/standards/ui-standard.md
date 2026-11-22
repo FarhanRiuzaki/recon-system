@@ -186,8 +186,11 @@ it is drawn.
   toolbar ends with `ColumnsMenu` (`end` of `Toolbar`), fed by `useTableQuery`'s `hidden` / `setHidden` and passed to
   `DataTable hidden`. The button says how many are hidden ("Columns · 2 hidden"); the menu lists every column but the
   row checkbox, stays open while ticking, and ends with "Reset to default". The identity column (mobile `title`) and a
-  column marked `hideable: false` are listed ticked and disabled. The choice is per viewer and per page in the prefs
-  cookie (`cols:/users`), so the table renders without those columns on first paint; a hidden column also leaves the
+  column marked `hideable: false` are listed ticked and disabled. The choice is per viewer and per table in the prefs
+  cookie (`columns:/users#users=+createdAt,-type`: the page and the table's last API path segment, so two tables on one
+  page choose apart), kept as changes against the table's defaults (`+` = a `defaultHidden` column shown, `-` = another
+  column hidden), so a column added later as `defaultHidden` starts hidden for everyone who hasn't shown it, and the
+  table renders without the hidden columns on first paint; a hidden column also leaves the
   phone card. Not on a record's short fixed lists.
 - Sticky parts (NN/g data tables): from 768 px the header row sticks to the top of the window while a long page
   scrolls (the table box stops being a scroll container once the table fits); while a wide table scrolls sideways in its
