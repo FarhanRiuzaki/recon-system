@@ -282,6 +282,7 @@ Dari spec §14 dan temuan legacy KSEI. Jawaban dicatat di spec/decisions oleh co
 | REC-D2 | Komponen library Figma masih versi sebelum affectUI; perlu disamakan dengan komponen kode. | Designer | Tidak |
 | REC-D3 | Komponen Segmented perlu varian lebar hug (mengikuti isi). | Designer | Tidak |
 | REC-D4 | Cek visual mode gelap dan 4 palet di Figma. | Designer | Tidak |
+| REC-D6 | Kode mendahului Figma (22 Nov, core-recon): (1) setup recon 5 langkah (Sources, Matching, Schedule, Test, Review and submit; rail "Setup progress", `apps/web/src/features/recon/builder.tsx` + `recon-setup.tsx` + `new-recon.tsx`), menggantikan builder satu layar di page 03; (2) halaman Approvals (`features/approvals`) dan panel "What changes" di review versi recon; (3) detail source 4 tab (Overview, Records + Quarantine, Configuration, History). Buat patch versi Figma berikutnya sesuai `docs/standards/figma-versioning.md`. | Designer | Tidak |
 | REC-D5 | Selesai: Approves chip is a neutral outline (bg-card + control-border); meaning is carried by the word. (Palet Burgundy: chip "Approves" tampil merah muda seperti tint error; token tidak diubah di kode.) | Designer | Tidak |
 
 ### Register kasus masa depan (Captain/PO, 20 November 2026; tidak dikerjakan sekarang)
