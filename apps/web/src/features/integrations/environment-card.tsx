@@ -17,7 +17,7 @@ import { api, errorText } from "@/lib/client/api";
 // Set / Not set, Replace) and Get token, which asks the bank for a token with them.
 
 type SecretKey = "clientId" | "clientSecret" | "publicKey" | "caBundle";
-const SECRET_LABEL: Record<SecretKey, string> = { clientId: "Client ID", clientSecret: "Client secret", publicKey: "Bank public key", caBundle: "CA bundle" };
+const SECRET_LABEL: Record<SecretKey, string> = { clientId: "Client ID", clientSecret: "Client secret", publicKey: "Bank public key", caBundle: "CA bundle (optional)" };
 
 function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: Environment; what: SecretKey; onDone: (d: ConnectorDetailDto) => void; onClose: () => void }) {
   const [value, setValue] = useState("");
@@ -94,7 +94,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
             <li key={k} className="flex items-center justify-between gap-3 py-2">
               <span className="text-body-sm text-fg">{SECRET_LABEL[k]}</span>
               <span className="flex items-center gap-2">
-                <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : "Not set"} />
+                <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? "Server's certificates" : "Not set"} />
                 {canEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setReplace(k)}>Replace</Button>}
               </span>
             </li>

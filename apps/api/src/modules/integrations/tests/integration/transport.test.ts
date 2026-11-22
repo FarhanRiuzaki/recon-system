@@ -124,7 +124,7 @@ describe("Try it against dev", () => {
   });
 
   it("a certificate the environment doesn't trust is not sent", async () => {
-    expect(await tryIt(await connector({ ca: false }), "ok")).toMatchObject({ outcome: "not_sent", message: "The bank's certificate isn't trusted. Add the environment's CA bundle." });
+    expect(await tryIt(await connector({ ca: false }), "ok")).toMatchObject({ outcome: "not_sent", message: "This server doesn't trust the bank's certificate. Ask IT to add the bank's root certificate to the server (NODE_EXTRA_CA_CERTS), or paste it as this environment's CA bundle." });
   });
 
   it("Try it goes to dev only", async () => {

@@ -30,7 +30,7 @@ const TLS_CODES = /CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|TLS|SS
 function failure(e: unknown, ms: number): { sent: boolean; message: string } {
   const x = e as { name?: string; code?: string };
   if (x.name === "TimeoutError" || x.name === "AbortError") return { sent: true, message: `No answer from the bank within ${Math.round(ms / 1000)} s.` };
-  if (TLS_CODES.test(String(x.code ?? ""))) return { sent: false, message: "The bank's certificate isn't trusted. Add the environment's CA bundle." };
+  if (TLS_CODES.test(String(x.code ?? ""))) return { sent: false, message: "This server doesn't trust the bank's certificate. Ask IT to add the bank's root certificate to the server (NODE_EXTRA_CA_CERTS), or paste it as this environment's CA bundle." };
   return { sent: false, message: `The bank couldn't be reached${x.code ? ` (${x.code})` : ""}.` };
 }
 const tlsOf = (s: Secrets) => (s.caBundle ? { tls: { ca: [s.caBundle] } } : {});
