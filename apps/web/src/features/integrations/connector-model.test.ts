@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { prune, renamePath, replaceAt } from "./connector-model";
+import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
+import { mergeSpecOperations, prune, renamePath, replaceAt } from "./connector-model";
 
 const op: OperationSpec = {
   key: "post", name: "Post", method: "POST", path: "/", timeoutMs: 30000,
@@ -25,5 +25,35 @@ describe("a connector's draft (final review I2, I3)", () => {
   it("an operation is replaced by its place, never by its key, so two with the same key stay two", () => {
     const a = { ...op, key: "same" }, b = { ...op, key: "same", name: "Second" };
     expect(replaceAt([a, b], 1, { ...b, name: "Edited" }).map((o) => o.name)).toEqual(["Post", "Edited"]);
+  });
+});
+
+describe("operations pasted from a whole spec", () => {
+  const env = { baseUrl: "", host: "", partnerId: "P1", channelId: "C1" };
+  const spec: ConnectorSpec = { name: "Bank", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [{ ...op, key: "fund_status", timeoutMs: 15000, presets: { Currency: "IDR" } }] };
+  const pasted = {
+    baseUrl: "https://api.bank.local:15000",
+    operations: [
+      { key: "fund_status", name: "Fund Status", method: "GET" as const, path: "/openapi/fund", request: [{ name: "Currency", type: "string" as const, required: false }], response: [], success: null },
+      { key: "balance", name: "Balance", method: "POST" as const, path: "/openapi/balance", request: [], response: [{ name: "rsResponseCode", type: "string" as const, required: false }], success: { field: "rsResponseCode", equals: "00" } },
+    ],
+  };
+  it("updates an operation of the same key (keeping its time limit and what still applies) and adds the new ones", () => {
+    const r = mergeSpecOperations(spec, pasted, true);
+    expect([r.added, r.updated, r.skipped]).toEqual([1, 1, 0]);
+    expect(r.spec.operations.map((o) => [o.key, o.method, o.path, o.timeoutMs])).toEqual([["fund_status", "GET", "/openapi/fund", 15000], ["balance", "POST", "/openapi/balance", 30000]]);
+    expect(r.spec.operations[0]!.presets).toEqual({ Currency: "IDR" });
+    expect(r.spec.operations[1]!.success).toEqual({ field: "rsResponseCode", equals: "00" });
+  });
+  it("fills the development address and Host only while they are empty, and only when asked", () => {
+    expect(mergeSpecOperations(spec, pasted, true).spec.environments.dev).toMatchObject({ baseUrl: "https://api.bank.local:15000", host: "api.bank.local" });
+    expect(mergeSpecOperations(spec, pasted, false).spec.environments.dev.baseUrl).toBe("");
+    const set = { ...spec, environments: { ...spec.environments, dev: { ...env, baseUrl: "https://other.local" } } };
+    expect(mergeSpecOperations(set, pasted, true).spec.environments.dev.baseUrl).toBe("https://other.local");
+  });
+  it("stops at the operations limit and counts the rest as skipped", () => {
+    const many = { baseUrl: null, operations: Array.from({ length: 60 }, (_, i) => ({ ...pasted.operations[1]!, key: `op_${i}` })) };
+    const r = mergeSpecOperations({ ...spec, operations: [] }, many, false);
+    expect([r.spec.operations.length, r.added, r.skipped]).toEqual([50, 50, 10]);
   });
 });

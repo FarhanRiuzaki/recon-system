@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConnectorSpec } from "./contracts/integrations";
-import { fieldsFromOpenApi, fieldsFromSample, fieldsFromTable, maskTree, maskValue, readSpecPaste, withPresets } from "./integrations";
+import { completeNames, fieldsFromOpenApi, fieldsFromSample, fieldsFromTable, maskTree, maskValue, operationsFromSpec, readSpecPaste, withPresets } from "./integrations";
 
 describe("field trees", () => {
   it("reads a sample JSON into a field tree", () => {
@@ -113,5 +113,109 @@ describe("a field table pasted from a bank's spec", () => {
     expect(readSpecPaste("code M String 2 Code", "/x", "POST", "request")).toEqual({ fields: [{ name: "code", type: "string", maxLength: 2, required: true }], from: "table" });
     expect(readSpecPaste('{ "openapi": "3.0.0", "paths": {} }', "/x", "POST", "request")).toBe("This file has no POST /x.");
     expect(readSpecPaste("just words", "/x", "POST", "request")).toBe("No fields were found. Paste the field table, a sample JSON or an OpenAPI file from the spec.");
+  });
+});
+
+describe("a whole spec pasted at once: one operation per section", () => {
+  const spec = [
+    "Table of contents",
+    "1. Balance Inquiry......................................................3",
+    "2. Fund Status..........................................................5",
+    "1. Balance Inquiry",
+    "",
+    "Method               POST",
+    "Path                 https://api.bank.local:15000/openapi/v1.0/demo/",
+    "                     balance-inquiry",
+    "",
+    "Header",
+    "Field                        Type     Value                             Description",
+    "Authorization                M        Bearer {{access_token}}           Bearer token",
+    "X-PARTNER-ID                 M        {{partner-id}}                    Partner",
+    "",
+    "Request",
+    "Field                             Type    Data Type        Length     Description",
+    "accountNo                         M       String           16         Account to read.",
+    "                                                                      Digits only.",
+    "",
+    "Response",
+    "Field                                      Data Type         Description",
+    "header                                     Object",
+    "    1.  rsResponseCode                     String            Response code",
+    "    2.  rsResponseMsg                      String            Message",
+    "balance                                    Numeric           Balance now",
+    "",
+    "Request              {",
+    '                         "accountNo": "123"',
+    "                     }",
+    "2. Fund Status",
+    "Method               GET",
+    "Path                 https://api.bank.local:15000/openapi/v1.0/demo/fund-status?type=a",
+    "Response",
+    "Response             {",
+    '                         "ResponseCode": "00",',
+    '                         "Status": "OK"',
+    "                     }",
+  ].join("\n");
+  it("reads each section's name, method, path (wrapped lines joined), request and response fields, and the address", () => {
+    const r = operationsFromSpec(spec);
+    expect(r.baseUrl).toBe("https://api.bank.local:15000");
+    expect(r.operations.map((o) => [o.key, o.name, o.method, o.path])).toEqual([
+      ["balance_inquiry", "Balance Inquiry", "POST", "/openapi/v1.0/demo/balance-inquiry"],
+      ["fund_status", "Fund Status", "GET", "/openapi/v1.0/demo/fund-status?type=a"],
+    ]);
+    expect(r.operations[0]!.request).toEqual([{ name: "accountNo", type: "string", maxLength: 16, required: true }]);
+    expect(r.operations[0]!.response.map((f) => f.name)).toEqual(["header", "balance"]);
+    // no table: the sample answers the fields
+    expect(r.operations[1]!.response).toEqual([{ name: "ResponseCode", type: "string", required: false }, { name: "Status", type: "string", required: false }]);
+  });
+  it("suggests success when the response has a response code", () => {
+    const r = operationsFromSpec(spec);
+    expect(r.operations.map((o) => o.success)).toEqual([{ field: "header.rsResponseCode", equals: "00" }, { field: "ResponseCode", equals: "00" }]);
+  });
+  it("finds nothing in text without Method lines", () => {
+    expect(operationsFromSpec("accountNo M String 16 Account").operations).toEqual([]);
+  });
+});
+
+describe("tables as banks really lay them out", () => {
+  const table = [
+    "Field                                      Data Type        Description",
+    "responseSearch                             Object",
+    "    1.  bankCode                           String           Participant",
+    "    2.  sendTransaction                    Object",
+    "        i.  totalWithdrawalVol             Numeric          Count",
+    "                                                            Format: Long",
+    "        ii. totalWithdrawalAmt             Numeric          Amount",
+    "        iii.totalCreditTransferWithP       Numeric          Count with",
+    "            roxyVol                                         proxy.",
+    "        iv.     totalCreditTransferWi      Numeric          Amount with",
+    "            thProxyAmt                                      proxy.",
+    "    3.  receiveTransaction                 Object",
+    "        i.  totalTopupVol                  Numeric          Count",
+    "footer                                     String           After the groups",
+  ].join("\n");
+  it("roman numbering, no space after the dot, three levels, and a name wrapped onto the next line", () => {
+    expect(fieldsFromTable(table).fields).toEqual([
+      { name: "responseSearch", type: "object", required: false, children: [
+        { name: "bankCode", type: "string", required: false },
+        { name: "sendTransaction", type: "object", required: false, children: [
+          { name: "totalWithdrawalVol", type: "numeric", required: false },
+          { name: "totalWithdrawalAmt", type: "numeric", required: false },
+          { name: "totalCreditTransferWithProxyVol", type: "numeric", required: false },
+          { name: "totalCreditTransferWithProxyAmt", type: "numeric", required: false },
+        ] },
+        { name: "receiveTransaction", type: "object", required: false, children: [{ name: "totalTopupVol", type: "numeric", required: false }] },
+      ] },
+      { name: "footer", type: "string", required: false },
+    ]);
+  });
+  it("a name cut short in the table is completed from the sample JSON beside it", () => {
+    const cut = "detail Object\n1. totalCreditTransferWithP Numeric Count\n2. bankCode String Code";
+    const sample = { detail: { totalCreditTransferWithProxyVol: 1, bankCode: "X" } };
+    expect(completeNames(fieldsFromTable(cut).fields, sample)).toEqual([
+      { name: "detail", type: "object", required: false, children: [
+        { name: "totalCreditTransferWithProxyVol", type: "numeric", required: false }, { name: "bankCode", type: "string", required: false },
+      ] },
+    ]);
   });
 });

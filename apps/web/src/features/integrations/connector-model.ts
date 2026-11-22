@@ -1,5 +1,5 @@
-import type { OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { fieldPaths } from "@starterkit/shared/integrations";
+import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
+import { fieldPaths, OPERATIONS_MAX, type SpecOperation, TIMEOUT_DEFAULT_MS } from "@starterkit/shared/integrations";
 
 // A connector draft's operations as the editor changes them (DEC-053), pure: a field renamed carries what points to it,
 // what points to a field that is gone is dropped before saving, and an operation is changed by its place in the list.
@@ -32,3 +32,30 @@ export function prune(op: OperationSpec): OperationSpec {
 
 /** `list` with the item at `i` replaced. */
 export const replaceAt = <T>(list: readonly T[], i: number, v: T): T[] => list.map((x, j) => (j === i ? v : x));
+
+/**
+ * `spec` with the operations read from a whole spec: one with the same key is updated (name, method, path, fields;
+ * its time limit, success rule, masks and fixed values stay where they still apply), the others are added up to the
+ * limit. `fillAddress`: the development address and Host take the spec's while they are empty.
+ */
+export function mergeSpecOperations(spec: ConnectorSpec, pasted: { operations: readonly SpecOperation[]; baseUrl: string | null }, fillAddress: boolean) {
+  let added = 0, updated = 0, skipped = 0;
+  const operations = [...spec.operations];
+  for (const p of pasted.operations) {
+    const i = operations.findIndex((o) => o.key === p.key);
+    if (i >= 0) {
+      const o = operations[i]!;
+      operations[i] = prune({ ...o, name: p.name, method: p.method, path: p.path, request: p.request, response: p.response, success: o.success ?? p.success });
+      updated++;
+    } else if (operations.length < OPERATIONS_MAX) {
+      operations.push({ ...p, timeoutMs: TIMEOUT_DEFAULT_MS, reference: null, masked: [], presets: {} });
+      added++;
+    } else skipped++;
+  }
+  const dev = spec.environments.dev;
+  const host = pasted.baseUrl ? new URL(pasted.baseUrl).hostname : "";
+  const environments = fillAddress && pasted.baseUrl && !dev.baseUrl
+    ? { ...spec.environments, dev: { ...dev, baseUrl: pasted.baseUrl, host: dev.host || host } }
+    : spec.environments;
+  return { spec: { ...spec, operations, environments }, added, updated, skipped };
+}

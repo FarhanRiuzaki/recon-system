@@ -27,6 +27,7 @@ import { unsaved } from "@/lib/shared/autosave";
 import { connectorDetail, INTEGRATIONS_KEY } from "@/lib/shared/queries";
 import { prune, replaceAt } from "./connector-model";
 import { EnvironmentCard } from "./environment-card";
+import { SpecPasteDialog } from "./spec-paste-dialog";
 import { OperationEditor } from "./operation-editor";
 import { CONNECTOR_SHAPE } from "./shapes";
 import { TryPanel } from "./try-panel";
@@ -127,6 +128,7 @@ export function ConnectorEditor({ id }: { id: string }) {
 
   const [busy, setBusy] = useState<string | null>(null);
   const [turnOff, setTurnOff] = useState(false);
+  const [pasting, setPasting] = useState(false);
   async function run(label: string, path: string, b: object | undefined, done: string): Promise<boolean> {
     setBusy(label);
     try {
@@ -236,8 +238,11 @@ export function ConnectorEditor({ id }: { id: string }) {
                   </li>
                 ))}
               </ul>
+              {!readOnly && (
+                <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => setPasting(true)}>Paste a whole spec</Button>
+              )}
               {!readOnly && spec.operations.length < OPERATIONS_MAX && (
-                <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => {
+                <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => {
                   let n = spec.operations.length + 1;
                   while (spec.operations.some((o) => o.key === `operation_${n}`)) n++;
                   set({ ...spec, operations: [...spec.operations, newOperation(n)] }); go({ op: String(spec.operations.length) });
@@ -250,12 +255,13 @@ export function ConnectorEditor({ id }: { id: string }) {
               <OperationEditor key={at} op={op} onChange={setOp} disabled={readOnly} />
             </Panel>
           ) : (
-            <Panel title="Operations"><p className="text-body-sm text-fg-3">No operations yet. {readOnly ? "A draft adds them." : "Add one, then paste its fields from the spec."}</p></Panel>
+            <Panel title="Operations"><p className="text-body-sm text-fg-3">No operations yet. {readOnly ? "A draft adds them." : "Paste a whole spec to add its operations at once, or add one."}</p></Panel>
           )}
         </div>
       )}
 
       {tab === "try" && <TryPanel id={c.id} operations={spec.operations} />}
+      {pasting && <SpecPasteDialog spec={spec} onClose={() => setPasting(false)} onApply={(next, note) => { setPasting(false); set(next); toast(note); }} />}
       {turnOff && <TurnOffDialog id={c.id} onClose={() => setTurnOff(false)} onDone={(next) => { setTurnOff(false); took(next, "Connector turned off."); }} />}
     </div>
   );

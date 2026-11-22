@@ -110,12 +110,16 @@ const TYPE_WORDS: Record<string, FieldType> = {
 const MANDATORY: Record<string, boolean> = { m: true, mandatory: true, required: true, y: true, yes: true, o: false, optional: false, c: false, conditional: false, no: false };
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 
-/** One table row as a field, or null for a header, a wrapped description or prose. */
-function tableRow(line: string): { indent: number; numbered: boolean; path: string; field: OpField } | null {
+type Row = { indent: number; nameCol: number; level: number; numbered: boolean; path: string; field: OpField };
+const NUMBERING = /^(?:(\d{1,3})|([ivxlc]{1,7})|([a-z]))[.)]\s*/i;
+/** One table row as a field, or null for a header, a wrapped description or prose. `level` = its numbering (1. → 1, i. → 2, a. → 3). */
+function tableRow(line: string): Row | null {
   const indent = line.length - line.trimStart().length;
   let rest = line.trim();
-  const num = /^\d+[.)]\s+/.exec(rest);
-  if (num) rest = rest.slice(num[0].length);
+  const num = NUMBERING.exec(rest);
+  // a lone letter needs a space after it ("a. name"); digits and roman numerals may run into the name ("iii.total")
+  const numbered = !!num && !(num[3] && !/\s/.test(num[0].slice(-1)));
+  if (numbered) rest = rest.slice(num![0].length);
   const t = rest.split(/\s+/);
   if (!t[0] || !NAME.test(t[0])) return null;
   let required = false, type: FieldType | null = null, maxLength: number | undefined, i = 1;
@@ -130,16 +134,23 @@ function tableRow(line: string): { indent: number; numbered: boolean; path: stri
   if (len && type !== "object" && type !== "array") maxLength = Number(len[1]);
   const path = t[0];
   const name = path.split(".").at(-1)!;
-  return { indent, numbered: !!num, path, field: { name, type, ...(maxLength ? { maxLength } : {}), required, ...(type === "object" || type === "array" ? { children: [] } : {}) } };
+  const level = numbered ? (num![1] ? 1 : num![2] ? 2 : 3) : 0;
+  return {
+    indent, nameCol: indent + (numbered ? num![0].length : 0), level, numbered, path,
+    field: { name, type, ...(maxLength ? { maxLength } : {}), required, ...(type === "object" || type === "array" ? { children: [] } : {}) },
+  };
 }
 
 /**
- * The fields of a table copied from a spec: a row is "name [M|O] type [length] description" (tabs or spaces); rows
- * numbered "1." or indented under an Object/Array row are its fields; "DE48.TraceID" goes under DE48. `rows` = rows read.
+ * The fields of a table copied from a spec: a row is "name [M|O] type [length] description" (tabs or spaces). A row
+ * belongs to the Object or Array above it by its numbering (1. under the plain rows, i. under 1., a. under i.) or, when
+ * not numbered, by its indent; "DE48.TraceID" goes under DE48. A name the layout cut onto the next line (same column,
+ * one word) is joined back. `rows` = rows read.
  */
 export function fieldsFromTable(text: string): { fields: OpField[]; rows: number } {
   const out: OpField[] = [];
-  let group: { field: OpField; indent: number } | null = null, rows = 0;
+  const stack: { field: OpField; nameCol: number; level: number }[] = [];
+  let last: Row | null = null, rows = 0;
   const under = (parent: OpField[], parts: string[], f: OpField) => {
     let at = parent;
     for (const p of parts.slice(0, -1)) {
@@ -151,17 +162,40 @@ export function fieldsFromTable(text: string): { fields: OpField[]; rows: number
   };
   for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
     const r = tableRow(line);
-    if (!r) continue;
-    rows++;
-    const child = !!group && (r.numbered || r.indent > group.indent);
-    if (child) group!.field.children!.push(r.field);
-    else {
-      under(out, r.path.split("."), r.field);
-      group = r.field.children ? { field: r.field, indent: r.indent } : null;
+    if (!r) {
+      // the rest of a long name, in the name's column, then only the description column
+      const indent = line.length - line.trimStart().length, m = /^(\S+)(\s{2,}.*)?$/.exec(line.trim());
+      if (last && indent > last.indent && m && /^[A-Za-z0-9_]+$/.test(m[1]!) && indent <= last.nameCol + 4) last.field.name += m[1];
+      else if (line.trim()) last = last && indent > 0 ? last : null;
+      continue;
     }
+    rows++;
+    if (r.numbered) while (stack.length && stack.at(-1)!.level >= r.level) stack.pop();
+    else while (stack.length && stack.at(-1)!.nameCol >= r.nameCol) stack.pop();
+    const level = r.numbered ? r.level : stack.length ? stack.at(-1)!.level + 1 : 0;
+    const parent = stack.at(-1)?.field.children;
+    if (parent) parent.push(r.field); else under(out, r.path.split("."), r.field);
+    if (r.field.children) stack.push({ field: r.field, nameCol: r.nameCol, level });
+    last = r;
   }
   const tidy = (fs: OpField[]): OpField[] => fs.map((f) => (f.children ? (f.children.length ? { ...f, children: tidy(f.children) } : (({ children: _, ...x }) => x)(f)) : f));
   return { fields: tidy(out), rows };
+}
+
+/** Table fields whose name a sample shows longer (a name the spec's layout cut short) take the sample's name. */
+export function completeNames(fields: readonly OpField[], sample: unknown): OpField[] {
+  const obj = Array.isArray(sample) ? sample[0] : sample;
+  if (obj === null || typeof obj !== "object") return [...fields];
+  const keys = Object.keys(obj as object);
+  return fields.map((f) => {
+    let name = f.name;
+    if (!keys.includes(name)) {
+      const longer = keys.filter((k) => k.startsWith(name) && k !== name && !fields.some((x) => x.name === k));
+      if (longer.length === 1) name = longer[0]!;
+    }
+    const inner = (obj as Record<string, unknown>)[name];
+    return { ...f, name, ...(f.children ? { children: completeNames(f.children, inner) } : {}) };
+  });
 }
 
 /** What a paste from a spec holds: an OpenAPI file, a sample JSON or a field table; the fields, or why none. */
@@ -180,4 +214,84 @@ export function readSpecPaste(text: string, path: string, method: string, side: 
   }
   const t = fieldsFromTable(text);
   return t.fields.length ? { fields: t.fields, from: "table" } : none;
+}
+
+// ---- a whole spec pasted at once: one operation per section that has a Method line ----
+export type SpecOperation = {
+  key: string; name: string; method: "POST" | "GET" | "PUT"; path: string; request: OpField[]; response: OpField[];
+  /** Suggested from the data: a response code field = "00". */
+  success: { field: string; equals: string } | null;
+};
+const TITLE = /^(\d+(?:\.\d+)*)\.?\s+([A-Za-z].{0,79}?)\s*$/;
+const keyOf = (name: string) => { const k = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40); return /^[a-z]/.test(k) ? k : `op_${k}`.slice(0, 40); };
+const braces = (s: string) => [...s].reduce((n, c) => n + (c === "{" ? 1 : c === "}" ? -1 : 0), 0);
+
+/**
+ * Operations read from a spec pasted whole: each section's title (the numbered heading above it), Method, Path (an
+ * absolute URL gives the address; wrapped lines joined), and its Request and Response field tables (a sample JSON when
+ * a side has no table). Header tables are skipped. `baseUrl` = the address of the first absolute path.
+ */
+export function operationsFromSpec(text: string): { operations: SpecOperation[]; baseUrl: string | null } {
+  type Draft = { name: string; method: SpecOperation["method"]; url: string; table: Record<"request" | "response", string[]>; sample: Record<"request" | "response", string> };
+  const drafts: Draft[] = [];
+  let title: string | null = null, op: Draft | null = null;
+  let section: "header" | "request" | "response" | null = null, inPath = false;
+  let sample: { side: "request" | "response"; depth: number } | null = null;
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const s = line.trim(), indent = line.length - line.trimStart().length;
+    if (sample && op) {
+      op.sample[sample.side] += `\n${line}`;
+      sample.depth += braces(line);
+      if (sample.depth <= 0) sample = null;
+      continue;
+    }
+    if (inPath && op) {
+      if (s && indent > 0 && !/\s/.test(s) && !/^(Header|Headers|Request|Response)$/i.test(s)) { op.url += s; continue; }
+      inPath = false;
+    }
+    const m = /^(?:HTTP\s+)?Method\s*:?\s+(POST|GET|PUT)\b/i.exec(s);
+    if (m) {
+      op = { name: title ?? `Operation ${drafts.length + 1}`, method: m[1]!.toUpperCase() as SpecOperation["method"], url: "", table: { request: [], response: [] }, sample: { request: "", response: "" } };
+      drafts.push(op); section = null; continue;
+    }
+    const p = /^(?:Path|URL|Endpoint)\s*:?\s+(\S+)$/i.exec(s);
+    if (p && op) { op.url = p[1]!; inPath = true; continue; }
+    const smp = /^(Request|Response)\s+(\{.*)$/i.exec(s);
+    if (smp && op) {
+      const side = smp[1]!.toLowerCase() as "request" | "response";
+      op.sample[side] = smp[2]!;
+      const depth = braces(smp[2]!);
+      if (depth > 0) sample = { side, depth };
+      continue;
+    }
+    if (/^(Header|Headers)$/i.test(s)) { section = "header"; continue; }
+    const sec = /^(Request|Response)(?:\s+(?:Body|Parameters?))?$/i.exec(s);
+    if (sec) { section = sec[1]!.toLowerCase() as "request" | "response"; continue; }
+    const t = indent < 4 && !/\.{4,}/.test(s) ? TITLE.exec(s) : null;
+    if (t && !tableRow(line)) { title = t[2]!; if (op && section) section = null; continue; }
+    if (op && (section === "request" || section === "response")) op.table[section].push(line);
+  }
+  let baseUrl: string | null = null;
+  const used = new Set<string>();
+  const operations = drafts.map((d): SpecOperation => {
+    let path = d.url || "/";
+    if (/^https?:\/\//i.test(path)) {
+      try { const u = new URL(path); baseUrl ??= u.origin; path = `${u.pathname}${u.search}`; } catch { /* not a URL: kept as typed */ }
+    }
+    if (!path.startsWith("/")) path = `/${path}`;
+    const side = (k: "request" | "response") => {
+      let sampled: unknown;
+      try { sampled = d.sample[k] ? JSON.parse(d.sample[k]) : undefined; } catch { sampled = undefined; }
+      const fromTable = fieldsFromTable(d.table[k].join("\n")).fields;
+      if (fromTable.length) return sampled === undefined ? fromTable : completeNames(fromTable, sampled);
+      return sampled === undefined ? [] : fieldsFromSample(sampled);
+    };
+    const request = side("request"), response = side("response");
+    const code = fieldPaths(response).find((x) => /^(rs)?responsecode$/i.test(x.split(".").at(-1)!));
+    let key = keyOf(d.name), n = 2;
+    while (used.has(key)) key = `${keyOf(d.name).slice(0, 36)}_${n++}`;
+    used.add(key);
+    return { key, name: d.name, method: d.method, path, request, response, success: code ? { field: code, equals: "00" } : null };
+  });
+  return { operations, baseUrl };
 }
