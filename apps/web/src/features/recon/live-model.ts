@@ -2,7 +2,8 @@
 // health and lag, the Space map as a graph (sources → recons, a source that is Degraded or Down marks every recon that
 // reads it) and a day's numbers as the builder canvas's counters. Pure: the screens and their tests share it.
 import type { LiveReconDto, LiveSourceDto, ReconRunDto, RunDay, TodayDto } from "@starterkit/shared/contracts/recon";
-import { formatDateTime, formatDuration, formatNumber } from "@starterkit/ui/lib/format";
+import type { BreakdownPart } from "@starterkit/ui/lib/breakdown";
+import { APP_TIME_ZONE_LABEL, formatDateTime, formatDuration, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { categoryChip, type Chip } from "@/lib/shared/categories";
 
 type Health = "healthy" | "degraded" | "down" | "stopped" | "unknown";
@@ -36,6 +37,26 @@ export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceD
 
 /** "Runs every 2 min" / "Runs daily at 06:00". */
 export const scheduleLine = (s: LiveReconDto["schedule"]) => (s.kind === "interval" ? `Runs every ${formatDuration(s.every_minutes * 60)}` : `Runs daily at ${s.at}`);
+
+/**
+ * When the schedule starts the next run (the Run card, audit R5): an interval recon's last scheduled start plus its
+ * interval (the schedule looks every minute, so once that has passed it is due now), a daily one's time today or
+ * tomorrow. ponytail: a date waiting for data or a failed run's backoff can hold it longer (engine rules.ts planRun);
+ * the API would need the planner's own next moment to say so.
+ */
+export function nextRunText(s: LiveReconDto["schedule"], lastScheduledAt: string | null, now = Date.now()): string {
+  if (s.kind === "daily") return `Next run at ${s.at} ${APP_TIME_ZONE_LABEL} ${formatTime(now) < s.at ? "today" : "tomorrow"}`;
+  const next = lastScheduledAt ? Date.parse(lastScheduledAt) + s.every_minutes * 60_000 : 0;
+  return next > now ? `Next run due at ${formatTime(next)} ${APP_TIME_ZONE_LABEL}` : "Next run due now";
+}
+
+/** A recon's open unmatch per reason (the queue's facets) as BreakdownCard parts, each in its reason chip's slot. */
+export function reasonParts(byReason: Readonly<Record<string, number>> | undefined): BreakdownPart[] {
+  return Object.entries(byReason ?? {}).map(([label, value]) => {
+    const slot = categoryChip("reason", label);
+    return slot === "neutral" ? { label, value } : { label, value, slot: slot - 1 };
+  });
+}
 
 /** A day's totals: items in, groups matched and suggested, waiting and broken items (both sides), side A's match rate. */
 export function totalsOfDay(d: RunDay): { inItems: number | null; matched: number; suggested: number; waiting: number; breaks: number; rate: number | null } {

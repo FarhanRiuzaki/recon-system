@@ -1,15 +1,17 @@
 "use client";
 
-// A recon's Overview (owner, 22 Nov: as a source's, few tabs, details merged): how it runs. Its business date's numbers,
-// the Run card (how it is scheduled, how its day closes, its last run, a manual run) beside its Run history (newest
-// first, as tall as the card, older runs load as the list scrolls), the last TREND_DAYS dates, then the day's pipeline
-// and the sources (LiveDay). What it is (sides, passes, settings) is the Configuration tab.
+// A recon's Overview (owner, 22 Nov: as a source's, few tabs, details merged), in four zones (audit R2, LiveDay):
+// Today (its business date's numbers, the Run card: how it is scheduled, how its day closes, its last and next run, a
+// manual run), Needs action (open unmatch by reason, the sign-off of closed days), How it works (the day's pipeline
+// with its sources) and History (the last runs, more on request, and the last TREND_DAYS dates), quiet and last.
+// What it is (sides, passes, settings) is the Configuration tab.
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
 import { CategoryChip, EmptyState, LazyMount, Panel, RelativeTime, ScrollFade } from "@starterkit/ui/ds";
+import { Button } from "@starterkit/ui/ui/button";
 import { APP_TIME_ZONE_LABEL, formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon, ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from "@starterkit/ui/ui/icons";
@@ -20,7 +22,7 @@ import { api, errorText } from "@/lib/client/api";
 import { ENGINE_KEY } from "@/lib/shared/queries";
 import { RUN_PAGE, reconRunsFirst } from "@/lib/shared/queries-recon";
 import { LiveDay } from "./live-day";
-import { scheduleLine, totalsOfDay } from "./live-model";
+import { nextRunText, scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
 import { carryText } from "./spec-model";
 import { rangeText, rateText, runChip, runRowChips } from "./run-model";
@@ -38,12 +40,23 @@ function Rows({ items }: { items: [string, React.ReactNode][] }) {
   );
 }
 
-/** How it runs, how its day closes, its last run and, for an operator or a config maker, a run of chosen dates. */
-function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string; r: ReconDto; runner: boolean; last: ReconRunDto | undefined }) {
+/**
+ * How it runs, how its day closes, its last run, when the next one is due and, for an operator or a config maker, a run
+ * of chosen dates, pinned to the card's foot. `scheduledAt`: when the last scheduled run started.
+ */
+function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: string; id: string; r: ReconDto; runner: boolean; last: ReconRunDto | undefined; scheduledAt: string | null }) {
   const spec = r.published!.spec;
+  // the clock is read after mount (the server's would differ) and every 30 s; the line keeps its height meanwhile
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    tick();
+    const t = setInterval(tick, 30_000);
+    return () => clearInterval(t);
+  }, []);
   return (
-    <Panel icon={TimeIcon} title="Run" description={scheduleLine(spec.schedule)}>
-      <div className="grid gap-4">
+    <Panel icon={TimeIcon} title="Run" description={scheduleLine(spec.schedule)} className="h-full" bodyClassName="flex flex-col">
+      <div className="flex flex-1 flex-col gap-4">
         <Rows items={[
           ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
@@ -56,9 +69,12 @@ function RunCard({ spaceId, id, r, runner, last }: { spaceId: string; id: string
             </span>
           ) : "No run yet"],
         ]} />
-        {runner
-          ? <div className="border-t border-line pt-4"><RunControl spaceId={spaceId} id={id} spec={spec} /></div>
-          : <p className="border-t border-line pt-4 text-body-sm text-fg-3">Operators and config makers start a run of chosen dates; the schedule runs it meanwhile.</p>}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+          <p role="status" className="min-h-5 text-body-sm text-fg-2">{now != null && nextRunText(spec.schedule, scheduledAt, now)}</p>
+          {runner
+            ? <RunControl spaceId={spaceId} id={id} spec={spec} />
+            : <p className="text-body-sm text-fg-3">Operators and config makers start a run of chosen dates.</p>}
+        </div>
       </div>
     </Panel>
   );
@@ -71,8 +87,15 @@ function countsOf(r: ReconRunDto): string {
   return [`${formatNumber(inItems)} in`, `${formatNumber(matched)} matched`, waiting ? `${formatNumber(waiting)} waiting` : ""].filter(Boolean).join(" · ");
 }
 
-/** The recon's runs, newest first, beside the Run card and as tall as it; older pages load as the end comes into view. */
+/** Rows the run history shows until "Show all" (audit §5.9). */
+const HISTORY_ROWS = 5;
+
+/**
+ * The recon's runs, newest first, the last HISTORY_ROWS until "Show all"; then older pages load as the end comes into
+ * view. Quiet: history reads after the page's summary and actions.
+ */
 function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
+  const [all, setAll] = useState(false);
   const firstQ = reconRunsFirst(spaceId, id);
   const first = useQuery({ queryKey: firstQ.key, queryFn: () => api<Page<ReconRunDto>>(firstQ.url), refetchInterval: 30_000 });
   const q = useInfiniteQuery({
@@ -83,7 +106,7 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
   });
   const end = useRef<HTMLLIElement>(null);
   const f = first.data;
-  const hasNextPage = q.data ? q.hasNextPage : !!f && f.pageSize < f.total;
+  const hasNextPage = all && (q.data ? q.hasNextPage : !!f && f.pageSize < f.total);
   const { isFetchingNextPage, fetchNextPage } = q;
   useEffect(() => {
     const el = end.current;
@@ -92,9 +115,12 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
     o.observe(el);
     return () => o.disconnect();
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
-  const runs = [...(f?.items ?? []), ...(q.data?.pages.flatMap((p) => p.items) ?? [])].filter((r, i, all) => all.findIndex((x) => x.id === r.id) === i);
+  const loaded = [...(f?.items ?? []), ...(q.data?.pages.flatMap((p) => p.items) ?? [])].filter((r, i, list) => list.findIndex((x) => x.id === r.id) === i);
+  const runs = all ? loaded : loaded.slice(0, HISTORY_ROWS);
+  const more = !all && (f?.total ?? 0) > HISTORY_ROWS;
   return (
-    <Panel flush icon={LogIcon} title="Run history" count={f?.total} description="Newest first · scheduled, manual and simulations" className="flex min-h-72 flex-col" bodyClassName="flex flex-1 flex-col">
+    <Panel flush tone="quiet" icon={LogIcon} title="Run history" count={f?.total} description="Newest first · scheduled, manual and simulations" className="flex min-h-72 flex-col" bodyClassName="flex flex-1 flex-col"
+      actions={more ? <Button type="button" variant="ghost" size="sm" onClick={() => setAll(true)}>Show all</Button> : undefined}>
       <div className="relative min-h-64 flex-1">
         <div className="absolute inset-0"><ScrollFade className="h-full">
           <ol aria-label="Runs">
@@ -124,7 +150,7 @@ function RunHistory({ spaceId, id }: { spaceId: string; id: string }) {
   );
 }
 
-/** Matched, waiting and broken items of the last TREND_DAYS dates, with the latest match rate (a day that slipped shows). */
+/** Matched, waiting and unmatch items of the last TREND_DAYS dates, with the latest match rate (a day that slipped shows). */
 function Trend({ spaceId, id }: { spaceId: string; id: string }) {
   const q = useReconTrend(spaceId, id, true);
   const days = q.data?.days ?? [];
@@ -132,13 +158,14 @@ function Trend({ spaceId, id }: { spaceId: string; id: string }) {
   const totals = days.map((d) => (d.day ? totalsOfDay(d.day) : null));
   const latest = [...totals].reverse().find((t) => t?.rate != null)?.rate ?? null;
   return (
-    <Panel icon={ColumnChartIcon} title={`Last ${days.length} days`} description={`Match rate ${rateText(latest)} on the latest date a run covered · items per business date`}>
+    <Panel tone="quiet" icon={ColumnChartIcon} title={`Last ${days.length} days`} description={`Match rate ${rateText(latest)} on the latest date a run covered · items per business date`}>
       <LazyMount minHeight={CHART_HEIGHT.standard}>
-        <BarChart label="Matched, waiting and broken items per business date" categories={days.map((d) => day(d.date))} format={formatNumber} stacked
+        {/* matched and unmatch in their outcome slots, what still waits neutral (audit R4) */}
+        <BarChart label="Matched, waiting and unmatch items per business date" categories={days.map((d) => day(d.date))} format={formatNumber} stacked
           series={[
             { label: "Matched", values: totals.map((t) => (t ? t.matched : 0)), slot: 0 },
-            { label: "Waiting", values: totals.map((t) => (t ? t.waiting + t.suggested : 0)), slot: 2 },
-            { label: "Unmatch", values: totals.map((t) => (t ? t.breaks : 0)), tone: "down" as const },
+            { label: "Waiting", values: totals.map((t) => (t ? t.waiting + t.suggested : 0)), tone: "neutral" as const, striped: true },
+            { label: "Unmatch", values: totals.map((t) => (t ? t.breaks : 0)), slot: 1 },
           ]} />
       </LazyMount>
     </Panel>
@@ -151,6 +178,8 @@ function Trend({ spaceId, id }: { spaceId: string; id: string }) {
  */
 // below the fold: its code loads after the page (bundle budget, DEC-040); its rows are prefetched with the page
 const SignoffTable = dynamic(() => import("./signoff-table").then((m) => m.SignoffTable), { ssr: false, loading: () => <div aria-hidden="true" className="h-64" /> });
+// the breakdown card's code too; its counts are prefetched with the page
+const ReasonBreakdown = dynamic(() => import("./reason-breakdown").then((m) => m.ReasonBreakdown), { ssr: false, loading: () => <div aria-hidden="true" className="h-64" /> });
 
 export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId: string; id: string; r: ReconDto; runner: boolean; configHref: string }) {
   const firstQ = reconRunsFirst(spaceId, id);
@@ -162,17 +191,21 @@ export function ReconOverview({ spaceId, id, r, runner, configHref }: { spaceId:
     );
   }
   const last = runs.data?.items.find((x) => x.mode !== "simulation");
+  const scheduled = runs.data?.items.find((x) => x.mode === "tick" || x.mode === "daily");
   return (
-    <LiveDay spaceId={spaceId} id={id} spec={r.published.spec} between={
-      <>
-        {/* the Run card and its history side by side, the history as tall as the card (as a source's Pull) */}
-        <div className="grid items-stretch gap-section xl:grid-cols-2">
-          <RunCard spaceId={spaceId} id={id} r={r} runner={runner} last={last} />
-          <RunHistory spaceId={spaceId} id={id} />
+    <LiveDay spaceId={spaceId} id={id} spec={r.published.spec}
+      run={<RunCard spaceId={spaceId} id={id} r={r} runner={runner} last={last} scheduledAt={scheduled?.startedAt ?? null} />}
+      act={
+        <div className="grid items-stretch gap-gutter xl:grid-cols-3">
+          <ReasonBreakdown spaceId={spaceId} id={id} />
+          <div className="grid min-w-0 gap-gutter xl:col-span-2"><SignoffTable spaceId={spaceId} id={id} /></div>
         </div>
-        <Trend spaceId={spaceId} id={id} />
-        <SignoffTable spaceId={spaceId} id={id} />
-      </>
-    } />
+      }
+      history={
+        <div className="grid items-stretch gap-gutter xl:grid-cols-2">
+          <RunHistory spaceId={spaceId} id={id} />
+          <Trend spaceId={spaceId} id={id} />
+        </div>
+      } />
   );
 }

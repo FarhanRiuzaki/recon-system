@@ -1,12 +1,13 @@
 "use client";
 
-// A recon's Live day tab (REC-F4, spec §11a "Live day"): its current business date as its last live run left it, the
-// run's freshness, the day's pipeline (the builder canvas, read-only, its edges counting the day; its source nodes say
-// each source's health and lag) with a list view of the same numbers, and the sources. Read again every LIVE_POLL_MS;
-// a number that changes tweens once (reduced motion: no tween, StatTile's own rule).
+// A recon's live day (REC-F4, spec §11a "Live day"), the frame of its Overview in four zones (audit R2): Today (its
+// current business date as its last live run left it, the run's freshness, then `run`), Needs action (`act`), How it
+// works (the day's pipeline: the builder canvas, read-only, its edges counting the day and its source nodes saying each
+// source's health and lag; or a list of the same numbers with the sources) and History (`history`). Read again every
+// LIVE_POLL_MS; a number that changes tweens once (reduced motion: no tween, StatTile's own rule).
 import { usePathname, useSearchParams } from "next/navigation";
-import type { ReactNode } from "react";
-import { EmptyState, Failure, Notice, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
+import { type ReactNode, useCallback, useState } from "react";
+import { EmptyState, Failure, Notice, PageZone, Panel, RelativeTime, Segmented, StatTile, StatTiles, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDate, formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
 import { ComponentsIcon } from "@starterkit/ui/ui/icons";
@@ -17,6 +18,7 @@ import { LoadingShape } from "@/components/route-skeleton";
 import { StateChip } from "@/components/state-chip";
 import { breakLabel } from "./run-model";
 import { CanvasLoader } from "./canvas-loader";
+import { pipelineFits } from "./canvas-graph";
 import { useArrivals, useElapsed } from "./live-hooks";
 import { dayCounters, dayTotals, kpiCaption, reconChip, scheduleLine, sourceChip, sourceLag } from "./live-model";
 import { LIVE_DAY_SHAPE } from "./shapes";
@@ -25,8 +27,8 @@ import { useOpenSummary, useReconLive } from "./use-recons";
 
 const fmt = (v: number) => formatNumber(Math.round(v));
 
-/** `between`: what sits under the day's numbers, before the pipeline (the Overview's run card, history and trend). */
-export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: string; spec: ReconSpec | null; between?: ReactNode }) {
+/** `run`: under the day's numbers (the Run card); `act`: the Needs action zone; `history`: the History zone, last. */
+export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spaceId: string; id: string; spec: ReconSpec | null; run?: ReactNode; act?: ReactNode; history?: ReactNode }) {
   const q = useReconLive(spaceId, id, !!spec);
   const openQ = useOpenSummary(spaceId, id, !!spec), open = openQ.data;
   const skeleton = useDelayedFlag(!!spec && !q.data && !q.error);
@@ -34,10 +36,20 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
   // a source whose records grew since the last read: its records are coming in (owner, 22 Nov)
   const arrivals = useArrivals(q.data?.sources);
   const sp = useSearchParams(), pathname = usePathname();
-  const view: "pipeline" | "list" = sp.get("view") === "list" ? "list" : "pipeline";
+  // the canvas where it fits its card at PIPELINE_MIN_ZOOM (audit R6), else the list; a choice in the URL wins.
+  // Measured once the card is on screen (null until then: the list, which every width can show).
+  const [fits, setFits] = useState<boolean | null>(null);
+  const measure = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    const o = new ResizeObserver(() => setFits(pipelineFits(el.clientWidth)));
+    o.observe(el);
+    return () => o.disconnect();
+  }, []);
+  const asked = sp.get("view");
+  const view: "pipeline" | "list" = asked === "list" || asked === "pipeline" ? asked : fits ? "pipeline" : "list";
   const setView = (v: "pipeline" | "list") => {
     const next = new URLSearchParams(window.location.search);
-    if (v === "list") next.set("view", "list"); else next.delete("view");
+    next.set("view", v);
     window.history.replaceState(null, "", `${pathname}?${next}`);
   };
 
@@ -54,90 +66,96 @@ export function LiveDay({ spaceId, id, spec, between }: { spaceId: string; id: s
   const run = r.running ? (r.running.status === "running" ? `Running for ${elapsed}` : "A run is queued") : null;
 
   return (
-    <div className="grid gap-section">
-      {q.error && <Notice tone="warn" live>Couldn&apos;t refresh the live day; showing what was read <RelativeTime at={q.dataUpdatedAt} />.</Notice>}
-      {r.stale && (
-        <Notice tone="warn">
-          No successful scheduled run {r.lastSuccessAt ? `since ${formatDateTime(Date.parse(r.lastSuccessAt))}` : "yet"}: more than twice its interval.
-          {r.alertedAt ? ` Last alert ${formatDateTime(Date.parse(r.alertedAt))}.` : ""}
-        </Notice>
-      )}
-      <Panel flush title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StateChip chip={chip} /></span>}
-        description={[scheduleLine(r.schedule), run ?? (r.runAt ? `last run finished ${formatDateTime(Date.parse(r.runAt))}` : "no run has covered this date yet")].join(" · ")}>
-        {/* the tiles fill the card: its body is the tray (no second frame) */}
-        <StatTiles className="rounded-none border-0">
-          <StatTile label="Items in" value={tot?.inItems != null ? fmt(tot.inItems) : "—"} tween={tot?.inItems != null ? { value: tot.inItems, format: fmt } : undefined} caption="Both sides, this date" />
-          <StatTile label="Matched" value={tot ? fmt(tot.matched) : "—"} tween={tot ? { value: tot.matched, format: fmt } : undefined} caption="Pairs and groups" />
-          <StatTile label="Waiting" value={tot ? fmt(tot.waiting) : "—"} tween={tot ? { value: tot.waiting, format: fmt } : undefined}
-            caption={tot ? `${formatNumber(tot.suggested)} suggested, open until accepted` : "Open items of this date"} />
-          <StatTile label="Unmatch" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} unmatch on this date` : "Every date"} />
-          {/* what the open unmatch items add up to, every date (audit R3; the queue's summary for this recon) */}
-          <StatTile label="Open amount" {...(open ? amountTile(open.amounts) : { value: "—" })} caption={kpiCaption(openQ, "the open amount", open ? amountTile(open.amounts).caption : undefined)} />
-        </StatTiles>
-      </Panel>
-
-      {between}
-
-      <Panel flush title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
-        actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
-        {view === "pipeline" && (
-          <div className="max-md:hidden">
-            <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"} arriving={arriving}
-              label="The live day's pipeline: sources, sides, passes in run order and where the date's items went" />
-          </div>
+    <div className="grid gap-zone">
+      <PageZone title="Today">
+        {q.error && <Notice tone="warn" live>Couldn&apos;t refresh the live day; showing what was read <RelativeTime at={q.dataUpdatedAt} />.</Notice>}
+        {r.stale && (
+          <Notice tone="warn">
+            No successful scheduled run {r.lastSuccessAt ? `since ${formatDateTime(Date.parse(r.lastSuccessAt))}` : "yet"}: more than twice its interval.
+            {r.alertedAt ? ` Last alert ${formatDateTime(Date.parse(r.alertedAt))}.` : ""}
+          </Notice>
         )}
-        {/* the list view: the same numbers, by keyboard and screen reader; a phone's only view (DEC-041) */}
-        <div className={view === "pipeline" ? "md:hidden" : undefined}>
-          <Table aria-label="Passes of the live day">
-            <TableHeader><TableRow>
-              <TableHead>Pass</TableHead><TableHead className="text-right">Matched</TableHead><TableHead className="text-right">Suggested</TableHead><TableHead className="text-right">Broken</TableHead>
-            </TableRow></TableHeader>
-            <TableBody>
-              {spec.passes.map((p, i) => {
-                const x = r.day?.passes[String(p.no)];
-                return (
-                  <TableRow key={p.no}>
-                    <TableCell>{i + 1}. {p.name || "Untitled pass"}</TableCell>
-                    <TableCell className="text-right tabular">{x ? formatNumber(x.matched) : "—"}</TableCell>
-                    <TableCell className="text-right tabular">{x ? formatNumber(x.suggested) : "—"}</TableCell>
-                    <TableCell className="text-right tabular">{x ? `${formatNumber(x.broken)}${x.broken ? ` ${breakLabel(p).toLowerCase()}` : ""}` : "—"}</TableCell>
-                  </TableRow>
-                );
-              })}
-              <TableRow>
-                <TableCell className="text-fg-2">Waiting after the passes</TableCell>
-                <TableCell colSpan={3} className="text-right tabular">{r.day ? `${formatNumber(r.day.open.a)} ${r.sides[0].label} · ${formatNumber(r.day.open.b)} ${r.sides[1].label}` : "—"}</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </div>
-      </Panel>
+        <Panel flush title={<span className="flex flex-wrap items-center gap-2">Business date {formatDate(Date.parse(`${r.date}T00:00:00+07:00`))}<StateChip chip={chip} /></span>}
+          description={[scheduleLine(r.schedule), run ?? (r.runAt ? `last run finished ${formatDateTime(Date.parse(r.runAt))}` : "no run has covered this date yet")].join(" · ")}>
+          {/* the tiles fill the card: its body is the tray (no second frame) */}
+          <StatTiles className="rounded-none border-0">
+            <StatTile label="Items in" value={tot?.inItems != null ? fmt(tot.inItems) : "—"} tween={tot?.inItems != null ? { value: tot.inItems, format: fmt } : undefined} caption="Both sides, this date" />
+            <StatTile label="Matched" value={tot ? fmt(tot.matched) : "—"} tween={tot ? { value: tot.matched, format: fmt } : undefined} caption="Pairs and groups" />
+            <StatTile label="Waiting" value={tot ? fmt(tot.waiting) : "—"} tween={tot ? { value: tot.waiting, format: fmt } : undefined}
+              caption={tot ? `${formatNumber(tot.suggested)} suggested, open until accepted` : "Open items of this date"} />
+            <StatTile label="Unmatch" value={fmt(r.openBreaks)} tween={{ value: r.openBreaks, format: fmt }} caption={tot ? `${formatNumber(tot.breaks)} unmatch on this date` : "Every date"} />
+            {/* what the open unmatch items add up to, every date (audit R3; the queue's summary for this recon) */}
+            <StatTile label="Open amount" {...(open ? amountTile(open.amounts) : { value: "—" })} caption={kpiCaption(openQ, "the open amount", open ? amountTile(open.amounts).caption : undefined)} />
+          </StatTiles>
+        </Panel>
+        {runCard}
+      </PageZone>
 
-      <Panel flush title="Sources" description="What each side reads, how far it is and what came in for its business date">
-        <Table aria-label="Sources of the live day">
-          <TableHeader><TableRow>
-            <TableHead>Side</TableHead><TableHead>Source</TableHead><TableHead>Health</TableHead><TableHead>How far</TableHead><TableHead className="text-right">Records today</TableHead>
-          </TableRow></TableHeader>
-          <TableBody>
-            {r.sides.map((side, i) => {
-              const s = src[i];
-              return (
-                // records just came in: the row flashes once and the count says how many (the new-row flash, reduced motion: none)
-                <TableRow key={`${i}-${s && arrivals.get(s.id) ? s.rowsToday : 0}`} className={s && arrivals.get(s.id) ? "motion-safe:animate-row-new" : undefined}>
-                  <TableCell className="whitespace-nowrap text-fg-2">Side {i === 0 ? "A" : "B"} · {side.label}</TableCell>
-                  <TableCell>{s?.name ?? "Not readable from this space"}</TableCell>
-                  <TableCell>{s && <StatusChip health={sourceChip(s).health} label={sourceChip(s).label} />}</TableCell>
-                  <TableCell className="whitespace-nowrap text-fg-2">{s ? sourceLag(s) : "—"}</TableCell>
-                  <TableCell className="text-right tabular">
-                    {s && arrivals.get(s.id) ? <span className="mr-2 text-caption text-healthy-ink">+{formatNumber(arrivals.get(s.id)!)}</span> : null}
-                    {s?.rowsToday != null ? formatNumber(s.rowsToday) : "—"}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </Panel>
+      {act && <PageZone title="Needs action">{act}</PageZone>}
+
+      <PageZone title="How it works">
+        <Panel flush title="Pipeline" description={r.day ? "The passes in run order and where this date's items went" : "Counts appear once a run covers this date"}
+          actions={<span className="max-md:hidden"><Segmented label="Show the pipeline as" value={view} onChange={setView} options={[{ value: "pipeline", label: "Pipeline" }, { value: "list", label: "List" }]} /></span>}>
+          <div ref={measure}>
+            {view === "pipeline" && (
+              <div className="max-md:hidden">
+                <CanvasLoader spec={spec} keys={keys} counters={dayCounters(r)} dim={false} selectedId={null} editable={false} sourceLines={sourceLines} running={r.running?.status === "running"} arriving={arriving}
+                  label="The live day's pipeline: sources, sides, passes in run order and where the date's items went" />
+              </div>
+            )}
+            {/* the list view: the same numbers, sources first, by keyboard and screen reader; a phone's only view (DEC-041) */}
+            <div className={view === "pipeline" ? "md:hidden" : undefined}>
+              <Table aria-label="Sources of the live day">
+                <TableHeader><TableRow>
+                  <TableHead>Side</TableHead><TableHead>Source</TableHead><TableHead>Health</TableHead><TableHead>How far</TableHead><TableHead className="text-right">Records today</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {r.sides.map((side, i) => {
+                    const s = src[i];
+                    return (
+                      // records just came in: the row flashes once and the count says how many (the new-row flash, reduced motion: none)
+                      <TableRow key={`${i}-${s && arrivals.get(s.id) ? s.rowsToday : 0}`} className={s && arrivals.get(s.id) ? "motion-safe:animate-row-new" : undefined}>
+                        <TableCell className="whitespace-nowrap text-fg-2">Side {i === 0 ? "A" : "B"} · {side.label}</TableCell>
+                        <TableCell>{s?.name ?? "Not readable from this space"}</TableCell>
+                        <TableCell>{s && <StatusChip health={sourceChip(s).health} label={sourceChip(s).label} />}</TableCell>
+                        <TableCell className="whitespace-nowrap text-fg-2">{s ? sourceLag(s) : "—"}</TableCell>
+                        <TableCell className="text-right tabular">
+                          {s && arrivals.get(s.id) ? <span className="mr-2 text-caption text-healthy-ink">+{formatNumber(arrivals.get(s.id)!)}</span> : null}
+                          {s?.rowsToday != null ? formatNumber(s.rowsToday) : "—"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+              <Table aria-label="Passes of the live day">
+                <TableHeader><TableRow>
+                  <TableHead>Pass</TableHead><TableHead className="text-right">Matched</TableHead><TableHead className="text-right">Suggested</TableHead><TableHead className="text-right">Broken</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>
+                  {spec.passes.map((p, i) => {
+                    const x = r.day?.passes[String(p.no)];
+                    return (
+                      <TableRow key={p.no}>
+                        <TableCell>{i + 1}. {p.name || "Untitled pass"}</TableCell>
+                        <TableCell className="text-right tabular">{x ? formatNumber(x.matched) : "—"}</TableCell>
+                        <TableCell className="text-right tabular">{x ? formatNumber(x.suggested) : "—"}</TableCell>
+                        <TableCell className="text-right tabular">{x ? `${formatNumber(x.broken)}${x.broken ? ` ${breakLabel(p).toLowerCase()}` : ""}` : "—"}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                  <TableRow>
+                    <TableCell className="text-fg-2">Waiting after the passes</TableCell>
+                    <TableCell colSpan={3} className="text-right tabular">{r.day ? `${formatNumber(r.day.open.a)} ${r.sides[0].label} · ${formatNumber(r.day.open.b)} ${r.sides[1].label}` : "—"}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </Panel>
+      </PageZone>
+
+      {history && <PageZone title="History">{history}</PageZone>}
     </div>
   );
 }

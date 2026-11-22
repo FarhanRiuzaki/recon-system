@@ -39,6 +39,10 @@ describe("legendItems (Panel-header legend, spec §6.1)", () => {
     ]);
     expect(seriesColor("Other", 0)).toBe("var(--fg-3)");
   });
+  it("a neutral series (what still waits, beside matched and failed) wears the neutral mark, never a palette slot", () => {
+    expect(legendItems([{ label: "Matched", slot: 0 }, { label: "Waiting", tone: "neutral", striped: true }, { label: "Unmatch", slot: 1 }]).map((x) => x.color))
+      .toEqual(["var(--chart-1)", "var(--fg-3)", "var(--chart-2)"]);
+  });
   it("keeps striped / dashed keys", () => {
     expect(legendItems([{ label: "Connected" }, { label: "Idle", striped: true }, { label: "Forecast", dashed: true }]).map((x) => [x.striped, x.dashed]))
       .toEqual([[false, false], [true, false], [false, true]]);

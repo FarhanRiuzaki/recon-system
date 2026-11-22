@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LiveReconDto, LiveSourceDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { countText, dayCounters, kpiCaption, dayTotals, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
+import { countText, dayCounters, kpiCaption, dayTotals, nextRunText, reasonParts, reconChip, sourceLag, spaceMap, todayKpis } from "./live-model";
 
 const health = (state: "healthy" | "degraded" | "down", o: Partial<NonNullable<LiveSourceDto["health"]>> = {}) =>
   ({ state, businessDate: "2026-11-21", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
@@ -76,5 +76,30 @@ describe("Today's KPI tray (audit T1)", () => {
     expect(kpiCaption({ data: 1, error: e }, "the approvals", "Every date")).toBe("Couldn't refresh the approvals; showing the last read");
     expect(kpiCaption({ data: 1, error: null }, "the approvals", "Every date")).toBe("Every date");
     expect(kpiCaption({ data: undefined, error: null }, "the approvals")).toBeUndefined();
+  });
+});
+
+describe("the Run card's next run (audit R5)", () => {
+  const at = (iso: string) => Date.parse(iso);
+  it("an interval recon: its last scheduled start plus the interval, or now once that has passed", () => {
+    const every2 = { kind: "interval" as const, every_minutes: 2 };
+    // 23 Nov 00:02 WIB = 22 Nov 17:02 UTC
+    expect(nextRunText(every2, "2026-11-22T17:02:00.000Z", at("2026-11-22T17:03:00.000Z"))).toBe("Next run due at 00:04 WIB");
+    expect(nextRunText(every2, "2026-11-22T17:02:00.000Z", at("2026-11-22T17:05:00.000Z"))).toBe("Next run due now");
+    expect(nextRunText(every2, null, at("2026-11-22T17:05:00.000Z"))).toBe("Next run due now");
+  });
+  it("a daily recon: today at its time while that is ahead, else tomorrow", () => {
+    const daily = { kind: "daily" as const, at: "06:00", business_date_offset: 1 };
+    expect(nextRunText(daily, null, at("2026-11-22T22:00:00.000Z"))).toBe("Next run at 06:00 WIB today"); // 05:00 WIB
+    expect(nextRunText(daily, null, at("2026-11-23T00:00:00.000Z"))).toBe("Next run at 06:00 WIB tomorrow"); // 07:00 WIB
+  });
+});
+
+describe("unmatch by reason (audit R2): the queue's reason counts as breakdown parts, coloured as the reason chips", () => {
+  it("each reason with its chip's slot (0-based); a neutral reason takes the card's free slot; none read yet is no part", () => {
+    expect(reasonParts({ "No counterpart": 30, "Amount differs": 4, Duplicate: 2 })).toEqual([
+      { label: "No counterpart", value: 30 }, { label: "Amount differs", value: 4, slot: 1 }, { label: "Duplicate", value: 2, slot: 5 },
+    ]);
+    expect(reasonParts(undefined)).toEqual([]);
   });
 });

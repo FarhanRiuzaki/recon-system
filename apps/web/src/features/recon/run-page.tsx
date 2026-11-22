@@ -1,10 +1,10 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ColumnsMenu, type Column, DataTable, Failure, Notice, Panel, RouteTabs, Segmented, Toolbar } from "@starterkit/ui/ds";
+import { CategoryChip, ColumnsMenu, type Column, CountBadge, DataTable, Failure, Notice, Panel, ScrollFade, Segmented, Toolbar } from "@starterkit/ui/ds";
+import { Tabs, TabsList, TabsTrigger } from "@starterkit/ui/ui/tabs";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { formatDateTime, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -21,13 +21,12 @@ import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
-import { writeTable } from "@/lib/shared/table-state";
-import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, reasonOptions, runDays } from "./run-model";
+import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, oneCurrency, pairDifference, rangeText, readIn, reasonOptions, runDays, scopeCaption } from "./run-model";
 import { RunSummary } from "./run-summary";
-import { dayTilesOf, RunDayTiles, tileOption } from "./run-days";
+import { dayLabel, dayTilesOf, tileOption } from "./run-days";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
-import { reconHref, reconRunHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
+import { reconHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
 
 const RunExplain = dynamic(() => import("./run-explain"), { ssr: false });
 
@@ -46,7 +45,8 @@ function sideAmount(ms: readonly RunGroupMember[], more = 0): { text: string; cc
   return { text: `${amountText(sum.toString(), ccy)}${ms.length > 1 ? ` (${ms.length} items)` : ""}`, ccy };
 }
 
-type Tab = { key: string; label: string; pass?: number; status?: "open" | "break" };
+/** `name` and `count`: the line tab ("Pass 1" 32); `label`: the phone select's whole line. */
+type Tab = { key: string; name: string; count: number; label: string; pass?: number; status?: "open" | "break" };
 /** A pass tab's label: what it did ("Pass 1 · 937 matched · 30 duplicate"); counts of the picked day when one is. */
 function passLabel(p: PassSpec, x: { matched: number; suggested: number; broken: number } | undefined) {
   const parts = [`Pass ${p.no}`];
@@ -95,7 +95,9 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   useEffect(() => { if (strayDate) setTable({ date: "" }, { history: "replace" }); }, [strayDate, setTable]);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
-  const columns = useColumns(t.state, labels);
+  // one currency on the page: in the amount headers, no column of its own (§5.9)
+  const ccy = oneCurrency(t.rows.flatMap((r) => [r.currency, ...(r.group?.members.map((m) => m.currency) ?? [])]));
+  const columns = useColumns(t.state, labels, ccy);
 
   // a run is named by its time, in the title and the last crumb alike (Captain, R4-5): "Run 21 Nov, 01:40" (WIB)
   const title = run ? `${run.mode === "simulation" ? "Simulation" : "Run"} ${formatDateTime(Date.parse(run.finishedAt ?? run.startedAt))}` : "Recon run";
@@ -117,16 +119,15 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const standing = run.live && run.days ? runDays(run) : null;
   const counts = day ? day.passes : standing ? dayPasses(standing) : run.counters.passes;
   const open = day ? day.open : (run.live?.open ?? run.counters.open);
-  const path = reconRunHref(spaceId, id, runId);
-  const href = (patch: Partial<RunItemFilters>) => { const q = writeTable(s, patch, def.spec); return q?.size ? `${path}?${q}` : path; };
-  const go = (patch: Partial<RunItemFilters>) => (e: React.MouseEvent) => { e.preventDefault(); t.set(patch); };
   const breaks = breakCounts(run);
   // breaks by the one definition (Duplicate included) over the run's own dates: the tab's title and the All dates tile
   const real = run.mode !== "simulation";
   const allBreaks = real ? breaksOf(run.live?.breakReasons) : null;
-  const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, label: passLabel(p, counts[String(p.no)]), pass: p.no })),
-    { key: "waiting", label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const },
-    ...(breaks ? [{ key: "breaks", label: `Unmatch · ${allBreaks ? breaksText(allBreaks, labels, false) : `${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`}`, status: "break" as const }] : [])];
+  const passCount = (p: PassSpec) => { const c = counts[String(p.no)]; return (p.accept === "suggest" ? c?.suggested : c?.matched) ?? 0; };
+  const breakTotal = allBreaks ? allBreaks.breaks.a + allBreaks.breaks.b : breaks ? breaks.a + breaks.b : 0;
+  const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, name: `Pass ${p.no}`, count: passCount(p), label: passLabel(p, counts[String(p.no)]), pass: p.no })),
+    { key: "waiting", name: "Waiting", count: open.a + open.b, label: `Waiting · ${formatNumber(open.a)} ${labels[0]} · ${formatNumber(open.b)} ${labels[1]}`, status: "open" as const },
+    ...(breaks ? [{ key: "breaks", name: "Unmatch", count: breakTotal, label: `Unmatch · ${allBreaks ? breaksText(allBreaks, labels, false) : `${formatNumber(breaks.a)} ${labels[0]} · ${formatNumber(breaks.b)} ${labels[1]}`}`, status: "break" as const }] : [])];
   const tabKey = waiting ? "waiting" : breaksTab ? "breaks" : `p${passNo}`;
   const x = pass ? counts[String(pass.no)] : undefined;
   const own = pass?.accept === "suggest" ? "suggested" : "matched";
@@ -140,6 +141,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const dayTiles = dayTilesOf(run, spec);
   // one business date: its tile says what All dates says, so no strip (owner, 22 Nov: nothing twice)
   const strip = dayTiles.length > 2 ? (run.days ?? []) : [];
+  // the table's caption names what it holds (audit R8): the tab, its rows, of the records read on its dates
+  const what = waiting ? "waiting items" : breaksTab ? "unmatch items" : status === "break" ? `${breakLabel(pass!).toLowerCase()} items` : `${status} pairs`;
+  const scopeDays = day ? [day] : (run.days ?? []);
+  const caption = t.total == null ? "" : scopeCaption(`${tabs.find((x) => x.key === tabKey)?.name ?? "Pass"}${day ? ` · ${dayLabel(day.date)}` : ""}`, t.total, what, readIn(scopeDays));
   const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "", reason: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "", reason: "" });
   // the Breaks tab's reasons, on the picked date or over the run's own dates
   const byReason = (day ? day.breakReasons : run.live?.breakReasons) ?? null;
@@ -166,18 +171,21 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
               {tabs.map((tab) => <option key={tab.key} value={tab.key}>{tab.label}</option>)}
             </Select>
           </div>
+          {/* from 768 px: the business dates as one segmented choice (it scrolls sideways past the card's width) and the
+              passes as line tabs with their counts (audit R8) */}
           {strip.length > 0 && (
-            <RunDayTiles tiles={dayTiles} labels={labels} className="max-md:hidden" link={(date) => ({ href: href({ date }), onClick: go({ date }), current: s.date === date })} />
+            <ScrollFade className="scroll-quiet overflow-x-auto max-md:hidden">
+              <Segmented label="Business date" value={s.date || "all"} onChange={(v) => t.set({ date: v === "all" ? "" : v })}
+                options={dayTiles.map((x) => ({ value: x.date || "all", label: `${dayLabel(x.date)}${x.t.closed ? " · closed" : ""}` }))} />
+            </ScrollFade>
           )}
-          <RouteTabs aria-label="Passes" className="max-md:hidden">
-            {tabs.map((tab) => {
-              const patch = tabPatch(tab);
-              const current = tab.key === tabKey;
-              return <Link key={tab.key} href={href(patch)} onClick={go(patch)} aria-current={current ? "page" : undefined}>{tab.label}</Link>;
-            })}
-          </RouteTabs>
+          <Tabs value={tabKey} onValueChange={(k) => { const tab = tabs.find((x) => x.key === k); if (tab) t.set(tabPatch(tab)); }} className="max-md:hidden">
+            <TabsList aria-label="Passes">
+              {tabs.map((tab) => <TabsTrigger key={tab.key} value={tab.key}>{tab.name}<CountBadge>{formatNumber(tab.count)}</CountBadge></TabsTrigger>)}
+            </TabsList>
+          </Tabs>
           <div className="flex flex-wrap items-center gap-3">
-            {pass && <span className="text-body-sm text-fg-2">Pass {pass.no} · {pass.name}{status === "suggested" ? " · open until someone accepts them" : ""}</span>}
+            <span role="status" className="text-body-sm text-fg-2">{caption}{pass ? ` · ${pass.name}` : ""}{status === "suggested" ? " · open until someone accepts them" : ""}</span>
             {breaksTab && <span className="text-body-sm text-fg-2">Duplicates from the passes; the rest left open at day close.</span>}
             {breaksTab && reasons.length > 1 && (
               <>
@@ -231,8 +239,9 @@ function breakDifference(r: ReconRunItemDto): string {
 }
 
 /** The table's columns for the tab: a pass's pairs (both sides' amounts, what differs) or items (side, amount, why). */
-function useColumns(s: RunItemFilters, labels: readonly [string, string]): Column<ReconRunItemDto>[] {
+function useColumns(s: RunItemFilters, labels: readonly [string, string], ccy: string | null): Column<ReconRunItemDto>[] {
   const pairs = !(s.status === "open" || s.status === "break");
+  const unit = ccy ? ` (${ccy})` : "";
   return useMemo((): Column<ReconRunItemDto>[] => {
     const ref: Column<ReconRunItemDto> = { key: "ref", header: "Reference", mobile: "title", className: "font-mono text-mono", cell: (r) => r.extRef ?? none };
     // a pair row counts on its group's date (the later member's); an item list shows the item's own (re-check 5, B3)
@@ -245,17 +254,19 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
         const cut = more > 0 && k === "b";
         return sideAmount(ms.filter((m) => m.side === k), cut ? more : 0);
       };
+      // §5.9: Reference · date · amount A · amount B · Difference · pass; the currency in the headers when there is one
       return [ref, date,
-        { key: "amountA", header: `Amount ${labels[0]}`, align: "right", mobile: "meta", cell: (r) => side("a")(r).text },
-        { key: "amountB", header: `Amount ${labels[1]}`, align: "right", mobile: "meta", cell: (r) => side("b")(r).text },
-        { key: "currency", header: "Currency", mobile: "meta", cell: (r) => side("a")(r).ccy ?? none },
+        { key: "amountA", header: `Amount ${labels[0]}${unit}`, align: "right", mobile: "meta", cell: (r) => side("a")(r).text },
+        { key: "amountB", header: `Amount ${labels[1]}${unit}`, align: "right", mobile: "meta", cell: (r) => side("b")(r).text },
+        ...(ccy ? [] : [{ key: "currency", header: "Currency", mobile: "meta" as const, cell: (r: ReconRunItemDto) => side("a")(r).ccy ?? none }]),
         { key: "difference", header: "Difference", mobile: "meta", cell: (r) => differenceText(r.group?.evidence, side("a")(r).ccy) || none },
+        { key: "pass", header: "Pass", mobile: "meta", cell: (r) => (r.group ? <CategoryChip slot="neutral" label={`Pass ${r.group.passNo}`} /> : none) },
       ];
     }
     const sideCol: Column<ReconRunItemDto> = { key: "side", header: "Side", mobile: "meta", cell: (r) => (r.side === "a" ? labels[0] : labels[1]) };
     const amount: Column<ReconRunItemDto>[] = [
-      { key: "amount", header: "Amount", align: "right", mobile: "meta", cell: (r) => amountText(r.amountMinor, r.currency) },
-      { key: "currency", header: "Currency", mobile: "meta", cell: (r) => r.currency ?? none },
+      { key: "amount", header: `Amount${unit}`, align: "right", mobile: "meta", cell: (r) => amountText(r.amountMinor, r.currency) },
+      ...(ccy ? [] : [{ key: "currency", header: "Currency", mobile: "meta" as const, cell: (r: ReconRunItemDto) => r.currency ?? none }]),
     ];
     if (s.status === "break") {
       // Breaks (designer, Figma 205:6752): Reference, Business date, Side, Reason, Amount, Currency, Difference, Proposed pair
@@ -266,5 +277,5 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string]): Colum
           ? <span><span className="font-mono text-mono">{p.extRef ?? "—"}</span> · {label(p.side)} · pass {p.passNo}</span> : none; } }];
     }
     return [ref, sideCol, date, ...amount];
-  }, [pairs, s.status, labels]);
+  }, [pairs, s.status, labels, ccy, unit]);
 }

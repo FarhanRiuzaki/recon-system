@@ -7,7 +7,11 @@ const SERIES_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "va
 export const OTHER_COLOR = "var(--fg-3)";
 /** A failure-count series (failures next to successes) wears the Down mark instead of a palette slot. */
 export const DOWN_COLOR = "var(--down-mark)";
-export type SeriesTone = "down";
+/**
+ * `down`: a failure count beside successes. `neutral`: a count that is neither (what still waits beside matched and
+ * failed): the neutral mark, so the palette slots stay with the outcomes.
+ */
+export type SeriesTone = "down" | "neutral";
 export const GRID = "var(--grid)";
 export const BASELINE = "var(--line-strong)";
 export const CARD = "var(--card)";
@@ -26,6 +30,9 @@ export const TICK_GAP = 8;
 export const colorAt = (i: number) => SERIES_COLORS[((i % SERIES_COLORS.length) + SERIES_COLORS.length) % SERIES_COLORS.length]!;
 /** Colour by entity: "Other" is neutral, otherwise the fixed slot (0-based). */
 export const seriesColor = (label: string, slot: number) => (label === FOLD_LABEL ? OTHER_COLOR : colorAt(slot));
+/** A series' colour: its tone's mark, else its slot (else its position `i`). */
+export const toneColor = (x: { label: string; slot?: number; tone?: SeriesTone }, i: number) =>
+  (x.tone === "down" ? DOWN_COLOR : x.tone === "neutral" ? OTHER_COLOR : seriesColor(x.label, x.slot ?? i));
 /** Secondary / partial series: same hue at 35 % on the card (spec §6.3), stripes drawn on top. */
 export const softColor = (color: string) => `color-mix(in srgb, ${color} 35%, var(--card))`;
 
@@ -35,5 +42,5 @@ export const softColor = (color: string) => `color-mix(in srgb, ${color} 35%, va
  */
 export function legendItems(series: readonly { label: string; slot?: number; striped?: boolean; dashed?: boolean; tone?: SeriesTone }[], max = MAX_SERIES) {
   const kept: readonly { label: string; slot?: number; striped?: boolean; dashed?: boolean; tone?: SeriesTone }[] = series.length <= max ? series : [...series.slice(0, max - 1), { label: FOLD_LABEL }];
-  return kept.map((x, i) => ({ label: x.label, color: x.tone === "down" ? DOWN_COLOR : seriesColor(x.label, x.slot ?? i), striped: !!x.striped, dashed: !!x.dashed }));
+  return kept.map((x, i) => ({ label: x.label, color: toneColor(x, i), striped: !!x.striped, dashed: !!x.dashed }));
 }

@@ -724,7 +724,7 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   Resolved 3, Pending approval 4), reason (No counterpart neutral, Amount differs 2, Date differs 5, the rest 6), change
   kind (Posting 1, Force match 4, Write-off 2, Unmatch 6, versions neutral), environment (Development neutral,
   Production 2), space role (Space admin 4, Source admin 3, Config maker 1, Config checker 6, Operator 5, Reviewer 2,
-  Viewer neutral), action kind (Posting 1, Notify neutral), a recon's day (Open neutral, Closing 4, Closed 1; never 2, 3 or 5, which beside its Stale / Source down chip read as Degraded or Healthy).
+  Viewer neutral), action kind (Posting 1, Notify neutral), sign-off stage (Waiting for sign-off 4, Prepared 1, Signed off 3), a recon's day (Open neutral, Closing 4, Closed 1; never 2, 3 or 5, which beside its Stale / Source down chip read as Degraded or Healthy).
   All-neutral sets need no entry: source kind, engine, read mode, run kind, Fixed / Auto generated, Simulated.
   Never a health colour for a non-health value; version state, posting result and a credential set / not set stay
   StatusChips. A value that is health in some states and a category in others (a recon's day: Stale or Source down,
@@ -985,6 +985,10 @@ Horizontal gridlines only, `--grid`, 1 px, `strokeDasharray="4 4"`; 4–5 ticks 
   texture (2 px line / 4 px gap, `--stripe`) over its fill; one look for all bars (`bar-chart.tsx`, `hbar-chart.tsx`,
   `distribution-bar.tsx`, `StatTile progress`).
 - Secondary/partial series: the same hue's soft tint (35 %), striped too (reference "Attended / Partial").
+- Series tones (`tone`, `chart-theme.ts` `toneColor`): `down` = a failure count beside successes (Down mark);
+  `neutral` = a count that is neither, such as what still waits beside matched and unmatch (`--fg-3`, with `striped`
+  its soft tint), so the palette slots stay with the outcomes (a recon's trend: Matched slot 1, Waiting neutral
+  striped, Unmatch slot 2; audit R4).
 - Highlight on hover: other bars drop to 40 % opacity (150 ms).
 - Direct labels only on the max or the selected bar, `label` fg above the cap.
 - Horizontal bars (top-N): 20 px rows, 8 px bars radius full on a `--inset` track, label left (`body-sm` fg), value

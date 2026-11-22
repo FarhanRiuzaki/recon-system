@@ -31,6 +31,9 @@ describe("categories (audit §1.1 chip map): one slot per categorical value, nev
   it("a day state never takes slot 2, 3 or 5: beside a Stale / Source down chip they read as Degraded or Healthy (§1.1)", () => {
     for (const slot of Object.values(CATEGORIES.dayState)) expect([2, 3, 5]).not.toContain(slot);
   });
+  it("a sign-off stage: waiting as Pending approval, prepared 1, signed off as Resolved", () => {
+    expect(["closed", "prepared", "signed"].map((x) => categoryChip("signoffStage", x))).toEqual([4, 1, 3]);
+  });
   it("an unknown value is neutral", () => {
     expect(categoryChip("workState", "archived")).toBe("neutral");
     expect(categoryChip("reason", "Something new")).toBe("neutral");

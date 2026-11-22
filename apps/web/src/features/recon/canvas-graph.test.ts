@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { dropIndex, LANES, laneLayout, NODE_H, ROW_GAP, specGraph } from "./canvas-graph";
+import { dropIndex, LANES, laneLayout, NODE_H, pipelineFits, ROW_GAP, specGraph } from "./canvas-graph";
 
 const ccy = { op: "eq" as const, field: "currency" };
 const side = (key: "a" | "b", label: string) => ({ key, label, source_id: "s", filter: [], amount_sign: "as_is" as const });
@@ -56,5 +56,15 @@ describe("builder canvas graph (DEC-041: locked lanes, fixed columns)", () => {
     expect(g.nodes.find((n) => n.id === "side-a")!.line).toBe("All records · 1,000 in");
     expect(g.nodes.find((n) => n.id === "out-unmatched")!.line).toBe("24 source1 · 24 source2; unmatch at day close");
     expect(g.edges.filter((e) => e.label).every((e) => e.label!.length <= 24)).toBe(true);
+  });
+});
+
+describe("the live day's pipeline or its list (audit R6)", () => {
+  it("the canvas only where it fits its card at 0.85 or more; narrower, the list", () => {
+    // four lanes of 256 px with three 120 px gaps = 1,384 px, plus the fit's 32 px each side
+    expect(pipelineFits(1241)).toBe(true); // 1,384 × 0.85 + 64 = 1,240.4
+    expect(pipelineFits(1240)).toBe(false);
+    expect(pipelineFits(1040)).toBe(false);
+    expect(pipelineFits(0)).toBe(false);
   });
 });
