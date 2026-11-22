@@ -304,7 +304,7 @@ describe("runs and simulations through the API", () => {
     const v2 = Bun.randomUUIDv7();
     await db.update(reconConfigVersions).set({ status: "retired" }).where(eq(reconConfigVersions.id, r.versionId));
     await db.insert(reconConfigVersions).values({
-      id: v2, configId: r.configId, spaceId: A, version: 2, status: "published", specHash: "v2", makerId: r.configId,
+      id: v2, configId: r.configId, spaceId: A, version: 2, status: "published", specHash: "v2", matchingHash: "v2", makerId: r.configId,
       spec: spec(sa.sourceId, sb.sourceId, [{ ...exact, predicates: [...exact.predicates, { op: "eq", field: "account_ref" }] }]),
     });
     await drain();

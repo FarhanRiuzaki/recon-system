@@ -55,7 +55,7 @@ async function config(a: string, b: string) {
   const ccyEq = { op: "eq", field: "currency" };
   await db.insert(reconConfigs).values({ id: configId, spaceId: A, code: `r-${configId.slice(-12)}`, name: "R" });
   await db.insert(reconConfigVersions).values({
-    id: versionId, configId, spaceId: A, version: 1, status: "published", specHash: "h", makerId: A, spec: {
+    id: versionId, configId, spaceId: A, version: 1, status: "published", specHash: "h", matchingHash: "h", makerId: A, spec: {
       sides: [{ key: "a", label: "A", source_id: a, filter: [] }, { key: "b", label: "B", source_id: b, filter: [] }],
       passes: [
         { no: 1, name: "Exact", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, ccyEq] },
@@ -116,7 +116,7 @@ describe.if(!!process.env.PERF_ENGINE)("run latency", () => {
       const bare = Bun.randomUUIDv7(), bareV = Bun.randomUUIDv7();
       const [v] = await db.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(eq(reconConfigVersions.id, versionId));
       await db.insert(reconConfigs).values({ id: bare, spaceId: A, code: `r-${bare.slice(-12)}`, name: "R" });
-      await db.insert(reconConfigVersions).values({ id: bareV, configId: bare, spaceId: A, version: 1, status: "published", specHash: "h", makerId: A, spec: { ...(v!.spec as object), passes: [] } });
+      await db.insert(reconConfigVersions).values({ id: bareV, configId: bare, spaceId: A, version: 1, status: "published", specHash: "h", matchingHash: "h", makerId: A, spec: { ...(v!.spec as object), passes: [] } });
       await runRecon(probe, { spaceId: A, configId: bare, versionId: bareV, mode: "manual", from: D });
       const t1 = performance.now();
       const misses = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { spaceId: A, configId: bare, versionId: bareV, simRunId: null, from: D, to: D }), probe);

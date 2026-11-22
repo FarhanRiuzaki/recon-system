@@ -281,7 +281,7 @@ describe("day close, review round 1", () => {
     const live = (await itemsOf(r.configId)).map((i) => [i.side, i.date, i.reason ?? ""]);
     expect(live).toEqual([["a", D, "No counterpart"], ["b", D1, "Amount differs"]]);
     const draft = Bun.randomUUIDv7();
-    await db.insert(reconConfigVersions).values({ id: draft, configId: r.configId, spaceId: A, version: 2, status: "draft", spec: spec(sa.sourceId, sb.sourceId, [exact], 1), specHash: "h2", makerId: U });
+    await db.insert(reconConfigVersions).values({ id: draft, configId: r.configId, spaceId: A, version: 2, status: "draft", spec: spec(sa.sourceId, sb.sourceId, [exact], 1), specHash: "h2", matchingHash: "h2", makerId: U });
     const sim = await runRecon(probe, { ...r, versionId: draft, mode: "simulation", from: D, to: D1 });
     const projected = await withSpace({ spaceIds: [A], userId: null }, (tx) => classifyUnmatched(tx, { ...r, versionId: draft, simRunId: sim.runId, from: D, to: D1 }), probe);
     expect(projected.map((x) => [x.side, x.businessDate, x.reason])).toEqual(live);
@@ -413,7 +413,7 @@ describe("run details", () => {
     // version 2 without the filter: M3, below version 1's mark, is taken in now
     const v2 = Bun.randomUUIDv7();
     await db.update(reconConfigVersions).set({ status: "retired" }).where(eq(reconConfigVersions.id, r.versionId));
-    await db.insert(reconConfigVersions).values({ id: v2, configId: r.configId, spaceId: A, version: 2, status: "published", specHash: "v2", makerId: r.configId, spec: base });
+    await db.insert(reconConfigVersions).values({ id: v2, configId: r.configId, spaceId: A, version: 2, status: "published", specHash: "v2", matchingHash: "v2", makerId: r.configId, spec: base });
     const third = await run(v2);
     expect([third.counters.intake, third.counters.passes["1"]!.matched]).toEqual([{ a: 1, b: 0 }, 1]);
   }, 60_000);

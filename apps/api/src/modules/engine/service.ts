@@ -178,7 +178,7 @@ export type NewRun = RunInput & { status: "queued" | "running"; id?: string; job
  */
 export async function createRun(tx: InTx, i: NewRun): Promise<string> {
   const { from, to } = runRange(i.from, i.to);
-  const [v] = await tx.select({ status: reconConfigVersions.status, spec: reconConfigVersions.spec, specHash: reconConfigVersions.specHash }).from(reconConfigVersions)
+  const [v] = await tx.select({ status: reconConfigVersions.status, spec: reconConfigVersions.spec, matchingHash: reconConfigVersions.matchingHash }).from(reconConfigVersions)
     .where(and(eq(reconConfigVersions.spaceId, i.spaceId), eq(reconConfigVersions.configId, i.configId), eq(reconConfigVersions.id, i.versionId)));
   if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
   if (i.mode !== "simulation" && v.status !== "published") throw new ApiError("invalid_state", "Only the published version of a recon runs.");
@@ -186,7 +186,7 @@ export async function createRun(tx: InTx, i: NewRun): Promise<string> {
   const id = i.id ?? Bun.randomUUIDv7();
   await tx.insert(reconRuns).values({
     id, spaceId: i.spaceId, configId: i.configId, configVersionId: i.versionId, mode: i.mode, dateFrom: from, dateTo: to, status: i.status,
-    counters: emptyCounters(ReconSpec.parse(v.spec)), specHash: v.specHash, jobId: i.jobId ?? null, baselineOf: i.baselineOf ?? null,
+    counters: emptyCounters(ReconSpec.parse(v.spec)), specHash: v.matchingHash, jobId: i.jobId ?? null, baselineOf: i.baselineOf ?? null,
   });
   return id;
 }
@@ -222,10 +222,11 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
   const configId = run.configId;
   try {
     const { spec, sides } = await withSpace(scope, async (tx) => {
-      const [v] = await tx.select({ spec: reconConfigVersions.spec, specHash: reconConfigVersions.specHash }).from(reconConfigVersions)
+      // a run's spec_hash is the version's matching hash (no approval setup): an approval-only edit doesn't stale it
+      const [v] = await tx.select({ spec: reconConfigVersions.spec, matchingHash: reconConfigVersions.matchingHash }).from(reconConfigVersions)
         .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, run.configVersionId)));
       if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
-      if (run.specHash && v.specHash !== run.specHash) throw new ApiError("invalid_state", "The draft changed after this simulation was asked for. Run the simulation again.");
+      if (run.specHash && v.matchingHash !== run.specHash) throw new ApiError("invalid_state", "The draft changed after this simulation was asked for. Run the simulation again.");
       if (run.status === "queued") await tx.update(reconRuns).set({ status: "running" }).where(and(mine, eq(reconRuns.status, "queued")));
       return load(tx, spaceId, ReconSpec.parse(v.spec));
     }, on);

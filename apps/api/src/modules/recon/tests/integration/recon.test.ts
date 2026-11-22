@@ -18,6 +18,7 @@ import { sourceShares, sourceVersions, sources } from "../../../sources";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "../../schema";
+import { workflows, workflowVersions } from "../../../approvals";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { gate, sourceSpec } from "../spec";
 
@@ -83,7 +84,7 @@ const patch = (token: string, cfg: string, v: string, spec: unknown, s = A) => c
 const step = (token: string, cfg: string, v: string, what: "submit" | "approve" | "reject", b?: unknown, s = A) =>
   call("POST", `${base(s)}/${cfg}/versions/${v}/${what}`, { token, body: b });
 /** What Task 3's simulation will write: the draft's spec hash as simulated. */
-const simulated = (v: string) => db.update(reconConfigVersions).set({ simulatedHash: reconConfigVersions.specHash }).where(eq(reconConfigVersions.id, v));
+const simulated = (v: string) => db.update(reconConfigVersions).set({ simulatedHash: reconConfigVersions.matchingHash }).where(eq(reconConfigVersions.id, v));
 /** A recon of `s` made by mk, simulated, submitted and approved by ck. */
 async function published(b?: unknown, s = A) {
   const r = await made(b, s);
@@ -368,5 +369,58 @@ describe("activity", () => {
     const page = await json<Page<ActivityDto>>(call("GET", `${base(A)}/${r.id}/activity`, { token: t.op }));
     expect(page.items.map((e) => e.action)).toEqual(["recon.version_approve", "recon.version_submit", "recon.create"]);
     expect((await call("GET", `${base(B)}/${r.id}/activity`, { token: t.op })).status).toBe(404);
+  });
+});
+
+describe("approval setup in the recon version (DEC-052 rev 2)", () => {
+  /** A workflow of space A with version 1 published. */
+  async function workflowOfA() {
+    const id = Bun.randomUUIDv7();
+    await db.insert(workflows).values({ id, spaceId: A, name: "Treasury head" });
+    await db.insert(workflowVersions).values({ id: Bun.randomUUIDv7(), spaceId: A, workflowId: id, version: 1, status: "published", spec: { name: "Treasury head", levels: [] } });
+    return id;
+  }
+  const withApprovals = (w: string, when?: object) => ({
+    ...gate(S1, S2),
+    approvals: { changes: { unmatch: { workflow: { default: { id: w, version: 1 }, rules: when ? [{ name: "Large", when, workflow: { id: w, version: 1 } }] : [] } } } },
+  });
+
+  it("an approval-only change keeps the simulation; a pass change still needs a new one", async () => {
+    const w = await workflowOfA();
+    const r = await made();
+    const v = r.draft!.id;
+    await simulated(v);
+    expect((await patch(t.mk, r.id, v, withApprovals(w))).status).toBe(200);
+    expect((await step(t.mk, r.id, v, "submit")).status).toBe(200);
+    const r2 = await made(body({ code: "x2" }));
+    const v2 = r2.draft!.id;
+    await simulated(v2);
+    expect((await patch(t.mk, r2.id, v2, { ...withApprovals(w), grace_minutes: 45 })).status).toBe(200);
+    const stale = await step(t.mk, r2.id, v2, "submit");
+    expect([stale.status, await message(stale)]).toEqual([400, "The draft changed after the last simulation. Run it again."]);
+  });
+
+  it("a rule naming a field the sources don't read saves with a warning; submit refuses it naming rule and field", async () => {
+    const w = await workflowOfA();
+    const r = await made();
+    const v = r.draft!.id;
+    const saved = await patch(t.mk, r.id, v, withApprovals(w, { all: [{ field: "side_a.attrs.nope", op: "eq", value: "1" }] }));
+    expect(saved.status).toBe(200);
+    const why = "Unmatch · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.nope).";
+    expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
+    await simulated(v);
+    const sent = await step(t.mk, r.id, v, "submit");
+    expect([sent.status, await message(sent)]).toEqual([400, why]);
+  });
+
+  it("submit refuses an archived workflow", async () => {
+    const w = await workflowOfA();
+    const r = await made();
+    const v = r.draft!.id;
+    await patch(t.mk, r.id, v, withApprovals(w));
+    await db.update(workflows).set({ archivedAt: new Date() }).where(eq(workflows.id, w));
+    await simulated(v);
+    const sent = await step(t.mk, r.id, v, "submit");
+    expect([sent.status, await message(sent)]).toEqual([400, "Unmatch: workflow “Treasury head” is archived. Pick another one."]);
   });
 });

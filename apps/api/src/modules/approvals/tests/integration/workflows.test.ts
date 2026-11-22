@@ -37,7 +37,7 @@ async function reconPinning(space: string, name: string, id: string, version = 1
   const configId = Bun.randomUUIDv7();
   await db.insert(reconConfigs).values({ id: configId, spaceId: space, code: name.toLowerCase().replace(/ /g, "-"), name });
   await db.insert(reconConfigVersions).values({
-    id: Bun.randomUUIDv7(), configId, spaceId: space, version: 1, status: "published", specHash: "h",
+    id: Bun.randomUUIDv7(), configId, spaceId: space, version: 1, status: "published", specHash: "h", matchingHash: "h",
     spec: { approvals: { changes: { unmatch: { workflow: { default: { id, version }, rules: [] } } } } },
   });
   return configId;

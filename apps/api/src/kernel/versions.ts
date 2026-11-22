@@ -13,6 +13,12 @@ const canonical = (v: unknown): unknown =>
 /** SHA-256 (hex) of the spec as canonical JSON: the same spec gives the same hash whatever order its keys came in. */
 export const specHash = (spec: unknown): string => createHash("sha256").update(JSON.stringify(canonical(spec))).digest("hex");
 
+/**
+ * A recon spec's hash without its approval setup (DEC-052 rev 2): what a simulation proves. An approval-only change
+ * keeps it, so it needs no new simulation; any matching change moves it.
+ */
+export const matchingHash = (spec: { approvals?: unknown }): string => { const { approvals: _, ...rest } = spec; return specHash(rest); };
+
 /** The status a version must be in for each step: edit and submit a draft; approve or reject one in review. */
 const FROM = { edit: "draft", submit: "draft", approve: "in_review", reject: "in_review" } as const satisfies Record<string, VersionStatus>;
 export type VersionStep = keyof typeof FROM;

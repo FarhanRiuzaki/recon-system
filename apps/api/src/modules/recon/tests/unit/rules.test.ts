@@ -4,7 +4,8 @@ import { describe, expect, it } from "bun:test";
 import { ReconSpec, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
-import { checkReconSpec, reconIssue, usedFields } from "../../rules";
+import { checkApprovals, checkReconSpec, reconIssue, usedFields } from "../../rules";
+import { buildCatalog } from "@starterkit/shared/conditions";
 import { gate, sourceSpec } from "../spec";
 
 const A = Bun.randomUUIDv7(), B = Bun.randomUUIDv7();
@@ -207,5 +208,27 @@ describe("checkReconSpec", () => {
     const said = [...r.errors, ...r.gates, ...r.warnings, issueOf({ spec: { ...gate(A, B), sides: [gate(A, B).sides[1], gate(A, B).sides[0]] } })!];
     expect(said.length).toBeGreaterThan(5);
     for (const s of said) expect([s, /attrs\.|_ref\b|amount_minor|business_date|eq_sum|amount_abs_tol|predicates|passes\.|sides\.|DEC-|REC-/.test(s)]).toEqual([s, false]);
+  });
+});
+
+describe("checkApprovals (DEC-052 rev 2)", () => {
+  const W = "0190f5a0-0000-7000-8000-00000000000a", S = "0190f5a0-0000-7000-8000-0000000000aa";
+  const cat = buildCatalog([{ label: "BI", fields: new Map([["attrs.channel", { kind: "text" as const, from: null, fromType: null }]]) }, { label: "Core", fields: new Map() }]);
+  const facts = (o: Partial<{ spaceId: string; archived: boolean; versions: number[] }> = {}) =>
+    new Map([[W, { spaceId: o.spaceId ?? S, name: "Treasury head", archived: o.archived ?? false, versions: new Set(o.versions ?? [1]) }]]);
+  const setup = (when: object = { all: [{ field: "side_a.attrs.channel", op: "in", value: ["RTGS"] }] }, version = 1) =>
+    ({ changes: { unmatch: { workflow: { default: { id: W, version }, rules: [{ name: "Large", when, workflow: { id: W, version } }] } } } }) as never;
+  it("passes a setup that names a published version and catalog fields", () => {
+    expect(checkApprovals(setup(), cat, facts(), S)).toEqual([]);
+  });
+  it("names the change and the problem for each wrong reference", () => {
+    expect(checkApprovals(setup(), cat, new Map(), S)).toContain("Unmatch: a picked workflow no longer exists. Pick another one.");
+    expect(checkApprovals(setup(), cat, facts({ archived: true }), S)).toContain("Unmatch: workflow “Treasury head” is archived. Pick another one.");
+    expect(checkApprovals(setup(undefined, 2), cat, facts(), S)).toContain("Unmatch: version 2 of “Treasury head” was never published. Pick a published version.");
+    expect(checkApprovals(setup(), cat, facts({ spaceId: Bun.randomUUIDv7() }), S)).toContain("Unmatch: a picked workflow no longer exists. Pick another one.");
+    expect(checkApprovals(setup({ all: [{ field: "side_a.attrs.branch", op: "eq", value: "01" }] }), cat, facts(), S))
+      .toContain("Unmatch · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.branch).");
+    expect(checkApprovals(setup({ all: [{ field: "break.amount", op: "starts_with", value: "1" }] }), cat, facts(), S))
+      .toContain("Unmatch · rule “Large”: Amount can't be compared with “starts with”.");
   });
 });

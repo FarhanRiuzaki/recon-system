@@ -178,8 +178,8 @@ export type ReconActivityQuery = z.infer<typeof ReconActivityQuery>;
 
 /**
  * A recon version as answered. `makerId` = who last wrote the spec; `contributorIds` = everyone who created, edited or
- * submitted it, none of whom may approve or reject it. `simulatedHash` = the spec hash of its last simulation (submit
- * needs it equal to `specHash`). `warnings` = what the spec's check says without blocking a save (a currency without
+ * submitted it, none of whom may approve or reject it. `simulatedHash` = the matching hash of its last simulation (submit
+ * needs it equal to `matchingHash`). `warnings` = what the spec's check says without blocking a save (a currency without
  * tolerance, a date window past carry over, a field its source no longer has), for a version with a spec.
  */
 export const ReconVersionDto = z.object({
@@ -188,6 +188,8 @@ export const ReconVersionDto = z.object({
   status: z.enum(VERSION_STATUSES),
   spec: ReconSpec,
   specHash: z.string(),
+  /** The spec's hash without its approval setup: a simulation is current while `simulatedHash` equals it. */
+  matchingHash: z.string(),
   makerId: z.string().nullable(),
   contributorIds: z.array(z.string()),
   submitterId: z.string().nullable(),

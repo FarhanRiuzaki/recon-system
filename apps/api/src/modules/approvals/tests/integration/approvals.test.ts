@@ -39,7 +39,7 @@ async function reconIn(spaceId: string, name: string, status: string, minutes: n
   const id = Bun.randomUUIDv7(), v = Bun.randomUUIDv7();
   await db.insert(reconConfigs).values({ id, spaceId, code: name.toLowerCase().replace(/ /g, "-"), name });
   await db.insert(reconConfigVersions).values({
-    id: v, spaceId, configId: id, version: 2, status, spec: {}, specHash: "h", makerId: ids.mk, contributorIds: [ids.mk],
+    id: v, spaceId, configId: id, version: 2, status, spec: {}, specHash: "h", matchingHash: "h", makerId: ids.mk, contributorIds: [ids.mk],
     submittedBy: status === "in_review" ? ids.mk : null, submittedAt: status === "in_review" ? new Date(Date.now() - minutes * 60_000) : null,
   });
   return { id, v };

@@ -10,7 +10,8 @@ import type {
   CreateReconBody, ReconActivityQuery, ReconDto, ReconListQuery, ReconRowDto, ReconSpec, ReconVersionDetailDto, ReconVersionDto, ReconVersionListQuery,
   ReconVersionRowDto, RejectReconVersionBody, UpdateReconVersionBody,
 } from "@starterkit/shared/contracts/recon";
-import type { ReconStatus } from "@starterkit/shared/recon";
+import { recordFields, type ReconStatus } from "@starterkit/shared/recon";
+import { buildCatalog } from "@starterkit/shared/conditions";
 import type { VersionStatus } from "@starterkit/shared/sources";
 import { and, desc, eq, ilike, inArray, isNull, max, min, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -18,14 +19,15 @@ import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
 import { sourceFieldsLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
-import { canStep, specHash } from "../../kernel/versions";
+import { canStep, matchingHash, specHash } from "../../kernel/versions";
 import { recordActivity, targetActivityPage } from "../audit";
 import type { Ctx } from "../auth";
+import { workflowFacts } from "../approvals";
 import { records } from "../ingest";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { checkReconSpec, placeOf, reconIssue, type SideSource, usedFields } from "./rules";
+import { checkApprovals, checkReconSpec, placeOf, reconIssue, type SideSource, usedFields } from "./rules";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "./schema";
 
 type ConfigRow = typeof reconConfigs.$inferSelect;
@@ -78,20 +80,34 @@ async function checked(tx: InTx, spaceId: string, spec: ReconSpec) {
   if (missing.length) throw new ApiError("bad_request", `${placeOf(["sides", missing[0]!])}: Pick a source of this space or one shared to it.`);
   const r = checkReconSpec(spec, sides);
   if (r.errors.length) throw new ApiError("bad_request", r.errors[0]!);
-  return { ...r, owners, directionMapped: sides.map((x) => !!x.spec?.mapping.direction) as [boolean, boolean], warnings: [...r.gates, ...r.warnings] };
+  const approvals = await approvalProblems(tx, spaceId, spec, sides);
+  return { ...r, approvals, owners, directionMapped: sides.map((x) => !!x.spec?.mapping.direction) as [boolean, boolean], warnings: [...r.gates, ...approvals, ...r.warnings] };
+}
+
+/**
+ * The approval setup's problems (DEC-052 rev 2) against the sides' record fields and the space's workflows, read FOR
+ * SHARE (an archive in flight finishes first). A save keeps them as warnings; submit and approve refuse on the first.
+ */
+async function approvalProblems(tx: InTx, spaceId: string, spec: ReconSpec, sides: readonly [SideSource, SideSource]): Promise<string[]> {
+  if (!spec.approvals) return [];
+  const refs = Object.values(spec.approvals.changes).flatMap((c) => (c ? [...(c.workflow.default ? [c.workflow.default.id] : []), ...c.workflow.rules.map((r) => r.workflow.id)] : []));
+  const fields = (s: SideSource) => (s.spec ? recordFields(s.spec) : new Map());
+  const catalog = buildCatalog([{ label: sides[0].name ?? "Side A", fields: fields(sides[0]) }, { label: sides[1].name ?? "Side B", fields: fields(sides[1]) }]);
+  return checkApprovals(spec.approvals, catalog, await workflowFacts(tx, spaceId, refs), spaceId);
 }
 
 /** What the check says now about a stored spec, never refusing: a lost source, errors, gates, then warnings. */
 async function warningsOf(tx: InTx, spaceId: string, spec: ReconSpec): Promise<string[]> {
   const { sides, missing } = await sideSources(tx, spaceId, spec);
   const r = checkReconSpec(spec, sides);
+  const approvals = await approvalProblems(tx, spaceId, spec, sides);
   const lost = missing.map((i) => `${placeOf(["sides", i])}: This space can no longer read this side's source.`);
   const noSource = new Set(missing.map((i) => placeOf(["sides", i])));
-  return [...lost, ...r.errors.filter((e) => ![...noSource].some((p) => e.startsWith(`${p}:`))), ...r.gates, ...r.warnings];
+  return [...lost, ...r.errors.filter((e) => ![...noSource].some((p) => e.startsWith(`${p}:`))), ...r.gates, ...approvals, ...r.warnings];
 }
 
 const versionDto = (v: VersionRow, warnings: string[]): ReconVersionDto => ({
-  id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as ReconSpec, specHash: v.specHash,
+  id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as ReconSpec, specHash: v.specHash, matchingHash: v.matchingHash,
   makerId: v.makerId, contributorIds: v.contributorIds, submitterId: v.submittedBy, submittedAt: iso(v.submittedAt), checkerId: v.checkerId,
   reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt), simulatedHash: v.simulatedHash, warnings,
   createdAt: v.createdAt.toISOString(), updatedAt: v.updatedAt.toISOString(),
@@ -174,7 +190,7 @@ export function createRecon(ctx: Ctx, b: CreateReconBody): Promise<ReconDto> {
     }
     const hash = specHash(b.spec);
     await tx.insert(reconConfigVersions).values({
-      id: Bun.randomUUIDv7(), configId: c.id, spaceId, version: 1, status: "draft", spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: [ctx.user.id],
+      id: Bun.randomUUIDv7(), configId: c.id, spaceId, version: 1, status: "draft", spec: b.spec, specHash: hash, matchingHash: matchingHash(b.spec), makerId: ctx.user.id, contributorIds: [ctx.user.id],
     });
     await recordActivity(tx, ctx, { action: "recon.create", target: target(c), after: { code: c.code, name: c.name, version: 1, specHash: hash } });
     return detailDto(tx, c);
@@ -190,7 +206,7 @@ export function createDraft(ctx: Ctx, id: string): Promise<ReconVersionDto> {
     if (!from || live.some((v) => v.status !== "published")) throw new ApiError("duplicate", "This recon already has a draft or a version in review. Finish that one first.");
     const [last] = await tx.select({ n: max(reconConfigVersions.version) }).from(reconConfigVersions).where(ofConfig(c));
     const [v] = await tx.insert(reconConfigVersions).values({
-      id: Bun.randomUUIDv7(), configId: c.id, spaceId, version: (last?.n ?? 0) + 1, status: "draft", spec: from.spec, specHash: from.specHash,
+      id: Bun.randomUUIDv7(), configId: c.id, spaceId, version: (last?.n ?? 0) + 1, status: "draft", spec: from.spec, specHash: from.specHash, matchingHash: from.matchingHash,
       makerId: ctx.user.id, contributorIds: [ctx.user.id],
     }).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "recon.version_create", target: target(c), after: { version: v.version, from: from.version } });
@@ -210,7 +226,7 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     const { warnings } = await checked(tx, spaceId, b.spec);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v, warnings);
-    const [row] = await tx.update(reconConfigVersions).set({ spec: b.spec, specHash: hash, makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
+    const [row] = await tx.update(reconConfigVersions).set({ spec: b.spec, specHash: hash, matchingHash: matchingHash(b.spec), makerId: ctx.user.id, contributorIds: withCaller(ctx, v), updatedAt: NOW })
       .where(eq(reconConfigVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "recon.version_update", target: target(c), before: { version: v.version, specHash: v.specHash }, after: { version: v.version, specHash: hash } });
     return versionDto(row, warnings);
@@ -229,10 +245,11 @@ export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<
     if (!canStep("submit", v.status as VersionStatus)) throw wrongState("Only a draft can be submitted.");
     const spec = v.spec as ReconSpec;
     if (!spec.passes.length) throw new ApiError("bad_request", "Add at least one pass, then submit.");
-    const { gates, warnings } = await checked(tx, spaceId, spec);
+    const { gates, approvals, warnings } = await checked(tx, spaceId, spec);
     if (gates[0]) throw new ApiError("bad_request", gates[0]);
+    if (approvals[0]) throw new ApiError("bad_request", approvals[0]);
     if (v.simulatedHash === null) throw new ApiError("bad_request", "Run a simulation on this draft first.");
-    if (v.simulatedHash !== v.specHash) throw new ApiError("bad_request", "The draft changed after the last simulation. Run it again.");
+    if (v.simulatedHash !== v.matchingHash) throw new ApiError("bad_request", "The draft changed after the last simulation. Run it again.");
     const [row] = await tx.update(reconConfigVersions).set({ status: "in_review", contributorIds: withCaller(ctx, v), submittedBy: ctx.user.id, submittedAt: NOW, updatedAt: NOW })
       .where(eq(reconConfigVersions.id, v.id)).returning() as [VersionRow];
     await recordActivity(tx, ctx, { action: "recon.version_submit", target: target(c), after: { version: v.version, specHash: v.specHash } });
@@ -254,12 +271,12 @@ export async function draftToSimulate(tx: InTx, ctx: Ctx, configId: string, vers
 }
 
 /**
- * For the engine: a simulation of version `versionId` with spec hash `hash` succeeded; the draft may be submitted while
- * its spec stays that one (submitVersion compares). A version edited since, or no longer a draft, is left as it is.
+ * For the engine: a simulation of version `versionId` with matching hash `hash` (the spec without its approval setup)
+ * succeeded; the draft may be submitted while its matching part stays that one (submitVersion compares). A version edited since, or no longer a draft, is left as it is.
  */
 export async function markSimulated(tx: InTx, spaceId: string, versionId: string, hash: string): Promise<void> {
   await tx.update(reconConfigVersions).set({ simulatedHash: hash })
-    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, versionId), eq(reconConfigVersions.status, "draft"), eq(reconConfigVersions.specHash, hash)));
+    .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, versionId), eq(reconConfigVersions.status, "draft"), eq(reconConfigVersions.matchingHash, hash)));
 }
 
 /**
@@ -284,7 +301,8 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
     if (!canStep("approve", v.status as VersionStatus)) throw wrongState("Only a version in review can be approved.");
     const spec = v.spec as ReconSpec;
     for (const sourceId of [...new Set(spec.sides.map((s) => s.source_id))].sort()) await sourceFieldsLock(tx, sourceId);
-    const { warnings, owners, directionMapped } = await checked(tx, spaceId, spec);
+    const { approvals, warnings, owners, directionMapped } = await checked(tx, spaceId, spec);
+    if (approvals[0]) throw new ApiError("bad_request", approvals[0]);
     const [retired] = await tx.update(reconConfigVersions).set({ status: "retired", updatedAt: NOW })
       .where(and(ofConfig(c), eq(reconConfigVersions.status, "published"))).returning({ version: reconConfigVersions.version });
     const [row] = await tx.update(reconConfigVersions).set({ status: "published", checkerId: ctx.user.id, publishedAt: NOW, reviewComment: null, updatedAt: NOW })

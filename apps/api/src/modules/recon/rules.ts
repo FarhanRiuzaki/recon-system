@@ -1,7 +1,9 @@
 // Pure rules of a recon spec (spec §10) beyond its contract: what checkReconSpec finds against the sides' published
 // source versions, where in the builder a problem is (in the builder's words, never a spec path), and the fields a
 // published recon holds its sources to (Plan 3 A4). Sentences name fields as people do (fieldLabel), never by code.
-import type { ReconSpec } from "@starterkit/shared/contracts/recon";
+import { type CatalogField, type Condition, conditionFields, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
+import type { ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
+import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { type FieldKind, fieldLabel, type FieldPair, type Operator, recordFields, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { specIssue } from "../../kernel/versions";
 
@@ -148,4 +150,39 @@ export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, 
     ...(spec.sides[i].amount_sign === "negate" ? ["amount_minor"] : []),
   ])].sort();
   return [of(0), of(1)];
+}
+
+export type WorkflowFact = { spaceId: string; name: string; archived: boolean; versions: ReadonlySet<number> };
+const clausesOf = (c: Condition): { field: string; op: keyof typeof OP_TEXT }[] =>
+  ("all" in c ? c.all : c.any).flatMap((p) => ("all" in p || "any" in p ? clausesOf(p as Condition) : [p as { field: string; op: keyof typeof OP_TEXT }]));
+
+/**
+ * What is wrong with a recon version's approval setup (DEC-052 rev 2): a workflow that is gone, of another space,
+ * archived or pinned at a version never published; a rule checking a field its sides no longer read, or comparing a
+ * field in a way its kind doesn't offer. A save keeps these as warnings; submit and approve refuse on the first.
+ */
+export function checkApprovals(approvals: ReconApprovalSpec | undefined, catalog: readonly CatalogField[], workflows: ReadonlyMap<string, WorkflowFact>, spaceId: string): string[] {
+  const out: string[] = [];
+  for (const change of TRIGGERS) {
+    const w = approvals?.changes[change]?.workflow;
+    if (!w) continue;
+    const label = TRIGGER_LABEL[change];
+    for (const ref of [...(w.default ? [w.default] : []), ...w.rules.map((r) => r.workflow)]) {
+      const f = workflows.get(ref.id);
+      const msg = !f || f.spaceId !== spaceId ? `${label}: a picked workflow no longer exists. Pick another one.`
+        : f.archived ? `${label}: workflow “${f.name}” is archived. Pick another one.`
+          : !f.versions.has(ref.version) ? `${label}: version ${ref.version} of “${f.name}” was never published. Pick a published version.` : null;
+      if (msg && !out.includes(msg)) out.push(msg);
+    }
+    for (const r of w.rules) {
+      const where = `${label} · rule “${r.name}”`;
+      const lost = conditionFields(r.when).filter((k) => !catalog.some((c) => c.key === k));
+      if (lost.length) out.push(`${where}: a field it checks is no longer read from the sources (${[...new Set(lost)].join(", ")}).`);
+      for (const c of clausesOf(r.when)) {
+        const f = catalog.find((x) => x.key === c.field);
+        if (f && !OPS_BY_KIND[f.kind].includes(c.op)) out.push(`${where}: ${f.label} can't be compared with “${OP_TEXT[c.op]}”.`);
+      }
+    }
+  }
+  return out;
 }

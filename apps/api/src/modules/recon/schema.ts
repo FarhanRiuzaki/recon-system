@@ -36,6 +36,8 @@ export const reconConfigVersions = pgTable("recon_config_versions", {
   status: text("status").notNull(),
   spec: jsonb("spec").notNull(),
   specHash: text("spec_hash").notNull(),
+  /** `spec_hash` without the approval setup (kernel/versions matchingHash): what a simulation is checked against. */
+  matchingHash: text("matching_hash").notNull(),
   makerId: uuid("maker_id"),
   /** Everyone who created, edited (spec changed) or submitted this version, in order; none of them may check it. */
   contributorIds: uuid("contributor_ids").array().notNull().default(sql`'{}'`),

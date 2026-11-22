@@ -30,7 +30,7 @@ export type Src = Awaited<ReturnType<typeof makeSource>>;
 export async function recon(spaceId: string, spec: unknown, status = "published") {
   const configId = Bun.randomUUIDv7(), versionId = Bun.randomUUIDv7();
   await db.insert(reconConfigs).values({ id: configId, spaceId, code: `r-${configId.slice(-12)}`, name: "R" });
-  await db.insert(reconConfigVersions).values({ id: versionId, configId, spaceId, version: 1, status, spec, specHash: specHash(spec as object), makerId: U });
+  await db.insert(reconConfigVersions).values({ id: versionId, configId, spaceId, version: 1, status, spec, specHash: specHash(spec as object), matchingHash: specHash(spec as object), makerId: U });
   return { spaceId, configId, versionId };
 }
 

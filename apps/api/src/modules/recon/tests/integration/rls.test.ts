@@ -30,7 +30,7 @@ beforeEach(async () => {
   // source of A (shared to B), config of B on it
   await db.insert(sources).values({ id: SRC, spaceId: A, code: "s1", name: "S1", kind: "file_inbox" });
   await db.insert(reconConfigs).values({ id: CFG, spaceId: B, code: "bifast", name: "BI-FAST credit" });
-  await db.insert(reconConfigVersions).values({ id: V1, configId: CFG, spaceId: B, version: 1, status: "published", spec: {}, specHash: "h", makerId: U });
+  await db.insert(reconConfigVersions).values({ id: V1, configId: CFG, spaceId: B, version: 1, status: "published", spec: {}, specHash: "h", matchingHash: "h", makerId: U });
   await db.insert(reconSourceUses).values({ spaceId: B, configId: CFG, sourceSpaceId: A, sourceId: SRC, field: "amount_minor", configName: "BI-FAST credit" });
 });
 

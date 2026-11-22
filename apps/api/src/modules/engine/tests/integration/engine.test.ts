@@ -156,7 +156,7 @@ describe("the Plan 3 gate: source1 vs source2 of recon_source_test, 2–5 Nov 20
   it("a simulation of a draft gives the same answer in its own rows and touches no live item", async () => {
     const live = [await itemsOf(gate.configId), await groupsOf(gate.configId)];
     const draft = Bun.randomUUIDv7();
-    await db.insert(reconConfigVersions).values({ id: draft, configId: gate.configId, spaceId: A, version: 2, status: "draft", spec: gateSpec(...gateSides), specHash: "h2", makerId: U });
+    await db.insert(reconConfigVersions).values({ id: draft, configId: gate.configId, spaceId: A, version: 2, status: "draft", spec: gateSpec(...gateSides), specHash: "h2", matchingHash: "h2", makerId: U });
     const sim = await runRecon(probe, { ...gate, versionId: draft, mode: "simulation", from: "2026-11-02", to: "2026-11-05" });
     expect(sim.counters.passes).toEqual({ 1: pass(937, 0, 30, 10), 2: pass(0, 14, 0, 0), 3: pass(0, 10, 0, 0) });
     expect((await groupsOf(gate.configId, sim.runId)).length).toBe(961);
