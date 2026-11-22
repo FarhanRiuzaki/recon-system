@@ -7,11 +7,12 @@
 // flashes once when the run ends; an edge into it carries packets along its path (SMIL animateMotion on the edge's own
 // path, timed by DUR); hovering or focusing a node lights its whole path and dims the rest. Reduced motion: no sweep,
 // bar, packets or flash; the primary stroke and the words stay.
-import { Background, BackgroundVariant, BaseEdge, type Edge, type EdgeProps, getBezierPath, getSmoothStepPath, useReactFlow } from "@xyflow/react";
+import { Background, BackgroundVariant, BaseEdge, ControlButton, type Edge, EdgeLabelRenderer, type EdgeProps, getBezierPath, getSmoothStepPath, Handle, Position, useReactFlow } from "@xyflow/react";
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
+import { ResetIcon } from "@starterkit/ui/ui/icons";
 
 /** The status colours an outcome or a marked node may carry (status colours are for health states only, AGENTS.md §6). */
 export type Accent = "healthy" | "degraded" | "down" | "stopped" | "primary" | null;
@@ -119,19 +120,44 @@ function useEnded(on: boolean): boolean {
   return flash;
 }
 
-/** An edge's live data: `live` = packets flow along it; `kind` step = a pass to the next, down its lane. */
-export type FlowEdgeData = { live?: boolean; kind?: "step" };
+/**
+ * What an edge means, as its colour (and its arrow's): an outcome it feeds (matched, suggested, waiting, a break) or the
+ * health of the source it comes from (degraded, down). Null = a plain step of the flow.
+ */
+export type EdgeTone = "matched" | "suggested" | "waiting" | "break" | "degraded" | "down" | null;
+const TONE_COLOR: Record<Exclude<EdgeTone, null>, string> = {
+  matched: "var(--healthy-mark)", suggested: "var(--primary)", waiting: "var(--fg-4)", break: "var(--degraded-mark)", degraded: "var(--degraded-mark)", down: "var(--down-mark)",
+};
+/** The arrow at an edge's end, in its tone's colour (React Flow draws one marker per colour). */
+export const arrowOf = (tone: EdgeTone, live = false) =>
+  ({ type: "arrowclosed" as const, color: live ? "var(--primary)" : tone ? TONE_COLOR[tone] : "var(--fg-4)", width: 12, height: 12 });
 
-/** The edge both canvases draw: its path, its label as a pill, and while live two packets travelling it (not under reduced motion). */
+/**
+ * An edge's data: `live` = packets flow along it; `kind` step = a pass to the next, down its lane; `tone` its colour;
+ * `text` its label (a count), drawn as a pill; `quiet` = a count of zero, muted.
+ */
+export type FlowEdgeData = { live?: boolean; kind?: "step"; tone?: EdgeTone; text?: string; quiet?: boolean };
+
+/**
+ * The edge both canvases draw: a smooth curve leaving and entering its cards level (each edge has its own port, see
+ * `ports`), in its tone's colour; its count as a pill on the curve; while live two packets travel it (not under
+ * reduced motion); a waiting edge is dashed (nothing happened to those items yet).
+ */
 export function FlowEdge(p: EdgeProps<Edge<FlowEdgeData>>) {
   const reduced = usePrefersReducedMotion();
   const [path, labelX, labelY] = p.data?.kind === "step"
-    ? getSmoothStepPath({ ...p, borderRadius: 12 })
-    : getBezierPath(p);
+    ? getSmoothStepPath({ ...p, borderRadius: 10 })
+    : getBezierPath({ ...p, curvature: 0.35 });
+  const tone = p.data?.tone ?? null;
   return (
     <>
-      <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} style={p.style} label={p.label} labelX={labelX} labelY={labelY}
-        labelStyle={p.labelStyle} labelShowBg={p.labelShowBg} labelBgStyle={p.labelBgStyle} labelBgPadding={p.labelBgPadding} labelBgBorderRadius={p.labelBgBorderRadius} />
+      <BaseEdge id={p.id} path={path} markerEnd={p.markerEnd} interactionWidth={16}
+        style={{ ...p.style, ...(tone ? { stroke: TONE_COLOR[tone] } : {}), ...(tone === "waiting" ? { strokeDasharray: "5 4" } : {}) }} />
+      {p.data?.text && (
+        <EdgeLabelRenderer>
+          <span className={cn("flow-label nodrag nopan", p.data.quiet && "is-quiet")} style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}>{p.data.text}</span>
+        </EdgeLabelRenderer>
+      )}
       {p.data?.live && !reduced && [0, DUR.tween].map((at) => (
         // a packet with a soft halo, both on the edge's own path
         <g key={at}>
@@ -143,6 +169,55 @@ export function FlowEdge(p: EdgeProps<Edge<FlowEdgeData>>) {
   );
 }
 export const EDGE_TYPES = { flow: FlowEdge };
+
+/** Where an edge leaves its source card and enters its target card: a fraction of the card's height. */
+export type Ports = Map<string, { out: number; in: number }>;
+/**
+ * A port per edge on each card side (no two edges share a point, so they never cross where they meet a card): a card's
+ * outgoing edges ordered by where their targets sit, incoming by where their sources sit, spread over the middle of
+ * its height. Read from the nodes' current positions, so a dragged card re-orders its ports. `skip`: edges with their
+ * own handles (a pass to the next, top to bottom).
+ */
+export function ports(edges: readonly { id: string; source: string; target: string }[], y: (id: string) => number, skip: (id: string) => boolean = () => false): Ports {
+  const out = new Map<string, string[]>(), inn = new Map<string, string[]>();
+  const by = (m: Map<string, string[]>, k: string, id: string) => { const l = m.get(k) ?? []; l.push(id); m.set(k, l); };
+  const live = edges.filter((e) => !skip(e.id));
+  for (const e of live) { by(out, e.source, e.id); by(inn, e.target, e.id); }
+  const ends = new Map(live.map((e) => [e.id, e]));
+  const at = (ids: string[], other: (id: string) => number) => {
+    const sorted = [...ids].sort((a, b) => other(a) - other(b));
+    return new Map(sorted.map((id, i) => [id, sorted.length === 1 ? 0.5 : 0.25 + (0.5 * i) / (sorted.length - 1)]));
+  };
+  const res: Ports = new Map();
+  const outAt = new Map<string, number>(), inAt = new Map<string, number>();
+  for (const ids of out.values()) for (const [id, f] of at(ids, (x) => y(ends.get(x)!.target))) outAt.set(id, f);
+  for (const ids of inn.values()) for (const [id, f] of at(ids, (x) => y(ends.get(x)!.source))) inAt.set(id, f);
+  for (const e of live) res.set(e.id, { out: outAt.get(e.id) ?? 0.5, in: inAt.get(e.id) ?? 0.5 });
+  return res;
+}
+/** A card's ports as handles: `outs` on its right, `ins` on its left, each at its fraction of the height. */
+export function PortHandles({ ins, outs }: { ins: readonly [string, number][]; outs: readonly [string, number][] }) {
+  return (
+    <>
+      {ins.map(([id, f]) => <Handle key={`i-${id}`} id={`i-${id}`} type="target" position={Position.Left} isConnectable={false} style={{ top: `${f * 100}%` }} />)}
+      {outs.map(([id, f]) => <Handle key={`o-${id}`} id={`o-${id}`} type="source" position={Position.Right} isConnectable={false} style={{ top: `${f * 100}%` }} />)}
+    </>
+  );
+}
+/** The ports of node `id` from `p`, for PortHandles. */
+export function portsOf(id: string, edges: readonly { id: string; source: string; target: string }[], p: Ports) {
+  return {
+    ins: edges.filter((e) => e.target === id && p.has(e.id)).map((e) => [e.id, p.get(e.id)!.in] as [string, number]),
+    outs: edges.filter((e) => e.source === id && p.has(e.id)).map((e) => [e.id, p.get(e.id)!.out] as [string, number]),
+  };
+}
+
+/** The Controls button that puts every card back where the layout placed it (after dragging them around). */
+export const ResetLayout = ({ onReset }: { onReset: () => void }) => (
+  <ControlButton onClick={onReset} title="Reset layout" aria-label="Reset layout">
+    <Icon icon={ResetIcon} size={14} />
+  </ControlButton>
+);
 
 /**
  * What a hovered or focused node lights: itself, every node upstream and downstream of it, and the edges between.

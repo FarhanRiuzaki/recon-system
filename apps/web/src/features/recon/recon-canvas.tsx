@@ -4,16 +4,20 @@
 // ELK), the same data and actions as the list: choosing a side or a pass opens it in the inspector, a pass moves by
 // drag (up and down its lane only) or Alt+↑/↓, and the simulation's counts sit on the edges, dimmed while the draft
 // differs from what was simulated. Loaded on demand (canvas-loader.tsx); never on a phone (the list is, DEC-041).
-import { Controls, Handle, MarkerType, type Edge, type Node, type NodeChangeset, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
+import { Controls, Handle, type Edge, type Node, type NodeChangeset, type NodeProps, Position, ReactFlow, ReactFlowProvider, ViewportPortal } from "@xyflow/react";
 import "@xyflow/react/dist/base.css";
 import "./recon-canvas.css";
 import { type KeyboardEvent, useCallback, useMemo, useRef, useState } from "react";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { DiskIcon, FilterIcon, SuccessIcon, SuggestedIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { dropIndex, type GNode, LANES, laneLayout, NODE_H, NODE_W, specGraph } from "./canvas-graph";
-import { type Accent, EDGE_TYPES, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, useFitToCard, useHotNode } from "./flow-parts";
+import { type Accent, arrowOf, EDGE_TYPES, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, type FlowEdgeData, LaneTitle, pathOf, PortHandles, ports, portsOf, ResetLayout, useFitToCard, useHotNode } from "./flow-parts";
 
-type Data = { title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null; badge?: GNode["badge"]; interactive: boolean; running: boolean };
+type Data = {
+  title: string; line: string; lane: number; tone: "matched" | "suggested" | "break" | "waiting" | null; badge?: GNode["badge"]; interactive: boolean; running: boolean;
+  /** Its edges' ports (flow-parts.tsx ports). */
+  ins?: [string, number][]; outs?: [string, number][];
+};
 export type CanvasProps = {
   spec: ReconSpec; keys: readonly string[]; counters?: ReconRunDto["counters"]; dim: boolean;
   /** The node open in the inspector: "side-a", "side-b" or a pass key. */
@@ -43,30 +47,35 @@ function LaneNode({ data, selected }: NodeProps<Node<Data>>) {
   const t = data.tone ? TONE[data.tone] : null;
   return (
     <>
-      <Handle type="target" position={Position.Left} isConnectable={false} />
+      <PortHandles ins={data.ins ?? []} outs={data.outs ?? []} />
       <FlowCard step={step ? Number(step[1]) : undefined} title={step ? step[2]! : data.title} line={data.line} selected={selected} interactive={data.interactive} running={data.running}
         icon={t?.icon ?? (data.lane === 0 ? DiskIcon : data.lane === 1 ? FilterIcon : undefined)} accent={t?.accent ?? null}
         badge={data.badge ? <FlowBadge tone={data.badge === "Auto" ? "primary" : "neutral"}>{data.badge}</FlowBadge> : undefined} />
-      <Handle type="source" position={Position.Right} isConnectable={false} />
       {data.lane === 2 && <><Handle id="top" type="target" position={Position.Top} isConnectable={false} /><Handle id="bottom" type="source" position={Position.Bottom} isConnectable={false} /></>}
     </>
   );
 }
 const NODE_TYPES = { lane: LaneNode };
+/** An edge into an outcome takes the outcome's colour; the rest of the flow stays plain. */
+const edgeTone = (target: string): EdgeTone =>
+  !target.startsWith("out-") ? null : target === "out-Matched" ? "matched" : target === "out-Suggested" ? "suggested" : target === "out-unmatched" ? "waiting" : "break";
 const FAR = 1e6;
 
 function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onMove, sourceLines, label, running, arriving }: CanvasProps) {
   const inflow = (id: string) => (arriving?.[0] && (id === "src-a" || id === "side-a")) || (arriving?.[1] && (id === "src-b" || id === "side-b"));
   const graph = useMemo(() => specGraph(spec, keys, counters, sourceLines), [spec, keys, counters, sourceLines]);
   const pos = useMemo(() => laneLayout(graph), [graph]);
+  // the builder: a pass moves up and down its lane (its order); read-only (Live day): every card moves freely, as on a
+  // whiteboard, until Reset layout
   const drag = editable && spec.passes.length > 1;
+  const free = !editable;
   const place = useCallback((): Node<Data>[] => graph.nodes.map((n) => {
     const p = pos.get(n.id)!;
     return {
       id: n.id, type: "lane", position: p, width: NODE_W, height: NODE_H, selected: n.id === selectedId,
       data: { title: n.title, line: n.line, lane: n.lane, tone: toneOf(n), badge: n.badge, interactive: !!(onSelect && n.select), running: (!!running && n.lane === 2) || !!inflow(n.id) },
       // a pass moves up and down its lane only: its x is pinned (REC-S6: 0 px sideways at 240 px of pointer)
-      draggable: drag && n.lane === 2, extent: [[p.x, -FAR], [p.x + NODE_W, FAR]],
+      draggable: free || (drag && n.lane === 2), ...(free ? {} : { extent: [[p.x, -FAR], [p.x + NODE_W, FAR]] as [[number, number], [number, number]] }),
       ariaLabel: `${LANES[n.lane]}: ${n.title}. ${n.line}${n.lane === 2 && editable ? ". Alt+Up or Alt+Down moves it" : ""}`,
     };
   }), [graph, pos, selectedId, drag, editable, onSelect, running, arriving]); // eslint-disable-line react-hooks/exhaustive-deps -- inflow follows arriving
@@ -74,22 +83,39 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   // a new graph (a pass moved, renamed, a simulation) or selection: every node back in its lane slot (set while
   // rendering, React's pattern for state that follows a prop)
   const [placedBy, setPlacedBy] = useState(() => place);
-  if (placedBy !== place) { setPlacedBy(() => place); setNodes(place()); }
+  // its shape (which cards, which edges): counts and lines change on every live tick, the shape doesn't
+  const shape = graph.nodes.map((n) => n.id).join("|") + "/" + graph.edges.map((e) => e.id).join("|");
+  const [placedShape, setPlacedShape] = useState(shape);
+  if (placedBy !== place) {
+    setPlacedBy(() => place);
+    setPlacedShape(shape);
+    // read-only and the same graph (a live tick, a hover): cards keep where they were dragged
+    const kept = free && placedShape === shape ? new Map(nodes.map((n) => [n.id, n.position])) : null;
+    setNodes(place().map((n) => (kept?.has(n.id) ? { ...n, position: kept.get(n.id)! } : n)));
+  }
   const wrap = useRef<HTMLDivElement>(null);
   // always fits its card: on load, when passes are added, removed or renamed, when the card resizes
   useFitToCard(wrap, `${graph.nodes.length}:${graph.edges.length}`);
 
   const hover = useHotNode();
   const lit = useMemo(() => pathOf(hover.hot, graph.edges), [hover.hot, graph.edges]);
-  const edges: Edge<FlowEdgeData>[] = useMemo(() => graph.edges.map((e) => ({
-    id: e.id, source: e.source, target: e.target, label: e.label ?? undefined, type: "flow", data: { live: !!running || !!inflow(e.source), kind: e.inLane ? "step" : undefined },
-    sourceHandle: e.inLane ? "bottom" : undefined, targetHandle: e.inLane ? "top" : undefined, focusable: false,
-    markerEnd: { type: MarkerType.ArrowClosed, color: running ? "var(--primary)" : "var(--fg-4)", width: 14, height: 14 },
-    labelBgPadding: [8, 3] as [number, number], labelBgBorderRadius: 999,
-    labelStyle: dim ? { opacity: 0.6 } : undefined,
-    className: [(running || inflow(e.source)) && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
-  })), [graph, dim, running, lit, arriving]); // eslint-disable-line react-hooks/exhaustive-deps -- inflow follows arriving
-  const shown = useMemo(() => (lit ? nodes.map((n) => ({ ...n, className: lit.nodes.has(n.id) ? undefined : "is-dim" })) : nodes), [nodes, lit]);
+  // a port per edge, ordered by where the other end sits now (a dragged card re-orders them)
+  const ys = useMemo(() => new Map(nodes.map((n) => [n.id, n.position.y])), [nodes]);
+  const port = useMemo(() => ports(graph.edges, (id) => ys.get(id) ?? 0, (id) => !!graph.edges.find((e) => e.id === id)?.inLane), [graph, ys]);
+  const edges: Edge<FlowEdgeData>[] = useMemo(() => graph.edges.map((e) => {
+    const live = !!running || !!inflow(e.source);
+    const tone = edgeTone(e.target);
+    return {
+      id: e.id, source: e.source, target: e.target, type: "flow", focusable: false,
+      data: { live, kind: e.inLane ? "step" : undefined, tone, text: e.label ?? undefined, quiet: dim || /^0\b/.test(e.label ?? "") },
+      sourceHandle: e.inLane ? "bottom" : `o-${e.id}`, targetHandle: e.inLane ? "top" : `i-${e.id}`,
+      markerEnd: arrowOf(tone, live),
+      className: [live && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
+    };
+  }), [graph, dim, running, lit, arriving]); // eslint-disable-line react-hooks/exhaustive-deps -- inflow follows arriving
+  const shown = useMemo(() => nodes.map((n) => ({
+    ...n, data: { ...n.data, ...portsOf(n.id, graph.edges, port) }, className: lit && !lit.nodes.has(n.id) ? "is-dim" : undefined,
+  })), [nodes, lit, graph, port]);
 
   const passIds = graph.nodes.filter((n) => n.lane === 2).map((n) => n.id);
   const focusNode = (id: string | undefined) => { if (id) wrap.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="${CSS.escape(id)}"]`)?.focus(); };
@@ -124,10 +150,11 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
   const onNodesChange = useCallback((c: NodeChangeset<Node<Data>>) => setNodes((ns) => c.applyTo(ns)), []); // v13: a changeset
   /** A drop in the Passes lane takes the slot nearest its middle; anywhere else it goes back to its slot. */
   const onNodeDragStop = useCallback((_: unknown, n: Node<Data>) => {
+    if (free) return; // read-only: the card stays where it was dropped
     const from = passIds.indexOf(n.id), to = dropIndex(graph, pos, n.position.y);
     if (from < 0 || from === to || !onMove) { setNodes(place()); return; }
     onMove(from, to, false);
-  }, [passIds, graph, pos, place, onMove]);
+  }, [free, passIds, graph, pos, place, onMove]);
 
   const tallest = Math.max(...LANES.map((_, l) => graph.nodes.filter((n) => n.lane === l).length));
   // as tall as its tallest lane, within a screen
@@ -140,7 +167,7 @@ function Canvas({ spec, keys, counters, dim, selectedId, editable, onSelect, onM
         nodesConnectable={false} edgesFocusable={false} elementsSelectable={false} fitView fitViewOptions={FIT} minZoom={0.25} maxZoom={1.5}
         proOptions={{ hideAttribution: true }} aria-label={label ?? "Passes as a canvas: sources, sides, passes in run order and their outcomes"}>
         <FlowBoard />
-        <Controls showInteractive={false} />
+        <Controls showInteractive={false}>{free && <ResetLayout onReset={() => setNodes(place())} />}</Controls>
         <ViewportPortal>
           {laneX.map((x, l) => x !== undefined && <LaneTitle key={l} x={x} label={LANES[l]!} count={graph.nodes.filter((n) => n.lane === l).length} />)}
         </ViewportPortal>

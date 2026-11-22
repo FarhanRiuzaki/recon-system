@@ -60,3 +60,12 @@
   .recon-canvas .flow-sweep::after { display: none; }
   .recon-canvas .react-flow__node, .recon-canvas .react-flow__edge { transition: none; }
 }
+/* an edge's count (flow-parts.tsx FlowEdge): a pill on the curve, over it */
+.recon-canvas .flow-label {
+  position: absolute; pointer-events: none; padding: 1px 8px; border-radius: 999px;
+  background: var(--card); color: var(--fg-2); box-shadow: 0 0 0 1px var(--line);
+  font-size: var(--text-caption); line-height: var(--text-caption--line-height); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.recon-canvas .flow-label.is-quiet { color: var(--fg-4); }
+/* a card being dragged sits over the others */
+.recon-canvas .react-flow__node.dragging { z-index: 10 !important; }
