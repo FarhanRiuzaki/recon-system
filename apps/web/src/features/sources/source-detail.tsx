@@ -30,7 +30,7 @@ import { at, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText 
 import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
-const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "Records", configuration: "Configuration", quarantine: "Quarantine", versions: "Versions", activity: "Activity" };
+const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "Records", configuration: "Configuration", history: "History" };
 
 /**
  * "Edit source" (Build notes 02): the open draft in the wizard, a version in review on its page, or a new draft made
@@ -129,7 +129,7 @@ function TodayTiles({ s }: { s: SourceDto }) {
     <StatTiles>
       <StatTile icon={DiskIcon} label="Records today" value={s.rowsToday === null ? "—" : formatNumber(s.rowsToday)} caption={`Business date ${day(h.businessDate)}`} />
       <StatTile icon={WarningIcon} label="Quarantined today" value={s.quarantinedToday === null ? "—" : formatNumber(s.quarantinedToday)}
-        caption={s.quarantinedToday === null ? "Kept by the owning space" : s.quarantinedToday ? "See why in Quarantine" : "No line refused"} />
+        caption={s.quarantinedToday === null ? "Kept by the owning space" : s.quarantinedToday ? "See why under Records" : "No line refused"} />
       <StatTile icon={CheckIcon} label="Complete through" value={complete} caption={waiting} />
       <StatTile icon={TimeIcon} label="Next read" value={s.nextRunAt ? formatTime(Date.parse(s.nextRunAt)) : "—"}
         caption={s.nextRunAt ? formatDate(Date.parse(s.nextRunAt)) : "Not while paused"} />
@@ -202,16 +202,15 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
         <RouteTabs aria-label="Source sections">
           {SOURCE_TABS.map((t) => (
             <Link key={t} href={tabHref(t)} aria-current={shown === t ? "page" : undefined}>
-              {TAB_LABEL[t]}{t === "quarantine" && s.quarantinedToday ? ` · ${s.quarantinedToday} today` : ""}
+              {TAB_LABEL[t]}{t === "records" && s.quarantinedToday ? ` · ${s.quarantinedToday} quarantined today` : ""}
             </Link>
           ))}
         </RouteTabs>
       )}
-      {shown === "records" ? <RecordsTable spaceId={spaceId} id={id} />
+      {shown === "records" ? <><RecordsTable spaceId={spaceId} id={id} /><QuarantineTable spaceId={spaceId} id={id} /></>
         : shown === "configuration" ? <SourceConfig s={s} spaceId={spaceId} />
-        : shown === "quarantine" ? <QuarantineTable spaceId={spaceId} id={id} />
-        : shown === "versions" ? <VersionsTable spaceId={spaceId} id={id} />
-        : shown === "activity" ? <ActivityTable spaceId={spaceId} id={id} /> : (
+        // versions and activity in one place (owner, 22 Nov: few tabs); the header's date range filters the activity
+        : shown === "history" ? <><VersionsTable spaceId={spaceId} id={id} /><ActivityTable spaceId={spaceId} id={id} /></> : (
         <>
           {q.error && <Notice tone="warn" live>Couldn&apos;t refresh this source; showing the last loaded details.</Notice>}
           {s.status === "paused" && (

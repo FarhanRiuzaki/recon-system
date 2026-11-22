@@ -1,6 +1,6 @@
 import { writeTableFromSearch } from "./raw-table-state";
 import { describe, expect, it } from "vitest";
-import { historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableRequest, tableView, text, toSortParam, writeTable } from "./table-state";
+import { historyMode, isoDate, multiChoice, oneOf, readTable, sortState, tableRequest, tableView, text, toSortParam, type TableSpec, withOtherTables, writeTable } from "./table-state";
 
 const SPEC = {
   sorts: ["at", "login"], defaultSort: "-at", search: ["user"] as const,
@@ -158,3 +158,25 @@ describe("raw exact filter edits", () => {
     expect(writeTableFromSearch(new URLSearchParams("actorId="), {}, spec, keys)).toBeNull();
   });
 });
+
+describe("two lists on one page (TableSpec.ns)", () => {
+  const VERSIONS: TableSpec<Record<never, string>> = { sorts: ["version"], defaultSort: "-version", filters: {}, ns: "v" };
+  const ACTIVITY: TableSpec<{ range: string }> = { sorts: [], defaultSort: "", filters: { range: oneOf(["7d", "90d"], "90d") }, ns: "a" };
+  const RECORDS: TableSpec<{ q: string }> = { sorts: [], defaultSort: "", filters: { q: text(200) } };
+  it("each pages on its own key; filters keep their plain names", () => {
+    const sp = new URLSearchParams("tab=history&v.page=3&a.page=2&range=7d");
+    expect([readTable(sp, VERSIONS).page, readTable(sp, ACTIVITY).page, readTable(sp, ACTIVITY).range]).toEqual([3, 2, "7d"]);
+    expect(writeTable(readTable(sp, VERSIONS), { page: 4 }, VERSIONS)!.toString()).toBe("v.page=4");
+  });
+  it("writing one keeps the other's state and the tab; a filter it cleared stays cleared", () => {
+    const current = new URLSearchParams("tab=history&v.page=3&a.page=2&range=7d");
+    const next = withOtherTables(writeTable(readTable(current, VERSIONS), { page: 4 }, VERSIONS)!, current, VERSIONS);
+    expect(Object.fromEntries(next)).toEqual({ "v.page": "4", tab: "history", "a.page": "2", range: "7d" });
+    const cleared = withOtherTables(writeTable(readTable(current, ACTIVITY), { range: "90d" }, ACTIVITY)!, current, ACTIVITY);
+    expect(Object.fromEntries(cleared)).toEqual({ tab: "history", "v.page": "3" });
+    // a plain list beside a namespaced one keeps the namespaced keys
+    const r = new URLSearchParams("q=abc&page=2&qr.page=5");
+    expect(Object.fromEntries(withOtherTables(writeTable(readTable(r, RECORDS), { page: 3 }, RECORDS)!, r, RECORDS))).toEqual({ q: "abc", page: "3", "qr.page": "5" });
+  });
+});
+

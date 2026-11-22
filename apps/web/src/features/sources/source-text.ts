@@ -96,6 +96,16 @@ export function missingText(s: Pick<SourceDto, "kind" | "health" | "nextRunAt"> 
   return out.join(" ");
 }
 
-/** The tabs of a source's detail, in order (`?tab=`); the page reads them on the server, so they live outside the screen. */
-export const SOURCE_TABS = ["overview", "records", "configuration", "quarantine", "versions", "activity"] as const;
+/**
+ * The tabs of a source's detail, in order (`?tab=`; owner, 22 Nov: few tabs, as a recon's): Records holds the
+ * quarantine under the records, History the versions and the activity. The page reads them on the server, so they live
+ * outside the screen.
+ */
+export const SOURCE_TABS = ["overview", "records", "configuration", "history"] as const;
 export type SourceTab = (typeof SOURCE_TABS)[number];
+/** `?tab=` as a tab; the earlier tabs' links still open where their list went (quarantine → records, versions and activity → history). */
+export function sourceTabOf(v: string | null): SourceTab {
+  if (v === "quarantine") return "records";
+  if (v === "versions" || v === "activity") return "history";
+  return SOURCE_TABS.find((t) => t === v) ?? "overview";
+}

@@ -107,8 +107,10 @@ export const sourceDetail = (spaceId: string, id: string) => ({
  */
 export const INGEST_KEY = ["ingest"] as const;
 const INGEST_SPEC: TableSpec<NoFilters> = { sorts: [], defaultSort: "", filters: {} };
+// the quarantine shares the Records tab with the records list: its own paging keys (qr.page)
+const QUARANTINE_SPEC: TableSpec<NoFilters> = { ...INGEST_SPEC, ns: "qr" };
 const ingestTable = (what: "files" | "snapshots" | "quarantine") => (spaceId: string, id: string): TableDef<NoFilters> =>
-  ({ key: INGEST_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/${what}`, spec: INGEST_SPEC, transient: ["tab"] });
+  ({ key: INGEST_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/${what}`, spec: what === "quarantine" ? QUARANTINE_SPEC : INGEST_SPEC, transient: ["tab"] });
 export const sourceFiles = ingestTable("files");
 export const sourceSnapshots = ingestTable("snapshots");
 export const sourceQuarantine = ingestTable("quarantine");
@@ -123,7 +125,7 @@ const RECORDS_SPEC: TableSpec<RecordFilters> = { sorts: [], defaultSort: "", sea
 export const sourceRecords = (spaceId: string, id: string): TableDef<RecordFilters> =>
   ({ key: INGEST_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/records`, spec: RECORDS_SPEC, transient: ["tab"] });
 /** A source's versions, newest first (`tab` stays when the table pages). */
-const SOURCE_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: SOURCE_VERSION_SORTS, defaultSort: "-version", filters: {} };
+const SOURCE_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: SOURCE_VERSION_SORTS, defaultSort: "-version", filters: {}, ns: "v" };
 export const sourceVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
   ({ key: SOURCES_KEY[0], path: `${sourcesPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: SOURCE_VERSIONS_SPEC, transient: ["tab"] });
 /** A source's own activity (read through the sources module), newest first; the API takes no sort. */
@@ -144,7 +146,7 @@ export const reconDetail = (spaceId: string, id: string) => ({
   key: [...RECON_KEY, "detail", spaceId, id] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(id)}`,
 });
 /** A recon's versions, newest first (`tab` stays when the table pages). */
-const RECON_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: RECON_VERSION_SORTS, defaultSort: "-version", filters: {} };
+const RECON_VERSIONS_SPEC: TableSpec<NoFilters> = { sorts: RECON_VERSION_SORTS, defaultSort: "-version", filters: {}, ns: "v" };
 export const reconVersions = (spaceId: string, id: string): TableDef<NoFilters> =>
   ({ key: RECON_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/versions`, spec: RECON_VERSIONS_SPEC, transient: ["tab"] });
 /** A recon's own activity, newest first; the API takes no sort. */
@@ -263,7 +265,7 @@ const auditParams = ({ range, from, to, start, end, ...rest }: Omit<AuditFilters
  * week would hide most of a config's history).
  */
 export type TrailFilters = Omit<AuditFilters, "user">;
-const TRAIL_SPEC: TableSpec<TrailFilters> = { sorts: [], defaultSort: "", filters: { start: timeExpression, end: timeExpression, range: oneOf(AUDIT_RANGES, "90d"), from: isoDate, to: isoDate } };
+const TRAIL_SPEC: TableSpec<TrailFilters> = { sorts: [], defaultSort: "", ns: "a", filters: { start: timeExpression, end: timeExpression, range: oneOf(AUDIT_RANGES, "90d"), from: isoDate, to: isoDate } };
 /** The default range of a trail, for the header's label. */
 export const TRAIL_DAYS = 90;
 

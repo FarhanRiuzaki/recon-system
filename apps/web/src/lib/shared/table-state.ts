@@ -17,6 +17,12 @@ export type TableSpec<F extends Record<string, string>> = {
   filters: { [K in keyof F]: FilterParser<F[K]> };
   /** Filters written while the user types (debounced search): they replace the history entry instead of adding one. */
   search?: readonly (keyof F & string)[];
+  /**
+   * A table that shares its page with another (a tab holding two lists): its paging keys carry this prefix ("v.page",
+   * "v.pageSize", "v.sort"), so each list pages and sorts on its own. Filters keep their plain names: the header's range
+   * (start, end, range) filters every list of the page alike; the API sees the plain names.
+   */
+  ns?: string;
 };
 export type TableState<F extends Record<string, string>> = { page: number; pageSize: PageSize; sort: string } & F;
 export type SortState = { key: string; dir: "asc" | "desc" };
@@ -36,10 +42,13 @@ export const isoDate: FilterParser<string> = (raw) => {
 
 const int = (raw: string | null) => (raw != null && /^\d+$/.test(raw) ? Number(raw) : NaN);
 
+/** A table's URL key of paging `name` (page, pageSize, sort): `name`, or `ns.name` for a namespaced table (TableSpec.ns). */
+const keyOf = (spec: { ns?: string }, name: "page" | "pageSize" | "sort") => (spec.ns ? `${spec.ns}.${name}` : name);
+
 export function readTable<F extends Record<string, string>>(sp: URLSearchParams, spec: TableSpec<F>): TableState<F> {
-  const p = int(sp.get("page"));
-  const size = int(sp.get("pageSize"));
-  const sort = sp.get("sort") ?? "";
+  const p = int(sp.get(keyOf(spec, "page")));
+  const size = int(sp.get(keyOf(spec, "pageSize")));
+  const sort = sp.get(keyOf(spec, "sort")) ?? "";
   const filters = Object.fromEntries(Object.entries(spec.filters).map(([k, parse]) => [k, (parse as FilterParser<string>)((parse as FilterParser<string>).multiple ? JSON.stringify(sp.getAll(k).filter(value => value !== "")) : sp.get(k))])) as F;
   return {
     page: p >= 1 ? Math.min(p, MAX_PAGE) : 1,
@@ -51,15 +60,29 @@ export function readTable<F extends Record<string, string>>(sp: URLSearchParams,
 
 export function tableSearch<F extends Record<string, string>>(t: TableState<F>, spec: TableSpec<F>): URLSearchParams {
   const out = new URLSearchParams();
-  if (t.page !== 1) out.set("page", String(t.page));
-  if (t.pageSize !== DEFAULT_PAGE_SIZE) out.set("pageSize", String(t.pageSize));
-  if (t.sort !== spec.defaultSort) out.set("sort", t.sort);
+  if (t.page !== 1) out.set(keyOf(spec, "page"), String(t.page));
+  if (t.pageSize !== DEFAULT_PAGE_SIZE) out.set(keyOf(spec, "pageSize"), String(t.pageSize));
+  if (t.sort !== spec.defaultSort) out.set(keyOf(spec, "sort"), t.sort);
   for (const [k, parse] of Object.entries(spec.filters)) {
     const v = t[k as keyof F] as string;
     if ((parse as FilterParser<string>).multiple) selectionValues(v).forEach(value => out.append(k, value));
     else if (v !== (parse as FilterParser<string>)(null)) out.set(k, v);
   }
   return out;
+}
+
+/**
+ * `next` (one table's URL state) with the other tables of the page kept from `current`: every namespaced key of another
+ * table ("a.page"), and, for a namespaced table, the page's plain keys that aren't its own filters (the other list's,
+ * the tab). So paging one list of a tab never resets the other, and a filter the table cleared stays cleared.
+ */
+export function withOtherTables(next: URLSearchParams, current: URLSearchParams, spec: { ns?: string; filters: object }): URLSearchParams {
+  const mine = (k: string) => (spec.ns ? k.startsWith(`${spec.ns}.`) || Object.hasOwn(spec.filters, k) : !k.includes("."));
+  for (const k of new Set(current.keys())) {
+    if (mine(k) || next.has(k)) continue;
+    for (const v of current.getAll(k)) next.append(k, v);
+  }
+  return next;
 }
 
 /**

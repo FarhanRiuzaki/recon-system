@@ -11,7 +11,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import { REMEMBERED_VIEW_QUERY_MAX } from "@starterkit/shared/views";
 import { MAX_PAGE, PAGE_SIZES, type PageSize } from "@starterkit/shared/paging";
 import { savedView, viewPageOf } from "@/lib/shared/prefs";
-import { historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, writeTable } from "@/lib/shared/table-state";
+import { historyMode, preserveTableParams, readTable, type SortState, sortState, tableRequest, tableView, type TableState, toSortParam, withOtherTables, writeTable } from "@/lib/shared/table-state";
 
 /**
  * A server-driven table: page, page size, sort and filters live in the URL (shareable; a change other than the page
@@ -58,6 +58,7 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
     const next = edit ? edit(current, patch) : writeTable(readTable(current, spec), patch, spec);
     if (!next) return;
     preserveTableParams(next, current, transient);
+    if (!edit) withOtherTables(next, current, spec);
     const href = next.size ? `${pathname}?${next}` : pathname;
     // Native history (Next keeps useSearchParams in sync): the URL changes in place, without a server round trip for
     // the page, so the next page loads from /api with the previous rows kept and the busy dim. The server prefetch
@@ -79,7 +80,7 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
     if (tableRequest(path, currentState, spec, params, { search: current, keys: rawFilters }).url !== url) return;
     const patch = { page: lastPage } as Partial<TableState<F>>;
     const next = edit ? edit(current, patch) : writeTable(currentState, patch, spec);
-    if (next) preserveTableParams(next, current, transient);
+    if (next) { preserveTableParams(next, current, transient); if (!edit) withOtherTables(next, current, spec); }
     if (next) window.history.replaceState(null, "", next.size ? `${pathname}?${next}` : pathname);
   }, [lastPage, state, spec, pathname, path, params, rawFilters, transient, url, edit]);
 
