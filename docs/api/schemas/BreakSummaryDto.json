@@ -18,11 +18,17 @@
           },
           "amountMinor": {
             "type": "string"
+          },
+          "items": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
           }
         },
         "required": [
           "currency",
-          "amountMinor"
+          "amountMinor",
+          "items"
         ],
         "additionalProperties": false
       }

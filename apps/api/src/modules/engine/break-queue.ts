@@ -91,6 +91,8 @@ async function liveSpecs(tx: InTx, spaceId: string, configIds: Iterable<string>)
   return new Map(await Promise.all(ids.map(async (id) => [id, await liveSpec(tx, spaceId, id)] as const)));
 }
 
+const cmpBig = (a: string, b: string) => (BigInt(a) > BigInt(b) ? 1 : BigInt(a) < BigInt(b) ? -1 : 0);
+
 /** A break's state in the queue's order (new … pending approval), for `sort=state`. */
 const stateRank = sql`case ${sql.join(BREAK_STATES.map((st, i) => sql`when coalesce(${reconItems.breakState}, 'new') = ${st} then ${i}`), sql` `)} end`;
 
@@ -105,10 +107,14 @@ export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Pro
     const spaces = await recordSpaces(tx, spaceId);
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     const where = breakWhere(ctx, spaceId, today, q);
-    const base = <S extends Record<string, unknown>>(sel: S) => tx.select(sel as never).from(reconItems).leftJoin(records, record).where(where).$dynamic();
+    // records joined only where a column of theirs is read: the amounts, or the reference search
+    const base = <S extends Record<string, unknown>>(sel: S, join: boolean) => {
+      const from = tx.select(sel as never).from(reconItems);
+      return (join ? from.leftJoin(records, record) : from).where(where).$dynamic();
+    };
     const [byCcy, byDay] = await Promise.all([
-      base({ ccy: records.currency, sum: sql<string>`sum(abs(${records.amountMinor}))::text` }).groupBy(records.currency) as Promise<{ ccy: string | null; sum: string | null }[]>,
-      base({ configId: reconItems.configId, bd: reconItems.businessDate, n: countN, mine: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int` })
+      base({ ccy: records.currency, sum: sql<string>`sum(abs(${records.amountMinor}))::text`, n: countN }, true).groupBy(records.currency) as Promise<{ ccy: string | null; sum: string | null; n: number }[]>,
+      base({ configId: reconItems.configId, bd: reconItems.businessDate, n: countN, mine: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int` }, !!q.q?.trim())
         .groupBy(reconItems.configId, reconItems.businessDate) as Promise<{ configId: string; bd: string; n: number; mine: number }[]>,
     ]);
     const specs = await liveSpecs(tx, spaceId, byDay.map((r) => r.configId));
@@ -118,7 +124,9 @@ export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Pro
     };
     return {
       open: byDay.reduce((n, r) => n + r.n, 0),
-      amounts: byCcy.flatMap((r) => (r.ccy && r.sum ? [{ currency: r.ccy, amountMinor: r.sum }] : [])).sort((x, y) => (BigInt(y.amountMinor) > BigInt(x.amountMinor) ? 1 : -1)),
+      // the currency with the most items leads (the tile's headline), then the larger amount, then the code
+      amounts: byCcy.flatMap((r) => (r.ccy && r.sum ? [{ currency: r.ccy, amountMinor: r.sum, items: r.n }] : []))
+        .sort((x, y) => y.items - x.items || cmpBig(y.amountMinor, x.amountMinor) || x.currency.localeCompare(y.currency)),
       pastCarryOver: byDay.reduce((n, r) => n + (past(r) ? r.n : 0), 0),
       mine: byDay.reduce((n, r) => n + r.mine, 0),
     };
@@ -148,8 +156,9 @@ export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promis
         .leftJoin(pr, and(inArray(pr.spaceId, spaces), eq(pr.id, pi.recordId), eq(pr.businessDate, pi.businessDate)))
         .where(where).$dynamic(),
       count: (like ? tx.select(one).from(reconItems).leftJoin(records, record) : tx.select(one).from(reconItems)).where(where).$dynamic(),
-      // an item without a record's amount sorts as 0
-      orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate, amount: sql`coalesce(${records.amountMinor}, 0)`, state: stateRank }, "businessDate", reconItems.id),
+      // amount = absolute, as the summary adds them; an item without a record's amount sorts as 0.
+      // ponytail: minor units of different currencies compare as plain numbers; per currency (or FX) if a queue mixes them
+      orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate, amount: sql`abs(coalesce(${records.amountMinor}, 0))`, state: stateRank }, "businessDate", reconItems.id),
       query: q,
       map: (r) => r,
       on: tx,

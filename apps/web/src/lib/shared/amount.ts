@@ -10,8 +10,8 @@ export function amountText(minor: string | null, ccy: string | null): string {
 }
 
 /**
- * The open amount as one tile: the largest currency as the value, the others in the caption ("Also 5.00 EUR"); none
- * open is 0 without a unit.
+ * The open amount as one tile: the first currency (the API puts the one with the most items first) as the value, the
+ * others in the caption ("Also 5.00 EUR"); none open is 0 without a unit.
  */
 export function amountTile(amounts: readonly { currency: string; amountMinor: string }[]): { value: string; unit?: string; caption?: string } {
   const [first, ...rest] = amounts;
