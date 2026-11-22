@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type Column, Truncate } from "@starterkit/ui/ds";
 import { formatDate } from "@starterkit/ui/lib/format";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
@@ -23,11 +24,12 @@ export type Selection = { has: (id: string) => boolean; toggle: (id: string) => 
  * why it broke (and a pair a later pass proposed), where it stands, who has it. `select` adds the leading checkbox for
  * the bulk actions.
  */
-export function breakColumns(select?: Selection): Column<BreakRowDto>[] {
+export function breakColumns(spaceId: string, select?: Selection): Column<BreakRowDto>[] {
+  const href = (r: BreakRowDto) => `/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.id)}`;
   const cols: Column<BreakRowDto>[] = [
     { key: "break", header: "Break", mobile: "title", className: "min-w-56", cell: (r) => (
       <span className="grid min-w-0 max-w-80">
-        <Truncate title={r.ref ?? "No reference"}><span className="font-mono text-body-sm text-fg">{r.ref ?? "No reference"}</span></Truncate>
+        <Truncate title={r.ref ?? "No reference"}><Link href={href(r)} className="font-mono text-body-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{r.ref ?? "No reference"}</Link></Truncate>
         <span className="truncate text-caption text-fg-3">{r.recon.name} · side {r.side.toUpperCase()}{r.source ? ` · ${r.source}` : ""}</span>
       </span>
     ) },

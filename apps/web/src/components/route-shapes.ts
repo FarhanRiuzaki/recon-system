@@ -2,7 +2,7 @@ import { NEW_RECON_SHAPE, RECON_RUN_SHAPE, RECON_SETUP_SHAPE, RECON_SHAPE, RECON
 import { SOURCE_DETAIL_SHAPE, SOURCES_SHAPE, VERSION_SHAPE, WIZARD_SHAPE } from "@/features/sources/shapes";
 import { MEMBERS_SHAPE } from "@/features/spaces/shapes";
 import { APPROVALS_SHAPE } from "@/features/approvals/shapes";
-import { BREAKS_SHAPE } from "@/features/breaks/shapes";
+import { BREAK_SHAPE, BREAKS_SHAPE } from "@/features/breaks/shapes";
 import type { Section } from "./route-skeleton";
 
 /**
@@ -29,6 +29,7 @@ export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/spaces/[spaceId]/today": TODAY_SHAPE,
   "/spaces/[spaceId]/approvals": APPROVALS_SHAPE,
   "/spaces/[spaceId]/breaks": BREAKS_SHAPE,
+  "/spaces/[spaceId]/breaks/[itemId]": BREAK_SHAPE,
   "/spaces/[spaceId]/recons/new": NEW_RECON_SHAPE,
   "/spaces/[spaceId]/recons/[configId]": RECON_SHAPE,
   "/spaces/[spaceId]/recons/[configId]/versions/new": RECON_SETUP_SHAPE,

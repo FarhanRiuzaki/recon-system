@@ -174,6 +174,15 @@ export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
   params: ({ reason, state, age, assignee, ...rest }) => ({ ...rest, reason: single(reason), state: single(state), age: single(age), assignee: single(assignee) }),
 });
 
+const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
+/** One break: its item, recon, state, resolution, proposed pair. */
+export const breakDetail = (spaceId: string, id: string) => ({ key: [...ENGINE_KEY, "break", spaceId, id] as const, url: breakPath(spaceId, id) });
+const CANDIDATES_SPEC: TableSpec<{ q: string }> = { sorts: [], defaultSort: "", search: ["q"], filters: { q: text(200) }, ns: "c" };
+/** The other side's items free to match a break, nearest amount first (its page's "Find a counterpart"; c.page). */
+export const breakCandidates = (spaceId: string, id: string): TableDef<{ q: string }> => ({ key: ENGINE_KEY[0], path: `${breakPath(spaceId, id)}/candidates`, spec: CANDIDATES_SPEC });
+/** A break's own trail, newest first (a.page beside the candidates). */
+export const breakActivity = (spaceId: string, id: string): TableDef<TrailFilters> => ({ key: ENGINE_KEY[0], path: `${breakPath(spaceId, id)}/activity`, spec: TRAIL_SPEC, params: auditParams });
+
 export const APPROVALS_KEY = ["approvals"] as const;
 export type ApprovalFilters = { q: string; kind: string; mine: string };
 const APPROVALS_SPEC: TableSpec<ApprovalFilters> = { sorts: APPROVAL_SORTS, defaultSort: "submittedAt", search: ["q"], filters: { q: text(200), kind: multiChoice(), mine: oneOf(["", "1"], "") } };

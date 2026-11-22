@@ -58,8 +58,8 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
   const toggle = (id: string) => setSelected((s) => { const n = new Set(s); if (!n.delete(id)) n.add(id); return n; });
   const allOn = selected.size > 0 && rows.every((r) => selected.has(r.id));
   const toggleAll = useCallback(() => setSelected(allOn ? new Set() : new Set(rows.map((r) => r.id))), [allOn, rows]);
-  const columns = useMemo(() => breakColumns(canWork ? { has: (id) => selected.has(id), toggle, all: { checked: allOn, count: rows.length, toggle: toggleAll } } : undefined),
-    [canWork, selected, allOn, rows.length, toggleAll]);
+  const columns = useMemo(() => breakColumns(spaceId, canWork ? { has: (id) => selected.has(id), toggle, all: { checked: allOn, count: rows.length, toggle: toggleAll } } : undefined),
+    [spaceId, canWork, selected, allOn, rows.length, toggleAll]);
   const filtered = Object.entries(f).some(([k, v]) => k in FILTER_DEFAULTS && v !== "");
 
   /** One bulk action over the selection: its answer as a toast (what it did, what it skipped and why). */
