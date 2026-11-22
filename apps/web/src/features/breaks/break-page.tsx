@@ -122,7 +122,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             {busy === "take" && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Take break
           </Button>
         ) : undefined} />
-      {open && worker && !canWork && b.assignee && <Notice>{b.assignee.name ?? "Someone"} has this break. A reviewer or space admin can reassign it from Breaks.</Notice>}
+      {open && !pending && worker && !canWork && b.assignee && !mine && <Notice>{b.assignee.name ?? "Someone"} has this break. A reviewer or space admin can reassign it from Breaks.</Notice>}
       {open && !pending && worker && !b.assignee && <Notice>Take this break to resolve it.</Notice>}
 
       {b.request && (

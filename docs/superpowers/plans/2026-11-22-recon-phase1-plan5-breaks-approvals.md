@@ -41,4 +41,12 @@ Status per task dicatat di bawah saat selesai, dengan commit dan tes buktinya.
   null untuk grup manual; tes `break-resolve.test.ts` 5/5), halaman `f44e09d` (`/spaces/[id]/breaks/[itemId]`).
   Match manual hanya bila total sisi A = sisi B; selisih ditolak dengan angkanya (force match = Task 3). Dicek di :3000
   pada break live (Take, kandidat 156 item, penolakan selisih 5,500.00), lalu dikembalikan ke Unassigned.
-- Task 3–7: belum.
+- Task 3: **selesai 22 Nov** — API `926317d` (migrasi 0046 `approval_requests`, milik modul engine karena engine yang
+  menjalankan perubahannya; `engine/break-requests.ts`; tes `break-requests.test.ts` 4/4), halaman `e804902`.
+  Request force match (hanya bila total berbeda), unmatch, write-off dengan catatan; break `pending_approval` tak bisa
+  diubah selama menunggu; checker = reviewer/space admin bukan peminta (`self_approval`), Superadmin bebas (DEC-051);
+  reject mengembalikan state sebelumnya. Inbox Approvals memuatnya, filter jenis kini bisa beberapa sekaligus.
+  Belum: ambang write-off per space (spec §11, data bank) — sementara semua write-off butuh approval; unmatch hanya
+  dari halaman break (item yang pernah break), bukan dari hasil run. Dicek di :3000: request force match pada break
+  live → muncul di inbox → Reject → state kembali Assigned → Unassigned.
+- Task 4–7: belum.
