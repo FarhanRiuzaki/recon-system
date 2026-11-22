@@ -236,7 +236,6 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
       <div className="grid min-w-0 gap-section">
         {wf.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load the space&apos;s workflows. {errorText(wf.error)}</p>}
         {unfinished && <p role="status" className="text-body-sm text-degraded-ink">A rule is unfinished: name it, complete its conditions and pick its workflow, or remove it. The rest is saved.</p>}
-        <SetupTables accounts={local.accounts ?? []} lookups={local.lookups ?? []} disabled={disabled} onChange={(accounts, lookups) => set({ ...local, accounts, lookups })} />
         {TRIGGERS.map((k) => (
           <ChangeCard key={k} kind={k} recon={recon} setup={local.changes[k] ?? empty} rows={rows} catalog={catalog} disabled={disabled}
             onChange={(s) => set({ ...local, changes: { ...local.changes, [k]: s } })}>
@@ -245,6 +244,8 @@ export function ApprovalStep({ spaceId, configId, versionId, recon, spec, fields
               onChange={(actions) => set({ ...local, changes: { ...local.changes, [k]: { ...(local.changes[k] ?? empty), actions } } })} />
           </ChangeCard>
         ))}
+        <SetupTables accounts={local.accounts ?? []} lookups={local.lookups ?? []} disabled={disabled} onChange={(accounts, lookups) => set({ ...local, accounts, lookups })} />
+
       </div>
       <div className="min-w-0">
         <WhoApproves spaceId={spaceId} configId={configId} versionId={versionId} approvals={local} catalog={catalog} dirty={dirty || unfinished} />

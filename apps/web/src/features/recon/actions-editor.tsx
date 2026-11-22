@@ -13,7 +13,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ConnectorOperationsDto } from "@starterkit/shared/contracts/integrations";
 import type { ActionPreviewDto, ActionSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
 import { type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
-import { type Trigger, TRIGGER_LABEL } from "@starterkit/shared/workflows";
+import type { Trigger } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { connectorOperationsQuery, reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { actionSentence, mappingGaps } from "./actions-model";
@@ -226,11 +226,10 @@ export function ActionsEditor({ kind, actions, onChange, spaceId, configId, vers
   const ops = opsQ.data?.items ?? [];
   const [open, setOpen] = useState<number | null>(null);
   const [adding, setAdding] = useState<{ name: string; on: ActionSpec["on"]; operation: VariantSpec["operation"] | null } | null>(null);
-  const change = TRIGGER_LABEL[kind].toLowerCase();
   return (
     <div className="grid gap-2">
       <span className="text-label text-fg">Send to the bank</span>
-      {actions.length === 0 && !adding && <span className="text-body-sm text-fg-3">Nothing is sent when a {change} is approved. Add an action to post or tell the bank.</span>}
+      {actions.length === 0 && !adding && <span className="text-body-sm text-fg-3">Nothing is sent to the bank on its approval yet. Add an action to post to or notify the bank.</span>}
       <ol className="grid gap-2">
         {actions.map((a, i) => (
           <li key={i} className="grid gap-2">
