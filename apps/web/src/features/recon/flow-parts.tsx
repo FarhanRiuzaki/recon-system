@@ -130,7 +130,8 @@ const TONE_COLOR: Record<Exclude<EdgeTone, null>, string> = {
 };
 /** The arrow at an edge's end, in its tone's colour (React Flow draws one marker per colour). */
 export const arrowOf = (tone: EdgeTone, live = false) =>
-  ({ type: "arrowclosed" as const, color: live ? "var(--primary)" : tone ? TONE_COLOR[tone] : "var(--fg-4)", width: 12, height: 12 });
+  // in px whatever the line's width (a thick Space map line would otherwise grow its arrow with it)
+  ({ type: "arrowclosed" as const, color: live ? "var(--primary)" : tone ? TONE_COLOR[tone] : "var(--fg-4)", width: 14, height: 14, markerUnits: "userSpaceOnUse" });
 
 /**
  * An edge's data: `live` = packets flow along it; `kind` step = a pass to the next, down its lane; `tone` its colour;

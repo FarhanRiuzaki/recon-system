@@ -89,7 +89,7 @@ function MapCanvas({ nodes: input, edges: links }: { nodes: MapNode[]; edges: Ma
     const h = health.get(e.source);
     const tone: EdgeTone = h === "down" ? "down" : h === "degraded" ? "degraded" : null;
     return {
-    id: e.id, source: e.source, target: e.target, focusable: false, type: "flow", data: { live: e.live, tone }, style: { strokeWidth: 1.25 + (e.width - 1) * 0.6 },
+    id: e.id, source: e.source, target: e.target, focusable: false, type: "flow", data: { live: e.live, tone }, style: { strokeWidth: 1.25 + (e.width - 1) * 0.35 },
     sourceHandle: `o-${e.id}`, targetHandle: `i-${e.id}`, markerEnd: arrowOf(tone, e.live),
     className: [e.live && "is-live", lit && (lit.edges.has(e.id) ? "is-lit" : "is-dim")].filter(Boolean).join(" ") || undefined,
     };
