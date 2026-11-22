@@ -3,8 +3,17 @@
 import { appDayStart, formatDate, formatMinor } from "@starterkit/ui/lib/format";
 import type { RequestKind } from "@starterkit/shared/approvals";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
+import type { AgeBucket, BreakState } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { amountText } from "@/lib/shared/amount";
+
+/** A break's queue state as people say it. */
+export const STATE_LABEL: Record<BreakState, string> = {
+  new: "New", assigned: "Assigned", investigating: "Investigating", pending_external: "Pending external",
+  proposed_resolution: "Proposed resolution", pending_approval: "Pending approval", resolved: "Resolved",
+};
+/** An age bucket as people say it (days from the break's business date). */
+export const AGE_LABEL: Record<AgeBucket, string> = { d0: "Today", d1: "1 day", d2_3: "2–3 days", d4_7: "4–7 days", d8_30: "8–30 days", gt30: "Over 30 days" };
 
 const DAY_MS = 86_400_000;
 export const dateText = (d: string) => formatDate(appDayStart(d));

@@ -22,6 +22,22 @@ export const BreakListQuery = ListQuery.extend({
 });
 export type BreakListQuery = z.infer<typeof BreakListQuery>;
 
+/** Whether runs look for an item's counterpart again: `until` a business date, `always`, or `no` (engine pool rules). */
+export const Recheck = z.discriminatedUnion("kind", [z.object({ kind: z.literal("until"), date: z.string() }), z.object({ kind: z.literal("always") }), z.object({ kind: z.literal("no") })]);
+
+/**
+ * GET …/breaks/summary: the queue's headline numbers with the list's filters: `open` items, their amount per currency
+ * (absolute amounts as written, largest first), how many are past their recon's carry over (no longer checked again by
+ * runs; a recon whose carry over is always never counts) and how many the caller has.
+ */
+export const BreakSummaryDto = z.object({
+  open: z.number().int(),
+  amounts: z.array(z.object({ currency: z.string(), amountMinor: z.string() })),
+  pastCarryOver: z.number().int(),
+  mine: z.number().int(),
+});
+export type BreakSummaryDto = z.infer<typeof BreakSummaryDto>;
+
 /** One break of the queue: its item (side, reference, amount), why, where it stands, who has it, how old it is. */
 export const BreakRowDto = z.object({
   id: z.string(),
@@ -38,6 +54,10 @@ export const BreakRowDto = z.object({
   ageDays: z.number().int(),
   /** A pair a later suggesting pass proposed (DEC-047): its reference. */
   proposedRef: z.string().nullable(),
+  /** The label of the side its counterpart would come from (the live version's other side; null before a first approval). */
+  counterpartSide: z.string().nullable(),
+  /** Whether runs look for its counterpart again: as BreakDetailDto `recon.recheck`. */
+  recheck: Recheck,
 });
 export type BreakRowDto = z.infer<typeof BreakRowDto>;
 
@@ -120,7 +140,7 @@ export const BreakDetailDto = z.object({
   recon: z.object({
     id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]), posts: z.boolean(),
     carryOverDays: z.number().int().nullable(),
-    recheck: z.discriminatedUnion("kind", [z.object({ kind: z.literal("until"), date: z.string() }), z.object({ kind: z.literal("always") }), z.object({ kind: z.literal("no") })]),
+    recheck: Recheck,
     routes: z.array(z.object({ kind: z.enum(REQUEST_KINDS), workflowName: z.string().nullable(), levels: z.number().int(), connector: z.string().nullable(), connectorOff: z.boolean(), blocked: z.string().nullable(), note: z.string().nullable() })),
   }),
   state: z.enum(BREAK_STATES),

@@ -134,7 +134,7 @@ async function routesOf(tx: InTx, spaceId: string, spec: ReconSpec | null): Prom
  * and with carry over above 0 (or always) a "No counterpart" break with late_match that waits for no decision on a
  * day not signed off. Carry over is calendar days from the business date (engine addDays).
  */
-async function recheckOf(tx: InTx, spaceId: string, x: typeof reconItems.$inferSelect, live: ReconSpec | null): Promise<BreakDetailDto["recon"]["recheck"]> {
+export async function recheckOf(tx: InTx, spaceId: string, x: typeof reconItems.$inferSelect, live: ReconSpec | null): Promise<BreakDetailDto["recon"]["recheck"]> {
   const carry = live ? live.carry_over_days : 0;
   const pooled = x.status === "open" || (x.status === "break" && x.lateMatch && x.breakReason === NEAR_MISS.none && x.breakState !== "pending_approval"
     && carry !== 0 && !(await signed(tx, spaceId, x.configId, x.businessDate)));

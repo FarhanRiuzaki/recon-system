@@ -29,8 +29,8 @@ export const SOURCE_VERSION_SORTS = ["version", "updatedAt"] as const;
 export const RECON_SORTS = ["name", "createdAt"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/versions (newest version first by default). */
 export const RECON_VERSION_SORTS = ["version", "updatedAt"] as const;
-/** GET /api/spaces/{spaceId}/breaks (oldest business date first by default). */
-export const BREAK_SORTS = ["businessDate"] as const;
+/** GET /api/spaces/{spaceId}/breaks (oldest business date first by the API; the screen opens on the largest amount, -amount). */
+export const BREAK_SORTS = ["businessDate", "amount", "state"] as const;
 /** GET /api/workflows (the workflow library, by name by default). */
 export const WORKFLOW_SORTS = ["name", "createdAt"] as const;
 export const CONNECTOR_SORTS = ["name", "createdAt"] as const;

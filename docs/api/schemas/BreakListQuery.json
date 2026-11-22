@@ -27,7 +27,11 @@
       "type": "string",
       "enum": [
         "businessDate",
-        "-businessDate"
+        "-businessDate",
+        "amount",
+        "-amount",
+        "state",
+        "-state"
       ]
     },
     "recon": {

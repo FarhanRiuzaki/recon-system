@@ -3,10 +3,10 @@
 // live recon item in status `break` (this module owns recon_items); its queue state is break_state (null = new) and
 // assignee_id. Every change locks the items it changes, bumps their version (A1: the engine skips an item an operator
 // changed meanwhile) and writes one activity entry per break changed; a bulk answers { done, skipped }.
-import type { AssignBreaksBody, BreakListQuery, BreakRowDto, BreakStateBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
+import type { AssignBreaksBody, BreakListQuery, BreakRowDto, BreakStateBody, BreakSummaryDto, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
 import type { BulkResult, FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { isSuperadmin } from "@starterkit/shared/permissions";
-import { AGE_BUCKETS, AGE_DAYS, type AgeBucket, type BreakState } from "@starterkit/shared/recon";
+import { AGE_BUCKETS, AGE_DAYS, type AgeBucket, BREAK_STATES, type BreakState } from "@starterkit/shared/recon";
 import { and, eq, ilike, inArray, isNull, ne, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
@@ -21,6 +21,7 @@ import { sources, sourceShares } from "../sources";
 import { spaceMembers, withSpace } from "../spaces";
 import { users } from "../users";
 import { reconItems } from "./schema";
+import { liveSpec, recheckOf } from "./break-resolve";
 import { addDays } from "./service";
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -84,6 +85,46 @@ export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Prom
   });
 }
 
+/** The live specs of `configIds` (null before a first approval), read once each. */
+async function liveSpecs(tx: InTx, spaceId: string, configIds: Iterable<string>) {
+  const ids = [...new Set(configIds)];
+  return new Map(await Promise.all(ids.map(async (id) => [id, await liveSpec(tx, spaceId, id)] as const)));
+}
+
+/** A break's state in the queue's order (new … pending approval), for `sort=state`. */
+const stateRank = sql`case ${sql.join(BREAK_STATES.map((st, i) => sql`when coalesce(${reconItems.breakState}, 'new') = ${st} then ${i}`), sql` `)} end`;
+
+/**
+ * GET …/breaks/summary: the queue's headline numbers under the list's filters: open items, their absolute amount per
+ * currency, how many are past their recon's carry over (business date + carry over before today; a recon whose carry
+ * over is always, or without a live version, never counts), and how many the caller has.
+ */
+export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<BreakSummaryDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const today = todayIn(now);
+    const spaces = await recordSpaces(tx, spaceId);
+    const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
+    const where = breakWhere(ctx, spaceId, today, q);
+    const base = <S extends Record<string, unknown>>(sel: S) => tx.select(sel as never).from(reconItems).leftJoin(records, record).where(where).$dynamic();
+    const [byCcy, byDay] = await Promise.all([
+      base({ ccy: records.currency, sum: sql<string>`sum(abs(${records.amountMinor}))::text` }).groupBy(records.currency) as Promise<{ ccy: string | null; sum: string | null }[]>,
+      base({ configId: reconItems.configId, bd: reconItems.businessDate, n: countN, mine: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int` })
+        .groupBy(reconItems.configId, reconItems.businessDate) as Promise<{ configId: string; bd: string; n: number; mine: number }[]>,
+    ]);
+    const specs = await liveSpecs(tx, spaceId, byDay.map((r) => r.configId));
+    const past = (r: { configId: string; bd: string }) => {
+      const carry = specs.get(r.configId)?.carry_over_days;
+      return carry !== undefined && carry !== null && addDays(r.bd, carry) < today;
+    };
+    return {
+      open: byDay.reduce((n, r) => n + r.n, 0),
+      amounts: byCcy.flatMap((r) => (r.ccy && r.sum ? [{ currency: r.ccy, amountMinor: r.sum }] : [])).sort((x, y) => (BigInt(y.amountMinor) > BigInt(x.amountMinor) ? 1 : -1)),
+      pastCarryOver: byDay.reduce((n, r) => n + (past(r) ? r.n : 0), 0),
+      mine: byDay.reduce((n, r) => n + r.mine, 0),
+    };
+  });
+}
+
 /** GET …/breaks: one page of the space's queue, oldest business date first unless `sort` says otherwise. */
 export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<Page<BreakRowDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
@@ -107,13 +148,19 @@ export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promis
         .leftJoin(pr, and(inArray(pr.spaceId, spaces), eq(pr.id, pi.recordId), eq(pr.businessDate, pi.businessDate)))
         .where(where).$dynamic(),
       count: (like ? tx.select(one).from(reconItems).leftJoin(records, record) : tx.select(one).from(reconItems)).where(where).$dynamic(),
-      orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate }, "businessDate", reconItems.id),
+      // an item without a record's amount sorts as 0
+      orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate, amount: sql`coalesce(${records.amountMinor}, 0)`, state: stateRank }, "businessDate", reconItems.id),
       query: q,
       map: (r) => r,
       on: tx,
     });
     const ids = [...new Set(page.items.flatMap((r) => (r.assigneeId ? [r.assigneeId] : [])))];
     const names = new Map(ids.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.name]) : []);
+    const specs = await liveSpecs(tx, spaceId, page.items.map((r) => r.configId));
+    // whether runs check each again: the break page's own rule (recheckOf) on the full item
+    // ponytail: one sign-off lookup per pooled row (≤ 100 a page); batch by (config, date) if a page gets slow
+    const full = page.items.length ? await tx.select().from(reconItems).where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, page.items.map((r) => r.id)))) : [];
+    const recheck = new Map(await Promise.all(full.map(async (x) => [x.id, await recheckOf(tx, spaceId, x, specs.get(x.configId) ?? null)] as const)));
     return {
       ...page,
       items: page.items.map((r) => ({
@@ -122,6 +169,8 @@ export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promis
         reason: r.reason, state: stateOf(r.state), assignee: r.assigneeId ? { id: r.assigneeId, name: names.get(r.assigneeId) ?? null } : null,
         ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${r.bd}T00:00:00Z`)) / DAY_MS)),
         proposedRef: r.proposedRef ?? null,
+        counterpartSide: specs.get(r.configId)?.sides[r.side === "a" ? 1 : 0]?.label ?? null,
+        recheck: recheck.get(r.id) ?? { kind: "no" as const },
       })),
     };
   });

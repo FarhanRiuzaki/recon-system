@@ -34,17 +34,20 @@ export const reconSignoffs = (spaceId: string, id: string): TableDef<SignoffFilt
   ({ key: ENGINE_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/signoffs`, spec: SIGNOFF_SPEC, transient: ["tab"] });
 export type BreakFilters = { q: string; recon: string; reason: string; state: string; age: string; assignee: string };
 const BREAKS_SPEC: TableSpec<BreakFilters> = {
-  sorts: BREAK_SORTS, defaultSort: "businessDate", search: ["q"],
+  sorts: BREAK_SORTS, defaultSort: "-amount", search: ["q"],
   filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice() },
 };
 /**
- * A space's breaks queue (the engine's, Plan 5), oldest business date first: `reason`, `state`, `age` and `assignee`
+ * A space's breaks queue (the engine's, Plan 5), largest amount first: `reason`, `state`, `age` and `assignee`
  * (me, none = Unassigned) with every ticked value; `recon` one recon (a link from it); `q` the reference; with counts.
  */
 export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
   key: ENGINE_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/breaks`, spec: BREAKS_SPEC,
   facets: true,
 });
+/** The queue's headline numbers under the list's filters (`filterQuery` of useTableQuery), keyed beside its rows. */
+export const breakSummaryUrl = (spaceId: string, filterQuery: string) =>
+  `/api/spaces/${encodeURIComponent(spaceId)}/breaks/summary${filterQuery ? `?${filterQuery}` : ""}`;
 
 const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
 /** One break: its item, recon, state, resolution, proposed pair. */

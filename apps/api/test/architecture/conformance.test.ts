@@ -246,6 +246,7 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/recons/:configId/days": "a recon's last TREND_DAYS business dates (14), fixed",
   "GET /v1/spaces/:spaceId/recons/:configId/live": "one recon's current business date and its two sources",
   "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",
+  "GET /v1/spaces/:spaceId/breaks/summary": "four numbers of the unmatch queue; its amounts one per currency",
   "GET /v1/spaces/:spaceId/connector-operations": "the connectors a recon may pick, their published versions and operations: bounded (connectors are few, 50 operations each)",
   "GET /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "the columns of one table of a source database: bounded by the engine's column limit",
 };

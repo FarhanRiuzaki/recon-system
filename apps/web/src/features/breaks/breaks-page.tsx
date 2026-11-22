@@ -19,7 +19,9 @@ import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
-import { AGE_LABEL, breakColumns, STATE_LABEL } from "./break-columns";
+import { breakColumns } from "./break-columns";
+import { AGE_LABEL, STATE_LABEL } from "./break-model";
+import { BreakSummary } from "./break-summary";
 import { withCounts } from "@/lib/shared/table-state";
 
 const AssignDialog = dynamic(() => import("./assign-dialog"), { ssr: false });
@@ -42,7 +44,7 @@ const SKIP_TEXT: Record<string, string> = { not_found: "no longer in the queue",
  * state, reason and age. A space admin or reviewer assigns the selected breaks; whoever works breaks takes them and
  * marks them investigating or pending external. Each action answers what it did and what it skipped.
  */
-export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
+export function BreaksPage({ spaceId }: { spaceId: string }) {
   const def = useMemo(() => BREAKS(spaceId), [spaceId]);
   const t = useTableQuery<BreakRowDto, BreakFilters>(def);
   const f = t.state;
@@ -84,7 +86,8 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
 
   return (
     <div className="grid gap-section">
-      <PageHeader title="Unmatch" description="Items no pass paired by day close, and where each one stands." />
+      <PageHeader title="Unmatch" description="Items not matched yet. They are checked again on each run until their carry over ends." />
+      <BreakSummary spaceId={spaceId} filterQuery={t.filterQuery} mine={f.assignee === "me"} onMine={() => t.set({ assignee: f.assignee === "me" ? "" : "me" })} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the unmatch items; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
@@ -97,7 +100,7 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
           <FilterChecks label="Age" value={draft.age} options={withCounts(AGE_BUCKETS.map((a) => ({ value: a, label: AGE_LABEL[a] })), t.facets?.age)} onChange={(age) => patch({ age })} />
         </>}>
       {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-        flush icon={AlertsIcon} title={`Unmatch in ${spaceName}`} count={t.count} description={canWork ? "Select items to take, assign or mark them" : undefined}>
+        flush icon={AlertsIcon} title="Open items" count={t.count} description={canWork ? "Select items to take, assign or mark them" : undefined}>
         {summary}
         {canWork && rows.length > 0 && (
           // on a phone, with breaks selected, the bar sticks under the top bar; from 768 px it shows only with a selection
@@ -123,7 +126,7 @@ export function BreaksPage({ spaceId, spaceName }: { spaceId: string; spaceName:
           error={t.loadError ? { title: "Couldn't load the unmatch items", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
           empty={filtered
             ? { icon: AlertsIcon, title: "Nothing matches these filters", description: "Change the filters, or clear them to see every item." }
-            : { icon: AlertsIcon, title: "No unmatch", description: "An item appears here when a recon run leaves it without a counterpart, until it matches or is settled." }} />
+            : { icon: AlertsIcon, title: "No unmatch items", description: "New ones appear after a run leaves an item without a counterpart." }} />
       </Panel>}
       </FilterLayout>
       </FilterSurface>

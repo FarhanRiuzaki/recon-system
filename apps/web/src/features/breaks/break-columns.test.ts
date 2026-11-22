@@ -8,6 +8,7 @@ const COLS = breakColumns("sp-1");
 const B = {
   id: "b1", businessDate: "2026-11-20", recon: { id: "r1", name: "BI-FAST" }, side: "a", source: "Core banking", ref: "REF-1", amountMinor: "1000", currency: "IDR",
   reason: "Amount differs", proposedRef: null, state: "pending_external", assignee: null, ageDays: 2,
+  counterpartSide: "Bank statement", recheck: { kind: "until", date: "2026-11-21" },
 } as unknown as BreakRowDto;
 const cell = (key: string, r: BreakRowDto = B) => renderToStaticMarkup(h(Fragment, null, COLS.find((c) => c.key === key)!.cell(r)));
 
@@ -19,5 +20,19 @@ describe("unmatch queue columns: reason and state are chips from the chip map (a
     expect(cell("state")).toContain(">Pending external</span>");
     expect(cell("state")).toContain("bg-chart-5");
     expect(cell("state", { ...B, state: "new" })).toContain("bg-fg-4");
+  });
+});
+
+describe("unmatch queue columns: the set of audit §5.1", () => {
+  it("at most 7 shown at first beside the checkbox; counterpart side, checked until and recon start hidden", () => {
+    const shown = breakColumns("sp-1", { has: () => false, toggle: () => {}, all: { checked: false, count: 0, toggle: () => {} } }).filter((c) => !c.defaultHidden && c.key !== "select");
+    expect(shown.map((c) => c.key)).toEqual(["break", "businessDate", "amount", "reason", "proposed", "state", "assignee"]);
+    expect(COLS.filter((c) => c.defaultHidden).map((c) => c.key)).toEqual(["counterpartSide", "recheck", "recon"]);
+    expect(COLS.filter((c) => c.sortable).map((c) => c.key)).toEqual(["businessDate", "amount", "state"]);
+  });
+  it("a proposed pair is a chip with its reference; checked until in words", () => {
+    expect(cell("proposed", { ...B, proposedRef: "REF-9" })).toContain('data-slot="category-chip"');
+    expect(cell("recheck")).toContain("21 Nov");
+    expect(cell("recheck", { ...B, recheck: { kind: "always" } })).toBe("Every run");
   });
 });

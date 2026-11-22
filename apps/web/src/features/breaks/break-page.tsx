@@ -30,8 +30,7 @@ import { postingChip, postingEvent } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
-import { STATE_LABEL } from "./break-columns";
-import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, settleActions, sidesOf, takeText, workAccess } from "./break-model";
+import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {

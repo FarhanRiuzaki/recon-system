@@ -19,7 +19,7 @@ import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery } from "@/lib/shared/queries";
-import { APPROVALS, BREAKS, breakActivity, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
+import { APPROVALS, BREAKS, breakActivity, breakSummaryUrl, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
@@ -43,13 +43,12 @@ export function toSearch(sp: SearchParams): URLSearchParams {
  * The first page of a server table at the URL state `sp`: the key and request useTableQuery builds (tableRequest).
  * A request the route's schema would reject (400) reads nothing.
  */
-export function table<F extends Record<string, string>, Q>(def: TableDef<F>, sp: URLSearchParams, schema: z.ZodType<Q>): Read {
+export function table<F extends Record<string, string>, Q>(def: TableDef<F>, sp: URLSearchParams, schema: z.ZodType<Q>, more: readonly ((filterQuery: string) => string)[] = []): Read {
   const { url, filterQuery } = tableRequest(def.path, readTable(sp, def.spec), def.spec, def.params, { search: sp, keys: def.rawFilters ?? [] });
   const ok = schema.safeParse(filterQueryValues(new URL(url, "http://local").searchParams)).success;
-  if (!def.facets) return { key: [def.key, url], path: ok ? url : null };
-  // its filter counts too (the screen reads them beside the rows: no request after hydration)
-  const facets = facetsRequest(def.path, filterQuery);
-  return { key: [def.key, url], path: ok ? url : null, also: [{ key: [def.key, facets], path: ok ? facets : null }] };
+  // its filter counts and `more` reads under the same filters (a summary): the screen reads them beside the rows, no request after hydration
+  const also = [...(def.facets ? [facetsRequest(def.path, filterQuery)] : []), ...more.map((m) => m(filterQuery))].map((u) => ({ key: [def.key, u], path: ok ? u : null }));
+  return { key: [def.key, url], path: ok ? url : null, ...(also.length ? { also } : {}) };
 }
 
 /** What each screen reads first (app/(main)/** page.tsx lists its own), each the GET its browser hook sends. */
@@ -89,7 +88,7 @@ export const reads = {
   sourceActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(sourceActivity(spaceId, id), sp, IngestListQuery),
   sourceVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: sourceVersion(spaceId, id, versionId).key, path: sourceVersion(spaceId, id, versionId).url }),
   approvals: (spaceId: string, sp: URLSearchParams) => table(APPROVALS(spaceId), sp, ApprovalListQuery),
-  breaks: (spaceId: string, sp: URLSearchParams) => table(BREAKS(spaceId), sp, BreakListQuery),
+  breaks: (spaceId: string, sp: URLSearchParams) => table(BREAKS(spaceId), sp, BreakListQuery, [(fq) => breakSummaryUrl(spaceId, fq)]),
   break: (spaceId: string, id: string): Read => ({ key: breakDetail(spaceId, id).key, path: breakDetail(spaceId, id).url }),
   breakCandidates: (spaceId: string, id: string, sp: URLSearchParams) => table(breakCandidates(spaceId, id), sp, BreakCandidateQuery),
   breakActivity: (spaceId: string, id: string, sp: URLSearchParams) => table(breakActivity(spaceId, id), sp, TargetActivityQuery),
