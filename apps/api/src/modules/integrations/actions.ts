@@ -7,7 +7,7 @@ import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import type { ReconApprovalSpec, TodayDto } from "@starterkit/shared/contracts/recon";
 import { buildPayload, pickVariant, type Source, templateParts } from "@starterkit/shared/mapping";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, notInArray, or, sql } from "drizzle-orm";
 import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
 import { POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
 import type { ActionRunDto, ActionRunListQuery, ActionRunRowDto, BreakDetailDto } from "@starterkit/shared/contracts/breaks";
@@ -141,18 +141,22 @@ const toRunRow = ({ r, reconId, recon, connector }: RunRow, extra?: { amount: Ac
   connector: r.connectorId && connector ? { id: r.connectorId, name: connector } : null,
   amount: extra?.amount ?? null, attempts: extra?.attempts ?? 1,
 });
+/** Runs that sent nothing (no rule matched, or skipped): never an attempt. */
+const NOT_SENT_AT_ALL = ["no_rule", "skipped"];
 /**
- * A page of runs with their break's amount and which attempt each is: the runs of the same action for the same break
- * created up to it (a per-request run is its request's only one).
+ * A page of runs with their break's amount and which attempt each is: the sends of the same action, on the same event
+ * (and level), for the same break, up to it (created before it, or at the same time with a smaller id); a no-rule or
+ * skipped run is no attempt. A per-request run is its request's only one.
  */
 async function withExtras(tx: InTx, spaceId: string, rows: RunRow[]): Promise<ActionRunRowDto[]> {
   const itemIds = [...new Set(rows.flatMap((x) => (x.r.itemId ? [x.r.itemId] : [])))];
   const items = new Map((await itemsOf(tx, spaceId, itemIds)).map((i) => [i.id, i]));
-  const tries = itemIds.length ? await tx.select({ itemId: actionRuns.itemId, action: actionRuns.actionName, at: actionRuns.createdAt }).from(actionRuns)
-    .where(and(eq(actionRuns.spaceId, spaceId), inArray(actionRuns.itemId, itemIds))) : [];
+  const tries = itemIds.length ? await tx.select({ id: actionRuns.id, itemId: actionRuns.itemId, action: actionRuns.actionName, event: actionRuns.event, level: actionRuns.level, at: actionRuns.createdAt }).from(actionRuns)
+    .where(and(eq(actionRuns.spaceId, spaceId), inArray(actionRuns.itemId, itemIds), notInArray(actionRuns.status, NOT_SENT_AT_ALL))) : [];
+  const upTo = (t: (typeof tries)[number], r: RunRow["r"]) => t.at < r.createdAt || (t.at.getTime() === r.createdAt.getTime() && t.id <= r.id);
   return rows.map((x) => {
     const i = x.r.itemId ? items.get(x.r.itemId) : undefined;
-    const attempts = x.r.itemId ? tries.filter((t) => t.itemId === x.r.itemId && t.action === x.r.actionName && t.at <= x.r.createdAt).length : 1;
+    const attempts = x.r.itemId ? tries.filter((t) => t.itemId === x.r.itemId && t.action === x.r.actionName && t.event === x.r.event && t.level === x.r.level && upTo(t, x.r)).length : 1;
     return toRunRow(x, { amount: i?.amountMinor ? { minor: i.amountMinor, currency: i.currency } : null, attempts: Math.max(1, attempts) });
   });
 }

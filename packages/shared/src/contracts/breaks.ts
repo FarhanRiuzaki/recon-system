@@ -125,7 +125,10 @@ export const ActionRunRowDto = z.object({
   amount: z.object({ minor: z.string(), currency: z.string().nullable() }).nullable(),
   /** The connector it calls (null for a run that calls none, e.g. no posting rule fit). */
   connector: z.object({ id: z.string(), name: z.string() }).nullable(),
-  /** Which attempt this is of the same action for the same break, oldest first (1 = the first time it was sent). */
+  /**
+   * Which send this is of the same action on the same event (and level) for the same break, oldest first, ties by id
+   * (1 = the first time it was sent); a no-rule or skipped run sent nothing and is never counted.
+   */
   attempts: z.number().int(),
 });
 export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;

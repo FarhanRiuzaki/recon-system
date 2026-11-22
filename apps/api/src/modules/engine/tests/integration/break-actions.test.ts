@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { BreakDetailDto } from "@starterkit/shared/contracts/breaks";
 import type { SpaceRole } from "@starterkit/shared/spaces";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { decryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
@@ -267,6 +267,19 @@ describe("posting results of the space", () => {
     await db.insert(actionRuns).values({ ...first!, id: Bun.randomUUIDv7(), requestId: Bun.randomUUIDv7(), createdAt: new Date(first!.createdAt.getTime() + 1000), status: "posted" });
     const two = await json<{ items: { status: string; attempts: number }[] }>(call("GET", `/v1/spaces/${A}/action-runs?kind=posting`, { token: t.op }));
     expect(two.items.map((r) => [r.status, r.attempts])).toEqual([["posted", 2], ["failed", 1]]);
+    // attempts count sends of the same event only, never a skipped or no-rule run; runs created at the same time go by id
+    const later = new Date(first!.createdAt.getTime() + 2000);
+    await db.insert(actionRuns).values([
+      { ...first!, id: Bun.randomUUIDv7(), requestId: Bun.randomUUIDv7(), createdAt: new Date(first!.createdAt.getTime() - 1000), status: "skipped" },
+      { ...first!, id: Bun.randomUUIDv7(), requestId: Bun.randomUUIDv7(), createdAt: later, status: "no_rule" },
+      { ...first!, id: Bun.randomUUIDv7(), requestId: Bun.randomUUIDv7(), createdAt: later, event: "rejected", status: "failed" },
+    ]);
+    const [lo, hi] = [Bun.randomUUIDv7(), Bun.randomUUIDv7()];
+    await db.insert(actionRuns).values([{ ...first!, id: hi, requestId: Bun.randomUUIDv7(), createdAt: later, status: "queued" }, { ...first!, id: lo, requestId: Bun.randomUUIDv7(), createdAt: later, status: "timeout" }]);
+    const runs = await json<{ items: { id: string; status: string; event: string; attempts: number }[] }>(call("GET", `/v1/spaces/${A}/action-runs?kind=posting&pageSize=15`, { token: t.op }));
+    const of = (st: string, ev = "approved") => runs.items.find((r) => r.status === st && r.event === ev)!.attempts;
+    expect([of("queued"), of("timeout"), of("posted"), of("failed"), of("failed", "rejected")]).toEqual([4, 3, 2, 1, 1]);
+    await db.delete(actionRuns).where(and(eq(actionRuns.actionName, "Post"), ne(actionRuns.id, first!.id), ne(actionRuns.status, "posted")));
     await db.delete(actionRuns).where(eq(actionRuns.status, "posted"));
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs`, { token: t.op }))).total).toBe(2);
     expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs?q=P1`, { token: t.op }))).total).toBe(2);
