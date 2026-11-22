@@ -17,14 +17,15 @@ import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, 
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows } from "./model";
-import { RowsToLoad } from "./conditions";
 
 /**
- * Computed columns sit under the field table, out of the first screen: they load after the page, preloaded as soon
+ * Computed columns and Rows to load sit under the field table, out of the first screen: they load after the page, preloaded as soon
  * as the wizard mounts (preloadFieldParts), and keep a row's height meanwhile (bundle budget, DEC-040).
  */
-export const preloadFieldParts = () => import("./computed");
-const ComputedColumns = dynamic(() => preloadFieldParts().then((m) => m.ComputedColumns), { ssr: false, loading: () => <div aria-hidden="true" className="h-12" /> });
+export const preloadFieldParts = () => Promise.all([import("./computed"), import("./conditions")]);
+const ComputedColumns = dynamic(() => import("./computed").then((m) => m.ComputedColumns), { ssr: false, loading: () => <div aria-hidden="true" className="h-12" /> });
+// "Rows to load" sits under the fields too: the same (bundle budget, DEC-040)
+const RowsToLoad = dynamic(() => import("./conditions").then((m) => m.RowsToLoad), { ssr: false, loading: () => <div aria-hidden="true" className="h-24" /> });
 import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
