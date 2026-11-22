@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Controls, FIT, FlowBoard, MapEdge, type MapEdgeType, type OnConnect, ReactFlow, ReactFlowProvider, ResetLayout,
-  TableNode, type TableNodeType, type TableRow, useFitToCard, useNodesState,
+  TableNode, type TableNodeType, type TableRow, useFitToCard, useNodesInitialized, useNodesState, useReactFlow,
 } from "@starterkit/ui/flow";
 import type { mapGraph } from "./field-map";
 
@@ -17,12 +17,21 @@ const NODE_TYPES = { table: TableNode };
 const EDGE_TYPES = { map: MapEdge };
 const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 288, LANE = 220;
 
-/** Where each table sits at first: the sources stacked on the left, the request on the right, level with the top. */
+/**
+ * Where each table sits at first: the sources in columns on the left (a new column once one is as tall as the request
+ * or 640 px), the request on the right of them, level with the top, so the map fits the screen at reading size.
+ */
 function layout(g: Graph): Record<string, { x: number; y: number }> {
   const at: Record<string, { x: number; y: number }> = {};
-  let y = 0;
-  for (const t of g.sources) { at[t.id] = { x: 0, y }; y += HEAD_H + t.rows.length * ROW_H + GAP; }
-  at.request = { x: COL + LANE, y: 0 };
+  const tall = (rows: number) => HEAD_H + rows * ROW_H;
+  const max = Math.max(640, tall(g.request.length));
+  let col = 0, y = 0;
+  for (const t of g.sources) {
+    if (y > 0 && y + tall(t.rows.length) > max) { col++; y = 0; }
+    at[t.id] = { x: col * (COL + GAP), y };
+    y += tall(t.rows.length) + GAP;
+  }
+  at.request = { x: (col + 1) * (COL + GAP) + LANE, y: 0 };
   return at;
 }
 
@@ -58,6 +67,10 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   }));
   const wrap = useRef<HTMLDivElement>(null);
   useFitToCard(wrap, graph.sources.length * 100 + graph.request.length);
+  // and once the tables are measured (a fit before that sees empty boxes and zooms too far out)
+  const measured = useNodesInitialized();
+  const { fitView } = useReactFlow();
+  useEffect(() => { if (measured) void fitView(FIT); }, [measured, fitView]);
   const connect: OnConnect = (c) => { if (c.sourceHandle && c.targetHandle) onConnect(c.sourceHandle, c.targetHandle); };
   return (
     <div ref={wrap} className="flow-canvas absolute inset-0">

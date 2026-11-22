@@ -201,11 +201,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         <Field id="act-when" label="Runs"><EventPicker value={a.on} onChange={(on) => setA({ ...a, on })} label="Action" /></Field>
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
-        <SectionHeading n={2} level={3} title="Variants" description="Checked in order; the first whose condition holds is used"
-          actions={a.variants.length < 20 ? (
-            <Button type="button" variant="add" size="sm" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: blankClause, mapping: {} } as unknown as VariantSpec] }); setVi(a.variants.length); setPicked(null); }}>
-              <Icon icon={AddIcon} />Add a variant
-            </Button>) : undefined} />
+        <SectionHeading n={2} level={3} title="Variants" description="First match wins" />
         <ol className="grid gap-1.5">
           {a.variants.map((x, i) => (
             <li key={i}>
@@ -218,9 +214,14 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
             </li>
           ))}
         </ol>
+        {a.variants.length < 20 && (
+          <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: blankClause, mapping: {} } as unknown as VariantSpec] }); setVi(a.variants.length); setPicked(null); }}>
+              <Icon icon={AddIcon} />Add a variant
+            </Button>
+        )}
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
-        <SectionHeading n={3} level={3} title={v.name || "This variant"} description="Which breaks it takes and where it sends them"
+        <SectionHeading n={3} level={3} title={v.name || "This variant"} description="Its breaks and where it sends"
           actions={<span className="flex">
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant earlier" disabled={vi === 0} onClick={() => move(-1)}><Icon icon={ArrowUpIcon} /></Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant later" disabled={vi === a.variants.length - 1} onClick={() => move(1)}><Icon icon={ArrowDownIcon} /></Button>
@@ -255,8 +256,8 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       <SectionHeading level={3} title="Field" description="Pick a request field or a line on the map to set where its value comes from." />
       <ul className="grid gap-2 text-body-sm text-fg-2">
         <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-primary" />Mapped: a line comes into it</li>
-        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full ring-2 ring-down-mark ring-inset" />Required and still empty</li>
-        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full bg-line-strong" />Optional, empty</li>
+        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-down-mark bg-card" />Required and still empty</li>
+        <li className="flex items-center gap-2"><span aria-hidden="true" className="size-2.5 rounded-full border-2 border-line-strong bg-line-strong" />Optional, empty</li>
         <li className="text-fg-3">Fixed and Auto generated fields are filled by the bank&apos;s spec itself.</li>
       </ul>
       <p className="text-body-sm text-fg-3">Drag from the dot at the end of a recon field to the dot of a request field to connect them. Select a line and press Delete to remove it.</p>

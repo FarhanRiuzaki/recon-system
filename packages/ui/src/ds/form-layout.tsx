@@ -34,7 +34,7 @@ export function SectionHeading({ n, title, description, actions, level = 2, clas
   const H = `h${level}` as const;
   return (
     <div className={cn("flex items-start gap-3", className)}>
-      {n !== undefined && <span aria-hidden="true" className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary-soft text-label text-primary tabular ring-1 ring-primary/20">{n}</span>}
+      {n !== undefined && <span aria-hidden="true" className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary text-label text-primary-foreground tabular">{n}</span>}
       <span className="grid min-w-0 flex-1 gap-0.5">
         <H className="text-title-3 text-fg">{title}</H>
         {description && <span className="text-body-sm text-fg-3">{description}</span>}
