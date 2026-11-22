@@ -1,0 +1,36 @@
+import { createElement as h } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ReactFlowProvider } from "@xyflow/react";
+import { describe, expect, it } from "vitest";
+import { TableCard } from "./table-node";
+
+const html = (el: ReturnType<typeof h>) => renderToStaticMarkup(h(ReactFlowProvider, null, el));
+
+describe("TableCard (an ERD table on a canvas)", () => {
+  const out = html(h(TableCard, {
+    title: "Request", caption: "Post to GL · POST /gl", side: "target",
+    rows: [
+      { id: "amount", label: "amount", required: true, state: "missing", connectable: true },
+      { id: "Header", label: "Header", header: true, connectable: false },
+      { id: "Header.Channel", label: "Channel", depth: 1, required: true, state: "fixed", note: "Fixed", connectable: false },
+      { id: "remark", label: "remark", state: "mapped", note: "“Write-off”", connectable: true, selected: true },
+    ],
+  }));
+  it("names itself and counts its rows", () => {
+    expect(out).toContain('data-slot="table-node"');
+    expect(out).toMatch(/aria-label="Request"/);
+    expect(out).toContain("Post to GL · POST /gl");
+  });
+  it("a required field carries the red asterisk; a missing one says so in words, not colour alone", () => {
+    expect(out).toMatch(/amount<span aria-hidden="true" class="[^"]*text-destructive[^"]*">\*<\/span>/);
+    expect(out).toContain("Not mapped");
+  });
+  it("a handle only on rows that take a connection, on the target's left", () => {
+    expect((out.match(/react-flow__handle-left/g) ?? []).length).toBe(2);
+    expect(out).not.toContain("react-flow__handle-right");
+  });
+  it("a header row is indented content, a fixed field shows its note; the selected row is marked", () => {
+    expect(out).toContain("Fixed");
+    expect(out).toMatch(/data-row="remark"[^>]*aria-current="true"/);
+  });
+});

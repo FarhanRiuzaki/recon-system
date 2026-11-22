@@ -71,3 +71,20 @@
 .flow-canvas .react-flow__node.dragging { z-index: 10 !important; }
 /* Controls style their svg as a filled glyph; the reset icon is a stroke icon */
 .flow-canvas .react-flow__controls-button svg.flow-reset { fill: none; max-width: 14px; max-height: 14px; }
+/* ERD tables (table-node.tsx): their handles are the ends lines are drawn between, so they show (the parts' cards hide theirs) */
+.flow-canvas .react-flow__handle.flow-port {
+  opacity: 1; width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--card);
+  background: var(--line-strong); box-shadow: 0 0 0 1px var(--line-strong);
+}
+.flow-canvas .react-flow__handle.flow-port.is-on { background: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.flow-canvas .react-flow__handle.flow-port.is-missing { background: var(--card); box-shadow: 0 0 0 1.5px var(--down-mark); }
+.flow-canvas .react-flow__handle.flow-port:hover, .flow-canvas .react-flow__handle.flow-port.connectingto { background: var(--primary); transform: translate(var(--port-x, 0), -50%) scale(1.3); }
+.flow-canvas .react-flow__handle-left.flow-port { left: -6px; --port-x: 0; }
+.flow-canvas .react-flow__handle-right.flow-port { right: -6px; }
+.flow-canvas .react-flow__node-table { border-radius: var(--radius-lg); }
+.flow-canvas .react-flow__node-table.selected > [data-slot="table-node"] { border-color: var(--primary); }
+/* a mapping line (map-edge.tsx): grey, primary when selected */
+.flow-canvas .flow-map-edge { stroke: var(--fg-4); stroke-width: 1.5; }
+.flow-canvas .flow-map-edge.is-selected { stroke: var(--primary); stroke-width: 2.5; }
+.flow-canvas .flow-label.is-selected { color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.flow-canvas .react-flow__connectionline path { stroke: var(--primary); stroke-width: 2; }

@@ -5,8 +5,10 @@ import "@xyflow/react/dist/base.css";
 import "./flow.css";
 
 export {
-  addEdge, Background, BackgroundVariant, BaseEdge, ControlButton, Controls, type Connection, type Edge, type EdgeProps, getBezierPath,
+  Background, BackgroundVariant, BaseEdge, ControlButton, Controls, type Connection, type Edge, type EdgeProps, getBezierPath, type OnConnect,
   Handle, type Node, type NodeChangeset, type NodeProps, Position, ReactFlow, ReactFlowProvider, useEdgesState, useNodesState, useReactFlow,
   ViewportPortal,
 } from "@xyflow/react";
 export { type Accent, arrowOf, EDGE_TYPES, type EdgeTone, FIT, FlowBadge, FlowBoard, FlowCard, FlowEdge, type FlowEdgeData, LaneTitle, pathOf, PortHandles, type Ports, ports, portsOf, ResetLayout, useFitToCard, useHotNode } from "./flow-parts";
+export { TableCard, type TableCardProps, TableNode, type TableNodeType, type TableRow } from "./table-node";
+export { MapEdge, type MapEdgeType } from "./map-edge";
