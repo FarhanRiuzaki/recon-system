@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActionRunListQuery",
+  "type": "object",
+  "properties": {
+    "page": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageSize": {
+      "default": 15,
+      "enum": [
+        15,
+        25,
+        50,
+        100
+      ],
+      "type": "number"
+    },
+    "q": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "sort": {
+      "type": "string",
+      "enum": [
+        "createdAt",
+        "-createdAt"
+      ]
+    },
+    "status": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "queued",
+            "sending",
+            "posted",
+            "failed",
+            "not_sent",
+            "timeout",
+            "no_rule",
+            "skipped"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "posted",
+              "failed",
+              "not_sent",
+              "timeout",
+              "no_rule",
+              "skipped"
+            ]
+          }
+        }
+      ]
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "posting",
+        "notify"
+      ]
+    }
+  }
+}

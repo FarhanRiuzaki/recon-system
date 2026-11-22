@@ -24,6 +24,7 @@ import { sources, sourceShares } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
 import { approvalRequests, requestView } from "../approvals";
+import { runsOf } from "../integrations";
 import { matchGroups, matchMembers, reconItems } from "./schema";
 import { assertNotSigned } from "./signoff";
 
@@ -113,6 +114,8 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map(plain),
       proposed: p ? { item: plain(p), pass: x.proposedPass, available: free(p) } : null,
       request: rq ? { ...(await requestView(tx, ctx, rq)), items: (await itemsOf(tx, spaceId, rq.itemIds)).map(plain) } : null,
+      // its actions and posting result (stage 4); the masked payload and answer for an Open API reader or the space admin
+      ...(rq ? await runsOf(tx, spaceId, rq.id, x.id, ctx.perms.has("integration.view") || !!ctx.space?.roles.includes("space_admin")) : { actions: [], posting: null }),
     };
   });
 }

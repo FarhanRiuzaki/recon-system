@@ -159,3 +159,57 @@ describe("actions written with the decision", () => {
     expect((await runs()).map((x) => x.actionName)).toEqual(["Old"]);
   });
 });
+
+describe("the posting result on the break (read side)", () => {
+  it("shows its actions and the last posting; the payload only to the space admin or an Open API reader", async () => {
+    await setup("write_off", [
+      { name: "Tell", kind: "notify", on: { event: "approved" }, variants: [variant()] },
+      { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] },
+    ], 1);
+    await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
+    await decide(I.a1, "approve", {}, t.rev);
+    await db.update(actionRuns).set({ status: "posted", bankReference: "R1", payloadEnc: null, payloadMasked: { Amount: 10000 }, finishedAt: new Date() }).where(eq(actionRuns.actionName, "Post"));
+    const op = await detail(I.a1, t.op);
+    expect(op.posting).toMatchObject({ status: "posted", bankReference: "R1", action: "Post" });
+    expect(op.actions.map((a) => [a.name, a.kind, a.status, a.payload])).toEqual([["Tell", "notify", "queued", null], ["Post", "posting", "posted", null]]);
+    const adm = await detail(I.a1, t.adm);
+    expect(adm.actions[1]!.payload).toEqual({ Amount: 10000 });
+  });
+
+  it("a break with no actions has no posting", async () => {
+    expect((await detail(I.a1, t.op)).posting).toBeNull();
+  });
+});
+
+describe("posting results of the space", () => {
+  it("lists runs newest first with their break and recon; filters by status and kind; any role of the space reads", async () => {
+    await setup("write_off", [
+      { name: "Tell", kind: "notify", on: { event: "approved" }, variants: [variant()] },
+      { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] },
+    ], 1);
+    await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
+    await decide(I.a1, "approve", {}, t.rev);
+    await db.update(actionRuns).set({ status: "failed", code: "51", message: "The bank answered 51." }).where(eq(actionRuns.actionName, "Post"));
+    const page = await json<{ items: { action: string; status: string; break: { id: string; ref: string | null }; recon: { name: string }; code: string | null }[]; total: number }>(
+      call("GET", `/v1/spaces/${A}/action-runs?status=failed&kind=posting`, { token: t.op }));
+    expect(page.items.map((r) => [r.action, r.status, r.break.ref, r.recon.name, r.code])).toEqual([["Post", "failed", "P1", "R", "51"]]);
+    expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs`, { token: t.op }))).total).toBe(2);
+    expect((await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs?q=P1`, { token: t.op }))).total).toBe(2);
+  });
+});
+
+describe("what gets posted (preview)", () => {
+  it("picks the variant for a real break and shows the payload, masked, with each field's source; or why not", async () => {
+    await setup("write_off", [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [
+      variant({ name: "Big", when: { all: [{ field: "break.amount", op: "gte", value: "999999999" }] } }),
+      variant({ name: "Default", mapping: { ...variant().mapping, Note: { kind: "const", value: "fixed" } } }),
+    ] }], 1);
+    const [v] = await db.select({ id: reconConfigVersions.id }).from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
+    const at = `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/actions/preview`;
+    const p = await json<{ variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null }>(
+      call("POST", at, { token: t.op, body: { change: "write_off", action: 0, itemId: I.a1 } }));
+    expect(p).toEqual({ variant: "Default", payload: { Amount: 10000, Remark: "P1-1", Note: "fixed" }, sources: { Amount: "break.amount", Remark: "template", Note: "fixed" }, problem: null });
+    const none = await json<{ variant: string | null; problem: { message: string } | null }>(call("POST", at, { token: t.op, body: { change: "unmatch", action: 0, itemId: I.a1 } }));
+    expect(none).toMatchObject({ variant: null, problem: { message: "This change has no such action." } });
+  });
+});

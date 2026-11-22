@@ -7,8 +7,13 @@ import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import type { ReconApprovalSpec } from "@starterkit/shared/contracts/recon";
 import { buildPayload, pickVariant } from "@starterkit/shared/mapping";
-import { and, eq, max } from "drizzle-orm";
+import { and, asc, eq, ilike, inArray, isNull, max, or } from "drizzle-orm";
+import type { ActionRunDto, ActionRunListQuery, ActionRunRowDto, BreakDetailDto } from "@starterkit/shared/contracts/breaks";
+import type { Page } from "@starterkit/shared/contracts/common";
+import { likeEscape, pageQuery, sortSql } from "../../kernel/pagination";
+import { withSpace } from "../spaces";
 import { encryptSecret } from "../../kernel/crypto";
+import { maskTree } from "@starterkit/shared/integrations";
 import type { InTx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
@@ -69,6 +74,7 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
         const base = {
           id: Bun.randomUUIDv7(), spaceId: rq.spaceId, requestId: rq.id, configVersionId: rq.configVersionId, actionIndex: ai, actionName: a.name, kind: a.kind,
           event: e.event, level: e.event === "level_approved" ? e.level : null, itemId: picked?.variant.per === "request" ? null : item, seq: seq + 1, override,
+          subjectRef: context["break.reference"] === null || context["break.reference"] === undefined ? null : String(context["break.reference"]),
         };
         let row: typeof actionRuns.$inferInsert;
         if (!picked) row = { ...base, status: "no_rule", message: "No posting rule fits this break.", finishedAt: new Date() };
@@ -91,4 +97,73 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
     }
   }
   return written;
+}
+
+/**
+ * For a break's page: the runs of request `requestId` that concern break `itemId` (its own, and those for the whole
+ * request), in sending order, and the latest posting one. `raw` = the caller may see the masked payload and answer.
+ */
+export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemId: string, raw: boolean): Promise<{ actions: ActionRunDto[]; posting: BreakDetailDto["posting"] }> {
+  const rows = await tx.select().from(actionRuns)
+    .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.requestId, requestId), or(eq(actionRuns.itemId, itemId), isNull(actionRuns.itemId)))).orderBy(asc(actionRuns.seq));
+  const actions = rows.map((r): ActionRunDto => ({
+    id: r.id, name: r.actionName, kind: r.kind as ActionRunDto["kind"], event: r.event as ActionRunDto["event"], level: r.level, variant: r.variantName,
+    status: r.status as ActionRunDto["status"], override: r.override, code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId,
+    at: (r.finishedAt ?? r.createdAt).toISOString(), payload: raw ? r.payloadMasked ?? null : null, response: raw ? r.responseMasked ?? null : null,
+  }));
+  const last = [...actions].reverse().find((a) => a.kind === "posting");
+  return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null };
+}
+
+/** GET …/action-runs: the space's action runs, newest first; `status` one or more, `kind`, `q` = reference, external id or bank reference. */
+export function actionRunPage(ctx: Ctx, q: ActionRunListQuery): Promise<Page<ActionRunRowDto>> {
+  return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
+    const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
+    const where = and(
+      eq(actionRuns.spaceId, ctx.space!.id),
+      q.status?.length ? inArray(actionRuns.status, q.status) : undefined,
+      q.kind ? eq(actionRuns.kind, q.kind) : undefined,
+      like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like)) : undefined,
+    );
+    const page = await pageQuery({
+      rows: tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name }).from(actionRuns)
+        .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
+        .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId)).where(where).$dynamic(),
+      count: tx.select({ id: actionRuns.id }).from(actionRuns).where(where).$dynamic(),
+      orderBy: sortSql(q.sort, { createdAt: actionRuns.createdAt }, "-createdAt", actionRuns.id), query: q, map: (x) => x, on: tx,
+    });
+    return {
+      ...page,
+      items: page.items.map(({ r, reconId, recon }): ActionRunRowDto => ({
+        id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
+        code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
+        break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
+      })),
+    };
+  });
+}
+
+export type ActionPreview = { variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null };
+/**
+ * What action `actionIndex` of change `kind` would send for break `itemId` (on its final approval, by the caller): the
+ * variant that fits, the payload masked as the operation masks it, and each field's source; or why it wouldn't.
+ */
+export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApprovalSpec | undefined, configCode: string, kind: string, actionIndex: number, itemId: string): Promise<ActionPreview> {
+  const none = (message: string, code = "build_error"): ActionPreview => ({ variant: null, payload: null, sources: {}, problem: { code, field: "", message } });
+  const a = approvals?.changes[kind as keyof ReconApprovalSpec["changes"]]?.actions[actionIndex];
+  if (!a) return none("This change has no such action.");
+  const context = {
+    ...(await breakContextOf(tx, ctx.space!.id, itemId, [])), "recon.code": configCode,
+    "approval.level": a.on.event === "level_approved" ? a.on.level : 1, "approval.by": ctx.user.name ?? ctx.user.id, "approval.at": new Date().toISOString(), "request.kind": kind, "request.note": "",
+  };
+  const picked = pickVariant(a.variants, context);
+  if (!picked) return none("No posting rule fits this break.", "no_rule");
+  const v = picked.variant;
+  const [cv] = await tx.select({ spec: connectorVersions.spec }).from(connectorVersions).where(and(eq(connectorVersions.connectorId, v.operation.connectorId), eq(connectorVersions.version, v.operation.version)));
+  const op = (cv?.spec as ConnectorSpec | undefined)?.operations.find((o) => o.key === v.operation.key);
+  if (!op) return { ...none("The connector version this variant pins has no such operation."), variant: v.name };
+  const built = buildPayload(v, op, context, { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
+  return built.ok
+    ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null }
+    : { variant: v.name, payload: null, sources: {}, problem: { code: built.code, field: built.field, message: built.message } };
 }

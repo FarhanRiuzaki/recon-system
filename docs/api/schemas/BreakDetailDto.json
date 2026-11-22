@@ -785,6 +785,188 @@
           "type": "null"
         }
       ]
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "posting",
+              "notify"
+            ]
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "level_approved",
+              "approved",
+              "rejected"
+            ]
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "sending",
+              "posted",
+              "failed",
+              "not_sent",
+              "timeout",
+              "no_rule",
+              "skipped"
+            ]
+          },
+          "override": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bankReference": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "externalId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "at": {
+            "type": "string"
+          },
+          "payload": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "response": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "event",
+          "level",
+          "variant",
+          "status",
+          "override",
+          "code",
+          "message",
+          "bankReference",
+          "externalId",
+          "at",
+          "payload",
+          "response"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "posting": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "sending",
+                "posted",
+                "failed",
+                "not_sent",
+                "timeout",
+                "no_rule",
+                "skipped"
+              ]
+            },
+            "action": {
+              "type": "string"
+            },
+            "bankReference": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "at": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "status",
+            "action",
+            "bankReference",
+            "code",
+            "message",
+            "at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -796,7 +978,9 @@
     "resolution",
     "matchedWith",
     "proposed",
-    "request"
+    "request",
+    "actions",
+    "posting"
   ],
   "additionalProperties": false
 }

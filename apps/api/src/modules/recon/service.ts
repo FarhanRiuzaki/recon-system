@@ -8,6 +8,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActivityDto } from "@starterkit/shared/contracts/audit";
 import type { PreviewDto } from "@starterkit/shared/contracts/workflows";
 import type {
+  ActionPreviewDto, PreviewActionBody,
   PreviewApprovalBody,
   CreateReconBody, ReconActivityQuery, ReconDto, ReconListQuery, ReconRowDto, ReconSpec, ReconVersionDetailDto, ReconVersionDto, ReconVersionListQuery,
   ReconVersionRowDto, RejectReconVersionBody, UpdateReconVersionBody,
@@ -25,7 +26,7 @@ import { canStep, matchingHash, specHash } from "../../kernel/versions";
 import { recordActivity, targetActivityPage } from "../audit";
 import type { Ctx } from "../auth";
 import { previewApproval, workflowFacts } from "../approvals";
-import { connectorFacts } from "../integrations";
+import { connectorFacts, previewAction } from "../integrations";
 import { records } from "../ingest";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
@@ -413,6 +414,15 @@ export function versionPage(ctx: Ctx, id: string, q: ReconVersionListQuery): Pro
 }
 
 /** GET …/versions/:versionId: the version with the names of everyone it names. */
+/** POST …/versions/{versionId}/actions/preview: what an action of this version would send for a real break. */
+export function previewVersionAction(ctx: Ctx, id: string, versionId: string, b: PreviewActionBody): Promise<ActionPreviewDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const c = await configOf(tx, spaceId, id);
+    const v = await versionOf(tx, c, versionId);
+    return previewAction(tx, ctx, (v.spec as ReconSpec).approvals, c.code, b.change, b.action, b.itemId) as Promise<ActionPreviewDto>;
+  });
+}
+
 /** POST …/versions/{versionId}/approvals/preview: who would approve a change of this version on typed values. */
 export function previewVersionApproval(ctx: Ctx, id: string, versionId: string, b: PreviewApprovalBody): Promise<PreviewDto> {
   return inSpace(ctx, async (tx, spaceId) => {

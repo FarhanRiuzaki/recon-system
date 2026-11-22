@@ -68,6 +68,7 @@ const COMPOSED = {
   SignoffPage: pageOf(recon.SignoffRowDto),
   ReconPage: pageOf(recon.ReconRowDto),
   ConnectorPage: pageOf(integrations.ConnectorRowDto),
+  ActionRunPage: pageOf(breaks.ActionRunRowDto),
   ReconVersionPage: pageOf(recon.ReconVersionRowDto),
   ReconRunPage: pageOf(recon.ReconRunDto),
   ReconRunItemPage: pageOf(recon.ReconRunItemDto),

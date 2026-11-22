@@ -85,6 +85,8 @@ export const actionRuns = pgTable("action_runs", {
   level: smallint("level"),
   /** The break it was built for; null = one run for the whole request (per: request). */
   itemId: uuid("item_id"),
+  /** That break's reference (or the request's main break's), kept for lists and search. */
+  subjectRef: text("subject_ref"),
   /** Order of sending within the request: a run waits for the ones before it. */
   seq: integer("seq").notNull(),
   override: boolean("override").notNull().default(false),

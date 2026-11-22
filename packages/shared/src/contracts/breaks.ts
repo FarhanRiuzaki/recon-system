@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AGE_BUCKETS, BREAK_BULK_MAX, BREAK_REASONS, BREAK_STATES, CLOSE_RESOLUTIONS, ITEM_STATUSES, MATCH_ITEMS_MAX, RESOLUTION_NOTE_MAX, RESOLUTIONS, WORK_STATES } from "../recon";
-import { BREAK_SORTS } from "../paging";
+import { ACTION_RUN_SORTS, BREAK_SORTS } from "../paging";
 import { ListQuery, sortParam } from "./common";
 import { filterSelection } from "./filter-selection";
 import { RequestViewDto } from "./workflows";
@@ -71,6 +71,28 @@ export type BreakItemDto = z.infer<typeof BreakItemDto>;
  * how it was resolved (and the group it is matched in), and the pair a later suggesting pass proposed with whether
  * that item is still free to match.
  */
+export const ACTION_STATUSES = ["queued", "sending", "posted", "failed", "not_sent", "timeout", "no_rule", "skipped"] as const;
+/** One run of an approval action (stage 4). */
+export const ActionRunDto = z.object({
+  id: z.string(), name: z.string(), kind: z.enum(["posting", "notify"]), event: z.enum(["level_approved", "approved", "rejected"]), level: z.number().int().nullable(),
+  variant: z.string().nullable(), status: z.enum(ACTION_STATUSES), override: z.boolean(), code: z.string().nullable(), message: z.string().nullable(),
+  bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string(), payload: z.unknown().nullable(), response: z.unknown().nullable(),
+});
+export type ActionRunDto = z.infer<typeof ActionRunDto>;
+/** GET …/action-runs: newest first; `status` one or more, `kind` posting or notify, `q` a reference, external id or bank reference. */
+export const ActionRunListQuery = ListQuery.extend({
+  sort: sortParam(ACTION_RUN_SORTS),
+  status: filterSelection(z.enum(ACTION_STATUSES)).optional(),
+  kind: z.enum(["posting", "notify"]).optional(),
+});
+export type ActionRunListQuery = z.infer<typeof ActionRunListQuery>;
+/** One action run of the space, with its break's reference and its recon. */
+export const ActionRunRowDto = z.object({
+  id: z.string(), action: z.string(), kind: z.enum(["posting", "notify"]), event: z.enum(["level_approved", "approved", "rejected"]), level: z.number().int().nullable(),
+  status: z.enum(ACTION_STATUSES), code: z.string().nullable(), message: z.string().nullable(), bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string(),
+  break: z.object({ id: z.string().nullable(), ref: z.string().nullable() }), recon: z.object({ id: z.string(), name: z.string() }),
+});
+export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;
 export const BreakDetailDto = z.object({
   item: BreakItemDto,
   recon: z.object({ id: z.string(), name: z.string(), sides: z.tuple([z.string(), z.string()]) }),
@@ -85,6 +107,10 @@ export const BreakDetailDto = z.object({
    * other items of a force match.
    */
   request: RequestViewDto.extend({ items: z.array(BreakItemDto) }).nullable(),
+  /** Its latest request's actions that concern it (stage 4), in the order they are sent; `payload`/`response` masked, only for an Open API reader or the space admin. */
+  actions: z.array(ActionRunDto),
+  /** The result of its latest posting action (posted, failed, not sent, timeout, no posting rule, skipped), or null. */
+  posting: z.object({ status: z.enum(ACTION_STATUSES), action: z.string(), bankReference: z.string().nullable(), code: z.string().nullable(), message: z.string().nullable(), at: z.string() }).nullable(),
 });
 export type BreakDetailDto = z.infer<typeof BreakDetailDto>;
 

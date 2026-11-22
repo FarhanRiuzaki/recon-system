@@ -3,5 +3,5 @@ export { integrationsController } from "./controller";
 export { actionRuns, connectorCircuits, connectorExternalIds, connectors, connectorSecrets, connectorTokens, connectorVersions } from "./schema";
 export { connectorFacts, liveOperation, type Secrets, secretsOf } from "./service";
 export { type Outcome, type SendResult, sendOperation } from "./transport";
-export { type ActionEvent, enqueueActions } from "./actions";
+export { type ActionEvent, type ActionPreview, enqueueActions, previewAction, runsOf } from "./actions";
 export { integrationsHandlers, sendRun, sweepStale } from "./worker";

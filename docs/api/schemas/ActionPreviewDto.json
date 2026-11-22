@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ActionPreviewDto",
+  "type": "object",
+  "properties": {
+    "variant": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "payload": {
+      "anyOf": [
+        {},
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sources": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "problem": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "code",
+            "field",
+            "message"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "variant",
+    "payload",
+    "sources",
+    "problem"
+  ],
+  "additionalProperties": false
+}

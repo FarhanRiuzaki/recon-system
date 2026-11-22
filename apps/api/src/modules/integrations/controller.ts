@@ -3,6 +3,9 @@
 import { Elysia } from "elysia";
 import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
 import { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
+import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
+import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { actionRunPage } from "./actions";
 import type { ZodType } from "zod";
 import { $ZodError } from "zod/v4/core";
 import { ApiError } from "../../kernel/errors";
@@ -19,6 +22,8 @@ const body = <T>(c: { request: Request }, schema: ZodType<T>): Promise<T> => par
   throw i ? new ApiError("bad_request", i.message) : e;
 });
 export const integrationsController = () => new Elysia().use(guard)
+  // the space's approval action runs (stage 4): any role of the space reads them
+  .get("/v1/spaces/:spaceId/action-runs", ({ ctx, query }) => actionRunPage(ctx, query), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
   .get("/v1/integrations/connectors", ({ query }) => connectorPage(query), { query: ConnectorListQuery, guard: "integration.view" })
   .post("/v1/integrations/connectors", async (c) => {
     const b = await body(c, CreateConnectorBody);
