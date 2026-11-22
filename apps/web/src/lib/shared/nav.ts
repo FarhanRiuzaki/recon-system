@@ -89,6 +89,13 @@ export function isActive(pathname: string, href: string, exact = false): boolean
  * caller holds a role in. Null: none. The entry pages redirect by it on the server, and the navigation links straight
  * to it once the switcher's list is in, so a client navigation never shows the redirect's empty page.
  */
+/**
+ * A version page opened from the approvals inbox carries `?from=approvals` (APPROVALS_FROM): after a decision it
+ * goes back to the inbox of its space. The breadcrumb stays the version's own (Recons / name / Version n).
+ */
+export const APPROVALS_FROM = "approvals";
+export const approvalsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/approvals`;
+
 export function spaceEntry(page: SpacePage, spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null, current: string | null = null): string | null {
   const pool = page === "members" ? spaces : spaces.filter((s) => s.roles.length);
   // The space of the page being viewed wins: a link never leaves the space the user is working in.

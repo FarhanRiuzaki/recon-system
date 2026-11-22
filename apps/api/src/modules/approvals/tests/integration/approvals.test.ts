@@ -93,4 +93,17 @@ describe("GET approvals", () => {
     expect(await blocked(t.mk)).toBe("You worked on this version. A config checker who didn't work on it approves it.");
     expect(await blocked(t.op)).toBe("Only a config checker of this space approves source versions.");
   });
+
+  it("mine=1 keeps what the caller may decide: a checker's, never its maker's or another role's", async () => {
+    await sourceIn(A, "Core banking", "in_review", 30);
+    await reconIn(A, "BI-FAST outgoing", "in_review", 60);
+    // a version the checker edited is theirs to keep out of
+    const r = await reconIn(A, "Edited by checker", "in_review", 10);
+    await db.update(reconConfigVersions).set({ contributorIds: [ids.mk, ids.ck] }).where(eq(reconConfigVersions.id, r.v));
+    const names = async (token: string) => (await json<Page<ApprovalRowDto>>(list(token, "?mine=1"))).items.map((x) => x.target.name);
+    expect(await names(t.ck)).toEqual(["BI-FAST outgoing", "Core banking"]);
+    expect(await names(t.mk)).toEqual([]);
+    expect(await names(t.op)).toEqual([]);
+    expect((await list(t.ck, "?mine=yes")).status).toBe(400);
+  });
 });

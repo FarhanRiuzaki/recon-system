@@ -5,12 +5,13 @@ import { type Column, RelativeTime, Truncate } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { APPROVAL_KIND_LABEL } from "@starterkit/shared/approvals";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
+import { APPROVALS_FROM } from "@/lib/shared/nav";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 
-/** The page a request is decided on: the version's own review (its diff, simulation and Approve / Reject). */
+/** The page a request is decided on: the version's own review (its diff, simulation and Approve / Reject), back here after. */
 export const approvalHref = (spaceId: string, r: ApprovalRowDto) =>
-  `/spaces/${encodeURIComponent(spaceId)}/${r.kind === "source_version" ? "sources" : "recons"}/${encodeURIComponent(r.target.id)}/versions/${encodeURIComponent(r.id)}`;
+  `/spaces/${encodeURIComponent(spaceId)}/${r.kind === "source_version" ? "sources" : "recons"}/${encodeURIComponent(r.target.id)}/versions/${encodeURIComponent(r.id)}?from=${APPROVALS_FROM}`;
 
 /**
  * Columns of the approvals inbox: what is asked (the source or recon and its version), who sent it, how long it has

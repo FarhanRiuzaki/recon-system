@@ -19,7 +19,7 @@ export default async function Page({ params }: { params: Params }) {
   if (!space?.roles.length) notFound();
   const sources = await reconSourceReads(spaceId, configId, versionId);
   return (
-    <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), reads.reconVersion(spaceId, configId, versionId), ...sources]}>
+    <Prefetch reads={[reads.space(spaceId), reads.recon(spaceId, configId), reads.reconVersion(spaceId, configId, versionId), reads.draftSimulations(spaceId, configId, versionId), ...sources]}>
       <ReconVersionReview spaceId={spaceId} id={configId} versionId={versionId} />
     </Prefetch>
   );

@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { BlockedButton, Failure, Field, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
 import { VersionDecision, VersionLayout } from "@/components/version-layout";
@@ -19,6 +20,7 @@ import type { SourcePreviewDto, SourceVersionDetailDto } from "@starterkit/share
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
+import { APPROVALS_FROM, approvalsHref } from "@/lib/shared/nav";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY, SOURCES_KEY } from "@/lib/shared/queries";
@@ -59,6 +61,9 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const roles = useSpaceRoles(spaceId);
   const { user } = useAuth();
   const qc = useQueryClient();
+  const router = useRouter();
+  // opened from the approvals inbox: back there once decided
+  const fromInbox = useSearchParams().get("from") === APPROVALS_FROM;
   const skeleton = useDelayedFlag((!sq.data || !vq.data) && !sq.error && !vq.error);
 
   const list = { href: sourcesHref(spaceId), label: "Sources" };
@@ -90,6 +95,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
     await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
     toast(act === "approve" ? `Version ${v!.version} of ${s!.name} approved. It is in use from the next run.` : `Version ${v!.version} of ${s!.name} sent back to its maker with your comment.`);
     await Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
+    if (fromInbox) router.push(approvalsHref(spaceId));
   }
 
   const table = (

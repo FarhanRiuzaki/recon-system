@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BlockedButton, Failure, Notice, Panel, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -12,14 +13,16 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
 import { VersionDecision, VersionLayout } from "@/components/version-layout";
+import { APPROVALS_FROM, approvalsHref } from "@/lib/shared/nav";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, isNotFound } from "@/lib/client/api";
 import { APPROVALS_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconVersionChip } from "@/lib/shared/recon-status";
 import { at, reviewReason } from "./recon-text";
 import { RECON_VERSION_SHAPE } from "./shapes";
+import { SimChanges } from "./sim-changes";
 import { SpecView } from "./spec-view";
-import { MAKER_REASON, reconApi, reconHref, reconsHref, useRecon, useReconVersion, useSpaceRoles } from "./use-recons";
+import { MAKER_REASON, reconApi, reconEditHref, reconHref, reconsHref, useRecon, useReconVersion, useSpaceRoles } from "./use-recons";
 
 const nameOf = (v: ReconVersionDetailDto, id: string | null) => (id ? (v.people.find((p) => p.id === id)?.name ?? "a removed user") : null);
 
@@ -48,6 +51,9 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const roles = useSpaceRoles(spaceId);
   const { user } = useAuth();
   const qc = useQueryClient();
+  const router = useRouter();
+  // opened from the approvals inbox: back there once decided
+  const fromInbox = useSearchParams().get("from") === APPROVALS_FROM;
   const skeleton = useDelayedFlag((!rq.data || !vq.data) && !rq.error && !vq.error);
 
   const list = { href: reconsHref(spaceId), label: "Recons" };
@@ -66,13 +72,14 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const published = r.published && r.published.id !== v.id && v.status !== "retired" ? r.published.version : null;
   const st = reconVersionChip(v);
   const edit = v.status === "draft" && r.draft?.id === v.id && (maker
-    ? <Button asChild><Link href={reconHref(spaceId, id)}>Edit version {v.version}</Link></Button>
+    ? <Button asChild><Link href={reconEditHref(spaceId, id, 5)}>Edit version {v.version}</Link></Button>
     : <BlockedButton reason={MAKER_REASON}>Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
     await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });
     toast(act === "approve" ? `Version ${v!.version} of ${r!.name} approved. It runs from its next schedule.` : `Version ${v!.version} of ${r!.name} sent back to its maker with your comment.`);
     await Promise.all([qc.invalidateQueries({ queryKey: RECON_KEY }), qc.invalidateQueries({ queryKey: APPROVALS_KEY })]);
+    if (fromInbox) router.push(approvalsHref(spaceId));
   }
 
   return (
@@ -85,6 +92,7 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
           approveWhy={approveWhy} rejectWhy={rejectWhy} onDecide={decide}
           effect={`Approving publishes version ${v.version}${published ? ` and retires version ${published}` : ""}. Runs use it from the next schedule.`} />
       )}
+      changes={v.status === "in_review" && <SimChanges spaceId={spaceId} id={id} versionId={v.id} live={r.published?.version ?? null} />}
       settings={<SpecView spaceId={spaceId} spec={v.spec} />} />
   );
 }

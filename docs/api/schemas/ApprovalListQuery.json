@@ -38,6 +38,10 @@
         "source_version",
         "recon_version"
       ]
+    },
+    "mine": {
+      "type": "string",
+      "const": "1"
     }
   }
 }

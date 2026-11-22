@@ -5,8 +5,11 @@ import { ListQuery, sortParam } from "./common";
 
 export { APPROVAL_SORTS };
 
-/** GET /api/spaces/{spaceId}/approvals: what waits for a checker in the space, waiting longest first. `q` = name or code. */
-export const ApprovalListQuery = ListQuery.extend({ sort: sortParam(APPROVAL_SORTS), kind: z.enum(APPROVAL_KINDS).optional() });
+/**
+ * GET /api/spaces/{spaceId}/approvals: what waits for a checker in the space, waiting longest first. `q` = name or code;
+ * `mine=1`: only what the caller may decide (a config checker of the space who had no hand in it; none for anyone else).
+ */
+export const ApprovalListQuery = ListQuery.extend({ sort: sortParam(APPROVAL_SORTS), kind: z.enum(APPROVAL_KINDS).optional(), mine: z.literal("1").optional() });
 export type ApprovalListQuery = z.infer<typeof ApprovalListQuery>;
 
 /**
