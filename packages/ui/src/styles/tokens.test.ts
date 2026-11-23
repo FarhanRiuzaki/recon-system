@@ -127,6 +127,21 @@ describe.each([["light", false], ["dark", true]] as const)("tokens (%s)", (name,
     });
     expect(near).toEqual([]);
   });
+  it("category hues (review 24 Nov): six, none a status hue; the dot 3:1 on card, text 4.5:1 on its 10 % tint", () => {
+    const CATS = ["indigo", "violet", "pink", "teal", "brown", "slate"].map((c) => `cat-${c}`);
+    const mix = (a: string, b: string, share: number) => `#${[1, 3, 5].map((i) =>
+      Math.round(parseInt(a.slice(i, i + 2), 16) * share + parseInt(b.slice(i, i + 2), 16) * (1 - share)).toString(16).padStart(2, "0")).join("")}`;
+    const gap = (a: number, b: number) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
+    for (const c of CATS) {
+      expect(t[c], c).toMatch(/^#[0-9a-f]{6}$/);
+      expect(contrast(t[c]!, t.card!), `${c} on card`).toBeGreaterThanOrEqual(3);
+      expect(contrast(t.fg!, mix(t[c]!, t.card!, 0.1)), `fg on ${c} tint`).toBeGreaterThanOrEqual(4.5);
+      const [h, sat] = hueSat(t[c]!);
+      // a saturated hue stays clear of the status marks (green, amber, red, the in-progress blue) by 20°
+      if (sat > 0.25) for (const st of ["healthy", "degraded", "down", "progress"]) expect(gap(h, hueSat(t[`${st}-mark`]!)[0]), `${c} vs ${st}`).toBeGreaterThanOrEqual(20);
+    }
+    expect(new Set(CATS.map((c) => t[c])).size).toBe(CATS.length);
+  });
   it("action intents by verb (owner 24 Nov): create ink green, edit ink blue, remove (down) ink red; In progress is the Edit blue", () => {
     const hue = (k: string) => hueSat(t[k]!)[0];
     expect(hue("create-ink")).toBeGreaterThan(90); expect(hue("create-ink")).toBeLessThan(170);

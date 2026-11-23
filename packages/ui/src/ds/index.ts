@@ -1,7 +1,7 @@
 export { StatusChip, StatusIcon, type StatusChipProps } from "./status-chip";
 export type { LegendItem } from "./status-legend";
 export { Meter, MeterFill, meterTrack, TickMeter } from "./meter";
-export { CategoryChip, CountBadge, FilterChip, type CategorySlot } from "./badges";
+export { CategoryChip, categoryColor, CountBadge, FilterChip, type CategoryHue, type CategorySlot } from "./badges";
 export { Avatar, AvatarStack } from "./avatar";
 export { FilterMenu, Toolbar, ToolbarFilters } from "./toolbar";
 export { FilterLayout, FilterSearch, FilterSurface, type FilterField } from "./filter-layout";

@@ -49,22 +49,25 @@ export const STATES = {
 
 /**
  * Categorical values as chips (design-system.md §5.8 "Categories"): a status is a StatusChip (above); every other set
- * of values is a CategoryChip whose slot comes from this one map, so the same value has the same colour on every
- * screen. A slot is a chart hue at 10 %, and never 2 (orange), 3 (green) or 5 (ochre), which beside a status chip read
- * as Degraded or Healthy. The plain or starting member of a set is neutral. Sets that are all neutral (source kind,
+ * of values is a CategoryChip whose hue comes from this one map, so the same value has the same colour on every
+ * screen (a reason's breakdown row too, `categoryColor`). A category takes a `--cat-*` hue, never a chart slot: slot 1
+ * (blue) reads as In progress beside a status chip, 2 / 3 / 5 as Degraded or Healthy (review 24 Nov). Within a set
+ * every value has a hue of its own; the plain or starting member is neutral. Sets that are all neutral (source kind,
  * engine, read mode, Fixed / Auto generated) need no entry here: pass `slot="neutral"`.
  */
 export const CATEGORIES = {
   reason: {
-    "No counterpart": "neutral", "Amount differs": 4, "Date differs": 1,
-    Duplicate: 6, Ambiguous: 6, "Currency differs": 6, "Unconfirmed suggestion": 6,
+    "No counterpart": "neutral", "Amount differs": "violet", "Date differs": "indigo",
+    Duplicate: "pink", Ambiguous: "brown", "Currency differs": "teal", "Unconfirmed suggestion": "slate",
   } satisfies Record<BreakReason, CategorySlot>,
   // a version sent for approval is not a change of data: neutral
-  changeKind: { posting: 1, force_match: 4, write_off: 6, unmatch: 6, source_version: "neutral", recon_version: "neutral" } satisfies Record<ApprovalKind, CategorySlot>,
+  changeKind: { posting: "indigo", force_match: "violet", write_off: "pink", unmatch: "brown", source_version: "neutral", recon_version: "neutral" } satisfies Record<ApprovalKind, CategorySlot>,
   // what an approved change ran: a posting as the posting change kind; a notification only tells
-  actionKind: { posting: 1, notify: "neutral" } satisfies Record<ActionRunRowDto["kind"], CategorySlot>,
-  environment: { dev: "neutral", prod: 4 } satisfies Record<Environment, CategorySlot>,
-  spaceRole: { space_admin: 4, source_admin: 4, config_maker: 1, config_checker: 6, operator: 1, reviewer: 6, viewer: "neutral" } satisfies Record<SpaceRole, CategorySlot>,
+  actionKind: { posting: "indigo", notify: "neutral" } satisfies Record<ActionRunRowDto["kind"], CategorySlot>,
+  environment: { dev: "neutral", prod: "violet" } satisfies Record<Environment, CategorySlot>,
+  spaceRole: {
+    space_admin: "violet", source_admin: "indigo", config_maker: "teal", config_checker: "pink", operator: "slate", reviewer: "brown", viewer: "neutral",
+  } satisfies Record<SpaceRole, CategorySlot>,
 } as const;
 
 export type CategoryDomain = keyof typeof CATEGORIES;

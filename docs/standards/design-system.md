@@ -756,13 +756,17 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   chips take their tone from the shared map" fails on `toStatusTone` or a cast to `StatusTone` outside categories.ts,
   the design system and the /ds pages. A domain's chips come from one table, `statusChips({ key: [meaning, label] })`,
   so a caller passes only the domain's key (`postingChip("not_sent")`).
-- **Categories** (audit P4, the same file): a categorical value that is not a status is a Category chip whose slot
+- **Categories** (audit P4, the same file): a categorical value that is not a status is a Category chip whose hue
   comes from one map, `CATEGORIES`, read through `categoryChip(domain, value)` (an unknown value is neutral): reason
-  (No counterpart neutral, Amount differs 4, Date differs 1, the rest 6), change kind (Posting 1, Force match 4,
-  Write-off and Unmatch 6, versions neutral), environment (Development neutral, Production 4), space role (Space admin
-  and Source admin 4, Config maker and Operator 1, Config checker and Reviewer 6, Viewer neutral), action kind (Posting
-  1, Notify neutral). A category never takes slot 2 (orange), 3 (green) or 5 (ochre): beside a status chip they read as
-  Degraded or Healthy (`categories.test.ts`). All-neutral sets need no entry: source kind, engine, read mode, run kind,
+  (No counterpart neutral, Amount differs violet, Date differs indigo, Duplicate pink, Ambiguous brown, Currency
+  differs teal, Unconfirmed suggestion slate), change kind (Posting indigo, Force match violet, Unmatch brown,
+  Write-off pink, versions neutral), environment (Development neutral, Production violet), space role (Space admin
+  violet, Source admin indigo, Config maker teal, Config checker pink, Operator slate, Reviewer brown, Viewer neutral),
+  action kind (Posting indigo, Notify neutral). Within a set each value has a hue of its own. A category takes a
+  `--cat-*` hue (indigo, violet, pink, teal, brown, slate: 3:1 on card in both themes, 20° clear of the status marks,
+  `tokens.test.ts` "category hues"), never a chart slot: slot 1 (blue) reads as In progress beside a status chip, 2 /
+  3 / 5 as Degraded or Healthy (`categories.test.ts`). The Overview's "Unmatch by reason" breakdown gives each reason
+  the hue of its chip (`categoryColor`, `BreakdownPart.color`). All-neutral sets need no entry: source kind, engine, read mode, run kind,
   a pass's Matches / Suggests, Fixed / Auto generated. A value that is a status in some states and a category in
   others is a `Chip` drawn by `components/state-chip.tsx`.
 - **Count badge**: 18 px pill, `--tray` (in tray: `--card`), `label` fg-2, tabular.

@@ -84,6 +84,9 @@
   --chart-4: #8a3ff0;
   --chart-5: #b88700;
   --chart-6: #d6428e;
+  /* category hues (review 24 Nov): CategoryChip's dot and 10 % tint, never a status hue (green, amber, red, the
+     in-progress blue) and never a chart slot, so a role, reason or change kind never reads as a status */
+  --cat-indigo: #4f46e5; --cat-violet: #9333ea; --cat-pink: #c2297c; --cat-teal: #3d7682; --cat-brown: #7a6250; --cat-slate: #5f6b80;
   --chart-seq-1: #ebf4ff; --chart-seq-2: #cfe3fd; --chart-seq-3: #a6cbfa; --chart-seq-4: #74adf5;
   --chart-seq-5: #3f8cef; --chart-seq-6: #1a7cf0; --chart-seq-7: #0f5fc2; --chart-seq-8: #0a4590;
   --chart-area-alpha: 0.16;
@@ -257,6 +260,7 @@
   --chart-4: #9b6bf0;
   --chart-5: #b8890f;
   --chart-6: #d65592;
+  --cat-indigo: #8b85f5; --cat-violet: #b07cf5; --cat-pink: #e0619f; --cat-teal: #5fa6b0; --cat-brown: #b39a85; --cat-slate: #94a0b8;
   --chart-seq-1: #162236; --chart-seq-2: #1b3254; --chart-seq-3: #214577; --chart-seq-4: #2a5c9e;
   --chart-seq-5: #3a78cc; --chart-seq-6: #5aa6ff; --chart-seq-7: #8cc1ff; --chart-seq-8: #bfdcff;
   --chart-area-alpha: 0.24;

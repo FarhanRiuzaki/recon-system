@@ -4,7 +4,8 @@
 import type { LiveReconDto, LiveSourceDto, ReconRunDto, RunDay, TodayDto } from "@starterkit/shared/contracts/recon";
 import type { BreakdownPart } from "@starterkit/ui/lib/breakdown";
 import { APP_TIME_ZONE_LABEL, formatDateTime, formatDuration, formatNumber, formatTime } from "@starterkit/ui/lib/format";
-import { type Chip, STATES, statusChip } from "@/lib/shared/categories";
+import { type Chip, categoryChip, STATES, statusChip } from "@/lib/shared/categories";
+import { categoryColor } from "@starterkit/ui/ds/badges";
 
 import type { StatusTone } from "@starterkit/ui/lib/status";
 export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", closing: "Closing", closed: "Closed" };
@@ -59,10 +60,10 @@ export function nextRunText(s: LiveReconDto["schedule"], lastScheduledAt: string
  * part's), then the items without a reason, which the reason facet leaves out (the state facet counts every item).
  */
 export function reasonParts(facets: Readonly<Record<string, Readonly<Record<string, number>>>> | undefined): BreakdownPart[] {
-  const parts = Object.entries(facets?.reason ?? {}).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }));
+  const parts = Object.entries(facets?.reason ?? {}).sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value, color: categoryColor(categoryChip("reason", label)) }));
   const total = Object.values(facets?.state ?? {}).reduce((n, v) => n + v, 0);
   const rest = total - parts.reduce((n, p) => n + p.value, 0);
-  return rest > 0 ? [...parts, { label: "No reason", value: rest }] : parts;
+  return rest > 0 ? [...parts, { label: "No reason", value: rest, color: categoryColor("neutral") }] : parts;
 }
 
 /** A day's totals: items in, groups matched and suggested, waiting and broken items (both sides), side A's match rate. */

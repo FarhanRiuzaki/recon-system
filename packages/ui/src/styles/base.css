@@ -49,6 +49,8 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
   --color-chart-6: var(--chart-6);
+  --color-cat-indigo: var(--cat-indigo); --color-cat-violet: var(--cat-violet); --color-cat-pink: var(--cat-pink);
+  --color-cat-teal: var(--cat-teal); --color-cat-brown: var(--cat-brown); --color-cat-slate: var(--cat-slate);
   --color-tip: var(--tip);
   --color-tip-fg: var(--tip-fg);
   --color-tip-2: var(--tip-2);

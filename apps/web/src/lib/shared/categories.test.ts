@@ -32,13 +32,19 @@ describe("status tones (owner 24 Nov): one map from a status's meaning to its ch
 describe("categories (audit §1.1 chip map): one slot per categorical value, never a status colour", () => {
   it("reason, change kind, environment and space role map as the chip map says", () => {
     expect(categoryChip("reason", "No counterpart")).toBe("neutral");
-    expect(categoryChip("reason", "Amount differs")).toBe(4);
-    expect(categoryChip("reason", "Date differs")).toBe(1);
-    expect(categoryChip("reason", "Duplicate")).toBe(6);
-    expect(REQUEST_KINDS.map((k) => categoryChip("changeKind", k))).toEqual([1, 4, 6, 6]);
+    expect(categoryChip("reason", "Amount differs")).toBe("violet");
+    expect(categoryChip("reason", "Date differs")).toBe("indigo");
+    expect(categoryChip("reason", "Duplicate")).toBe("pink");
+    expect(REQUEST_KINDS.map((k) => categoryChip("changeKind", k))).toEqual(["indigo", "violet", "brown", "pink"]);
     expect(categoryChip("changeKind", "source_version")).toBe("neutral");
-    expect(ENVIRONMENTS.map((e) => categoryChip("environment", e))).toEqual(["neutral", 4]);
-    expect(SPACE_ROLES.map((r) => categoryChip("spaceRole", r))).toEqual([4, 4, 1, 6, 1, 6, "neutral"]);
+    expect(ENVIRONMENTS.map((e) => categoryChip("environment", e))).toEqual(["neutral", "violet"]);
+    expect(SPACE_ROLES.map((r) => categoryChip("spaceRole", r))).toEqual(["violet", "indigo", "teal", "pink", "slate", "brown", "neutral"]);
+  });
+  it("every role and every reason a hue of its own (review 24 Nov: Space admin ≠ Source admin, Config maker ≠ Operator, Config checker ≠ Reviewer)", () => {
+    for (const domain of ["spaceRole", "reason"] as const) {
+      const hues = Object.values(CATEGORIES[domain]).filter((s) => s !== "neutral");
+      expect(new Set(hues).size, domain).toBe(hues.length);
+    }
   });
   it("every value of each vocabulary has a slot (a new value fails here, not silently grey)", () => {
     for (const r of BREAK_REASONS) expect(categoryChip("reason", r)).toBeDefined();
@@ -47,11 +53,11 @@ describe("categories (audit §1.1 chip map): one slot per categorical value, nev
     for (const s of BREAK_STATES) expect(STATES.workState).toHaveProperty(s);
   });
   it("an action's kind: posting as the posting change kind, notify neutral", () => {
-    expect(["posting", "notify"].map((k) => categoryChip("actionKind", k))).toEqual([1, "neutral"]);
+    expect(["posting", "notify"].map((k) => categoryChip("actionKind", k))).toEqual(["indigo", "neutral"]);
     expect(categoryChip("actionKind", "posting")).toBe(categoryChip("changeKind", "posting"));
   });
-  it("no category takes slot 2 (orange), 3 (green) or 5 (ochre): beside a status chip they read as Degraded or Healthy", () => {
-    for (const [domain, map] of Object.entries(CATEGORIES)) for (const slot of Object.values(map)) expect([2, 3, 5], domain).not.toContain(slot);
+  it("no category takes a chart slot: 1 (blue) reads as In progress, 2 / 3 / 5 as Degraded or Healthy; categories take the cat- hues", () => {
+    for (const [domain, map] of Object.entries(CATEGORIES)) for (const slot of Object.values(map)) expect(typeof slot, `${domain} ${String(slot)}`).toBe("string");
   });
   it("an unknown value is neutral", () => {
     expect(categoryChip("reason", "Something new")).toBe("neutral");

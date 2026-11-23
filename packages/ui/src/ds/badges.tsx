@@ -11,10 +11,24 @@ export function CountBadge({ children, inTray, className }: { children: ReactNod
   );
 }
 
-/** A categorical slot 1–6, or "neutral" for the plain, lowest-rank member of a set (Viewer): grey, no hue. */
-export type CategorySlot = 1 | 2 | 3 | 4 | 5 | 6 | "neutral";
-const SLOT_BG: Record<CategorySlot, string> = { 1: "bg-chart-1/10", 2: "bg-chart-2/10", 3: "bg-chart-3/10", 4: "bg-chart-4/10", 5: "bg-chart-5/10", 6: "bg-chart-6/10", neutral: "bg-inset" };
-const SLOT_DOT: Record<CategorySlot, string> = { 1: "bg-chart-1", 2: "bg-chart-2", 3: "bg-chart-3", 4: "bg-chart-4", 5: "bg-chart-5", 6: "bg-chart-6", neutral: "bg-fg-4" };
+/**
+ * A chip's colour: a chart slot 1–6 (a chip that names a chart's series, so it matches the series), a category hue
+ * (`--cat-*`: a role, reason or change kind beside status chips; never a status or chart hue, review 24 Nov), or
+ * "neutral" for the plain, lowest-rank member of a set (Viewer): grey, no hue.
+ */
+export type CategoryHue = "indigo" | "violet" | "pink" | "teal" | "brown" | "slate";
+export type CategorySlot = 1 | 2 | 3 | 4 | 5 | 6 | CategoryHue | "neutral";
+const SLOT_BG: Record<CategorySlot, string> = {
+  1: "bg-chart-1/10", 2: "bg-chart-2/10", 3: "bg-chart-3/10", 4: "bg-chart-4/10", 5: "bg-chart-5/10", 6: "bg-chart-6/10",
+  indigo: "bg-cat-indigo/10", violet: "bg-cat-violet/10", pink: "bg-cat-pink/10", teal: "bg-cat-teal/10", brown: "bg-cat-brown/10", slate: "bg-cat-slate/10", neutral: "bg-inset",
+};
+const SLOT_DOT: Record<CategorySlot, string> = {
+  1: "bg-chart-1", 2: "bg-chart-2", 3: "bg-chart-3", 4: "bg-chart-4", 5: "bg-chart-5", 6: "bg-chart-6",
+  indigo: "bg-cat-indigo", violet: "bg-cat-violet", pink: "bg-cat-pink", teal: "bg-cat-teal", brown: "bg-cat-brown", slate: "bg-cat-slate", neutral: "bg-fg-4",
+};
+/** The CSS colour of a slot's dot, for a chart part that stands for the same value (a reason's breakdown row). */
+export const categoryColor = (slot: CategorySlot): string =>
+  slot === "neutral" ? "var(--fg-4)" : typeof slot === "number" ? `var(--chart-${slot})` : `var(--cat-${slot})`;
 
 /**
  * Category chip (spec §5.8) for models, teams, result types: 22 px, radius 6, the categorical slot's soft tint

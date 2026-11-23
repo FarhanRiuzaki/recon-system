@@ -6,10 +6,11 @@ import { MAX_SERIES } from "./series";
  * `id` = stable key when two parts can share a label (default: the label). `slot` = fixed 0-based colour slot of the
  * entity, kept as given. Without it a part takes the slot of its input position, so the first six keep their colour at
  * any rank; one that meets a slot already taken among the named rows (a part past the sixth, or one a given `slot`
- * claims) takes the lowest free slot, which can change when the named rows do: pass `slot` to pin it.
+ * claims) takes the lowest free slot, which can change when the named rows do: pass `slot` to pin it. `color` = a CSS
+ * colour the part wears in place of its slot (a reason in the hue of its CategoryChip, `categoryColor`).
  */
-export type BreakdownPart = { id?: string; label: string; value: number; slot?: number };
-export type BreakdownRow = { id: string; label: string; value: number; slot: number | null; share: number; shareText: string };
+export type BreakdownPart = { id?: string; label: string; value: number; slot?: number; color?: string };
+export type BreakdownRow = { id: string; label: string; value: number; slot: number | null; color?: string; share: number; shareText: string };
 
 /** Key of the folded row. */
 export const OTHER_ID = "__other";
@@ -26,7 +27,7 @@ export const rowLimit = (max: number) => (Number.isNaN(max) ? 5 : Math.min(MAX_S
  */
 export function breakdown(parts: readonly BreakdownPart[], otherLabel: string, max = 5): { total: number; ids: string[]; rows: BreakdownRow[] } {
   const limit = rowLimit(max);
-  const ranked = parts.map((p, at) => ({ id: p.id ?? p.label, label: p.label, value: p.value, slot: p.slot, at }))
+  const ranked = parts.map((p, at) => ({ id: p.id ?? p.label, label: p.label, value: p.value, slot: p.slot, color: p.color, at }))
     .filter((p) => Number.isFinite(p.value) && p.value > 0)
     .sort((a, b) => b.value - a.value);
   const head = ranked.length > limit ? ranked.slice(0, limit - 1) : ranked;
@@ -39,7 +40,7 @@ export function breakdown(parts: readonly BreakdownPart[], otherLabel: string, m
     p.slot = taken.has(own) ? Array.from({ length: MAX_SERIES }, (_, i) => i).find((i) => !taken.has(i)) ?? own : own;
     taken.add(p.slot);
   }
-  const kept: { id: string; label: string; value: number; slot: number | null }[] = head.map((p) => ({ id: p.id, label: p.label, value: p.value, slot: p.slot! }));
+  const kept: { id: string; label: string; value: number; slot: number | null; color?: string }[] = head.map((p) => ({ id: p.id, label: p.label, value: p.value, slot: p.slot!, ...(p.color ? { color: p.color } : {}) }));
   if (rest.length) kept.push({ id: OTHER_ID, label: otherLabel, value: rest.reduce((a, p) => a + p.value, 0), slot: null });
   // The share rounding lives in distribution(); slot = position keeps this order, the empty label keeps it from folding.
   const d = distribution(kept.map((p, i) => ({ label: "", value: p.value, slot: i })), kept.length);

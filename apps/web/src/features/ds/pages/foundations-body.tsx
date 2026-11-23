@@ -28,6 +28,9 @@ const COLOURS = [
   { name: "healthy-mark", cls: "bg-healthy-mark" }, { name: "degraded-mark", cls: "bg-degraded-mark" }, { name: "down-mark", cls: "bg-down-mark" },
   { name: "stopped-mark", cls: "bg-stopped-mark" }, { name: "chart-1", cls: "bg-chart-1" }, { name: "chart-2", cls: "bg-chart-2" },
   { name: "chart-3", cls: "bg-chart-3" }, { name: "chart-4", cls: "bg-chart-4" }, { name: "chart-5", cls: "bg-chart-5" }, { name: "chart-6", cls: "bg-chart-6" },
+  // category hues: a role, reason or change kind beside status chips (CategoryChip)
+  { name: "cat-indigo", cls: "bg-cat-indigo" }, { name: "cat-violet", cls: "bg-cat-violet" }, { name: "cat-pink", cls: "bg-cat-pink" },
+  { name: "cat-teal", cls: "bg-cat-teal" }, { name: "cat-brown", cls: "bg-cat-brown" }, { name: "cat-slate", cls: "bg-cat-slate" },
   // SqlEditor's syntax colours (text on the field, design-system §5.12)
   { name: "code-keyword", cls: "bg-code-keyword" }, { name: "code-string", cls: "bg-code-string" }, { name: "code-number", cls: "bg-code-number" },
   { name: "code-comment", cls: "bg-code-comment" }, { name: "code-param", cls: "bg-code-param" },

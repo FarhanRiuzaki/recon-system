@@ -70,7 +70,7 @@ export function BreakdownCard({ title, parts, otherLabel, empty, state = "data",
   const { total, ids, rows } = breakdown(parts, otherLabel, max);
   // Every counted part, not the rows: a part that leaves the fold was there all along, and the folded row is no part.
   const fresh = useNewKeys(ids, { enabled: true });
-  const color = (slot: number | null) => (slot == null ? OTHER_COLOR : colorAt(slot));
+  const color = (r: { slot: number | null; color?: string }) => r.color ?? (r.slot == null ? OTHER_COLOR : colorAt(r.slot));
   // While loading, Reveal renders the skeleton instead of this region.
   const view = state === "loading" ? "data" : state !== "error" && rows.length === 0 ? "empty" : state;
   return (
@@ -84,14 +84,14 @@ export function BreakdownCard({ title, parts, otherLabel, empty, state = "data",
             </p>
             <div aria-hidden="true" className="chart-hbar flex h-2 gap-1">
               {rows.map((r) => (
-                <span key={r.id} className="chart-stripes h-full min-w-1 rounded-full" style={{ flexGrow: r.share, flexBasis: 0, backgroundColor: color(r.slot) }} />
+                <span key={r.id} className="chart-stripes h-full min-w-1 rounded-full" style={{ flexGrow: r.share, flexBasis: 0, backgroundColor: color(r) }} />
               ))}
             </div>
             {/* min-w-0: a grid item (DataRegion) would otherwise grow to its longest label instead of clipping it. */}
             <Stagger reorder as="ul" label={title} className="min-w-0">
               {rows.map((r) => (
                 <li key={r.id} className={cn(ROW, "rounded-sm", fresh.has(r.id) && "motion-safe:animate-row-new")}>
-                  <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color(r.slot) }} />
+                  <span aria-hidden="true" className="size-2 shrink-0 rounded-full" style={{ backgroundColor: color(r) }} />
                   <span className="min-w-0 flex-1 text-body-sm text-fg-2"><Truncate title={r.label}>{r.label}</Truncate></span>
                   <span className="shrink-0 text-body-sm tabular text-fg">{format(r.value)}</span>
                   <span className="w-10 shrink-0 text-right text-caption tabular text-fg-3">{r.shareText}</span>

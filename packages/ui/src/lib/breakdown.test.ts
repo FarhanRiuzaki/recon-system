@@ -69,3 +69,11 @@ describe("breakdown (BreakdownCard rows)", () => {
     expect(view([p("A", 10), p("B", 9, 0), p("C", 8, 7)]).rows.map((r) => [r.id, r.slot])).toEqual([["A", 2], ["B", 0], ["C", 7]]);
   });
 });
+
+describe("a part's own colour (review 24 Nov: a reason in the hue of its chip)", () => {
+  it("is kept on its row; a part without one takes a slot as before", () => {
+    const { rows } = breakdown([{ label: "A", value: 3, color: "var(--cat-pink)" }, { label: "B", value: 1 }], "Other", 5);
+    expect(rows.map((r) => r.color)).toEqual(["var(--cat-pink)", undefined]);
+    expect(rows[1]!.slot).not.toBeNull();
+  });
+});

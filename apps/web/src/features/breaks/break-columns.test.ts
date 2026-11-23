@@ -15,7 +15,7 @@ const cell = (key: string, r: BreakRowDto = B) => renderToStaticMarkup(h(Fragmen
 describe("unmatch queue columns: the reason a category chip, the state a status chip (owner 24 Nov)", () => {
   it("a reason chip in its slot, a dash without one; the state as a chip, never plain text", () => {
     expect(cell("reason")).toContain('data-slot="category-chip"');
-    expect(cell("reason")).toContain("bg-chart-4");
+    expect(cell("reason")).toContain("bg-cat-violet");
     expect(cell("reason", { ...B, reason: null })).not.toContain("category-chip");
     expect(cell("state")).toContain(">Pending external</span>");
     expect(cell("state")).toContain('data-status="progress"');
