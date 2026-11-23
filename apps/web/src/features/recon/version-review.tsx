@@ -75,8 +75,8 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const published = r.published && r.published.id !== v.id && v.status !== "retired" ? r.published.version : null;
   const st = reconVersionChip(v);
   const edit = v.status === "draft" && r.draft?.id === v.id && (maker
-    ? <Button asChild variant="ghost"><Link href={reconEditHref(spaceId, id, 6)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
-    : <BlockedButton variant="ghost" reason={MAKER_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
+    ? <Button asChild variant="edit"><Link href={reconEditHref(spaceId, id, 6)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
+    : <BlockedButton variant="edit" reason={MAKER_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
     await api(reconApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });

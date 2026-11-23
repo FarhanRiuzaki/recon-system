@@ -28,28 +28,32 @@ const resolveSpec = (fromRel: string, spec: string): string | null =>
 const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")[4] ?? null : null);
 
 /**
- * Intents (owner 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a Button named "Remove …" (aria-label
- * or text) is `variant="remove"`; a quiet Button (ghost, link, secondary) whose text starts with "Add" is `variant="add"`.
- * The page's main create action stays default; a confirm dialog's "Remove …" is destructive. From `INTENTS`
+ * Intents by verb (owner 24 Nov, superseding 22 Nov's add blue / Edit ghost): a Button named "Remove …" or "Delete …"
+ * (aria-label or text) is `variant="remove"` (a confirm dialog's is destructive); one named "Create …", "Add …" or
+ * "New …" is `variant="create"` (green; the page's one main CTA may stay default); one labelled "Edit …" is
+ * `variant="edit"` (blue). From `INTENTS`
  * (`ds/intent.ts`): a Button or BlockedButton labelled with a caution action (Reject, Turn off, Cancel request) is
  * `variant="caution"` (or destructive, a confirm dialog's), and one labelled with an intent whose icon is `required`
  * (Edit, Replace, Export, Retry …) renders an `<Icon icon={…} />` among its children, always: an icon only in an
  * expression (`{busy && <Icon … />}`) doesn't count, nor a named icon component used bare (`<EditIcon />`); icons go
  * through `<Icon icon=…>` (ui/icon.tsx). A self-closing `<Button … />` has no children. A Button asChild around a Link
- * labelled with a navigate action (View, Open, Review) is `variant="link"` with its `<Icon>` after the words. A Button or
- * BlockedButton labelled Edit … is `variant="ghost"` (`INTENTS.edit`), as every Edit on every page.
+ * labelled with a navigate action (View, Open, Review) is `variant="link"` with its `<Icon>` after the words. The verb
+ * rules hold for a BlockedButton too.
  */
 const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")})\\b`);
 const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
 const CAUTION_VARIANTS: readonly string[] = INTENTS.caution.variant;
 const NAV_LABEL = startsWith(INTENTS.navigate.actions);
-const ICON_LABEL = startsWith(Object.values(INTENTS).filter((i) => "required" in i && i.required && i.variant !== "add").flatMap((i) => i.actions));
+const ICON_LABEL = startsWith(Object.values(INTENTS).filter((i) => "required" in i && i.required && i.variant !== "create").flatMap((i) => i.actions));
+const CREATE_LABEL = startsWith(INTENTS.create.actions);
+const REMOVE_LABEL = startsWith(INTENTS.remove.actions);
 /** `s` without its `{…}` expressions (nested braces counted): what always renders, not `{busy && <Icon … />}`. */
 const outsideExpressions = (s: string) => { let out = "", depth = 0; for (const c of s) { if (c === "{") depth++; else if (c === "}") depth = Math.max(0, depth - 1); else if (!depth) out += c; } return out; };
 function intentViolations(fs: F[]): string[] {
   const out: string[] = [];
   for (const { r, src } of fs) {
-    if (!r.endsWith(".tsx") || r.startsWith(VENDORED)) continue;
+    // an affectUI demo's Button is the vendored one, with upstream's own variants
+    if (!r.endsWith(".tsx") || r.startsWith(VENDORED) || src.includes(`from "@starterkit/ui/affect/button"`)) continue;
     for (const m of src.matchAll(/<(BlockedButton|Button|button)(?=[\s>])/g)) {
       // the opening tag: braces counted (an onClick's arrow holds ">"), quoted text skipped (title="a > b")
       let i = m.index! + m[0].length, depth = 0, quote = "";
@@ -62,10 +66,11 @@ function intentViolations(fs: F[]): string[] {
       // a self-closing tag (`<Button … />`) has no children: what follows belongs to the next element
       const tag = src.slice(m.index!, i + 1), selfClosing = src[i - 1] === "/";
       const text = selfClosing ? "" : src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
-      const named = /aria-label=\{?[`"']Remove\b/.test(tag) || /^Remove\b/.test(text);
+      const aria = /aria-label=\{?[`"']([^`"']*)/.exec(tag)?.[1] ?? "";
+      const named = REMOVE_LABEL.test(aria) || REMOVE_LABEL.test(text);
       if (m[1] === "button") {
         // a raw button that removes says so in the Remove ink (the variant's colour)
-        if (named && !/text-down-ink/.test(tag)) out.push(`${r}: raw Remove button without text-down-ink`);
+        if (named && !/text-down-ink/.test(tag)) out.push(`${r}: raw Remove / Delete button without text-down-ink`);
         continue;
       }
       const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
@@ -74,15 +79,15 @@ function intentViolations(fs: F[]): string[] {
       const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
       if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
       if (/^Edit\b/.test(label) && variant !== INTENTS.edit.variant) out.push(`${r}: ${label} is variant="${variant}", not ${INTENTS.edit.variant}`);
+      if ((CREATE_LABEL.test(label) || (!label && CREATE_LABEL.test(aria))) && variant !== INTENTS.create.variant && variant !== "default")
+        out.push(`${r}: ${label || aria} is variant="${variant}", not create`);
+      if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: ${label || aria} is variant="${variant}", not remove`);
       if (ICON_LABEL.test(label) && !/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner))) out.push(`${r}: ${label} without its icon`);
       // a link that navigates (asChild around a Link) labelled View / Open / Review: variant link, its icon after the words
       if (/\basChild\b/.test(tag) && /^\s*<Link\b/.test(inner) && NAV_LABEL.test(label)) {
         if (variant !== "link") out.push(`${r}: ${label} link is variant="${variant}", not link`);
         if (!/\w[^<]*<Icon\s[^>]*\bicon=[^>]*\/>\s*<\/Link>\s*$/.test(outsideExpressions(inner))) out.push(`${r}: ${label} link without its trailing icon`);
       }
-      if (m[1] === "BlockedButton") continue;
-      if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: Remove … is variant="${variant}"`);
-      if (/^Add\b/.test(text) && ["ghost", "link", "secondary", "outline"].includes(variant)) out.push(`${r}: Add … is variant="${variant}"`);
     }
   }
   return out;
@@ -450,7 +455,7 @@ describe("architecture", () => {
   it("only the flow layer imports @xyflow/react (the canvases' parts live in the design system)", () => {
     expect(files.filter(({ r, imp }) => imp.some((i) => i.startsWith("@xyflow/react")) && !r.startsWith(`${UI}flow/`)).map((f) => f.r)).toEqual([]);
   });
-  it("every button says its intent: add (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
+  it("every button says its intent: create (green), edit (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
     expect(intentViolations(files)).toEqual([]);
   });
   it("a dialog with a footer holds its content in DialogBody (owner, 22 Nov: modals tidy and symmetric)", () => {
@@ -531,37 +536,42 @@ describe("architecture", () => {
 describe("architecture checkers (fixtures)", () => {
   const f = (r: string, src: string): F => ({ r, src, imp: [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!) });
 
-  it("intents: a Remove button not variant remove, a quiet Add button not variant add", () => {
+  it("intents: a Remove / Delete button not variant remove, a Create / Add / New button neither create nor default", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="ghost" size="icon" aria-label={\`Remove \${n}\`} onClick={() => go()}><Icon icon={RemoveIcon} /></Button>`),
       f(`${WEB}features/x/b.tsx`, `<Button type="button" variant="link" onClick={() => add()}>Add a condition</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="add" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button onClick={() => a()}>Add user</Button><Button variant="destructive">Remove member</Button>`),
-      f(`${WEB}features/x/d.tsx`, `<button type="button" aria-label="Remove pass 2" className="text-fg-3" onClick={() => r()}>x</button><ButtonGroup>Add a row</ButtonGroup>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="create" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button onClick={() => a()}>Create recon</Button><Button variant="destructive">Remove member</Button><Button variant="destructive">Delete view</Button><Button variant="secondary">Newer first</Button>`),
+      f(`${WEB}features/x/d.tsx`, `<button type="button" aria-label="Remove pass 2" className="text-fg-3" onClick={() => r()}>x</button><ButtonGroup>Add a row</ButtonGroup><button type="button" className="text-fg-3">Delete</button>`),
       f(`${WEB}features/x/e.tsx`, `<Button variant="outline" title="a > b" onClick={() => a()}>Add a column</Button>`),
-    ])).toEqual([`${WEB}features/x/a.tsx: Remove … is variant="ghost"`, `${WEB}features/x/b.tsx: Add … is variant="link"`,
-      `${WEB}features/x/d.tsx: raw Remove button without text-down-ink`, `${WEB}features/x/e.tsx: Add … is variant="outline"`]);
+      f(`${WEB}features/x/f.tsx`, `<Button variant="secondary"><Icon icon={AddIcon} />New space</Button><BlockedButton variant="ghost" reason={r}>Create token</BlockedButton><Button variant="ghost" size="icon" aria-label="Add a filter"><Icon icon={AddIcon} /></Button>`),
+      f(`${WEB}features/x/g.tsx`, `<Button variant="ghost" onClick={() => d()}>Delete view</Button><Button variant="secondary" size="icon" aria-label="Delete row 2"><Icon icon={RemoveIcon} /></Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Remove \${n} is variant="ghost", not remove`, `${WEB}features/x/b.tsx: Add a condition is variant="link", not create`,
+      `${WEB}features/x/d.tsx: raw Remove / Delete button without text-down-ink`, `${WEB}features/x/d.tsx: raw Remove / Delete button without text-down-ink`,
+      `${WEB}features/x/e.tsx: Add a column is variant="outline", not create`,
+      `${WEB}features/x/f.tsx: New space is variant="secondary", not create`, `${WEB}features/x/f.tsx: Create token is variant="ghost", not create`, `${WEB}features/x/f.tsx: Add a filter is variant="ghost", not create`,
+      `${WEB}features/x/g.tsx: Delete view is variant="ghost", not remove`, `${WEB}features/x/g.tsx: Delete row 2 is variant="secondary", not remove`]);
   });
   it("intents: a negative decision not variant caution, an Edit / Replace / Export / Retry without its icon", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="secondary" onClick={() => open({ a: 1 })}>Reject</Button><BlockedButton variant="ghost" reason={r}>Cancel request</BlockedButton>`),
       f(`${WEB}features/x/b.tsx`, `<Button variant="caution" onClick={() => x()}><Icon icon={ErrorIcon} />Reject</Button><Button variant="destructive">Turn off connector</Button><Button>Turn the page</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost" size="sm" onClick={() => go(5)}>Edit</Button><Button asChild variant="ghost"><Link href={\`/u/\${id}/edit\`}>Edit user</Link></Button><Button variant="secondary" onClick={retry}>Retry</Button>`),
-      f(`${WEB}features/x/d.tsx`, `<Button variant="ghost" onClick={() => go()}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button><Button asChild variant="ghost"><Link href="/e"><Icon icon={EditIcon} />Edit user</Link></Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button>Editor settings</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="edit" size="sm" onClick={() => go(5)}>Edit</Button><Button asChild variant="edit"><Link href={\`/u/\${id}/edit\`}>Edit user</Link></Button><Button variant="secondary" onClick={retry}>Retry</Button>`),
+      f(`${WEB}features/x/d.tsx`, `<Button variant="edit" onClick={() => go()}><Icon icon={EditIcon} />Edit<span className="sr-only"> code</span></Button><Button asChild variant="edit"><Link href="/e"><Icon icon={EditIcon} />Edit user</Link></Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button>Editor settings</Button>`),
     ])).toEqual([`${WEB}features/x/a.tsx: Reject is variant="secondary", not caution`, `${WEB}features/x/a.tsx: Cancel request is variant="ghost", not caution`,
       `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`, `${WEB}features/x/c.tsx: Retry without its icon`]);
   });
-  it("intents: a Button labelled Edit … is variant ghost, as every other Edit (a BlockedButton too)", () => {
+  it("intents: a Button labelled Edit … is variant edit, as every other Edit (a BlockedButton too)", () => {
     expect(intentViolations([
-      f(`${WEB}features/x/a.tsx`, `<Button asChild variant="secondary"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><BlockedButton variant="secondary" reason={r}><Icon icon={EditIcon} />Edit rule</BlockedButton>`),
-      f(`${WEB}features/x/b.tsx`, `<Button asChild variant="ghost"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><Button variant="secondary">Editor settings</Button><Button><Icon icon={EditIcon} />Edit</Button>`),
-    ])).toEqual([`${WEB}features/x/a.tsx: Edit project is variant="secondary", not ghost`, `${WEB}features/x/a.tsx: Edit rule is variant="secondary", not ghost`,
-      `${WEB}features/x/b.tsx: Edit is variant="default", not ghost`]);
+      f(`${WEB}features/x/a.tsx`, `<Button asChild variant="ghost"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><BlockedButton variant="secondary" reason={r}><Icon icon={EditIcon} />Edit rule</BlockedButton>`),
+      f(`${WEB}features/x/b.tsx`, `<Button asChild variant="edit"><Link href="/p/1/edit"><Icon icon={EditIcon} />Edit project</Link></Button><Button variant="secondary">Editor settings</Button><Button><Icon icon={EditIcon} />Edit</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Edit project is variant="ghost", not edit`, `${WEB}features/x/a.tsx: Edit rule is variant="secondary", not edit`,
+      `${WEB}features/x/b.tsx: Edit is variant="default", not edit`]);
   });
   it("intents: a self-closing Button has no children (the next button's are not its own); a conditional or bare icon is no icon", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button variant="secondary" {...props} /><Button variant="caution" onClick={() => r()}>Reject</Button><Button variant="ghost" aria-label="Close" />Add a row`),
       f(`${WEB}features/x/b.tsx`, `<Button variant="secondary" onClick={retry}>{busy && <Icon icon={RetryIcon} />}Retry</Button><Button variant="secondary">{busy ? <Spinner /> : <Icon icon={ExportIcon} />}Export CSV</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="ghost"><EditIcon />Edit</Button><Button variant="ghost"><IconBadge />Edit user</Button><Button variant="ghost"><Icon icon={EditIcon} className="size-4" />Edit rule</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="edit"><EditIcon />Edit</Button><Button variant="edit"><IconBadge />Edit user</Button><Button variant="edit"><Icon icon={EditIcon} className="size-4" />Edit rule</Button>`),
     ])).toEqual([`${WEB}features/x/b.tsx: Retry without its icon`, `${WEB}features/x/b.tsx: Export CSV without its icon`,
       `${WEB}features/x/c.tsx: Edit without its icon`, `${WEB}features/x/c.tsx: Edit user without its icon`]);
   });

@@ -6,8 +6,8 @@ import { AddIcon, EditIcon, ErrorIcon, ExportIcon, RefreshIcon, RemoveIcon } fro
 type Variant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
 
 /**
- * Every action has an intent: colour, icon and verb together (design-system.md §5.3). Colour marks what changes data;
- * everything else is neutral and carries its verb icon. `actions` are the labels' first words, as a button starts
+ * Every action has an intent: colour, icon and verb together (design-system.md §5.3). Colour marks what changes data (Create
+ * green, Edit blue, Remove red, caution red text); everything else is neutral and carries its verb icon. `actions` are the labels' first words, as a button starts
  * ("Reject", "Export CSV"); `apps/web/src/test/architecture.test.ts` reads `caution` and the `required` intents from
  * here. `icon` = the intent's one icon (absent: the action's own verb icon, or none); `required` = a Button with that
  * label must render an `<Icon>`. `variant` lists more than one when a confirm dialog may carry the action.
@@ -19,10 +19,12 @@ export const INTENTS = {
   second: { variant: "secondary", actions: ["Force match", "Write-off", "Close", "Assign"], note: "A second choice, with its verb icon." },
   // a confirm dialog's Turn off is destructive, so the rule accepts both
   caution: { variant: ["caution", "destructive"], actions: ["Reject", "Turn off", "Cancel request"], icon: ErrorIcon, note: "A negative decision: Down ink on a line edge." },
-  destructive: { variant: "destructive", actions: ["Remove"], note: "Confirms a removal inside its dialog." },
-  add: { variant: "add", actions: ["Add"], icon: AddIcon, required: true, note: "Adds a row, level, group, filter, pass, action or variant." },
-  remove: { variant: "remove", actions: ["Remove"], icon: RemoveIcon, note: "Takes one out of a list (bin or X)." },
-  edit: { variant: "ghost", actions: ["Edit", "Replace"], icon: EditIcon, required: true, note: "Never a bare word; a Change that edits a record (Change server) takes it too." },
+  destructive: { variant: "destructive", actions: ["Remove", "Delete"], note: "Confirms a removal inside its dialog." },
+  // owner 24 Nov: actions by verb. Create / Add / New green, Edit blue, Delete / Remove red; the page's one main CTA
+  // ("Create" in `next`) may stay default
+  create: { variant: "create", actions: ["Create", "Add", "New"], icon: AddIcon, required: true, note: "Creates or adds a record, row, level, group, filter, pass, action or variant." },
+  remove: { variant: "remove", actions: ["Remove", "Delete"], icon: RemoveIcon, note: "Takes one out of a list (bin or X)." },
+  edit: { variant: "edit", actions: ["Edit", "Replace"], icon: EditIcon, required: true, note: "Never a bare word; a Change that edits a record (Change server) takes it too." },
   navigate: { variant: "link", actions: ["Open", "View", "Review"], note: "A link with a trailing arrow (ArrowRightIcon after the words)." },
   output: { variant: "secondary", actions: ["Export"], icon: ExportIcon, required: true, note: "Export, Get token, Show who approves: secondary with its icon." },
   retry: { variant: "secondary", actions: ["Retry", "Try again"], icon: RefreshIcon, required: true, note: "Secondary with Refresh." },

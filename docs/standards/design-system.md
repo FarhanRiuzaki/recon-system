@@ -556,23 +556,29 @@ ancestors fg-2 (links). Header controls share a 32 px drawn height, radius 10 an
 | Secondary | `--card` | fg | 1 px `--line` + `--shadow-xs` | 32 |
 | Ghost | transparent → `--tray` on hover | fg-2 | none | 32 |
 | Danger | `--down-soft` → `--down-soft-hover` on hover | Down ink | none, no shadow; disabled: 1 px `--down-mark` | 32 |
-| Add (intent) | transparent → `--add-soft` on hover, `--add-soft-hover` pressed | `--add-ink` (`#1d5fcc`, dark `#7aaeff`) | none | 32 (28 sm, icon 32/28) |
-| Remove (intent) | transparent → `--down-soft` on hover, `--down-soft-hover` pressed | Down ink | none | 32 (icon 32/28) |
+| Create (intent) | `--create-soft` → `--create-soft-hover` on hover | `--create-ink` (`#0f6e3f`, dark `#4cc98a`) | none; disabled: 1 px `--healthy-mark` | 32 (28 sm, icon 32/28) |
+| Edit (intent) | `--edit-soft` → `--edit-soft-hover` on hover | `--edit-ink` (`#1d5fcc`, dark `#7aaeff`) | none; disabled: 1 px `--edit-ink` | 32 (28 sm, icon 32/28) |
+| Remove (intent) | `--down-soft` → `--down-soft-hover` on hover | Down ink | none; disabled: 1 px `--down-mark` | 32 (28 sm, icon 32/28) |
 | Caution (intent) | transparent → `--down-soft` on hover, `--down-soft-hover` pressed | Down ink | 1 px `--line` | 32 (28 sm) |
 Padding 0 12, icon 16 + 6 gap, radius 10, `label`→ `body` 14/500. Press: scale 0.97 (`--press-scale`, §7.5).
-Intents (owner, 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): a quiet button that adds a row,
-a condition or an item is `variant="add"` (blue); one that takes an item out of a list is `variant="remove"` (red),
-whether it shows a bin or an X. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses
-nothing. The page's main create action stays Primary; a confirm dialog's "Remove …" stays Danger. Pinned by
-`architecture.test.ts` "add and remove buttons say their intent by colour"; `--add-ink` ≥ 4.5:1 on every surface and on
-its soft fills (`tokens.test.ts`).
+Intents by verb (owner, 24 Nov; supersedes 22 Nov's add blue and the Ghost Edit): **Create / Add / New** is
+`variant="create"` (green), **Edit** is `variant="edit"` (blue), **Delete / Remove** is `variant="remove"` (red),
+whether it shows a bin or an X. All three are soft-filled: the ink on its soft fill at rest, one step darker under the
+pointer. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's one main
+CTA ("Create recon") may stay Primary; a confirm dialog's "Remove …" / "Delete …" stays Danger. A list adder ("Add a
+rule for some cases", "Add an action", "Add a condition") is `create` at `size="sm"` with its `AddIcon`, never a bare
+link. Light / dark values: create `#0f6e3f` on `#e9f7ef` / `#d9f1e3` (dark `#4cc98a` on `#143323` / `#1a4230`), edit
+`#1d5fcc` on `#ebf2fe` / `#dde9fd` (dark `#7aaeff` on `#172540` / `#1e3156`); each ink ≥ 4.5:1 on every surface and on
+both its fills, and its hue green / blue / red (`tokens.test.ts` "action intents by verb"). Pinned by
+`architecture.test.ts` "every button says its intent".
 Intent rule (audit 23 Nov, P5): **colour marks what changes data; everything else is neutral and carries its verb
 icon.** The table is data in `ds/intent.ts` (`INTENTS`): the next step is Primary (one per page); a second choice
 (Force match, Write-off, Close, Assign) Secondary with its verb icon; a negative decision (Reject, Turn off, Cancel
-request) `variant="caution"` with `ErrorIcon`, its confirm inside a dialog Danger; Add / Remove as above; Edit and
-Replace a Ghost with `EditIcon`, never the bare word; Open / View / Review a link with a trailing arrow; Export a
+request) `variant="caution"` with `ErrorIcon`, its confirm inside a dialog Danger; Create / Remove as above; Edit and
+Replace `variant="edit"` with `EditIcon`, never the bare word; Open / View / Review a link with a trailing arrow; Export a
 Secondary with `ExportIcon`; Retry / Try again a Secondary with `RefreshIcon`. `architecture.test.ts` reads
 `INTENTS`: a Button or BlockedButton labelled Reject / Turn off / Cancel request is caution (or Danger), one labelled
+Create / Add / New is create (or the Primary), Edit … is edit, Delete / Remove … is remove (or Danger), one labelled
 Edit / Replace / Export / Retry renders an `<Icon>`, and a `Button asChild` around a `Link` labelled View / Open /
 Review is `variant="link"` with its `<Icon>` after the words.
 Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. A

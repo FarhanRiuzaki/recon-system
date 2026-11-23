@@ -119,7 +119,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
   /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule, 4 Approval). */
   onEdit?: (step: 1 | 2 | 3 | 4) => void;
 }) {
-  const edit = (n: 1 | 2 | 3 | 4) => (onEdit ? <Button type="button" variant="ghost" size="sm" onClick={() => onEdit(n)}><Icon icon={EditIcon} />Edit</Button> : undefined);
+  const edit = (n: 1 | 2 | 3 | 4) => (onEdit ? <Button type="button" variant="edit" size="sm" onClick={() => onEdit(n)}><Icon icon={EditIcon} />Edit</Button> : undefined);
   const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
   const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
   const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);

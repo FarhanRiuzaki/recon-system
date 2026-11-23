@@ -60,7 +60,7 @@ export function RowsToLoad({ spec, setSpec, err, examples }: {
   };
   return (
     <Panel title="Rows to load" description={keep.length ? "Only rows that meet every condition are loaded" : "Every row is loaded"}
-      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="add" size="sm" onClick={add}><Icon icon={AddIcon} />Add a condition</Button>}
+      actions={!spec.mutable && spec.fields.length > 0 && <Button type="button" variant="create" size="sm" onClick={add}><Icon icon={AddIcon} />Add a condition</Button>}
       bodyClassName="grid gap-3">
       <p className="flex items-center gap-1 text-body-sm text-fg-2">
         {spec.mutable

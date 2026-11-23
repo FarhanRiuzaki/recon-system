@@ -97,11 +97,11 @@ function PassExample({ spaceId, configId, runId, passNo }: { spaceId: string; co
 
 /** Add pass (owner, 22 Nov): a ready pass to start from, each saying what it does; one a side can't take says why. */
 function AddPassMenu({ fields, reason, onAdd }: { fields: Fields; reason: string | null; onAdd: (t: PassTemplate) => void }) {
-  if (reason) return <BlockedButton type="button" variant="add" reason={reason}><Icon icon={AddIcon} />Add pass</BlockedButton>;
+  if (reason) return <BlockedButton type="button" variant="create" reason={reason}><Icon icon={AddIcon} />Add pass</BlockedButton>;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="add"><Icon icon={AddIcon} />Add pass<Icon icon={ChevronDownIcon} /></Button>
+        <Button type="button" variant="create"><Icon icon={AddIcon} />Add pass<Icon icon={ChevronDownIcon} /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-80">
         {PASS_TEMPLATES.map((t) => {
@@ -495,7 +495,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         {step === 2 && (
           <>
             {editable && gaps.length > 0 && (
-              <Banner tone="error" action={<Button type="button" variant="add" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
+              <Banner tone="error" action={<Button type="button" variant="create" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
                 onClick={() => change(addCurrencyCondition(spec, gaps))}><Icon icon={AddIcon} />Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
             {pageWarnings.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
@@ -607,7 +607,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
           <>
             {/* the whole draft as the Configuration will show it, each part with Edit back to its step */}
             <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
-            <Panel title="Test" actions={editable ? <Button type="button" variant="ghost" size="sm" onClick={() => go(5)}><Icon icon={EditIcon} />Edit</Button> : undefined}>
+            <Panel title="Test" actions={editable ? <Button type="button" variant="edit" size="sm" onClick={() => go(5)}><Icon icon={EditIcon} />Edit</Button> : undefined}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <SimChip chip={sim.chip} />
                 <span className="text-body-sm text-fg">{sim.line}</span>

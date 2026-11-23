@@ -70,7 +70,7 @@ export function ConditionEditor({ value, onChange, catalog, disabled, label }: {
         ? <ClauseRow key={i} n={i + 1} c={p} catalog={catalog} disabled={disabled} onChange={(c) => set(parts.map((x, j) => (j === i ? c : x)))} onRemove={() => set(parts.filter((_, j) => j !== i))} />
         : <span key={i} className="text-body-sm text-fg-3">A nested group of conditions (kept as it is)</span>)}
       {!disabled && parts.length < CLAUSES_MAX && (
-        <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => set([...parts, { field: "", op: "eq", value: "" }])}><Icon icon={AddIcon} />Add a condition</Button>
+        <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => set([...parts, { field: "", op: "eq", value: "" }])}><Icon icon={AddIcon} />Add a condition</Button>
       )}
     </fieldset>
   );

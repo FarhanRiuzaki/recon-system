@@ -55,7 +55,7 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
             </div>
           ))}
           {!disabled && accounts.length < 50 && (
-            <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange([...accounts, { key: `account_${accounts.length + 1}`, label: "", number: "", currency: "IDR" }], lookups)}><Icon icon={AddIcon} />Add an account</Button>
+            <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => onChange([...accounts, { key: `account_${accounts.length + 1}`, label: "", number: "", currency: "IDR" }], lookups)}><Icon icon={AddIcon} />Add an account</Button>
           )}
         </div>
         <div className="grid gap-2">
@@ -65,7 +65,7 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
             <LookupEditor key={i} l={l} disabled={disabled} onChange={(n) => onChange(accounts, lookups.map((x, j) => (j === i ? n : x)))} onRemove={() => onChange(accounts, lookups.filter((_, j) => j !== i))} />
           ))}
           {!disabled && lookups.length < 20 && (
-            <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange(accounts, [...lookups, { name: `lookup_${lookups.length + 1}`, rows: [] }])}><Icon icon={AddIcon} />Add a lookup table</Button>
+            <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => onChange(accounts, [...lookups, { name: `lookup_${lookups.length + 1}`, rows: [] }])}><Icon icon={AddIcon} />Add a lookup table</Button>
           )}
         </div>
       </div>

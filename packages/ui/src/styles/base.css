@@ -34,9 +34,9 @@
   --color-degraded-mark: var(--degraded-mark); --color-degraded-ink: var(--degraded-ink); --color-degraded-soft: var(--degraded-soft);
   --color-down-mark: var(--down-mark);         --color-down-ink: var(--down-ink);         --color-down-soft: var(--down-soft);
   --color-down-soft-hover: var(--down-soft-hover);
-  --color-add-ink: var(--add-ink);
-  --color-add-soft: var(--add-soft);
-  --color-add-soft-hover: var(--add-soft-hover);
+  --color-create-ink: var(--create-ink); --color-create-soft: var(--create-soft); --color-create-soft-hover: var(--create-soft-hover);
+  --color-edit-ink: var(--edit-ink);     --color-edit-soft: var(--edit-soft);     --color-edit-soft-hover: var(--edit-soft-hover);
+  --color-progress-mark: var(--progress-mark); --color-progress-ink: var(--progress-ink); --color-progress-soft: var(--progress-soft);
   --color-stopped-mark: var(--stopped-mark);   --color-stopped-ink: var(--stopped-ink);   --color-stopped-soft: var(--stopped-soft);
   --color-unknown-mark: var(--unknown-mark);   --color-unknown-ink: var(--unknown-ink);   --color-unknown-soft: var(--unknown-soft);
   --color-on-crit: var(--on-crit);
@@ -458,6 +458,10 @@ details[open]::details-content { block-size: auto; opacity: 1; }
   /* Danger button, disabled: the soft fill at 0.4 is 1.05:1 on the card and the variant has no border, so the box
      would be lost; it keeps a Down edge while disabled (about 1.8:1 at that opacity, the weight of its label). */
   .bg-down-soft[data-variant="destructive"]:disabled { border-color: var(--down-mark); }
+  /* the soft-filled intents (create, edit, remove), disabled, keep their edge the same way */
+  [data-variant="create"]:disabled { border-color: var(--healthy-mark); }
+  [data-variant="edit"]:disabled { border-color: var(--edit-ink); }
+  [data-variant="remove"]:disabled { border-color: var(--down-mark); }
   :where([data-slot="command-input"]):focus-visible { outline: none; }
   [data-slot="command-input"] { caret-color: var(--primary); }
   [data-slot="command-search"] { transition: border-color var(--dur-fast) var(--ease-standard); }

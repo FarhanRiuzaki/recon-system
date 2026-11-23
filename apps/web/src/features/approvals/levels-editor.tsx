@@ -125,7 +125,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
             ]} />
           </span>
         ) : !readOnly && (
-          <Button type="button" variant="ghost" size="sm" aria-label={`Edit level ${n}`} data-focus="edit" onClick={onEdit}><Icon icon={EditIcon} />Edit</Button>
+          <Button type="button" variant="edit" size="sm" aria-label={`Edit level ${n}`} data-focus="edit" onClick={onEdit}><Icon icon={EditIcon} />Edit</Button>
         )}
       </div>
       <div key={editing ? "edit" : "read"} data-slot="level-body" className="grid animate-fade gap-2 border-t border-line px-4 py-3">
@@ -161,7 +161,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
           })}
           {l.groups.length < GROUPS_MAX && (
             <EditorRow className="px-2" lead={null}>
-              <Button type="button" variant="add" size="sm" className="px-0" onClick={() => { setAdded(l.groups.length); onChange({ ...l, groups: [...l.groups, newGroup()] }); }}>
+              <Button type="button" variant="create" size="sm" onClick={() => { setAdded(l.groups.length); onChange({ ...l, groups: [...l.groups, newGroup()] }); }}>
                 <Icon icon={AddIcon} />Add a group that must also approve
               </Button>
             </EditorRow>
@@ -223,7 +223,7 @@ export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { le
         ))}
       </ol>
       {!disabled && levels.length < LEVELS_MAX && (
-        <Button type="button" variant="add" size="sm" className="justify-self-start"
+        <Button type="button" variant="create" size="sm" className="justify-self-start"
           onClick={() => { if (!mayLeave()) return; onChange([...levels, newLevel()]); setOpen(levels.length); setChecked(null); focus({ i: levels.length, on: '[data-focus="name"]' }); }}>
           <Icon icon={AddIcon} />Add level {levels.length + 1}
         </Button>

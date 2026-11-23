@@ -89,8 +89,8 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const maker = roles.includes("source_admin") || roles.includes("config_maker");
   // the open draft opens in the wizard (a sent-back one included); a role that can't change sources gets the reason
   const edit = v.status === "draft" && s.draft?.id === v.id && (maker
-    ? <Button asChild variant="ghost"><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
-    : <BlockedButton variant="ghost" reason={EDIT_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
+    ? <Button asChild variant="edit"><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
+    : <BlockedButton variant="edit" reason={EDIT_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
     await api(sourceApi(spaceId, id, `/versions/${encodeURIComponent(versionId)}/${act}`), { method: "POST", body: JSON.stringify(act === "reject" ? { comment } : {}) });

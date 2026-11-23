@@ -64,7 +64,7 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
                 : <StatusChip health="healthy" label="Every field mapped" />)}
               {!disabled && (
                 <span className="flex shrink-0 items-center gap-1">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>
+                  <Button type="button" variant="edit" size="sm" onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>
                   <Button type="button" variant="remove" size="icon" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
                 </span>
               )}
@@ -73,7 +73,7 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
         })}
       </ol>
       {!disabled && actions.length < 10 && (
-        <Button type="button" variant="add" className="justify-self-start" onClick={() => setOpen(actions.length)}><Icon icon={AddIcon} />Add an action</Button>
+        <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => setOpen(actions.length)}><Icon icon={AddIcon} />Add an action</Button>
       )}
       {open !== null && initial && (
         <ActionScreen open initial={initial} changeLabel={changeLabel} ops={ops} catalog={catalog} setup={setup}

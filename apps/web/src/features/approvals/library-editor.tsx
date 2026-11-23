@@ -144,7 +144,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
           )}
         </>} more={more.length ? more : undefined}
         actions={!w.open && w.canEdit && !w.archived
-          ? <Button type="button" variant="ghost" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
+          ? <Button type="button" variant="edit" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
               <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit workflow
             </Button>
           : draft && w.canEdit

@@ -120,7 +120,7 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
           </ol>
         )}
         {!disabled && w.rules.length < RULES_MAX && (
-          <Button type="button" variant="add" className="justify-self-start"
+          <Button type="button" variant="create" size="sm" className="justify-self-start"
             onClick={() => { setRules([...w.rules, { name: "", when: { all: [{ field: "", op: "eq", value: "" }] }, workflow: { id: "", version: 1 } }]); setOpen(w.rules.length); }}>
             <Icon icon={AddIcon} />Add a rule for some cases
           </Button>

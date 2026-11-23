@@ -233,7 +233,7 @@ export function FieldsStep(p: FieldsStepProps) {
                 {p.preview.pending && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Show examples</Button>
             )}
             {/* a value made from another column (the remark's first word as the reference): set with the columns */}
-            <Button type="button" variant="add" size="sm" onClick={addComputed}><Icon icon={AddIcon} /><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
+            <Button type="button" variant="create" size="sm" onClick={addComputed}><Icon icon={AddIcon} /><span className={computedNew ? "text-shimmer" : undefined}>Add computed column</span></Button>
           </span>
         )}>
         {/* where the columns come from, when they can't be read here (the panel "Columns of the source" folded in) */}

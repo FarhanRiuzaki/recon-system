@@ -225,7 +225,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
           ))}
         </ol>
         {a.variants.length < 20 && (
-          <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: blankClause, mapping: {} } as unknown as VariantSpec] }); setVi(a.variants.length); setPicked(null); }}>
+          <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: blankClause, mapping: {} } as unknown as VariantSpec] }); setVi(a.variants.length); setPicked(null); }}>
               <Icon icon={AddIcon} />Add a variant
             </Button>
         )}

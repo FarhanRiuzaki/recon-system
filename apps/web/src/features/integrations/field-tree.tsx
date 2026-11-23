@@ -90,7 +90,7 @@ function Rows({ fields, prefix, depth, onChange, masked, onMask, values, disable
                 onChange={(children, rename) => set(i, { ...f, children }, rename)} />
             )}
             {has(f.type) && !disabled && (
-              <Button type="button" variant="add" size="sm" className="justify-self-start px-0" style={{ marginLeft: `${(depth + 1) * 1.25}rem` }}
+              <Button type="button" variant="create" size="sm" className="justify-self-start" style={{ marginLeft: `${(depth + 1) * 1.25}rem` }}
                 onClick={() => set(i, { ...f, children: [...(f.children ?? []), { name: "", type: "string", required: false }] })}>Add a field to {f.name || "this group"}</Button>
             )}
           </li>
@@ -150,7 +150,7 @@ export function FieldTree({ title, fields, onChange, masked, onMask, values, onS
         ? <Rows fields={fields} prefix="" depth={0} onChange={onChange} masked={masked} onMask={onMask} values={values} disabled={disabled} label={title} />
         : <p className="text-body-sm text-fg-3">No fields yet. Paste them from the spec or add one.</p>}
       {!disabled && (
-        <Button type="button" variant="add" size="sm" className="justify-self-start px-0" onClick={() => onChange([...fields, { name: "", type: "string", required: false }])}>Add a field</Button>
+        <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => onChange([...fields, { name: "", type: "string", required: false }])}>Add a field</Button>
       )}
     </section>
   );

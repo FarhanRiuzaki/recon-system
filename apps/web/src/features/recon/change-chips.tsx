@@ -53,7 +53,7 @@ export function ChangeChips({ value, onChange, label, disabled }: { value: reado
           </span>
         </div>
       ) : (
-        <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => setAdding({ kind: "date", values: [""] })}>
+        <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => setAdding({ kind: "date", values: [""] })}>
           <Icon icon={AddIcon} />Add a change
         </Button>
       ))}

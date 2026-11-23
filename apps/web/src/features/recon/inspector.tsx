@@ -106,7 +106,7 @@ function ToleranceRows({ id, value, onChange, onRemoved }: { id: string; value: 
         </div>
       ))}
       {rows.map(([code, v]) => (left.has(code) ? <PlaceError key={code} id={`${id}-${code}-error`} text={toleranceProblem(v, code)} /> : null))}
-      {free.length > 0 && <span><Button type="button" variant="add" size="sm" onClick={add}><Icon icon={AddIcon} />Add currency</Button></span>}
+      {free.length > 0 && <span><Button type="button" variant="create" size="sm" onClick={add}><Icon icon={AddIcon} />Add currency</Button></span>}
     </div>
   );
 }
@@ -198,7 +198,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           </PairRow>
         ))}
           <div className="flex flex-wrap items-center gap-2">
-            <BlockedButton type="button" variant="add" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
+            <BlockedButton type="button" variant="create" size="sm" reason={p.predicates.length >= 20 ? "A pass has at most 20 conditions." : null}
               onClick={() => onChange({ ...p, predicates: [...p.predicates, predicateOf("eq", startField(fields))] })}><Icon icon={AddIcon} />Add condition</BlockedButton>
             {/* the fields both sides hold that no condition uses yet: one click adds "the same on both sides" */}
             {p.predicates.length < 20 && moreFields.map((f) => <Suggest key={f} onUse={() => addCondition(f)}>+ {keysText([f])}</Suggest>)}
@@ -246,7 +246,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
           </PairRow>
         ))}
           <div className="flex flex-wrap items-center gap-2">
-            <BlockedButton type="button" variant="add" size="sm" reason={p.blocking.length >= 5 ? "A pass compares by at most 5 fields." : null}
+            <BlockedButton type="button" variant="create" size="sm" reason={p.blocking.length >= 5 ? "A pass compares by at most 5 fields." : null}
               onClick={() => onChange({ ...p, blocking: [...p.blocking, startField(fields)] })}><Icon icon={AddIcon} />Add field</BlockedButton>
           </div>
         </fieldset>
@@ -309,7 +309,7 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
               onBlur={(e) => setFilter(j, { ...f, values: splitValues(e.target.value) })} />}
           </PairRow>
         ))}
-        <span><BlockedButton type="button" variant="add" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
+        <span><BlockedButton type="button" variant="create" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
           onClick={() => onChange({ ...s, filter: [...s.filter, { field: refs[0]!, op: "eq", value: "" }] })}><Icon icon={AddIcon} />Add filter</BlockedButton></span>
       </fieldset>
     </div>

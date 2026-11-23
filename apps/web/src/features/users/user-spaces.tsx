@@ -50,7 +50,7 @@ export function UserSpaces({ user, canManage }: { user: { id: string; name: stri
   return (
     <Panel flush icon={SurfacesIcon} title="Spaces" description="Where this user works and their roles there" count={q.data?.total}
       actions={canManage && joined && (
-        <Button ref={addButton} variant="add" size="sm" onPointerDown={preloadDialog} onFocus={preloadDialog} onClick={() => setAdding(joined)}>Add to space</Button>
+        <Button ref={addButton} variant="create" size="sm" onPointerDown={preloadDialog} onFocus={preloadDialog} onClick={() => setAdding(joined)}>Add to space</Button>
       )}>
       {q.error && q.data && <Notice tone="warn" live>Couldn&apos;t refresh the spaces; showing the last loaded list.</Notice>}
       <DataTable label="Spaces" columns={COLUMNS} rows={rows} rowKey={(s) => s.spaceId} loading={q.isPending} skeletonRows={2}

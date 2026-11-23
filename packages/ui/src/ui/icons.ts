@@ -86,7 +86,7 @@ export {
   UserArrowLeftRightIcon as AssignIcon, // Assign an item to someone
   HourglassIcon as WaitIcon, // Mark an item as waiting on someone outside
   InvestigationIcon as InvestigateIcon, // Mark an item as being investigated (not search)
-  PlusSignIcon as AddIcon, // An add intent (variant="add"): a row, a condition, an item
+  PlusSignIcon as AddIcon, // The create intent (variant="create"): a record, a row, a condition, an item
   LinkSquare02Icon as ExternalLinkIcon,
   Copy01Icon as CopyIcon,
   Tick02Icon as CheckIcon,

@@ -7,8 +7,9 @@ import { Slot } from "radix-ui";
  * Buttons (spec §5.3): radius 10, 32 px (28 sm), padding 0 12, 14/500, icon 16 + 6 gap; press scale 0.97 (100 ms),
  * hover fill 150 ms, disabled 0.4. `default` = the one primary per page (--action under a top-lit gradient with a lit
  * edge and a ring, drawn by base.css on `.bg-action[data-variant="default"]`; near-black / near-white); `secondary` =
- * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `add` / `remove` =
- * the intents (blue / red ink, their soft fill on hover); `caution` = a negative decision (Down ink, --line edge).
+ * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `create` / `edit` /
+ * `remove` = the intents by verb (green / blue / red ink on their soft fill, a step darker on hover); `caution` = a
+ * negative decision (Down ink, --line edge).
  * `outline` is kept as an alias of secondary for older callers.
  */
 const buttonVariants = cva(
@@ -22,11 +23,12 @@ const buttonVariants = cva(
         ghost: "border-transparent bg-transparent text-fg-2 hover:bg-tray hover:text-fg",
         destructive: "border-transparent bg-down-soft text-down-ink hover:bg-down-soft-hover",
         link: "h-auto border-transparent px-0 text-primary-ink underline underline-offset-4 hover:decoration-2 press-static",
-        // intents (owner 22 Nov: "remove merah, add biru … eye heatmap tau harus klik apa"): what a press does, by colour
-        // and word together. add = adds a row, a condition, an item (never the page's main create action, which is default);
-        // remove = takes one out of a list (an X or bin icon that removes is red; an X that closes stays ghost)
-        add: "border-transparent bg-transparent text-add-ink hover:bg-add-soft active:bg-add-soft-hover",
-        remove: "border-transparent bg-transparent text-down-ink hover:bg-down-soft active:bg-down-soft-hover",
+        // intents by verb (owner 24 Nov, after 22 Nov's "eye heatmap tau harus klik apa"): colour and word together.
+        // create = Create / Add / New (a row, a condition, a record; the page's one main CTA stays default); edit = Edit;
+        // remove = Delete / Remove, and an X or bin that removes (an X that closes stays ghost)
+        create: "border-transparent bg-create-soft text-create-ink hover:bg-create-soft-hover",
+        edit: "border-transparent bg-edit-soft text-edit-ink hover:bg-edit-soft-hover",
+        remove: "border-transparent bg-down-soft text-down-ink hover:bg-down-soft-hover",
         // caution = a negative decision that changes data but is not a removal (Reject, Turn off, Cancel request): Down
         // ink on a --line edge, so it reads as a button beside a primary without shouting like Danger (ds/intent.ts)
         caution: "border-line bg-transparent text-down-ink hover:bg-down-soft active:bg-down-soft-hover",

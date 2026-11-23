@@ -172,7 +172,7 @@ export function ConnectorEditor({ id }: { id: string }) {
       <PageHeader title={(!readOnly && spec.name.trim()) || c.name} description={`${PROFILE_LABEL[spec.profile]} · ${spec.operations.length} ${spec.operations.length === 1 ? "operation" : "operations"}`}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!c.open && c.canEdit
-          ? <Button type="button" variant="ghost" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
+          ? <Button type="button" variant="edit" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
               <Icon icon={busy === "start" ? SpinnerIcon : EditIcon} className={busy === "start" ? "motion-safe:animate-spin" : undefined} />Edit connector
             </Button>
           : draft && c.canEdit
@@ -245,7 +245,7 @@ export function ConnectorEditor({ id }: { id: string }) {
                 <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => setPasting(true)}>Paste a whole spec</Button>
               )}
               {!readOnly && spec.operations.length < OPERATIONS_MAX && (
-                <Button type="button" variant="add" size="sm" className="justify-self-start" onClick={() => {
+                <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => {
                   let n = spec.operations.length + 1;
                   while (spec.operations.some((o) => o.key === `operation_${n}`)) n++;
                   set({ ...spec, operations: [...spec.operations, newOperation(n)] }); go({ op: String(spec.operations.length) });

@@ -43,9 +43,9 @@ function hueSat(hex: string): [number, number] {
 }
 
 const SURFACES = ["bg", "sheet", "tray", "card", "inset", "raised", "row-selected", "primary-soft"];
-// add-ink: the Add intent's blue (owner 22 Nov: add blue, remove red, so the eye knows what to press)
-const INKS = ["fg", "fg-2", "fg-3", "primary", "primary-ink", "healthy-ink", "degraded-ink", "down-ink", "stopped-ink", "unknown-ink", "add-ink"];
-const STATES = ["healthy", "degraded", "down", "stopped", "unknown"];
+// create-ink / edit-ink: the action intents by verb (owner 24 Nov: Create green, Edit blue, Remove red)
+const INKS = ["fg", "fg-2", "fg-3", "primary", "primary-ink", "healthy-ink", "degraded-ink", "down-ink", "stopped-ink", "unknown-ink", "progress-ink", "create-ink", "edit-ink"];
+const STATES = ["healthy", "degraded", "down", "stopped", "unknown", "progress"];
 const TEXT: [string, string][] = [
   ...INKS.flatMap((ink) => SURFACES.map((s) => [ink, s] as [string, string])),
   ...STATES.map((s) => [`${s}-ink`, `${s}-soft`] as [string, string]),
@@ -59,11 +59,12 @@ const TEXT: [string, string][] = [
   // ds/segmented.tsx never uses fg-3 inside the active segment.
   ["fg", "seg-active"], ["fg-2", "seg-active"],
   ["tip-fg", "tip"], ["tip-2", "tip"],
-  // the Add and Remove intents' hover fills under their inks
-  ["add-ink", "add-soft"], ["add-ink", "add-soft-hover"], ["down-ink", "down-soft"],
+  // the Create, Edit and Remove intent buttons: ink on their soft fill at rest and on hover
+  ["create-ink", "create-soft"], ["create-ink", "create-soft-hover"], ["edit-ink", "edit-soft"], ["edit-ink", "edit-soft-hover"],
+  ["down-ink", "down-soft"], ["down-ink", "down-soft-hover"],
 ];
 const MARKS: [string, string][] = [
-  ...["healthy-mark", "degraded-mark", "down-mark"].flatMap((m) => [[m, "card"], [m, "sheet"]] as [string, string][]),
+  ...["healthy-mark", "degraded-mark", "down-mark", "progress-mark"].flatMap((m) => [[m, "card"], [m, "sheet"]] as [string, string][]),
   ...[1, 2, 3, 4, 5, 6].map((i) => [`chart-${i}`, "card"] as [string, string]),
   ["primary", "card"],
   // Focus ring (2 px outline) against the surfaces it sits on.
@@ -71,7 +72,7 @@ const MARKS: [string, string][] = [
   // StatusChip draws Stopped and Unknown shapes in stopped-mark (unknown-mark is decorative only, < 3:1).
   ["stopped-mark", "card"], ["stopped-mark", "sheet"],
   // a Panel header (status legend, icons) sits on the tray
-  ...["healthy-mark", "degraded-mark", "down-mark", "stopped-mark"].map((m) => [m, "tray"] as [string, string]),
+  ...["healthy-mark", "degraded-mark", "down-mark", "stopped-mark", "progress-mark"].map((m) => [m, "tray"] as [string, string]),
 ];
 
 /** Spec §3.3: slot order is fixed (hue follows the entity, never the rank). */
@@ -120,11 +121,18 @@ describe.each([["light", false], ["dark", true]] as const)("tokens (%s)", (name,
   it("amber only for the sun: no amber/orange status token within 1.3:1 of --brand-sun", () => {
     // Hue-scoped: luminance contrast alone ignores hue, and green or grey status inks at the sun's lightness are no amber.
     const [sunHue] = hueSat(t["brand-sun"]!);
-    const near = Object.keys(t).filter((k) => /^(healthy|degraded|down|stopped|unknown)-(mark|ink|soft)$/.test(k)).filter((k) => {
+    const near = Object.keys(t).filter((k) => /^(healthy|degraded|down|stopped|unknown|progress)-(mark|ink|soft)$/.test(k)).filter((k) => {
       const [h, sat] = hueSat(t[k]!);
       return sat > 0.3 && Math.abs(h - sunHue) <= 30 && contrast(t[k]!, t["brand-sun"]!) < 1.3;
     });
     expect(near).toEqual([]);
+  });
+  it("action intents by verb (owner 24 Nov): create ink green, edit ink blue, remove (down) ink red; In progress is the Edit blue", () => {
+    const hue = (k: string) => hueSat(t[k]!)[0];
+    expect(hue("create-ink")).toBeGreaterThan(90); expect(hue("create-ink")).toBeLessThan(170);
+    expect(hue("edit-ink")).toBeGreaterThan(200); expect(hue("edit-ink")).toBeLessThan(240);
+    expect(hue("down-ink") > 340 || hue("down-ink") < 15).toBe(true);
+    expect([t["progress-ink"], t["progress-soft"]]).toEqual([t["edit-ink"], t["edit-soft"]]);
   });
   it("surfaces step: bg ≠ sheet ≠ tray, card distinct from tray", () => {
     expect(new Set([t.bg, t.sheet, t.tray]).size).toBe(3);

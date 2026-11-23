@@ -27,7 +27,7 @@ export function FormSectionGallery() {
     <Panel title="Numbered sections" description="SectionHeading: the order to fill a long editor in, each part's purpose under its title">
       <div className="grid gap-5">
         <SectionHeading n={1} level={3} title="Who approves" description="The workflow every request goes through" />
-        <SectionHeading n={2} level={3} title="What is sent to the bank" description="Actions that run on approval" actions={<Button variant="add"><Icon icon={AddIcon} />Add an action</Button>} />
+        <SectionHeading n={2} level={3} title="What is sent to the bank" description="Actions that run on approval" actions={<Button variant="create" size="sm"><Icon icon={AddIcon} />Add an action</Button>} />
       </div>
     </Panel>
     <Panel title="Form controls" description="Shared sizing, baseline alignment and accessible descriptions">

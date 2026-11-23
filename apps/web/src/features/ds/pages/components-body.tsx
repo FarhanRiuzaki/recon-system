@@ -46,7 +46,7 @@ export function ComponentsSections() {
             </div>
             {/* intents (owner 22 Nov): add is blue, remove is red, whether a bin or an X; an X that closes stays ghost */}
             <div className="flex flex-wrap items-center gap-2" aria-label="Add and remove intents" role="group">
-              <Button variant="add"><Icon icon={AddIcon} />Add a condition</Button>
+              <Button variant="create"><Icon icon={AddIcon} />Add a condition</Button>
               <Button variant="remove" size="icon" aria-label="Remove condition 1"><Icon icon={RemoveIcon} /></Button>
               <Button variant="remove" size="icon" aria-label="Remove change 1"><Icon icon={CloseIcon} /></Button>
               <Button variant="ghost" size="icon" aria-label="Close panel"><Icon icon={CloseIcon} /></Button>
@@ -110,7 +110,7 @@ export function ComponentsSections() {
                 <TooltipTrigger asChild><Button variant="secondary"><Icon icon={InfoIcon} />Hover for a tooltip</Button></TooltipTrigger>
                 <TooltipContent>Inverse tooltip: radius 10, 13 px text, at most 280 px wide.</TooltipContent>
               </Tooltip>
-              <Button variant="secondary" onClick={() => setDialog(true)}>Delete user</Button>
+              <Button variant="remove" onClick={() => setDialog(true)}>Delete user</Button>
               <BlockedButton variant="secondary" reason="This is the last active Superadmin. Make another user Superadmin first.">Deactivate user</BlockedButton>
               <span className="inline-flex items-center"><Checkbox checked label="Checked sample" /><Checkbox checked="mixed" label="Mixed sample" /><Checkbox checked={false} label="Unchecked sample" /><Checkbox checked readOnly label="Read-only sample" /><Checkbox checked={false} reason="Your role doesn't hold this permission." label="Read-only with reason sample" /></span>
               <Button variant="secondary" onClick={() => setSecret(true)}>Show one-time secret</Button>

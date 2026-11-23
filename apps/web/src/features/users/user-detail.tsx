@@ -111,8 +111,8 @@ export function UserDetail({ id }: { id: string }) {
     <div className="grid gap-section">
       <PageHeader title={u.name} status={<UserStatusChip user={u} />} description={`${u.username} · ${u.email}`}
         actions={can("user.edit") && (rank
-          ? <BlockedButton variant="ghost" reason={rank}><Icon icon={EditIcon} />Edit user</BlockedButton>
-          : <Button asChild variant="ghost"><Link href={`/users/${id}/edit`}><Icon icon={EditIcon} />Edit user</Link></Button>)}
+          ? <BlockedButton variant="edit" reason={rank}><Icon icon={EditIcon} />Edit user</BlockedButton>
+          : <Button asChild variant="edit"><Link href={`/users/${id}/edit`}><Icon icon={EditIcon} />Edit user</Link></Button>)}
         more={[
           ...(can("user.edit") && !(activating ? !u.isActive : u.isActive) ? [{ label: "Activate user", reason: rank, busy: activating, onSelect: () => void setActive(true) }] : []),
           ...(can("user.edit") ? [
