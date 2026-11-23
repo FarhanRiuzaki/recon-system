@@ -53,8 +53,8 @@ day closed with an open group), §7 stage 5. Stage 4 plan: `docs/superpowers/pla
 - `periodOf(at: Date, cutoff: string | null): string` (yyyy-MM-dd, Jakarta, at/after cutoff → next day); `closesAtOf(period, cutoff): Date`.
 - `buildGroupPayload(v, op, members: Context[], group: { period; keys: { field; value }[] }, setup, handled): Built` — group context = first member + `group.*` + `break.amount` = sum; sum ≤ 0 with `zeroOrNegative: "skip"` → skipped; fields under an `array` request field are built once per member (items[]); everything else from the group context.
 
-- [ ] Tests: `periodOf` (15:59 → same day, 16:00 → next, null cutoff → same day, 23:30 UTC+7 boundary); a group variant without `group` refused; `buildGroupPayload` sums minor units (`group.sum|amount:major:2`), counts, reads `group.key.side_a.attrs.merchant_id`, an array `Items` with one element per member, required element field empty → `build_error` naming `Items[1].Ref`, sum 0 → skipped.
-- [ ] Implement; `bun run --filter @starterkit/shared test`; commit `feat(shared): grouped variants and the group payload`.
+- [x] Tests: `periodOf` (15:59 → same day, 16:00 → next, null cutoff → same day, 23:30 UTC+7 boundary); a group variant without `group` refused; `buildGroupPayload` sums minor units (`group.sum|amount:major:2`), counts, reads `group.key.side_a.attrs.merchant_id`, an array `Items` with one element per member, required element field empty → `build_error` naming `Items[1].Ref`, sum 0 → skipped.
+- [x] Implement; `bun run --filter @starterkit/shared test`; commit `feat(shared): grouped variants and the group payload`.
 
 ### Task 2: Groups — tables, joining in the approval
 
@@ -67,8 +67,8 @@ day closed with an open group), §7 stage 5. Stage 4 plan: `docs/superpowers/pla
 - `joinGroup(tx, spaceId, at: { configId, configVersionId, actionIndex, variantIndex, action, variant, labels }, member: { requestId, itemId, context }, now): Promise<{ groupId } | null>` (null = already a member).
 - In `enqueueActions`: a picked variant with `per: "group"` (posting, approved/level approved) joins instead of writing a run; `skip` amount still writes a `skipped` run.
 
-- [ ] Tests: approve → one open group (period today Jakarta, key value, members 1, total), no run; second break, same key → same group; other key → other group; key empty → value "" group; approve after the cutoff → next day's period; recon day of the period already closing → next period; double approve → one member; concurrent joins of a new group → one group; group full (members 500, set in the test) → part 2; a closed group → next period.
-- [ ] Implement; commit `feat(integrations): approved breaks join their posting group`.
+- [x] Tests: approve → one open group (period today Jakarta, key value, members 1, total), no run; second break, same key → same group; other key → other group; key empty → value "" group; approve after the cutoff → next day's period; recon day of the period already closing → next period; double approve → one member; concurrent joins of a new group → one group; group full (members 500, set in the test) → part 2; a closed group → next period.
+- [x] Implement; commit `feat(integrations): approved breaks join their posting group`.
 
 ### Task 3: Closing — cutoff job, day close, the group run
 
@@ -79,22 +79,22 @@ day closed with an open group), §7 stage 5. Stage 4 plan: `docs/superpowers/pla
 - `closeDueGroups(on: Tx, now): Promise<number>` — every space's open `cutoff` groups with `closes_at <= now`, one transaction each.
 - `closeGroupsOfDay(tx, spaceId, configId, date): Promise<number>` — every open group of the config with `period <= date`.
 
-- [ ] Tests: cutoff passed → one run with the summed payload, members point at it, worker sends it (stub fetch as worker.test.ts); `closeDay` past its close moment closes the day's day_close and cutoff groups; closing twice → one run; empty group → no run.
-- [ ] Implement; commit `feat(integrations): posting groups close at their cutoff or at day close`.
+- [x] Tests: cutoff passed → one run with the summed payload, members point at it, worker sends it (stub fetch as worker.test.ts); `closeDay` past its close moment closes the day's day_close and cutoff groups; closing twice → one run; empty group → no run.
+- [x] Implement; commit `feat(integrations): posting groups close at their cutoff or at day close`.
 
 ### Task 4: Sign-off waits; publish checks
 
 **Files:** `engine/signoff.ts` (`groupsWaiting(tx, spaceId, configId, dates)` from integrations), `recon/rules.ts` (`checkActions`), tests `signoff.test.ts`, `recon` rules unit test.
 
-- [ ] Tests: prepare refused `invalid_state` "1 posting group of this day is still open or being sent. Wait for it to be sent." while a group of period ≤ date is open or its run queued/sending; signoff list `blocked` says the same. checkActions: group on a notify action, on rejected, a key on `break.amount` (money) or `approval.by`, an unknown key, `group.*` read by a non-group variant → each refused naming the place.
-- [ ] Implement; commit `feat(engine): sign-off waits for the day's posting groups; grouped variants checked on publish`.
+- [x] Tests: prepare refused `invalid_state` "1 posting group of this day is still open or being sent. Wait for it to be sent." while a group of period ≤ date is open or its run queued/sending; signoff list `blocked` says the same. checkActions: group on a notify action, on rejected, a key on `break.amount` (money) or `approval.by`, an unknown key, `group.*` read by a non-group variant → each refused naming the place.
+- [x] Implement; commit `feat(engine): sign-off waits for the day's posting groups; grouped variants checked on publish`.
 
 ### Task 5: Read side — Posting groups, break detail, posting list
 
 **Files:** `integrations/groups.ts` (`groupPage`, `groupOf`), `integrations/controller.ts` (`GET /v1/spaces/:spaceId/recons/:configId/posting-groups`, `…/posting-groups/:groupId`), `integrations/actions.ts` (`runsOf` adds the break's group entries; run rows carry `group`), `packages/shared/src/contracts/breaks.ts` (`PostingGroupListQuery`, `PostingGroupRowDto`, `PostingGroupDto`; `ActionRunDto.group`, status `grouped`; `ActionRunRowDto.group`), `packages/shared/src/paging.ts`, `posting.ts` (label "Waiting for group"), `apps/web/scripts/emit-api-schemas.ts`, `docs/api/README.md`, `bun run api:schemas`.
 
-- [ ] Tests: list pages and sorts by period, status filter open/closed; detail lists members; another space's group 404; break detail of a waiting member → entry `grouped` with period and closes at, then the group run's status once sent; the posting list row of a group run names its group and member count.
-- [ ] Implement; commit `feat(integrations): posting groups list and detail; the break's group`.
+- [x] Tests: list pages and sorts by period, status filter open/closed; detail lists members; another space's group 404; break detail of a waiting member → entry `grouped` with period and closes at, then the group run's status once sent; the posting list row of a group run names its group and member count.
+- [x] Implement; commit `feat(integrations): posting groups list and detail; the break's group`.
 
 ### Task 6: Web — variant editor, mapper, Posting groups tab, break panel
 
@@ -103,12 +103,12 @@ day closed with an open group), §7 stage 5. Stage 4 plan: `docs/superpowers/pla
 - Variant editor: "Send" select (One call per item / One call for the request / Grouped); grouped shows "Group by" (multi-pick, key-capable fields, caption "e.g. Merchant ID") and "Send at" (Cutoff time + time input, red * / At day close) on aligned rows; the mapper's catalog grows the Group fields.
 - Posting groups tab: table (Period, Group key, Items, Total, Status chip, Sends at), row opens a sheet (`?group=`) with its members (item link, amount, approved at) and run result.
 - Break panel: a `grouped` entry reads "In group 23 Nov 2026 · Merchant ID 0012345 · waiting until 16:00" (or "until day close").
-- [ ] Tests (pure): `groupKeyText([{label:"Merchant ID",value:""}])` = "No Merchant ID"; `groupStatus` Open/Closing/result; `unfinishedReason` for a grouped cutoff without time; typecheck, lint, budget ≤ 300 kB.
-- [ ] Commit `feat(web): grouped posting in the variant editor, Posting groups tab and the break`.
+- [x] Tests (pure): `groupKeyText([{label:"Merchant ID",value:""}])` = "No Merchant ID"; `groupStatus` Open/Closing/result; `unfinishedReason` for a grouped cutoff without time; typecheck, lint, budget ≤ 300 kB.
+- [x] Commit `feat(web): grouped posting in the variant editor, Posting groups tab and the break`.
 
 ### Task 7: Docs and final check
 
-- [ ] DEC-052 amendment 4 in `docs/decisions.md` (group mode, rulings), spec status line "tahap 5 dikirim", AGENTS.md ownership line (`posting_groups`, `posting_group_items`); `bun run check`; budget; commit.
+- [x] DEC-052 amendment 4 in `docs/decisions.md` (group mode, rulings), spec status line "tahap 5 dikirim", AGENTS.md ownership line (`posting_groups`, `posting_group_items`); `bun run check`; budget; commit.
 
 ## Rulings (owner: "ambil rekomendasi lo"; each with its cost if wrong)
 
@@ -133,3 +133,6 @@ Recorded in `.superpowers/sdd/2026-11-23-group-posting-stage-5/progress.md` as t
 | R15 | No manual "send now" (YAGNI) | a stuck cutoff can't be forced from the screen |
 | R16 | The unmatch list has no posting facet at 6b5bbed (break-queue.ts, Batch 8's file); "Waiting for group" shows in the break's panel and on the Posting groups tab; the facet is left to the posting-facet work | an operator can't filter the unmatch list by "Waiting for group" |
 | R17 | Group detail is a sheet on the tab (`?group=<id>`), not a page of its own | no breadcrumb for a group |
+| R18 | (while building) The change (unmatch, write_off, …) is part of the identity: action indexes count per change | none |
+| R19 | (while building) `closeDay` closes the groups once its close moment has passed, before its wait for complete data | late data's breaks approved after that go to the next period |
+| R20 | (while building) A break waiting in a group shows its event as "Approved" (groups keep no event) until the group's run exists | a level-approved group reads "Approved" while it waits |
