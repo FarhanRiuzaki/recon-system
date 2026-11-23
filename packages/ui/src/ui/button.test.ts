@@ -22,6 +22,18 @@ describe("Button variants", () => {
     expect(c).toEqual(expect.arrayContaining(["border-transparent", `bg-${token}-soft`, `text-${token}-ink`, `hover:bg-${token}-soft-hover`]));
     expect(c).not.toContain("bg-transparent");
   });
+  it.each([["remove", "down"], ["edit", "edit"]] as const)("icon-only %s (review 24 Nov): clear with its ink at rest, its soft fill on hover and focus; labelled keeps the fill", (variant, token) => {
+    for (const size of ["icon", "icon-sm"] as const) {
+      const c = classes(renderToStaticMarkup(h(Button, { variant, size, "aria-label": "Remove row" })));
+      expect(c).toEqual(expect.arrayContaining(["bg-transparent", `text-${token}-ink`, `hover:bg-${token}-soft`, `focus-visible:bg-${token}-soft`]));
+      expect(c).not.toContain(`bg-${token}-soft`);
+    }
+    for (const size of ["sm", "default"] as const) {
+      const c = classes(renderToStaticMarkup(h(Button, { variant, size }, "Remove")));
+      expect(c).toContain(`bg-${token}-soft`);
+      expect(c).not.toContain("bg-transparent");
+    }
+  });
   it("create-solid (the page's main Create / Add / New): solid green, its own label colour, no gradient", () => {
     const c = classes(markup("create-solid"));
     expect(c).toEqual(expect.arrayContaining(["border-transparent", "bg-create-solid", "text-create-solid-fg", "hover:bg-create-solid-hover"]));

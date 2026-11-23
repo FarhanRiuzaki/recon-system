@@ -574,7 +574,9 @@ Padding 0 12, icon 16 + 6 gap, radius 10, `label`→ `body` 14/500. Press: scale
 Intents by verb (owner, 24 Nov; supersedes 22 Nov's add blue and the Ghost Edit): **Create / Add / New** is
 `variant="create"` (green), **Edit** is `variant="edit"` (blue), **Delete / Remove** is `variant="remove"` (red),
 whether it shows a bin or an X. All three are soft-filled: the ink on its soft fill at rest, one step darker under the
-pointer. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's main
+pointer; an icon-only Remove (bin, X) or Edit (pencil), `size="icon"` / `"icon-sm"`, is clear at rest with its ink
+alone and takes its soft fill on hover and keyboard focus (review 24 Nov: a row of them stays quiet), while a labelled
+one keeps the fill (`button.test.ts` "icon-only …"). An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's main
 Create / Add / New ("Create recon", "New workflow", "Add member", a create dialog's submit) is `variant="create-solid"`:
 the page's one primary, solid `--create-solid` `#0f6e3f` with `--create-solid-fg` white (dark `#4cc98a` with
 `#0b2216`), `--create-solid-hover` `#0c5a33` (dark `#6dd6a0`). A confirm dialog's "Remove …" / "Delete …" stays Danger.

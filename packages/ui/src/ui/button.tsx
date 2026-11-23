@@ -8,7 +8,7 @@ import { Slot } from "radix-ui";
  * hover fill 150 ms, disabled 0.4. `default` = the one primary per page (--action under a top-lit gradient with a lit
  * edge and a ring, drawn by base.css on `.bg-action[data-variant="default"]`; near-black / near-white); `secondary` =
  * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `create` / `edit` /
- * `remove` = the intents by verb; `create-solid` = the page's main Create as its one primary, solid green (green / blue / red ink on their soft fill, a step darker on hover); `caution` = a
+ * `remove` = the intents by verb; `create-solid` = the page's main Create as its one primary, solid green (green / blue / red ink on their soft fill, a step darker on hover; an icon-only remove / edit is clear at rest, the fill on hover and focus); `caution` = a
  * negative decision (Down ink, --line edge).
  * `outline` is kept as an alias of secondary for older callers.
  */
@@ -45,7 +45,13 @@ const buttonVariants = cva(
     },
     // a link sits on the text line at every size: no side padding and no fixed height (audit 2 A9, "Paste a
     // connection string" 11 px in from the field above it: the size's padding won over the variant's px-0)
-    compoundVariants: [{ variant: "link", class: "h-auto px-0" }],
+    compoundVariants: [
+      { variant: "link", class: "h-auto px-0" },
+      // an icon-only bin, X or pencil (review 24 Nov): its ink alone at rest, so a row of them stays quiet beside the
+      // page's actions; the soft fill comes on hover and keyboard focus. A labelled Remove / Edit keeps the fill.
+      { variant: "remove", size: ["icon", "icon-sm"], class: "bg-transparent hover:bg-down-soft focus-visible:bg-down-soft" },
+      { variant: "edit", size: ["icon", "icon-sm"], class: "bg-transparent hover:bg-edit-soft focus-visible:bg-edit-soft" },
+    ],
     defaultVariants: { variant: "default", size: "default" },
   },
 );
