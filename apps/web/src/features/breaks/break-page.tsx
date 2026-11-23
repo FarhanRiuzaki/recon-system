@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Facts, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { appDate, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -212,10 +212,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
           </div>
         ) : (
           <Panel title="This item" description={open ? `No ${other} item is proposed for it yet; each run looks for one.` : undefined}>
-            <dl className="grid gap-x-6 gap-y-2 text-body-sm md:grid-cols-[9rem_minmax(0,1fr)]">
-              <dt className="text-fg-3">Source</dt><dd className="text-fg">{b.item.source ?? "–"}</dd>
-              <dt className="text-fg-3">Age</dt><dd className="text-fg">{b.ageDays === 0 ? "Today" : `${b.ageDays} ${b.ageDays === 1 ? "day" : "days"} old`}</dd>
-            </dl>
+            <Facts items={[["Source", b.item.source ?? "–"], ["Age", b.ageDays === 0 ? "Today" : `${b.ageDays} ${b.ageDays === 1 ? "day" : "days"} old`]]} />
           </Panel>
         )}
         {b.actions.length > 0 && <PostingPanel b={b} spaceId={spaceId} />}
@@ -268,7 +265,8 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             </Panel>
           )}
           {!access.take && access.blocked && <Notice>{access.blocked}</Notice>}
-          <div className="grid items-stretch gap-gutter md:grid-cols-2 xl:grid-cols-3">
+          {/* an even count stays 2 a row (4 = 2 × 2, no orphan); an odd count 3 a row from 1280 (audit 2, Unmatch item) */}
+          <div className={`grid items-stretch gap-gutter md:grid-cols-2 ${settle.length % 2 ? "xl:grid-cols-3" : ""}`}>
             {settle.map((s) => (
               <ActionCard key={s.key} title={s.title} consequence={s.consequence} meta={s.meta || s.warning ? <>{s.meta}{s.warning && <span className="block text-degraded-ink">{s.warning}</span>}</> : undefined} className={s.key === "close" && closing ? "md:col-span-full" : undefined}
                 action={s.key === "close" && closing

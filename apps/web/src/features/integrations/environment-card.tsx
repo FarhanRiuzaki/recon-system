@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CategoryChip, Checkbox, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
+import { CategoryChip, Checkbox, Facts, Field, InfoTip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -59,6 +59,9 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
   );
 }
 
+/** A setting as read: in mono (an address, an id), or "Not set". */
+const machine = (v: string) => (v ? <span className="font-mono">{v}</span> : <span className="text-fg-3">Not set</span>);
+
 export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit, active, onDetail }: {
   c: ConnectorDetailDto; env: Environment; settings: EnvironmentSettings; onSettings: (s: EnvironmentSettings) => void; editing: boolean; canEdit: boolean; active: boolean;
   onDetail: (d: ConnectorDetailDto) => void;
@@ -76,27 +79,35 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
   return (
     <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <CategoryChip label={`${ENVIRONMENT_LABEL[env]} active`} slot="neutral" /> : undefined}>
       <div className="grid gap-section">
+        {/* read: the values in full (audit 2 B12), never in disabled inputs that cut them */}
+        {!editing ? (
+          <Facts items={[
+            ["Address", machine(settings.baseUrl)], ["Host header", machine(settings.host)], ["Partner ID", machine(settings.partnerId)], ["Channel ID", machine(settings.channelId)],
+            ["Bank's certificate", settings.verifyTls ? "Checked" : "Not checked"],
+          ]} />
+        ) : <>
         <div className="grid gap-4 md:grid-cols-2">
           <Field id={id("url")} label="Address">
-            <Input id={id("url")} value={settings.baseUrl} disabled={!editing} placeholder="https://openapi.bank.local:15000" className="font-mono" onChange={(e) => set("baseUrl", e.target.value)} />
+            <Input id={id("url")} value={settings.baseUrl} placeholder="https://openapi.bank.local:15000" className="font-mono" onChange={(e) => set("baseUrl", e.target.value)} />
           </Field>
           <Field id={id("host")} label="Host header">
-            <Input id={id("host")} value={settings.host} disabled={!editing} className="font-mono" onChange={(e) => set("host", e.target.value)} />
+            <Input id={id("host")} value={settings.host} className="font-mono" onChange={(e) => set("host", e.target.value)} />
           </Field>
           <Field id={id("partner")} label="Partner ID">
-            <Input id={id("partner")} value={settings.partnerId} disabled={!editing} className="font-mono" onChange={(e) => set("partnerId", e.target.value)} />
+            <Input id={id("partner")} value={settings.partnerId} className="font-mono" onChange={(e) => set("partnerId", e.target.value)} />
           </Field>
           <Field id={id("channel")} label="Channel ID">
-            <Input id={id("channel")} value={settings.channelId} disabled={!editing} className="font-mono" onChange={(e) => set("channelId", e.target.value)} />
+            <Input id={id("channel")} value={settings.channelId} className="font-mono" onChange={(e) => set("channelId", e.target.value)} />
           </Field>
         </div>
         <span className="flex items-center gap-2">
-          <Checkbox id={id("tls")} label="Check the bank's certificate" checked={!!settings.verifyTls} readOnly={!editing} onToggle={() => onSettings({ ...settings, verifyTls: !settings.verifyTls })} />
+          <Checkbox id={id("tls")} label="Check the bank's certificate" checked={!!settings.verifyTls} onToggle={() => onSettings({ ...settings, verifyTls: !settings.verifyTls })} />
           <label htmlFor={id("tls")} className="text-body-sm text-fg">Check the bank&apos;s certificate</label>
           <InfoTip label="About the certificate check" title="Certificate check">
             Off by default: the bank&apos;s internal endpoints carry certificates no client checks. The request and the answer stay encrypted either way. On: the CA bundle, else the server&apos;s trusted certificates, must accept it.
           </InfoTip>
         </span>
+        </>}
         <ul className="grid divide-y divide-line" aria-label={`${ENVIRONMENT_LABEL[env]} credentials`}>
           {(Object.keys(SECRET_LABEL) as SecretKey[]).map((k) => (
             <li key={k} className="flex items-center justify-between gap-3 py-2">

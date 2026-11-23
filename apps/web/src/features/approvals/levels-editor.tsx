@@ -2,13 +2,13 @@
 
 import { arrayMove } from "@dnd-kit/sortable";
 import { Fragment, useEffect, useId, useReducer, useRef, useState } from "react";
-import { ActionMenu, CategoryChip, Combobox, type ComboOption, EditorRow } from "@starterkit/ui/ds";
+import { ActionMenu, CategoryChip, Combobox, type ComboOption, EditorRow, EditToggle } from "@starterkit/ui/ds";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { cn } from "@starterkit/ui/lib/cn";
 import { plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, CloseIcon, EditIcon, FailedIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, FailedIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
@@ -114,10 +114,10 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
       <div data-slot="level-head" className="flex min-h-12 items-center gap-3 px-4 py-2">
         <span aria-hidden="true" className={cn("grid size-7 shrink-0 place-items-center rounded-full text-label tabular transition-colors duration-(--dur-fast)",
           editing ? "bg-primary text-primary-foreground" : "bg-primary-soft text-primary")}>{n}</span>
-        <h3 className="min-w-0 flex-1 truncate text-label text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</h3>
+        <h3 className="min-w-0 flex-1 truncate text-body font-medium text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</h3>
         {editing ? (
           <span className="flex shrink-0 items-center gap-1">
-            <Button type="button" variant="edit" size="sm" data-focus="done" onClick={onDone}>Done</Button>
+            <EditToggle open onToggle={onDone} data-focus="done" />
             <ActionMenu label={`Actions for level ${n}`} actions={[
               { id: "up", label: "Move up", disabled: i === 0, hint: i === 0 ? "It is the first level." : undefined, onSelect: () => onMove(-1) },
               { id: "down", label: "Move down", disabled: i === count - 1, hint: i === count - 1 ? "It is the last level." : undefined, onSelect: () => onMove(1) },
@@ -125,7 +125,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
             ]} />
           </span>
         ) : !readOnly && (
-          <Button type="button" variant="edit" size="sm" aria-label={`Edit level ${n}`} data-focus="edit" onClick={onEdit}><Icon icon={EditIcon} />Edit</Button>
+          <EditToggle open={false} onToggle={onEdit} aria-label={`Edit level ${n}`} data-focus="edit" />
         )}
       </div>
       <div key={editing ? "edit" : "read"} data-slot="level-body" className="grid animate-fade gap-2 border-t border-line px-4 py-3">
@@ -215,7 +215,7 @@ export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { le
   const removedAt = useRef<number | null>(null);
   return (
     <>
-      <ol ref={listRef} className="grid gap-3" aria-label="Levels in order">
+      <ol ref={listRef} className="grid gap-list" aria-label="Levels in order">
         {levels.map((l, i) => (
           <LevelCard key={i} level={l} index={i} count={levels.length} options={options} editing={editing === i} readOnly={disabled} checked={checked === i}
             onChange={(x) => setLevel(i, x)} onEdit={() => openLevel(i)} onMove={(d) => move(i, d)} onRemove={() => setRemoving(i)}

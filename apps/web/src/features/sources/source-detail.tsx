@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
-import { BlockedButton, CategoryChip, type Column, DataTable, Failure, LazyMount, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
+import { BlockedButton, CategoryChip, type Column, DataTable, Facts, Failure, LazyMount, Notice, Panel, RouteTabs, StatTile, StatTiles } from "@starterkit/ui/ds";
 import { formatDate, formatDateTime, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
@@ -48,20 +48,6 @@ export function editAction(s: SourceDto, spaceId: string, roles: readonly string
   return { label: "Edit source", onSelect: start.run, busy: start.busy };
 }
 const PAUSED_REASON = "This source is paused. Pulls start again once a new source version is approved.";
-
-/** Label / value rows of a card (as on a user's details). */
-function Rows({ items }: { items: { label: string; value: string }[] }) {
-  return (
-    <dl className="grid gap-2">
-      {items.map((i) => (
-        <div key={i.label} className="flex items-baseline gap-3 border-b border-line pb-2 last:border-b-0 last:pb-0">
-          <dt className="w-36 shrink-0 text-label text-fg">{i.label}</dt>
-          <dd className="min-w-0 text-body-sm wrap-anywhere text-fg-2">{i.value}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
 
 /** "Version 1 · Database · snapshot per date · Oracle · Daily at 06:00 WIB": what the source is, never where it connects. */
 function summary(s: SourceDto): string {
@@ -230,7 +216,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
             <Panel icon={NetworkIcon} title="Pull" description={`By watermark, ${readWhenText(s.published?.spec?.input.kind === "db_watermark" ? s.published.spec.input.when : undefined)}`}>
               {/* what the tiles above don't say (complete through and the next read are there): what it reads, how the
                   last pull went and how its lag is judged */}
-              <Rows items={[
+              <Facts items={[
                 { label: "Reads", value: s.reads ?? "–" },
                 { label: "Last read", value: h.lastReadAt ? at(h.lastReadAt) : "Not yet" },
                 { label: "Last error", value: h.lastError ? errorSentence(h.lastError) : "None" },
@@ -246,7 +232,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
           )}
           {s.connection && (
             <Panel icon={KeyIcon} title="Connection" description="Stored encrypted; the password is never shown">
-              <Rows items={[
+              <Facts items={[
                 { label: "Engine", value: ENGINE[s.connection.engine] },
                 ...(s.server ? [{ label: "Server", value: s.server }] : []),
                 { label: "TLS", value: s.connection.options.tls ? "On" : "Off" },

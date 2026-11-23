@@ -54,12 +54,7 @@ const STICK = "sticky left-0 z-1 w-40 min-w-40 border-r border-line xl:w-72 xl:m
 /** Scrolls sideways inside its card when the card is narrower than the table (160 or 288 + 7 × 108 px wide); the Action column stays. */
 export function RoleMatrix() {
   return (
-    <Panel flush className="min-w-0" title={TITLE} footnote={<>
-      &ldquo;Does&rdquo; on an action with an approver means sending a request: nothing changes until someone else approves it.
-      Each change&apos;s workflow names who approves it; without one, a Reviewer or a Space admin does.
-      Source admin is granted and removed only by an app admin, not by a space admin.
-      The approver can&apos;t be the preparer or anyone who resolved an item that day. Approving freezes the day.
-    </>}>
+    <Panel flush className="min-w-0" title={TITLE}>
       {/* Focusable, so a keyboard can scroll it where it is wider than the card (axe scrollable-region-focusable); relative,
           so the sr-only "Not allowed" spans (absolute) stay inside it instead of widening the page. */}
       <ScrollFade tabIndex={0} role="region" aria-label={TITLE} className="relative overflow-y-hidden outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-primary">
@@ -83,6 +78,13 @@ export function RoleMatrix() {
           ))}
         </table>
       </ScrollFade>
+      {/* the rules behind the cells, at body size under the table (audit 2: an 11 px footnote over 3 lines) */}
+      <ul className="grid list-disc gap-1 border-t border-line px-4 py-3 pl-8 text-body-sm text-fg-2">
+        <li>&ldquo;Does&rdquo; on an action with an approver means sending a request: nothing changes until someone else approves it.</li>
+        <li>Each change&apos;s workflow names who approves it; without one, a Reviewer or a Space admin does.</li>
+        <li>Source admin is granted and removed only by an app admin, not by a space admin.</li>
+        <li>The approver can&apos;t be the preparer or anyone who resolved an item that day. Approving freezes the day.</li>
+      </ul>
     </Panel>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Failure, Field, Notice, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
+import { Failure, Field, Notice, Panel, RouteTabs, Segmented, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatDateTime } from "@starterkit/ui/lib/format";
@@ -101,11 +102,12 @@ export function ConnectorEditor({ id }: { id: string }) {
   const tab = asTab(params.get("tab"));
   // the operation by its place in the list (its key is edited on screen and may repeat while typed)
   const opAt = Number(params.get("op") ?? 0);
-  const go = (next: Record<string, string | null>) => {
+  const hrefWith = (next: Record<string, string | null>) => {
     const sp = new URLSearchParams(params.toString());
     for (const [k, v] of Object.entries(next)) if (v === null) sp.delete(k); else sp.set(k, v);
-    router.replace(`${pathname}?${sp.toString()}`, { scroll: false });
+    return `${pathname}?${sp.toString()}`;
   };
+  const go = (next: Record<string, string | null>) => router.replace(hrefWith(next), { scroll: false });
 
   const [spec, setSpec] = useState<ConnectorSpec | null>(null);
   const [loadedFrom, setLoadedFrom] = useState<string | null>(null);
@@ -190,7 +192,10 @@ export function ConnectorEditor({ id }: { id: string }) {
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Segmented label="Section" value={tab} onChange={(t) => go({ tab: t })} options={TABS} />
+        {/* page sections are route tabs, as on every other detail page (audit 2 B11); Segmented stays for a value */}
+        <RouteTabs aria-label="Connector sections">
+          {TABS.map((t) => <Link key={t.value} href={hrefWith({ tab: t.value })} replace scroll={false} aria-current={tab === t.value ? "page" : undefined}>{t.label}</Link>)}
+        </RouteTabs>
         <span className="flex flex-wrap items-center gap-3">
           {c.open && c.published && (
             <Segmented label="Version shown" value={view} onChange={setView}

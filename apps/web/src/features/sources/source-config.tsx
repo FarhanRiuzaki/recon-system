@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CategoryChip, EmptyState, InfoTip, Pagination, Panel } from "@starterkit/ui/ds";
+import { CategoryChip, EmptyState, Facts, InfoTip, Pagination, Panel } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { BranchIcon, ComponentsIcon, DiskIcon, NetworkIcon, ShareIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
@@ -44,20 +44,6 @@ function usesOf(s: SourceSpec): Map<string, string[]> {
   return out;
 }
 
-/** Label / value rows of a card. */
-function Rows({ items }: { items: [string, string | null | undefined][] }) {
-  return (
-    <dl className="grid gap-x-6 gap-y-2 md:grid-cols-[12rem_minmax(0,1fr)]">
-      {items.filter(([, v]) => v).map(([k, v]) => (
-        <div key={k} className="contents">
-          <dt className="text-label text-fg">{k}</dt>
-          <dd className="min-w-0 text-body-sm wrap-anywhere text-fg-2">{v}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 /**
  * The Configuration tab (owner, 21 Nov: what the source reads and how, without opening a version): the published
  * version's reading, columns with the recon fields they fill, computed columns, rows to load and the recons that read
@@ -85,7 +71,7 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
         </p>
       )}
       <Panel icon={NetworkIcon} title="How it is read" description={`Version ${s.publishedVersion}`}>
-        <Rows items={i.kind === "file_inbox" ? [
+        <Facts items={i.kind === "file_inbox" ? [
           ["Folder", i.path], ["File name pattern", i.pattern],
           ["Format", `${i.format.delimiter === "\t" ? "Tab" : `"${i.format.delimiter}"`} separated, ${i.format.header ? "first row is a header" : "no header row"}, ${i.format.encoding}`],
           ["Checked", readWhenText(i.when)],
@@ -125,7 +111,7 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
       </Panel>
 
       <Panel icon={ComponentsIcon} title="Recon fields and rules">
-        <Rows items={[
+        <Facts items={[
           ...Object.entries(RECON_FIELD).map(([k, label]): [string, string | null] => {
             const r = spec.mapping[k as keyof typeof spec.mapping] as ValueRef | undefined;
             if (k === "currency" && !r) return [label, spec.currency ? `${spec.currency} for every row` : "Not used: amounts read as written"];

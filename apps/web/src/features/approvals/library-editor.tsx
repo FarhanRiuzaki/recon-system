@@ -168,7 +168,7 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
               options={[{ value: "open", label: w.open.status === "draft" ? `Draft ${w.open.version}` : `Version ${w.open.version}` }, { value: "live", label: `Live · ${w.published.version}` }]} />
           )}
           <Field id="wf-name" label="Name" required error={!readOnly && nameChecked && !hasName ? "Name the workflow." : null}>
-            <Input id="wf-name" value={name} maxLength={RULE_NAME_MAX} disabled={readOnly} onChange={(e) => setName(e.target.value)} placeholder="Treasury head" className="md:max-w-md" />
+            <Input id="wf-name" value={name} maxLength={RULE_NAME_MAX} disabled={readOnly} onChange={(e) => setName(e.target.value)} placeholder="Treasury head" />
           </Field>
           <Levels levels={levels} onChange={setLevels} options={options} disabled={readOnly} reveal={reveal} />
         </div>

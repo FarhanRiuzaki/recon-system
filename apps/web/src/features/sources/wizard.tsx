@@ -758,7 +758,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             publishedTable={publishedTableOf(source?.s ?? null)} />}
           {formError && <p role="alert" className="text-body-sm text-down-ink">{formError}</p>}
           <FormFooter
-            primary={<BlockedButton type="submit" reason={blocked || null} variant={blocked === null ? "default" : "secondary"} disabled={(working && blocked === null) || blocked === ""} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
+            primary={<BlockedButton type="submit" reason={blocked || null} disabled={(working && blocked === null) || blocked === ""} aria-busy={busy === "next" || busy === "submit" || (step === 0 && busy === "columns") || undefined}>
               {(busy === "next" || busy === "submit" || (step === 0 && busy === "columns")) && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{NEXT[step]}
             </BlockedButton>}
             back={step > (admin ? 0 : 1) && <Button type="button" variant="secondary" disabled={working} onClick={() => { setFieldErr(null); setProblems({}); setStep(step - 1); }}>Back</Button>}
