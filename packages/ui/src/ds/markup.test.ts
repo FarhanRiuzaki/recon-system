@@ -182,10 +182,10 @@ describe("Table geometry (audit 2 A2, A4)", () => {
 const classOf = (out: string, slot: string) => new RegExp(`data-slot="${slot}" class="([^"]*)"`).exec(out)![1]!.split(" ");
 
 describe("PageZone (audit P2)", () => {
-  it("an eyebrow heading and its panels, 16 px apart", () => {
+  it("an eyebrow heading 16 px over its panels, the panels 24 px apart (audit 2 A3)", () => {
     const out = html(h(PageZone, { title: "History", children: h("p", null, "panel") }));
     expect(classOf(out, "page-zone")).toEqual(expect.arrayContaining(["grid", "gap-gutter"]));
-    expect(out).toContain('<h2 class="eyebrow text-fg-3">History</h2><p>panel</p>');
+    expect(out).toContain('<h2 class="eyebrow text-fg-3">History</h2><div data-slot="page-zone-panels" class="grid min-w-0 gap-section"><p>panel</p></div>');
   });
   it("the zone heading is h2; a Panel inside the zone titles itself h3, outside it h2", () => {
     const out = html(h(PageZone, { title: "History", children: h(Panel, { title: "Activity", children: "x" }) }));
