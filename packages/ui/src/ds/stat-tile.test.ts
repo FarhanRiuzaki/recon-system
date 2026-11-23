@@ -2,6 +2,7 @@ import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { StatTile } from "./stat-tile";
+import { TooltipProvider } from "../ui/tooltip";
 
 /** R6: a tile given `tween` renders the NumberTween structure (aria-hidden animated text + sr-only final value). */
 describe("StatTile tween", () => {
@@ -41,10 +42,22 @@ describe("a KPI value never wider than its tile (audit 2 A11)", () => {
     expect(fitStat("3 of 7")).toEqual({ shown: "3 of 7", exact: null });
     expect(fitStat("A long caption-like value")).toEqual({ shown: "A long caption-like value", exact: null });
   });
-  it("renders the compact value with the exact one as its title and an sr-only copy", () => {
-    const out = renderToStaticMarkup(h(StatTile, { label: "Open amount", value: "88,879,542,000.00", unit: "IDR" }));
-    expect(out).toContain('title="88,879,542,000.00 IDR"');
+  it("a trillion compacts as T; a negative keeps its sign", async () => {
+    const { fitStat } = await import("./stat-tile");
+    expect(fitStat("1,500,000,000,000.00")).toEqual({ shown: "1.5T", exact: "1,500,000,000,000.00" });
+    expect(fitStat("−1,500,000,000,000")).toEqual({ shown: "−1.5T", exact: "−1,500,000,000,000" });
+  });
+  it("the compact value is a button styled as text (review 24 Nov): focus or tap opens the tooltip with the exact amount; screen readers read it", () => {
+    const out = renderToStaticMarkup(h(TooltipProvider, null, h(StatTile, { label: "Open amount", value: "88,879,542,000.00", unit: "IDR" })));
+    expect(out).toMatch(/<button[^>]*type="button"[^>]*data-slot="stat-exact"/);
+    expect(out).toMatch(/data-slot="stat-exact"[^>]*class="[^"]*focus-visible:outline-solid/);
     expect(out).toContain('<span aria-hidden="true">88.9B</span>');
+    expect(out).toContain('<span class="sr-only">88,879,542,000.00 IDR</span>');
+  });
+  it("inside a tile that is itself a button (onSelect) no button nests: the exact value stays in the title and for screen readers", () => {
+    const out = renderToStaticMarkup(h(StatTile, { label: "Open amount", value: "88,879,542,000.00", unit: "IDR", onSelect: () => {} }));
+    expect(out.match(/<button/g)).toHaveLength(1);
+    expect(out).toContain('title="88,879,542,000.00 IDR"');
     expect(out).toContain('<span class="sr-only">88,879,542,000.00</span>');
   });
 });

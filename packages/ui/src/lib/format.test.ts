@@ -83,6 +83,15 @@ describe("format enterprise", () => {
     expect(formatCompact(9_999.6)).toBe("10K");
     expect(formatCompact(-999_950)).toBe("−1M");
   });
+  it("compacts a trillion as T (review 24 Nov), rounding up into the next unit, negatives with the minus sign", () => {
+    expect(formatCompact(1_500_000_000_000)).toBe("1.5T");
+    expect(formatCompact(140_932_891_500_000)).toBe("140.9T");
+    expect(formatCompact(999_950_000_000)).toBe("1T");
+    expect(formatCompact(-2_449_999_999_999)).toBe("−2.4T");
+    expect(formatCompact(2_000_000_000_000_000)).toBe("2,000T");
+    // the app's locale whatever the runtime's: a point for decimals, a comma for thousands
+    expect(formatCompact(1_234_500_000_000_000)).toBe("1,234.5T");
+  });
   it("invalid values become an en dash", () => {
     for (const v of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY]) expect(formatCompact(v)).toBe("–");
     expect(formatDateTimeLong(null)).toBe("–");

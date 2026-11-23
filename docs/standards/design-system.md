@@ -644,6 +644,11 @@ A tile that filters the list under it takes `onSelect` and `selected`: the tile 
 lifts on hover like `InteractiveCard`, shows the focus ring, and draws a `--primary` edge while selected; pressing the
 selected tile clears the filter, which also shows as a chip in the list's `FilterLayout` (Sources list, Figma 02
 Sources v1.0.6). (`packages/ui/src/ds/stat-tile.test.ts` "StatTile as a filter")
+A plain number wider than its tile shows compact (`formatCompact`: K, M, B, T with one decimal, "1.5T"; `fitStat`), and
+its exact value is a focus, hover or tap away: the compact text is a button drawn as text that opens the tooltip with
+the exact amount and unit, and screen readers read the exact amount (review 24 Nov). In a tile that is itself a button
+(`onSelect`) the exact value stays in the title, since a button can't nest. (`stat-tile.test.ts` "a KPI value never
+wider than its tile")
 
 ### 5.6 Toolbar & filters
 Active direction: **FIL-DES-004 / DEC-019** rail/refresh, **FIL-DES-003 / DEC-018** anchor, DEC-017 live multi.

@@ -110,14 +110,14 @@ const longFmt = new Intl.DateTimeFormat(LOCALE, {
   timeZone: APP_TIME_ZONE, day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
 });
 
-/** Compact number: below 10,000 as is, then K / M / B with 1 decimal ("12.9K", "4.6M", "2.3B"). */
+/** Compact number: below 10,000 as is, then K / M / B / T with 1 decimal ("12.9K", "4.6M", "2.3B", "1.5T"). */
 export function formatCompact(n: N): string {
   if (n == null || !Number.isFinite(n)) return "–";
   const sign = n < 0 ? MINUS : "";
   const a = Math.abs(n);
   if (Math.round(a) < 10_000) return sign + nf0.format(a);
-  const units: [number, string][] = [[1e3, "K"], [1e6, "M"], [1e9, "B"]];
-  let i = a >= 1e9 ? 2 : a >= 1e6 ? 1 : 0;
+  const units: [number, string][] = [[1e3, "K"], [1e6, "M"], [1e9, "B"], [1e12, "T"]];
+  let i = a >= 1e12 ? 3 : a >= 1e9 ? 2 : a >= 1e6 ? 1 : 0;
   // Pick the unit after rounding to 1 decimal: 999.95K → 1M.
   while (i < units.length - 1 && Math.round((a / units[i]![0]) * 10) / 10 >= 1000) i++;
   const [div, unit] = units[i]!;

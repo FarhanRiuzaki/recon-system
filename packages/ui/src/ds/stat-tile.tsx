@@ -9,6 +9,7 @@ import { Skeleton } from "../ui/skeleton";
 import { clampRatio } from "../lib/meter";
 import { type DeltaDirection, deltaTone, splitDelta } from "../lib/delta";
 import { formatCompact } from "../lib/format";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 /** A plain number as format.ts prints it: optional sign, grouped digits, optional decimals. */
 const NUMBER = /^[-−]?\d{1,3}(,\d{3})*(\.\d+)?$/;
@@ -82,7 +83,7 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
           </span>
         )}
       </div>
-      <StatValue value={value} unit={unit} tween={tween} />
+      <StatValue value={value} unit={unit} tween={tween} nested={!!onSelect} />
       {progress != null && (
         <span aria-hidden="true" className="block h-1.5 overflow-hidden rounded-full bg-inset">
           <span className="striped block h-full rounded-full bg-primary" style={{ width: `${clampRatio(progress) * 100}%` }} />
@@ -94,11 +95,17 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
   );
 }
 
-/** The value line; a plain number that doesn't fit the tile turns compact with the exact value in its title (fitStat). */
-function StatValue({ value, unit, tween }: { value: string; unit?: string; tween?: { value: number; format: (v: number) => string; total?: number } }) {
+/**
+ * The value line; a plain number that doesn't fit the tile turns compact (fitStat), its exact value one focus, hover or
+ * tap away: a button drawn as the text opens the tooltip (review 24 Nov: a title reaches neither touch nor keyboard).
+ * Inside a tile that is a button itself (`nested`, onSelect) no button may nest: the exact value stays in the title.
+ * Screen readers read the exact value either way.
+ */
+function StatValue({ value, unit, tween, nested }: { value: string; unit?: string; tween?: { value: number; format: (v: number) => string; total?: number }; nested?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   const need = useRef(0);
   const [force, setForce] = useState(false);
+  const [open, setOpen] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el || tween || typeof ResizeObserver === "undefined") return;
@@ -112,10 +119,24 @@ function StatValue({ value, unit, tween }: { value: string; unit?: string; tween
     return () => ro.disconnect();
   }, [tween, value]);
   const fit = tween ? { shown: value, exact: null } : fitStat(value, force);
-  const unitText = unit && <span className="ml-0.5 text-body font-normal tracking-normal text-fg-3">{unit}</span>;
+  const exactText = fit.exact ? `${fit.exact}${unit ? ` ${unit}` : ""}` : null;
+  const trigger = fit.exact && !nested;
+  const unitText = unit && <span aria-hidden={trigger || undefined} className="ml-0.5 text-body font-normal tracking-normal text-fg-3">{unit}</span>;
   return (
-    <span ref={ref} data-compact={fit.exact ? "true" : undefined} className="min-w-0 text-stat whitespace-nowrap text-fg tabular" title={fit.exact ? `${fit.exact}${unit ? ` ${unit}` : ""}` : undefined}>
+    <span ref={ref} data-compact={fit.exact ? "true" : undefined} className="min-w-0 text-stat whitespace-nowrap text-fg tabular" title={fit.exact && nested ? exactText! : undefined}>
       {tween ? <NumberTween value={tween.value} format={tween.format} total={tween.total} />
+        : trigger ? (
+          <Tooltip open={open} onOpenChange={setOpen}>
+            <TooltipTrigger asChild>
+              {/* a tap opens it too (Radix closes a tooltip on click): the press is ours, outside presses and Escape close it */}
+              <button type="button" data-slot="stat-exact" onClick={(e) => { e.preventDefault(); setOpen(true); }}
+                className="cursor-help rounded-xs outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary">
+                <span aria-hidden="true">{fit.shown}</span><span className="sr-only">{exactText}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="tabular">{exactText}</TooltipContent>
+          </Tooltip>
+        )
         : fit.exact ? <><span aria-hidden="true">{fit.shown}</span><span className="sr-only">{fit.exact}</span></> : value}
       {unitText}
     </span>
