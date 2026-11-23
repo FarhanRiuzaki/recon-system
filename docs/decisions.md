@@ -623,7 +623,7 @@ dengan filter status/jenis dan CSV, hitungan gagal/timeout/tidak terkirim 24 jam
 "What gets posted" di langkah Approval yang memakai break nyata. Tahap 5 (mode grup) menyusul.
 
 **Amandemen 4, 23 November 2026 (tahap 5, mode grup; rencana `docs/superpowers/plans/2026-11-23-group-posting-stage-5.md`,
-keputusan builder R1–R17 di sana dengan biayanya bila salah; owner: "ambil rekomendasi lo"):** varian aksi `posting`
+keputusan builder R1–R20 di sana dengan biayanya bila salah; owner: "ambil rekomendasi lo"):** varian aksi `posting`
 yang dipicu `approved`/`level_approved` boleh `per: "group"` dengan `group: { key (≤ 5 field katalog text/date/list/number,
 mis. Merchant ID), at: cutoff HH:MM | day_close }`. Break yang disetujui masuk grup terbuka (`posting_groups`, milik
 space, RLS) per (versi recon, perubahan, aksi, varian, nilai kunci, mata uang, periode) di transaksi approval, di bawah
@@ -637,6 +637,17 @@ satu `action_runs` (`group_id` unik, tanpa request) yang dikirim worker tahap 4 
 Sign-off (prepare/sign) ditolak selama ada grup periode ≤ hari itu yang terbuka atau run-nya queued/sending. Layar:
 tab Posting groups di recon (detail `?group=`), "In the … group · … · waiting until …" di panel Posting break, baris
 "Group of N items" di halaman Posting. Tanpa "send now" manual.
+
+Sesudah review tahap 5 (23 November 2026, keputusan R21–R28 di rencana yang sama): dalam konteks grup, field uang
+break (`break.amount`, jumlah tiap sisi) = total grup per field, bertanda; field biasa lain tetap break pertama, dan
+simpan/submit memberi peringatan (tidak menolak) bila varian grup membacanya di luar array. Tanda jumlah ikut identitas
+grup (kolom `negative`, migrasi 0060): jumlah negatif membentuk grupnya sendiri, tidak pernah dinet dengan yang positif.
+Gabung grup memegang advisory lock per config (shared), penutupan grup memegangnya exclusive, sehingga approval saat
+`closeDay` berjalan menunggu lalu masuk periode berikutnya. Grup day_close menyimpan `closes_at` = waktu tutup hari
+periodenya menurut jadwal versi; bila tutup hari tidak datang, job per menit mengirimnya sesudah `closes_at` + grace
+versi (60 menit bila tidak ada), dan grup yang masih terbuka 5 menit lewat `closes_at` tampil Degraded "Open past its
+close" di tab dan Today. Nilai angka yang tidak muat persis di angka JSON (> 2^53 − 1, atau desimal > 15 digit) →
+`build_error`. Nilai break di `posting_group_items` dienkripsi seperti payload run (`context_enc`).
 
 ## DEC-053 — Connector Open API global, berversi dengan maker-checker; rahasia per environment di luar versi
 

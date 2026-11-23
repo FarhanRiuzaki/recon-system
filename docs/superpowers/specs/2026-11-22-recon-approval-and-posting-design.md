@@ -197,7 +197,8 @@ Validasi publish (ditolak dengan pesan yang menyebut lokasi):
    yang mungkin dihitung; melebihi → wajib memilih potong kiri/kanan);
 4. field katalog yang dirujuk ada di versi source sisi itu;
 5. `legs` (bila diisi): total debit = total kredit per mata uang untuk break contoh (§4.9);
-6. kunci grup hanya field katalog bertipe text/date/list.
+6. kunci grup hanya field katalog bertipe text/date/list/number (number: kode mirip ID, dicocokkan per teks persis;
+   pemilik 23 November 2026), bukan money dan bukan field approval; paling banyak 5.
 
 ### 4.5 Mapping (garis, nilai tetap, template, transformasi)
 
