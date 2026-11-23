@@ -37,7 +37,9 @@ export const exportBlockedText = (total: number, attention: boolean) =>
   total > 0 ? null : attention ? "Nothing needs attention; Show all to export every result." : "Nothing to export yet.";
 export const postingColumns = (spaceId: string): Column<ActionRunRowDto>[] => [
   { key: "break", header: "Item", mobile: "title", className: "min-w-32", cell: (r) => (
-    r.break.id
+    r.group
+      ? <Link href={`/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(r.recon.id)}?tab=posting&group=${encodeURIComponent(r.group.id)}`} className={`text-body-sm ${LINK}`}>{r.group.items === 1 ? "Group of 1 item" : `Group of ${formatNumber(r.group.items)} items`}</Link>
+      : r.break.id
       ? <Link href={`/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.break.id)}`} className={`font-mono text-body-sm ${LINK}`}>{r.break.ref ?? "Unmatch item"}</Link>
       : <span className="font-mono text-body-sm text-fg">{r.break.ref ?? "The request"}</span>
   ) },

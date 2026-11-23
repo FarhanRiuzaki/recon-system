@@ -13,6 +13,7 @@ import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { configLock } from "../../kernel/locks";
 import { currentRecord, endOfDay } from "../ingest";
+import { closeGroupsOfDay } from "../integrations";
 import { reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { closeMoment } from "./rules";
@@ -86,6 +87,8 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
     if (!v) return "not_due";
     const at = closeMoment(v.spec, d);
     if (now < at) return "not_due";
+    // its close time has passed: the recon's posting groups up to this date are sent now (stage 5: day close, and cutoffs early)
+    await closeGroupsOfDay(tx, k.spaceId, k.configId, d);
     if (await runUnderWay(tx, k.spaceId, k.configId)) return "closing";
     const end = endOfDay(d), seen = await seenOn(tx, k.spaceId, k.configId, d);
     const incomplete = v.sides.flatMap((s): IncompleteSide[] => {

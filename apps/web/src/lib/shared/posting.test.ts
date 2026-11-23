@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionText, POSTING_FILTER, postingChip, postingEvent } from "./posting";
+import { attentionText, groupChip, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
 
 describe("posting statuses as people read them", () => {
   it("names each status with one of the five health states", () => {
@@ -19,6 +19,23 @@ describe("posting statuses as people read them", () => {
   });
   it("offers the statuses that need someone's attention first in the filter", () => {
     expect(POSTING_FILTER.map((o) => o.value).slice(0, 3)).toEqual(["failed", "timeout", "not_sent"]);
+  });
+  it("a posting group's status: Open, Closing while its run waits, then its run's result; empty sends nothing", () => {
+    const g = (status: "open" | "closed", run: string | null) => ({ status, run: run ? { status: run as never } : null });
+    expect(groupChip(g("open", null))).toEqual({ health: "unknown", label: "Open" });
+    expect(groupChip(g("closed", "queued"))).toEqual({ health: "unknown", label: "Closing" });
+    expect(groupChip(g("closed", "sending"))).toEqual({ health: "unknown", label: "Closing" });
+    expect(groupChip(g("closed", "posted"))).toEqual({ health: "healthy", label: "Posted" });
+    expect(groupChip(g("closed", null))).toEqual({ health: "stopped", label: "Nothing to send" });
+  });
+  it("when a group is sent: its cutoff time or the day's close", () => {
+    expect(sendsAtText({ at: "day_close", closesAt: null })).toBe("At day close");
+    expect(sendsAtText({ at: "cutoff", closesAt: "2026-11-23T09:00:00.000Z" })).toMatch(/16[.:]00/);
+  });
+  it("a break waiting in its group, in a sentence", () => {
+    const grp = { period: "2026-11-23", keys: [{ label: "Merchant id", value: "0012345" }], at: "cutoff" as const, closesAt: "2026-11-23T09:00:00.000Z" };
+    expect(waitingText(grp)).toMatch(/^In the 23 Nov( 2026)? group · Merchant id 0012345 · waiting until 16[.:]00$/);
+    expect(waitingText({ ...grp, keys: [{ label: "Merchant id", value: "" }], at: "day_close", closesAt: null })).toMatch(/^In the 23 Nov( 2026)? group · No Merchant id · waiting until day close$/);
   });
   it("sums up a recon's runs that need someone, the non-zero ones only", () => {
     expect(attentionText({ failed: 2, timeout: 1, notSent: 0 })).toBe("2 failed, 1 timeout");

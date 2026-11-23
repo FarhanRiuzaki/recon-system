@@ -6,7 +6,7 @@
 import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import type { ReconApprovalSpec, TodayDto } from "@starterkit/shared/contracts/recon";
-import { buildPayload, pickVariant, type Source, templateParts } from "@starterkit/shared/mapping";
+import { buildGroupPayload, buildPayload, periodOf, pickVariant, type Source, templateParts } from "@starterkit/shared/mapping";
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, notInArray, or, sql } from "drizzle-orm";
 import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
 import { POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
@@ -22,7 +22,8 @@ import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
 import { breakContextOf, itemsOf } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
-import { actionRuns, connectors, connectorVersions } from "./schema";
+import { joinGroup } from "./groups";
+import { actionRuns, connectors, connectorVersions, postingGroupItems, postingGroups } from "./schema";
 
 export type ActionEvent = { event: "level_approved"; level: number } | { event: "approved" } | { event: "rejected" };
 type Rq = {
@@ -31,6 +32,8 @@ type Rq = {
 };
 type Action = NonNullable<ReconApprovalSpec["changes"]["unmatch"]>["actions"][number];
 
+/** A whole amount of 0 or below (what a variant's "skip" leaves unsent). */
+const notPositive = (v: unknown) => { const a = String(v ?? "").trim(); return /^-?\d+$/.test(a) && BigInt(a) <= 0n; };
 const fires = (a: Action, e: ActionEvent) => a.on.event === e.event && (a.on.event !== "level_approved" || (e.event === "level_approved" && a.on.level === e.level));
 
 /** Writes the runs of `events` (in order) for request `rq`; answers how many were written. */
@@ -72,6 +75,12 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
       for (const item of items) {
         const context = { ...(await contextOf(item)), ...approval };
         const picked = pickVariant(a.variants, context);
+        // grouped (stage 5): the break joins its group, sent when the group closes; an amount of 0 it skips is a run
+        if (picked?.variant.per === "group" && picked.variant.group && !(picked.variant.zeroOrNegative === "skip" && notPositive(context["break.amount"]))) {
+          const g = { spaceId: rq.spaceId, configId: rq.configId, configVersionId: rq.configVersionId!, change: rq.kind, actionIndex: ai, variantIndex: picked.index, actionName: a.name, variant: picked.variant };
+          if (await joinGroup(tx, g, { requestId: rq.id, itemId: item, context })) written++;
+          continue;
+        }
         if (picked?.variant.per === "request") { if (once || item !== rq.itemId) continue; once = true; }
         else if (!picked && item !== rq.itemId) continue; // one "no posting rule" per action, on the break asked about
         const base = {
@@ -109,11 +118,24 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
 export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemId: string, raw: boolean): Promise<{ actions: ActionRunDto[]; posting: BreakDetailDto["posting"] }> {
   const rows = await tx.select().from(actionRuns)
     .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.requestId, requestId), or(eq(actionRuns.itemId, itemId), isNull(actionRuns.itemId)))).orderBy(asc(actionRuns.seq));
-  const actions = rows.map((r): ActionRunDto => ({
+  const toDto = (r: typeof actionRuns.$inferSelect, group: ActionRunDto["group"]): ActionRunDto => ({
     id: r.id, name: r.actionName, kind: r.kind as ActionRunDto["kind"], event: r.event as ActionRunDto["event"], level: r.level, variant: r.variantName,
     status: r.status as ActionRunDto["status"], override: r.override, code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId,
-    at: (r.finishedAt ?? r.createdAt).toISOString(), payload: raw ? r.payloadMasked ?? null : null, response: raw ? r.responseMasked ?? null : null,
-  }));
+    at: (r.finishedAt ?? r.createdAt).toISOString(), payload: raw ? r.payloadMasked ?? null : null, response: raw ? r.responseMasked ?? null : null, group,
+  });
+  const actions = rows.map((r) => toDto(r, null));
+  // the posting groups it joined (stage 5): the group's run once closed, else the break waiting in it
+  const joined = await tx.select({ g: postingGroups, run: actionRuns }).from(postingGroupItems)
+    .innerJoin(postingGroups, eq(postingGroups.id, postingGroupItems.groupId))
+    .leftJoin(actionRuns, and(eq(actionRuns.spaceId, postingGroups.spaceId), eq(actionRuns.id, postingGroups.runId)))
+    .where(and(eq(postingGroupItems.spaceId, spaceId), eq(postingGroupItems.requestId, requestId), eq(postingGroupItems.itemId, itemId))).orderBy(asc(postingGroupItems.actionIndex));
+  for (const { g, run } of joined) {
+    const group: ActionRunDto["group"] = { id: g.id, configId: g.configId, period: g.period, keys: (g.keys as { label: string; value: string }[]).map(({ label, value }) => ({ label, value })), at: g.at as "cutoff" | "day_close", closesAt: g.closesAt?.toISOString() ?? null, items: g.members };
+    actions.push(run ? toDto(run, group) : {
+      id: g.id, name: g.actionName, kind: "posting", event: "approved", level: null, variant: g.variantName, status: "grouped", override: false,
+      code: null, message: null, bankReference: null, externalId: null, at: g.createdAt.toISOString(), payload: null, response: null, group,
+    });
+  }
   const last = [...actions].reverse().find((a) => a.kind === "posting");
   return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null };
 }
@@ -129,17 +151,21 @@ function runsWhere(spaceId: string, q: ActionRunListQuery) {
   );
 }
 const runRows = (tx: InTx, where: ReturnType<typeof runsWhere>) =>
-  tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name, connector: connectors.name }).from(actionRuns)
+  tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name, connector: connectors.name,
+    group: { members: postingGroups.members, total: postingGroups.totalMinor, currency: postingGroups.currency } }).from(actionRuns)
     .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
     .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId))
-    .leftJoin(connectors, eq(connectors.id, actionRuns.connectorId)).where(where).$dynamic();
-type RunRow = { r: typeof actionRuns.$inferSelect; reconId: string; recon: string; connector: string | null };
-const toRunRow = ({ r, reconId, recon, connector }: RunRow, extra?: { amount: ActionRunRowDto["amount"]; attempts: number }): ActionRunRowDto => ({
+    .leftJoin(connectors, eq(connectors.id, actionRuns.connectorId))
+    .leftJoin(postingGroups, and(eq(postingGroups.spaceId, actionRuns.spaceId), eq(postingGroups.id, actionRuns.groupId))).where(where).$dynamic();
+type RunRow = { r: typeof actionRuns.$inferSelect; reconId: string; recon: string; connector: string | null; group: { members: number; total: bigint; currency: string } | null };
+const toRunRow = ({ r, reconId, recon, connector, group }: RunRow, extra?: { amount: ActionRunRowDto["amount"]; attempts: number }): ActionRunRowDto => ({
   id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
   code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
   break: { id: r.itemId, ref: r.subjectRef }, recon: { id: reconId, name: recon },
   connector: r.connectorId && connector ? { id: r.connectorId, name: connector } : null,
-  amount: extra?.amount ?? null, attempts: extra?.attempts ?? 1,
+  // a group's run: the group's total (stage 5)
+  amount: extra?.amount ?? (group && r.groupId ? { minor: group.total.toString(), currency: group.currency } : null), attempts: extra?.attempts ?? 1,
+  group: r.groupId && group ? { id: r.groupId, items: group.members } : null,
 });
 /** Runs that sent nothing (no rule matched, or skipped): never an attempt. */
 const NOT_SENT_AT_ALL = ["no_rule", "skipped"];
@@ -157,7 +183,7 @@ async function withExtras(tx: InTx, spaceId: string, rows: RunRow[]): Promise<Ac
   return rows.map((x) => {
     const i = x.r.itemId ? items.get(x.r.itemId) : undefined;
     const attempts = x.r.itemId ? tries.filter((t) => t.itemId === x.r.itemId && t.action === x.r.actionName && t.event === x.r.event && t.level === x.r.level && upTo(t, x.r)).length : 1;
-    return toRunRow(x, { amount: i?.amountMinor ? { minor: i.amountMinor, currency: i.currency } : null, attempts: Math.max(1, attempts) });
+    return toRunRow(x, { amount: i?.amountMinor ? { minor: i.amountMinor, currency: i.currency } : x.group && x.r.groupId ? { minor: x.group.total.toString(), currency: x.group.currency } : null, attempts: Math.max(1, attempts) });
   });
 }
 
@@ -226,7 +252,16 @@ export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApproval
   if (!op) return { ...none("The connector version this variant pins has no such operation."), variant: v.name };
   // the values a masked request field reads are masked in the context too (it would show what the payload hides)
   for (const path of op.masked) for (const key of readsOf(v.mapping[path])) if (context[key] != null) context[key] = maskValue(String(context[key]));
-  const built = buildPayload(v, op, context, { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
+  const setup = { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, handled = new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]);
+  // a grouped variant: a sample group of this one break, in the period an approval now would join (stage 5)
+  const built = v.per === "group" && v.group
+    ? buildGroupPayload(v, op, [context], { period: periodOf(new Date(), v.group.at === "cutoff" ? v.group.cutoff : null), keys: v.group.key.map((field) => ({ field, value: String(context[field] ?? "").trim() })) }, setup, handled)
+    : buildPayload(v, op, context, setup, handled);
+  if (v.per === "group" && v.group) {
+    // the group's own values, for the editor's example column
+    Object.assign(context, { "group.sum": context["break.amount"], "group.count": 1, "group.period": periodOf(new Date(), v.group.at === "cutoff" ? v.group.cutoff : null),
+      ...Object.fromEntries(v.group.key.map((k) => [`group.key.${k}`, context[k] ?? ""])) });
+  }
   return built.ok
     ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null, context }
     : { variant: v.name, payload: null, sources: {}, problem: { code: built.code, field: built.field, message: built.message }, context };

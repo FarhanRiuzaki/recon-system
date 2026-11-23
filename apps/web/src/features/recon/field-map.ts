@@ -8,7 +8,7 @@ import { type Source, templateParts } from "@starterkit/shared/mapping";
 
 type Op = { request: readonly OpField[]; fixed: readonly string[]; auto: readonly string[] };
 type Account = { key: string; label: string };
-export type SourceId = "break" | "recon" | "side_a" | "side_b" | "approval" | "accounts";
+export type SourceId = "break" | "recon" | "side_a" | "side_b" | "approval" | "group" | "accounts";
 export type SourceTable = { id: SourceId; title: string; caption: string | null; rows: { key: string; label: string; kind: string }[] };
 export type RequestRow = {
   path: string; name: string; depth: number; leaf: boolean; required: boolean; type: OpField["type"]; maxLength: number | null;
@@ -19,8 +19,8 @@ export type RequestRow = {
 };
 export type MapEdge = { id: string; source: SourceId; row: string; target: string; label: string | null };
 
-const TITLE: Record<SourceId, string> = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval", accounts: "Accounts" };
-const ORDER: SourceId[] = ["break", "recon", "side_a", "side_b", "approval", "accounts"];
+const TITLE: Record<SourceId, string> = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval", group: "Group", accounts: "Accounts" };
+const ORDER: SourceId[] = ["group", "break", "recon", "side_a", "side_b", "approval", "accounts"];
 /** "Source · file · Field" → its field, and where it comes from. */
 const split = (label: string) => { const p = label.split(" · "); return { name: p.at(-1)!, from: p.length > 1 ? p.slice(0, -1).join(" · ") : null }; };
 

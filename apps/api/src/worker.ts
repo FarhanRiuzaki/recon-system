@@ -23,6 +23,8 @@ await scheduleEvery(QUEUES.reconSchedule, "schedule", "* * * * *", {});
 await unschedule(QUEUES.reconTick, "schedule"); // its first home (wt/task6 before review): a tick slot each minute
 // approval actions left sending by a worker that died after the call went out become timeout, never sent again (O4)
 await scheduleEvery(QUEUES.integrationsAction, "sweep", "* * * * *", { sweep: true });
+// posting groups whose cutoff has passed are closed and their one run queued (stage 5)
+await scheduleEvery(QUEUES.integrationsAction, "groups", "* * * * *", { groups: true });
 // 200 while the queue loops are alive (fetched within 60 s or holding a job), else 503; anything else 404.
 const server = Bun.serve({
   hostname: API_HOST,

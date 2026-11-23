@@ -6,11 +6,11 @@ import { rangeText } from "./run-model";
 export const at = (iso: string) => `${formatDateTime(Date.parse(iso))} ${APP_TIME_ZONE_LABEL}`;
 
 /**
- * The tabs of a recon's page (in the URL as ?tab=), three (owner, 22 Nov: few tabs, details merged): Overview = how it
+ * The tabs of a recon's page (in the URL as ?tab=), four (owner, 22 Nov: few tabs, details merged): Overview = how it
  * runs (its day, runs, trend, pipeline, sources), Configuration = what it is (the builder over a draft, else the
- * published spec), History = its versions and its activity.
+ * published spec), Posting groups = what its grouped postings collect and send (stage 5), History = its versions and its activity.
  */
-export const RECON_TABS = ["overview", "configuration", "history"] as const;
+export const RECON_TABS = ["overview", "configuration", "posting", "history"] as const;
 export type ReconTab = (typeof RECON_TABS)[number];
 /** ?tab= as a tab; the tabs before the merge (live, versions, activity) open the tab that now holds them. */
 export function reconTabOf(v: string | null): ReconTab {

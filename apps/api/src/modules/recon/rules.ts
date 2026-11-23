@@ -1,7 +1,7 @@
 // Pure rules of a recon spec (spec §10) beyond its contract: what checkReconSpec finds against the sides' published
 // source versions, where in the builder a problem is (in the builder's words, never a spec path), and the fields a
 // published recon holds its sources to (Plan 3 A4). Sentences name fields as people do (fieldLabel), never by code.
-import { APPROVAL_FIELDS, type CatalogField, type Condition, conditionFields, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
+import { APPROVAL_FIELDS, type CatalogField, type Condition, conditionFields, fieldName, groupFields, isKeyField, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
 import { fieldPaths, type OpField } from "@starterkit/shared/integrations";
 import { type Source, templateParts } from "@starterkit/shared/mapping";
 import type { ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
@@ -151,7 +151,8 @@ export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, 
   const ruled = Object.values(spec.approvals?.changes ?? {}).flatMap((c) => [
     ...(c?.workflow.rules.flatMap((r) => conditionFields(r.when as Condition)) ?? []),
     // what the actions' variants check and map read (stage 4)
-    ...(c?.actions.flatMap((a) => a.variants.flatMap((v) => [...(v.when ? conditionFields(v.when as Condition) : []), ...Object.values(v.mapping).flatMap(sourceFields)])) ?? []),
+    ...(c?.actions.flatMap((a) => a.variants.flatMap((v) => [...(v.when ? conditionFields(v.when as Condition) : []), ...v.group?.key ?? [],
+      ...Object.values(v.mapping).flatMap(sourceFields).map((k) => (k.startsWith("group.key.") ? k.slice(10) : k))])) ?? []),
   ]);
   const sideOf = (i: 0 | 1) => ruled.filter((k) => k.startsWith(`side_${i ? "b" : "a"}.`)).map((k) => k.slice(7));
   const of = (i: 0 | 1) => [...new Set([...sideOf(i),
@@ -239,7 +240,20 @@ export function checkActions(approvals: ReconApprovalSpec | undefined, catalog: 
         const reads = [...(v.when ? conditionFields(v.when as Condition) : []), ...Object.values(v.mapping).flatMap(sourceFields)];
         const usedAccounts = new Set(Object.values(v.mapping).flatMap((src) => (src.kind === "account" ? [src.account] : src.kind === "template" ? templateParts(src.text).flatMap((p) => (p.account ? [p.account.key] : [])) : [])));
         for (const k of usedAccounts) if (!approvals!.accounts.find((a) => a.key === k)?.number) out.push(`${where}: account ${k} has no number. Enter it under Accounts.`);
-        const lost = [...new Set(reads.filter((k) => k && !known.has(k)))];
+        // grouped (stage 5, design §4.4 check 6): a posting on an approval, keyed by fields a group can share
+        const grouped = v.per === "group" && v.group;
+        if (grouped && action.kind !== "posting") out.push(`${where}: only a posting action is sent grouped. Make it a posting, or send one call per item.`);
+        if (grouped && action.on.event === "rejected") out.push(`${where}: a rejected change posts nothing to group. Group it on an approval.`);
+        const lostKeys: string[] = [];
+        for (const k of grouped ? v.group!.key : []) {
+          const f = catalog.find((x) => x.key === k);
+          if (!f) lostKeys.push(k);
+          else if (!isKeyField(f)) out.push(`${where}: ${fieldName(k)} can't be a group key. Pick a text, date, list or number field.`);
+        }
+        if (lostKeys.length) out.push(`${where}: a group key is no longer read from the sources (${lostKeys.join(", ")}).`);
+        const groupKnown = new Set(grouped ? groupFields(v.group!.key, catalog).map((f) => f.key) : []);
+        if (!grouped && reads.some((k) => k.startsWith("group."))) out.push(`${where}: it reads the group's values (total, count, key), which only a grouped variant has.`);
+        const lost = [...new Set(reads.filter((k) => k && !known.has(k) && !groupKnown.has(k) && !(k.startsWith("group.") && !grouped)))];
         if (lost.length) out.push(`${where}: a field it reads is no longer read from the sources (${lost.join(", ")}).`);
       }
     }

@@ -1450,8 +1450,46 @@
                                   "type": "string",
                                   "enum": [
                                     "item",
-                                    "request"
+                                    "request",
+                                    "group"
                                   ]
+                                },
+                                "group": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "maxItems": 5,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^(break|recon|side_a|side_b)\\.[A-Za-z0-9_.]{1,80}$"
+                                      }
+                                    },
+                                    "at": {
+                                      "type": "string",
+                                      "enum": [
+                                        "cutoff",
+                                        "day_close"
+                                      ]
+                                    },
+                                    "cutoff": {
+                                      "default": null,
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "at"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "zeroOrNegative": {
                                   "default": "skip",
@@ -2479,8 +2517,46 @@
                                   "type": "string",
                                   "enum": [
                                     "item",
-                                    "request"
+                                    "request",
+                                    "group"
                                   ]
+                                },
+                                "group": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "maxItems": 5,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^(break|recon|side_a|side_b)\\.[A-Za-z0-9_.]{1,80}$"
+                                      }
+                                    },
+                                    "at": {
+                                      "type": "string",
+                                      "enum": [
+                                        "cutoff",
+                                        "day_close"
+                                      ]
+                                    },
+                                    "cutoff": {
+                                      "default": null,
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "at"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "zeroOrNegative": {
                                   "default": "skip",
@@ -3508,8 +3584,46 @@
                                   "type": "string",
                                   "enum": [
                                     "item",
-                                    "request"
+                                    "request",
+                                    "group"
                                   ]
+                                },
+                                "group": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "maxItems": 5,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^(break|recon|side_a|side_b)\\.[A-Za-z0-9_.]{1,80}$"
+                                      }
+                                    },
+                                    "at": {
+                                      "type": "string",
+                                      "enum": [
+                                        "cutoff",
+                                        "day_close"
+                                      ]
+                                    },
+                                    "cutoff": {
+                                      "default": null,
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "at"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "zeroOrNegative": {
                                   "default": "skip",
@@ -4537,8 +4651,46 @@
                                   "type": "string",
                                   "enum": [
                                     "item",
-                                    "request"
+                                    "request",
+                                    "group"
                                   ]
+                                },
+                                "group": {
+                                  "type": "object",
+                                  "properties": {
+                                    "key": {
+                                      "maxItems": 5,
+                                      "type": "array",
+                                      "items": {
+                                        "type": "string",
+                                        "pattern": "^(break|recon|side_a|side_b)\\.[A-Za-z0-9_.]{1,80}$"
+                                      }
+                                    },
+                                    "at": {
+                                      "type": "string",
+                                      "enum": [
+                                        "cutoff",
+                                        "day_close"
+                                      ]
+                                    },
+                                    "cutoff": {
+                                      "default": null,
+                                      "anyOf": [
+                                        {
+                                          "type": "string",
+                                          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "key",
+                                    "at"
+                                  ],
+                                  "additionalProperties": false
                                 },
                                 "zeroOrNegative": {
                                   "default": "skip",
@@ -5080,7 +5232,7 @@
             },
             "key": {
               "type": "string",
-              "pattern": "^(break|recon|side_a|side_b|approval|request)\\.[A-Za-z0-9_.]{1,80}$"
+              "pattern": "^(break|recon|side_a|side_b|approval|request|group)\\.[A-Za-z0-9_.]{1,100}$"
             },
             "transforms": {
               "default": [],

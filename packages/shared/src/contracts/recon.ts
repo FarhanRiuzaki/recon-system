@@ -8,7 +8,7 @@ import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMi
 import { TargetActivityQuery } from "./audit";
 import { ListQuery, sortParam } from "./common";
 import { OPS } from "../conditions";
-import { ACCOUNTS_MAX, ACTIONS_MAX, isTransform, LOOKUP_ROWS_MAX, LOOKUPS_MAX, MAPPED_MAX, type Source as SourceT, templateParts, VARIANTS_MAX } from "../mapping";
+import { ACCOUNTS_MAX, ACTIONS_MAX, GROUP_KEY_MAX, isTransform, LOOKUP_ROWS_MAX, LOOKUPS_MAX, MAPPED_MAX, type Source as SourceT, templateParts, VARIANTS_MAX } from "../mapping";
 import { SourceHealthDto } from "./sources";
 
 export { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS };
@@ -115,7 +115,7 @@ export const WorkflowRef = z.strictObject({ id: z.uuid(), version: z.number().in
 export type WorkflowRef = z.infer<typeof WorkflowRef>;
 const Transform = z.string().max(110).superRefine((t, ctx) => { if (!isTransform(t)) ctx.addIssue({ code: "custom", message: `Unknown change: ${t}.` }); });
 const Source: z.ZodType<SourceT> = z.lazy(() => z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("field"), key: z.string().regex(/^(break|recon|side_a|side_b|approval|request)\.[A-Za-z0-9_.]{1,80}$/), transforms: z.array(Transform).max(10).default([]) }),
+  z.strictObject({ kind: z.literal("field"), key: z.string().regex(/^(break|recon|side_a|side_b|approval|request|group)\.[A-Za-z0-9_.]{1,100}$/), transforms: z.array(Transform).max(10).default([]) }),
   z.strictObject({ kind: z.literal("const"), value: z.string().max(500) }),
   z.strictObject({ kind: z.literal("template"), text: z.string().min(1).max(500) }),
   z.strictObject({ kind: z.literal("lookup"), table: z.string().min(1).max(40), key: Source, fallback: z.string().max(500).optional() }),
@@ -130,10 +130,22 @@ const Variant = z.strictObject({
   operation: OperationRef,
   /** Request field (dot path) → where its value comes from. */
   mapping: z.record(z.string().min(1).max(300), Source).refine((m) => Object.keys(m).length <= MAPPED_MAX, `A variant maps at most ${MAPPED_MAX} fields.`),
-  /** A request with several breaks (force match): one call per break, or one for the request (O9). */
-  per: z.enum(["item", "request"]).default("item"),
+  /** A request with several breaks (force match): one call per break, or one for the request (O9); or grouped (O7). */
+  per: z.enum(["item", "request", "group"]).default("item"),
+  /**
+   * Grouped only (stage 5, O7/O10): breaks approved on the same day (Asia/Jakarta; at or after `cutoff`, the next day)
+   * with the same values of `key` (catalog fields) and currency are sent as one call, at `cutoff` or at the day's close.
+   */
+  group: z.strictObject({
+    key: z.array(z.string().regex(/^(break|recon|side_a|side_b)\.[A-Za-z0-9_.]{1,80}$/)).max(GROUP_KEY_MAX, `A group has at most ${GROUP_KEY_MAX} key fields.`),
+    at: z.enum(["cutoff", "day_close"]),
+    cutoff: clock.nullable().default(null),
+  }).optional(),
   /** An amount of 0 or below: no call, or the amount without its sign (and the sides swapped by the mapping). */
   zeroOrNegative: z.enum(["skip", "absolute_swap"]).default("skip"),
+}).superRefine((v, ctx) => {
+  if (v.per === "group" && !v.group) ctx.addIssue({ code: "custom", path: ["group"], message: "Say how the group is formed and when it is sent." });
+  if (v.group?.at === "cutoff" && !v.group.cutoff) ctx.addIssue({ code: "custom", path: ["group", "cutoff"], message: "Give the cutoff time, HH:MM." });
 });
 const Action = z.strictObject({
   name: z.string().trim().min(1, "Name the action.").max(80),

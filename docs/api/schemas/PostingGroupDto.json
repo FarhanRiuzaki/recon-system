@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PostingGroupDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "period": {
+      "type": "string"
+    },
+    "part": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "keys": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "currency": {
+      "type": "string"
+    },
+    "items": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "totalMinor": {
+      "type": "string"
+    },
+    "at": {
+      "type": "string",
+      "enum": [
+        "cutoff",
+        "day_close"
+      ]
+    },
+    "closesAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "closedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "action": {
+      "type": "string"
+    },
+    "variant": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "closed"
+      ]
+    },
+    "run": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "sending",
+                "posted",
+                "failed",
+                "not_sent",
+                "timeout",
+                "no_rule",
+                "skipped"
+              ]
+            },
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "message": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "bankReference": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "externalId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "at": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "status",
+            "code",
+            "message",
+            "bankReference",
+            "externalId",
+            "at"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "amountMinor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "joinedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "ref",
+          "amountMinor",
+          "joinedAt"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "id",
+    "period",
+    "part",
+    "keys",
+    "currency",
+    "items",
+    "totalMinor",
+    "at",
+    "closesAt",
+    "closedAt",
+    "action",
+    "variant",
+    "status",
+    "run",
+    "members"
+  ],
+  "additionalProperties": false
+}

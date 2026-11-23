@@ -2,10 +2,11 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { appDate, formatDateTime } from "@starterkit/ui/lib/format";
+import { appDate, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
 import { AlertsIcon, ErrorIcon, ForceMatchIcon, RefreshIcon, SpinnerIcon, TakeIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
@@ -26,7 +27,7 @@ import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { categoryChip } from "@/lib/shared/categories";
-import { postingChip, postingEvent } from "@/lib/shared/posting";
+import { groupKeyText, postingChip, postingEvent, waitingText } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
@@ -217,7 +218,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
             </dl>
           </Panel>
         )}
-        {b.actions.length > 0 && <PostingPanel b={b} />}
+        {b.actions.length > 0 && <PostingPanel b={b} spaceId={spaceId} />}
       </PageZone>
 
       {r?.status === "pending" ? (
@@ -321,7 +322,7 @@ function CounterpartList({ items, side }: { items: readonly BreakItemDto[]; side
  * What its latest request sent to the bank (stage 4): each action in sending order with its status, the bank's code
  * and reference; the masked request and answer behind a disclosure, for an Open API reader or the space admin.
  */
-function PostingPanel({ b }: { b: BreakDetailDto }) {
+function PostingPanel({ b, spaceId }: { b: BreakDetailDto; spaceId: string }) {
   const chip = b.posting ? postingChip(b.posting.status) : null;
   return (
     <Panel title="Posting" description={b.posting ? `${b.posting.action}: ${chip!.label.toLowerCase()}${b.posting.bankReference ? ` · bank reference ${b.posting.bankReference}` : ""}` : "What the approval sent to the bank"}
@@ -335,6 +336,13 @@ function PostingPanel({ b }: { b: BreakDetailDto }) {
                 <span className="text-body-sm text-fg">{a.name}<span className="text-fg-3"> · {postingEvent(a)}{a.override ? " (override)" : ""}{a.variant ? ` · ${a.variant}` : ""}</span></span>
                 <StatusChip health={c.health} label={c.label} />
               </span>
+              {/* grouped (stage 5): the group it waits in, or was sent in with how many others, on the recon's Posting groups tab */}
+              {a.group && (
+                <Link href={`/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(a.group.configId)}?tab=posting&group=${encodeURIComponent(a.group.id)}`}
+                  className="justify-self-start text-caption text-fg-2 hover:underline focus-visible:outline-2 focus-visible:outline-primary">
+                  {a.status === "grouped" ? waitingText(a.group) : `Sent in the ${formatDate(Date.parse(`${a.group.period}T00:00:00+07:00`))} group · ${groupKeyText(a.group.keys)} · ${a.group.items === 1 ? "1 item" : `${a.group.items} items`}`}
+                </Link>
+              )}
               {(a.message || a.code || a.bankReference || a.externalId) && (
                 <span className="flex flex-wrap gap-x-4 text-caption text-fg-3">
                   {a.message && <span className={a.status === "posted" ? "" : "text-down-ink"}>{a.message}</span>}

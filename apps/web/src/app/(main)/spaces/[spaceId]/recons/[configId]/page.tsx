@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
 }
 
 /**
- * A recon of the space (?tab=): Overview (its day, runs, trend), Configuration (the builder over its open draft, with its
+ * A recon of the space (?tab=): Overview (its day, runs, trend), Posting groups (?group= opens one), Configuration (the builder over its open draft, with its
  * sides' sources, else the published spec), History (versions and activity).
  */
 export default async function Page({ params, searchParams }: { params: Params; searchParams: Promise<SearchParams> }) {
@@ -24,6 +24,7 @@ export default async function Page({ params, searchParams }: { params: Params; s
   const sp = toSearch(await searchParams);
   const tab = reconTabOf(sp.get("tab"));
   const tables = tab === "overview" ? [reads.reconLive(spaceId, configId), reads.reconTrend(spaceId, configId), reads.reconOpenSummary(spaceId, configId), reads.reconReasons(spaceId, configId), reads.reconRunsFirst(spaceId, configId), reads.reconLastTick(spaceId, configId), reads.sideSourceOptions(spaceId), reads.reconSignoffs(spaceId, configId, sp)]
+    : tab === "posting" ? [reads.postingGroups(spaceId, configId, sp), ...(sp.get("group") ? [reads.postingGroup(spaceId, configId, sp.get("group")!)] : [])]
     : tab === "history" ? [reads.reconVersions(spaceId, configId, sp), reads.reconActivity(spaceId, configId, sp)]
     : await reconSourceReads(spaceId, configId);
   return (

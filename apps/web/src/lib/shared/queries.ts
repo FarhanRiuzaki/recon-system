@@ -7,7 +7,7 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { ACTION_RUN_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { ACTION_RUN_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { selectionState } from "@starterkit/shared/filter-selection";
@@ -158,6 +158,15 @@ export const ACTION_RUNS = (spaceId: string): TableDef<PostingFilters> => ({
   key: INTEGRATIONS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/action-runs`,
   spec: { sorts: ACTION_RUN_SORTS, defaultSort: "-createdAt", search: ["q"], filters: { q: text(200), status: multiChoice(), kind: oneOf(["", "posting", "notify"], ""), show: oneOf(["attention", "all"], "attention") } },
   params: (f) => ({ q: f.q, kind: f.kind, status: f.status || f.show === "all" ? f.status : selectionState([...POSTING_ATTENTION]) }),
+});
+/** A recon's posting groups (stage 5), newest period first, on its Posting groups tab; `group` (the one open) stays when paging. */
+export const POSTING_GROUPS = (spaceId: string, configId: string): TableDef<{ status: string }> => ({
+  key: INTEGRATIONS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/posting-groups`,
+  spec: { sorts: POSTING_GROUP_SORTS, defaultSort: "-period", filters: { status: multiChoice() }, ns: "g" }, transient: ["tab", "group"],
+});
+export const postingGroup = (spaceId: string, configId: string, id: string) => ({
+  key: [...INTEGRATIONS_KEY, "posting-group", spaceId, configId, id] as const,
+  url: `/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/posting-groups/${encodeURIComponent(id)}` as const,
 });
 export const connectorDetail = (id: string) => ({ key: [...INTEGRATIONS_KEY, "connector", id] as const, url: `/api/integrations/connectors/${encodeURIComponent(id)}` as const });
 

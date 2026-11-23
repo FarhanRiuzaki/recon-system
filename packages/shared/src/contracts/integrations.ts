@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { CONNECTOR_SORTS } from "../paging";
+import { CONNECTOR_SORTS, POSTING_GROUP_SORTS } from "../paging";
+import { ACTION_STATUSES } from "./breaks";
+import { filterSelection } from "./filter-selection";
 import { DESCRIPTION_MAX, ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
 import { ListQuery, sortParam } from "./common";
 import { Person, reviewFields, versionFields } from "./workflows";
@@ -154,3 +156,29 @@ export const ConnectorOperationsDto = z.object({
   })),
 });
 export type ConnectorOperationsDto = z.infer<typeof ConnectorOperationsDto>;
+
+// ---- posting groups (stage 5, design §4.8 "Recon → Posting groups") ----
+/** A group's key: the field's name and the break's value ("" = it had none: "No <label>" on screen). */
+export const PostingGroupKey = z.object({ label: z.string(), value: z.string() });
+/** GET …/recons/{configId}/posting-groups: newest period first; `status` open (still taking breaks) or closed. */
+export const PostingGroupListQuery = ListQuery.extend({
+  sort: sortParam(POSTING_GROUP_SORTS),
+  status: filterSelection(z.enum(["open", "closed"])).optional(),
+});
+export type PostingGroupListQuery = z.infer<typeof PostingGroupListQuery>;
+/**
+ * One posting group: its period (approval date), part, key, currency, breaks and total (minor units), when it is
+ * sent (`at` cutoff with `closesAt`, or at the recon day's close), open or closed, and its run once closed (null:
+ * still open, or closed empty).
+ */
+export const PostingGroupRowDto = z.object({
+  id: z.string(), period: z.string(), part: z.number().int(), keys: z.array(PostingGroupKey), currency: z.string(), items: z.number().int(), totalMinor: z.string(),
+  at: z.enum(["cutoff", "day_close"]), closesAt: z.string().nullable(), closedAt: z.string().nullable(), action: z.string(), variant: z.string(), status: z.enum(["open", "closed"]),
+  run: z.object({ id: z.string(), status: z.enum(ACTION_STATUSES), code: z.string().nullable(), message: z.string().nullable(), bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string() }).nullable(),
+});
+export type PostingGroupRowDto = z.infer<typeof PostingGroupRowDto>;
+/** GET …/posting-groups/{groupId}: the group and its breaks in joining order (at most GROUP_MAX). */
+export const PostingGroupDto = PostingGroupRowDto.extend({
+  members: z.array(z.object({ itemId: z.string(), ref: z.string().nullable(), amountMinor: z.string().nullable(), joinedAt: z.string() })),
+});
+export type PostingGroupDto = z.infer<typeof PostingGroupDto>;

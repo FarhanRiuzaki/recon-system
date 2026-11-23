@@ -622,6 +622,22 @@ tidak dikirim ulang (cek ke bank sebelum bertindak). Tampilan: panel Posting di 
 dengan filter status/jenis dan CSV, hitungan gagal/timeout/tidak terkirim 24 jam terakhir per recon di Today, dan
 "What gets posted" di langkah Approval yang memakai break nyata. Tahap 5 (mode grup) menyusul.
 
+**Amandemen 4, 23 November 2026 (tahap 5, mode grup; rencana `docs/superpowers/plans/2026-11-23-group-posting-stage-5.md`,
+keputusan builder R1–R17 di sana dengan biayanya bila salah; owner: "ambil rekomendasi lo"):** varian aksi `posting`
+yang dipicu `approved`/`level_approved` boleh `per: "group"` dengan `group: { key (≤ 5 field katalog text/date/list/number,
+mis. Merchant ID), at: cutoff HH:MM | day_close }`. Break yang disetujui masuk grup terbuka (`posting_groups`, milik
+space, RLS) per (versi recon, perubahan, aksi, varian, nilai kunci, mata uang, periode) di transaksi approval, di bawah
+row lock grup, sekali per (request, aksi, break) (`posting_group_items`). Periode = tanggal approval Asia/Jakarta; di
+atau setelah cutoff, atau setelah hari recon periode itu mulai Closing, atau bila grupnya sudah ditutup → hari
+berikutnya. Kunci kosong tetap satu grup ("No Merchant id"). 500 break per grup; berikutnya membuka part 2. Grup
+ditutup oleh job per menit (cutoff lewat) dan oleh `closeDay` saat waktu tutup hari lewat (semua grup periode ≤ hari
+itu, cutoff ikut lebih awal); penutupan membangun satu payload dari nilai break saat approval (`group.sum`,
+`group.count`, `group.period`, `group.key.<field>`, field di bawah array request = satu elemen per break) dan menulis
+satu `action_runs` (`group_id` unik, tanpa request) yang dikirim worker tahap 4 sekali. Grup kosong tidak mengirim.
+Sign-off (prepare/sign) ditolak selama ada grup periode ≤ hari itu yang terbuka atau run-nya queued/sending. Layar:
+tab Posting groups di recon (detail `?group=`), "In the … group · … · waiting until …" di panel Posting break, baris
+"Group of N items" di halaman Posting. Tanpa "send now" manual.
+
 ## DEC-053 — Connector Open API global, berversi dengan maker-checker; rahasia per environment di luar versi
 
 22 November 2026 — pemilik ("go" atas rencana `docs/superpowers/plans/2026-11-22-open-api-connectors-stage-3.md`, tahap 3
