@@ -163,7 +163,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
       <Panel flush icon={NetworkIcon} title="Results per pass"
         description={run.mode === "simulation" ? "Not stored: after a real run these stay unmatched at day close." : undefined}
         toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
-        <div className="grid gap-3 px-3 pb-3">
+        <div className="grid gap-3 p-card">
           {/* from 768 px: a tile per business date and a tab per pass; on a phone the same choices as two selects */}
           <div className="grid gap-2 md:hidden">
             {strip.length > 0 && (

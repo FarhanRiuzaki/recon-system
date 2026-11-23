@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalChanges, approvalRow, keptCopy, savable } from "./approval-model";
+import { approvalChanges, approvalRow, approvalWarnings, keptCopy, savable } from "./approval-model";
 import { stepReasons } from "./spec-model";
 
 const W = { id: "0190f5a0-0000-7000-8000-00000000000a", version: 1 };
@@ -62,5 +62,17 @@ describe("the Approval step's table row", () => {
   it("says what is sent to the bank: the actions by name, or Nothing", () => {
     const post = { name: "Post to GL", kind: "posting" as const, on: { event: "approved" as const }, variants: [] };
     expect(approvalRow({ workflow: { default: null, rules: [] }, actions: [post, { ...post, name: " " }] }, names).bank).toBe("Post to GL, An action without a name");
+  });
+});
+
+describe("approvalWarnings (audit 2: step 2 showed one amber notice per approval action field)", () => {
+  it("splits the draft's warnings into the approval actions' (\"<change> · <action> · <variant>: …\") and the rest", () => {
+    const ws = [
+      "Undo match · k · Default: fromDateTime is required. Map it, or give it a fixed or auto value.",
+      "Write-off · Post to GL · Default: the connector picked no longer exists. Pick another one.",
+      "Pass 2 uses Amount, which side B doesn't have.",
+    ];
+    expect(approvalWarnings(ws)).toEqual({ approval: ws.slice(0, 2), other: [ws[2]] });
+    expect(approvalWarnings([])).toEqual({ approval: [], other: [] });
   });
 });

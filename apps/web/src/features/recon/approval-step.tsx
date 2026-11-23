@@ -2,10 +2,11 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Field, Panel, SectionHeading } from "@starterkit/ui/ds";
+import { EditToggle, Field, Panel, SectionHeading } from "@starterkit/ui/ds";
+import { Table, TableBody, TableCell, TableExpandRow, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, CheckIcon, EditIcon, RemoveIcon, ShowIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
@@ -84,7 +85,7 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
           {w.default && <Newer pin={w.default} rows={rows} disabled={disabled} onUse={(v) => onChange({ ...setup, workflow: { ...w, default: { ...w.default!, version: v } } })} />}
         </div>
         {w.rules.length > 0 && (
-          <ol className="grid gap-2" aria-label={`${TRIGGER_LABEL[kind]}: rules, first match wins`}>
+          <ol className="grid gap-list" aria-label={`${TRIGGER_LABEL[kind]}: rules, first match wins`}>
             {w.rules.map((r, i) => (
               <li key={i} className="grid gap-2 rounded-lg border border-line-strong bg-card p-3 shadow-xs motion-safe:animate-enter">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -93,11 +94,11 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
                     {open !== i && <span className="text-fg-2"> · {condDone(r.when as Condition) ? conditionText(r.when as Condition, catalog) : "unfinished"} → {rows.find((x) => x.id === r.workflow.id)?.name ?? "pick a workflow"}</span>}
                   </span>
                   {!disabled && (
-                    <span className="flex shrink-0 items-center">
-                      <Button type="button" variant="edit" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? <Icon icon={CheckIcon} /> : <Icon icon={EditIcon} />}{open === i ? "Done" : "Edit"}</Button>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
-                      <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
-                      <Button type="button" variant="remove" size="icon" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <EditToggle open={open === i} onToggle={() => setOpen(open === i ? null : i)} name={`rule ${i + 1}`} />
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
+                      <Button type="button" variant="remove" size="icon-sm" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
                     </span>
                   )}
                 </div>
@@ -138,26 +139,28 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
 
 /**
  * The four changes as one table (S2): Change → Who approves → Sent to bank, each row with Edit that opens its editor in
- * place under it (one at a time).
+ * place under it (one at a time). The shared table (audit 2 B6): flush to the card, DataTable's header and cells, the
+ * editor in a TableExpandRow (12 under its row, 16 at the sides and bottom), Edit ↔ Done one size (EditToggle).
+ * Below 768 px each change is a card: its name and the toggle on the first line, the two values under it.
  */
 function ChangesTable({ local, rows, editor, disabled }: {
   local: ReconApprovalSpec; rows: readonly LibraryRowDto[]; editor: (k: Trigger) => React.ReactNode; disabled: boolean;
 }) {
   const [open, setOpen] = useState<Trigger | null>(null);
   const nameOf = (id: string) => rows.find((r) => r.id === id)?.name ?? null;
-  const CELL = "py-3 pr-4 align-top max-md:p-0";
+  const CARD = "max-md:h-auto max-md:border-b-0 max-md:p-0";
   return (
-    <Panel title="Who approves each change" description="Every request goes through its workflow; once approved, its actions send it to the bank">
-      <table className="w-full border-collapse text-left max-md:block">
-        <thead className="max-md:hidden">
-          <tr className="border-b border-line text-caption text-fg-3">
-            <th scope="col" className="w-40 py-2 pr-4 font-normal">Change</th>
-            <th scope="col" className="py-2 pr-4 font-normal">Who approves</th>
-            <th scope="col" className="py-2 pr-4 font-normal">Sent to bank</th>
-            <th scope="col" className="w-24 py-2 font-normal"><span className="sr-only">Edit</span></th>
-          </tr>
-        </thead>
-        <tbody className="max-md:grid">
+    <Panel flush title="Who approves each change" description="Every request goes through its workflow; once approved, its actions send it to the bank">
+      <Table aria-label="Who approves each change" className="max-md:block">
+        <TableHeader className="max-md:hidden">
+          <TableRow className="hover:bg-transparent">
+            <TableHead scope="col" className="w-44">Change</TableHead>
+            <TableHead scope="col">Who approves</TableHead>
+            <TableHead scope="col">Sent to bank</TableHead>
+            <TableHead scope="col" className="w-px"><span className="sr-only">Edit</span></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody className="max-md:grid">
           {TRIGGERS.map((k) => {
             const s = local.changes[k];
             const r = approvalRow(s, nameOf);
@@ -165,29 +168,25 @@ function ChangesTable({ local, rows, editor, disabled }: {
             const isOpen = open === k;
             return (
               <Fragment key={k}>
-                <tr className="border-b border-line last:border-b-0 max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:py-3">
-                  <th scope="row" className={`${CELL} text-label font-medium text-fg`}>{TRIGGER_LABEL[k]}</th>
-                  <td className={`${CELL} text-body-sm text-fg max-md:col-span-2 max-md:row-start-2`}>
-                    <span className="text-caption text-fg-3 md:hidden">Who approves: </span>{r.who}
-                    {unfinished && <span className="block text-caption text-degraded-ink">A rule is unfinished</span>}
-                  </td>
-                  <td className={`${CELL} text-body-sm text-fg max-md:col-span-2 max-md:row-start-3`}>
-                    <span className="text-caption text-fg-3 md:hidden">Sent to bank: </span>{r.bank}
-                  </td>
-                  <td className="py-2 text-right align-top max-md:col-start-2 max-md:row-start-1 max-md:p-0">
-                    <Button type="button" variant={disabled ? "ghost" : "edit"} size="sm" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : k)}>
-                      <Icon icon={isOpen ? CheckIcon : disabled ? ShowIcon : EditIcon} />{isOpen ? "Done" : disabled ? "Show" : "Edit"}<span className="sr-only"> {TRIGGER_LABEL[k].toLowerCase()}</span>
-                    </Button>
-                  </td>
-                </tr>
-                {isOpen && (
-                  <tr className="max-md:block"><td colSpan={4} className="pb-4 max-md:block">{editor(k)}</td></tr>
-                )}
+                <TableRow data-expanded={isOpen || undefined} className="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-1 max-md:border-b max-md:border-line max-md:px-3 max-md:py-3 max-md:data-[expanded]:border-b-0">
+                  <TableHead scope="row" className={`h-(--row-h) border-b border-line text-body font-medium text-fg ${CARD}`}>{TRIGGER_LABEL[k]}</TableHead>
+                  <TableCell className={`text-fg max-md:col-span-2 max-md:row-start-2 ${CARD}`}>
+                    <span className="text-body-sm text-fg-3 md:hidden">Who approves: </span>{r.who}
+                    {unfinished && <span className="block text-body-sm text-degraded-ink">A rule is unfinished</span>}
+                  </TableCell>
+                  <TableCell className={`text-fg max-md:col-span-2 max-md:row-start-3 ${CARD}`}>
+                    <span className="text-body-sm text-fg-3 md:hidden">Sent to bank: </span>{r.bank}
+                  </TableCell>
+                  <TableCell className={`text-right whitespace-nowrap max-md:col-start-2 max-md:row-start-1 ${CARD}`}>
+                    <EditToggle open={isOpen} readOnly={disabled} onToggle={() => setOpen(isOpen ? null : k)} name={TRIGGER_LABEL[k].toLowerCase()} />
+                  </TableCell>
+                </TableRow>
+                {isOpen && <TableExpandRow colSpan={4} className="max-md:block max-md:px-3 max-md:pt-0">{editor(k)}</TableExpandRow>}
               </Fragment>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </Panel>
   );
 }

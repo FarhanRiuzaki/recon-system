@@ -48,12 +48,12 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
           Nothing is sent to the bank on this approval yet. Add an action to post to the bank or notify it.
         </p>
       )}
-      <ol className="grid gap-2">
+      <ol className="grid gap-list">
         {actions.map((a, i) => {
           const gaps = opsQ.data ? gapsOf(a) : [];
           return (
             <li key={i} className="flex flex-wrap items-center gap-3 rounded-lg border border-line-strong bg-card px-4 py-3 shadow-xs">
-              <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md bg-primary-soft text-label text-primary tabular">{i + 1}</span>
+              <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-label text-primary-foreground tabular">{i + 1}</span>
               <span className="grid min-w-0 flex-1 gap-0.5">
                 <span className="text-body text-fg">{actionSentence(a)}</span>
                 <span className="truncate text-caption text-fg-3">
@@ -66,7 +66,7 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
               {!disabled && (
                 <span className="flex shrink-0 items-center gap-1">
                   <Button type="button" variant="edit" size="sm" onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>
-                  <Button type="button" variant="remove" size="icon" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
+                  <Button type="button" variant="remove" size="icon-sm" aria-label={`Remove ${a.name}`} onClick={() => onChange(actions.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
                 </span>
               )}
             </li>

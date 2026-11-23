@@ -10,7 +10,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
-import { CategoryChip, EmptyState, LazyMount, Panel, RelativeTime, ScrollFade } from "@starterkit/ui/ds";
+import { CategoryChip, EmptyState, Facts, LazyMount, Panel, RelativeTime, ScrollFade } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { APP_TIME_ZONE_LABEL, formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -31,15 +31,6 @@ import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
 
 const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
-/** Label / value rows of a card (as the source's Pull card). */
-function Rows({ items }: { items: [string, React.ReactNode][] }) {
-  return (
-    <dl className="grid gap-x-6 gap-y-2 md:grid-cols-[9rem_minmax(0,1fr)]">
-      {items.map(([k, v]) => <div key={k} className="contents"><dt className="text-label text-fg">{k}</dt><dd className="min-w-0 text-body-sm text-fg-2">{v}</dd></div>)}
-    </dl>
-  );
-}
-
 /**
  * How it runs, how its day closes, its last run, when the next one is due and, for an operator or a config maker, a run
  * of chosen dates, pinned to the card's foot. `scheduledAt`: when the last scheduled run started.
@@ -57,7 +48,7 @@ function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: strin
   return (
     <Panel icon={TimeIcon} title="Run" description={scheduleLine(spec.schedule)} className="h-full" bodyClassName="flex flex-col">
       <div className="flex flex-1 flex-col gap-4">
-        <Rows items={[
+        <Facts items={[
           ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
           ["Carry over", carryText(spec.carry_over_days)],

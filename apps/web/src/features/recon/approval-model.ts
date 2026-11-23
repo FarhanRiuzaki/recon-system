@@ -1,6 +1,6 @@
 import { type Clause, type Condition, NO_VALUE_OPS } from "@starterkit/shared/conditions";
 import type { ReconApprovalInput, ReconApprovalSpec } from "@starterkit/shared/contracts/recon";
-import { TRIGGERS } from "@starterkit/shared/workflows";
+import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 
 // The Approval step's draft (DEC-052 rev 2): what of it the recon draft can hold now, and the copy of an unfinished
 // rule this browser keeps meanwhile. Pure.
@@ -64,4 +64,14 @@ export function keptCopy(stored: string | null, saved: ReconApprovalInput | unde
 export function approvalChanges(live: ReconApprovalInput | undefined, next: ReconApprovalInput | undefined, hasLive: boolean): (typeof TRIGGERS)[number][] {
   if (!hasLive) return [];
   return TRIGGERS.filter((k) => JSON.stringify(live?.changes[k] ?? null) !== JSON.stringify(next?.changes[k] ?? null));
+}
+
+/**
+ * The draft's warnings split into the approval actions' (the API words them "<change> · <action> · <variant>: …",
+ * modules/recon/rules.ts) and the rest, so another step shows the first as one line pointing at Approval.
+ */
+export function approvalWarnings(ws: readonly string[]): { approval: string[]; other: string[] } {
+  const prefixes = TRIGGERS.map((t) => `${TRIGGER_LABEL[t]} · `);
+  const approval = ws.filter((w) => prefixes.some((p) => w.startsWith(p)));
+  return { approval, other: ws.filter((w) => !approval.includes(w)) };
 }

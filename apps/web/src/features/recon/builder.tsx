@@ -17,6 +17,7 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconRunItemDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
+import { approvalWarnings } from "./approval-model";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
@@ -379,6 +380,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const gates = carryOverGates(spec);
   const notes = (no: number) => saved.warnings.filter((w) => tolerancePass(w) === no);
   const pageWarnings = saved.warnings.filter((w) => !isCarryOverWarning(w) && tolerancePass(w) === null);
+  const stepWarnings = approvalWarnings(pageWarnings);
   const title = sel.k === "settings" ? "Settings" : sel.k === "side" ? `Side ${sel.i === 0 ? "A" : "B"}` : passIndex >= 0 ? `Pass ${passIndex + 1} of ${spec.passes.length}` : "Pass";
   const sourceOf = (i: 0 | 1) => (i === 0 ? sa.data : sb.data);
   const editor = sel.k === "settings"
@@ -497,7 +499,13 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
               <Banner tone="error" action={<Button type="button" variant="create" size="sm" disabled={!fields[0]?.has("currency") || !fields[1]?.has("currency")}
                 onClick={() => change(addCurrencyCondition(spec, gaps))}><Icon icon={AddIcon} />Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
-            {pageWarnings.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
+            {/* the approval actions' problems as one line to the step that fixes them (audit 2), the rest one each */}
+            {stepWarnings.approval.length > 0 && (
+              <Banner tone="warn" action={<Button type="button" variant="secondary" size="sm" onClick={() => go(4)}>Open {STEP_LABEL[4]}</Button>}>
+                {`What is sent to the bank has ${stepWarnings.approval.length} ${stepWarnings.approval.length === 1 ? "thing" : "things"} to finish in ${STEP_LABEL[4]}.`}
+              </Banner>
+            )}
+            {stepWarnings.other.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
             {spec.passes.length === 0 ? (
               // no pass yet: the ready passes as the way in (a blank one last)
               <Panel title="Start with a pass" description="Each pass pairs the items the ones before it left. Pick one to start; you can change everything in it.">
@@ -618,7 +626,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
 
         {editable && (
           <FormFooter
-            primary={<BlockedButton type="submit" reason={why[step]} variant={why[step] === null ? "default" : "secondary"} disabled={step === 6 && submitting} aria-busy={(step === 6 && submitting) || undefined}>
+            primary={<BlockedButton type="submit" reason={why[step]} disabled={step === 6 && submitting} aria-busy={(step === 6 && submitting) || undefined}>
               {step === 6 && submitting && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{step === 6 ? "Submit for approval" : `Next: ${STEP_LABEL[(step + 1) as WizardStep]}`}
             </BlockedButton>}
             back={step > 1 && <Button type="button" variant="secondary" onClick={() => go((step - 1) as WizardStep)}>Back</Button>}

@@ -25,11 +25,11 @@ export const rowsOf = (text: string) => text.split("\n").map((l) => l.trim()).fi
 function LookupEditor({ l, onChange, onRemove, disabled }: { l: Lookups[number]; onChange: (l: Lookups[number]) => void; onRemove: () => void; disabled: boolean }) {
   const [text, setText] = useState(l.rows.map((r) => `${r.key},${r.value}`).join("\n"));
   return (
-    <div className="grid gap-2 rounded-lg border border-line bg-card p-3">
+    <div className="grid gap-2 rounded-lg border border-line bg-card p-card">
       <span className="flex items-center gap-2">
         <Input aria-label="Lookup name" value={l.name} disabled={disabled} className="h-8 font-mono md:w-64" onChange={(e) => onChange({ ...l, name: keyOf(e.target.value) })} />
         <span className="text-caption text-fg-3">{l.rows.length} rows</span>
-        {!disabled && <Button type="button" variant="remove" size="icon" aria-label={`Remove lookup ${l.name}`} className="ml-auto" onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
+        {!disabled && <Button type="button" variant="remove" size="icon-sm" aria-label={`Remove lookup ${l.name}`} className="ml-auto" onClick={onRemove}><Icon icon={RemoveIcon} /></Button>}
       </span>
       <Textarea aria-label={`${l.name}: rows, one key,value per line`} rows={4} value={text} disabled={disabled} className="font-mono" placeholder={"M0001,1234567890\nM0002,9876543210"}
         onChange={(e) => { setText(e.target.value); onChange({ ...l, rows: rowsOf(e.target.value) }); }} />
@@ -42,8 +42,8 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
   return (
     <Panel title="Accounts and lookup tables" description="Named accounts and small tables the actions' fields can take values from">
       <div className="grid gap-section">
-        <div className="grid gap-2">
-          <span className="text-label text-fg">Accounts</span>
+        <div className="grid gap-list">
+          <span className="text-body font-medium text-fg">Accounts</span>
           {accounts.length === 0 && <span className="text-body-sm text-fg-3">No account yet. Add the ones the postings debit or credit, e.g. a suspense account.</span>}
           {accounts.map((a, i) => (
             <div key={i} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1.2fr)_5rem_2rem] items-end gap-2 max-md:grid-cols-2">
@@ -58,8 +58,8 @@ export function SetupTables({ accounts, lookups, onChange, disabled }: { account
             <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => onChange([...accounts, { key: `account_${accounts.length + 1}`, label: "", number: "", currency: "IDR" }], lookups)}><Icon icon={AddIcon} />Add an account</Button>
           )}
         </div>
-        <div className="grid gap-2">
-          <span className="text-label text-fg">Lookup tables</span>
+        <div className="grid gap-list">
+          <span className="text-body font-medium text-fg">Lookup tables</span>
           {lookups.length === 0 && <span className="text-body-sm text-fg-3">No lookup table yet. Add one to map a value to another, e.g. a merchant to its account.</span>}
           {lookups.map((l, i) => (
             <LookupEditor key={i} l={l} disabled={disabled} onChange={(n) => onChange(accounts, lookups.map((x, j) => (j === i ? n : x)))} onRemove={() => onChange(accounts, lookups.filter((_, j) => j !== i))} />
