@@ -52,4 +52,11 @@ describe("unmatch queue columns: an item runs no longer check carries a neutral 
     expect(cell("state", live)).not.toContain("Not checked again");
     expect(cell("recheck", live)).toContain("21 Nov");
   });
+  it("an item a request holds says so instead, as a neutral chip in both places", () => {
+    const held = { ...B, state: "pending_approval", recheck: { kind: "no" } } as BreakRowDto;
+    for (const key of ["state", "recheck"]) {
+      expect(cell(key, held)).toContain(">Held by a request</span>");
+      expect(cell(key, held)).not.toContain("Not checked again");
+    }
+  });
 });

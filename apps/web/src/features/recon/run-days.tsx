@@ -31,6 +31,16 @@ export function carriedDay(run: Pick<ReconRunDto, "days" | "from">): RunDay | nu
   };
 }
 
+/**
+ * The date filters a link the run's tiles don't hold needs (an old link): a carry-over date opens Carried over, a date or
+ * Carried over the run lacks no date filter; null while the run's days are unknown or the link holds.
+ */
+export function strayDatePatch(run: Pick<ReconRunDto, "days" | "from" | "to">, s: { date: string; carried: string }): { date: string; carried: string } | null {
+  if (!run.days) return null;
+  if (s.date && !runDays(run).some((d) => d.date === s.date)) return { date: "", carried: run.days.some((d) => d.date === s.date && d.date < run.from) ? "1" : "" };
+  return s.carried && !carriedDay(run) ? { date: "", carried: "" } : null;
+}
+
 /** A run's tiles: All dates, Carried over when it has any, then each of its own dates; a real run's breaks by the one definition (Duplicate included). */
 export function dayTilesOf(run: ReconRunDto, spec: ReconSpec): DayTile[] {
   const real = run.mode !== "simulation";

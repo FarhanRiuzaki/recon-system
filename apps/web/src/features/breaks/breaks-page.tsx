@@ -113,8 +113,8 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
           {/* major units of each item's currency, the absolute amount (as the Amount sort) */}
           <FilterGroup label="Amount" value={[draft.amountMin && `from ${draft.amountMin}`, draft.amountMax && `up to ${draft.amountMax}`].filter(Boolean).join(" ")}>
             <div className="grid grid-cols-2 gap-2">
-              <Field id="breaks-amount-min" label="From"><Input id="breaks-amount-min" inputMode="decimal" autoComplete="off" value={draft.amountMin} onChange={(e) => patch({ amountMin: majorAmount(e.target.value) })} /></Field>
-              <Field id="breaks-amount-max" label="Up to"><Input id="breaks-amount-max" inputMode="decimal" autoComplete="off" value={draft.amountMax} onChange={(e) => patch({ amountMax: majorAmount(e.target.value) })} /></Field>
+              <Field id="breaks-amount-min" label="From"><Input id="breaks-amount-min" aria-label="Amount from" inputMode="decimal" autoComplete="off" value={draft.amountMin} onChange={(e) => patch({ amountMin: majorAmount(e.target.value, draft.amountMin) })} /></Field>
+              <Field id="breaks-amount-max" label="Up to"><Input id="breaks-amount-max" aria-label="Amount up to" inputMode="decimal" autoComplete="off" value={draft.amountMax} onChange={(e) => patch({ amountMax: majorAmount(e.target.value, draft.amountMax) })} /></Field>
             </div>
           </FilterGroup>
         </>}>

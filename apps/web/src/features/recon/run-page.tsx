@@ -22,7 +22,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
 import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, readIn, reasonOptions, runCurrency, runDays, scopeCaption } from "./run-model";
 import { RunSummary } from "./run-summary";
-import { CARRIED, carriedDay, dayLabel, dayTilesOf, tileOption } from "./run-days";
+import { CARRIED, carriedDay, dayLabel, dayTilesOf, strayDatePatch, tileOption } from "./run-days";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
 import { reconHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
@@ -91,11 +91,10 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
     if (!isLive({ status: before ?? "" }) || isLive(run)) return;
     void qc.invalidateQueries({ predicate: (x) => x.queryKey[0] === def.key && String(x.queryKey[1]).startsWith(`${def.path}?`) });
   }, [run, qc, def]);
-  // a date the run doesn't have among its own (an old link, a carry-over date: Carried over holds those), or Carried over
-  // on a run without carry-over dates: no date filter
+  // an old link: a carry-over date opens Carried over; a date, or Carried over, the run doesn't have, no date filter
   const setTable = t.set;
-  const strayDate = !!run?.days && ((!!t.state.date && !runDays(run).some((d) => d.date === t.state.date)) || (!!t.state.carried && !carriedDay(run)));
-  useEffect(() => { if (strayDate) setTable({ date: "", carried: "" }, { history: "replace" }); }, [strayDate, setTable]);
+  const strayCarried = run ? strayDatePatch(run, t.state)?.carried : undefined; // the patch's date is always ""
+  useEffect(() => { if (strayCarried !== undefined) setTable({ date: "", carried: strayCarried }, { history: "replace" }); }, [strayCarried, setTable]);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
   // one currency for the run (both sources write it fixed): in the amount headers, no column of its own (§5.9); else a

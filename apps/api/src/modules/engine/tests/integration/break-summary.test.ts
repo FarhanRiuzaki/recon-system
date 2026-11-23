@@ -13,6 +13,7 @@ import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { reconConfigVersions } from "../../../recon";
 import { reconDays, reconItems } from "../../schema";
+import { addDays } from "../../service";
 import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
 const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
@@ -106,6 +107,22 @@ describe("GET breaks: amount range and checked again", () => {
     expect(await list("?checked=yes")).toEqual([]);
     expect((await list("?sort=amount")).find((x) => x.id === I.a1)!.recheck).toEqual({ kind: "no" });
     expect((await call("GET", `/v1/spaces/${A}/breaks?checked=maybe`, { token: t.op })).status).toBe(400);
+  });
+
+  it("checked=yes with a carry over of N days while business date + N is not before today; a waiting request holds it out", async () => {
+    // the late-match break dated 2 days before today, carry over 2: checked until today; carry over 1: over by yesterday
+    const bd = addDays(today, -2);
+    await db.transaction((tx) => ensureMonthPartitions(tx, reconItems, new Date(`${bd}T00:00:00Z`), 2));
+    await db.update(reconItems).set({ businessDate: bd }).where(eq(reconItems.id, I.a1));
+    const carry = (days: number) => db.update(reconConfigVersions).set({ spec: sql`jsonb_set(${reconConfigVersions.spec}, '{carry_over_days}', to_jsonb(${days}::int))` }).where(eq(reconConfigVersions.configId, CFG));
+    await carry(2);
+    expect((await list("?checked=yes")).map((x) => [x.id, x.recheck])).toEqual([[I.a1, { kind: "until", date: today }]]);
+    await carry(1);
+    expect(await list("?checked=yes")).toEqual([]);
+    await carry(2);
+    await db.update(reconItems).set({ breakState: "pending_approval" }).where(eq(reconItems.id, I.a1));
+    expect(await list("?checked=yes")).toEqual([]);
+    expect((await list("?checked=no")).length).toBe(3);
   });
 });
 

@@ -10,14 +10,19 @@ describe("unmatch KPI tray: the open amount tile (audit Q1)", () => {
 });
 
 describe("the unmatch amount filter: text typed in major units, as the API takes it", () => {
-  it("digits and one point; separators and signs dropped; nothing without a digit", () => {
+  it("digits and one point; separators dropped; a sign ignored (the filter is on the absolute amount); nothing without a digit", () => {
     expect(majorAmount("1,000.50")).toBe("1000.50");
     expect(majorAmount(" 1 000 ")).toBe("1000");
     expect(majorAmount("-25")).toBe("25");
-    expect(majorAmount("1.2.3")).toBe("1.23");
+    expect(majorAmount("-")).toBe("");
     expect(majorAmount("12.")).toBe("12.");
-    expect(majorAmount(".")).toBe("");
     expect(majorAmount("abc")).toBe("");
     expect(majorAmount("1234567890123456789.1234567")).toBe("123456789012345.123456");
+  });
+  it("a leading point reads as 0.; a second point is refused, the value before it kept", () => {
+    expect(majorAmount(".")).toBe("0.");
+    expect(majorAmount(".5")).toBe("0.5");
+    expect(majorAmount("1.2.", "1.2")).toBe("1.2");
+    expect(majorAmount("1.2.3")).toBe("");
   });
 });

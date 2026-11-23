@@ -89,10 +89,14 @@ export function sidesOf(item: BreakItemDto, counterparts: readonly BreakItemDto[
   return { mine: combined([item, ...others.filter((i) => i.side === item.side)])!, theirs: combined(others.filter((i) => i.side !== item.side)) };
 }
 
-/** The neutral chip of an item runs no longer check, in the queue and on the item's page. */
-export const NOT_CHECKED = "Not checked again";
 /** Whether runs look for the item's counterpart again from business date `today`: the API's `checked` filter. */
 export const checkedAgain = (r: BreakDetailDto["recon"]["recheck"], today: string) => r.kind === "always" || (r.kind === "until" && r.date >= today);
+/**
+ * The neutral chip of an item runs don't check, in the queue and on the item's page: held by a request while one waits
+ * (`pending`, as recheckText says), else not checked again; null while runs check it.
+ */
+export const checkChip = (r: BreakDetailDto["recon"]["recheck"], today: string, pending = false) =>
+  pending ? "Held by a request" : checkedAgain(r, today) ? null : "Not checked again";
 
 /**
  * Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day

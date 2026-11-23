@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { CARRIED, carriedDay, dayLabel, dayTilesOf, tileBreaks, tileOption } from "./run-days";
+import { CARRIED, carriedDay, dayLabel, dayTilesOf, strayDatePatch, tileBreaks, tileOption } from "./run-days";
 
 // The gate after day close: 2 Nov with its duplicates among the breaks (one definition), and a simulation's day.
 const spec = { sides: [{ label: "src1 r2" }, { label: "src2 r2b" }], passes: [{ no: 1, blocking: ["ext_ref"], predicates: [{ op: "eq" }], cardinality: "1:1", accept: "auto" }] } as unknown as ReconSpec;
@@ -40,6 +40,14 @@ describe("a run's date tiles: the carry-over dates as one Carried over tile, the
     const c = carriedDay(withCarry)!;
     expect([c.date, c.passes["1"]!.matched, c.open, c.items, c.breakReasons, c.closed]).toEqual([CARRIED, 5, { a: 1, b: 0 }, { a: 9, b: 5 }, { "No counterpart": { a: 3, b: 0 } }, true]);
     expect(tileBreaks(tiles[1]!, L)).toBe("3 src1 r2 · 0 src2 r2b unmatch");
+  });
+  it("an old link to a carry-over date opens the Carried over tile; a date or Carried over the run lacks, no date filter", () => {
+    expect(strayDatePatch(withCarry, { date: "2026-11-01", carried: "" })).toEqual({ date: "", carried: "1" });
+    expect(strayDatePatch(withCarry, { date: "2026-10-01", carried: "" })).toEqual({ date: "", carried: "" });
+    expect(strayDatePatch(run, { date: "", carried: "1" })).toEqual({ date: "", carried: "" });
+    expect(strayDatePatch(withCarry, { date: "2026-11-02", carried: "" })).toBeNull();
+    expect(strayDatePatch(withCarry, { date: "", carried: "1" })).toBeNull();
+    expect(strayDatePatch({ ...withCarry, days: null } as unknown as ReconRunDto, { date: "2026-11-01", carried: "" })).toBeNull();
   });
   it("no carry-over date with anything on it: no tile", () => {
     expect(carriedDay(run)).toBeNull();

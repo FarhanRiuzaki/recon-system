@@ -24,10 +24,12 @@ export function amountTile(amounts: readonly { currency: string; amountMinor: st
 
 /**
  * Text typed as an amount in major units, as the unmatch queue's amount filter sends it (contracts/breaks BreakListQuery
- * `amountMin`): digits and the first point ("1,000.50" → "1000.50"), at most 15 digits before it and 6 after; "" without a digit.
+ * `amountMin`): digits and one point ("1,000.50" → "1000.50", ".5" → "0.5"), at most 15 digits before it and 6 after;
+ * "" without a digit. A sign is dropped: the filter is on the absolute amount. A second point is refused: `prev` stays.
  */
-export function majorAmount(text: string): string {
+export function majorAmount(text: string, prev = ""): string {
   const [whole = "", ...rest] = text.replace(/[^\d.]/g, "").split(".");
-  const out = `${whole.slice(0, 15)}${rest.length ? `.${rest.join("").slice(0, 6)}` : ""}`;
+  if (rest.length > 1) return prev;
+  const out = `${rest.length && !whole ? "0" : whole.slice(0, 15)}${rest.length ? `.${rest[0]!.slice(0, 6)}` : ""}`;
   return /\d/.test(out) ? out : "";
 }

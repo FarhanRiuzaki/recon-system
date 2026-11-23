@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, checkedAgain, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, checkedAgain, checkChip, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -86,6 +86,12 @@ describe("words of the page", () => {
     expect(checkedAgain({ kind: "until", date: "2026-11-04" }, "2026-11-04")).toBe(true);
     expect(checkedAgain({ kind: "until", date: "2026-11-03" }, "2026-11-04")).toBe(false);
     expect(checkedAgain({ kind: "no" }, "2026-11-04")).toBe(false);
+  });
+  it("the chip of an item runs don't check: held by a request while one waits, else not checked again; none while checked", () => {
+    expect(checkChip({ kind: "no" }, "2026-11-04")).toBe("Not checked again");
+    expect(checkChip({ kind: "until", date: "2026-11-03" }, "2026-11-04")).toBe("Not checked again");
+    expect(checkChip({ kind: "no" }, "2026-11-04", true)).toBe("Held by a request");
+    expect(checkChip({ kind: "always" }, "2026-11-04")).toBeNull();
   });
   it("where a request goes: the connector it calls, or that it is turned off as a warning; only a refused route blocks", () => {
     expect(routeText(recon(), "posting")).toBe("Sent through Bank Mega");
