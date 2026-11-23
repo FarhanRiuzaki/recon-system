@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { approvalChanges, approvalRow, approvalWarnings, keptCopy, savable } from "./approval-model";
+import type { ReconWarning } from "@starterkit/shared/contracts/recon";
+import { approvalChanges, approvalNotice, approvalRow, keptCopy, savable, stepWarnings } from "./approval-model";
 import { stepReasons } from "./spec-model";
 
 const W = { id: "0190f5a0-0000-7000-8000-00000000000a", version: 1 };
@@ -65,14 +66,27 @@ describe("the Approval step's table row", () => {
   });
 });
 
-describe("approvalWarnings (audit 2: step 2 showed one amber notice per approval action field)", () => {
-  it("splits the draft's warnings into the approval actions' (\"<change> · <action> · <variant>: …\") and the rest", () => {
+describe("stepWarnings (review 24 Nov): the draft's warnings by the step the API gives each, never by their words", () => {
+  const w = (step: ReconWarning["step"], text: string, pass: number | null = null, change: ReconWarning["change"] = null): ReconWarning => ({ step, text, pass, change });
+  it("approval ones (an action's, a rule's, a picked workflow's, Undo match's too) for one notice; a pass's under it; schedule ones on their step", () => {
     const ws = [
-      "Undo match · k · Default: fromDateTime is required. Map it, or give it a fixed or auto value.",
-      "Write-off · Post to GL · Default: the connector picked no longer exists. Pick another one.",
-      "Pass 2 uses Amount, which side B doesn't have.",
+      w("approval", "Undo match · k · Default: fromDateTime is required. Map it, or give it a fixed or auto value.", null, "unmatch"),
+      w("approval", "Undo match · rule “Large”: a field it checks is no longer read from the sources (Nope).", null, "unmatch"),
+      w("approval", "Write-off: a picked workflow no longer exists. Pick another one.", null, "write_off"),
+      w("matching", "USD has no tolerance in pass 2; USD pairs must match exactly.", 2),
+      w("schedule", "Pass 3 allows dates 1 day apart, but carry over is 0 days: … Set carry over to 1 day.", 3),
+      w("matching", "Pass 2 uses Amount, which side B doesn't have."),
+      w("sources", "Side B: This space can no longer read this side's source."),
     ];
-    expect(approvalWarnings(ws)).toEqual({ approval: ws.slice(0, 2), other: [ws[2]] });
-    expect(approvalWarnings([])).toEqual({ approval: [], other: [] });
+    const s = stepWarnings(ws);
+    expect(s.approval).toBe(3);
+    expect(s.pass(2)).toEqual([ws[3]!.text]);
+    expect(s.pass(3)).toEqual([]);
+    expect(s.page).toEqual([ws[5]!.text, ws[6]!.text]);
+    expect(stepWarnings([])).toEqual(expect.objectContaining({ approval: 0, page: [] }));
+  });
+  it("the notice says what the Approval step holds, in a count that agrees", () => {
+    expect(approvalNotice(1)).toBe("Approval and posting has 1 thing to finish.");
+    expect(approvalNotice(3)).toBe("Approval and posting has 3 things to finish.");
   });
 });

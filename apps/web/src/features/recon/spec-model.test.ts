@@ -3,7 +3,7 @@ import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { OPERATORS } from "@starterkit/shared/recon";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
-  addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldFor, fieldName, fieldReason, type Fields, kindOf,
+  addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldFor, fieldName, fieldReason, type Fields, kindOf,
   movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
   incompleteField, toleranceProblem,
 } from "./spec-model";
@@ -86,7 +86,6 @@ describe("checks before a save", () => {
     const windowed = { ...s, carry_over_days: 0, passes: s.passes.map((p, i) => (i === 2 ? { ...p, predicates: [...p.predicates, predicateOf("date_window", "business_date")] } : p)) };
     const gates = carryOverGates(windowed);
     expect(gates).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
-    expect(isCarryOverWarning(gates[0]!)).toBe(true);
     expect(carryOverFix(gates[0]!)).toBe(1);
     expect(carryOverGates({ ...windowed, carry_over_days: 1 })).toEqual([]);
     expect(carryOverGates({ ...windowed, schedule: { kind: "interval", every_minutes: 15 } })).toEqual([]);
@@ -113,8 +112,6 @@ describe("checks before a save", () => {
     expect(placeOf("Number the passes 1, 2, 3 … in order, with no gaps.")).toEqual({ text: "Number the passes 1, 2, 3 … in order, with no gaps." });
     expect(carryOverFix("Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day.")).toBe(1);
     expect(carryOverFix("USD has no tolerance in pass 2; USD pairs must match exactly.")).toBeNull();
-    expect(tolerancePass("USD has no tolerance in pass 2; USD pairs must match exactly.")).toBe(2);
-    expect(tolerancePass("Pass 3 allows dates 1 day apart …")).toBeNull();
   });
   it("Submit says why it is off, in order", () => {
     const v = { simulatedHash: null, matchingHash: "h" };

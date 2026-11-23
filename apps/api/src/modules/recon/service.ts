@@ -11,8 +11,9 @@ import type {
   ActionPreviewDto, PreviewActionBody,
   PreviewApprovalBody,
   CreateReconBody, ReconActivityQuery, ReconDto, ReconListQuery, ReconRowDto, ReconSpec, ReconVersionDetailDto, ReconVersionDto, ReconVersionListQuery,
-  ReconVersionRowDto, RejectReconVersionBody, UpdateReconVersionBody,
+  ReconApprovalSpec, ReconVersionRowDto, ReconWarning, RejectReconVersionBody, UpdateReconVersionBody,
 } from "@starterkit/shared/contracts/recon";
+import { TRIGGERS } from "@starterkit/shared/workflows";
 import { recordFields, type ReconStatus } from "@starterkit/shared/recon";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import type { VersionStatus } from "@starterkit/shared/sources";
@@ -32,7 +33,7 @@ import { records } from "../ingest";
 import { readableSources } from "../sources";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { checkActions, checkApprovals, checkReconSpec, firstItemReads, placeOf, reconIssue, type SideSource, usedFields } from "./rules";
+import { checkActions, checkApprovals, checkReconSpec, firstItemReads, placeOf, type ReconCheck, reconIssue, type SideSource, usedFields } from "./rules";
 import { reconConfigs, reconConfigVersions, reconSourceUses } from "./schema";
 
 type ConfigRow = typeof reconConfigs.$inferSelect;
@@ -85,36 +86,51 @@ async function checked(tx: InTx, spaceId: string, spec: ReconSpec) {
   if (missing.length) throw new ApiError("bad_request", `${placeOf(["sides", missing[0]!])}: Pick a source of this space or one shared to it.`);
   const r = checkReconSpec(spec, sides);
   if (r.errors.length) throw new ApiError("bad_request", r.errors[0]!);
-  const { problems: approvals, warnings } = await approvalProblems(tx, spaceId, spec, sides);
-  return { ...r, approvals, owners, directionMapped: sides.map((x) => !!x.spec?.mapping.direction) as [boolean, boolean], warnings: [...r.gates, ...approvals, ...r.warnings, ...warnings] };
+  const { problems, warnings } = await approvalProblems(tx, spaceId, spec, sides);
+  return {
+    ...r, approvals: problems.map((p) => p.text), owners, directionMapped: sides.map((x) => !!x.spec?.mapping.direction) as [boolean, boolean],
+    warnings: [...noted(r, r.gates), ...problems, ...noted(r, r.warnings), ...warnings],
+  };
 }
+/** The check's messages as warnings, each with the step (and pass) the check gave it. */
+const noted = (r: ReconCheck, texts: readonly string[]): ReconWarning[] =>
+  texts.map((text) => ({ step: r.where.get(text)?.step ?? "matching", text, pass: r.where.get(text)?.pass ?? null, change: null }));
 
 /**
  * The approval setup's problems (DEC-052 rev 2) against the sides' record fields and the space's workflows, read FOR
  * SHARE (an archive in flight finishes first). A save keeps them as warnings; submit and approve refuse on the first.
  * `warnings` never refuse (a grouped variant's first-item reads).
  */
-async function approvalProblems(tx: InTx, spaceId: string, spec: ReconSpec, sides: readonly [SideSource, SideSource]): Promise<{ problems: string[]; warnings: string[] }> {
+async function approvalProblems(tx: InTx, spaceId: string, spec: ReconSpec, sides: readonly [SideSource, SideSource]): Promise<{ problems: ReconWarning[]; warnings: ReconWarning[] }> {
   if (!spec.approvals) return { problems: [], warnings: [] };
   const refs = Object.values(spec.approvals.changes).flatMap((c) => (c ? [...(c.workflow.default ? [c.workflow.default.id] : []), ...c.workflow.rules.map((r) => r.workflow.id)] : []));
   const fields = (s: SideSource) => (s.spec ? recordFields(s.spec) : new Map());
   const catalog = buildCatalog([{ label: sides[0].name ?? "Side A", fields: fields(sides[0]) }, { label: sides[1].name ?? "Side B", fields: fields(sides[1]) }]);
   const ops = Object.values(spec.approvals.changes).flatMap((c) => c?.actions.flatMap((a) => a.variants.map((v) => v.operation.connectorId)) ?? []);
   const connectors = await connectorFacts(tx, ops);
-  return { problems: [...checkApprovals(spec.approvals, catalog, await workflowFacts(tx, spaceId, refs), spaceId), ...checkActions(spec.approvals, catalog, connectors)], warnings: firstItemReads(spec.approvals, catalog, connectors) };
+  const workflows = await workflowFacts(tx, spaceId, refs);
+  // each change kind checked on its own, so every message carries the change it is about (the Approval step's)
+  const per = (check: (a: ReconApprovalSpec) => string[]) => TRIGGERS.flatMap((change) => {
+    const one = spec.approvals!.changes[change];
+    return one ? check({ ...spec.approvals!, changes: { [change]: one } }).map((text): ReconWarning => ({ step: "approval", text, pass: null, change })) : [];
+  });
+  return {
+    problems: [...per((a) => checkApprovals(a, catalog, workflows, spaceId)), ...per((a) => checkActions(a, catalog, connectors))],
+    warnings: per((a) => firstItemReads(a, catalog, connectors)),
+  };
 }
 
 /** What the check says now about a stored spec, never refusing: a lost source, errors, gates, then warnings. */
-async function warningsOf(tx: InTx, spaceId: string, spec: ReconSpec): Promise<string[]> {
+async function warningsOf(tx: InTx, spaceId: string, spec: ReconSpec): Promise<ReconWarning[]> {
   const { sides, missing } = await sideSources(tx, spaceId, spec);
   const r = checkReconSpec(spec, sides);
-  const { problems: approvals, warnings } = await approvalProblems(tx, spaceId, spec, sides);
-  const lost = missing.map((i) => `${placeOf(["sides", i])}: This space can no longer read this side's source.`);
+  const { problems, warnings } = await approvalProblems(tx, spaceId, spec, sides);
+  const lost = missing.map((i): ReconWarning => ({ step: "sources", text: `${placeOf(["sides", i])}: This space can no longer read this side's source.`, pass: null, change: null }));
   const noSource = new Set(missing.map((i) => placeOf(["sides", i])));
-  return [...lost, ...r.errors.filter((e) => ![...noSource].some((p) => e.startsWith(`${p}:`))), ...r.gates, ...approvals, ...r.warnings, ...warnings];
+  return [...lost, ...noted(r, r.errors.filter((e) => ![...noSource].some((p) => e.startsWith(`${p}:`)))), ...noted(r, r.gates), ...problems, ...noted(r, r.warnings), ...warnings];
 }
 
-const versionDto = (v: VersionRow, warnings: string[]): ReconVersionDto => ({
+const versionDto = (v: VersionRow, warnings: ReconWarning[]): ReconVersionDto => ({
   id: v.id, version: v.version, status: v.status as VersionStatus, spec: v.spec as ReconSpec, specHash: v.specHash, matchingHash: v.matchingHash,
   makerId: v.makerId, contributorIds: v.contributorIds, submitterId: v.submittedBy, submittedAt: iso(v.submittedAt), checkerId: v.checkerId,
   reviewComment: v.reviewComment, publishedAt: iso(v.publishedAt), simulatedHash: v.simulatedHash, warnings,

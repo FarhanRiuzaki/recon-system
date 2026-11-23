@@ -169,9 +169,10 @@ describe("POST and GET recons", () => {
       await db.insert(records).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: S1, sourceVersionId: v1!.id, businessDate: "2026-11-02", bdayIndex: 1, currency, attrs: {}, rowHash: currency, originId: v1!.id });
     }
     const d = await made(body({ spec: { ...gate(S1, S2), carry_over_days: 0 } }));
+    // each with the setup step that fixes it (review 24 Nov: the screen groups by step, never by the words)
     expect(d.draft!.warnings).toEqual([
-      "Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day.",
-      "USD has no tolerance in pass 2; USD pairs must match exactly.",
+      { step: "schedule", pass: 3, change: null, text: "Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day." },
+      { step: "matching", pass: 2, change: null, text: "USD has no tolerance in pass 2; USD pairs must match exactly." },
     ]);
     expect((await json<ReconDto>(detail(t.op, d.id))).draft!.warnings).toEqual(d.draft!.warnings);
   });
@@ -248,10 +249,10 @@ describe("versions: edit, simulate, submit, approve, reject", () => {
     const r = await made();
     const v = r.draft!.id;
     const saved = await json<ReconVersionDto>(patch(t.mk, r.id, v, { ...gate(S1, S2), carry_over_days: 0 }));
-    expect(saved.warnings).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
+    expect(saved.warnings.map((w) => w.text)).toEqual(["Pass 3 allows dates 1 day apart, but carry over is 0 days: pairs across days never meet in a daily run. Set carry over to 1 day."]);
     await simulated(v);
     const s = await step(t.mk, r.id, v, "submit");
-    expect([s.status, await message(s)]).toEqual([400, saved.warnings[0]!]);
+    expect([s.status, await message(s)]).toEqual([400, saved.warnings[0]!.text]);
     const empty = await json<ReconVersionDto>(patch(t.mk, r.id, v, { ...gate(S1, S2), passes: [] }));
     await simulated(empty.id);
     const e = await step(t.mk, r.id, v, "submit");
@@ -319,7 +320,7 @@ describe("sides on shared sources (DEC-042)", () => {
     await db.delete(sourceShares).where(eq(sourceShares.sourceId, S2));
     const page = await json<Page<ReconRowDto>>(call("GET", base(B), { token: t.op }));
     const d = await json<ReconDto>(detail(t.op, page.items[0]!.id, B));
-    expect(d.draft!.warnings).toEqual(["Side B: This space can no longer read this side's source."]);
+    expect(d.draft!.warnings).toEqual([{ step: "sources", pass: null, change: null, text: "Side B: This space can no longer read this side's source." }]);
   });
 });
 
@@ -408,7 +409,7 @@ describe("approval setup in the recon version (DEC-052 rev 2)", () => {
     const saved = await patch(t.mk, r.id, v, withApprovals(w, { all: [{ field: "side_a.attrs.nope", op: "eq", value: "1" }] }));
     expect(saved.status).toBe(200);
     const why = "Undo match · rule “Large”: a field it checks is no longer read from the sources (side_a.attrs.nope).";
-    expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
+    expect((await json<ReconVersionDto>(saved)).warnings).toContainEqual({ step: "approval", pass: null, change: "unmatch", text: why });
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");
     expect([sent.status, await message(sent)]).toEqual([400, why]);
@@ -441,7 +442,7 @@ describe("actions in the recon version (stage 4)", () => {
     const saved = await patch(t.mk, r.id, v, { ...gate(S1, S2), approvals });
     expect(saved.status).toBe(200);
     const why = "Undo match · Post to GL · Default: Remark is required. Map it, or give it a fixed or auto value.";
-    expect((await json<ReconVersionDto>(saved)).warnings).toContain(why);
+    expect((await json<ReconVersionDto>(saved)).warnings).toContainEqual({ step: "approval", pass: null, change: "unmatch", text: why });
     await simulated(v);
     const sent = await step(t.mk, r.id, v, "submit");
     expect([sent.status, await message(sent)]).toEqual([400, why]);

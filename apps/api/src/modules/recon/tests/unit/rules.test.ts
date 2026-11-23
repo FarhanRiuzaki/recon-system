@@ -61,7 +61,10 @@ describe("recordFields (the FieldRef whitelist)", () => {
 
 describe("checkReconSpec", () => {
   it("the gate config has no error and no gate; USD has no tolerance in pass 2 (a warning)", () => {
-    expect(check(gate(A, B))).toEqual({ errors: [], gates: [], warnings: ["USD has no tolerance in pass 2; USD pairs must match exactly."] });
+    const r = check(gate(A, B));
+    expect({ errors: r.errors, gates: r.gates, warnings: r.warnings }).toEqual({ errors: [], gates: [], warnings: ["USD has no tolerance in pass 2; USD pairs must match exactly."] });
+    // each message knows its setup step and pass where it was made (review 24 Nov), never read back from its words
+    expect(r.where.get(r.warnings[0]!)).toEqual({ step: "matching", pass: 2 });
     // with no record of USD seen, nothing to warn about
     expect(check(gate(A, B), [src(1, ["IDR"]), src(2, ["IDR"])]).warnings).toEqual([]);
   });

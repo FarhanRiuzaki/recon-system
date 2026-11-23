@@ -10,6 +10,7 @@ import { ListQuery, sortParam } from "./common";
 import { OPS } from "../conditions";
 import { ACCOUNTS_MAX, ACTIONS_MAX, GROUP_KEY_MAX, isTransform, LOOKUP_ROWS_MAX, LOOKUPS_MAX, MAPPED_MAX, type Source as SourceT, templateParts, VARIANTS_MAX } from "../mapping";
 import { SourceHealthDto } from "./sources";
+import { TRIGGERS } from "../workflows";
 
 export { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS };
 
@@ -280,11 +281,27 @@ export type ReconVersionListQuery = z.infer<typeof ReconVersionListQuery>;
 export const ReconActivityQuery = TargetActivityQuery;
 export type ReconActivityQuery = z.infer<typeof ReconActivityQuery>;
 
+/** The steps of the recon setup a warning belongs to (the wizard's Sources, Matching, Schedule and Approval). */
+export const RECON_WARNING_STEPS = ["sources", "matching", "schedule", "approval"] as const;
+/**
+ * One warning of a draft's check (review 24 Nov): `step` = where in the setup it is fixed, so a screen groups them
+ * without reading the words; `pass` = the pass it is about (a tolerance, a date window), `change` = the change kind
+ * whose approval or actions it is about; null otherwise.
+ */
+export const ReconWarning = z.object({
+  step: z.enum(RECON_WARNING_STEPS),
+  text: z.string(),
+  pass: z.number().int().nullable(),
+  change: z.enum(TRIGGERS).nullable(),
+});
+export type ReconWarning = z.infer<typeof ReconWarning>;
+
 /**
  * A recon version as answered. `makerId` = who last wrote the spec; `contributorIds` = everyone who created, edited or
  * submitted it, none of whom may approve or reject it. `simulatedHash` = the matching hash of its last simulation (submit
  * needs it equal to `matchingHash`). `warnings` = what the spec's check says without blocking a save (a currency without
- * tolerance, a date window past carry over, a field its source no longer has), for a version with a spec.
+ * tolerance, a date window past carry over, a field its source no longer has), for a version with a spec, each with
+ * the setup step that fixes it (ReconWarning).
  */
 export const ReconVersionDto = z.object({
   id: z.string(),
@@ -302,7 +319,7 @@ export const ReconVersionDto = z.object({
   reviewComment: z.string().nullable(),
   publishedAt: z.string().nullable(),
   simulatedHash: z.string().nullable(),
-  warnings: z.array(z.string()),
+  warnings: z.array(ReconWarning),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

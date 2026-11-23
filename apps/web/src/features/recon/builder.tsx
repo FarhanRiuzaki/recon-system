@@ -17,7 +17,7 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconRunItemDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
-import { approvalWarnings } from "./approval-model";
+import { approvalNotice, stepWarnings } from "./approval-model";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
@@ -25,7 +25,7 @@ import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, isCarryOverWarning, tolerancePass, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -378,9 +378,8 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   useEffect(() => { if (editable) onSaveState?.({ status: saveStatus, retry: () => retry.current() }); }, [saveStatus, editable, onSaveState]);
   const placed = problem && (problem.pass !== undefined || problem.side !== undefined || problem.setting) ? problem : null;
   const gates = carryOverGates(spec);
-  const notes = (no: number) => saved.warnings.filter((w) => tolerancePass(w) === no);
-  const pageWarnings = saved.warnings.filter((w) => !isCarryOverWarning(w) && tolerancePass(w) === null);
-  const stepWarnings = approvalWarnings(pageWarnings);
+  const warned = stepWarnings(saved.warnings);
+  const notes = warned.pass;
   const title = sel.k === "settings" ? "Settings" : sel.k === "side" ? `Side ${sel.i === 0 ? "A" : "B"}` : passIndex >= 0 ? `Pass ${passIndex + 1} of ${spec.passes.length}` : "Pass";
   const sourceOf = (i: 0 | 1) => (i === 0 ? sa.data : sb.data);
   const editor = sel.k === "settings"
@@ -500,12 +499,12 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                 onClick={() => change(addCurrencyCondition(spec, gaps))}><Icon icon={AddIcon} />Add currency condition</Button>}>{currencyGapText(gaps, fields)}</Banner>
             )}
             {/* the approval actions' problems as one line to the step that fixes them (audit 2), the rest one each */}
-            {stepWarnings.approval.length > 0 && (
+            {warned.approval > 0 && (
               <Banner tone="warn" action={<Button type="button" variant="secondary" size="sm" onClick={() => go(4)}>Open {STEP_LABEL[4]}</Button>}>
-                {`What is sent to the bank has ${stepWarnings.approval.length} ${stepWarnings.approval.length === 1 ? "thing" : "things"} to finish in ${STEP_LABEL[4]}.`}
+                {approvalNotice(warned.approval)}
               </Banner>
             )}
-            {stepWarnings.other.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
+            {warned.page.map((w) => <Banner key={w} tone="warn">{w}</Banner>)}
             {spec.passes.length === 0 ? (
               // no pass yet: the ready passes as the way in (a blank one last)
               <Panel title="Start with a pass" description="Each pass pairs the items the ones before it left. Pick one to start; you can change everything in it.">

@@ -5360,7 +5360,56 @@
             "warnings": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "enum": [
+                      "sources",
+                      "matching",
+                      "schedule",
+                      "approval"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "posting",
+                          "force_match",
+                          "write_off",
+                          "unmatch"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "step",
+                  "text",
+                  "pass",
+                  "change"
+                ],
+                "additionalProperties": false
               }
             },
             "createdAt": {
@@ -10705,7 +10754,56 @@
             "warnings": {
               "type": "array",
               "items": {
-                "type": "string"
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "string",
+                    "enum": [
+                      "sources",
+                      "matching",
+                      "schedule",
+                      "approval"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "pass": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "change": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "posting",
+                          "force_match",
+                          "write_off",
+                          "unmatch"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "step",
+                  "text",
+                  "pass",
+                  "change"
+                ],
+                "additionalProperties": false
               }
             },
             "createdAt": {

@@ -1,6 +1,6 @@
 import { type Clause, type Condition, NO_VALUE_OPS } from "@starterkit/shared/conditions";
-import type { ReconApprovalInput, ReconApprovalSpec } from "@starterkit/shared/contracts/recon";
-import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
+import type { ReconApprovalInput, ReconApprovalSpec, ReconWarning } from "@starterkit/shared/contracts/recon";
+import { TRIGGERS } from "@starterkit/shared/workflows";
 
 // The Approval step's draft (DEC-052 rev 2): what of it the recon draft can hold now, and the copy of an unfinished
 // rule this browser keeps meanwhile. Pure.
@@ -67,11 +67,17 @@ export function approvalChanges(live: ReconApprovalInput | undefined, next: Reco
 }
 
 /**
- * The draft's warnings split into the approval actions' (the API words them "<change> · <action> · <variant>: …",
- * modules/recon/rules.ts) and the rest, so another step shows the first as one line pointing at Approval.
+ * The draft's warnings by the step the API gives each (review 24 Nov; never read from the words): `approval` = how many
+ * the Approval step holds (its rules, picked workflows and actions, Undo match's included), shown on Matching as one
+ * notice; `pass(no)` = a pass's own (a tolerance), under that pass; `page` = the rest of Sources and Matching. A
+ * schedule warning (carry over) is shown live on the Schedule step.
  */
-export function approvalWarnings(ws: readonly string[]): { approval: string[]; other: string[] } {
-  const prefixes = TRIGGERS.map((t) => `${TRIGGER_LABEL[t]} · `);
-  const approval = ws.filter((w) => prefixes.some((p) => w.startsWith(p)));
-  return { approval, other: ws.filter((w) => !approval.includes(w)) };
+export function stepWarnings(ws: readonly ReconWarning[]): { approval: number; pass: (no: number) => string[]; page: string[] } {
+  return {
+    approval: ws.filter((w) => w.step === "approval").length,
+    pass: (no) => ws.filter((w) => w.step === "matching" && w.pass === no).map((w) => w.text),
+    page: ws.filter((w) => (w.step === "sources" || w.step === "matching") && w.pass === null).map((w) => w.text),
+  };
 }
+/** The Matching step's one line about the Approval step. */
+export const approvalNotice = (n: number) => `Approval and posting has ${n} ${n === 1 ? "thing" : "things"} to finish.`;

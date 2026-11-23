@@ -323,14 +323,6 @@ export function carryOverGates(spec: ReconSpec): string[] {
       : [];
   });
 }
-/** An API warning the builder shows elsewhere: a carry-over gate (checked live) or a pass's untolerated currency (under that pass). */
-export const isCarryOverWarning = (w: string) => /^Pass \d+ allows dates .+ Set carry over to \d+ days?\.$/.test(w);
-/** The pass an API tolerance warning concerns ("USD has no tolerance in pass 2; …" → 2), or null. */
-export function tolerancePass(w: string): number | null {
-  const m = /^[A-Z]{3} has no tolerance in pass (\d+);/.exec(w);
-  return m ? Number(m[1]) : null;
-}
-
 /** The carry over an API warning asks for ("… Set carry over to 1 day."), or null. */
 export function carryOverFix(warning: string): number | null {
   const m = /Set carry over to (\d+) days?\.$/.exec(warning);

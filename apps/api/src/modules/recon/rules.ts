@@ -16,9 +16,11 @@ import { specIssue } from "../../kernel/versions";
 export type SideSource = { spec: SourceSpecLike | null; currencies: readonly string[]; name?: string };
 /**
  * `errors` refuse a save and a submit (each "<place>: …"); `gates` refuse a submit and come back as warnings on a save
- * (carry over shorter than a date window); `warnings` never block (a currency without tolerance).
+ * (carry over shorter than a date window); `warnings` never block (a currency without tolerance). `where` = the setup
+ * step (and pass) of each message, set where the message is made, so a warning reaches the screen with its step.
  */
-export type ReconCheck = { errors: string[]; gates: string[]; warnings: string[] };
+export type Where = { step: "sources" | "matching" | "schedule"; pass: number | null };
+export type ReconCheck = { errors: string[]; gates: string[]; warnings: string[]; where: Map<string, Where> };
 
 const SPOT: Record<string, string> = { measure: "Measure", grace_minutes: "Grace", carry_over_days: "Carry over", close_at: "Close time", schedule: "Schedule" };
 /**
@@ -62,7 +64,12 @@ const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
  */
 export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, SideSource]): ReconCheck {
   const errors: string[] = [], gates: string[] = [], warnings: string[] = [];
-  const at = (place: string, why: string) => errors.push(`${place}: ${why}`);
+  const where = new Map<string, Where>();
+  /** Adds `text` to `list` with its step: a side's problem is the Sources step's, the rest (passes, measure) Matching's. */
+  const add = (list: string[], text: string, step: Where["step"], pass: number | null = null) => { list.push(text); where.set(text, { step, pass }); };
+  const stepOf = (place: string): Where["step"] => (place.startsWith("Side") ? "sources" : "matching");
+  const passOf = (place: string) => { const m = /^Pass (\d+)/.exec(place); return m ? Number(m[1]) : null; };
+  const at = (place: string, why: string) => add(errors, `${place}: ${why}`, stepOf(place), passOf(place));
   const fields = sources.map((s) => (s.spec ? recordFields(s.spec) : null));
   const label = (i: number) => spec.sides[i]!.label;
 
@@ -98,7 +105,7 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
   const manyCurrencies = sideCurrency.some((c) => c?.column) || (!!ca?.fixed && !!cb?.fixed && ca.fixed !== cb.fixed);
   const seen = [...new Set(sources.flatMap((s, i) => [...s.currencies, ...(sideCurrency[i]?.fixed ? [sideCurrency[i]!.fixed!] : [])]))].sort();
 
-  if (spec.passes.some((p, i) => p.no !== i + 1)) errors.push("Number the passes 1, 2, 3 … in order, with no gaps.");
+  if (spec.passes.some((p, i) => p.no !== i + 1)) add(errors, "Number the passes 1, 2, 3 … in order, with no gaps.", "matching");
   spec.passes.forEach((p, i) => {
     const pass = placeOf(["passes", i]);
     p.blocking.forEach((f, j) => {
@@ -114,7 +121,7 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
       if (q.op === "eq_sum" && p.cardinality === "1:1") at(place, "A group sum needs a 1:N or N:1 pass.");
     });
     if (p.cardinality !== "1:1") {
-      if (p.accept === "suggest" || p.on_ambiguous === "suggest") errors.push(`Pass ${p.no} groups several items; it can only match automatically or leave them unmatched in this release.`);
+      if (p.accept === "suggest" || p.on_ambiguous === "suggest") add(errors, `Pass ${p.no} groups several items; it can only match automatically or leave them unmatched in this release.`, "matching", p.no);
       if (!p.blocking.length) at(pass, "A 1:N or N:1 pass groups records by a matching key. Add one, such as a settlement reference.");
       if (p.predicates.filter((q) => q.op === "eq_sum").length !== 1) at(pass, "A 1:N or N:1 pass needs one group sum condition.");
     }
@@ -123,21 +130,21 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
     const isCurrency = (f: FieldPair) => ([0, 1] as const).every((i) => sideRef(f, i) === "currency");
     const amounts = p.predicates.some((q) => AMOUNT_OPS.has(q.op) || isAmount(q.field)) || p.blocking.some(isAmount);
     const currencyEq = p.blocking.some(isCurrency) || p.predicates.some((q) => q.op === "eq" && isCurrency(q.field));
-    if (manyCurrencies && amounts && !currencyEq) errors.push(`Pass ${p.no} compares amounts but has no currency condition. Add one so amounts in different currencies never match.`);
+    if (manyCurrencies && amounts && !currencyEq) add(errors, `Pass ${p.no} compares amounts but has no currency condition. Add one so amounts in different currencies never match.`, "matching", p.no);
 
     const untolerated = new Set<string>();
     for (const q of p.predicates) {
       if (q.op === "amount_abs_tol" || (q.op === "eq_sum" && Object.keys(q.tolerance).length)) for (const c of seen) if (!Object.hasOwn(q.tolerance, c)) untolerated.add(c);
     }
-    for (const c of untolerated) warnings.push(`${c} has no tolerance in pass ${p.no}; ${c} pairs must match exactly.`);
+    for (const c of untolerated) add(warnings, `${c} has no tolerance in pass ${p.no}; ${c} pairs must match exactly.`, "matching", p.no);
 
     const window = Math.max(0, ...p.predicates.map((q) => (q.op === "date_window" || q.op === "bday_window" ? q.days : 0)));
     // carry over always (null) checks unmatch on every run: no window is too wide for it
     if (spec.schedule.kind === "daily" && spec.carry_over_days !== null && window > spec.carry_over_days) {
-      gates.push(`Pass ${p.no} allows dates ${days(window)} apart, but carry over is ${days(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${days(window)}.`);
+      add(gates, `Pass ${p.no} allows dates ${days(window)} apart, but carry over is ${days(spec.carry_over_days)}: ${p.cardinality === "1:1" ? "pairs" : "groups"} across days never meet in a daily run. Set carry over to ${days(window)}.`, "schedule", p.no);
     }
   });
-  return { errors, gates, warnings };
+  return { errors, gates, warnings, where };
 }
 
 /**
