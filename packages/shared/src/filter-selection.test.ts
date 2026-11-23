@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { canonicalSelection, selectionState, selectionValues } from "./filter-selection";
+import { readdirSync, readFileSync } from "node:fs";
+import { canonicalSelection, MULTI_FILTER_KEYS, selectionState, selectionValues } from "./filter-selection";
 import { filterSelection } from "./contracts/filter-selection";
 
 describe("filter selections", () => {
@@ -19,5 +20,14 @@ describe("filter selections", () => {
       expect(names.safeParse(value).success).toBe(false);
     }
     expect(filterSelection(z.enum(["active", "inactive"])).safeParse(["active", "invalid"]).success).toBe(false);
+  });
+});
+
+describe("multi filter keys", () => {
+  it("every contract query key read as a filterSelection keeps its repeats at the API and in saved views", () => {
+    const dir = new URL("./contracts/", import.meta.url);
+    const keys = readdirSync(dir).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(new URL(f, dir), "utf8").matchAll(/(\w+): filterSelection\(/g)].map((m) => m[1]!));
+    expect(keys).toContain("checked");
+    expect(keys.filter((k) => !(MULTI_FILTER_KEYS as readonly string[]).includes(k))).toEqual([]);
   });
 });

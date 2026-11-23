@@ -94,6 +94,8 @@ describe("GET breaks: amount range and checked again", () => {
     expect((await list("?checked=no")).every((x) => x.recheck.kind === "no")).toBe(true);
     expect((await facets()).checked).toEqual({ yes: 1, no: 2 });
     expect((await facets("?checked=yes")).checked).toEqual({ yes: 1, no: 2 }); // its own filter left out
+    // both ticked (repeated in the query, as the filter and a saved view send them): no filter
+    expect((await list("?checked=yes&checked=no")).length).toBe(3);
     expect(await json<BreakSummaryDto>(summary(A, t.op, "?checked=yes"))).toMatchObject({ open: 1 });
     // a signed-off day is not checked again
     await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "closed", signedAt: new Date() });
