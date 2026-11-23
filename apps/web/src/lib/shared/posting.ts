@@ -1,13 +1,15 @@
 import { formatDate, formatTime } from "@starterkit/ui/lib/format";
+import type { Health } from "@starterkit/ui/lib/status";
+import { statusChip, type StatusMeaning } from "./categories";
 import { groupKeyText as keyText, POSTING_STATUS_LABEL as L, type PostingStatus } from "@starterkit/shared/posting";
 
-// An approval action's run (stage 4) as people read it: its status as one of the five health states with its own
+// An approval action's run (stage 4) as people read it: its status by meaning (categories.ts STATUS_TONE) with its own
 // label (words from @starterkit/shared/posting, which the API's CSV uses too). Pure.
 
 export { postingEvent, type PostingStatus } from "@starterkit/shared/posting";
-type Health = "healthy" | "degraded" | "down" | "stopped" | "unknown";
-const HEALTH: Record<PostingStatus, Health> = { posted: "healthy", failed: "down", not_sent: "down", timeout: "degraded", no_rule: "stopped", skipped: "stopped", queued: "unknown", sending: "unknown", grouped: "unknown" };
-export const postingChip = (s: PostingStatus) => ({ health: HEALTH[s], label: L[s] });
+// a timeout's effect at the bank is unknown: red with the failures (owner 24 Nov); not sent sent nothing: grey
+const MEANING: Record<PostingStatus, StatusMeaning> = { posted: "posted", failed: "failed", not_sent: "not_sent", timeout: "timeout", no_rule: "no_rule", skipped: "skipped", queued: "queued", sending: "sending", grouped: "waiting" };
+export const postingChip = (s: PostingStatus) => statusChip(MEANING[s], L[s]);
 /** The status filter, the ones that need someone first (a timeout's effect at the bank is unknown: check it there). */
 export const POSTING_FILTER: readonly { value: PostingStatus; label: string }[] = (["failed", "timeout", "not_sent", "posted", "no_rule", "skipped", "queued", "sending"] as const)
   .map((value) => ({ value, label: L[value] }));
@@ -19,9 +21,9 @@ export const groupKeyText = (keys: readonly { label: string; value: string }[]) 
  * Closing while its run waits to send, then the run's result.
  */
 export function groupChip(g: { status: "open" | "closed"; late?: boolean; run: { status: PostingStatus } | null }): { health: Health; label: string } {
-  if (g.status === "open") return g.late ? { health: "degraded", label: "Open past its close" } : { health: "unknown", label: "Open" };
-  if (!g.run) return { health: "stopped", label: "Nothing to send" };
-  return g.run.status === "queued" || g.run.status === "sending" ? { health: "unknown", label: "Closing" } : postingChip(g.run.status);
+  if (g.status === "open") return g.late ? statusChip("late", "Open past its close") : statusChip("open", "Open");
+  if (!g.run) return statusChip("nothing", "Nothing to send");
+  return g.run.status === "queued" || g.run.status === "sending" ? statusChip("in_progress", "Closing") : postingChip(g.run.status);
 }
 /** When a group is sent: its cutoff time (Asia/Jakarta, the app's clock) or at the recon day's close. */
 export const sendsAtText = (g: { at: "cutoff" | "day_close"; closesAt: string | null }) =>

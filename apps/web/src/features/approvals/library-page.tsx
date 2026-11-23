@@ -17,6 +17,7 @@ import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { type LibraryFilters, WORKFLOWS } from "@/lib/shared/queries-recon";
 import { LevelDots, newLevel } from "./levels-editor";
+import { statusTone } from "@/lib/shared/categories";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const FILTER_DEFAULTS: LibraryFilters = { q: "" };
@@ -59,8 +60,8 @@ export const libraryColumns = (spaceId: string): Column<LibraryRowDto>[] => {
     { key: "levels", header: "Levels", mobile: "meta", className: "min-w-40", cell: (r) => (
       <span className="flex min-w-0 items-center gap-2"><LevelDots n={Math.max(1, r.levels)} muted={!r.published && !builtIn(r)} /><span className="truncate" title={levelsText(r)}>{levelsText(r)}</span></span>
     ) },
-    { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (builtIn(r) ? <StatusChip health="healthy" label="Always" />
-      : r.published ? <StatusChip health="healthy" label={`Version ${r.published.version}`} /> : <StatusChip health="stopped" label="Not live" />) },
+    { key: "live", header: "Live", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (builtIn(r) ? <StatusChip health={statusTone("live")} label="Always" />
+      : r.published ? <StatusChip health={statusTone("live")} label={`Version ${r.published.version}`} /> : <StatusChip health={statusTone("not_live")} label="Not live" />) },
     { key: "usedBy", header: "Used by", mobile: "meta", cell: (r) => (builtIn(r) ? <span className="text-fg-3">Changes without a workflow</span>
       : r.reconsUsing ? <Link href={`${href(r)}#used-by`} className={LINK}>{usedText(r.reconsUsing)}</Link> : <span className="text-fg-3">Not used</span>) },
     { key: "updatedAt", header: "Changed", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.updatedAt ? <RelativeTime at={Date.parse(r.updatedAt)} /> : <span className="text-fg-3">—</span>) },
@@ -93,7 +94,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
   return (
     <div className="grid gap-section">
       <PageHeader title="Workflows" description={`Approval chains, level by level, that the recons of ${spaceName} use for changes that need approval.`}
-        actions={canManage ? <Button type="button" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New workflow</Button> : undefined} />
+        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New workflow</Button> : undefined} />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the workflows; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}

@@ -7,7 +7,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { formatTime, APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { StateChip } from "@/components/state-chip";
-import type { Chip } from "@/lib/shared/categories";
+import { type Chip, statusChip } from "@/lib/shared/categories";
 import { doneChip, isLive, itemsText, projectionText, rangeText, rateText, standingTotals, STOPPED_CHIP, stoppedLine } from "./run-model";
 import { STALL_TEXT } from "./use-recons";
 
@@ -15,7 +15,7 @@ import { STALL_TEXT } from "./use-recons";
 export function RunSummary({ run, spec, labels, stalled = false, action }: { run: ReconRunDto; spec: ReconSpec; labels: readonly [string, string]; stalled?: boolean; action?: ReactNode }) {
   const t = standingTotals(run, spec);
   const live = isLive(run);
-  const chip: Chip = live ? { health: "unknown", label: "Running" } : run.status === "failed" ? STOPPED_CHIP : doneChip(run.mode);
+  const chip: Chip = live ? statusChip("running", "Running") : run.status === "failed" ? STOPPED_CHIP : doneChip(run.mode);
   const what = run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`;
   const at = run.finishedAt ? ` · ${formatTime(Date.parse(run.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
   const day = run.projection ? projectionText(run.projection, labels) : "";

@@ -19,6 +19,7 @@ import { SPACE_MEMBERS } from "@/lib/shared/queries";
 import { MEMBER_COLUMNS } from "./member-columns";
 import { RoleMatrix } from "./role-matrix";
 import { useSpace } from "./use-spaces";
+import { statusTone } from "@/lib/shared/categories";
 
 /** The member dialogs load on click, outside the page's first load (route budget, AGENTS.md §9); the import starts on the first press or focus in the page. */
 const loadDialogs = () => import("./member-dialogs");
@@ -29,7 +30,7 @@ const preloadDialogs = () => void loadDialogs();
 
 const FILTER_DEFAULTS = { q: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
-const LEGEND = (["healthy", "stopped"] as const).map((h) => ({ health: h, label: h === "healthy" ? "Active" : "Inactive", description: h === "healthy" ? "Can sign in." : HEALTH.stopped.description }));
+const LEGEND = [{ health: statusTone("active"), label: "Active", description: "Can sign in." }, { health: statusTone("inactive"), label: "Inactive", description: HEALTH.stopped.description }];
 
 /**
  * A space's members (page.tsx has checked the viewer may open the space and prefetched it with the first page) and
@@ -79,7 +80,7 @@ export function MembersPage({ id }: { id: string }) {
     <div className="grid gap-section" onPointerDown={manage ? preloadDialogs : undefined} onFocus={manage ? preloadDialogs : undefined}>
       <PageHeader title="Members"
         description={`People in the ${name} space and their roles.`}
-        actions={manage ? <Button onClick={() => open({ kind: "add" })}>Add member</Button> : undefined} />
+        actions={manage ? <Button variant="create-solid" onClick={() => open({ kind: "add" })}>Add member</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the members; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

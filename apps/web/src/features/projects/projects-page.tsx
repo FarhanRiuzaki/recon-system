@@ -68,7 +68,7 @@ export function ProjectsPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Projects" description="Every project, with its status and when it last changed."
-        actions={can("project.create") ? <Button asChild><Link href="/projects/new">Create project</Link></Button> : undefined} />
+        actions={can("project.create") ? <Button variant="create-solid" asChild><Link href="/projects/new">Create project</Link></Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the projects; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

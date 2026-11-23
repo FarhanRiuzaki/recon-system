@@ -10,6 +10,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { OperationSpec, TryDto } from "@starterkit/shared/contracts/integrations";
 import type { OpField } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
+import { statusChip, statusTone } from "@/lib/shared/categories";
 
 // Try it (DEC-053): one call of an operation to the development environment, with a body typed here; the answer comes
 // back decrypted and masked. Production is never called from here.
@@ -26,7 +27,7 @@ function sampleOf(fields: readonly OpField[], skip: ReadonlySet<string>, prefix 
   return out;
 }
 const OUTCOME = {
-  ok: { health: "healthy", label: "Answered" }, rejected: { health: "down", label: "Refused" }, not_sent: { health: "stopped", label: "Not sent" }, timeout: { health: "degraded", label: "No readable answer" },
+  ok: statusChip("success", "Answered"), rejected: statusChip("refused", "Refused"), not_sent: statusChip("not_sent", "Not sent"), timeout: statusChip("timeout", "No readable answer"),
 } as const;
 
 export function TryPanel({ id, operations }: { id: string; operations: readonly OperationSpec[] }) {
@@ -78,7 +79,7 @@ export function TryPanel({ id, operations }: { id: string; operations: readonly 
             <div className="grid gap-3 motion-safe:animate-enter">
               <div className="flex flex-wrap items-center gap-3">
                 <StatusChip health={OUTCOME[res.outcome].health} label={OUTCOME[res.outcome].label} />
-                {res.success !== null && <StatusChip health={res.success ? "healthy" : "down"} label={res.success ? "Success" : "Not success"} />}
+                {res.success !== null && <StatusChip health={statusTone(res.success ? "success" : "failed")} label={res.success ? "Success" : "Not success"} />}
                 <span className="text-body-sm text-fg">{res.message}</span>
               </div>
               <dl className="flex flex-wrap gap-x-8 gap-y-2">

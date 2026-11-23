@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { amountText, carryOverText, differenceText, evidenceOf, lonePairText, pairDifference, rangeText } from "./run-model";
 import { conditionText, type Fields, pairText } from "./spec-model";
+import { statusTone } from "@/lib/shared/categories";
 
 const KIND: Record<string, string> = { auto: "Matched", suggested: "Suggested", manual: "Matched by hand", force: "Forced" };
 /** How the engine chose a group (engine sql/pass.ts CHOSEN), in plain words; anything else is left out. */
@@ -128,7 +129,7 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
                 const d = seen ? differenceText({ predicates: [seen] }, ccy) : "";
                 return (
                   <p key={j} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    {seen && <StatusChip health={seen.passed ? "healthy" : "down"} label={seen.passed ? "Pass" : "Fail"} />}
+                    {seen && <StatusChip health={statusTone(seen.passed ? "success" : "failed")} label={seen.passed ? "Pass" : "Fail"} />}
                     <span className="font-mono text-mono text-fg wrap-anywhere">{conditionText(q, fields)}</span>
                     {d && <span className="text-caption text-fg-3">{d}</span>}
                   </p>

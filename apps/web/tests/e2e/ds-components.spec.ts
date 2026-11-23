@@ -170,7 +170,7 @@ for (const colorScheme of ["light", "dark"] as const) {
           softFill: cs.backgroundColor === probe("var(--down-soft)"), downInk: cs.color === probe("var(--down-ink)"),
         };
       });
-      const primary = await read("Create user");
+      const primary = await read("Save changes");
       expect(primary.stops).toBe(2);
       for (const r of primary.onStops) expect(r).toBeGreaterThanOrEqual(4.5);
       expect(primary.shadow).not.toBe("none");
@@ -188,7 +188,7 @@ for (const colorScheme of ["light", "dark"] as const) {
 
 test("a keyboard-focused design system button shows a solid focus ring", async ({ page }) => {
   await page.goto("/ds/components");
-  const button = page.locator("#content").getByRole("button", { name: "Create user", exact: true }).first();
+  const button = page.locator("#content").getByRole("button", { name: "Save changes", exact: true }).first();
   await button.scrollIntoViewIfNeeded();
   await page.keyboard.press("Shift");
   await button.focus();

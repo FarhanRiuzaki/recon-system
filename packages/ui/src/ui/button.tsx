@@ -8,7 +8,7 @@ import { Slot } from "radix-ui";
  * hover fill 150 ms, disabled 0.4. `default` = the one primary per page (--action under a top-lit gradient with a lit
  * edge and a ring, drawn by base.css on `.bg-action[data-variant="default"]`; near-black / near-white); `secondary` =
  * card + line + shadow-xs; `ghost`; `destructive` = Danger (soft Down fill, Down ink, no border); `create` / `edit` /
- * `remove` = the intents by verb (green / blue / red ink on their soft fill, a step darker on hover); `caution` = a
+ * `remove` = the intents by verb; `create-solid` = the page's main Create as its one primary, solid green (green / blue / red ink on their soft fill, a step darker on hover); `caution` = a
  * negative decision (Down ink, --line edge).
  * `outline` is kept as an alias of secondary for older callers.
  */
@@ -27,6 +27,8 @@ const buttonVariants = cva(
         // create = Create / Add / New (a row, a condition, a record; the page's one main CTA stays default); edit = Edit;
         // remove = Delete / Remove, and an X or bin that removes (an X that closes stays ghost)
         create: "border-transparent bg-create-soft text-create-ink hover:bg-create-soft-hover",
+        // the page's main Create / Add / New (Create recon, New workflow, Add member): the one primary, solid green
+        "create-solid": "border-transparent bg-create-solid text-create-solid-fg hover:bg-create-solid-hover",
         edit: "border-transparent bg-edit-soft text-edit-ink hover:bg-edit-soft-hover",
         remove: "border-transparent bg-down-soft text-down-ink hover:bg-down-soft-hover",
         // caution = a negative decision that changes data but is not a removal (Reject, Turn off, Cancel request): Down

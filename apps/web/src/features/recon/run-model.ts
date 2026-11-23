@@ -6,7 +6,8 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
 import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
-import type { Chip } from "@/lib/shared/categories";
+import type { Health } from "@starterkit/ui/lib/status";
+import { type Chip, statusChip } from "@/lib/shared/categories";
 
 type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
 type Version = { version: number; matchingHash: string; simulatedHash: string | null };
@@ -279,20 +280,20 @@ export function countLine(t: Totals, labels: readonly [string, string]): string 
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-/** `chip`: a StatusChip (`health`) while something needs attention or runs; a neutral CategoryChip once simulated. */
-export type SimView = { chip: { health: "degraded" | "unknown" | "down"; label: string } | { slot: "neutral"; label: string }; line: string; counts: Run | null; dim: boolean };
+/** `chip`: a StatusChip by meaning (owner 24 Nov): running blue, not simulated or out of date amber, stopped red, simulated green. */
+export type SimView = { chip: { health: Health; label: string }; line: string; counts: Run | null; dim: boolean };
 /** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
-export const STOPPED_CHIP = { health: "down" as const, label: "Stopped" };
-/** A run that finished: Done is health; a simulation's result is a plain fact, a neutral chip (audit S5). */
-export const doneChip = (mode: string): Chip => (mode === "simulation" ? { slot: "neutral", label: "Simulated" } : { health: "healthy", label: "Done" });
+export const STOPPED_CHIP = statusChip("failed", "Stopped");
+/** A run that finished: Done, or Simulated for a simulation; both worked, so both green (owner 24 Nov). */
+export const doneChip = (mode: string): Chip => statusChip("done", mode === "simulation" ? "Simulated" : "Done");
 const MODE: Record<ReconRunDto["mode"], string> = { tick: "Scheduled", daily: "Scheduled", manual: "Manual", rerun: "Rerun", simulation: "Simulation" };
 /** A run as the state chip says it: Queued / Running, Stopped, else its finish (`doneChip`). */
-export const runChip = (r: Pick<ReconRunDto, "status" | "mode">): Chip => (isLive(r) ? { health: "unknown", label: r.status === "queued" ? "Queued" : "Running" }
+export const runChip = (r: Pick<ReconRunDto, "status" | "mode">): Chip => (isLive(r) ? (r.status === "queued" ? statusChip("queued", "Queued") : statusChip("running", "Running"))
   : r.status === "failed" ? STOPPED_CHIP : doneChip(r.mode));
 /** A run history row: its state chip and its kind, the kind left out when the state says it already (Simulated). */
 export function runRowChips(r: Pick<ReconRunDto, "status" | "mode">): { chip: Chip; mode: string | null } {
   const chip = runChip(r);
-  return { chip, mode: "slot" in chip && r.mode === "simulation" ? null : MODE[r.mode] };
+  return { chip, mode: chip.label === "Simulated" ? null : MODE[r.mode] };
 }
 export function stoppedLine(r: { mode: string; error: string | null }): string {
   return `The ${r.mode === "simulation" ? "simulation" : "run"} stopped: ${lowerFirst(r.error ?? "it ended before it finished. Run it again.")}`;
@@ -304,20 +305,20 @@ export function stoppedLine(r: { mode: string; error: string | null }): string {
  */
 export function simView(v: Version, run: Run | null, shown: Run | null, dirty: boolean): SimView {
   const draft = `Draft v${v.version}`;
-  if (run && isLive(run)) return { chip: { health: "unknown", label: "Running" }, line: `${draft} · ${rangeText(run.from, run.to)}`, counts: shown, dim: true };
+  if (run && isLive(run)) return { chip: statusChip("running", "Running"), line: `${draft} · ${rangeText(run.from, run.to)}`, counts: shown, dim: true };
   if (run?.status === "failed") {
     return { chip: STOPPED_CHIP, line: stoppedLine(run), counts: null, dim: false };
   }
-  if (v.simulatedHash === null || !shown) return { chip: { health: "unknown", label: "Not simulated" }, line: `${draft} · not simulated yet`, counts: null, dim: false };
+  if (v.simulatedHash === null || !shown) return { chip: statusChip("warning", "Not simulated"), line: `${draft} · not simulated yet`, counts: null, dim: false };
   // a run carries the matching hash (no approval setup): an approval-only edit leaves it current
   if (dirty || v.simulatedHash !== v.matchingHash || shown.specHash !== v.matchingHash) {
-    return { chip: { health: "degraded", label: "Out of date" }, line: "The draft changed after the last simulation", counts: shown, dim: true };
+    return { chip: statusChip("out_of_date", "Out of date"), line: "The draft changed after the last simulation", counts: shown, dim: true };
   }
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;
   const at = shown.finishedAt ? ` · ${formatTime(Date.parse(shown.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
   // finished over dates without a record: it ran, but tested nothing (S5)
-  if (!items) return { chip: { health: "degraded", label: "Done" }, line: `No records on ${rangeText(shown.from, shown.to)} · ${draft}${at}`, counts: shown, dim: false };
-  return { chip: { slot: "neutral", label: "Simulated" }, line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
+  if (!items) return { chip: statusChip("warning", "Done"), line: `No records on ${rangeText(shown.from, shown.to)} · ${draft}${at}`, counts: shown, dim: false };
+  return { chip: statusChip("done", "Simulated"), line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
 }
 
 /** Why Submit for approval waits on a simulation that is running (BUILDER-SPEC), before submitReason's own reasons. */

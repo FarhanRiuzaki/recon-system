@@ -24,6 +24,7 @@ import { ConnectionsCard } from "./connections-card";
 import { MeNav } from "./me-nav";
 import { ME_KEY, useMe } from "./use-me";
 import { SECURITY_SHAPE } from "./shapes";
+import { statusTone } from "@/lib/shared/categories";
 
 /** Mounted on click: the QR code generator stays out of the page's first load (start() fetches it alongside the POST). */
 const loadSetup = () => import("./two-factor-setup");
@@ -132,8 +133,8 @@ function PasswordCard({ user }: { user: MeDto }) {
 }
 
 const TWO_FACTOR_LEGEND = [
-  { health: "healthy" as const, label: "On", description: "Signing in asks for a one-time code after the password." },
-  { health: "stopped" as const, label: "Off", description: "Signing in asks for the password only." },
+  { health: statusTone("on"), label: "On", description: "Signing in asks for a one-time code after the password." },
+  { health: statusTone("off"), label: "Off", description: "Signing in asks for the password only." },
 ];
 
 function TwoFactorCard({ user }: { user: MeDto }) {
@@ -163,7 +164,7 @@ function TwoFactorCard({ user }: { user: MeDto }) {
     <Panel icon={SecureIcon} title="Two-factor authentication" description="A one-time code from an authenticator app" legend={TWO_FACTOR_LEGEND}>
       <div className="grid gap-4">
         <div className="flex flex-wrap items-center gap-2">
-          <StatusChip health={user.twoFactorEnabled ? "healthy" : "stopped"} label={user.twoFactorEnabled ? "On" : "Off"} />
+          <StatusChip health={statusTone(user.twoFactorEnabled ? "on" : "off")} label={user.twoFactorEnabled ? "On" : "Off"} />
           <span className="text-body-sm text-fg-2">{user.twoFactorEnabled ? "Sign-in asks for a code after your password." : "Sign-in asks for your password only."}</span>
         </div>
         {user.connected.length > 0 && <p className="text-body-sm text-fg-3">Signing in with Google or Apple doesn&apos;t ask for the code: the provider checks you.</p>}

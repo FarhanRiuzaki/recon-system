@@ -117,7 +117,7 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
         <h3 className="min-w-0 flex-1 truncate text-label text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</h3>
         {editing ? (
           <span className="flex shrink-0 items-center gap-1">
-            <Button type="button" variant="secondary" size="sm" data-focus="done" onClick={onDone}>Done</Button>
+            <Button type="button" variant="edit" size="sm" data-focus="done" onClick={onDone}>Done</Button>
             <ActionMenu label={`Actions for level ${n}`} actions={[
               { id: "up", label: "Move up", disabled: i === 0, hint: i === 0 ? "It is the first level." : undefined, onSelect: () => onMove(-1) },
               { id: "down", label: "Move down", disabled: i === count - 1, hint: i === count - 1 ? "It is the last level." : undefined, onSelect: () => onMove(1) },

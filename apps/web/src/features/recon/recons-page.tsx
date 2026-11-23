@@ -31,8 +31,8 @@ export function ReconsPage({ spaceId }: { spaceId: string }) {
   const t = useTableQuery<ReconRowDto, { q: string }>(def);
   const maker = useSpaceRoles(spaceId).includes("config_maker");
   const add = maker
-    ? <Button asChild><Link href={newReconHref(spaceId)}>Create recon</Link></Button>
-    : <BlockedButton reason={NEW_RECON_REASON}>Create recon</BlockedButton>;
+    ? <Button variant="create-solid" asChild><Link href={newReconHref(spaceId)}>Create recon</Link></Button>
+    : <BlockedButton variant="create-solid" reason={NEW_RECON_REASON}>Create recon</BlockedButton>;
   return (
     <div className="grid gap-section">
       <PageHeader title="Recons" actions={add}

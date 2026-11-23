@@ -60,7 +60,7 @@ const TEXT: [string, string][] = [
   ["fg", "seg-active"], ["fg-2", "seg-active"],
   ["tip-fg", "tip"], ["tip-2", "tip"],
   // the Create, Edit and Remove intent buttons: ink on their soft fill at rest and on hover
-  ["create-ink", "create-soft"], ["create-ink", "create-soft-hover"], ["edit-ink", "edit-soft"], ["edit-ink", "edit-soft-hover"],
+  ["create-ink", "create-soft"], ["create-ink", "create-soft-hover"], ["create-solid-fg", "create-solid"], ["create-solid-fg", "create-solid-hover"], ["edit-ink", "edit-soft"], ["edit-ink", "edit-soft-hover"],
   ["down-ink", "down-soft"], ["down-ink", "down-soft-hover"],
 ];
 const MARKS: [string, string][] = [

@@ -4,15 +4,15 @@
 import type { LiveReconDto, LiveSourceDto, ReconRunDto, RunDay, TodayDto } from "@starterkit/shared/contracts/recon";
 import type { BreakdownPart } from "@starterkit/ui/lib/breakdown";
 import { APP_TIME_ZONE_LABEL, formatDateTime, formatDuration, formatNumber, formatTime } from "@starterkit/ui/lib/format";
-import { categoryChip, type Chip } from "@/lib/shared/categories";
+import { type Chip, STATES, statusChip } from "@/lib/shared/categories";
 
-type Health = "healthy" | "degraded" | "down" | "stopped" | "unknown";
+import type { Health } from "@starterkit/ui/lib/status";
 export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", closing: "Closing", closed: "Closed" };
 const HEALTH_LABEL: Record<"healthy" | "degraded" | "down", string> = { healthy: "Healthy", degraded: "Degraded", down: "Down" };
 
 /** A source's state for a chip: its health, or Unknown before its first publish. */
 export function sourceChip(s: LiveSourceDto): { health: Health; label: string } {
-  return s.health ? { health: s.health.state, label: HEALTH_LABEL[s.health.state] } : { health: "unknown", label: "Not ingesting" };
+  return s.health ? statusChip(s.health.state, HEALTH_LABEL[s.health.state]) : statusChip("no_data", "Not ingesting");
 }
 /** How far a source is: a pull's lag ("21 min behind"), else what it is complete through. */
 export function sourceLag(s: LiveSourceDto): string {
@@ -26,13 +26,13 @@ export function sourceLag(s: LiveSourceDto): string {
 export const troubled = (r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>) =>
   r.sides.map((s) => byId.get(s.sourceId)).filter((s): s is LiveSourceDto => !!s?.health && s.health.state !== "healthy");
 
-/** A recon's state for a chip: Stale or affected by a source = Degraded or Down; else its day, a category (Open is not Healthy). */
+/** A recon's state for a chip: Stale or affected by a source = Degraded or Down; else its day (Open blue, Closed green). */
 export function reconChip(r: LiveReconDto, byId: ReadonlyMap<string, LiveSourceDto>): Chip {
-  if (r.stale) return { health: "degraded", label: "Stale" };
+  if (r.stale) return statusChip("stale", "Stale");
   const bad = troubled(r, byId);
-  if (bad.some((s) => s.health!.state === "down")) return { health: "down", label: "Source down" };
-  if (bad.length) return { health: "degraded", label: "Source degraded" };
-  return { slot: categoryChip("dayState", r.state), label: DAY_STATE_LABEL[r.state] };
+  if (bad.some((s) => s.health!.state === "down")) return statusChip("down", "Source down");
+  if (bad.length) return statusChip("degraded", "Source degraded");
+  return { health: STATES.dayState[r.state], label: DAY_STATE_LABEL[r.state] };
 }
 
 /** "Runs every 2 min" / "Runs daily at 06:00". */

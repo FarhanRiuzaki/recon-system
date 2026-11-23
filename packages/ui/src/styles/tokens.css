@@ -63,6 +63,10 @@
   --create-ink: #0f6e3f;
   --create-soft: #e9f7ef;
   --create-soft-hover: #d9f1e3;
+  /* the page's main Create (create-solid): a solid green primary in place of the near-black one */
+  --create-solid: #0f6e3f;
+  --create-solid-hover: #0c5a33;
+  --create-solid-fg: #ffffff;
   --edit-ink: #1d5fcc;
   --edit-soft: #ebf2fe;
   --edit-soft-hover: #dde9fd;
@@ -231,6 +235,9 @@
   --create-ink: #4cc98a;
   --create-soft: #143323;
   --create-soft-hover: #1a4230;
+  --create-solid: #4cc98a;
+  --create-solid-hover: #6dd6a0;
+  --create-solid-fg: #0b2216;
   --edit-ink: #7aaeff;
   --edit-soft: #172540;
   --edit-soft-hover: #1e3156;

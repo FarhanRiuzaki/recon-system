@@ -10,13 +10,13 @@ import type { Health } from "../lib/status";
 
 /** Shape colour = status mark (≥ 3:1), label = status ink (≥ 4.5:1 on card and on soft), spec §3.1 / §5.8. */
 const TONE: Record<Health, string> = {
-  healthy: "text-healthy-mark", degraded: "text-degraded-mark", down: "text-down-mark", stopped: "text-stopped-mark", unknown: "text-stopped-mark", // unknown-mark is < 3:1 on card; the dashed ring tells it apart
+  healthy: "text-healthy-mark", degraded: "text-degraded-mark", down: "text-down-mark", stopped: "text-stopped-mark", progress: "text-progress-mark", unknown: "text-stopped-mark", // unknown-mark is < 3:1 on card; the dashed ring tells it apart
 };
 const INK: Record<Health, string> = {
-  healthy: "text-healthy-ink", degraded: "text-degraded-ink", down: "text-down-ink", stopped: "text-stopped-ink", unknown: "text-unknown-ink",
+  healthy: "text-healthy-ink", degraded: "text-degraded-ink", down: "text-down-ink", stopped: "text-stopped-ink", progress: "text-progress-ink", unknown: "text-unknown-ink",
 };
 const SOFT: Record<Health, string> = {
-  healthy: "bg-healthy-soft", degraded: "bg-degraded-soft", down: "bg-down-soft", stopped: "bg-stopped-soft", unknown: "bg-unknown-soft",
+  healthy: "bg-healthy-soft", degraded: "bg-degraded-soft", down: "bg-down-soft", stopped: "bg-stopped-soft", progress: "bg-progress-soft", unknown: "bg-unknown-soft",
 };
 const INTERACTIVE = "a[href],button,[role=button],[role=link],[role=menuitem],[role=tab],summary,label";
 
@@ -28,6 +28,8 @@ export function StatusIcon({ health, className }: { health: Health; className?: 
     case "degraded": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><path d="M5 .6 9.6 9.2H.4Z" fill="currentColor" /></svg>;
     case "down": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><path d="M3.1.5h3.8l2.6 2.6v3.8L6.9 9.5H3.1L.5 6.9V3.1Z" fill="currentColor" /></svg>;
     case "stopped": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
+    // a ring half filled: under way, not done
+    case "progress": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M5 1.4a3.6 3.6 0 0 1 0 7.2Z" fill="currentColor" /></svg>;
     case "unknown": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="2.2 1.6" /></svg>;
   }
 }

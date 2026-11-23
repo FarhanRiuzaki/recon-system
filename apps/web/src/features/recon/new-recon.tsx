@@ -160,8 +160,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
           <div className="grid justify-items-center gap-3 py-8 text-center">
             <p className="text-body text-fg">No published source in {spaceName} yet.</p>
             {roles.includes("source_admin")
-              ? <Button asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
-              : <BlockedButton reason={NEW_SOURCE_REASON}>Create source</BlockedButton>}
+              ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
+              : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}>Create source</BlockedButton>}
           </div>
         </Panel>
       ) : (

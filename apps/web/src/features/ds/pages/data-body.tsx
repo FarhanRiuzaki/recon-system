@@ -25,7 +25,7 @@ const MATRIX_ALLOWED: ReadonlySet<string> = new Set(MATRIX_MODULES.flatMap((m) =
   .filter((p) => p !== "role.delete" && p !== "permission.create"));
 const MATRIX_START = ["user.view", "user.create", "user.edit", "role.view", "role.delete", "audit.view"];
 
-const HEALTHS = ["healthy", "degraded", "down", "stopped", "unknown"] as const satisfies readonly Health[];
+const HEALTHS = ["healthy", "progress", "degraded", "down", "stopped", "unknown"] as const satisfies readonly Health[];
 const LEGEND = HEALTHS.map((h) => ({ health: h, label: HEALTH[h].label, description: HEALTH[h].description }));
 const REGION_STATES = ["data", "loading", "empty", "error", "stale"] as const;
 const EMPTY = { icon: SessionsIcon, title: "No sessions yet", description: "Sessions appear here after someone signs in." };

@@ -8,7 +8,7 @@ import { HEALTH, type Health } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, CloseIcon, ErrorIcon, ExportIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, EditIcon, ErrorIcon, ExportIcon, InfoIcon, RefreshIcon, RemoveIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
@@ -21,7 +21,7 @@ import { useHashScroll } from "../use-hash-scroll";
 
 /** Fixed, obviously fake sample for the one-time secret demo (the gallery has no backend). */
 const SAMPLE_SECRET = "Sample-Pw-Not-Real-0000";
-const HEALTHS = ["healthy", "degraded", "down", "stopped", "unknown"] as const satisfies readonly Health[];
+const HEALTHS = ["healthy", "progress", "degraded", "down", "stopped", "unknown"] as const satisfies readonly Health[];
 const steps: IndicatorStep[] = [{ id: "team", label: "Team", status: "done" }, { id: "members", label: "Members", status: "current" }, { id: "review", label: "Review", status: "todo" }];
 
 /** /ds/components below the header: the primitives with their two dialogs, the navigation samples, affectUI's actions. */
@@ -39,14 +39,18 @@ export function ComponentsSections() {
         <Panel title="Buttons and inputs" className="col-span-12 md:col-span-6">
           <div className="grid gap-4">
             <div className="flex flex-wrap items-center gap-2">
-              <Button>Create user</Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button variant="ghost">Clear filters</Button>
+              <Button>Save changes</Button><Button variant="secondary"><Icon icon={ExportIcon} />Export CSV</Button><Button variant="ghost">Clear filters</Button>
               <Button variant="destructive">Delete 2 users</Button><Button variant="secondary" disabled>Unlock</Button>
               <Button size="sm" variant="secondary">Compact 28</Button><Button size="icon" variant="secondary" aria-label="Refresh now"><Icon icon={RefreshIcon} /></Button>
               <Button variant="link">Forgot password?</Button>
             </div>
-            {/* intents (owner 22 Nov): add is blue, remove is red, whether a bin or an X; an X that closes stays ghost */}
-            <div className="flex flex-wrap items-center gap-2" aria-label="Add and remove intents" role="group">
+            {/* intents by verb (owner 24 Nov): Create / Add / New green (the page's main one solid), Edit blue, Delete /
+                Remove red, whether a bin or an X; an X that closes stays ghost */}
+            <div className="flex flex-wrap items-center gap-2" aria-label="Create, edit and remove intents" role="group">
+              <Button variant="create-solid"><Icon icon={AddIcon} />Create recon</Button>
               <Button variant="create"><Icon icon={AddIcon} />Add a condition</Button>
+              <Button variant="edit"><Icon icon={EditIcon} />Edit rule</Button>
+              <Button variant="remove"><Icon icon={RemoveIcon} />Remove level</Button>
               <Button variant="remove" size="icon" aria-label="Remove condition 1"><Icon icon={RemoveIcon} /></Button>
               <Button variant="remove" size="icon" aria-label="Remove change 1"><Icon icon={CloseIcon} /></Button>
               <Button variant="ghost" size="icon" aria-label="Close panel"><Icon icon={CloseIcon} /></Button>
@@ -67,10 +71,10 @@ export function ComponentsSections() {
         </Panel>
         <Panel title="Chips, badges and tabs" className="col-span-12 md:col-span-6">
           <div className="grid gap-4">
-            <div className="flex flex-wrap gap-2">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} description={HEALTH[h].description} />)}<StatusChip health="healthy" label="Starting" pending /></div>
+            <div className="flex flex-wrap gap-2">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} description={HEALTH[h].description} />)}<StatusChip health="progress" label="Starting" pending /></div>
             <div className="flex flex-wrap gap-2" data-status-static="">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} strong />)}</div>
             <div className="flex flex-wrap items-center gap-2">
-              <CategoryChip label="api" slot={1} /><CategoryChip label="web" slot={2} /><CategoryChip label="worker" slot={3} /><CategoryChip label="Simulated" slot="neutral" /><CountBadge>312</CountBadge>
+              <CategoryChip label="api" slot={1} /><CategoryChip label="web" slot={4} /><CategoryChip label="worker" slot={6} /><CategoryChip label="Simulated" slot="neutral" /><CountBadge>312</CountBadge>
             </div>
             <Tabs defaultValue="overview">
               <TabsList aria-label="Sample sections">

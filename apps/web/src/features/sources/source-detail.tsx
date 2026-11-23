@@ -95,8 +95,8 @@ function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: Plai
       footnote={!s.owner && (
         <span className="flex flex-wrap items-center gap-3">
           {edit.href
-            ? <Button asChild><Link href={s.draft?.status === "in_review" ? edit.href : newVersionHref(spaceId, s.id)}>{s.draft?.status === "in_review" ? edit.label : "Create a source version"}</Link></Button>
-            : <BlockedButton reason={edit.reason ?? null} disabled={edit.busy} aria-busy={edit.busy || undefined} onClick={edit.onSelect}>Create a source version</BlockedButton>}
+            ? <Button asChild variant={s.draft?.status === "in_review" ? "edit" : "create-solid"}><Link href={s.draft?.status === "in_review" ? edit.href : newVersionHref(spaceId, s.id)}>{s.draft?.status === "in_review" ? edit.label : "Create a source version"}</Link></Button>
+            : <BlockedButton variant="create-solid" reason={edit.reason ?? null} disabled={edit.busy} aria-busy={edit.busy || undefined} onClick={edit.onSelect}>Create a source version</BlockedButton>}
           <span className="max-w-[72ch] text-caption text-fg-3">Opens step 2 with the columns the table has now. Recons keep reading the stored data until the new version is approved.</span>
         </span>
       )}>

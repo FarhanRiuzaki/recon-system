@@ -71,7 +71,7 @@ export function PermissionsPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Permissions" description="Everything a role can allow, by module."
-        actions={can("permission.create") ? <Button onClick={() => { setActions(""); setAdding(true); }}>Create permissions</Button> : undefined} />
+        actions={can("permission.create") ? <Button variant="create-solid" onClick={() => { setActions(""); setAdding(true); }}>Create permissions</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the permissions; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

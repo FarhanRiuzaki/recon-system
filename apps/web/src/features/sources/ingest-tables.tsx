@@ -20,6 +20,7 @@ import { VERSION_LEGEND, versionChip } from "@/lib/shared/source-status";
 import { afterColon, at, day, fileResult, keptSnapshot } from "./source-text";
 import { activitySentence, activityWhat } from "./spec-draft";
 import { versionHref } from "./use-sources";
+import { statusTone } from "@/lib/shared/categories";
 
 // The paged tables of a source's detail (Figma 95:8429, 27:7215, 96:8925): files, snapshots, quarantine, versions and
 // activity, newest first,
@@ -29,15 +30,15 @@ const none = <span className="text-fg-3">—</span>;
 const mono = (text: string) => <span className="font-mono text-mono">{text}</span>;
 type Chip = { health: Health; label: string; description: string };
 const FILE_STATUS: Record<SourceFileDto["status"], Chip> = {
-  ingested: { health: "healthy", label: "Ingested", description: "Read and stored; its quarantined rows are listed under Quarantine." },
-  rejected: { health: "stopped", label: "Rejected", description: "The same content was ingested already; nothing changed." },
-  failed: { health: "down", label: "Failed", description: "The file couldn't be read as declared; nothing of it was written." },
+  ingested: { health: statusTone("success"), label: "Ingested", description: "Read and stored; its quarantined rows are listed under Quarantine." },
+  rejected: { health: statusTone("nothing"), label: "Rejected", description: "The same content was ingested already; nothing changed." },
+  failed: { health: statusTone("failed"), label: "Failed", description: "The file couldn't be read as declared; nothing of it was written." },
 };
 const SNAPSHOT_STATUS: Record<SourceSnapshotDto["status"], Chip> = {
-  active: { health: "healthy", label: "Active", description: "The snapshot recons read for this business date." },
-  failed: { health: "down", label: "Failed", description: "The pull stopped; the active snapshot of the date, if any, stayed as it was." },
-  superseded: { health: "stopped", label: "Superseded", description: "Replaced by a newer pull of the same date; kept, never read." },
-  loading: { health: "unknown", label: "Loading", description: "Being pulled; it becomes active only when the pull finishes." },
+  active: { health: statusTone("active"), label: "Active", description: "The snapshot recons read for this business date." },
+  failed: { health: statusTone("failed"), label: "Failed", description: "The pull stopped; the active snapshot of the date, if any, stayed as it was." },
+  superseded: { health: statusTone("superseded"), label: "Superseded", description: "Replaced by a newer pull of the same date; kept, never read." },
+  loading: { health: statusTone("loading"), label: "Loading", description: "Being pulled; it becomes active only when the pull finishes." },
 };
 const legend = (m: Record<string, Chip>) => Object.values(m);
 const chip = (c: Chip) => <StatusChip health={c.health} label={c.label} />;

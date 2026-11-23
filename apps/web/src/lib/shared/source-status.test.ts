@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceStatus, versionChip, VERSION_STATUS } from "./source-status";
+import { PULL_STATUS, sourceStatus, versionChip, VERSION_STATUS } from "./source-status";
 
 const health = (state: "healthy" | "degraded" | "down") => ({ state, businessDate: "2026-11-19", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null });
 
@@ -14,10 +14,13 @@ describe("sourceStatus", () => {
 });
 
 describe("VERSION_STATUS", () => {
-  it("draft and in review neutral, published healthy, retired stopped, each with its own word", () => {
+  it("draft grey, in review blue (waiting for a checker), published green, retired grey, each with its own word", () => {
     expect(Object.entries(VERSION_STATUS).map(([k, v]) => [k, v.health, v.label])).toEqual([
-      ["draft", "unknown", "Draft"], ["in_review", "unknown", "In review"], ["published", "healthy", "Published"], ["retired", "stopped", "Retired"],
+      ["draft", "stopped", "Draft"], ["in_review", "progress", "In review"], ["published", "healthy", "Published"], ["retired", "stopped", "Retired"],
     ]);
+  });
+  it("a sent-back draft needs its maker: amber", () => {
+    expect(versionChip({ status: "draft", reviewComment: "fix the key" }).health).toBe("degraded");
   });
 });
 
@@ -26,5 +29,13 @@ describe("versionChip", () => {
     expect(versionChip({ status: "draft", reviewComment: "fix the key" }).label).toBe("Sent back");
     expect(versionChip({ status: "draft", reviewComment: null }).label).toBe("Draft");
     expect(versionChip({ status: "in_review", reviewComment: "old" }).label).toBe("In review");
+  });
+});
+
+describe("PULL_STATUS (owner 24 Nov)", () => {
+  it("New rows green, Nothing new grey, Failed red, Paused grey", () => {
+    expect(Object.entries(PULL_STATUS).map(([k, v]) => [k, v.health, v.label])).toEqual([
+      ["new", "healthy", "New rows"], ["nothing_new", "stopped", "Nothing new"], ["failed", "down", "Failed"], ["paused", "stopped", "Paused"],
+    ]);
   });
 });

@@ -79,7 +79,7 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
           </DialogBody>
           <DialogFooter className="shrink-0">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button type="submit" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Add to space</Button>
+            <Button type="submit" variant="create-solid" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Add to space</Button>
           </DialogFooter>
         </form>
       </DialogContent>

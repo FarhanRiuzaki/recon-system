@@ -31,6 +31,7 @@ import { SpecPasteDialog } from "./spec-paste-dialog";
 import { OperationEditor } from "./operation-editor";
 import { CONNECTOR_SHAPE } from "./shapes";
 import { TryPanel } from "./try-panel";
+import { statusChip } from "@/lib/shared/categories";
 
 type Save = { state: "idle" | "saving" | "saved" | "error"; at?: number; error?: string };
 type Tab = "environments" | "operations" | "try";
@@ -150,9 +151,9 @@ export function ConnectorEditor({ id }: { id: string }) {
   if (q.error && !c) return <div className="grid gap-section"><PageHeader title="Connector" /><Panel><Failure title="Couldn't load the connector" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!c || !spec || skeleton) return <LoadingShape sections={CONNECTOR_SHAPE} shown={skeleton} />;
 
-  const status = c.disabled ? { health: "down" as const, label: "Turned off" }
-    : !c.open ? c.published ? { health: "healthy" as const, label: `Live · version ${c.published.version}` } : { health: "stopped" as const, label: "Not live" }
-      : c.open.status === "draft" ? { health: "unknown" as const, label: `Draft ${c.open.version}` } : { health: "degraded" as const, label: `Version ${c.open.version} waits for approval` };
+  const status = c.disabled ? statusChip("off", "Turned off")
+    : !c.open ? c.published ? statusChip("live", `Live · version ${c.published.version}`) : statusChip("not_live", "Not live")
+      : c.open.status === "draft" ? statusChip("draft", `Draft ${c.open.version}`) : statusChip("waiting", `Version ${c.open.version} waits for approval`);
   const more: HeaderAction[] = [
     ...(draft && c.canEdit ? [{
       label: "Discard draft", destructive: true as const,

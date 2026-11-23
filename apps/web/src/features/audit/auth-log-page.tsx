@@ -2,28 +2,29 @@
 
 import { type Column, CopyValue, FilterChecks, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatDateTimeLong } from "@starterkit/ui/lib/format";
-import type { Health } from "@starterkit/ui/lib/status";
 import { SessionsIcon } from "@starterkit/ui/ui/icons";
 import { AUTH_EVENTS, AUTH_METHODS, EVENT_LABEL, METHOD_LABEL } from "@starterkit/shared/audit";
 import type { AuthLogDto } from "@starterkit/shared/contracts/audit";
 import { AUTH_LOG, type AuthLogFilters } from "@/lib/shared/queries";
 import { AuditTable, timeCell } from "./audit-table";
 import { withCounts } from "@/lib/shared/table-state";
+import { statusTone, type StatusMeaning } from "@/lib/shared/categories";
 
 type Event = AuthLogDto["event"];
 const EVENTS = [{ value: "" as const, label: "Any" }, ...AUTH_EVENTS.map((e) => ({ value: e, label: EVENT_LABEL[e] }))];
 const METHODS = [{ value: "" as const, label: "Any" }, ...AUTH_METHODS.map((m) => ({ value: m, label: METHOD_LABEL[m] }))];
 
-const HEALTH: Record<Event, Health> = {
-  login_success: "healthy", "2fa_success": "healthy", password_ok: "degraded", login_failed: "down", "2fa_failed": "down", logout: "stopped", password_reset: "stopped",
+// password accepted, the code still to come: under way (owner 24 Nov), not a warning
+const MEANING: Record<Event, StatusMeaning> = {
+  login_success: "success", "2fa_success": "success", password_ok: "in_progress", login_failed: "failed", "2fa_failed": "failed", logout: "signed_out", password_reset: "signed_out",
 };
 const LEGEND = [
-  { health: "healthy" as const, label: "Signed in, code accepted", description: "The sign-in step passed." },
-  { health: "degraded" as const, label: "Password accepted, waiting for 2FA", description: "The password was right; the sign-in finishes after a one-time code." },
-  { health: "down" as const, label: "Sign-in failed, code rejected", description: "Wrong credentials or one-time code, or the account can't sign in." },
-  { health: "stopped" as const, label: "Signed out, password reset", description: "The session ended. A reset by link ends every session of the user." },
+  { health: statusTone("success"), label: "Signed in, code accepted", description: "The sign-in step passed." },
+  { health: statusTone("in_progress"), label: "Password accepted, waiting for 2FA", description: "The password was right; the sign-in finishes after a one-time code." },
+  { health: statusTone("failed"), label: "Sign-in failed, code rejected", description: "Wrong credentials or one-time code, or the account can't sign in." },
+  { health: statusTone("signed_out"), label: "Signed out, password reset", description: "The session ended. A reset by link ends every session of the user." },
 ];
-const EventChip = ({ event }: { event: Event }) => <StatusChip health={HEALTH[event]} label={EVENT_LABEL[event]} />;
+const EventChip = ({ event }: { event: Event }) => <StatusChip health={statusTone(MEANING[event])} label={EVENT_LABEL[event]} />;
 
 /** Phone card: the sign-in name is the title, then event, time, method and IP; device and location are in the entry. */
 const COLUMNS: Column<AuthLogDto>[] = [

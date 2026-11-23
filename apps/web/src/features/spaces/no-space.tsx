@@ -36,7 +36,7 @@ export function NoSpace() {
           </p>
           <CopyValue value={user.username} label="username" />
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {can("space.manage") && <Button onClick={() => setCreating(true)}>Create space</Button>}
+            {can("space.manage") && <Button variant="create-solid" onClick={() => setCreating(true)}>Create space</Button>}
             <Button variant="secondary" onClick={signOut} disabled={leaving} aria-busy={leaving || undefined}>
               {leaving && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Sign out
             </Button>

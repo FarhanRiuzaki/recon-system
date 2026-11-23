@@ -26,7 +26,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { categoryChip } from "@/lib/shared/categories";
+import { categoryChip, STATES } from "@/lib/shared/categories";
 import { groupKeyText, postingChip, postingEvent, waitingText } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
@@ -186,7 +186,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
       <PageHeader title={`${money(b.item)} · ${side(b.item.side)}`} crumb={b.item.ref ?? "Unmatch item"}
         status={<span className="flex flex-wrap items-center gap-1.5">
           {b.item.reason && <CategoryChip label={b.item.reason} slot={categoryChip("reason", b.item.reason)} />}
-          <CategoryChip label={STATE_LABEL[b.state]} slot={categoryChip("workState", b.state)} />
+          <StatusChip label={STATE_LABEL[b.state]} health={STATES.workState[b.state]} />
           {open && checkChip(b.recon.recheck, today, pending) && <CategoryChip label={checkChip(b.recon.recheck, today, pending)!} slot="neutral" />}
           <CategoryChip label={b.assignee ? (mine ? "Yours" : b.assignee.name ?? "A removed user") : "Unassigned"} slot="neutral" />
         </span>}

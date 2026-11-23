@@ -27,6 +27,7 @@ import { unsaved } from "@/lib/shared/autosave";
 import { ReviewPanel } from "@/components/review-panel";
 import { LIBRARY_EDITOR_SHAPE } from "./shapes";
 import { UsedBy } from "./used-by";
+import { statusChip } from "@/lib/shared/categories";
 
 type Save = { state: "idle" | "saving" | "saved" | "error"; at?: number; error?: string };
 
@@ -111,9 +112,9 @@ export function LibraryEditor({ spaceId, id }: { spaceId: string; id: string }) 
   if (q.error && !w) return <div className="grid gap-section"><PageHeader title="Workflow" /><Panel><Failure title="Couldn't load the workflow" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!w || skeleton) return <LoadingShape sections={LIBRARY_EDITOR_SHAPE} shown={skeleton} />;
 
-  const status = w.archived ? { health: "stopped" as const, label: "Archived" }
-    : !w.open ? w.published ? { health: "healthy" as const, label: `Live · version ${w.published.version}` } : { health: "stopped" as const, label: "Not live" }
-      : w.open.status === "draft" ? { health: "unknown" as const, label: `Draft ${w.open.version}` } : { health: "degraded" as const, label: `Version ${w.open.version} waits for approval` };
+  const status = w.archived ? statusChip("archived", "Archived")
+    : !w.open ? w.published ? statusChip("live", `Live · version ${w.published.version}`) : statusChip("not_live", "Not live")
+      : w.open.status === "draft" ? statusChip("draft", `Draft ${w.open.version}`) : statusChip("waiting", `Version ${w.open.version} waits for approval`);
   const more: HeaderAction[] = [
     ...(draft && w.canEdit ? [{
       label: "Discard draft", destructive: true as const,

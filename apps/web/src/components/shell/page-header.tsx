@@ -1,6 +1,6 @@
 "use client";
 
-import { BlockedButton } from "@starterkit/ui/ds";
+import { BlockedButton, verbVariant } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -42,12 +42,13 @@ export function returnToMore(e: Event) {
   more.focus();
 }
 
-/** From 768 px: a non-destructive action as a secondary button, a BlockedButton when a rule blocks it. */
+/** From 768 px: a non-destructive action as a secondary button (its verb's intent: Edit … blue), a BlockedButton when a rule blocks it. */
 function ActionButton({ a }: { a: HeaderAction }) {
   if (a.destructive) return null;
-  if (a.href && !a.reason) return <Button asChild variant="secondary"><Link href={a.href}>{a.label}</Link></Button>;
+  const variant = verbVariant(a.label, "secondary");
+  if (a.href && !a.reason) return <Button asChild variant={variant}><Link href={a.href}>{a.label}</Link></Button>;
   return (
-    <BlockedButton variant="secondary" reason={a.reason ?? null} disabled={a.busy} aria-busy={a.busy || undefined} onClick={a.onSelect}>
+    <BlockedButton variant={variant} reason={a.reason ?? null} disabled={a.busy} aria-busy={a.busy || undefined} onClick={a.onSelect}>
       {a.busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{a.label}
     </BlockedButton>
   );

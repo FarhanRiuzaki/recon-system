@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { CategoryChip, type Column, Truncate } from "@starterkit/ui/ds";
+import { CategoryChip, type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { formatDate } from "@starterkit/ui/lib/format";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SuggestedIcon } from "@starterkit/ui/ui/icons";
 import { amountText } from "@/lib/shared/amount";
-import { categoryChip } from "@/lib/shared/categories";
+import { categoryChip, STATES } from "@/lib/shared/categories";
 import { checkChip, STATE_LABEL } from "./break-model";
 
 const ageText = (n: number) => (n === 0 ? "Today" : n === 1 ? "1 day old" : `${n} days old`);
@@ -57,7 +57,7 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
     ) },
     { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => (
       <span className="flex flex-wrap items-center gap-1.5">
-        <CategoryChip label={STATE_LABEL[r.state]} slot={categoryChip("workState", r.state)} />
+        <StatusChip label={STATE_LABEL[r.state]} health={STATES.workState[r.state]} />
         <CheckChip label={chipOf(r)} />
       </span>
     ) },

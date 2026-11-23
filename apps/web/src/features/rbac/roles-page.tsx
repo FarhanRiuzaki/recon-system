@@ -69,7 +69,7 @@ export function RolesPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Roles" description="Sets of permissions given to users."
-        actions={can("role.create") ? <Button onClick={() => { setName(""); setCreating(true); }}>Create role</Button> : undefined} />
+        actions={can("role.create") ? <Button variant="create-solid" onClick={() => { setName(""); setCreating(true); }}>Create role</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the roles; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

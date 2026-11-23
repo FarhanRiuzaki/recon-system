@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, CategoryChip, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -40,9 +40,8 @@ import { MAKER_REASON, reconApi, reconRunHref, STALL_TEXT, useReplayDefault, use
 
 const InspectorSheet = dynamic(() => import("./inspector-sheet"), { ssr: false });
 
-/** The simulation bar's chip: health while it runs or needs a rerun, neutral once simulated (run-model `simView`). */
-const SimChip = ({ chip }: { chip: SimView["chip"] }) =>
-  "health" in chip ? <StatusChip health={chip.health} label={chip.label} /> : <CategoryChip slot={chip.slot} label={chip.label} />;
+/** The simulation bar's chip (run-model `simView`). */
+const SimChip = ({ chip }: { chip: SimView["chip"] }) => <StatusChip health={chip.health} label={chip.label} />;
 
 /** The builder's copy of an unsaved spec (rule 12), or null: `base` = the server spec hash it was made over. */
 function readKept(key: string): { base: string; spec: ReconSpec } | null {

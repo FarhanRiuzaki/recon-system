@@ -35,6 +35,7 @@
   --color-down-mark: var(--down-mark);         --color-down-ink: var(--down-ink);         --color-down-soft: var(--down-soft);
   --color-down-soft-hover: var(--down-soft-hover);
   --color-create-ink: var(--create-ink); --color-create-soft: var(--create-soft); --color-create-soft-hover: var(--create-soft-hover);
+  --color-create-solid: var(--create-solid); --color-create-solid-hover: var(--create-solid-hover); --color-create-solid-fg: var(--create-solid-fg);
   --color-edit-ink: var(--edit-ink);     --color-edit-soft: var(--edit-soft);     --color-edit-soft-hover: var(--edit-soft-hover);
   --color-progress-mark: var(--progress-mark); --color-progress-ink: var(--progress-ink); --color-progress-soft: var(--progress-soft);
   --color-stopped-mark: var(--stopped-mark);   --color-stopped-ink: var(--stopped-ink);   --color-stopped-soft: var(--stopped-soft);

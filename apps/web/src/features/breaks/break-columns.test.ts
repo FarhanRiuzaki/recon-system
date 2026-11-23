@@ -12,14 +12,14 @@ const B = {
 } as unknown as BreakRowDto;
 const cell = (key: string, r: BreakRowDto = B) => renderToStaticMarkup(h(Fragment, null, COLS.find((c) => c.key === key)!.cell(r)));
 
-describe("unmatch queue columns: reason and state are chips from the chip map (audit §1.1)", () => {
+describe("unmatch queue columns: the reason a category chip, the state a status chip (owner 24 Nov)", () => {
   it("a reason chip in its slot, a dash without one; the state as a chip, never plain text", () => {
     expect(cell("reason")).toContain('data-slot="category-chip"');
-    expect(cell("reason")).toContain("bg-chart-2");
+    expect(cell("reason")).toContain("bg-chart-4");
     expect(cell("reason", { ...B, reason: null })).not.toContain("category-chip");
     expect(cell("state")).toContain(">Pending external</span>");
-    expect(cell("state")).toContain("bg-chart-5");
-    expect(cell("state", { ...B, state: "new" })).toContain("bg-fg-4");
+    expect(cell("state")).toContain('data-status="progress"');
+    expect(cell("state", { ...B, state: "new" })).toContain('data-status="healthy"');
   });
 });
 

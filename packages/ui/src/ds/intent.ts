@@ -15,17 +15,23 @@ type Variant = NonNullable<VariantProps<typeof buttonVariants>["variant"]>;
 export type Intent = { variant: Variant | readonly Variant[]; actions: readonly string[]; icon?: IconData; required?: boolean; note: string };
 
 export const INTENTS = {
-  next: { variant: "default", actions: ["Request posting", "Approve", "Match pair", "Take", "Send for approval", "Create", "Run"], note: "The next step; one per page." },
+  next: { variant: "default", actions: ["Request posting", "Approve", "Match pair", "Take", "Send for approval", "Run"], note: "The next step; one per page." },
   second: { variant: "secondary", actions: ["Force match", "Write-off", "Close", "Assign"], note: "A second choice, with its verb icon." },
   // a confirm dialog's Turn off is destructive, so the rule accepts both
   caution: { variant: ["caution", "destructive"], actions: ["Reject", "Turn off", "Cancel request"], icon: ErrorIcon, note: "A negative decision: Down ink on a line edge." },
   destructive: { variant: "destructive", actions: ["Remove", "Delete"], note: "Confirms a removal inside its dialog." },
-  // owner 24 Nov: actions by verb. Create / Add / New green, Edit blue, Delete / Remove red; the page's one main CTA
-  // ("Create" in `next`) may stay default
-  create: { variant: "create", actions: ["Create", "Add", "New"], icon: AddIcon, required: true, note: "Creates or adds a record, row, level, group, filter, pass, action or variant." },
+  // owner 24 Nov: actions by verb. Create / Add / New green, Edit blue, Delete / Remove red; the page's main Create is
+  // its one primary, solid green (create-solid)
+  create: { variant: ["create", "create-solid"], actions: ["Create", "Add", "New"], icon: AddIcon, required: true, note: "Creates or adds a record, row, level, group, filter, pass, action or variant." },
   remove: { variant: "remove", actions: ["Remove", "Delete"], icon: RemoveIcon, note: "Takes one out of a list (bin or X)." },
-  edit: { variant: "edit", actions: ["Edit", "Replace"], icon: EditIcon, required: true, note: "Never a bare word; a Change that edits a record (Change server) takes it too." },
+  edit: { variant: "edit", actions: ["Edit", "Replace", "Continue editing"], icon: EditIcon, required: true, note: "Never a bare word; a Change that edits a record (Change server) takes it too." },
   navigate: { variant: "link", actions: ["Open", "View", "Review"], note: "A link with a trailing arrow (ArrowRightIcon after the words)." },
   output: { variant: "secondary", actions: ["Export"], icon: ExportIcon, required: true, note: "Export, Get token, Show who approves: secondary with its icon." },
   retry: { variant: "secondary", actions: ["Retry", "Try again"], icon: RefreshIcon, required: true, note: "Secondary with Refresh." },
 } as const satisfies Record<string, Intent>;
+
+/** The quiet variant a label's verb asks for (Create / Add / New → create, Edit → edit, Delete / Remove → remove), else `fallback`: for a button whose label is data (a header action). */
+export function verbVariant(label: string, fallback: Variant): Variant {
+  const verb = (i: Intent) => new RegExp(`^(${i.actions.join("|")})\\b`).test(label);
+  return verb(INTENTS.create) ? "create" : verb(INTENTS.edit) ? "edit" : verb(INTENTS.remove) ? "remove" : fallback;
+}

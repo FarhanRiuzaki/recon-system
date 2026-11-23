@@ -26,12 +26,13 @@ import { USER_STATUSES, type UserFilters, USERS } from "@/lib/shared/queries";
 import type { Pending } from "./users-action-dialog";
 import { userColumns } from "./user-columns";
 import { patchUserCache, USERS_KEY, protection, rankBlock, useLastSuperadminId, useRoleNames } from "./use-users";
+import { statusTone } from "@/lib/shared/categories";
 
 const FILTER_DEFAULTS: UserFilters = { q: "", role: "", status: "" };
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "role", label: "Role", multiple: true }, { key: "status", label: "Status", multiple: true, format: (value: string) => value === "active" ? "Active" : "Inactive" }] as const;
 /** The table names the view it shows, as the sidebar's Users children do (the page bar already says "Users"). */
 const VIEW_TITLE: Record<(typeof USER_STATUSES)[number], string> = { "": "All users", active: "Active users", inactive: "Inactive users" };
-const LEGEND = (["healthy", "stopped"] as const).map((h) => ({ health: h, label: h === "healthy" ? "Active" : "Inactive", description: h === "healthy" ? "Can sign in." : HEALTH.stopped.description }));
+const LEGEND = [{ health: statusTone("active"), label: "Active", description: "Can sign in." }, { health: statusTone("inactive"), label: "Inactive", description: HEALTH.stopped.description }];
 
 /**
  * The confirm dialog is opened on click only: its own chunk, out of the route's first load (AGENTS.md §9). The import
@@ -108,7 +109,7 @@ export function UsersPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Users" description="Accounts that can sign in, their roles and status."
-        actions={can("user.create") ? <Button asChild><Link href="/users/new">Create user</Link></Button> : undefined} />
+        actions={can("user.create") ? <Button variant="create-solid" asChild><Link href="/users/new">Create user</Link></Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the users; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

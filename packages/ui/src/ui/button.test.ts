@@ -15,6 +15,11 @@ describe("Button variants", () => {
     expect(c).toEqual(expect.arrayContaining(["border-transparent", `bg-${token}-soft`, `text-${token}-ink`, `hover:bg-${token}-soft-hover`]));
     expect(c).not.toContain("bg-transparent");
   });
+  it("create-solid (the page's main Create / Add / New): solid green, its own label colour, no gradient", () => {
+    const c = classes(markup("create-solid"));
+    expect(c).toEqual(expect.arrayContaining(["border-transparent", "bg-create-solid", "text-create-solid-fg", "hover:bg-create-solid-hover"]));
+    expect(c).not.toContain("bg-action");
+  });
   it("add is gone: Create / Add / New take create", () => {
     // @ts-expect-error the variant no longer exists
     expect(markup("add")).not.toMatch(/add-ink/);

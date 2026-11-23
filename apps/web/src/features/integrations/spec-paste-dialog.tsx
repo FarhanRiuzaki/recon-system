@@ -68,7 +68,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={read?.operations.length ? () => setRead(null) : onClose}>{read?.operations.length ? "Back" : "Cancel"}</Button>
           {read?.operations.length
-            ? <Button type="button" onClick={apply}>Add {read.operations.length} {read.operations.length === 1 ? "operation" : "operations"}</Button>
+            ? <Button variant="create-solid" type="button" onClick={apply}>Add {read.operations.length} {read.operations.length === 1 ? "operation" : "operations"}</Button>
             : <Button type="button" onClick={() => setRead(operationsFromSpec(text))} disabled={!text.trim()}>Read operations</Button>}
         </DialogFooter>
       </DialogContent>

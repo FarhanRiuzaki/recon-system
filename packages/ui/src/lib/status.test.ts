@@ -7,6 +7,9 @@ describe("status", () => {
     expect(worstHealth(["healthy", "down", "degraded"])).toBe("down");
     expect(worstHealth(["stopped", "unknown"])).toBe("unknown");
     expect(worstHealth([])).toBe("unknown");
+    // In progress (owner 24 Nov, blue) is louder than Healthy, quieter than Unknown
+    expect(worstHealth(["healthy", "progress"])).toBe("progress");
+    expect(worstHealth(["progress", "unknown"])).toBe("unknown");
   });
   it("every state has a one-sentence label and description", () => {
     for (const h of Object.values(HEALTH)) expect(h.description).toMatch(/^[A-Z].*\.$/);

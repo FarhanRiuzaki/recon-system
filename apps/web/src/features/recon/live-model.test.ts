@@ -19,8 +19,8 @@ describe("Today and Live day model (REC-F4)", () => {
     const g = spaceMap(t, (id) => `/r/${id}`);
     const node = (id: string) => g.nodes.find((n) => n.id === id)!;
     expect([node("rec-x").chip, node("rec-x").affectedBy]).toEqual([{ health: "down", label: "Source down" }, ["S2"]]);
-    // an open day is a plain state, not Healthy (audit T3)
-    expect([node("rec-y").chip, node("rec-y").affectedBy]).toEqual([{ slot: "neutral", label: "Open" }, []]);
+    // an open day is under way: blue, not Healthy (owner 24 Nov)
+    expect([node("rec-y").chip, node("rec-y").affectedBy]).toEqual([{ health: "progress", label: "Open" }, []]);
     expect(node("rec-z").chip).toEqual({ health: "degraded", label: "Stale" });
     // one edge per side (a recon reading one source twice draws it once), thicker for the busier source
     expect(g.edges.filter((e) => e.target === "rec-z").length).toBe(1);
@@ -50,7 +50,7 @@ describe("Today and Live day model (REC-F4)", () => {
   it("a source's lag: a pull's minutes behind, else what it is complete through", () => {
     expect(sourceLag({ ...src("s", "healthy"), health: health("healthy", { lagSeconds: 1260 }) })).toBe("21 min behind");
     expect(sourceLag({ ...src("s", "healthy"), health: null })).toBe("Not ingesting yet");
-    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map())).toEqual({ slot: 1, label: "Closed" });
+    expect(reconChip({ ...recon("x", "s1", "s2"), state: "closed" }, new Map())).toEqual({ health: "healthy", label: "Closed" });
   });
 });
 

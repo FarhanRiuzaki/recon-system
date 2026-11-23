@@ -9,6 +9,7 @@ import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/
 import { KIND_LABEL, scheduleText } from "../source-text";
 import { UNIT_LABEL } from "../spec-draft";
 import type { Draft } from "./model";
+import { statusTone } from "@/lib/shared/categories";
 
 /** The recon fields the summary lists after the business date, in step 2's order. */
 const MAPPED = [["amount_minor", "Amount"], ["currency", "Currency"], ["direction", "Direction"], ["event_time", "Event time"], ["ext_ref", "Reference"], ["account_ref", "Account"]] as const;
@@ -66,7 +67,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
               {readiness(s, preview, publishedTable).map((c) => (
                 <TableRow key={c.check}>
                   <TableCell className="text-fg">{c.check}</TableCell>
-                  <TableCell><StatusChip health={c.ready ? "healthy" : "degraded"} label={c.ready ? "Ready" : "Check"} /></TableCell>
+                  <TableCell><StatusChip health={statusTone(c.ready ? "ready" : "check")} label={c.ready ? "Ready" : "Check"} /></TableCell>
                   <TableCell className="min-w-72 whitespace-normal text-fg-2">{c.details}</TableCell>
                 </TableRow>
               ))}

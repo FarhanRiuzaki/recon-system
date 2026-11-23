@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { Panel } from "@starterkit/ui/ds";
+import { CategoryChip, Panel } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
@@ -26,10 +26,6 @@ import { EditIcon } from "@starterkit/ui/ui/icons";
 /** A small word chip in a pass's head. */
 const SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
 
-const Chip = ({ children, primary }: { children: string; primary?: boolean }) => (
-  <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-caption", primary ? "bg-primary-soft text-primary" : "bg-tray text-fg-2")}>{children}</span>
-);
-
 /** One row of a pass: the question on the left (the same width in every pass), the answer on the right. */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -52,7 +48,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
       <div className={cn("grid min-w-0 gap-3 rounded-lg border border-line bg-card p-4", !last && "mb-3")}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="min-w-0 truncate text-label text-fg"><span className="sr-only">Pass {step}: </span>{pass.name || "Untitled pass"}</h3>
-          <Chip primary={pass.accept === "auto"}>{pass.accept === "auto" ? "Matches" : "Suggests"}</Chip>
+          <CategoryChip slot="neutral" label={pass.accept === "auto" ? "Matches" : "Suggests"} />
         </div>
         <dl className="grid gap-3">
           <Row label="Pairs when">

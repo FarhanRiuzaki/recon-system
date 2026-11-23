@@ -94,7 +94,7 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
                   </span>
                   {!disabled && (
                     <span className="flex shrink-0 items-center">
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? <Icon icon={CheckIcon} /> : <Icon icon={EditIcon} />}{open === i ? "Done" : "Edit"}</Button>
+                      <Button type="button" variant="edit" size="sm" onClick={() => setOpen(open === i ? null : i)}>{open === i ? <Icon icon={CheckIcon} /> : <Icon icon={EditIcon} />}{open === i ? "Done" : "Edit"}</Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
                       <Button type="button" variant="ghost" size="icon" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
                       <Button type="button" variant="remove" size="icon" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
@@ -175,7 +175,7 @@ function ChangesTable({ local, rows, editor, disabled }: {
                     <span className="text-caption text-fg-3 md:hidden">Sent to bank: </span>{r.bank}
                   </td>
                   <td className="py-2 text-right align-top max-md:col-start-2 max-md:row-start-1 max-md:p-0">
-                    <Button type="button" variant="ghost" size="sm" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : k)}>
+                    <Button type="button" variant={disabled ? "ghost" : "edit"} size="sm" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : k)}>
                       <Icon icon={isOpen ? CheckIcon : disabled ? ShowIcon : EditIcon} />{isOpen ? "Done" : disabled ? "Show" : "Edit"}<span className="sr-only"> {TRIGGER_LABEL[k].toLowerCase()}</span>
                     </Button>
                   </td>

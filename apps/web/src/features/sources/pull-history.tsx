@@ -2,8 +2,7 @@
 
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
-import { CategoryChip, EmptyState, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
-import type { Health } from "@starterkit/ui/lib/status";
+import { EmptyState, Panel, RelativeTime, ScrollFade, StatusChip } from "@starterkit/ui/ds";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { LogIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -11,19 +10,14 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourcePullDto } from "@starterkit/shared/contracts/sources";
 import { api, errorText } from "@/lib/client/api";
 import { INGEST_KEY, PULL_PAGE, sourcePullsFirst } from "@/lib/shared/queries";
+import { PULL_STATUS } from "@/lib/shared/source-status";
 import { at } from "./source-text";
 import { sourceApi } from "./use-sources";
 
-/** A pull that read (new rows, nothing new) is an event: a neutral chip; a failed or paused one is the source's health (P4). */
-const STATUS: Record<SourcePullDto["status"], { health: Health | null; label: string; description: string }> = {
-  new: { health: null, label: "New rows", description: "The pull read rows and stored new records." },
-  nothing_new: { health: null, label: "Nothing new", description: "The table had no row past the last watermark." },
-  failed: { health: "down", label: "Failed", description: "The pull couldn't read the source; the next one tries again." },
-  paused: { health: "stopped", label: "Paused", description: "The table no longer fits the source's version; pulls wait for a new version." },
-};
+/** A pull's chip by meaning (owner 24 Nov): New rows green, Nothing new grey, Failed red, Paused grey. */
 function PullChip({ status }: { status: SourcePullDto["status"] }) {
-  const c = STATUS[status];
-  return c.health ? <StatusChip health={c.health} label={c.label} description={c.description} /> : <CategoryChip slot="neutral" label={c.label} />;
+  const c = PULL_STATUS[status];
+  return <StatusChip health={c.health} label={c.label} description={c.description} />;
 }
 
 /** "+12 records · 3 quarantined · 2 left out · 15 rows read", the parts that aren't zero. */

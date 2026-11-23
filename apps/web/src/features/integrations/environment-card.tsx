@@ -12,6 +12,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { ConnectorDetailDto, EnvironmentSettings, TokenCheckDto } from "@starterkit/shared/contracts/integrations";
 import { type Environment, ENVIRONMENT_LABEL } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
+import { statusTone } from "@/lib/shared/categories";
 
 // One environment of a connector (DEC-053): its address and ids (in the version), its credentials (apart, encrypted:
 // Set / Not set, Replace) and Get token, which asks the bank for a token with them.
@@ -49,7 +50,7 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="button" onClick={() => void save()} disabled={busy} aria-busy={busy || undefined}>
+          <Button type="button" variant="edit" onClick={() => void save()} disabled={busy} aria-busy={busy || undefined}>
             <Icon icon={busy ? SpinnerIcon : EditIcon} className={busy ? "motion-safe:animate-spin" : undefined} />Replace {SECRET_LABEL[what].toLowerCase()}
           </Button>
         </DialogFooter>
@@ -101,8 +102,8 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
             <li key={k} className="flex items-center justify-between gap-3 py-2">
               <span className="text-body-sm text-fg">{SECRET_LABEL[k]}</span>
               <span className="flex items-center gap-2">
-                <StatusChip health={c.secrets[env][k] ? "healthy" : "stopped"} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? (settings.verifyTls ? "Server's certificates" : "Not used") : "Not set"} />
-                {canEdit && <Button type="button" variant="ghost" size="sm" onClick={() => setReplace(k)}><Icon icon={EditIcon} />Replace</Button>}
+                <StatusChip health={statusTone(c.secrets[env][k] ? "set" : k === "caBundle" ? "nothing" : "warning")} label={c.secrets[env][k] ? "Set" : k === "caBundle" ? (settings.verifyTls ? "Server's certificates" : "Not used") : "Not set"} />
+                {canEdit && <Button type="button" variant="edit" size="sm" onClick={() => setReplace(k)}><Icon icon={EditIcon} />Replace</Button>}
               </span>
             </li>
           ))}

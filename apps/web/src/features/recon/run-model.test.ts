@@ -80,13 +80,13 @@ describe("run-model", () => {
 
   it("states the simulation bar: not simulated, running, simulated, out of date, stopped", () => {
     const v = { version: 1, matchingHash: "h1", simulatedHash: "h1" };
-    // a finished run: Done is health; a simulation's result is a fact, never Healthy (audit S5)
-    expect([doneChip("daily"), doneChip("simulation")]).toEqual([{ health: "healthy", label: "Done" }, { slot: "neutral", label: "Simulated" }]);
+    // a finished run or simulation worked: green (owner 24 Nov, superseding audit S5's neutral Simulated)
+    expect([doneChip("daily"), doneChip("simulation")]).toEqual([{ health: "healthy", label: "Done" }, { health: "healthy", label: "Simulated" }]);
+    expect(simView({ ...v, simulatedHash: null }, null, null, false).chip.health).toBe("degraded");
     expect(simView({ ...v, simulatedHash: null }, null, null, false).chip.label).toBe("Not simulated");
     expect(simView({ ...v, simulatedHash: null }, null, null, false).line).toBe("Draft v1 · not simulated yet");
     const s = simView(v, run, run, false);
-    // a simulation that finished is a fact, not health: a neutral chip (audit P4), never Healthy green
-    expect(s.chip).toEqual({ slot: "neutral", label: "Simulated" });
+    expect(s.chip).toEqual({ health: "healthy", label: "Simulated" });
     expect(s.line).toBe("Draft v1 · 2–5 Nov 2026 · 2,000 items · 14:22 WIB");
     // a simulation over dates without a record finished but proved nothing: degraded, never a plain Simulated (S5)
     const none = { ...run, counters: { ...run.counters, intake: { a: 0, b: 0 }, replaced: { a: 0, b: 0 } } };
@@ -261,11 +261,11 @@ describe("the replay a simulation starts with (owner, 22 Nov: never a date witho
 
 describe("a run history row's chips (review: Simulated + Simulation on one row)", () => {
   it("the state chip, then its kind, unless the state already says it (a finished simulation)", () => {
-    expect(runRowChips({ status: "succeeded", mode: "simulation" })).toEqual({ chip: { slot: "neutral", label: "Simulated" }, mode: null });
-    expect(runRowChips({ status: "running", mode: "simulation" })).toEqual({ chip: { health: "unknown", label: "Running" }, mode: "Simulation" });
+    expect(runRowChips({ status: "succeeded", mode: "simulation" })).toEqual({ chip: { health: "healthy", label: "Simulated" }, mode: null });
+    expect(runRowChips({ status: "running", mode: "simulation" })).toEqual({ chip: { health: "progress", label: "Running" }, mode: "Simulation" });
     expect(runRowChips({ status: "failed", mode: "simulation" }).mode).toBe("Simulation");
     expect(runRowChips({ status: "succeeded", mode: "daily" })).toEqual({ chip: { health: "healthy", label: "Done" }, mode: "Scheduled" });
-    expect(runRowChips({ status: "queued", mode: "rerun" })).toEqual({ chip: { health: "unknown", label: "Queued" }, mode: "Rerun" });
+    expect(runRowChips({ status: "queued", mode: "rerun" })).toEqual({ chip: { health: "progress", label: "Queued" }, mode: "Rerun" });
   });
 });
 

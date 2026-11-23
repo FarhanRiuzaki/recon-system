@@ -49,7 +49,7 @@ export function ChangeChips({ value, onChange, label, disabled }: { value: reado
           {!built && adding.values.some(Boolean) && <span className="text-caption text-down-ink">Not a value this change takes. Follow the example.</span>}
           <span className="flex justify-end gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => setAdding(null)}>Cancel</Button>
-            <Button type="button" size="sm" disabled={!built} onClick={() => { onChange([...value, built!]); setAdding(null); }}>Add change</Button>
+            <Button variant="create-solid" type="button" size="sm" disabled={!built} onClick={() => { onChange([...value, built!]); setAdding(null); }}>Add change</Button>
           </span>
         </div>
       ) : (

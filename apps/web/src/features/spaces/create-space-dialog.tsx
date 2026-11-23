@@ -75,7 +75,7 @@ export function CreateSpaceDialog({ onClose }: { onClose: () => void }) {
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button type="submit" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Create space</Button>
+            <Button type="submit" variant="create-solid" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Create space</Button>
           </DialogFooter>
         </form>
       </DialogContent>

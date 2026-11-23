@@ -11,3 +11,11 @@ describe("StatusChip change animation", () => {
     expect(out).not.toContain("animate-reveal-in");
   });
 });
+
+describe("StatusChip In progress (owner 24 Nov: queued, sending, open, running are blue)", () => {
+  it("draws the progress mark and ink, a shape of its own", () => {
+    const out = renderToStaticMarkup(h(StatusChip, { health: "progress", label: "Queued", strong: true }));
+    expect(out).toContain('data-status="progress"');
+    expect(out).toContain("text-progress-ink"); expect(out).toContain("bg-progress-soft"); expect(out).toContain("text-progress-mark");
+  });
+});

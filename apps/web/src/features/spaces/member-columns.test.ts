@@ -23,9 +23,9 @@ describe("members table columns (audit §5.6: Member · Roles in this space · S
   it("one chip per role, labelled; Active / Inactive; the username in mono; Never when never signed in", () => {
     const roles = cell("roles");
     expect(roles.match(/data-slot="category-chip"/g)).toHaveLength(2);
-    // each space role in its slot of the chip map (config checker 6, reviewer 2), as on the workflow editor
+    // each space role in its slot of the chip map (config checker 6, reviewer 6), as on the workflow editor
     expect(roles).toContain("bg-chart-6");
-    expect(roles).toContain("bg-chart-2");
+    expect(roles).not.toContain("bg-chart-2");
     expect(roles).toContain("Config checker");
     expect(roles).toContain("Reviewer");
     expect(cell("status")).toContain("Active");

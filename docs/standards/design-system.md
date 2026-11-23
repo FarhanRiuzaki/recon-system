@@ -82,7 +82,7 @@ starterkit.
 4. **Numbers are the interface.** KPI values are large, regular weight (not bold), tabular. Units, denominators
    and minor digits drop to the muted ink ("82 % / 100 %", "4.2M"). Deltas sit beside the number in a tinted pill.
 5. **Ink is neutral; colour is information.** Text and chrome are greyscale. Navy (the brand ink) means selection/primary;
-   blue means "series 1". Status colours are reserved for the five health states. The categorical palette is for series only.
+   blue means "series 1". Status colours are reserved for the six status tones (§3.1), chosen by the status's meaning (§5.8). The categorical palette is for series only.
 6. **Charts are quiet.** Dashed recessive grid, no axis lines, rounded bar caps, 2 px lines, gradient-to-zero area,
    one highlighted point with a dark tooltip. Every chart has a legend for ≥ 2 series and a table view.
 7. **Smooth, never showy.** Motion explains change (where did it come from, what is loading, what moved) in
@@ -193,6 +193,7 @@ and a soft (chip bg):
 | Down | `#e5303a` | `#c8262f` | `#feeced` | circle-x |
 | Stopped | `#868690` | `#55555c` | `#f1f1f3` | square |
 | Unknown | `#a1a1aa` (dashed ring) | `#55555c` | `#f1f1f3` | dashed circle |
+| In progress (owner, 24 Nov) | `--edit-ink` `#1d5fcc` | `#1d5fcc` | `#ebf2fe` | ring, half filled |
 
 Contrast verified: Healthy ink on soft 4.88:1, Degraded 4.80:1 (ink `#ae5109`, one step darker than `#b25309` so it keeps 4.5:1 on the deeper tray), Down 4.88:1, Stopped ink on soft 5.54:1;
 marks ≥ 3:1 on white (3.38 / 3.79 / 4.36) except Stopped/Unknown, which are always paired with their label.
@@ -232,6 +233,7 @@ Down ink on it 4.58:1 (dark 5.39:1), pinned by `tokens.test.ts` "text down-ink o
 | Down | mark `#ff6b70` · ink `#ff7a7f` · soft `#3d1a1d` | 6.12:1 |
 | Stopped | mark `#7d7d86` · ink `#a8a8b1` · soft `#2a2a2f` | 6.05:1 |
 | Unknown | mark `#5d5d66` dashed · ink `#a8a8b1` · soft `#2a2a2f` | |
+| In progress | mark and ink `#7aaeff` · soft `#172540` (the Edit blue, aliased) | |
 
 ### 3.3 Categorical chart palette (6 slots, fixed order)
 
@@ -724,20 +726,32 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
 - **Category chip** (role, team, event type): 22 px, radius 6, padding 0 8, soft tint of its categorical slot
   (10 % on card) with text in `--fg` (never the series colour, per text-token rule) and a 6 px slot-colour dot.
   `slot="neutral"` (inset fill, `--fg-4` dot) is the plain, lowest member of a set (Viewer).
-- **Categories** (audit P4, `apps/web/src/lib/shared/categories.ts`): a categorical value that is not health is a
-  Category chip whose slot comes from one map, `CATEGORIES`, read through `categoryChip(domain, value)` (an unknown
-  value is neutral): work state (New neutral, Assigned and Investigating 1, Pending external 5, Proposed resolution and
-  Resolved 3, Pending approval 4), reason (No counterpart neutral, Amount differs 2, Date differs 5, the rest 6), change
-  kind (Posting 1, Force match 4, Write-off 2, Unmatch 6, versions neutral), environment (Development neutral,
-  Production 2), space role (Space admin 4, Source admin 3, Config maker 1, Config checker 6, Operator 5, Reviewer 2,
-  Viewer neutral), action kind (Posting 1, Notify neutral), sign-off stage (Waiting for sign-off 4, Prepared 1, Signed off 3), a recon's day (Open neutral, Closing 4, Closed 1; never 2, 3 or 5, which beside its Stale / Source down chip read as Degraded or Healthy).
-  All-neutral sets need no entry: source kind, engine, read mode, run kind, Fixed / Auto generated, Simulated.
-  Never a health colour for a non-health value; version state, posting result and a credential set / not set stay
-  StatusChips. A value that is health in some states and a category in others (a recon's day: Stale or Source down,
-  else Open) is a `Chip` drawn by `components/state-chip.tsx`.
+- **Status tones** (owner, 24 Nov; `apps/web/src/lib/shared/categories.ts` `STATUS_TONE`): every status, state or
+  result chip is a StatusChip whose tone comes from one map, by the status's meaning, through `statusTone(meaning)` or
+  `statusChip(meaning, label)`: success / new / new data / posted / healthy / matched / done / live / active / set /
+  ready → **green** (healthy); error / failed / timeout / refused / down / required missing → **red** (down); warning /
+  degraded / stale / late / out of date / check / sent back / unanswered → **amber** (degraded); nothing / idle /
+  skipped / not sent / no rule / off / paused / draft / retired / superseded / inactive / archived / not live →
+  **grey** (stopped); in progress / queued / sending / open / running / loading / in review / waiting → **blue**
+  (progress); no data → unknown. Examples: a source pull's New rows green, Failed red, Nothing new grey; a posting's
+  Timeout red, Not sent grey, Waiting to send blue; a break's work state New green, Assigned … Pending approval blue,
+  Resolved green; a recon's day Open and Closing blue, Closed green; a sign-off stage Waiting and Prepared blue, Signed
+  off green; Simulated and Done green, Not simulated amber; a required secret Not set amber, the optional CA bundle grey.
+  `STATES` holds the work state, day state and sign-off stage maps. `architecture.test.ts` "status chips take their
+  tone from the shared map" fails on a tone literal in a screen (`health="down"`, `health: "healthy"`, a ternary of
+  two, a `Record<…, Health>` map or an array of tones); the /ds pages, which show every tone, are exempt.
+- **Categories** (audit P4, the same file): a categorical value that is not a status is a Category chip whose slot
+  comes from one map, `CATEGORIES`, read through `categoryChip(domain, value)` (an unknown value is neutral): reason
+  (No counterpart neutral, Amount differs 4, Date differs 1, the rest 6), change kind (Posting 1, Force match 4,
+  Write-off and Unmatch 6, versions neutral), environment (Development neutral, Production 4), space role (Space admin
+  and Source admin 4, Config maker and Operator 1, Config checker and Reviewer 6, Viewer neutral), action kind (Posting
+  1, Notify neutral). A category never takes slot 2 (orange), 3 (green) or 5 (ochre): beside a status chip they read as
+  Degraded or Healthy (`categories.test.ts`). All-neutral sets need no entry: source kind, engine, read mode, run kind,
+  a pass's Matches / Suggests, Fixed / Auto generated. A value that is a status in some states and a category in
+  others is a `Chip` drawn by `components/state-chip.tsx`.
 - **Count badge**: 18 px pill, `--tray` (in tray: `--card`), `label` fg-2, tabular.
-- **Result chip** (sign-in Success / Failed, or any pass / block outcome): use slot 1 / slot 2 dots, not status
-  colours (a failed sign-in is an event, not a system failure).
+- **Result chip** (sign-in Success / Failed, a pass / fail, a try's Answered / Refused): a StatusChip by meaning, as
+  any status (owner, 24 Nov, superseding the slot 1 / slot 2 dots).
 
 ### 5.9 Segmented control, tabs
 - Segmented: track `--tray` without a visible line (its 1 px border is transparent, set in `base.css` on

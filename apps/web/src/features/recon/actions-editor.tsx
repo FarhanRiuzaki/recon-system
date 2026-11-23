@@ -15,6 +15,7 @@ import { api } from "@/lib/client/api";
 import { connectorOperationsQuery } from "@/lib/shared/queries-recon";
 import { opOf } from "./action-parts";
 import { actionSentence, mappingGaps } from "./actions-model";
+import { statusTone } from "@/lib/shared/categories";
 
 // A change's actions in the Approval step (stage 4, design §4.4–4.5): a card per action ("When the change is approved,
 // post Post to GL"), its variants and whether every required field is mapped; Edit opens it in the full-screen editor
@@ -60,8 +61,8 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
                 </span>
               </span>
               {opsQ.data && (gaps.length
-                ? <StatusChip health="down" label={`${gaps.length} required ${gaps.length === 1 ? "field" : "fields"} empty`} />
-                : <StatusChip health="healthy" label="Every field mapped" />)}
+                ? <StatusChip health={statusTone("missing")} label={`${gaps.length} required ${gaps.length === 1 ? "field" : "fields"} empty`} />
+                : <StatusChip health={statusTone("ready")} label="Every field mapped" />)}
               {!disabled && (
                 <span className="flex shrink-0 items-center gap-1">
                   <Button type="button" variant="edit" size="sm" onClick={() => setOpen(i)}><Icon icon={EditIcon} />Edit</Button>

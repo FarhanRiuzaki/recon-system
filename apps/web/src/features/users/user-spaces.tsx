@@ -12,6 +12,7 @@ import type { UserSpaceDto } from "@starterkit/shared/contracts/spaces";
 import { SpaceRoleChips } from "@/components/role-chips";
 import { api, errorText } from "@/lib/client/api";
 import { userSpaces } from "@/lib/shared/queries";
+import { statusTone } from "@/lib/shared/categories";
 
 /** Opened on click only (route budget, AGENTS.md §9); the import starts on the first press or focus of its button. */
 const loadDialog = () => import("./add-to-space-dialog");
@@ -30,7 +31,7 @@ export function joinedSpaces(page: Page<UserSpaceDto> | undefined): string[] | n
 const COLUMNS: Column<UserSpaceDto>[] = [
   { key: "name", header: "Space", mobile: "title", cell: (s) => <Link href={`/spaces/${encodeURIComponent(s.spaceId)}/members`} className="text-fg underline-offset-2 hover:underline">{s.name}</Link> },
   { key: "roles", header: "Roles in this space", mobile: "meta", cell: (s) => <SpaceRoleChips roles={s.roles} /> },
-  { key: "status", header: "Status", mobile: "meta", cell: (s) => (s.status === "active" ? <StatusChip health="healthy" label="Active" /> : <StatusChip health="stopped" label="Archived" />) },
+  { key: "status", header: "Status", mobile: "meta", cell: (s) => (s.status === "active" ? <StatusChip health={statusTone("active")} label="Active" /> : <StatusChip health={statusTone("archived")} label="Archived" />) },
 ];
 
 /**

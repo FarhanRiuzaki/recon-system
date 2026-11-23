@@ -14,7 +14,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { categoryChip } from "@/lib/shared/categories";
+import { categoryChip, statusChip, statusTone } from "@/lib/shared/categories";
 import { CONNECTORS } from "@/lib/shared/queries";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -23,9 +23,9 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 const empty = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
 
 /** The last call's result in the live environment as a health chip; null = never called there. */
-export const linkChip = (l: ConnectorRowDto["link"]): { health: "healthy" | "degraded" | "down"; label: string } | null =>
-  l.state === "none" ? null : l.state === "answered" ? { health: "healthy", label: "Answering" }
-    : l.state === "paused" ? { health: "down", label: "Calls paused" } : { health: "degraded", label: l.failures > 1 ? `${l.failures} calls unanswered` : "Last call unanswered" };
+export const linkChip = (l: ConnectorRowDto["link"]) =>
+  l.state === "none" ? null : l.state === "answered" ? statusChip("success", "Answering")
+    : l.state === "paused" ? statusChip("error", "Calls paused") : statusChip("unanswered", l.failures > 1 ? `${l.failures} calls unanswered` : "Last call unanswered");
 
 /** The connectors list (audit §5.8): seven columns at 1440, Changed hidden until chosen. */
 export const COLUMNS: Column<ConnectorRowDto>[] = [
@@ -35,9 +35,9 @@ export const COLUMNS: Column<ConnectorRowDto>[] = [
       <span className="text-caption text-fg-3">{PROFILE_LABEL[r.profile]}</span>
     </span>
   ) },
-  { key: "status", header: "Status", mobile: "meta", cell: (r) => (r.disabled ? <StatusChip health="down" label="Turned off" />
-    : r.open ? <StatusChip health={r.open.status === "draft" ? "unknown" : "degraded"} label={r.open.status === "draft" ? `Draft ${r.open.version}` : `Version ${r.open.version} waits`} />
-      : r.published ? <StatusChip health="healthy" label="Live" /> : <StatusChip health="stopped" label="Not live" />) },
+  { key: "status", header: "Status", mobile: "meta", cell: (r) => (r.disabled ? <StatusChip health={statusTone("off")} label="Turned off" />
+    : r.open ? <StatusChip health={statusTone(r.open.status === "draft" ? "draft" : "waiting")} label={r.open.status === "draft" ? `Draft ${r.open.version}` : `Version ${r.open.version} waits`} />
+      : r.published ? <StatusChip health={statusTone("live")} label="Live" /> : <StatusChip health={statusTone("not_live")} label="Not live" />) },
   { key: "environment", header: "Environment", mobile: "meta", cell: (r) => (r.published && r.active
     ? <CategoryChip label={ENVIRONMENT_LABEL[r.active]} slot={categoryChip("environment", r.active)} /> : <span className="text-fg-3">—</span>) },
   { key: "live", header: "Version", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.published ? `Version ${r.published.version}` : <span className="text-fg-3">Not live</span>) },
@@ -70,7 +70,7 @@ export function ConnectorsPage({ canManage }: { canManage: boolean }) {
   return (
     <div className="grid gap-section">
       <PageHeader title="Open API" description="The bank APIs that recons call when a change is approved: their environments, credentials and operations."
-        actions={canManage ? <Button type="button" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New connector</Button> : undefined} />
+        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New connector</Button> : undefined} />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the connectors; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}

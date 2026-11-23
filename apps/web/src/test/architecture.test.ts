@@ -30,8 +30,8 @@ const featureOf = (r: string) => (r.startsWith(`${WEB}features/`) ? r.split("/")
 /**
  * Intents by verb (owner 24 Nov, superseding 22 Nov's add blue / Edit ghost): a Button named "Remove …" or "Delete …"
  * (aria-label or text) is `variant="remove"` (a confirm dialog's is destructive); one named "Create …", "Add …" or
- * "New …" is `variant="create"` (green; the page's one main CTA may stay default); one labelled "Edit …" is
- * `variant="edit"` (blue). From `INTENTS`
+ * "New …" is `variant="create"` (green; the page's main one `create-solid`, its one primary); one labelled "Edit …",
+ * "Replace …" or "Continue editing" is `variant="edit"` (blue). From `INTENTS`
  * (`ds/intent.ts`): a Button or BlockedButton labelled with a caution action (Reject, Turn off, Cancel request) is
  * `variant="caution"` (or destructive, a confirm dialog's), and one labelled with an intent whose icon is `required`
  * (Edit, Replace, Export, Retry …) renders an `<Icon icon={…} />` among its children, always: an icon only in an
@@ -44,9 +44,12 @@ const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")
 const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
 const CAUTION_VARIANTS: readonly string[] = INTENTS.caution.variant;
 const NAV_LABEL = startsWith(INTENTS.navigate.actions);
-const ICON_LABEL = startsWith(Object.values(INTENTS).filter((i) => "required" in i && i.required && i.variant !== "create").flatMap((i) => i.actions));
+// Create / Add / New carry AddIcon by convention, not by this rule (a page's "Create recon" may stand alone)
+const ICON_LABEL = startsWith(Object.entries(INTENTS).filter(([k, i]) => k !== "create" && "required" in i && i.required).flatMap(([, i]) => i.actions));
 const CREATE_LABEL = startsWith(INTENTS.create.actions);
 const REMOVE_LABEL = startsWith(INTENTS.remove.actions);
+const EDIT_LABEL = startsWith(INTENTS.edit.actions);
+const CREATE_VARIANTS: readonly string[] = INTENTS.create.variant;
 /** `s` without its `{…}` expressions (nested braces counted): what always renders, not `{busy && <Icon … />}`. */
 const outsideExpressions = (s: string) => { let out = "", depth = 0; for (const c of s) { if (c === "{") depth++; else if (c === "}") depth = Math.max(0, depth - 1); else if (!depth) out += c; } return out; };
 function intentViolations(fs: F[]): string[] {
@@ -73,13 +76,13 @@ function intentViolations(fs: F[]): string[] {
         if (named && !/text-down-ink/.test(tag)) out.push(`${r}: raw Remove / Delete button without text-down-ink`);
         continue;
       }
-      const variant = /variant="([a-z]+)"/.exec(tag)?.[1] ?? "default";
+      const variant = /variant="([a-z-]+)"/.exec(tag)?.[1] ?? "default";
       // the label: the children up to the closing tag, without their tags and expressions ("Edit<span> code</span>")
       const close = selfClosing ? -1 : src.indexOf(`</${m[1]}>`, i), inner = close < 0 ? "" : src.slice(i + 1, close);
       const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
       if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
-      if (/^Edit\b/.test(label) && variant !== INTENTS.edit.variant) out.push(`${r}: ${label} is variant="${variant}", not ${INTENTS.edit.variant}`);
-      if ((CREATE_LABEL.test(label) || (!label && CREATE_LABEL.test(aria))) && variant !== INTENTS.create.variant && variant !== "default")
+      if (EDIT_LABEL.test(label) && variant !== INTENTS.edit.variant) out.push(`${r}: ${label} is variant="${variant}", not ${INTENTS.edit.variant}`);
+      if ((CREATE_LABEL.test(label) || (!label && CREATE_LABEL.test(aria))) && !CREATE_VARIANTS.includes(variant))
         out.push(`${r}: ${label || aria} is variant="${variant}", not create`);
       if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: ${label || aria} is variant="${variant}", not remove`);
       if (ICON_LABEL.test(label) && !/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner))) out.push(`${r}: ${label} without its icon`);
@@ -107,6 +110,22 @@ function sharedViolations(fs: F[]): string[] {
   const bad = (s: string) => /^(react|next)(\/|$)/.test(s) || s.startsWith("@/") || /(^|\/)apps\//.test(s)
     || (s.startsWith("@starterkit/") && !s.startsWith("@starterkit/ui/lib/"));
   return fs.filter(({ r }) => r.startsWith(SHARED)).flatMap(({ r, imp }) => imp.filter(bad).map((s) => `${r} → ${s}`));
+}
+
+/**
+ * Status chips by meaning (owner 24 Nov): a status's tone comes from `STATUS_TONE` (`lib/shared/categories.ts`, through
+ * `statusTone` / `statusChip`), never a literal in the screen: no `health="down"`, `health: "healthy"`,
+ * `health={ok ? "healthy" : "down"}`, `Record<…, Health> = { a: "down" }` or `["healthy", …]` outside that file.
+ */
+const TONE_WORD = `"(?:healthy|degraded|down|stopped|unknown|progress)"`;
+const TONE_LITERAL = [
+  new RegExp(`\\bhealth\\s*(?::|=\\s*\\{?)\\s*(?:[^,;{}\\n"]*\\?\\s*)?${TONE_WORD}`),
+  new RegExp(`Record<[^>]*\\bHealth>\\s*=\\s*\\{[^}]*${TONE_WORD}`),
+  new RegExp(`\\[\\s*${TONE_WORD}\\s*,`),
+];
+function statusToneViolations(fs: F[]): string[] {
+  return fs.filter(({ r }) => r.startsWith(WEB) && !r.startsWith(`${WEB}features/ds/`) && /\.tsx?$/.test(r) && !/\.test\.tsx?$/.test(r) && r !== `${WEB}lib/shared/categories.ts`)
+    .flatMap(({ r, src }) => src.split("\n").flatMap((l, i) => (TONE_LITERAL.some((re) => re.test(l)) ? [`${r}:${i + 1}`] : [])));
 }
 
 /** Tailwind 4: `outline-none` sets --tw-outline-style: none, which `focus-visible:outline-2` reads, so no ring shows unless `focus-visible:outline-solid` is also there (AGENTS.md §7). */
@@ -271,7 +290,7 @@ const COLUMNS_MENU_ALLOWED: Record<string, string> = {
  */
 function defaultHiddenViolations(fs: F[]): string[] {
   const table = (src: string) => /<DataTable\b/.test(src), menu = (src: string) => /<ColumnsMenu\b/.test(src);
-  return fs.filter(({ r }) => r.startsWith(WEB) && /\.tsx?$/.test(r) && !r.endsWith(".test.ts")).flatMap(({ r, src }) => {
+  return fs.filter(({ r }) => r.startsWith(WEB) && !r.startsWith(`${WEB}features/ds/`) && /\.tsx?$/.test(r) && !r.endsWith(".test.ts")).flatMap(({ r, src }) => {
     const code = strip(src);
     if (!/\bdefaultHidden\s*:\s*true\b/.test(code)) return [];
     if (table(code)) return menu(code) ? [] : [`${r}: a defaultHidden column without ColumnsMenu`];
@@ -334,7 +353,7 @@ const RAW_PASSWORD = /\btype=(?:"password"|'password'|\{[^}]*["']password["'][^}
 const passwordFieldViolations = (fs: F[]) => fs.filter(({ r, src }) => r !== PASSWORD_HOME && r.endsWith(".tsx") && RAW_PASSWORD.test(strip(src)))
   .map(({ r }) => `${r}: a raw password input; use PasswordInput`);
 /** A new-password field lists its requirements while the user types (PasswordChecks + passwordChecks()). */
-const newPasswordViolations = (fs: F[]) => fs.filter(({ r, src }) => r.startsWith(WEB) && /autoComplete=["']new-password["']/.test(src) && !/<PasswordChecks\b/.test(strip(src)))
+const newPasswordViolations = (fs: F[]) => fs.filter(({ r, src }) => r.startsWith(WEB) && !r.startsWith(`${WEB}features/ds/`) && /autoComplete=["']new-password["']/.test(src) && !/<PasswordChecks\b/.test(strip(src)))
   .map(({ r }) => `${r}: a new-password field without PasswordChecks`);
 
 /**
@@ -458,6 +477,9 @@ describe("architecture", () => {
   it("every button says its intent: create (green), edit (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
     expect(intentViolations(files)).toEqual([]);
   });
+  it("status chips take their tone from the shared map (lib/shared/categories.ts STATUS_TONE), never a literal", () => {
+    expect(statusToneViolations(files)).toEqual([]);
+  });
   it("a dialog with a footer holds its content in DialogBody (owner, 22 Nov: modals tidy and symmetric)", () => {
     // DialogBody gives every dialog the same 24 px sides and bottom, 16 px under the header; a body padded by hand drifted
     const bare = files.filter(({ r, src }) => r.endsWith(".tsx") && !r.startsWith(VENDORED) && !r.endsWith("ui/dialog.tsx")
@@ -536,16 +558,17 @@ describe("architecture", () => {
 describe("architecture checkers (fixtures)", () => {
   const f = (r: string, src: string): F => ({ r, src, imp: [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1]!) });
 
-  it("intents: a Remove / Delete button not variant remove, a Create / Add / New button neither create nor default", () => {
+  it("intents: a Remove / Delete button not variant remove, a Create / Add / New button not create (or create-solid, the page's main one)", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="ghost" size="icon" aria-label={\`Remove \${n}\`} onClick={() => go()}><Icon icon={RemoveIcon} /></Button>`),
       f(`${WEB}features/x/b.tsx`, `<Button type="button" variant="link" onClick={() => add()}>Add a condition</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="create" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button onClick={() => a()}>Create recon</Button><Button variant="destructive">Remove member</Button><Button variant="destructive">Delete view</Button><Button variant="secondary">Newer first</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="create" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button variant="create-solid" onClick={() => a()}>Create recon</Button><Button onClick={() => a()}>New workflow</Button><Button variant="destructive">Remove member</Button><Button variant="destructive">Delete view</Button><Button variant="secondary">Newer first</Button>`),
       f(`${WEB}features/x/d.tsx`, `<button type="button" aria-label="Remove pass 2" className="text-fg-3" onClick={() => r()}>x</button><ButtonGroup>Add a row</ButtonGroup><button type="button" className="text-fg-3">Delete</button>`),
       f(`${WEB}features/x/e.tsx`, `<Button variant="outline" title="a > b" onClick={() => a()}>Add a column</Button>`),
       f(`${WEB}features/x/f.tsx`, `<Button variant="secondary"><Icon icon={AddIcon} />New space</Button><BlockedButton variant="ghost" reason={r}>Create token</BlockedButton><Button variant="ghost" size="icon" aria-label="Add a filter"><Icon icon={AddIcon} /></Button>`),
       f(`${WEB}features/x/g.tsx`, `<Button variant="ghost" onClick={() => d()}>Delete view</Button><Button variant="secondary" size="icon" aria-label="Delete row 2"><Icon icon={RemoveIcon} /></Button>`),
     ])).toEqual([`${WEB}features/x/a.tsx: Remove \${n} is variant="ghost", not remove`, `${WEB}features/x/b.tsx: Add a condition is variant="link", not create`,
+      `${WEB}features/x/c.tsx: New workflow is variant="default", not create`,
       `${WEB}features/x/d.tsx: raw Remove / Delete button without text-down-ink`, `${WEB}features/x/d.tsx: raw Remove / Delete button without text-down-ink`,
       `${WEB}features/x/e.tsx: Add a column is variant="outline", not create`,
       `${WEB}features/x/f.tsx: New space is variant="secondary", not create`, `${WEB}features/x/f.tsx: Create token is variant="ghost", not create`, `${WEB}features/x/f.tsx: Add a filter is variant="ghost", not create`,
@@ -581,6 +604,15 @@ describe("architecture checkers (fixtures)", () => {
       f(`${WEB}features/x/b.tsx`, `<Button asChild variant="link" size="sm"><Link href={h(r)}>Review<Icon icon={ArrowRightIcon} /></Link></Button><Button variant="secondary" onClick={() => o()}>Open dialog</Button><Button asChild variant="secondary"><Link href="/x">Go to recon</Link></Button>`),
     ])).toEqual([`${WEB}features/x/a.tsx: Review link is variant="default", not link`, `${WEB}features/x/a.tsx: Review link without its trailing icon`,
       `${WEB}features/x/a.tsx: View history link without its trailing icon`]);
+  });
+  it("status tone: a literal health in a chip, a ternary, a Record<…, Health> map or an array; the shared map and reads are fine", () => {
+    expect(statusToneViolations([
+      f(`${WEB}features/x/a.tsx`, `<StatusChip health="down" label="Failed" />\n<StatusChip health={ok ? "healthy" : "down"} label={l} />\nconst c = { health: "stopped" as const, label: "Off" };`),
+      f(`${WEB}features/x/b.ts`, `const H: Record<S, Health> = { posted: "healthy" };\nconst L = (["healthy", "stopped"] as const).map((h) => h);`),
+      f(`${WEB}features/x/c.tsx`, `<StatusChip health={statusTone("failed")} label="Failed" />\nconst c = statusChip("queued", "Queued");\nif (s.health === "down") go();\nconst d = { direction: "down" };`),
+      f(`${WEB}lib/shared/categories.ts`, `const STATES = { workState: { new: "healthy" } };\nconst x = { health: "down" };`),
+      f(`${WEB}features/x/d.test.ts`, `expect(c).toEqual({ health: "down", label: "Failed" });`),
+    ])).toEqual([`${WEB}features/x/a.tsx:1`, `${WEB}features/x/a.tsx:2`, `${WEB}features/x/a.tsx:3`, `${WEB}features/x/b.ts:1`, `${WEB}features/x/b.ts:2`]);
   });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([

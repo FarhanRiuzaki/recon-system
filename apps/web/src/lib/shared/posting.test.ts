@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 import { attentionText, groupChip, groupKeyText, lateGroupsText, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
 
 describe("posting statuses as people read them", () => {
-  it("names each status with one of the five health states", () => {
+  it("names each status by its meaning (owner 24 Nov): posted green, failed and timeout red, not sent / no rule / skipped grey, queued and sending blue", () => {
     expect(postingChip("posted")).toEqual({ health: "healthy", label: "Posted" });
     expect(postingChip("failed")).toEqual({ health: "down", label: "Failed" });
-    expect(postingChip("not_sent")).toEqual({ health: "down", label: "Not sent" });
-    expect(postingChip("timeout")).toEqual({ health: "degraded", label: "Timeout" });
+    expect(postingChip("not_sent")).toEqual({ health: "stopped", label: "Not sent" });
+    expect(postingChip("timeout")).toEqual({ health: "down", label: "Timeout" });
     expect(postingChip("no_rule")).toEqual({ health: "stopped", label: "No posting rule" });
     expect(postingChip("skipped")).toEqual({ health: "stopped", label: "Skipped" });
-    expect(postingChip("queued")).toEqual({ health: "unknown", label: "Waiting to send" });
-    expect(postingChip("sending")).toEqual({ health: "unknown", label: "Sending" });
+    expect(postingChip("queued")).toEqual({ health: "progress", label: "Waiting to send" });
+    expect(postingChip("sending")).toEqual({ health: "progress", label: "Sending" });
   });
   it("reads the event that fired an action", () => {
     expect(postingEvent({ event: "level_approved", level: 2 })).toBe("Level 2 approved");
@@ -22,9 +22,9 @@ describe("posting statuses as people read them", () => {
   });
   it("a posting group's status: Open, Closing while its run waits, then its run's result; empty sends nothing", () => {
     const g = (status: "open" | "closed", run: string | null) => ({ status, run: run ? { status: run as never } : null });
-    expect(groupChip(g("open", null))).toEqual({ health: "unknown", label: "Open" });
-    expect(groupChip(g("closed", "queued"))).toEqual({ health: "unknown", label: "Closing" });
-    expect(groupChip(g("closed", "sending"))).toEqual({ health: "unknown", label: "Closing" });
+    expect(groupChip(g("open", null))).toEqual({ health: "progress", label: "Open" });
+    expect(groupChip(g("closed", "queued"))).toEqual({ health: "progress", label: "Closing" });
+    expect(groupChip(g("closed", "sending"))).toEqual({ health: "progress", label: "Closing" });
     expect(groupChip(g("closed", "posted"))).toEqual({ health: "healthy", label: "Posted" });
     expect(groupChip(g("closed", null))).toEqual({ health: "stopped", label: "Nothing to send" });
     expect(groupChip({ ...g("open", null), late: true })).toEqual({ health: "degraded", label: "Open past its close" });
