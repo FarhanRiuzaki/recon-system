@@ -740,13 +740,14 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   `slot="neutral"` (inset fill, `--fg-4` dot) is the plain, lowest member of a set (Viewer).
 - **Status tones** (owner, 24 Nov; `apps/web/src/lib/shared/categories.ts` `STATUS_TONE`): every status, state or
   result chip is a StatusChip whose tone comes from one map, by the status's meaning, through `statusTone(meaning)` or
-  `statusChip(meaning, label)`: success / new / new data / posted / healthy / matched / done / live / active / set /
-  ready → **green** (healthy); error / failed / timeout / refused / down / required missing → **red** (down); warning /
+  `statusChip(meaning, label)`: success / new data / posted / healthy / matched / done / live / active / set /
+  ready → **green** (healthy); error / failed / timeout / refused / not sent / down / required missing → **red** (down); warning /
   degraded / stale / late / out of date / check / sent back / unanswered → **amber** (degraded); nothing / idle /
-  skipped / not sent / no rule / off / paused / draft / retired / superseded / inactive / archived / not live →
+  skipped / no rule / off / paused / draft / retired / superseded / inactive / archived / not live →
   **grey** (stopped); in progress / queued / sending / open / running / loading / in review / waiting → **blue**
   (progress); no data → unknown. Examples: a source pull's New rows green, Failed red, Nothing new grey; a posting's
-  Timeout red, Not sent grey, Waiting to send blue; a break's work state New green, Assigned … Pending approval blue,
+  Timeout and Not sent red (each needs a manual posting), Waiting to send blue; a break's work state New, Assigned …
+  Pending approval blue (open work; green only once done),
   Resolved green; a recon's day Open and Closing blue, Closed green; a sign-off stage Waiting and Prepared blue, Signed
   off green; Simulated and Done green, Not simulated amber; a required secret Not set amber, the optional CA bundle grey.
   `STATES` holds the work state, day state and sign-off stage maps. `architecture.test.ts` "status chips take their

@@ -12,13 +12,14 @@ import type { SpaceRole } from "@starterkit/shared/spaces";
  * through `statusTone(meaning)` or `statusChip(meaning, label)`, never a tone literal (architecture.test "status chips
  * take their tone from the shared map"). The meaning, not the word on the chip: "New rows" is `new_data`, "Waiting to
  * send" is `queued`. Green = it worked; red = it failed; amber = it needs a look; grey = nothing happened or it is off
- * on purpose; blue = under way; unknown = no data to judge.
+ * on purpose; blue = under way or open (a new break is open work, not a success); unknown = no data to judge. Not sent is
+ * red: nothing went out, so someone posts it by hand (it sits with Failed and Timeout in Posting's attention list).
  */
 const TONE_OF = {
-  healthy: ["success", "new", "new_data", "posted", "healthy", "matched", "active", "live", "published", "done", "on", "set", "ready"],
-  down: ["error", "failed", "timeout", "refused", "down", "missing"],
+  healthy: ["success", "new_data", "posted", "healthy", "matched", "active", "live", "published", "done", "on", "set", "ready"],
+  down: ["error", "failed", "timeout", "refused", "not_sent", "down", "missing"],
   degraded: ["warning", "degraded", "stale", "late", "out_of_date", "check", "sent_back", "unanswered"],
-  stopped: ["nothing", "idle", "skipped", "not_sent", "no_rule", "off", "paused", "draft", "retired", "superseded", "inactive", "archived", "not_live", "signed_out"],
+  stopped: ["nothing", "idle", "skipped", "no_rule", "off", "paused", "draft", "retired", "superseded", "inactive", "archived", "not_live", "signed_out"],
   progress: ["in_progress", "queued", "sending", "open", "running", "loading", "in_review", "waiting"],
   unknown: ["unknown", "no_data"],
 } as const satisfies Record<Health, readonly string[]>;
@@ -27,9 +28,9 @@ export const STATUS_TONE = Object.fromEntries(Object.entries(TONE_OF).flatMap(([
 export const statusTone = (meaning: StatusMeaning): Health => STATUS_TONE[meaning];
 export const statusChip = (meaning: StatusMeaning, label: string): { health: Health; label: string } => ({ health: STATUS_TONE[meaning], label });
 
-/** Statuses that used to be categories (owner 24 Nov): a break's work state (New green, open work blue, Resolved green), a recon's business date, a sign-off stage. */
+/** Statuses that used to be categories (owner 24 Nov): a break's work state (New and open work blue, Resolved green), a recon's business date, a sign-off stage. */
 export const STATES = {
-  workState: { new: statusTone("new"), assigned: statusTone("in_progress"), investigating: statusTone("in_progress"), pending_external: statusTone("waiting"),
+  workState: { new: statusTone("open"), assigned: statusTone("in_progress"), investigating: statusTone("in_progress"), pending_external: statusTone("waiting"),
     proposed_resolution: statusTone("in_progress"), pending_approval: statusTone("waiting"), resolved: statusTone("done") } satisfies Record<BreakState, Health>,
   // a recon's business date: open and closing are under way, closed is done
   dayState: { open: statusTone("open"), closing: statusTone("in_progress"), closed: statusTone("done") } satisfies Record<LiveReconDto["state"], Health>,

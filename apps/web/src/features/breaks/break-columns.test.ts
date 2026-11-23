@@ -19,7 +19,9 @@ describe("unmatch queue columns: the reason a category chip, the state a status 
     expect(cell("reason", { ...B, reason: null })).not.toContain("category-chip");
     expect(cell("state")).toContain(">Pending external</span>");
     expect(cell("state")).toContain('data-status="progress"');
-    expect(cell("state", { ...B, state: "new" })).toContain('data-status="healthy"');
+    // a new break is open work: blue, never the green of done (review 24 Nov)
+    expect(cell("state", { ...B, state: "new" })).toContain('data-status="progress"');
+    expect(cell("state", { ...B, state: "resolved" })).toContain('data-status="healthy"');
   });
 });
 

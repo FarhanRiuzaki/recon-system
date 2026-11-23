@@ -8,19 +8,22 @@ import { CATEGORIES, categoryChip, STATES, STATUS_TONE, statusChip, statusTone }
 describe("status tones (owner 24 Nov): one map from a status's meaning to its chip colour", () => {
   it("success, new data, posted, healthy, matched green; error, failed, timeout, refused red; warning, degraded, stale, late amber", () => {
     for (const m of ["success", "new_data", "posted", "healthy", "matched"] as const) expect(statusTone(m), m).toBe("healthy");
-    for (const m of ["error", "failed", "timeout", "refused"] as const) expect(statusTone(m), m).toBe("down");
+    // not sent needs a manual posting: it sits in Posting's attention list with Failed and Timeout (review 24 Nov)
+    for (const m of ["error", "failed", "timeout", "refused", "not_sent"] as const) expect(statusTone(m), m).toBe("down");
     for (const m of ["warning", "degraded", "stale", "late"] as const) expect(statusTone(m), m).toBe("degraded");
   });
-  it("nothing, idle, skipped, not sent, no rule grey; in progress, queued, sending, open blue", () => {
-    for (const m of ["nothing", "idle", "skipped", "not_sent", "no_rule"] as const) expect(statusTone(m), m).toBe("stopped");
+  it("nothing, idle, skipped, no rule grey; in progress, queued, sending, open blue", () => {
+    for (const m of ["nothing", "idle", "skipped", "no_rule"] as const) expect(statusTone(m), m).toBe("stopped");
     for (const m of ["in_progress", "queued", "sending", "open"] as const) expect(statusTone(m), m).toBe("progress");
   });
   it("each meaning has exactly one tone; statusChip pairs it with the words", () => {
     expect(new Set(Object.keys(STATUS_TONE)).size).toBe(Object.keys(STATUS_TONE).length);
+    // green = it worked or it is done; a new problem is never green
+    expect(STATUS_TONE).not.toHaveProperty("new");
     expect(statusChip("new_data", "New rows")).toEqual({ health: "healthy", label: "New rows" });
   });
-  it("a break's work state, a recon's day and a sign-off stage are statuses: New green, open work blue, done green", () => {
-    expect(BREAK_STATES.map((s) => STATES.workState[s])).toEqual(["healthy", "progress", "progress", "progress", "progress", "progress", "healthy"]);
+  it("a break's work state, a recon's day and a sign-off stage are statuses: New and open work blue, only done green", () => {
+    expect(BREAK_STATES.map((s) => STATES.workState[s])).toEqual(["progress", "progress", "progress", "progress", "progress", "progress", "healthy"]);
     expect(["open", "closing", "closed"].map((d) => STATES.dayState[d as "open"])).toEqual(["progress", "progress", "healthy"]);
     expect(["closed", "prepared", "signed"].map((x) => STATES.signoffStage[x as "closed"])).toEqual(["progress", "progress", "healthy"]);
   });

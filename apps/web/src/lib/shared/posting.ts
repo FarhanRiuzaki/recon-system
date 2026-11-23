@@ -7,7 +7,8 @@ import { groupKeyText as keyText, POSTING_STATUS_LABEL as L, type PostingStatus 
 // label (words from @starterkit/shared/posting, which the API's CSV uses too). Pure.
 
 export { postingEvent, type PostingStatus } from "@starterkit/shared/posting";
-// a timeout's effect at the bank is unknown: red with the failures (owner 24 Nov); not sent sent nothing: grey
+// a timeout's effect at the bank is unknown: red with the failures (owner 24 Nov); not sent sent nothing, so it needs a
+// manual posting: red too (review 24 Nov)
 const MEANING: Record<PostingStatus, StatusMeaning> = { posted: "posted", failed: "failed", not_sent: "not_sent", timeout: "timeout", no_rule: "no_rule", skipped: "skipped", queued: "queued", sending: "sending", grouped: "waiting" };
 export const postingChip = (s: PostingStatus) => statusChip(MEANING[s], L[s]);
 /** The status filter, the ones that need someone first (a timeout's effect at the bank is unknown: check it there). */

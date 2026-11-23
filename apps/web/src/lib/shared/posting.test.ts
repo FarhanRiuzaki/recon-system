@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { attentionText, groupChip, groupKeyText, lateGroupsText, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
 
 describe("posting statuses as people read them", () => {
-  it("names each status by its meaning (owner 24 Nov): posted green, failed and timeout red, not sent / no rule / skipped grey, queued and sending blue", () => {
+  it("names each status by its meaning (owner 24 Nov): posted green, failed, timeout and not sent red (each needs a manual posting), no rule / skipped grey, queued and sending blue", () => {
     expect(postingChip("posted")).toEqual({ health: "healthy", label: "Posted" });
     expect(postingChip("failed")).toEqual({ health: "down", label: "Failed" });
-    expect(postingChip("not_sent")).toEqual({ health: "stopped", label: "Not sent" });
+    expect(postingChip("not_sent")).toEqual({ health: "down", label: "Not sent" });
     expect(postingChip("timeout")).toEqual({ health: "down", label: "Timeout" });
     expect(postingChip("no_rule")).toEqual({ health: "stopped", label: "No posting rule" });
     expect(postingChip("skipped")).toEqual({ health: "stopped", label: "Skipped" });
