@@ -160,7 +160,7 @@ function ChangesTable({ local, rows, editor, disabled }: {
             <TableHead scope="col" className="w-px"><span className="sr-only">Edit</span></TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody className="max-md:grid">
+        <TableBody className="max-md:grid max-md:grid-cols-[minmax(0,1fr)]">
           {TRIGGERS.map((k) => {
             const s = local.changes[k];
             const r = approvalRow(s, nameOf);
