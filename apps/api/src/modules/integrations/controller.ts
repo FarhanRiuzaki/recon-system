@@ -1,12 +1,13 @@
 // /v1/integrations/connectors (DEC-053): integration.view reads; integration.manage edits, publishes another's
 // version and replaces credentials.
 import { Elysia } from "elysia";
-import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
+import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, PostingGroupListQuery, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
 import { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
 import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { csvFileName } from "@starterkit/ui/lib/csv";
 import { actionRunCsv, actionRunPage } from "./actions";
+import { groupOf, groupPage } from "./groups";
 
 /** A CSV attachment `<prefix>-<date in the app time zone>.csv`, never cached. */
 const csvResponse = (prefix: string, text: string): Response =>
@@ -30,6 +31,9 @@ export const integrationsController = () => new Elysia().use(guard)
   // the space's approval action runs (stage 4): any role of the space reads them
   // what a recon's action may pick: the connectors' published versions and operations (no settings, no secrets)
   .get("/v1/spaces/:spaceId/connector-operations", () => connectorOperations(), { guard: { space: SPACE_ROLES } })
+  // a recon's posting groups (stage 5): any role of the space reads them
+  .get("/v1/spaces/:spaceId/recons/:configId/posting-groups", ({ ctx, params, query }) => groupPage(ctx, idParam(params.configId, "recon"), query), { query: PostingGroupListQuery, guard: { space: SPACE_ROLES } })
+  .get("/v1/spaces/:spaceId/recons/:configId/posting-groups/:groupId", ({ ctx, params }) => groupOf(ctx, idParam(params.configId, "recon"), idParam(params.groupId, "posting group")), { guard: { space: SPACE_ROLES } })
   .get("/v1/spaces/:spaceId/action-runs", async ({ ctx, query }) => (query.format === "csv" ? csvResponse("posting", await actionRunCsv(ctx, query)) : actionRunPage(ctx, query)), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
   .get("/v1/integrations/connectors", ({ query }) => connectorPage(query), { query: ConnectorListQuery, guard: "integration.view" })
   .post("/v1/integrations/connectors", async (c) => {

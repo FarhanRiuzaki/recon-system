@@ -4,15 +4,19 @@
 // started closing, the next day too). The group row is locked while a break joins, so a close and a join never pass
 // each other: a closed group takes no one, and the joiner opens the next period's. A full group opens part + 1.
 import { type Context, fieldName } from "@starterkit/shared/conditions";
-import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
+import type { ConnectorSpec, PostingGroupDto, PostingGroupListQuery, PostingGroupRowDto } from "@starterkit/shared/contracts/integrations";
+import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconApprovalSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
 import { buildGroupPayload, closesAtOf, GROUP_MAX, periodOf } from "@starterkit/shared/mapping";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { encryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
+import { notFound } from "../../kernel/errors";
 import { enqueue, QUEUES } from "../../kernel/jobs";
+import { one, pageQuery, sortSql } from "../../kernel/pagination";
+import type { Ctx } from "../auth";
 import { reconDays } from "../engine";
-import { reconConfigVersions } from "../recon";
+import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { actionRuns, connectorVersions, postingGroupItems, postingGroups } from "./schema";
 
@@ -136,4 +140,43 @@ export async function closeDueGroups(on: Tx, now = new Date()): Promise<number> 
   let n = 0;
   for (const g of due) if ((await withSpace({ spaceIds: [g.spaceId], userId: null }, (tx) => closeGroup(tx, g.spaceId, g.id), on)) !== "already") n++;
   return n;
+}
+
+// ---- read side: Recon → Posting groups (design §4.8) ----
+const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) => withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
+async function reconOf(tx: InTx, spaceId: string, configId: string) {
+  const [c] = await tx.select({ id: reconConfigs.id }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, configId)));
+  if (!c) throw notFound("recon");
+}
+type GroupRow = { g: typeof postingGroups.$inferSelect; run: typeof actionRuns.$inferSelect | null };
+const groupRows = (tx: InTx) => tx.select({ g: postingGroups, run: actionRuns }).from(postingGroups)
+  .leftJoin(actionRuns, and(eq(actionRuns.spaceId, postingGroups.spaceId), eq(actionRuns.id, postingGroups.runId)));
+const toGroupRow = ({ g, run }: GroupRow): PostingGroupRowDto => ({
+  id: g.id, period: g.period, part: g.part, keys: (g.keys as { label: string; value: string }[]).map(({ label, value }) => ({ label, value })), currency: g.currency,
+  items: g.members, totalMinor: g.totalMinor.toString(), at: g.at as PostingGroupRowDto["at"], closesAt: g.closesAt?.toISOString() ?? null, closedAt: g.closedAt?.toISOString() ?? null,
+  action: g.actionName, variant: g.variantName, status: g.status as PostingGroupRowDto["status"],
+  run: run ? { id: run.id, status: run.status as NonNullable<PostingGroupRowDto["run"]>["status"], code: run.code, message: run.message, bankReference: run.bankReference, externalId: run.externalId, at: (run.finishedAt ?? run.createdAt).toISOString() } : null,
+});
+
+/** GET …/recons/{configId}/posting-groups: newest period first (then part); `status` open or closed. */
+export function groupPage(ctx: Ctx, configId: string, q: PostingGroupListQuery): Promise<Page<PostingGroupRowDto>> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    await reconOf(tx, spaceId, configId);
+    const where = and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.configId, configId), q.status?.length ? inArray(postingGroups.status, q.status) : undefined);
+    return pageQuery({
+      rows: groupRows(tx).where(where).$dynamic(), count: tx.select(one).from(postingGroups).where(where).$dynamic(),
+      orderBy: sortSql(q.sort, { period: postingGroups.period }, "-period", postingGroups.id), query: q, map: toGroupRow, on: tx,
+    });
+  });
+}
+
+/** GET …/posting-groups/{groupId}: the group and its breaks in joining order. */
+export function groupOf(ctx: Ctx, configId: string, groupId: string): Promise<PostingGroupDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const [row] = await groupRows(tx).where(and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.configId, configId), eq(postingGroups.id, groupId)));
+    if (!row) throw notFound("posting group");
+    const members = await tx.select({ itemId: postingGroupItems.itemId, ref: postingGroupItems.ref, amountMinor: postingGroupItems.amountMinor, joinedAt: postingGroupItems.joinedAt })
+      .from(postingGroupItems).where(eq(postingGroupItems.groupId, groupId)).orderBy(asc(postingGroupItems.joinedAt), asc(postingGroupItems.itemId)).limit(GROUP_MAX);
+    return { ...toGroupRow(row), members: members.map((m) => ({ itemId: m.itemId, ref: m.ref, amountMinor: m.amountMinor?.toString() ?? null, joinedAt: m.joinedAt.toISOString() })) };
+  });
 }

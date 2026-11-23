@@ -100,11 +100,23 @@ export type BreakItemDto = z.infer<typeof BreakItemDto>;
  * that item is still free to match.
  */
 export const ACTION_STATUSES = ["queued", "sending", "posted", "failed", "not_sent", "timeout", "no_rule", "skipped"] as const;
-/** One run of an approval action (stage 4). */
+/** On a break's page also `grouped`: it waits in a posting group (stage 5), not sent yet. */
+export const BREAK_ACTION_STATUSES = [...ACTION_STATUSES, "grouped"] as const;
+/**
+ * The posting group a break's action went to (stage 5): its period, key, when it is sent (`at`, `closesAt` for a
+ * cutoff) and its recon (the Posting groups tab).
+ */
+export const ActionGroupDto = z.object({
+  id: z.string(), configId: z.string(), period: z.string(), keys: z.array(z.object({ label: z.string(), value: z.string() })),
+  at: z.enum(["cutoff", "day_close"]), closesAt: z.string().nullable(), items: z.number().int(),
+});
+/** One run of an approval action (stage 4), or a break waiting in its posting group (`grouped`, with `group`). */
 export const ActionRunDto = z.object({
   id: z.string(), name: z.string(), kind: z.enum(["posting", "notify"]), event: z.enum(["level_approved", "approved", "rejected"]), level: z.number().int().nullable(),
-  variant: z.string().nullable(), status: z.enum(ACTION_STATUSES), override: z.boolean(), code: z.string().nullable(), message: z.string().nullable(),
+  variant: z.string().nullable(), status: z.enum(BREAK_ACTION_STATUSES), override: z.boolean(), code: z.string().nullable(), message: z.string().nullable(),
   bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string(), payload: z.unknown().nullable(), response: z.unknown().nullable(),
+  /** The posting group it was sent in, or waits in (stage 5); null when it was sent on its own. */
+  group: ActionGroupDto.nullable(),
 });
 export type ActionRunDto = z.infer<typeof ActionRunDto>;
 /** GET …/action-runs: newest first; `status` one or more, `kind` posting or notify, `q` a reference, external id or bank reference. */
@@ -130,6 +142,8 @@ export const ActionRunRowDto = z.object({
    * (1 = the first time it was sent); a no-rule or skipped run sent nothing and is never counted.
    */
   attempts: z.number().int(),
+  /** A posting group's run (stage 5): the group and how many breaks it sent; null for a run of one request. */
+  group: z.object({ id: z.string(), items: z.number().int() }).nullable(),
 });
 export type ActionRunRowDto = z.infer<typeof ActionRunRowDto>;
 export const BreakDetailDto = z.object({
@@ -167,7 +181,7 @@ export const BreakDetailDto = z.object({
   /** Its latest request's actions that concern it (stage 4), in the order they are sent; `payload`/`response` masked, only for an Open API reader or the space admin. */
   actions: z.array(ActionRunDto),
   /** The result of its latest posting action (posted, failed, not sent, timeout, no posting rule, skipped), or null. */
-  posting: z.object({ status: z.enum(ACTION_STATUSES), action: z.string(), bankReference: z.string().nullable(), code: z.string().nullable(), message: z.string().nullable(), at: z.string() }).nullable(),
+  posting: z.object({ status: z.enum(BREAK_ACTION_STATUSES), action: z.string(), bankReference: z.string().nullable(), code: z.string().nullable(), message: z.string().nullable(), at: z.string() }).nullable(),
 });
 export type BreakDetailDto = z.infer<typeof BreakDetailDto>;
 

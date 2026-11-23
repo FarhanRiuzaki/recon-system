@@ -17,6 +17,7 @@ import { reconConfigs } from "../recon";
 import { users } from "../users";
 import { withSpace } from "../spaces";
 import { approvalRequests } from "../approvals";
+import { groupsWaiting } from "../integrations";
 import { reconDays, reconItems } from "./schema";
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
@@ -50,7 +51,7 @@ async function resolvedThatDay(tx: InTx, spaceId: string, configId: string, date
   return !!hit;
 }
 
-type Day = { stage: SignoffRowDto["stage"]; preparedBy: string | null; pending: number };
+type Day = { stage: SignoffRowDto["stage"]; preparedBy: string | null; pending: number; groups: number };
 const lead = (ctx: Ctx) => isSuperadmin(ctx.user.roles) || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
 
 /** Why the caller can't take the day's next step, or null (`resolved`: they resolved an item of that day). */
@@ -58,6 +59,7 @@ function nextBlocked(ctx: Ctx, d: Day, resolved: boolean): string | null {
   if (d.stage === "signed") return "Signed off.";
   if (!lead(ctx)) return "Only a reviewer or space admin of this space signs off days.";
   if (d.pending) return `${d.pending === 1 ? "A request waits" : `${d.pending} requests wait`} for a checker. Decide ${d.pending === 1 ? "it" : "them"} first.`;
+  if (d.groups) return `${d.groups === 1 ? "1 posting group of this day is" : `${d.groups} posting groups of this day are`} still open or being sent. Wait for ${d.groups === 1 ? "it" : "them"} to be sent.`;
   if (d.stage === "closed" || isSuperadmin(ctx.user.roles)) return null;
   if (d.preparedBy === ctx.user.id) return "You prepared this day. Another reviewer or space admin signs it off.";
   if (resolved) return "You settled unmatch items of this day. Another reviewer or space admin signs it off.";
@@ -86,13 +88,13 @@ export function signoffPage(ctx: Ctx, configId: string, q: SignoffListQuery): Pr
       on: tx,
     });
     const dates = page.items.map((d) => d.businessDate);
-    const pending = await pendingByDate(tx, spaceId, configId, dates);
+    const pending = await pendingByDate(tx, spaceId, configId, dates), waiting = await groupsWaiting(tx, spaceId, configId, dates);
     const ids = [...new Set(page.items.flatMap((d) => [d.preparedBy, d.signedBy]).filter((x): x is string => !!x))];
     const names = new Map(ids.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.name]) : []);
     const person = (id: string | null) => (id ? { id, name: names.get(id) ?? null } : null);
     const items: SignoffRowDto[] = [];
     for (const d of page.items) {
-      const day: Day = { stage: d.signedAt ? "signed" : d.preparedAt ? "prepared" : "closed", preparedBy: d.preparedBy, pending: pending.get(d.businessDate) ?? 0 };
+      const day: Day = { stage: d.signedAt ? "signed" : d.preparedAt ? "prepared" : "closed", preparedBy: d.preparedBy, pending: pending.get(d.businessDate) ?? 0, groups: waiting.get(d.businessDate) ?? 0 };
       // the resolver rule is read only where it can decide (a prepared day someone else prepared)
       const resolved = day.stage === "prepared" && day.preparedBy !== ctx.user.id && !isSuperadmin(ctx.user.roles) ? await resolvedThatDay(tx, spaceId, configId, d.businessDate, ctx.user.id) : false;
       const counters = (d.counters ?? {}) as { open?: number };
@@ -116,10 +118,10 @@ export function signoffStep(ctx: Ctx, configId: string, b: SignoffBody, step: "p
     const stage = d.signedAt ? "signed" : d.preparedAt ? "prepared" : "closed";
     if (step === "prepare" && stage !== "closed") throw new ApiError("invalid_state", `${dayText(b.date)} is ${stage} already.`);
     if (step === "sign" && stage !== "prepared") throw new ApiError("invalid_state", stage === "signed" ? `${dayText(b.date)} is signed off already.` : `Prepare ${dayText(b.date)} first.`);
-    const pending = (await pendingByDate(tx, spaceId, configId, [b.date])).get(b.date) ?? 0;
+    const pending = (await pendingByDate(tx, spaceId, configId, [b.date])).get(b.date) ?? 0, groups = (await groupsWaiting(tx, spaceId, configId, [b.date])).get(b.date) ?? 0;
     const resolved = step === "sign" && !isSuperadmin(ctx.user.roles) && d.preparedBy !== ctx.user.id ? await resolvedThatDay(tx, spaceId, configId, b.date, ctx.user.id) : false;
-    const why = nextBlocked(ctx, { stage, preparedBy: d.preparedBy, pending }, resolved);
-    if (why) throw new ApiError(pending ? "invalid_state" : lead(ctx) ? "self_approval" : "forbidden", why);
+    const why = nextBlocked(ctx, { stage, preparedBy: d.preparedBy, pending, groups }, resolved);
+    if (why) throw new ApiError(pending || groups ? "invalid_state" : lead(ctx) ? "self_approval" : "forbidden", why);
     await tx.update(reconDays).set(step === "prepare" ? { preparedBy: ctx.user.id, preparedAt: sql`now()` } : { signedBy: ctx.user.id, signedAt: sql`now()` }).where(key);
     await recordActivity(tx, ctx, {
       action: step === "prepare" ? "day.prepare" : "day.sign", target: { type: "recon", id: configId, label: c.name },

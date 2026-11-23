@@ -1055,7 +1055,8 @@
               "not_sent",
               "timeout",
               "no_rule",
-              "skipped"
+              "skipped",
+              "grouped"
             ]
           },
           "override": {
@@ -1103,6 +1104,74 @@
                 "type": "null"
               }
             ]
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "configId": {
+                    "type": "string"
+                  },
+                  "period": {
+                    "type": "string"
+                  },
+                  "keys": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "at": {
+                    "type": "string",
+                    "enum": [
+                      "cutoff",
+                      "day_close"
+                    ]
+                  },
+                  "closesAt": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "items": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "id",
+                  "configId",
+                  "period",
+                  "keys",
+                  "at",
+                  "closesAt",
+                  "items"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1120,7 +1189,8 @@
           "externalId",
           "at",
           "payload",
-          "response"
+          "response",
+          "group"
         ],
         "additionalProperties": false
       }
@@ -1140,7 +1210,8 @@
                 "not_sent",
                 "timeout",
                 "no_rule",
-                "skipped"
+                "skipped",
+                "grouped"
               ]
             },
             "action": {

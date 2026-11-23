@@ -13,7 +13,7 @@ import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { workflows, workflowVersions } from "../../../approvals";
 import { records } from "../../../ingest";
-import { actionRuns, closeDueGroups, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
+import { actionRuns, closeDueGroups, closeGroup, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
 import { QUEUES } from "../../../../kernel/jobs";
 import { closeDay } from "../../breaks";
 import { reconConfigVersions } from "../../../recon";
@@ -140,6 +140,65 @@ describe("joining a group in the approval", () => {
     const id = (await detail(I.a1, t.rev)).request!.id;
     await Promise.all([1, 2].map(() => call("POST", `/v1/spaces/${A}/approval-requests/${id}/approve`, { token: t.rev, body: {} })));
     expect(await members()).toHaveLength(1);
+  });
+});
+
+describe("reading groups: the recon's tab, the break, the posting list", () => {
+  it("the list pages newest period first and filters open or closed; the detail lists its breaks; another recon's group is 404", async () => {
+    await setup(grouped({ key: ["side_a.ext_ref"] }));
+    for (const id of [I.a1, I.b2]) { await ask(id); await approve(id); }
+    const page = await json<{ items: { keys: unknown; items: number; totalMinor: string; status: string; run: unknown }[]; total: number }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/posting-groups`, { token: t.op }));
+    expect(page.total).toBe(2);
+    expect(page.items.map((g) => g.keys).sort()).toEqual([[{ label: "Reference", value: "" }], [{ label: "Reference", value: "P1" }]]);
+    const [g] = await groups();
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroup(tx, A, g!.id));
+    const open = await json<{ total: number }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/posting-groups?status=open`, { token: t.op }));
+    expect(open.total).toBe(1);
+    const one = await json<{ status: string; run: { status: string } | null; members: { itemId: string; ref: string | null; amountMinor: string | null }[] }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/posting-groups/${g!.id}`, { token: t.op }));
+    expect([one.status, one.run?.status, one.members.length]).toEqual(["closed", "queued", 1]);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${Bun.randomUUIDv7()}/posting-groups/${g!.id}`, { token: t.op })).status).toBe(404);
+    expect((await call("GET", `/v1/spaces/${A}/recons/${cfg}/posting-groups?status=nope`, { token: t.op })).status).toBe(400);
+  });
+
+  it("the break waits in its group (period, key, when), then shows the group's run; the posting list names the group", async () => {
+    await setup(grouped({ at: "cutoff", cutoff: "00:00" }));
+    await ask(I.a1); await approve(I.a1);
+    let d = await detail(I.a1);
+    expect(d.posting?.status).toBe("grouped");
+    expect(d.actions.at(-1)).toMatchObject({ status: "grouped", name: "Post", group: { period: tomorrow(), at: "cutoff", keys: [{ label: "Break reason", value: "No counterpart" }], items: 1 } });
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroupsOfDay(tx, A, cfg, tomorrow()));
+    d = await detail(I.a1);
+    expect([d.posting?.status, d.actions.at(-1)?.group?.period]).toEqual(["queued", tomorrow()]);
+    const runs = await json<{ items: { group: { items: number } | null; amount: { minor: string } | null }[] }>(call("GET", `/v1/spaces/${A}/action-runs?show=all`, { token: t.op }));
+    expect(runs.items.map((r) => [r.group?.items, r.amount?.minor])).toEqual([[1, "10000"]]);
+  });
+});
+
+describe("what gets posted for a grouped variant", () => {
+  it("a sample group of the chosen break: its total, count, key and one array element", async () => {
+    await setup(grouped({}));
+    const [v] = await db.select({ id: reconConfigVersions.id }).from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
+    const p = await json<{ payload: unknown; problem: unknown; context: Record<string, unknown> }>(call("POST", `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/actions/preview`, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1 } }));
+    expect(p).toMatchObject({ payload: { Amount: 10000, Remark: "1 items No counterpart", Items: [{ Ref: "P1" }] }, problem: null, context: { "group.count": 1, "group.key.break.reason": "No counterpart" } });
+  });
+});
+
+describe("sign-off waits for the day's posting groups", () => {
+  it("prepare is refused while a group up to that day is open or its run waits; the day list says why", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closed", closedAt: new Date() });
+    const prepare = () => call("POST", `/v1/spaces/${A}/recons/${cfg}/signoffs/prepare`, { token: t.adm, body: { date: today() } });
+    const why = "1 posting group of this day is still open or being sent. Wait for it to be sent.";
+    let r = await prepare();
+    expect([r.status, ((await r.json()) as { error: { code: string; message: string } }).error]).toEqual([409, { code: "invalid_state", message: why }]);
+    const list = await json<{ items: { date: string; blocked: string | null }[] }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/signoffs`, { token: t.adm }));
+    expect(list.items.find((d) => d.date === today())!.blocked).toBe(why);
+    await withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroupsOfDay(tx, A, cfg, today()));
+    expect((await prepare()).status).toBe(409); // its run is still queued
+    await db.update(actionRuns).set({ status: "posted" });
+    r = await prepare();
+    expect(r.status).toBe(200);
   });
 });
 

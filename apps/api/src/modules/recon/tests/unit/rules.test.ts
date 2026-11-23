@@ -182,6 +182,13 @@ describe("checkReconSpec", () => {
     const [a, b] = usedFields(parse(g));
     expect([a.includes("attrs.channel"), b.includes("account_ref"), a.includes("break.amount")]).toEqual([true, true, false]);
   });
+  it("usedFields: a grouped variant's key fields and the group keys its mapping reads bind their side (stage 5)", () => {
+    const variant = { name: "G", operation: { connectorId: "0190f5a0-0000-7000-8000-0000000000c1", version: 1, key: "post" }, per: "group",
+      group: { key: ["side_a.attrs.merchant_id"], at: "day_close" }, mapping: { Remark: { kind: "field", key: "group.key.side_b.attrs.terminal", transforms: [] } } };
+    const g = { ...gate(A, B), approvals: { changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant] }] } } } };
+    const [a, b] = usedFields(parse(g));
+    expect([a.includes("attrs.merchant_id"), b.includes("attrs.terminal")]).toEqual([true, true]);
+  });
 
   it("a side reads its amount as it is or negated (amount_sign); negating needs an amount, which it then uses", () => {
     expect(parse(gate(A, B)).sides.map((x) => x.amount_sign)).toEqual(["as_is", "as_is"]);
@@ -265,5 +272,17 @@ describe("checkActions (stage 4)", () => {
   });
   it("approval fields may be read by a variant", () => {
     expect(checkActions(setup(variant({ when: { all: [{ field: "approval.level", op: "eq", value: "1" }] } })), cat, facts)).toEqual([]);
+  });
+  it("grouped (stage 5): a posting action on an approval only, keys of text, date, list or number, group fields only when grouped", () => {
+    const where = "Undo match · Post to GL · Default";
+    const g = (key: string[]) => ({ per: "group", group: { key, at: "day_close", cutoff: null } });
+    const act = (o: object, v: object) => ({ accounts: [], lookups: [], changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [{ name: "Post to GL", kind: "posting", on: { event: "approved" }, variants: [variant(v)], ...o }] } } }) as never;
+    const sum = { Amount: { kind: "field", key: "group.sum", transforms: [] }, "DE48.Remark": { kind: "template", text: "{group.key.side_a.attrs.e2e_id}" } };
+    expect(checkActions(act({}, { ...g(["side_a.attrs.e2e_id", "break.age_days"]), mapping: sum }), cat, facts)).toEqual([]);
+    expect(checkActions(act({ kind: "notify" }, g([])), cat, facts)).toEqual([`${where}: only a posting action is sent grouped. Make it a posting, or send one call per item.`]);
+    expect(checkActions(act({ on: { event: "rejected" } }, g([])), cat, facts)).toEqual([`${where}: a rejected change posts nothing to group. Group it on an approval.`]);
+    expect(checkActions(act({}, g(["break.amount"])), cat, facts)).toEqual([`${where}: Amount can't be a group key. Pick a text, date, list or number field.`]);
+    expect(checkActions(act({}, g(["side_a.attrs.gone"])), cat, facts)).toEqual([`${where}: a group key is no longer read from the sources (side_a.attrs.gone).`]);
+    expect(checkActions(act({}, { mapping: sum }), cat, facts)).toEqual([`${where}: it reads the group's values (total, count, key), which only a grouped variant has.`]);
   });
 });
