@@ -42,6 +42,9 @@ const sourceGap = (path: string, s: Source): string | null =>
       : s.kind === "account" && !s.account ? `${path}: pick its account or remove the mapping.`
         : s.kind === "field" && !s.key ? `${path}: pick its recon field or remove the mapping.` : null;
 
+/** Whether an action's variants may send grouped (stage 5): a posting fired on an approval, never a reject or a notify. */
+export const groupable = (a: Pick<ActionLike, "kind" | "on">) => a.kind === "posting" && a.on.event !== "rejected";
+
 /**
  * Why the action editor's Done is refused (or the live preview sends the saved action instead), or null: what the
  * contract would refuse on save — a name, each variant's name, operation and finished conditions, each mapped source
@@ -53,6 +56,8 @@ export function unfinishedReason(a: ActionSpec): string | null {
     if (!x.name.trim()) return `Name variant ${i + 1}.`;
     if (!x.operation.key || !x.operation.connectorId) return `Pick where ${x.name} sends to.`;
     if (x.when && !condDone(x.when as Condition)) return `Finish the conditions of ${x.name}.`;
+    if (x.per === "group" && !groupable(a)) return `${x.name} sends grouped, which only a posting on an approval does. Send it one per item.`;
+    if (x.per === "group" && x.group?.at === "cutoff" && !x.group.cutoff) return `Give ${x.name} its cutoff time.`;
     for (const [path, s] of Object.entries(x.mapping)) { const gap = sourceGap(path, s as Source); if (gap) return gap; }
   }
   return null;

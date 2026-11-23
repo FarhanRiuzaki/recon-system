@@ -17,14 +17,14 @@ import { Select } from "@starterkit/ui/ui/select";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActionPreviewDto, ActionSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
-import { type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
+import { type CatalogField, type Condition, conditionText, groupFields, isKeyField } from "@starterkit/shared/conditions";
 import { readPath } from "@starterkit/shared/integrations";
 import type { Source } from "@starterkit/shared/mapping";
 import type { Trigger } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { EventPicker, type Ops, opOf, OperationPicker } from "./action-parts";
-import { previewBody, unfinishedReason } from "./actions-model";
+import { groupable, previewBody, unfinishedReason } from "./actions-model";
 import { ChangeChips } from "./change-chips";
 import { ConditionEditor } from "./condition-editor";
 import { connect, keepMapping, mapGraph } from "./field-map";
@@ -189,7 +189,9 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   const v = a.variants[vi]!;
   const setV = (next: VariantSpec) => setA({ ...a, variants: a.variants.map((x, j) => (j === vi ? next : x)) });
   const { op, connector } = opOf(ops, v.operation);
-  const graph = useMemo(() => (op ? mapGraph(v.mapping, catalog, op, setup.accounts) : null), [v.mapping, catalog, op, setup.accounts]);
+  // a grouped variant also reads its group: the total, the count, the period and each key (stage 5)
+  const fields = useMemo(() => (v.per === "group" && v.group ? [...groupFields(v.group.key, catalog), ...catalog] : catalog), [v.per, v.group, catalog]);
+  const graph = useMemo(() => (op ? mapGraph(v.mapping, fields, op, setup.accounts) : null), [v.mapping, fields, op, setup.accounts]);
   const blocked = unfinishedReason(a);
   const dirty = a !== initial;
   const move = (d: -1 | 1) => { const vs = [...a.variants]; [vs[vi + d], vs[vi]] = [vs[vi]!, vs[vi + d]!]; setA({ ...a, variants: vs }); setVi(vi + d); };
@@ -246,9 +248,37 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
           <OperationPicker stacked value={v.operation.connectorId ? v.operation : null} ops={ops} label="Variant"
             onChange={(operation) => { const o = opOf(ops, operation).op; setV({ ...v, operation, mapping: o ? keepMapping(v.mapping, o) : {} }); setPicked(null); }} />
         </Field>
-        <Field id="var-per" label="A force match with several items">
-          <Select id="var-per" value={v.per} onChange={(e) => setV({ ...v, per: e.target.value as VariantSpec["per"] })}><option value="item">One call per item</option><option value="request">One call for the request</option></Select>
+        <Field id="var-per" label="Send">
+          <Select id="var-per" value={v.per} onChange={(e) => {
+            const per = e.target.value as VariantSpec["per"];
+            // grouped starts at the day's close with no key; one call per item or request keeps no group settings
+            if (per === "group") setV({ ...v, per, group: v.group ?? { key: [], at: "day_close", cutoff: null } });
+            else { const { group: _, ...rest } = v; setV({ ...rest, per }); }
+          }}>
+            <option value="item">One call per item</option><option value="request">One call per request</option>
+            <option value="group" disabled={!groupable(a)}>Grouped, one call per group</option>
+          </Select>
         </Field>
+        <span className="-mt-1 text-caption text-fg-3">{v.per === "group" ? "Approved items with the same key are sent together." : groupable(a) ? "Per request: a force match with several items sends one call." : "Grouped sends only a posting that runs on an approval."}</span>
+        {v.per === "group" && v.group && (
+          <>
+            <Combobox label="Group by" multiple value={v.group.key} placeholder="Every approved item together" searchPlaceholder="Search fields, e.g. Merchant ID"
+              options={catalog.filter(isKeyField).map((f) => ({ value: f.key, label: f.label, group: GROUP[f.group] }))}
+              onValueChange={(key) => setV({ ...v, group: { ...v.group!, key: key.slice(0, 5) } })} />
+            <span className="-mt-1 text-caption text-fg-3">Up to 5 fields, e.g. Merchant ID. Each currency is its own group.</span>
+            <div className="grid grid-cols-2 items-start gap-3">
+              <Field id="var-at" label="Send at" required>
+                <Select id="var-at" value={v.group.at} onChange={(e) => setV({ ...v, group: { ...v.group!, at: e.target.value as "cutoff" | "day_close", cutoff: e.target.value === "cutoff" ? v.group!.cutoff ?? "16:00" : null } })}>
+                  <option value="day_close">At day close</option><option value="cutoff">A cutoff time</option>
+                </Select>
+              </Field>
+              <Field id="var-cutoff" label="Cutoff time" required={v.group.at === "cutoff"}>
+                <Input id="var-cutoff" type="time" value={v.group.cutoff ?? ""} disabled={v.group.at !== "cutoff"} onChange={(e) => setV({ ...v, group: { ...v.group!, cutoff: e.target.value || null } })} />
+              </Field>
+            </div>
+            <span className="-mt-1 text-caption text-fg-3">{v.group.at === "cutoff" ? "Items approved at or after the cutoff go into the next day's group." : "Sent when the recon closes the day."}</span>
+          </>
+        )}
         <Field id="var-zero" label="An amount of 0">
           <Select id="var-zero" value={v.zeroOrNegative} onChange={(e) => setV({ ...v, zeroOrNegative: e.target.value as VariantSpec["zeroOrNegative"] })}><option value="skip">Skip it, nothing to post</option><option value="absolute_swap">Post it anyway</option></Select>
         </Field>
@@ -257,7 +287,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   );
 
   const inspector = graph && picked && graph.request.some((r) => r.path === picked && r.leaf) ? (
-    <FieldInspector path={picked} graph={graph} source={v.mapping[picked]} onChange={(s) => setSource(picked, s)} onClose={() => setPicked(null)} catalog={catalog} setup={setup}
+    <FieldInspector path={picked} graph={graph} source={v.mapping[picked]} onChange={(s) => setSource(picked, s)} onClose={() => setPicked(null)} catalog={fields} setup={setup}
       sample={sample ? { value: readPath(sample.payload, picked), from: sample.from } : null} />
   ) : undefined;
 
@@ -317,7 +347,7 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
           </div>
           <div className="absolute inset-0 md:hidden">
             <ScrollFade className="h-full p-5 pt-14">
-            <Mapper mapping={v.mapping} onChange={(mapping) => setV({ ...v, mapping })} op={op} catalog={catalog} setup={setup} disabled={false} />
+            <Mapper mapping={v.mapping} onChange={(mapping) => setV({ ...v, mapping })} op={op} catalog={fields} setup={setup} disabled={false} />
             </ScrollFade>
           </div>
         </>

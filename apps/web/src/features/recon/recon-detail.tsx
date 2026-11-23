@@ -16,13 +16,14 @@ import { isNotFound } from "@/lib/client/api";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
+import { PostingGroups } from "./posting-groups";
 import { ReconOverview } from "./recon-overview";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
 import { useDraftEndings } from "./draft-actions";
 import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
-const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", history: "History" };
+const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", posting: "Posting groups", history: "History" };
 
 export { discardable } from "./draft-actions";
 
@@ -87,6 +88,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
         {RECON_TABS.map((t) => <Link key={t} href={tabHref(t)} aria-current={tab === t ? "page" : undefined}>{TAB_LABEL[t]}</Link>)}
       </RouteTabs>
       {tab === "overview" ? <ReconOverview spaceId={spaceId} id={id} r={r} runner={runner} configHref={tabHref("configuration")} />
+        : tab === "posting" ? <PostingGroups spaceId={spaceId} id={id} />
         : tab === "history" ? (
           // versions and activity in one place (owner, 22 Nov: few tabs); the header's date range filters the activity
           <><VersionsTable spaceId={spaceId} id={id} /><ActivityTable spaceId={spaceId} id={id} /></>

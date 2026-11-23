@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionSentence, mappingGaps, parseTransforms, previewBody, requestLeaves, unfinishedReason } from "./actions-model";
+import { actionSentence, groupable, mappingGaps, parseTransforms, previewBody, requestLeaves, unfinishedReason } from "./actions-model";
 
 const op = { request: [{ name: "Amount", type: "numeric" as const, required: true }, { name: "DE48", type: "object" as const, required: true, children: [{ name: "Remark", type: "string" as const, required: true }, { name: "Cur", type: "string" as const, required: true }, { name: "Note", type: "string" as const, required: false }] }], fixed: ["DE48.Cur"], auto: [] as string[] };
 
@@ -40,6 +40,15 @@ describe("why Done is refused (final review I2/I3)", () => {
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "lookup", table: "", key: { kind: "field", key: "break.amount", transforms: [] } } } }))).toBe("Ref: pick its lookup table or remove the mapping.");
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "account", account: "", part: "number" } } }))).toBe("Ref: pick its account or remove the mapping.");
     expect(unfinishedReason(act({}, { mapping: { Ref: { kind: "const", value: "" } } }))).toBeNull();
+  });
+  it("grouped (stage 5): a cutoff needs its time; only a posting on an approval may group", () => {
+    const g = (group: object) => ({ per: "group", group: { key: [], at: "cutoff", cutoff: "16:00", ...group } });
+    expect(unfinishedReason(act({}, g({})))).toBeNull();
+    expect(unfinishedReason(act({}, g({ cutoff: null })))).toBe("Give Default its cutoff time.");
+    expect(unfinishedReason(act({ kind: "notify" }, g({})))).toBe("Default sends grouped, which only a posting on an approval does. Send it one per item.");
+    expect(unfinishedReason(act({ on: { event: "rejected" } }, g({})))).toBe("Default sends grouped, which only a posting on an approval does. Send it one per item.");
+    expect(groupable({ kind: "posting", on: { event: "level_approved", level: 1 } })).toBe(true);
+    expect(groupable({ kind: "notify", on: { event: "approved" } })).toBe(false);
   });
 });
 
