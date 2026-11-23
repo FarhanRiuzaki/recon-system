@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { verbVariant } from "./intent";
+import { verbVariant } from "./intent-verbs";
 
 describe("verbVariant (owner 24 Nov: actions by verb)", () => {
   it("Create / Add / New create, Edit / Replace edit, Delete / Remove remove, anything else the fallback", () => {
