@@ -16,7 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { BRAND } from "@starterkit/shared/brand";
 import type { TodayDto } from "@starterkit/shared/contracts/recon";
 import { selectionState } from "@starterkit/shared/filter-selection";
-import { attentionText } from "@/lib/shared/posting";
+import { attentionText, lateGroupsText } from "@/lib/shared/posting";
 import { TODAY_RECONS_MAX } from "@starterkit/shared/recon";
 import { LoadingShape } from "@/components/route-skeleton";
 import { PageHeader } from "@/components/shell/page-header";
@@ -123,8 +123,11 @@ export function TodayPage({ spaceId, spaceName }: { spaceId: string; spaceName: 
                         <span className="grid gap-0.5">
                           <Link className="text-fg underline-offset-4 hover:underline" href={liveHref(spaceId, r.id)}>{r.name}</Link>
                           <span className="text-caption text-fg-3">{scheduleLine(r.schedule)}</span>
-                          {attention.get(r.id) && (
+                          {attention.get(r.id) && attentionText(attention.get(r.id)!) && (
                             <Link className="text-caption text-down-ink underline-offset-4 hover:underline" href={postingHref}>Posting: {attentionText(attention.get(r.id)!)} in 24 h</Link>
+                          )}
+                          {!!attention.get(r.id)?.lateGroups && (
+                            <Link className="text-caption text-degraded-ink underline-offset-4 hover:underline" href={`/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(r.id)}?tab=posting`}>{lateGroupsText(attention.get(r.id)!.lateGroups)}</Link>
                           )}
                         </span>
                       </TableCell>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionText, groupChip, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
+import { attentionText, groupChip, groupKeyText, lateGroupsText, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
 
 describe("posting statuses as people read them", () => {
   it("names each status with one of the five health states", () => {
@@ -27,6 +27,14 @@ describe("posting statuses as people read them", () => {
     expect(groupChip(g("closed", "sending"))).toEqual({ health: "unknown", label: "Closing" });
     expect(groupChip(g("closed", "posted"))).toEqual({ health: "healthy", label: "Posted" });
     expect(groupChip(g("closed", null))).toEqual({ health: "stopped", label: "Nothing to send" });
+    expect(groupChip({ ...g("open", null), late: true })).toEqual({ health: "degraded", label: "Open past its close" });
+  });
+  it("a group key's date value reads like any other date", () => {
+    expect(groupKeyText([{ label: "Business date", value: "2026-11-23" }, { label: "Merchant id", value: "0012345" }])).toMatch(/^Business date 23 Nov( 2026)? · Merchant id 0012345$/);
+  });
+  it("a recon's groups open past their close, in words", () => {
+    expect(lateGroupsText(1)).toBe("1 posting group open past its close");
+    expect(lateGroupsText(3)).toBe("3 posting groups open past their close");
   });
   it("when a group is sent: its cutoff time or the day's close", () => {
     expect(sendsAtText({ at: "day_close", closesAt: null })).toBe("At day close");

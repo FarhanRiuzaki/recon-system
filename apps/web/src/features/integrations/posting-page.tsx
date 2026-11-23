@@ -89,7 +89,7 @@ export function PostingPage({ spaceId }: { spaceId: string }) {
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the posting results; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q, status: t.state.status, kind: t.state.kind, show: t.state.show }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}
           filters={(draft, patch) => <>
-            <FilterSearch label="Search posting results" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference or external ID" />
+            <FilterSearch label="Search posting results" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference, external ID or group key" />
             <FilterChecks label="Show" value={draft.show === "attention" ? "attention" : ""} options={[{ value: "attention", label: "Failed, timeout or not sent" }]} onChange={(v) => patch({ show: v ? "attention" : "all" })} />
             <FilterChecks label="Status" value={draft.status} options={POSTING_FILTER} onChange={(status) => patch({ status })} />
             <span className="grid gap-1.5">

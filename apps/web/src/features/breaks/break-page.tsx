@@ -345,7 +345,7 @@ function PostingPanel({ b, spaceId }: { b: BreakDetailDto; spaceId: string }) {
               )}
               {(a.message || a.code || a.bankReference || a.externalId) && (
                 <span className="flex flex-wrap gap-x-4 text-caption text-fg-3">
-                  {a.message && <span className={a.status === "posted" ? "" : "text-down-ink"}>{a.message}</span>}
+                  {a.message && <span className={a.status === "posted" || a.status === "skipped" ? "" : "text-down-ink"}>{a.message}</span>}
                   {a.code && <span>Code <span className="font-mono">{a.code}</span></span>}
                   {a.bankReference && <span>Bank reference <span className="font-mono">{a.bankReference}</span></span>}
                   {a.externalId && <span>External ID <span className="font-mono">{a.externalId}</span></span>}

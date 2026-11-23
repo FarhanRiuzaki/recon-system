@@ -19,7 +19,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ActionPreviewDto, ActionSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
 import { type CatalogField, type Condition, conditionText, groupFields, isKeyField } from "@starterkit/shared/conditions";
 import { readPath } from "@starterkit/shared/integrations";
-import type { Source } from "@starterkit/shared/mapping";
+import { GROUP_KEY_MAX, type Source } from "@starterkit/shared/mapping";
 import type { Trigger } from "@starterkit/shared/workflows";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
@@ -231,7 +231,8 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         )}
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
-        <SectionHeading n={3} level={3} title={v.name || "This variant"} description="Its items and where it sends"
+        <SectionHeading n={3} level={3} title={v.name || "This variant"}
+          description={v.per === "group" ? "Approved items with the same key and currency go as one call; approved at or after a cutoff, they wait for the next day's" : "Its items and where it sends"}
           actions={<span className="flex">
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant earlier" disabled={vi === 0} onClick={() => move(-1)}><Icon icon={ArrowUpIcon} /></Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant later" disabled={vi === a.variants.length - 1} onClick={() => move(1)}><Icon icon={ArrowDownIcon} /></Button>
@@ -256,16 +257,18 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
             else { const { group: _, ...rest } = v; setV({ ...rest, per }); }
           }}>
             <option value="item">One call per item</option><option value="request">One call per request</option>
-            <option value="group" disabled={!groupable(a)}>Grouped, one call per group</option>
+            <option value="group" disabled={!groupable(a)}>{groupable(a) ? "Grouped, one call per group" : "Grouped: only a posting on an approval"}</option>
           </Select>
         </Field>
-        <span className="-mt-1 text-caption text-fg-3">{v.per === "group" ? "Approved items with the same key are sent together." : groupable(a) ? "Per request: a force match with several items sends one call." : "Grouped sends only a posting that runs on an approval."}</span>
         {v.per === "group" && v.group && (
           <>
             <Combobox label="Group by" multiple value={v.group.key} placeholder="Every approved item together" searchPlaceholder="Search fields, e.g. Merchant ID"
-              options={catalog.filter(isKeyField).map((f) => ({ value: f.key, label: f.label, group: GROUP[f.group] }))}
-              onValueChange={(key) => setV({ ...v, group: { ...v.group!, key: key.slice(0, 5) } })} />
-            <span className="-mt-1 text-caption text-fg-3">Up to 5 fields, e.g. Merchant ID. Each currency is its own group.</span>
+              options={catalog.filter(isKeyField).map((f) => {
+                // a sixth pick is refused where it is made, with why (a group has at most GROUP_KEY_MAX keys)
+                const full = v.group!.key.length >= GROUP_KEY_MAX && !v.group!.key.includes(f.key);
+                return { value: f.key, label: f.label, group: GROUP[f.group], disabled: full, description: full ? `At most ${GROUP_KEY_MAX} key fields. Remove one to pick this.` : undefined };
+              })}
+              onValueChange={(key) => setV({ ...v, group: { ...v.group!, key } })} />
             <div className="grid grid-cols-2 items-start gap-3">
               <Field id="var-at" label="Send at" required>
                 <Select id="var-at" value={v.group.at} onChange={(e) => setV({ ...v, group: { ...v.group!, at: e.target.value as "cutoff" | "day_close", cutoff: e.target.value === "cutoff" ? v.group!.cutoff ?? "16:00" : null } })}>
@@ -276,7 +279,6 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
                 <Input id="var-cutoff" type="time" value={v.group.cutoff ?? ""} disabled={v.group.at !== "cutoff"} onChange={(e) => setV({ ...v, group: { ...v.group!, cutoff: e.target.value || null } })} />
               </Field>
             </div>
-            <span className="-mt-1 text-caption text-fg-3">{v.group.at === "cutoff" ? "Items approved at or after the cutoff go into the next day's group." : "Sent when the recon closes the day."}</span>
           </>
         )}
         <Field id="var-zero" label="An amount of 0">

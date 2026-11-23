@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { type Column, ColumnsMenu, DataTable, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { type Column, ColumnsMenu, DataTable, Notice, Panel, Segmented, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { LogIcon } from "@starterkit/ui/ui/icons";
 import type { PostingGroupRowDto } from "@starterkit/shared/contracts/integrations";
@@ -16,6 +16,7 @@ import { groupChip, groupKeyText, sendsAtText } from "@/lib/shared/posting";
 import { POSTING_GROUPS } from "@/lib/shared/queries";
 
 const GroupDialog = dynamic(() => import("./posting-group-dialog"), { ssr: false });
+const STATUS_OPTIONS = [{ value: "", label: "All" }, { value: "open", label: "Open" }, { value: "closed", label: "Closed" }];
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 export const periodText = (g: { period: string; part: number }) => `${formatDate(Date.parse(`${g.period}T00:00:00+07:00`))}${g.part > 1 ? ` · part ${g.part}` : ""}`;
 
@@ -43,10 +44,14 @@ export function PostingGroups({ spaceId, id }: { spaceId: string; id: string }) 
     <>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the posting groups; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={LogIcon} title="Posting groups" count={t.count} description="Approved items a grouped posting sends as one call, newest period first"
-        toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}>
+        toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>
+          <Segmented label="Show the posting groups" value={t.state.status} onChange={(status) => t.set({ status })} options={STATUS_OPTIONS} />
+        </Toolbar>}>
         <DataTable label="Posting groups" columns={columns} hidden={t.hidden} rows={t.rows} rowKey={(r) => r.id} loading={t.loading} sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
           error={t.loadError ? { title: "Couldn't load the posting groups", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
-          empty={{ icon: LogIcon, title: "No posting groups yet", description: "A group appears when an item is approved under a posting variant that sends grouped." }} />
+          empty={t.state.status
+            ? { icon: LogIcon, title: t.state.status === "open" ? "No open posting groups" : "No closed posting groups", description: "Show all to see the other posting groups." }
+            : { icon: LogIcon, title: "No posting groups yet", description: "A group appears when an item is approved under a posting variant that sends grouped." }} />
       </Panel>
       {open && <GroupDialog spaceId={spaceId} configId={id} groupId={open} onClose={() => router.replace(withGroup(null), { scroll: false })} />}
     </>

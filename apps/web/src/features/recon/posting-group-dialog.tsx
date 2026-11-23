@@ -40,7 +40,8 @@ export default function PostingGroupDialog({ spaceId, configId, groupId, onClose
                 <dt className="text-fg-3">Items</dt><dd className="tabular text-fg">{formatNumber(d.items)}</dd>
                 <dt className="text-fg-3">Total</dt><dd className="tabular text-fg">{amountText(d.totalMinor, d.currency)} {d.currency}</dd>
                 <dt className="text-fg-3">Sends</dt><dd className="text-fg">{sendsAtText(d)}</dd>
-                {d.run?.message && <><dt className="text-fg-3">Bank answer</dt><dd className="text-down-ink">{d.run.message}</dd></>}
+                {/* a skipped total sent nothing: its reason reads as information, not a failure */}
+                {d.run?.message && <><dt className="text-fg-3">Bank answer</dt><dd className={d.run.status === "skipped" || d.run.status === "posted" ? "text-fg" : "text-down-ink"}>{d.run.message}</dd></>}
                 {d.run?.bankReference && <><dt className="text-fg-3">Bank reference</dt><dd className="font-mono text-fg">{d.run.bankReference}</dd></>}
                 {d.run?.externalId && <><dt className="text-fg-3">External ID</dt><dd className="font-mono text-fg">{d.run.externalId}</dd></>}
               </dl>
