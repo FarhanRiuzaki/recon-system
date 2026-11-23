@@ -91,6 +91,12 @@
   --spacing-tray: 4px;
   --spacing-panel: 16px;
   --spacing-dense: 8px;
+  /* audit 2: same values as --gap-card / -list / -expand-top / -expand / -dialog-end in tokens.css (tokens.test.ts) */
+  --spacing-card: 16px; /* p-card: a card body */
+  --spacing-list: 12px; /* gap-list: items of one list (level, pass, action cards); panels stack gap-section (24) */
+  --spacing-expand-top: 12px; /* pt-expand-top: a table row → the panel it opens */
+  --spacing-expand: 16px; /* px-expand pb-expand: that panel's sides and bottom */
+  --spacing-dialog-end: 16px; /* pb-dialog-end: DialogBody's end, above the footer line */
 
   /* type scale (spec §3.5) */
   --text-welcome: 56px; --text-welcome--line-height: 62px; --text-welcome--letter-spacing: -0.03em; --text-welcome--font-weight: 400;

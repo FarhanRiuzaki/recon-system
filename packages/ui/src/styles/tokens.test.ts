@@ -201,6 +201,13 @@ describe("affectUI look on the shared components (design-system.md §3.7)", () =
     expect(["xs", "sm", "md", "tick", "ctl", "lg", "xl", "full"].map(px)).toEqual([4, 6, 10, 2, 10, 16, 20, 9999]);
     expect(px("xl") - Number(/--spacing-tray: (\d+)px;/.exec(BASE)?.[1])).toBe(px("lg"));
   });
+  it("spacing scale (audit 2 A1-A5): card 16, panels 24 apart, list items 12, expanded row 12 / 16 / 16, dialog end 16; base.css spacing = tokens.css gap", () => {
+    const gap = decls(":root");
+    expect(["card", "section", "list", "expand-top", "expand", "dialog-end"].map((k) => gap[`gap-${k}`])).toEqual(["16px", "24px", "12px", "12px", "16px", "16px"]);
+    for (const k of ["card", "section", "list", "expand-top", "expand", "dialog-end"]) {
+      expect(new RegExp(`--spacing-${k}: (\\d+px);`).exec(BASE)?.[1], k).toBe(gap[`gap-${k}`]);
+    }
+  });
   it("press scale 0.97", () => { expect(decls(":root")["press-scale"]).toBe("0.97"); });
   it("the primary button's gradient, edge and ring are tokens, keyed on the class and variant (a trigger's data-slot replaces the Button's)", () => {
     const at = BASE.indexOf('.bg-action[data-variant="default"] {');

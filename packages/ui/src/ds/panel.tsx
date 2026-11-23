@@ -56,7 +56,7 @@ export function Panel({ title, description, actions, children, flush, className,
     return (
       <section className={cn("flex min-w-0 flex-col rounded-lg border border-line bg-card", className)}>
         {header}
-        <div className={cn("min-w-0 flex-1", !flush && "p-4", flush && "overflow-hidden rounded-b-lg", bodyClassName)}>{children}</div>
+        <div className={cn("min-w-0 flex-1", !flush && "p-card", flush && "overflow-hidden rounded-b-lg", bodyClassName)}>{children}</div>
         {foot}
       </section>
     );

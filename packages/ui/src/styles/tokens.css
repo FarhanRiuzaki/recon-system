@@ -106,6 +106,12 @@
   --gap-tray: 4px;
   --gap-panel: 16px;
   --gap-dense: 8px;
+  /* audit 2 A1-A5 (24 Nov 2026): card body padding, items of one list, an expanded table row's panel, a dialog body's end */
+  --gap-card: 16px;
+  --gap-list: 12px;
+  --gap-expand-top: 12px; /* between a table row and the panel it opens */
+  --gap-expand: 16px; /* the panel's sides and bottom inside its cell */
+  --gap-dialog-end: 16px; /* under a dialog body's last field, above the footer line */
   --row-h: 44px; /* table row, single line (spec §5.7) */
   --row-h-identity: 52px; /* identity row: avatar 28 + name + secondary line (DataTable rowHeight="identity") */
   /* touch (pointer: coarse; base.css): the smallest hit area of a control, and the smallest input text (iOS Safari

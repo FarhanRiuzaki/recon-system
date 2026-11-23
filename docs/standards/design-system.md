@@ -132,6 +132,14 @@ starterkit.
 | `--gap-tray` | 4 px | Tray padding around its inner card(s); between tiles inside a KPI tray |
 | `--gap-panel` | 16 px | Inside a card |
 | `--gap-dense` | 8 px | Rows of chips, label ↔ value |
+| `--gap-card` | 16 px | A card body's padding (`p-card`; `CardSurface`, `Panel`) |
+| `--gap-list` | 12 px | Between items of one list inside a card (level, pass, action cards; `gap-list`) |
+| `--gap-expand-top` | 12 px | A table row → the panel it opens under it (`TableExpandRow`) |
+| `--gap-expand` | 16 px | That panel's sides and bottom inside its cell |
+| `--gap-dialog-end` | 16 px | Under a dialog body's last field, above the footer line (`DialogBody`) |
+
+Stacked panels sit `gap-section` (24) apart; `gap-gutter` (16) is only between panels side by side in one row;
+`gap-list` (12) only between items of one list (audit 2, A3).
 
 Symmetry rules: siblings in a row share width and height (`grid-auto-rows: 1fr` per row); charts in one row share
 `CHART_HEIGHT`; a right rail is always 4 columns next to an 8-column main; never 5 or 7 equal items in a row.
