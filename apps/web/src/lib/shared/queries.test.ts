@@ -95,6 +95,13 @@ describe("lists that open on a default view (audit §5.2, §5.3)", () => {
     expect(readTable(new URLSearchParams("mine="), qr.APPROVALS("s").spec).mine).toBe("0");
     expect(request(qr.BREAKS("s")).get("sort")).toBe("-amount");
   });
+  it("Unmatch: an amount range in major units as typed, Checked again yes / no, and no default assignee", () => {
+    const r = request(qr.BREAKS("s"), "amountMin=1%2C000.50&amountMax=abc&checked=no");
+    expect([r.get("amountMin"), r.get("amountMax"), r.getAll("checked")]).toEqual(["1000.50", null, ["no"]]);
+    // open states only by default (the API's queue); mine or unassigned is a quick filter, never the default
+    expect(request(qr.BREAKS("s")).getAll("assignee")).toEqual([]);
+    expect(request(qr.BREAKS("s")).getAll("state")).toEqual([]);
+  });
 });
 
 describe("Today's count of approvals waiting for the viewer", () => {

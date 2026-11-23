@@ -5,7 +5,8 @@
 import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS, WORKFLOW_SORTS } from "@starterkit/shared/paging";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
 import { APPROVALS_KEY, ENGINE_KEY, type NoFilters, RECON_KEY, type TableDef, trailTable, type TrailFilters } from "./queries";
-import { isoDate, multiChoice, oneOf, readTable, tableRequest, type TableSpec, text } from "./table-state";
+import { majorAmount } from "./amount";
+import { type FilterParser, isoDate, multiChoice, oneOf, readTable, tableRequest, type TableSpec, text } from "./table-state";
 
 const RECONS_SPEC: TableSpec<{ q: string }> = { sorts: RECON_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
 const reconsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/recons` as const;
@@ -32,14 +33,17 @@ const SIGNOFF_SPEC: TableSpec<SignoffFilters> = { sorts: SIGNOFF_SORTS, defaultS
 /** A recon's closed days and their sign-off (Plan 5 Task 4), newest first; its own paging keys (s.page) on the Overview. */
 export const reconSignoffs = (spaceId: string, id: string): TableDef<SignoffFilters> =>
   ({ key: ENGINE_KEY[0], path: `${reconsPath(spaceId)}/${encodeURIComponent(id)}/signoffs`, spec: SIGNOFF_SPEC, transient: ["tab"] });
-export type BreakFilters = { q: string; recon: string; reason: string; state: string; age: string; assignee: string };
+export type BreakFilters = { q: string; recon: string; reason: string; state: string; age: string; assignee: string; amountMin: string; amountMax: string; checked: string };
+const major: FilterParser<string> = (raw) => majorAmount(raw ?? "");
 const BREAKS_SPEC: TableSpec<BreakFilters> = {
-  sorts: BREAK_SORTS, defaultSort: "-amount", search: ["q"],
-  filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice() },
+  sorts: BREAK_SORTS, defaultSort: "-amount", search: ["q", "amountMin", "amountMax"],
+  filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice(), amountMin: major, amountMax: major, checked: multiChoice() },
 };
 /**
- * A space's breaks queue (the engine's, Plan 5), largest amount first: `reason`, `state`, `age` and `assignee`
- * (me, none = Unassigned) with every ticked value; `recon` one recon (a link from it); `q` the reference; with counts.
+ * A space's breaks queue (the engine's, Plan 5), largest amount first, its open states only (the API's queue; no
+ * default assignee: Mine or unassigned is a quick filter): `reason`, `state`, `age`, `assignee` (me, none =
+ * Unassigned) and `checked` (yes, no) with every ticked value; `recon` one recon (a link from it); `q` the reference;
+ * `amountMin` / `amountMax` the absolute amount in major units as typed; with counts.
  */
 export const BREAKS = (spaceId: string): TableDef<BreakFilters> => ({
   key: ENGINE_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/breaks`, spec: BREAKS_SPEC,

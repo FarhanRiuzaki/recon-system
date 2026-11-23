@@ -10,8 +10,12 @@ export { BREAK_SORTS };
 
 /**
  * GET /api/spaces/{spaceId}/breaks: the space's open breaks (not resolved), oldest business date first. `recon`: one
- * recon; `reason`, `state`, `age`: one or more each (repeated); `assignee`: user ids, `me`, `none` (Unassigned); `q`: the reference.
+ * recon; `reason`, `state`, `age`: one or more each (repeated); `assignee`: user ids, `me`, `none` (Unassigned); `q`: the reference;
+ * `amountMin`, `amountMax`: the absolute amount from / up to, in major units of each item's currency (100.5 = 100.50 IDR,
+ * 100.500 KWD); `checked`: `yes` runs look for its counterpart again from today (as the row's `recheck`, its carry over
+ * not over yet), `no` they don't.
  */
+const major = z.string().regex(/^(?=.*\d)\d{0,15}(\.\d{0,6})?$/, "Write an amount like 1000 or 1000.50");
 export const BreakListQuery = ListQuery.extend({
   sort: sortParam(BREAK_SORTS),
   recon: filterSelection(z.uuid()).optional(),
@@ -19,6 +23,9 @@ export const BreakListQuery = ListQuery.extend({
   state: filterSelection(z.enum(BREAK_STATES)).optional(),
   age: filterSelection(z.enum(AGE_BUCKETS)).optional(),
   assignee: filterSelection(z.union([z.literal("me"), z.literal("none"), z.uuid()])).optional(),
+  amountMin: major.optional(),
+  amountMax: major.optional(),
+  checked: filterSelection(z.enum(["yes", "no"])).optional(),
 });
 export type BreakListQuery = z.infer<typeof BreakListQuery>;
 

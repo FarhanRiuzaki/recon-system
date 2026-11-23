@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, checkedAgain, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -80,6 +80,12 @@ describe("words of the page", () => {
     expect(recheckText({ kind: "no" }, "2026-11-04")).toBe("Not checked again – settle it here");
     // a request that waits holds it out of the runs; settling here is not what is next
     expect(recheckText({ kind: "no" }, "2026-11-04", true)).toBe("Not checked again while a request waits");
+  });
+  it("checked again from today: carry over always, or not over yet; the API's checked filter agrees", () => {
+    expect(checkedAgain({ kind: "always" }, "2026-11-04")).toBe(true);
+    expect(checkedAgain({ kind: "until", date: "2026-11-04" }, "2026-11-04")).toBe(true);
+    expect(checkedAgain({ kind: "until", date: "2026-11-03" }, "2026-11-04")).toBe(false);
+    expect(checkedAgain({ kind: "no" }, "2026-11-04")).toBe(false);
   });
   it("where a request goes: the connector it calls, or that it is turned off as a warning; only a refused route blocks", () => {
     expect(routeText(recon(), "posting")).toBe("Sent through Bank Mega");

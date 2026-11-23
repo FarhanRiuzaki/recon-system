@@ -4,14 +4,15 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { BreakRowDto, BreakSummaryDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
-import { reconItems } from "../../schema";
+import { reconConfigVersions } from "../../../recon";
+import { reconDays, reconItems } from "../../schema";
 import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
 const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
@@ -65,6 +66,40 @@ describe("GET breaks: sorts and row fields", () => {
     // carry over 1 day: a late-match "No counterpart" break is checked until D + 1; the others are not checked again
     expect(r.find((x) => x.id === I.a1)!.recheck).toEqual({ kind: "until", date: "2026-11-03" });
     expect(r.find((x) => x.id === I.a2)!.recheck).toEqual({ kind: "no" });
+  });
+});
+
+describe("GET breaks: amount range and checked again", () => {
+  const facets = async (qs = "") => json<{ checked: Record<string, number> }>(call("GET", `/v1/spaces/${A}/breaks/facets${qs}`, { token: t.op }));
+  it("amountMin / amountMax in major units of each item's currency, on the absolute amount; list, facets and summary alike", async () => {
+    // P1 100.00 IDR, P2 -250.00 IDR, P3 5.00 EUR
+    expect((await list("?amountMin=100&sort=amount")).map((x) => x.ref)).toEqual(["P1", "P2"]);
+    expect((await list("?amountMin=100.01&sort=amount")).map((x) => x.ref)).toEqual(["P2"]);
+    expect((await list("?amountMax=100&sort=amount")).map((x) => x.ref)).toEqual(["P3", "P1"]);
+    expect((await list("?amountMin=5&amountMax=5")).map((x) => x.ref)).toEqual(["P3"]);
+    expect(await json<BreakSummaryDto>(summary(A, t.op, "?amountMin=100"))).toMatchObject({ open: 2, amounts: [{ currency: "IDR", amountMinor: "35000", items: 2 }] });
+    expect((await json<{ reason: Record<string, number> }>(call("GET", `/v1/spaces/${A}/breaks/facets?amountMax=100`, { token: t.op }))).reason).toEqual({ "No counterpart": 2 });
+    for (const bad of ["abc", "-1", "1e3", "1.2.3", "."]) expect((await call("GET", `/v1/spaces/${A}/breaks?amountMin=${bad}`, { token: t.op })).status).toBe(400);
+  });
+
+  it("checked=yes|no: whether runs look for the counterpart again from today, as each row's recheck says", async () => {
+    // carry over 1 day on D (past): nothing is checked again
+    expect((await list("?checked=no")).length).toBe(3);
+    expect(await list("?checked=yes")).toEqual([]);
+    expect((await facets()).checked).toEqual({ no: 3 });
+    // carry over always: the late-match No counterpart break is checked on every run
+    await db.update(reconConfigVersions).set({ spec: sql`jsonb_set(${reconConfigVersions.spec}, '{carry_over_days}', 'null'::jsonb)` }).where(eq(reconConfigVersions.configId, CFG));
+    const yes = await list("?checked=yes");
+    expect(yes.map((x) => [x.id, x.recheck])).toEqual([[I.a1, { kind: "always" }]]);
+    expect((await list("?checked=no")).every((x) => x.recheck.kind === "no")).toBe(true);
+    expect((await facets()).checked).toEqual({ yes: 1, no: 2 });
+    expect((await facets("?checked=yes")).checked).toEqual({ yes: 1, no: 2 }); // its own filter left out
+    expect(await json<BreakSummaryDto>(summary(A, t.op, "?checked=yes"))).toMatchObject({ open: 1 });
+    // a signed-off day is not checked again
+    await db.insert(reconDays).values({ spaceId: A, configId: CFG, businessDate: D, status: "closed", signedAt: new Date() });
+    expect(await list("?checked=yes")).toEqual([]);
+    expect((await list("?sort=amount")).find((x) => x.id === I.a1)!.recheck).toEqual({ kind: "no" });
+    expect((await call("GET", `/v1/spaces/${A}/breaks?checked=maybe`, { token: t.op })).status).toBe(400);
   });
 });
 

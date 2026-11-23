@@ -30,7 +30,7 @@ import { postingChip, postingEvent } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
-import { amountDelta, approverText, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
+import { amountDelta, approverText, checkedAgain, compareRows, NOT_CHECKED, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
@@ -186,6 +186,7 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
         status={<span className="flex flex-wrap items-center gap-1.5">
           {b.item.reason && <CategoryChip label={b.item.reason} slot={categoryChip("reason", b.item.reason)} />}
           <CategoryChip label={STATE_LABEL[b.state]} slot={categoryChip("workState", b.state)} />
+          {open && !checkedAgain(b.recon.recheck, today) && <CategoryChip label={NOT_CHECKED} slot="neutral" />}
           <CategoryChip label={b.assignee ? (mine ? "Yours" : b.assignee.name ?? "A removed user") : "Unassigned"} slot="neutral" />
         </span>}
         description={<span className="grid gap-0.5">

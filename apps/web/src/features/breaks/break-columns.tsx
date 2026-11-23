@@ -8,12 +8,16 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { SuggestedIcon } from "@starterkit/ui/ui/icons";
 import { amountText } from "@/lib/shared/amount";
 import { categoryChip } from "@/lib/shared/categories";
-import { STATE_LABEL } from "./break-model";
+import { checkedAgain, NOT_CHECKED, STATE_LABEL } from "./break-model";
 
 const ageText = (n: number) => (n === 0 ? "Today" : n === 1 ? "1 day old" : `${n} days old`);
 const dateText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
 export type Selection = { has: (id: string) => boolean; toggle: (id: string) => void; all: { checked: boolean; count: number; toggle: () => void } };
+
+/** The business date the API counted the row's age to (its today). */
+const rowToday = (r: BreakRowDto) => new Date(Date.parse(`${r.businessDate}T00:00:00Z`) + r.ageDays * 86_400_000).toISOString().slice(0, 10);
+const NotCheckedChip = () => <CategoryChip label={NOT_CHECKED} slot="neutral" />;
 
 /** Until when runs check an item again, in words. */
 export const recheckText = (r: BreakRowDto["recheck"]) => (r.kind === "until" ? dateText(r.date) : r.kind === "always" ? "Every run" : "Not checked again");
@@ -50,10 +54,15 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
         ? <CategoryChip label={r.proposedRef} slot="neutral" className="font-mono"><Icon icon={SuggestedIcon} className="size-3.5 shrink-0 text-fg-3" /></CategoryChip>
         : <span className="text-fg-3">–</span>
     ) },
-    { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => <CategoryChip label={STATE_LABEL[r.state]} slot={categoryChip("workState", r.state)} /> },
+    { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => (
+      <span className="flex flex-wrap items-center gap-1.5">
+        <CategoryChip label={STATE_LABEL[r.state]} slot={categoryChip("workState", r.state)} />
+        {!checkedAgain(r.recheck, rowToday(r)) && <NotCheckedChip />}
+      </span>
+    ) },
     { key: "assignee", header: "Assignee", mobile: "meta", cell: (r) => (r.assignee ? (r.assignee.name ?? "A removed user") : <span className="text-fg-3">Unassigned</span>) },
     { key: "recheck", header: "Checked until", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => (
-      r.recheck.kind === "no" ? <span className="text-fg-3">{recheckText(r.recheck)}</span> : recheckText(r.recheck)
+      r.recheck.kind === "no" ? <NotCheckedChip /> : recheckText(r.recheck)
     ) },
     { key: "recon", header: "Recon", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => r.recon.name },
   ];

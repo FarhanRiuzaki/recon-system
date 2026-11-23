@@ -89,6 +89,11 @@ export function sidesOf(item: BreakItemDto, counterparts: readonly BreakItemDto[
   return { mine: combined([item, ...others.filter((i) => i.side === item.side)])!, theirs: combined(others.filter((i) => i.side !== item.side)) };
 }
 
+/** The neutral chip of an item runs no longer check, in the queue and on the item's page. */
+export const NOT_CHECKED = "Not checked again";
+/** Whether runs look for the item's counterpart again from business date `today`: the API's `checked` filter. */
+export const checkedAgain = (r: BreakDetailDto["recon"]["recheck"], today: string) => r.kind === "always" || (r.kind === "until" && r.date >= today);
+
 /**
  * Whether runs check the item again (the API's `recheck`), as of business date `today`; past tense once its last day
  * has gone. `pending`: a request waits for a decision, which is what holds it out of the runs.

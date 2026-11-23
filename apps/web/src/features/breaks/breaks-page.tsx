@@ -3,11 +3,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
-import { ColumnsMenu, DataTable, FilterChecks, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import { ColumnsMenu, DataTable, Field, FilterChecks, FilterGroup, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AlertsIcon, AssignIcon, InvestigateIcon, TakeIcon, WaitIcon } from "@starterkit/ui/ui/icons";
+import { AlertsIcon, AssignIcon, CheckIcon, InvestigateIcon, TakeIcon, WaitIcon } from "@starterkit/ui/ui/icons";
+import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import type { BulkResult } from "@starterkit/shared/contracts/common";
@@ -17,23 +18,31 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
+import { majorAmount } from "@/lib/shared/amount";
 import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
 import { breakColumns } from "./break-columns";
 import { AGE_LABEL, STATE_LABEL } from "./break-model";
 import { BreakSummary } from "./break-summary";
 import { withCounts } from "@/lib/shared/table-state";
+import { selectionState } from "@starterkit/shared/filter-selection";
 
 const AssignDialog = dynamic(() => import("./assign-dialog"), { ssr: false });
 
-const FILTER_DEFAULTS: BreakFilters = { q: "", recon: "", reason: "", state: "", age: "", assignee: "" };
+const FILTER_DEFAULTS: BreakFilters = { q: "", recon: "", reason: "", state: "", age: "", assignee: "", amountMin: "", amountMax: "", checked: "" };
 const ASSIGNEE_LABEL: Record<string, string> = { me: "Mine", none: "Unassigned" };
+const CHECKED_LABEL: Record<string, string> = { yes: "Yes", no: "No" };
+/** The quick filter "Mine or unassigned" (the queue's default stays every open item: a ruling of Batch 8). */
+const MINE_OR_NONE = selectionState(["me", "none"]);
 const FILTER_FIELDS = [
   { key: "q", label: "Search" },
   { key: "assignee", label: "Assignee", multiple: true, format: (v: string) => ASSIGNEE_LABEL[v] ?? v },
   { key: "state", label: "State", multiple: true, format: (v: string) => STATE_LABEL[v as BreakState] ?? v },
   { key: "reason", label: "Reason", multiple: true },
   { key: "age", label: "Age", multiple: true, format: (v: string) => AGE_LABEL[v as keyof typeof AGE_LABEL] ?? v },
+  { key: "checked", label: "Checked again", multiple: true, format: (v: string) => CHECKED_LABEL[v] ?? v },
+  { key: "amountMin", label: "Amount from" },
+  { key: "amountMax", label: "Amount up to" },
 ] as const;
 const OPEN_STATES = BREAK_STATES.filter((s) => s !== "resolved");
 /** Why the API skipped breaks of a bulk action, in the words of that action. */
@@ -66,6 +75,7 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
   const columns = useMemo(() => breakColumns(spaceId, canWork ? { has: (id) => selected.has(id), toggle, all: { checked: allOn, count: rows.length, toggle: toggleAll } } : undefined),
     [spaceId, canWork, selected, allOn, rows.length, toggleAll]);
   const filtered = Object.entries(f).some(([k, v]) => k in FILTER_DEFAULTS && v !== "");
+  const mineOrNone = f.assignee === MINE_OR_NONE;
 
   /** One bulk action over the selection: its answer as a toast (what it did, what it skipped and why). */
   async function act(label: string, path: "assign" | "take" | "state", body: object, verb: string) {
@@ -91,15 +101,27 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the unmatch items; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
-      <FilterLayout busy={t.paging.busy} values={{ q: f.q, recon: f.recon, assignee: f.assignee, state: f.state, reason: f.reason, age: f.age }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
+      <FilterLayout busy={t.paging.busy} values={{ q: f.q, recon: f.recon, assignee: f.assignee, state: f.state, reason: f.reason, age: f.age, amountMin: f.amountMin, amountMax: f.amountMax, checked: f.checked }}
+        defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search unmatch" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
           <FilterChecks label="Assignee" value={draft.assignee} options={withCounts([{ value: "me", label: "Mine" }, { value: "none", label: "Unassigned" }], t.facets?.assignee)} onChange={(assignee) => patch({ assignee })} />
           <FilterChecks label="State" value={draft.state} options={withCounts(OPEN_STATES.map((s) => ({ value: s, label: STATE_LABEL[s] })), t.facets?.state)} onChange={(state) => patch({ state })} />
           <FilterChecks label="Reason" value={draft.reason} options={withCounts(BREAK_REASONS.map((r) => ({ value: r, label: r })), t.facets?.reason)} onChange={(reason) => patch({ reason })} />
           <FilterChecks label="Age" value={draft.age} options={withCounts(AGE_BUCKETS.map((a) => ({ value: a, label: AGE_LABEL[a] })), t.facets?.age)} onChange={(age) => patch({ age })} />
+          <FilterChecks label="Checked again" value={draft.checked} options={withCounts([{ value: "yes", label: "Yes" }, { value: "no", label: "No" }], t.facets?.checked)} onChange={(checked) => patch({ checked })} />
+          {/* major units of each item's currency, the absolute amount (as the Amount sort) */}
+          <FilterGroup label="Amount" value={[draft.amountMin && `from ${draft.amountMin}`, draft.amountMax && `up to ${draft.amountMax}`].filter(Boolean).join(" ")}>
+            <div className="grid grid-cols-2 gap-2">
+              <Field id="breaks-amount-min" label="From"><Input id="breaks-amount-min" inputMode="decimal" autoComplete="off" value={draft.amountMin} onChange={(e) => patch({ amountMin: majorAmount(e.target.value) })} /></Field>
+              <Field id="breaks-amount-max" label="Up to"><Input id="breaks-amount-max" inputMode="decimal" autoComplete="off" value={draft.amountMax} onChange={(e) => patch({ amountMax: majorAmount(e.target.value) })} /></Field>
+            </div>
+          </FilterGroup>
         </>}>
-      {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
+      {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>
+          <Button size="sm" variant="secondary" aria-pressed={mineOrNone} className={cn(mineOrNone && "bg-tray")}
+            onClick={() => t.set({ assignee: mineOrNone ? "" : MINE_OR_NONE })}>{mineOrNone && <Icon icon={CheckIcon} />}Mine or unassigned</Button>
+        </Toolbar>}
         flush icon={AlertsIcon} title="Open items" count={t.count} description={canWork ? "Select items to take, assign or mark them" : undefined}>
         {summary}
         {canWork && rows.length > 0 && (

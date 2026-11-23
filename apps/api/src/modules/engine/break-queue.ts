@@ -7,7 +7,8 @@ import type { AssignBreaksBody, BreakListQuery, BreakRowDto, BreakStateBody, Bre
 import type { BulkResult, FacetsDto, Page } from "@starterkit/shared/contracts/common";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { AGE_BUCKETS, AGE_DAYS, type AgeBucket, BREAK_STATES, type BreakState } from "@starterkit/shared/recon";
-import { and, eq, ilike, inArray, isNull, ne, or, type SQL, sql } from "drizzle-orm";
+import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
+import { and, eq, exists, ilike, inArray, isNotNull, isNull, ne, notExists, or, type SQL, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
 import type { ErrorCode } from "@starterkit/shared/contracts/common";
@@ -16,13 +17,14 @@ import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kern
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { records, todayIn } from "../ingest";
-import { reconConfigs } from "../recon";
+import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceShares } from "../sources";
 import { spaceMembers, withSpace } from "../spaces";
 import { users } from "../users";
-import { reconItems } from "./schema";
+import { reconDays, reconItems } from "./schema";
 import { liveSpec, recheckOf } from "./break-resolve";
 import { addDays } from "./service";
+import { NEAR_MISS } from "./sql/breaks";
 
 const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
@@ -45,8 +47,31 @@ const inBucket = (today: string, b: AgeBucket) => {
   const [lo, hi] = AGE_DAYS[b];
   return and(sql`${reconItems.businessDate} <= ${addDays(today, -lo)}::date`, hi != null ? sql`${reconItems.businessDate} >= ${addDays(today, -hi)}::date` : undefined);
 };
-/** The queue filter: each filter's values OR'd, the filters AND'd; `q` = the record's reference (needs the records join). */
-function breakWhere(ctx: Ctx, spaceId: string, today: string, q: BreakFilter) {
+/**
+ * Whether runs look for a break's counterpart again from `today`: recheckOf's rule (the engine pool's, sql/pass.ts
+ * poolStatus: a late-match "No counterpart" break waiting for no decision on a day not signed off) on a live version
+ * whose carry over is always, or above 0 and not over by today (business date + carry over ≥ today).
+ */
+function checkedAgain(tx: InTx, today: string) {
+  const carry = sql`${reconConfigVersions.spec}->'carry_over_days'`, days = sql`(${reconConfigVersions.spec}->>'carry_over_days')::int`;
+  return and(
+    eq(reconItems.lateMatch, true), eq(reconItems.breakReason, NEAR_MISS.none), sql`${reconItems.breakState} is distinct from 'pending_approval'`,
+    notExists(tx.select(one).from(reconDays).where(and(eq(reconDays.spaceId, reconItems.spaceId), eq(reconDays.configId, reconItems.configId),
+      eq(reconDays.businessDate, reconItems.businessDate), isNotNull(reconDays.signedAt)))),
+    exists(tx.select(one).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, reconItems.spaceId), eq(reconConfigVersions.configId, reconItems.configId),
+      eq(reconConfigVersions.status, "published"), sql`(${carry} = 'null'::jsonb or (${days} > 0 and ${reconItems.businessDate} + ${days} >= ${today}::date))`))),
+  )!;
+}
+/** The record's minor units per major unit of its currency (ISO 4217 exponent; ingest quarantines any other currency). */
+const perMajor = () => sql`power(10::numeric, case ${records.currency} ${sql.join(Object.entries(CURRENCY_EXPONENT).map(([c, e]) => sql`when ${c} then ${e}::int`), sql` `)} end)`;
+/** Whether the filter reads a column of the item's record: the reference search or the amount range. */
+const needsRecords = (q: BreakFilter) => !!q.q?.trim() || !!q.amountMin || !!q.amountMax;
+
+/**
+ * The queue filter: each filter's values OR'd, the filters AND'd; `q` = the record's reference, `amountMin`/`amountMax`
+ * its absolute amount in major units (both need the records join).
+ */
+function breakWhere(tx: InTx, ctx: Ctx, spaceId: string, today: string, q: BreakFilter) {
   const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
   const any = <T>(vs: readonly T[] | undefined, f: (v: T) => SQL | undefined) => (vs?.length ? or(...vs.map(f)) : undefined);
   return and(
@@ -56,7 +81,11 @@ function breakWhere(ctx: Ctx, spaceId: string, today: string, q: BreakFilter) {
     any(q.state, (st) => (st === "new" ? isNull(reconItems.breakState) : eq(reconItems.breakState, st))),
     any(q.assignee, (a) => (a === "none" ? isNull(reconItems.assigneeId) : eq(reconItems.assigneeId, a === "me" ? ctx.user.id : a))),
     any(q.age, (b) => inBucket(today, b as AgeBucket)),
+    // both or neither ticked: no filter
+    q.checked?.length === 1 ? (q.checked[0] === "yes" ? checkedAgain(tx, today) : sql`not coalesce(${checkedAgain(tx, today)}, false)`) : undefined,
     like ? ilike(records.extRef, like) : undefined,
+    q.amountMin ? sql`abs(${records.amountMinor}) >= ${q.amountMin}::numeric * ${perMajor()}` : undefined,
+    q.amountMax ? sql`abs(${records.amountMinor}) <= ${q.amountMax}::numeric * ${perMajor()}` : undefined,
   );
 }
 
@@ -71,17 +100,19 @@ export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Prom
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     const from = <S extends Record<string, unknown>>(sel: S, omit: keyof BreakFilter) => {
       const base = tx.select(sel as never).from(reconItems);
-      return (q.q?.trim() ? base.leftJoin(records, record) : base).where(breakWhere(ctx, spaceId, today, { ...q, [omit]: undefined })).$dynamic();
+      return (needsRecords(q) ? base.leftJoin(records, record) : base).where(breakWhere(tx, ctx, spaceId, today, { ...q, [omit]: undefined })).$dynamic();
     };
     const state = sql<string>`coalesce(${reconItems.breakState}, 'new')`;
     const age = sql<string>`case ${sql.join(AGE_BUCKETS.map((b) => sql`when ${inBucket(today, b)} then ${b}`), sql` `)} end`;
-    const [byState, byReason, byAge, [who]] = await Promise.all([
+    const checked = sql<string>`case when ${checkedAgain(tx, today)} then 'yes' else 'no' end`;
+    const [byState, byReason, byAge, [who], byChecked] = await Promise.all([
       from({ v: state, n: countN }, "state").groupBy(state) as Promise<{ v: string; n: number }[]>,
       from({ v: reconItems.breakReason, n: countN }, "reason").groupBy(reconItems.breakReason) as Promise<{ v: string | null; n: number }[]>,
       from({ v: age, n: countN }, "age").groupBy(sql`1`) as Promise<{ v: string | null; n: number }[]>,
       from({ me: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int`, none: sql<number>`count(*) filter (where ${reconItems.assigneeId} is null)::int` }, "assignee") as Promise<{ me: number; none: number }[]>,
+      from({ v: checked, n: countN }, "checked").groupBy(sql`1`) as Promise<{ v: string; n: number }[]>,
     ]);
-    return { state: facetOf(byState), reason: facetOf(byReason), age: facetOf(byAge), assignee: { me: who?.me ?? 0, none: who?.none ?? 0 } };
+    return { state: facetOf(byState), reason: facetOf(byReason), age: facetOf(byAge), assignee: { me: who?.me ?? 0, none: who?.none ?? 0 }, checked: facetOf(byChecked) };
   });
 }
 
@@ -106,15 +137,15 @@ export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Pro
     const today = todayIn(now);
     const spaces = await recordSpaces(tx, spaceId);
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
-    const where = breakWhere(ctx, spaceId, today, q);
-    // records joined only where a column of theirs is read: the amounts, or the reference search
+    const where = breakWhere(tx, ctx, spaceId, today, q);
+    // records joined only where a column of theirs is read: the amounts, or the reference search and amount range
     const base = <S extends Record<string, unknown>>(sel: S, join: boolean) => {
       const from = tx.select(sel as never).from(reconItems);
       return (join ? from.leftJoin(records, record) : from).where(where).$dynamic();
     };
     const [byCcy, byDay] = await Promise.all([
       base({ ccy: records.currency, sum: sql<string>`sum(abs(${records.amountMinor}))::text`, n: countN }, true).groupBy(records.currency) as Promise<{ ccy: string | null; sum: string | null; n: number }[]>,
-      base({ configId: reconItems.configId, bd: reconItems.businessDate, n: countN, mine: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int` }, !!q.q?.trim())
+      base({ configId: reconItems.configId, bd: reconItems.businessDate, n: countN, mine: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int` }, needsRecords(q))
         .groupBy(reconItems.configId, reconItems.businessDate) as Promise<{ configId: string; bd: string; n: number; mine: number }[]>,
     ]);
     const specs = await liveSpecs(tx, spaceId, byDay.map((r) => r.configId));
@@ -139,8 +170,7 @@ export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promis
     const today = todayIn(now);
     const spaces = await recordSpaces(tx, spaceId);
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
-    const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
-    const where = breakWhere(ctx, spaceId, today, q);
+    const where = breakWhere(tx, ctx, spaceId, today, q);
     // a proposal's item and its record (DEC-047), joined once for the page
     const pi = alias(reconItems, "pi"), pr = alias(records, "pr");
     const page = await pageQuery({
@@ -155,7 +185,7 @@ export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promis
         .leftJoin(pi, and(eq(pi.spaceId, reconItems.spaceId), eq(pi.id, reconItems.proposedItemId)))
         .leftJoin(pr, and(inArray(pr.spaceId, spaces), eq(pr.id, pi.recordId), eq(pr.businessDate, pi.businessDate)))
         .where(where).$dynamic(),
-      count: (like ? tx.select(one).from(reconItems).leftJoin(records, record) : tx.select(one).from(reconItems)).where(where).$dynamic(),
+      count: (needsRecords(q) ? tx.select(one).from(reconItems).leftJoin(records, record) : tx.select(one).from(reconItems)).where(where).$dynamic(),
       // amount = absolute, as the summary adds them; an item without a record's amount sorts as 0.
       // ponytail: minor units of different currencies compare as plain numbers; per currency (or FX) if a queue mixes them
       orderBy: sortSql(q.sort, { businessDate: reconItems.businessDate, amount: sql`abs(coalesce(${records.amountMinor}, 0))`, state: stateRank }, "businessDate", reconItems.id),

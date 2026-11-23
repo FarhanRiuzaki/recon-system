@@ -207,6 +207,40 @@
           }
         }
       ]
+    },
+    "amountMin": {
+      "type": "string",
+      "pattern": "^(?=.*\\d)\\d{0,15}(\\.\\d{0,6})?$"
+    },
+    "amountMax": {
+      "type": "string",
+      "pattern": "^(?=.*\\d)\\d{0,15}(\\.\\d{0,6})?$"
+    },
+    "checked": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "yes",
+            "no"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "yes",
+              "no"
+            ]
+          }
+        }
+      ]
     }
   }
 }

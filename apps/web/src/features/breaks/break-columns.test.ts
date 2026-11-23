@@ -36,3 +36,20 @@ describe("unmatch queue columns: the set of audit §5.1", () => {
     expect(cell("recheck", { ...B, recheck: { kind: "always" } })).toBe("Every run");
   });
 });
+
+describe("unmatch queue columns: an item runs no longer check carries a neutral Not checked again chip", () => {
+  it("beside its state, and as the Checked until cell of one never checked; none while runs still check it", () => {
+    const no = { ...B, recheck: { kind: "no" } } as BreakRowDto;
+    // checked until 21 Nov, the row 2 days old on 20 Nov: today is 22 Nov, so no longer checked (its last day stays in Checked until)
+    const past = { ...B, businessDate: "2026-11-20", ageDays: 2 } as BreakRowDto;
+    for (const r of [no, past]) {
+      expect(cell("state", r)).toContain(">Not checked again</span>");
+      expect(cell("state", r)).toContain("bg-fg-4");
+    }
+    expect(cell("recheck", no)).toContain(">Not checked again</span>");
+    expect(cell("recheck", past)).toContain("21 Nov");
+    const live = { ...B, ageDays: 1 } as BreakRowDto;
+    expect(cell("state", live)).not.toContain("Not checked again");
+    expect(cell("recheck", live)).toContain("21 Nov");
+  });
+});
