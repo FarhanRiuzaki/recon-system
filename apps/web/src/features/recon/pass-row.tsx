@@ -40,7 +40,7 @@ export type PassRowProps = {
  */
 const Part = ({ label, children }: { label: string; children: ReactNode }) => (
   <span className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[6rem_minmax(0,1fr)]">
-    <span className="pt-px text-caption text-fg-3">{label}</span>
+    <span className="pt-px text-body-sm text-fg-3">{label}</span>
     <span className="min-w-0">{children}</span>
   </span>
 );
@@ -54,8 +54,8 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
   return (
     <>
       <span className="flex items-center gap-2">
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm bg-fg text-caption text-bg tabular">{pass.no}</span>
-        <span className="min-w-0 truncate text-label text-fg">{pass.name || "Untitled pass"}</span>
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-label text-primary-foreground tabular">{pass.no}</span>
+        <span className="min-w-0 truncate text-body font-medium text-fg">{pass.name || "Untitled pass"}</span>
       </span>
       <Part label="Pairs when">
         <ul className="grid gap-0.5">

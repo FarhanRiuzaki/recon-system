@@ -213,16 +213,20 @@ export function ConnectorEditor({ id }: { id: string }) {
 
       {tab === "environments" && (
         <div className="grid gap-section">
+          {/* read: the name is the page title and the active environment's card says "… active", so no disabled
+              inputs that cut their values (audit 2 B12) */}
+          {!readOnly && (
           <div className="grid gap-4 md:grid-cols-2">
-            <Field id="cn-name" label="Name" required>
-              <Input id="cn-name" value={spec.name} maxLength={80} disabled={readOnly} onChange={(e) => set({ ...spec, name: e.target.value })} />
-            </Field>
-            <Field id="cn-active" label="Calls go to">
-              <Select id="cn-active" value={spec.active} disabled={readOnly} onChange={(e) => set({ ...spec, active: e.target.value as ConnectorSpec["active"] })}>
-                {ENVIRONMENTS.map((e) => <option key={e} value={e}>{ENVIRONMENT_LABEL[e]}</option>)}
-              </Select>
-            </Field>
-          </div>
+              <Field id="cn-name" label="Name" required>
+                <Input id="cn-name" value={spec.name} maxLength={80} onChange={(e) => set({ ...spec, name: e.target.value })} />
+              </Field>
+              <Field id="cn-active" label="Calls go to">
+                <Select id="cn-active" value={spec.active} onChange={(e) => set({ ...spec, active: e.target.value as ConnectorSpec["active"] })}>
+                  {ENVIRONMENTS.map((e) => <option key={e} value={e}>{ENVIRONMENT_LABEL[e]}</option>)}
+                </Select>
+              </Field>
+            </div>
+          )}
           <div className="grid items-start gap-section xl:grid-cols-2">
             {ENVIRONMENTS.map((e) => (
               <EnvironmentCard key={e} c={c} env={e} settings={spec.environments[e]} editing={!readOnly} canEdit={c.canEdit} active={spec.active === e}
