@@ -5,7 +5,7 @@ import { useState } from "react";
 import { CopyValue } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, SpinnerIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 
@@ -36,7 +36,7 @@ export function NoSpace() {
           </p>
           <CopyValue value={user.username} label="username" />
           <div className="mt-3 flex flex-wrap justify-center gap-2">
-            {can("space.manage") && <Button variant="create-solid" onClick={() => setCreating(true)}>Create space</Button>}
+            {can("space.manage") && <Button variant="create-solid" onClick={() => setCreating(true)}><Icon icon={AddIcon} />Create space</Button>}
             <Button variant="secondary" onClick={signOut} disabled={leaving} aria-busy={leaving || undefined}>
               {leaving && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Sign out
             </Button>

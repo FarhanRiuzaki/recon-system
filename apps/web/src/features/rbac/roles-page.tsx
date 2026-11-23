@@ -7,7 +7,8 @@ import { useState } from "react";
 import { ActionMenu, type Column, ColumnsMenu, DataTable, FilterLayout, FilterSurface, FilterSearch, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { formatNumber, plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
-import { KeyIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, KeyIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -69,7 +70,7 @@ export function RolesPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Roles" description="Sets of permissions given to users."
-        actions={can("role.create") ? <Button variant="create-solid" onClick={() => { setName(""); setCreating(true); }}>Create role</Button> : undefined} />
+        actions={can("role.create") ? <Button variant="create-solid" onClick={() => { setName(""); setCreating(true); }}><Icon icon={AddIcon} />Create role</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the roles; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

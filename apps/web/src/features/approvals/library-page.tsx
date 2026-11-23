@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { LibraryDetailDto, LibraryRowDto } from "@starterkit/shared/contracts/workflows";
 import { ROLE_LABEL } from "@starterkit/shared/spaces";
@@ -94,7 +94,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
   return (
     <div className="grid gap-section">
       <PageHeader title="Workflows" description={`Approval chains, level by level, that the recons of ${spaceName} use for changes that need approval.`}
-        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New workflow</Button> : undefined} />
+        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}><Icon icon={busy ? SpinnerIcon : AddIcon} className={busy ? "motion-safe:animate-spin" : undefined} />New workflow</Button> : undefined} />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the workflows; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}

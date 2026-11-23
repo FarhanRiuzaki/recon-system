@@ -579,7 +579,11 @@ alone and takes its soft fill on hover and keyboard focus (review 24 Nov: a row 
 one keeps the fill (`button.test.ts` "icon-only …"). An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's main
 Create / Add / New ("Create recon", "New workflow", "Add member", a create dialog's submit) is `variant="create-solid"`:
 the page's one primary, solid `--create-solid` `#0f6e3f` with `--create-solid-fg` white (dark `#4cc98a` with
-`#0b2216`), `--create-solid-hover` `#0c5a33` (dark `#6dd6a0`). A confirm dialog's "Remove …" / "Delete …" stays Danger.
+`#0b2216`), `--create-solid-hover` `#0c5a33` (dark `#6dd6a0`), with its `AddIcon` (a Link inside it too; a form's
+submit needn't). Only the page header's main create and a create dialog's submit are create-solid; an inline adder
+("Add change", "Add a condition") is `create`. A page component has at most one solid primary (`default` or
+`create-solid`, counted by label, a submit and a run-time `variant={…}` not counted: `architecture.test.ts` "one solid
+primary per page"). A confirm dialog's "Remove …" / "Delete …" stays Danger.
 "Edit", "Replace" and "Continue editing" are edit; an Edit ↔ Done toggle keeps edit in both states. A header action
 whose label is data takes its variant from `verbVariant(label, "secondary")` (`ds/intent-verbs.ts`). A list adder ("Add a
 rule for some cases", "Add an action", "Add a condition") is `create` at `size="sm"` with its `AddIcon`, never a bare

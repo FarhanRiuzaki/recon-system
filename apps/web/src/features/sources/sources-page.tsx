@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, StatTile, StatTiles, StatTileSkeletons, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { CheckIcon, DiskIcon, EditIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, CheckIcon, DiskIcon, EditIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { formatNumber } from "@starterkit/ui/lib/format";
 import { Reveal } from "@starterkit/ui/motion";
 import type { SourceStateFilter } from "@starterkit/shared/sources";
@@ -41,8 +42,8 @@ export function SourcesPage({ spaceId }: { spaceId: string }) {
   const summary = useSourceSummary(spaceId).data;
   const admin = useSpaceRoles(spaceId).includes("source_admin");
   const add = admin
-    ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
-    : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}>Create source</BlockedButton>;
+    ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}><Icon icon={AddIcon} />Create source</Link></Button>
+    : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}><Icon icon={AddIcon} />Create source</BlockedButton>;
   return (
     <div className="grid gap-section">
       <PageHeader title="Sources" actions={add}

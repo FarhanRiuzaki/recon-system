@@ -13,7 +13,7 @@ import { HEALTH } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import { ActiveUserIcon, ErrorIcon, KeyIcon, UsersIcon } from "@starterkit/ui/ui/icons";
+import { ActiveUserIcon, AddIcon, ErrorIcon, KeyIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -109,7 +109,7 @@ export function UsersPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Users" description="Accounts that can sign in, their roles and status."
-        actions={can("user.create") ? <Button variant="create-solid" asChild><Link href="/users/new">Create user</Link></Button> : undefined} />
+        actions={can("user.create") ? <Button variant="create-solid" asChild><Link href="/users/new"><Icon icon={AddIcon} />Create user</Link></Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the users; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

@@ -9,7 +9,7 @@ import { formatNumber } from "@starterkit/ui/lib/format";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -160,8 +160,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
           <div className="grid justify-items-center gap-3 py-8 text-center">
             <p className="text-body text-fg">No published source in {spaceName} yet.</p>
             {roles.includes("source_admin")
-              ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}>Create source</Link></Button>
-              : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}>Create source</BlockedButton>}
+              ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}><Icon icon={AddIcon} />Create source</Link></Button>
+              : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}><Icon icon={AddIcon} />Create source</BlockedButton>}
           </div>
         </Panel>
       ) : (

@@ -5,7 +5,8 @@ import { useState } from "react";
 import { type Column, ColumnsMenu, DataTable, Field, FilterLayout, FilterSurface, FilterChecks, FilterSearch, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
-import { SecureIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, SecureIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -71,7 +72,7 @@ export function PermissionsPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Permissions" description="Everything a role can allow, by module."
-        actions={can("permission.create") ? <Button variant="create-solid" onClick={() => { setActions(""); setAdding(true); }}>Create permissions</Button> : undefined} />
+        actions={can("permission.create") ? <Button variant="create-solid" onClick={() => { setActions(""); setAdding(true); }}><Icon icon={AddIcon} />Create permissions</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the permissions; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

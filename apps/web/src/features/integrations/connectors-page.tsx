@@ -6,7 +6,7 @@ import { useState } from "react";
 import { CategoryChip, type Column, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, RelativeTime, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ExternalLinkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, ExternalLinkIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { ConnectorDetailDto, ConnectorRowDto } from "@starterkit/shared/contracts/integrations";
 import { ENVIRONMENT_LABEL, PROFILE_LABEL } from "@starterkit/shared/integrations";
@@ -70,7 +70,7 @@ export function ConnectorsPage({ canManage }: { canManage: boolean }) {
   return (
     <div className="grid gap-section">
       <PageHeader title="Open API" description="The bank APIs that recons call when a change is approved: their environments, credentials and operations."
-        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}New connector</Button> : undefined} />
+        actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}><Icon icon={busy ? SpinnerIcon : AddIcon} className={busy ? "motion-safe:animate-spin" : undefined} />New connector</Button> : undefined} />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the connectors; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}

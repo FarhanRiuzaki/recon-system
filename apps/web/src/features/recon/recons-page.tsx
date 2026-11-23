@@ -4,7 +4,8 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { NetworkIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, NetworkIcon } from "@starterkit/ui/ui/icons";
 import type { ReconRowDto } from "@starterkit/shared/contracts/recon";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -31,8 +32,8 @@ export function ReconsPage({ spaceId }: { spaceId: string }) {
   const t = useTableQuery<ReconRowDto, { q: string }>(def);
   const maker = useSpaceRoles(spaceId).includes("config_maker");
   const add = maker
-    ? <Button variant="create-solid" asChild><Link href={newReconHref(spaceId)}>Create recon</Link></Button>
-    : <BlockedButton variant="create-solid" reason={NEW_RECON_REASON}>Create recon</BlockedButton>;
+    ? <Button variant="create-solid" asChild><Link href={newReconHref(spaceId)}><Icon icon={AddIcon} />Create recon</Link></Button>
+    : <BlockedButton variant="create-solid" reason={NEW_RECON_REASON}><Icon icon={AddIcon} />Create recon</BlockedButton>;
   return (
     <div className="grid gap-section">
       <PageHeader title="Recons" actions={add}

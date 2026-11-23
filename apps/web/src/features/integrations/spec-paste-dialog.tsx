@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Checkbox, Field, ScrollFade } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon } from "@starterkit/ui/ui/icons";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
@@ -68,7 +70,7 @@ export function SpecPasteDialog({ spec, onApply, onClose }: { spec: ConnectorSpe
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={read?.operations.length ? () => setRead(null) : onClose}>{read?.operations.length ? "Back" : "Cancel"}</Button>
           {read?.operations.length
-            ? <Button variant="create-solid" type="button" onClick={apply}>Add {read.operations.length} {read.operations.length === 1 ? "operation" : "operations"}</Button>
+            ? <Button variant="create-solid" type="button" onClick={apply}><Icon icon={AddIcon} />Add {read.operations.length} {read.operations.length === 1 ? "operation" : "operations"}</Button>
             : <Button type="button" onClick={() => setRead(operationsFromSpec(text))} disabled={!text.trim()}>Read operations</Button>}
         </DialogFooter>
       </DialogContent>

@@ -8,7 +8,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ActionMenu, type Column, ColumnsMenu, DataTable, FilterLayout, FilterSurface, FilterChecks, FilterSearch, Notice, Panel, RelativeTime, StatusChip, Toolbar, Truncate } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { FolderIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, FolderIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
@@ -68,7 +69,7 @@ export function ProjectsPage() {
   return (
     <div className="grid gap-section" onPointerDown={preloadDialog} onFocus={preloadDialog}>
       <PageHeader title="Projects" description="Every project, with its status and when it last changed."
-        actions={can("project.create") ? <Button variant="create-solid" asChild><Link href="/projects/new">Create project</Link></Button> : undefined} />
+        actions={can("project.create") ? <Button variant="create-solid" asChild><Link href="/projects/new"><Icon icon={AddIcon} />Create project</Link></Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the projects; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

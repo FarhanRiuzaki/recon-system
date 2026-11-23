@@ -6,7 +6,8 @@ import { useRef, useState } from "react";
 import { ActionMenu, activeElement, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, focusBack, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { HEALTH } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
-import { UsersIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
@@ -80,7 +81,7 @@ export function MembersPage({ id }: { id: string }) {
     <div className="grid gap-section" onPointerDown={manage ? preloadDialogs : undefined} onFocus={manage ? preloadDialogs : undefined}>
       <PageHeader title="Members"
         description={`People in the ${name} space and their roles.`}
-        actions={manage ? <Button variant="create-solid" onClick={() => open({ kind: "add" })}>Add member</Button> : undefined} />
+        actions={manage ? <Button variant="create-solid" onClick={() => open({ kind: "add" })}><Icon icon={AddIcon} />Add member</Button> : undefined} />
       <FilterSurface>
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the members; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}

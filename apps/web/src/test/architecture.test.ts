@@ -44,7 +44,7 @@ const startsWith = (words: readonly string[]) => new RegExp(`^(${words.join("|")
 const CAUTION_LABEL = startsWith(INTENTS.caution.actions);
 const CAUTION_VARIANTS: readonly string[] = INTENTS.caution.variant;
 const NAV_LABEL = startsWith(INTENTS.navigate.actions);
-// Create / Add / New carry AddIcon by convention, not by this rule (a page's "Create recon" may stand alone)
+// Create / Add / New: a page's main one (create-solid, not a submit) must carry AddIcon, checked on its own below
 const ICON_LABEL = startsWith(Object.entries(INTENTS).filter(([k, i]) => k !== "create" && "required" in i && i.required).flatMap(([, i]) => i.actions));
 const CREATE_LABEL = startsWith(INTENTS.create.actions);
 const REMOVE_LABEL = startsWith(INTENTS.remove.actions);
@@ -52,40 +52,49 @@ const EDIT_LABEL = startsWith(INTENTS.edit.actions);
 const CREATE_VARIANTS: readonly string[] = INTENTS.create.variant;
 /** `s` without its `{…}` expressions (nested braces counted): what always renders, not `{busy && <Icon … />}`. */
 const outsideExpressions = (s: string) => { let out = "", depth = 0; for (const c of s) { if (c === "{") depth++; else if (c === "}") depth = Math.max(0, depth - 1); else if (!depth) out += c; } return out; };
+/** Every `<Button>`, `<BlockedButton>` and raw `<button>` of a source: its opening tag, children, label and variant. */
+function buttonsIn(src: string) {
+  const out: { kind: string; tag: string; inner: string; text: string; aria: string; label: string; variant: string }[] = [];
+  for (const m of src.matchAll(/<(BlockedButton|Button|button)(?=[\s>])/g)) {
+    // the opening tag: braces counted (an onClick's arrow holds ">"), quoted text skipped (title="a > b")
+    let i = m.index! + m[0].length, depth = 0, quote = "";
+    for (; i < src.length; i++) {
+      const c = src[i]!;
+      if (quote) { if (c === quote) quote = ""; continue; }
+      if (c === '"' || c === "'" || c === "`") { if (depth === 0 || c === "`") quote = c; continue; }
+      if (c === "{") depth++; else if (c === "}") depth--; else if (c === ">" && depth === 0) break;
+    }
+    // a self-closing tag (`<Button … />`) has no children: what follows belongs to the next element
+    const tag = src.slice(m.index!, i + 1), selfClosing = src[i - 1] === "/";
+    const text = selfClosing ? "" : src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
+    const aria = /aria-label=\{?[`"']([^`"']*)/.exec(tag)?.[1] ?? "";
+    // the label: the children up to the closing tag, without their tags and expressions ("Edit<span> code</span>")
+    const close = selfClosing ? -1 : src.indexOf(`</${m[1]}>`, i), inner = close < 0 ? "" : src.slice(i + 1, close);
+    const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
+    out.push({ kind: m[1]!, tag, inner, text, aria, label, variant: /variant="([a-z-]+)"/.exec(tag)?.[1] ?? "default" });
+  }
+  return out;
+}
 function intentViolations(fs: F[]): string[] {
   const out: string[] = [];
   for (const { r, src } of fs) {
     // an affectUI demo's Button is the vendored one, with upstream's own variants
     if (!r.endsWith(".tsx") || r.startsWith(VENDORED) || src.includes(`from "@starterkit/ui/affect/button"`)) continue;
-    for (const m of src.matchAll(/<(BlockedButton|Button|button)(?=[\s>])/g)) {
-      // the opening tag: braces counted (an onClick's arrow holds ">"), quoted text skipped (title="a > b")
-      let i = m.index! + m[0].length, depth = 0, quote = "";
-      for (; i < src.length; i++) {
-        const c = src[i]!;
-        if (quote) { if (c === quote) quote = ""; continue; }
-        if (c === '"' || c === "'" || c === "`") { if (depth === 0 || c === "`") quote = c; continue; }
-        if (c === "{") depth++; else if (c === "}") depth--; else if (c === ">" && depth === 0) break;
-      }
-      // a self-closing tag (`<Button … />`) has no children: what follows belongs to the next element
-      const tag = src.slice(m.index!, i + 1), selfClosing = src[i - 1] === "/";
-      const text = selfClosing ? "" : src.slice(i + 1, i + 200).replace(/^\s*(\{[^}]*\}\s*)?(<Icon[^>]*\/>\s*)?/, "");
-      const aria = /aria-label=\{?[`"']([^`"']*)/.exec(tag)?.[1] ?? "";
+    for (const { kind, tag, inner, text, aria, label, variant } of buttonsIn(src)) {
       const named = REMOVE_LABEL.test(aria) || REMOVE_LABEL.test(text);
-      if (m[1] === "button") {
+      if (kind === "button") {
         // a raw button that removes says so in the Remove ink (the variant's colour)
         if (named && !/text-down-ink/.test(tag)) out.push(`${r}: raw Remove / Delete button without text-down-ink`);
         continue;
       }
-      const variant = /variant="([a-z-]+)"/.exec(tag)?.[1] ?? "default";
-      // the label: the children up to the closing tag, without their tags and expressions ("Edit<span> code</span>")
-      const close = selfClosing ? -1 : src.indexOf(`</${m[1]}>`, i), inner = close < 0 ? "" : src.slice(i + 1, close);
-      const label = inner.replace(/<[^>]*>/g, " ").replace(/\{[^}]*\}/g, " ").replace(/\s+/g, " ").trim();
       if (CAUTION_LABEL.test(label) && !CAUTION_VARIANTS.includes(variant)) out.push(`${r}: ${label} is variant="${variant}", not caution`);
       if (EDIT_LABEL.test(label) && variant !== INTENTS.edit.variant) out.push(`${r}: ${label} is variant="${variant}", not ${INTENTS.edit.variant}`);
       if ((CREATE_LABEL.test(label) || (!label && CREATE_LABEL.test(aria))) && !CREATE_VARIANTS.includes(variant))
         out.push(`${r}: ${label || aria} is variant="${variant}", not create`);
       if (named && variant !== "remove" && variant !== "destructive") out.push(`${r}: ${label || aria} is variant="${variant}", not remove`);
       if (ICON_LABEL.test(label) && !/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner))) out.push(`${r}: ${label} without its icon`);
+      // a page's main Create (create-solid, not a form's submit) carries AddIcon, a Link's included (review 24 Nov)
+      if (variant === "create-solid" && !/type="submit"/.test(tag) && label && !(/<Icon\s[^>]*\bicon=/.test(outsideExpressions(inner)) && /<Icon\s[^>]*\bicon=\{[^}]*\bAddIcon\b/.test(inner))) out.push(`${r}: ${label} without AddIcon`);
       // a link that navigates (asChild around a Link) labelled View / Open / Review: variant link, its icon after the words
       if (/\basChild\b/.test(tag) && /^\s*<Link\b/.test(inner) && NAV_LABEL.test(label)) {
         if (variant !== "link") out.push(`${r}: ${label} link is variant="${variant}", not link`);
@@ -94,6 +103,19 @@ function intentViolations(fs: F[]): string[] {
     }
   }
   return out;
+}
+
+/**
+ * One solid primary per page (review 24 Nov): a page component (it renders `PageHeader`) has at most one `default` or
+ * `create-solid` Button, counted by label, so the two arms of a ternary (a Button or a BlockedButton "Create source")
+ * count once; a form's or dialog's `type="submit"` is its own surface, and a variant chosen at run time (`variant={…}`,
+ * the step that is next) is the screen's to keep single; neither is counted. An inline adder is `create`.
+ */
+function primaryViolations(fs: F[]): string[] {
+  return fs.filter(({ r, src }) => r.endsWith(".tsx") && !r.startsWith(VENDORED) && !r.startsWith(`${WEB}features/ds/`) && src.includes("<PageHeader")).flatMap(({ r, src }) => {
+    const labels = [...new Set(buttonsIn(src).filter((b) => b.kind !== "button" && (b.variant === "default" || b.variant === "create-solid") && !/type="submit"|variant=\{/.test(b.tag)).map((b) => b.label || b.aria))];
+    return labels.length > 1 ? [`${r}: ${labels.length} primaries (${labels.join(", ")})`] : [];
+  });
 }
 
 function layerViolations(fs: F[]): string[] {
@@ -474,6 +496,9 @@ describe("architecture", () => {
   it("every button says its intent: create (green), edit (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
     expect(intentViolations(files)).toEqual([]);
   });
+  it("one solid primary per page: at most one default or create-solid Button in a page component", () => {
+    expect(primaryViolations(files)).toEqual([]);
+  });
   it("status chips take their tone from the shared map (lib/shared/categories.ts STATUS_TONE): nothing else makes the StatusTone brand", () => {
     expect(statusToneViolations(files)).toEqual([]);
   });
@@ -559,7 +584,7 @@ describe("architecture checkers (fixtures)", () => {
     expect(intentViolations([
       f(`${WEB}features/x/a.tsx`, `<Button type="button" variant="ghost" size="icon" aria-label={\`Remove \${n}\`} onClick={() => go()}><Icon icon={RemoveIcon} /></Button>`),
       f(`${WEB}features/x/b.tsx`, `<Button type="button" variant="link" onClick={() => add()}>Add a condition</Button>`),
-      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="create" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button variant="create-solid" onClick={() => a()}>Create recon</Button><Button onClick={() => a()}>New workflow</Button><Button variant="destructive">Remove member</Button><Button variant="destructive">Delete view</Button><Button variant="secondary">Newer first</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="remove" size="icon" aria-label="Remove row"><Icon icon={RemoveIcon} /></Button><Button variant="create" onClick={() => a()}><Icon icon={AddIcon} />Add a row</Button><Button variant="create-solid" onClick={() => a()}><Icon icon={AddIcon} />Create recon</Button><Button onClick={() => a()}>New workflow</Button><Button variant="destructive">Remove member</Button><Button variant="destructive">Delete view</Button><Button variant="secondary">Newer first</Button>`),
       f(`${WEB}features/x/d.tsx`, `<button type="button" aria-label="Remove pass 2" className="text-fg-3" onClick={() => r()}>x</button><ButtonGroup>Add a row</ButtonGroup><button type="button" className="text-fg-3">Delete</button>`),
       f(`${WEB}features/x/e.tsx`, `<Button variant="outline" title="a > b" onClick={() => a()}>Add a column</Button>`),
       f(`${WEB}features/x/f.tsx`, `<Button variant="secondary"><Icon icon={AddIcon} />New space</Button><BlockedButton variant="ghost" reason={r}>Create token</BlockedButton><Button variant="ghost" size="icon" aria-label="Add a filter"><Icon icon={AddIcon} /></Button>`),
@@ -570,6 +595,19 @@ describe("architecture checkers (fixtures)", () => {
       `${WEB}features/x/e.tsx: Add a column is variant="outline", not create`,
       `${WEB}features/x/f.tsx: New space is variant="secondary", not create`, `${WEB}features/x/f.tsx: Create token is variant="ghost", not create`, `${WEB}features/x/f.tsx: Add a filter is variant="ghost", not create`,
       `${WEB}features/x/g.tsx: Delete view is variant="ghost", not remove`, `${WEB}features/x/g.tsx: Delete row 2 is variant="secondary", not remove`]);
+  });
+  it("intents: a page's main Create (create-solid) carries AddIcon, also around a Link; a submit needn't", () => {
+    expect(intentViolations([
+      f(`${WEB}features/x/a.tsx`, `<Button variant="create-solid" onClick={() => a()}>Create role</Button><Button variant="create-solid" asChild><Link href="/p/new">Create project</Link></Button>`),
+      f(`${WEB}features/x/b.tsx`, `<Button variant="create-solid" onClick={() => a()}><Icon icon={AddIcon} />Create role</Button><Button variant="create-solid" asChild><Link href="/p/new"><Icon icon={AddIcon} />Create project</Link></Button><Button type="submit" variant="create-solid">Create space</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: Create role without AddIcon`, `${WEB}features/x/a.tsx: Create project without AddIcon`]);
+  });
+  it("primaries: a page with two solid primaries; a ternary's two arms and a submit count once or not at all", () => {
+    expect(primaryViolations([
+      f(`${WEB}features/x/a.tsx`, `<PageHeader actions={<Button variant="create-solid"><Icon icon={AddIcon} />Create recon</Button>} /><Button size="sm" onClick={go}>Run recon</Button>`),
+      f(`${WEB}features/x/b.tsx`, `<PageHeader actions={ok ? <Button variant="create-solid" asChild><Link href="/n"><Icon icon={AddIcon} />Create source</Link></Button> : <BlockedButton variant="create-solid" reason={r}><Icon icon={AddIcon} />Create source</BlockedButton>} /><Button type="submit">Save</Button><Button variant="create" size="sm">Add change</Button><Button variant={next ? "default" : "secondary"}>Take item</Button>`),
+      f(`${WEB}features/x/c.tsx`, `<Button variant="create-solid">Add change</Button><Button>Save</Button>`),
+    ])).toEqual([`${WEB}features/x/a.tsx: 2 primaries (Create recon, Run recon)`]);
   });
   it("intents: a negative decision not variant caution, an Edit / Replace / Export / Retry without its icon", () => {
     expect(intentViolations([

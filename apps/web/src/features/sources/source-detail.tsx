@@ -9,7 +9,8 @@ import { BlockedButton, CategoryChip, type Column, DataTable, Facts, Failure, La
 import { formatDate, formatDateTime, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
-import { CheckIcon, ColumnChartIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { Icon } from "@starterkit/ui/ui/icon";
+import { AddIcon, CheckIcon, ColumnChartIcon, DiskIcon, KeyIcon, NetworkIcon, TimeIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, readWhenText } from "@starterkit/shared/sources";
 import { BRAND } from "@starterkit/shared/brand";
@@ -82,7 +83,7 @@ function Drift({ s, spaceId, edit }: { s: SourceDto; spaceId: string; edit: Plai
         <span className="flex flex-wrap items-center gap-3">
           {edit.href
             ? <Button asChild variant={s.draft?.status === "in_review" ? "edit" : "create-solid"}><Link href={s.draft?.status === "in_review" ? edit.href : newVersionHref(spaceId, s.id)}>{s.draft?.status === "in_review" ? edit.label : "Create a source version"}</Link></Button>
-            : <BlockedButton variant="create-solid" reason={edit.reason ?? null} disabled={edit.busy} aria-busy={edit.busy || undefined} onClick={edit.onSelect}>Create a source version</BlockedButton>}
+            : <BlockedButton variant="create-solid" reason={edit.reason ?? null} disabled={edit.busy} aria-busy={edit.busy || undefined} onClick={edit.onSelect}><Icon icon={AddIcon} />Create a source version</BlockedButton>}
           <span className="max-w-[72ch] text-caption text-fg-3">Opens step 2 with the columns the table has now. Recons keep reading the stored data until the new version is approved.</span>
         </span>
       )}>
