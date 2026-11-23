@@ -35,11 +35,14 @@ export function SectionHeading({ n, title, description, actions, level = 2, clas
   return (
     <div className={cn("flex items-start gap-3", className)}>
       {n !== undefined && <span aria-hidden="true" className="mt-0.5 grid size-6 shrink-0 place-items-center rounded-full bg-primary text-label text-primary-foreground tabular">{n}</span>}
+      {/* the actions share the title's line only, so in a narrow rail the description keeps the full width (audit 2) */}
       <span className="grid min-w-0 flex-1 gap-0.5">
-        <H className="text-title-3 text-fg">{title}</H>
+        <span className="flex min-w-0 items-start gap-2">
+          <H className="min-w-0 flex-1 text-title-3 text-fg">{title}</H>
+          {actions && <span className="-my-1 flex shrink-0 items-center gap-1">{actions}</span>}
+        </span>
         {description && <span className="text-body-sm text-fg-3">{description}</span>}
       </span>
-      {actions && <span className="flex shrink-0 items-center gap-2">{actions}</span>}
     </div>
   );
 }
