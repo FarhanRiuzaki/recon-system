@@ -62,8 +62,11 @@ function checkedAgain(tx: InTx, today: string) {
       eq(reconConfigVersions.status, "published"), sql`(${carry} = 'null'::jsonb or (${days} > 0 and ${reconItems.businessDate} + ${days} >= ${today}::date))`))),
   )!;
 }
-/** The record's minor units per major unit of its currency (ISO 4217 exponent; ingest quarantines any other currency). */
-const perMajor = () => sql`power(10::numeric, case ${records.currency} ${sql.join(Object.entries(CURRENCY_EXPONENT).map(([c, e]) => sql`when ${c} then ${e}::int`), sql` `)} end)`;
+/**
+ * The record's minor units per major unit of its currency (ISO 4217 exponent; ingest quarantines any other currency);
+ * a record without a currency reads as written (exponent 0), as amountText prints its raw units.
+ */
+const perMajor = () => sql`power(10::numeric, case ${records.currency} ${sql.join(Object.entries(CURRENCY_EXPONENT).map(([c, e]) => sql`when ${c} then ${e}::int`), sql` `)} else 0 end)`;
 /** Whether the filter reads a column of the item's record: the reference search or the amount range. */
 const needsRecords = (q: BreakFilter) => !!q.q?.trim() || !!q.amountMin || !!q.amountMax;
 

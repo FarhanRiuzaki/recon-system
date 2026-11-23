@@ -79,6 +79,10 @@ describe("GET breaks: amount range and checked again", () => {
     expect((await list("?amountMin=5&amountMax=5")).map((x) => x.ref)).toEqual(["P3"]);
     expect(await json<BreakSummaryDto>(summary(A, t.op, "?amountMin=100"))).toMatchObject({ open: 2, amounts: [{ currency: "IDR", amountMinor: "35000", items: 2 }] });
     expect((await json<{ reason: Record<string, number> }>(call("GET", `/v1/spaces/${A}/breaks/facets?amountMax=100`, { token: t.op }))).reason).toEqual({ "No counterpart": 2 });
+    // a source without a currency: the amount as written (exponent 0), as the screens print its raw units
+    await db.update(records).set({ currency: null }).where(eq(records.extRef, "P3"));
+    expect((await list("?amountMin=500&amountMax=500")).map((x) => x.ref)).toEqual(["P3"]);
+    expect((await list("?amountMax=5")).map((x) => x.ref)).toEqual([]);
     for (const bad of ["abc", "-1", "1e3", "1.2.3", "."]) expect((await call("GET", `/v1/spaces/${A}/breaks?amountMin=${bad}`, { token: t.op })).status).toBe(400);
   });
 
