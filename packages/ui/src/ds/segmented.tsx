@@ -32,7 +32,7 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
     (ref.current?.querySelectorAll<HTMLElement>("[role=radio]")[n])?.focus();
   }
   return (
-    <div ref={ref} role="radiogroup" aria-label={label} className="relative inline-flex shrink-0 rounded-ctl border border-line bg-tray p-0.5">
+    <div ref={ref} role="radiogroup" aria-label={label} className="relative inline-flex shrink-0 justify-self-start rounded-ctl border border-line bg-tray p-0.5">
       {box && !kit && (
         <span aria-hidden="true" className="indicator-move pointer-events-none absolute inset-y-0.5 left-0 rounded-sm bg-seg-active shadow-sm"
           style={{ transform: `translateX(${box.x}px)`, width: box.width }} />

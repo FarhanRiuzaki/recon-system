@@ -1,17 +1,19 @@
 import type { ReactNode } from "react";
-import { Truncate } from "./truncate";
 
 /**
- * Label / value rows under a chart or in a narrow rail (Insights, AI share, Top 5 totals): one row per fact, label left (body-sm fg-2), value right
- * (mono tabular). Long labels get the full width they need, so nothing clips at 1280 the way a 3-column Spec does.
+ * Label / value rows of a card (audit 2 B10: one style for every card's facts): from 768 px a label column as wide as
+ * its longest label (at most 14rem) and the value beside it; on a phone the value under its label. Label and value the
+ * same size (body-sm), the label regular fg-3, the value fg; no row rules. An item without a value is left out.
  */
-export function Facts({ items }: { items: { label: string; value: ReactNode }[] }) {
+type Fact = { label: string; value: ReactNode } | readonly [string, ReactNode];
+
+export function Facts({ items, className }: { items: readonly Fact[]; className?: string }) {
   return (
-    <dl className="grid gap-1.5 border-t border-dashed border-line-strong pt-3">
-      {items.map((i) => (
-        <div key={i.label} className="flex min-w-0 items-baseline justify-between gap-3">
-          <dt className="min-w-0 text-body-sm text-fg-2"><Truncate title={i.label}>{i.label}</Truncate></dt>
-          <dd className="shrink-0 font-mono text-body-sm font-medium tabular text-fg">{i.value}</dd>
+    <dl data-slot="facts" className={["grid gap-x-6 gap-y-2 text-body-sm md:grid-cols-[fit-content(14rem)_minmax(0,1fr)]", className].filter(Boolean).join(" ")}>
+      {items.map((f) => ("label" in f ? f : { label: f[0], value: f[1] })).filter((i) => i.value != null && i.value !== "").map((i) => (
+        <div key={i.label} className="contents">
+          <dt className="text-fg-3">{i.label}</dt>
+          <dd className="min-w-0 wrap-anywhere text-fg max-md:mb-1">{i.value}</dd>
         </div>
       ))}
     </dl>

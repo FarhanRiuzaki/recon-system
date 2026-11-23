@@ -41,9 +41,9 @@ export function TableCard({ title, caption, side, rows, onRowSelect }: TableCard
       <div className="flex items-start justify-between gap-2 rounded-t-lg border-b border-line-strong bg-tray px-3 py-2">
         <span className="grid min-w-0">
           <span className="truncate text-label text-fg">{title}</span>
-          {caption && <span className="truncate text-caption text-fg-3">{caption}</span>}
+          {caption && <span className="truncate text-label font-normal text-fg-3">{caption}</span>}
         </span>
-        <span className="shrink-0 rounded-full bg-card px-1.5 text-caption text-fg-3 tabular ring-1 ring-line">{fields}</span>
+        <span className="shrink-0 rounded-full bg-card px-1.5 text-label font-normal text-fg-3 tabular ring-1 ring-line">{fields}</span>
       </div>
       <ul className="divide-y divide-line [&>li:last-child]:rounded-b-lg">
         {rows.map((r) => {
@@ -69,10 +69,10 @@ export function TableCard({ title, caption, side, rows, onRowSelect }: TableCard
                 {r.required && <span className="sr-only"> (required)</span>}
                 </Name>;
               })()}
-              {note ? <span className={cn("max-w-28 shrink-0 truncate text-caption", r.state === "missing" ? "text-down-ink" : "text-fg-3")}>{note}</span>
-                : r.example !== undefined && <span className="max-w-28 shrink-0 truncate font-mono text-caption text-fg-3" title={r.example}>{r.example}</span>}
+              {note ? <span className={cn("max-w-28 shrink-0 truncate text-label font-normal", r.state === "missing" ? "text-down-ink" : "text-fg-3")}>{note}</span>
+                : r.example !== undefined && <span className="max-w-28 shrink-0 truncate font-mono text-label font-normal text-fg-3" title={r.example}>{r.example}</span>}
               {(r.type || r.limit) && !r.header && (
-                <span className="shrink-0 rounded-sm bg-tray px-1.5 font-mono text-caption text-fg-3 ring-1 ring-line">{[r.limit, r.type].filter(Boolean).join(" ")}</span>
+                <span className="shrink-0 rounded-sm bg-tray px-1.5 font-mono text-label font-normal text-fg-3 ring-1 ring-line">{[r.limit, r.type].filter(Boolean).join(" ")}</span>
               )}
               {r.connectable && (
                 <Handle id={r.id} type={side} position={side === "source" ? Position.Right : Position.Left}

@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Icon, type IconData } from "../ui/icon";
 import { ArrowDownIcon, ArrowUpIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
@@ -6,6 +8,23 @@ import { NumberTween } from "../motion";
 import { Skeleton } from "../ui/skeleton";
 import { clampRatio } from "../lib/meter";
 import { type DeltaDirection, deltaTone, splitDelta } from "../lib/delta";
+import { formatCompact } from "../lib/format";
+
+/** A plain number as format.ts prints it: optional sign, grouped digits, optional decimals. */
+const NUMBER = /^[-−]?\d{1,3}(,\d{3})*(\.\d+)?$/;
+/** Past this many characters a number is wider than a tile at 1440 px (5 tiles in a row). */
+const FITS = 10;
+
+/**
+ * A KPI value never wider than its tile (audit 2 A11): a plain number longer than FITS characters shows compact
+ * ("140.9B"), the exact text kept for the tooltip and screen readers; anything else (a count, "3 of 7") as it is.
+ * `force` compacts a shorter number too: the tile measured it wider than itself (a phone, 2 tiles a row).
+ */
+export function fitStat(value: string, force = false): { shown: string; exact: string | null } {
+  if (!NUMBER.test(value) || (!force && value.length <= FITS)) return { shown: value, exact: null };
+  const shown = formatCompact(Number(value.replace(/,/g, "").replace("−", "-")));
+  return shown === value ? { shown, exact: null } : { shown, exact: value };
+}
 
 /**
  * `text` is the whole comparison, number first ("+18% vs previous 24 hours"): the number goes in the pill and the
@@ -63,10 +82,7 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
           </span>
         )}
       </div>
-      <span className="text-stat text-fg tabular">
-        {tween ? <NumberTween value={tween.value} format={tween.format} total={tween.total} /> : value}
-        {unit && <span className="ml-0.5 text-body font-normal tracking-normal text-fg-3">{unit}</span>}
-      </span>
+      <StatValue value={value} unit={unit} tween={tween} />
       {progress != null && (
         <span aria-hidden="true" className="block h-1.5 overflow-hidden rounded-full bg-inset">
           <span className="striped block h-full rounded-full bg-primary" style={{ width: `${clampRatio(progress) * 100}%` }} />
@@ -75,6 +91,34 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
       {caption && <span className="text-caption text-fg-3">{caption}</span>}
       {trend && <div className="mt-auto h-7">{trend}</div>}
     </Root>
+  );
+}
+
+/** The value line; a plain number that doesn't fit the tile turns compact with the exact value in its title (fitStat). */
+function StatValue({ value, unit, tween }: { value: string; unit?: string; tween?: { value: number; format: (v: number) => string; total?: number } }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const need = useRef(0);
+  const [force, setForce] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || tween || typeof ResizeObserver === "undefined") return;
+    // the full text wider than the tile: compact, remembering its width; the tile grown to that width again: full
+    const check = () => {
+      if (el.dataset.compact) { if (need.current && el.clientWidth >= need.current) setForce(false); }
+      else if (el.scrollWidth > el.clientWidth) { need.current = el.scrollWidth; setForce(true); }
+    };
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [tween, value]);
+  const fit = tween ? { shown: value, exact: null } : fitStat(value, force);
+  const unitText = unit && <span className="ml-0.5 text-body font-normal tracking-normal text-fg-3">{unit}</span>;
+  return (
+    <span ref={ref} data-compact={fit.exact ? "true" : undefined} className="min-w-0 text-stat whitespace-nowrap text-fg tabular" title={fit.exact ? `${fit.exact}${unit ? ` ${unit}` : ""}` : undefined}>
+      {tween ? <NumberTween value={tween.value} format={tween.format} total={tween.total} />
+        : fit.exact ? <><span aria-hidden="true">{fit.shown}</span><span className="sr-only">{fit.exact}</span></> : value}
+      {unitText}
+    </span>
   );
 }
 

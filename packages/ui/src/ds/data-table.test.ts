@@ -209,3 +209,17 @@ describe("DataTable sort by select (phone)", () => {
     expect(renderToStaticMarkup(h(DataTable<S>, { ...base, sort: { key: "at", dir: "desc" } }))).not.toContain("Sort by");
   });
 });
+
+/** Audit 2 (run page "Reference" header in mono): a column's mono applies to its cells, never its header label. */
+describe("DataTable header type", () => {
+  it("a mono column keeps a sans label header", () => {
+    const out = renderToStaticMarkup(h(DataTable<Row>, {
+      label: "Items", rows: [{ id: "REF-1" }], rowKey: (r) => r.id, columns: [{ key: "id", header: "Reference", className: "font-mono text-mono", cell: (r) => r.id }],
+      empty: { icon: SessionsIcon, title: "No items", description: "None yet." },
+    }));
+    const th = /<th [^>]*class="([^"]*)"[^>]*>(?:(?!<\/th>).)*Reference/.exec(out)?.[1]?.split(" ") ?? [];
+    expect(th).toEqual(expect.arrayContaining(["font-sans", "text-label"]));
+    expect(th).not.toContain("font-mono");
+    expect(out).toMatch(/<td[^>]*class="[^"]*font-mono[^"]*"[^>]*>REF-1/);
+  });
+});

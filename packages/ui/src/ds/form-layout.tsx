@@ -52,7 +52,7 @@ export function SectionHeading({ n, title, description, actions, level = 2, clas
 export function FormActions({ children, sticky = true, className }: { children: ReactNode; sticky?: boolean; className?: string }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3",
-      sticky && "sticky bottom-0 z-10 -mx-4 -mb-4 rounded-b-lg border-t border-line bg-card px-4 py-3 pb-[max(--spacing(3),env(safe-area-inset-bottom))]", className)}>
+      sticky && "sticky bottom-0 z-10 -mx-4 -mb-4 rounded-b-lg border-t border-line bg-card px-4 py-4 pb-[max(--spacing(4),env(safe-area-inset-bottom))]", className)}>
       {children}
     </div>
   );

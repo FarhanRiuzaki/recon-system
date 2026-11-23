@@ -34,6 +34,9 @@ export function useScrollsX<T extends HTMLElement>(): [React.RefCallback<T>, boo
   return [setEl, scrolls, measured, edges];
 }
 
+/** First and last cell 16 px from the card edge from 768 px (audit 2 A2); a phone card row sets its own padding. */
+export const TABLE_INSET = "md:[&_tr>*:first-child]:pl-4 md:[&_tr>*:last-child]:pr-4";
+
 /** The fade on a side of a sideways-scrolling box while content is hidden past it (owner, 21 Nov): the row divider's --line through the tray surface to clear: DS surfaces only, visible on a white card. */
 const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tray to-transparent opacity-0 transition-opacity duration-(--dur-fast) data-[on]:opacity-100";
 
@@ -44,6 +47,8 @@ const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tra
  * window; `data-scrolls` (group `scroll`) lets cells stick to the box's sides while it scrolls sideways (DataTable).
  * While it scrolls, each side with hidden content shows a fade (design-system §5.7), so the table reads as wider; a table
  * whose first column sticks sets `--table-stick` (its width) on an ancestor, so the start fade begins past that column.
+ * From 768 px the first and last cell of every row sit 16 px from the card edge (audit 2 A2), so the first column's
+ * text lines up with the panel title above the card; the cells between keep 12.
  */
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   const [ref, scrolls, measured, edges] = useScrollsX<HTMLDivElement>();
@@ -52,7 +57,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
       <div ref={ref} data-slot="table-container" data-scrolls={scrolls || undefined}
         className={cn("group/scroll relative w-full", measured && !scrolls ? "overflow-x-visible" : "scroll-quiet overflow-x-auto")}
         {...(scrolls ? { tabIndex: 0, role: "region", "aria-label": props["aria-label"] } : {})}>
-        <table data-slot="table" className={cn("w-full border-separate border-spacing-0 text-body", className)} {...props} />
+        <table data-slot="table" className={cn(TABLE_INSET, "w-full border-separate border-spacing-0 text-body", className)} {...props} />
       </div>
       {/* more to see on that side: a grey edge fading to clear, shown only while content is hidden past it */}
       {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="start" data-on={edges.start || undefined} className={cn(FADE, "left-[var(--table-stick,0px)] bg-linear-to-r")} />}
@@ -70,7 +75,7 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   return <tfoot data-slot="table-footer" className={cn("bg-tray font-medium", className)} {...props} />;
 }
 function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
-  return <tr data-slot="table-row" className={cn("group/row transition-colors duration-(--dur-instant) hover:bg-tray/60 data-[state=selected]:bg-row-selected data-[state=selected]:[&>td:first-child]:row-mark", className)} {...props} />;
+  return <tr data-slot="table-row" className={cn("group/row transition-colors duration-(--dur-instant) hover:bg-tray/60 data-[expanded]:[&>*]:border-b-0 data-[state=selected]:bg-row-selected data-[state=selected]:[&>td:first-child]:row-mark", className)} {...props} />;
 }
 function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   return <th data-slot="table-head" className={cn("h-10 border-b border-line px-3 text-left align-middle text-label font-normal whitespace-nowrap text-fg-3", className)} {...props} />;
@@ -78,13 +83,27 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
 /**
  * A body cell: long text wraps in the column instead of being cut (Captain, 21 Nov 2026), also inside a `Truncate` or
  * a `truncate` span in the cell (its ellipsis is off here); a cell that must stay on one line passes `whitespace-nowrap`.
+ * A chip never wraps (audit 2 A10): its label stays one line, so the chip's width is the column's minimum.
  */
-export const CELL_WRAP = "whitespace-normal break-words [&_.truncate]:overflow-visible [&_.truncate]:whitespace-normal [&_.truncate]:break-words";
+export const CHIP_NOWRAP = "[&_[data-slot$=chip]]:whitespace-nowrap [&_[data-slot$=chip]_.truncate]:overflow-hidden [&_[data-slot$=chip]_.truncate]:whitespace-nowrap [&_[data-slot$=chip]_.truncate]:break-normal";
+export const CELL_WRAP = `whitespace-normal break-words [&_.truncate]:overflow-visible [&_.truncate]:whitespace-normal [&_.truncate]:break-words ${CHIP_NOWRAP}`;
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return <td data-slot="table-cell" className={cn("h-(--row-h) border-b border-line px-3 py-1.5 align-middle", CELL_WRAP, className)} {...props} />;
+}
+/**
+ * The panel a row opens in place under it (an editor, the row's details), one cell across every column (audit 2 A4):
+ * 12 px under the row, 16 px from the card's sides and above the next row's line. The row that opened it passes
+ * `data-expanded` so its own line goes and the two read as one; the line under this one closes them.
+ */
+function TableExpandRow({ colSpan, className, children, ...props }: React.ComponentProps<"tr"> & { colSpan: number }) {
+  return (
+    <tr data-slot="table-expand-row" {...props}>
+      <td colSpan={colSpan} className={cn("border-b border-line px-expand pt-expand-top pb-expand align-top", className)}>{children}</td>
+    </tr>
+  );
 }
 function TableCaption({ className, ...props }: React.ComponentProps<"caption">) {
   return <caption data-slot="table-caption" className={cn("mt-3 text-label font-normal text-fg-3", className)} {...props} />;
 }
 
-export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption };
+export { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell, TableCaption, TableExpandRow };

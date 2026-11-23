@@ -31,7 +31,7 @@
 .flow-canvas .react-flow__edge-text { fill: var(--fg-2); }
 /* base.css leaves the Controls buttons unstyled (style.css would style them with its own greys). */
 .flow-canvas .react-flow__controls { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
-.flow-canvas .react-flow__controls-button { background: var(--card); color: var(--fg-2); border-bottom: 1px solid var(--line); }
+.flow-canvas .react-flow__controls-button { width: 28px; height: 28px; background: var(--card); color: var(--fg-2); border-bottom: 1px solid var(--line); } /* 28: the smallest drawn target (audit 2 B13) */
 .flow-canvas .react-flow__controls-button:hover { background: var(--tray); color: var(--fg); }
 /* a selected node shows by its border (the inspector beside it says which); React Flow's own selection shadow is off */
 .flow-canvas .react-flow__node.selected, .flow-canvas .react-flow__node:focus { box-shadow: none; }
@@ -64,7 +64,7 @@
 .flow-canvas .flow-label {
   position: absolute; pointer-events: none; padding: 1px 8px; border-radius: 999px;
   background: var(--card); color: var(--fg-2); box-shadow: 0 0 0 1px var(--line);
-  font-size: var(--text-caption); line-height: var(--text-caption--line-height); font-variant-numeric: tabular-nums; white-space: nowrap;
+  font-size: var(--text-label); line-height: var(--text-label--line-height); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .flow-canvas .flow-label.is-quiet { color: var(--fg-4); }
 /* a card being dragged sits over the others */

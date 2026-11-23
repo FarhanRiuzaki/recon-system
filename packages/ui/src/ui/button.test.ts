@@ -10,6 +10,13 @@ const classes = (out: string) => /class="([^"]*)"/.exec(out)![1]!.split(" ");
 
 /** The affectUI look (design-system.md §3.7): what the class string carries; the gradient itself is base.css. */
 describe("Button variants", () => {
+  it("a link sits on the text line at every size: no side padding, no fixed height (audit 2 A9)", () => {
+    for (const size of ["sm", "default", "lg"] as const) {
+      const c = classes(renderToStaticMarkup(h(Button, { variant: "link", size }, "Paste a connection string")));
+      expect(c).toEqual(expect.arrayContaining(["px-0", "h-auto"]));
+      expect(c.filter((x) => /^(px-[1-9]|h-\d)/.test(x))).toEqual([]);
+    }
+  });
   it.each([["create", "create"], ["edit", "edit"], ["remove", "down"]] as const)("intent %s (owner 24 Nov): its ink on its soft fill at rest, the -hover fill under the pointer, no border", (variant, token) => {
     const c = classes(markup(variant));
     expect(c).toEqual(expect.arrayContaining(["border-transparent", `bg-${token}-soft`, `text-${token}-ink`, `hover:bg-${token}-soft-hover`]));

@@ -12,7 +12,7 @@ import { Pagination } from "./pagination";
 import { Button } from "../ui/button";
 import { ActionCard } from "./action-card";
 import { CompareCard } from "./compare-card";
-import { EditorRow } from "./editor-row";
+import { EditorRow, EditToggle } from "./editor-row";
 import { CategoryChip } from "./badges";
 import { PageZone } from "./page-zone";
 import { BlockedButton } from "./blocked-button";
@@ -152,8 +152,26 @@ describe("TableCell", () => {
     const { TableCell, CELL_WRAP } = await import("../ui/table");
     const out = html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, null, "A long source name that wraps"))))).replaceAll("&amp;", "&");
     for (const c of CELL_WRAP.split(" ")) expect(out).toContain(c);
-    expect(out).not.toContain("whitespace-nowrap");
-    expect(html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, { className: "whitespace-nowrap" }, "14:05")))))).toContain("whitespace-nowrap");
+    expect(out.split(/[ "]/)).not.toContain("whitespace-nowrap");
+    expect(html(h("table", null, h("tbody", null, h("tr", null, h(TableCell, { className: "whitespace-nowrap" }, "14:05"))))).split(/[ "]/)).toContain("whitespace-nowrap");
+  });
+  it("a chip in a cell never wraps (audit 2 A10): every *-chip and its truncate label stay one line, outranking the cell's wrap", async () => {
+    const { CELL_WRAP } = await import("../ui/table");
+    expect(CELL_WRAP.split(" ")).toEqual(expect.arrayContaining(["[&_[data-slot$=chip]]:whitespace-nowrap", "[&_[data-slot$=chip]_.truncate]:whitespace-nowrap"]));
+  });
+});
+
+describe("Table geometry (audit 2 A2, A4)", () => {
+  it("from 768 px the first and last cell of every row sit 16 px from the card edge", async () => {
+    const { TABLE_INSET } = await import("../ui/table");
+    expect(TABLE_INSET.split(" ")).toEqual(["md:[&_tr>*:first-child]:pl-4", "md:[&_tr>*:last-child]:pr-4"]);
+  });
+  it("an expanded row's panel: one cell across the columns, 12 under the row, 16 at the sides and bottom; its row drops its line", async () => {
+    const { TableExpandRow, TableRow } = await import("../ui/table");
+    const out = html(h("table", null, h("tbody", null, h(TableExpandRow, { colSpan: 4 }, "editor")))).replaceAll("&amp;", "&");
+    const td = /<td colSpan="4" class="([^"]*)">editor<\/td>/.exec(out);
+    expect(td?.[1]?.split(" ")).toEqual(expect.arrayContaining(["pt-expand-top", "px-expand", "pb-expand"]));
+    expect(html(h("table", null, h("tbody", null, h(TableRow, null)))).replaceAll("&amp;", "&").replaceAll("&gt;", ">")).toContain("data-[expanded]:[&>*]:border-b-0");
   });
 });
 
@@ -250,5 +268,16 @@ describe("ActionCard (audit P9)", () => {
   });
   it("without meta, no empty line", () => {
     expect(html(h(ActionCard, { title: "Write off", consequence: "Closes the item.", action: "x" }))).not.toContain("text-caption");
+  });
+});
+
+describe("EditToggle (audit 2 A8)", () => {
+  it("Edit and Done: the same variant and the same fixed width; a read-only row shows Show at that width", () => {
+    const at = (open: boolean, readOnly = false) => /<button[^>]*class="([^"]*)"/.exec(html(h(EditToggle, { open, readOnly, onToggle: () => {}, name: "posting" })))![1]!.split(" ");
+    const edit = at(false), done = at(true);
+    expect(edit).toContain("w-20");
+    expect(done).toEqual(edit);
+    expect(html(h(EditToggle, { open: true, onToggle: () => {} }))).toContain("Done");
+    expect(at(false, true)).toContain("w-20");
   });
 });

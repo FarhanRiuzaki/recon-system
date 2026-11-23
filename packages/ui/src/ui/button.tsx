@@ -43,6 +43,9 @@ const buttonVariants = cva(
         icon: "size-8",
       },
     },
+    // a link sits on the text line at every size: no side padding and no fixed height (audit 2 A9, "Paste a
+    // connection string" 11 px in from the field above it: the size's padding won over the variant's px-0)
+    compoundVariants: [{ variant: "link", class: "h-auto px-0" }],
     defaultVariants: { variant: "default", size: "default" },
   },
 );

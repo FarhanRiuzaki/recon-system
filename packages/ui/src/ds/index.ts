@@ -75,6 +75,6 @@ export { type SqlContext, SqlEditor, type SqlSuggest, type SqlSuggestion, sqlCon
 
 export { ColumnsMenu } from "./toolbar";
 export { PageZone } from "./page-zone";
-export { EditorRow } from "./editor-row";
+export { EditorRow, EditToggle } from "./editor-row";
 export { CompareCard, type CompareRow } from "./compare-card";
 export { ActionCard } from "./action-card";
