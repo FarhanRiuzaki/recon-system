@@ -8,7 +8,7 @@ import {
   type Column, type SortDir,
 } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatCompact, formatNumber } from "@starterkit/ui/lib/format";
-import { HEALTH, type Health } from "@starterkit/ui/lib/status";
+import { HEALTH, type Health, toStatusTone } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { HeatmapIcon, MoreIcon, SessionsIcon, UsersIcon } from "@starterkit/ui/ui/icons";
@@ -26,7 +26,7 @@ const MATRIX_ALLOWED: ReadonlySet<string> = new Set(MATRIX_MODULES.flatMap((m) =
 const MATRIX_START = ["user.view", "user.create", "user.edit", "role.view", "role.delete", "audit.view"];
 
 const HEALTHS = ["healthy", "progress", "degraded", "down", "stopped", "unknown"] as const satisfies readonly Health[];
-const LEGEND = HEALTHS.map((h) => ({ health: h, label: HEALTH[h].label, description: HEALTH[h].description }));
+const LEGEND = HEALTHS.map((h) => ({ health: toStatusTone(h), label: HEALTH[h].label, description: HEALTH[h].description }));
 const REGION_STATES = ["data", "loading", "empty", "error", "stale"] as const;
 const EMPTY = { icon: SessionsIcon, title: "No sessions yet", description: "Sessions appear here after someone signs in." };
 const ROLES = [{ value: "", label: "Any" }, { value: "admin", label: "Admin" }, { value: "viewer", label: "Viewer" }] as const;
@@ -56,7 +56,7 @@ export function DataSections() {
           <span className="grid min-w-0"><Truncate title={r.name}><span className="font-medium text-fg">{r.name}</span></Truncate><span className="truncate font-mono text-caption text-fg-3">{r.email}</span></span>
         </span>
       ) },
-    { key: "status", header: "Status", sortable: true, cell: (r) => <StatusChip health={r.status} label={HEALTH[r.status].label} description={HEALTH[r.status].description} /> },
+    { key: "status", header: "Status", sortable: true, cell: (r) => <StatusChip health={toStatusTone(r.status)} label={HEALTH[r.status].label} description={HEALTH[r.status].description} /> },
     { key: "city", header: "City", sortable: true, cell: (r) => r.city },
     { key: "seen", header: "Last seen", align: "right", cell: (r) => <span className="tabular">{r.lastSeen}</span> },
   ];

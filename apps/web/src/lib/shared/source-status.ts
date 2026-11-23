@@ -1,10 +1,10 @@
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 import type { SourceRowDto } from "@starterkit/shared/contracts/sources";
 import type { SourcePullDto } from "@starterkit/shared/contracts/sources";
 import type { VersionStatus } from "@starterkit/shared/sources";
 import { statusChip, statusTone } from "./categories";
 
-type Status = { health: Health; label: string };
+type Status = { health: StatusTone; label: string };
 const STATE: Record<NonNullable<SourceRowDto["health"]>["state"], Status> = {
   healthy: statusChip("healthy", "Healthy"), degraded: statusChip("degraded", "Degraded"), down: statusChip("down", "Down"),
 };

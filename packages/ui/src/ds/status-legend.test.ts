@@ -4,8 +4,9 @@ import { describe, expect, it } from "vitest";
 import { TooltipProvider } from "../ui/tooltip";
 import { Panel } from "./panel";
 import { StatusLegend, StatusLegendList } from "./status-legend";
+import { toStatusTone } from "../lib/status";
 
-const items = [{ health: "healthy", label: "Active" }, { health: "stopped", label: "Disabled", description: "Turned off by an admin." }] as const;
+const items = [{ health: toStatusTone("healthy"), label: "Active" }, { health: toStatusTone("stopped"), label: "Disabled", description: "Turned off by an admin." }];
 const wrap = (el: ReturnType<typeof h>) => renderToStaticMarkup(h(TooltipProvider, null, el));
 
 describe("StatusLegend", () => {

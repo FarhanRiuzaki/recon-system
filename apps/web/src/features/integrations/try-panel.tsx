@@ -10,7 +10,7 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { OperationSpec, TryDto } from "@starterkit/shared/contracts/integrations";
 import type { OpField } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
-import { statusChip, statusTone } from "@/lib/shared/categories";
+import { statusChips } from "@/lib/shared/categories";
 
 // Try it (DEC-053): one call of an operation to the development environment, with a body typed here; the answer comes
 // back decrypted and masked. Production is never called from here.
@@ -26,9 +26,8 @@ function sampleOf(fields: readonly OpField[], skip: ReadonlySet<string>, prefix 
   }
   return out;
 }
-const OUTCOME = {
-  ok: statusChip("success", "Answered"), rejected: statusChip("refused", "Refused"), not_sent: statusChip("not_sent", "Not sent"), timeout: statusChip("timeout", "No readable answer"),
-} as const;
+const outcomeChip = statusChips<TryDto["outcome"]>({ ok: ["success", "Answered"], rejected: ["refused", "Refused"], not_sent: ["not_sent", "Not sent"], timeout: ["timeout", "No readable answer"] });
+const successChip = statusChips({ yes: ["success", "Success"], no: ["failed", "Not success"] });
 
 export function TryPanel({ id, operations }: { id: string; operations: readonly OperationSpec[] }) {
   const [key, setKey] = useState(operations[0]?.key ?? "");
@@ -78,8 +77,8 @@ export function TryPanel({ id, operations }: { id: string; operations: readonly 
           {res && "outcome" in res && (
             <div className="grid gap-3 motion-safe:animate-enter">
               <div className="flex flex-wrap items-center gap-3">
-                <StatusChip health={OUTCOME[res.outcome].health} label={OUTCOME[res.outcome].label} />
-                {res.success !== null && <StatusChip health={statusTone(res.success ? "success" : "failed")} label={res.success ? "Success" : "Not success"} />}
+                <StatusChip {...outcomeChip(res.outcome)} />
+                {res.success !== null && <StatusChip {...successChip(res.success ? "yes" : "no")} />}
                 <span className="text-body-sm text-fg">{res.message}</span>
               </div>
               <dl className="flex flex-wrap gap-x-8 gap-y-2">

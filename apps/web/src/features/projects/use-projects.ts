@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 import { api, retryUnlessNotFound } from "@/lib/client/api";
 import type { ProjectDto } from "@starterkit/shared/contracts/projects";
 import { projectDetail, PROJECTS_KEY } from "@/lib/shared/queries";
@@ -17,7 +17,7 @@ export function useProjectDetail(id: string, enabled = true) {
 }
 
 /** One mapping for the status chip on every project screen: archived = put away on purpose (stopped). */
-export const projectStatus = (p: Pick<ProjectDto, "status">): { health: Health; label: "Active" | "Archived" } =>
+export const projectStatus = (p: Pick<ProjectDto, "status">): { health: StatusTone; label: "Active" | "Archived" } =>
   p.status === "active" ? { health: statusTone("active"), label: "Active" } : { health: statusTone("archived"), label: "Archived" };
 
 /** The status legend of every card that shows project statuses. */

@@ -6,12 +6,12 @@ import { InfoIcon } from "../ui/icons";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import type { Health } from "../lib/status";
+import type { StatusTone } from "../lib/status";
 import { StatusIcon } from "./status-chip";
 
 const TITLE = "What these statuses mean";
 
-export type LegendItem = { health: Health; label: string; description?: string };
+export type LegendItem = { health: StatusTone; label: string; description?: string };
 
 /** The legend body: one vertical list, the same in every card. */
 export function StatusLegendList({ items }: { items: readonly LegendItem[] }) {

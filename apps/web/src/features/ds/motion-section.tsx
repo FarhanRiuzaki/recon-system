@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { type Column, CountBadge, DataTable, Panel, Segmented, StatusChip } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatNumber } from "@starterkit/ui/lib/format";
-import { HEALTH } from "@starterkit/ui/lib/status";
+import { HEALTH, toStatusTone } from "@starterkit/ui/lib/status";
 import { CHART_STAGGER, cssEase, DUR, EASE, LOADING, NumberTween, OVERLAY_MOTION, ReducedMotionScope, Reveal, SPRING_FLIP, SPRING_INDICATOR, SPRING_SOFT, Stagger, STAGGER, StaggerItem, tweenDuration } from "@starterkit/ui/motion";
 import { TextReveal } from "@starterkit/ui/motion/text-reveal";
 import { Button } from "@starterkit/ui/ui/button";
@@ -195,7 +195,7 @@ const CHIP_VALUES = ["healthy", "degraded", "down"] as const;
 function ChipChangeDemo() {
   const [run, replay] = useRun();
   const v = CHIP_VALUES[run % CHIP_VALUES.length] ?? "healthy";
-  return <Demo id="chip-change" run={run} onReplay={replay}><span><StatusChip health={v} label={HEALTH[v].label} description={HEALTH[v].description} /></span></Demo>;
+  return <Demo id="chip-change" run={run} onReplay={replay}><span><StatusChip health={toStatusTone(v)} label={HEALTH[v].label} description={HEALTH[v].description} /></span></Demo>;
 }
 
 type DemoRow = { id: string; name: string };

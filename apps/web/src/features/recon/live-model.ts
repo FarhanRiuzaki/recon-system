@@ -6,12 +6,12 @@ import type { BreakdownPart } from "@starterkit/ui/lib/breakdown";
 import { APP_TIME_ZONE_LABEL, formatDateTime, formatDuration, formatNumber, formatTime } from "@starterkit/ui/lib/format";
 import { type Chip, STATES, statusChip } from "@/lib/shared/categories";
 
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 export const DAY_STATE_LABEL: Record<LiveReconDto["state"], string> = { open: "Open", closing: "Closing", closed: "Closed" };
 const HEALTH_LABEL: Record<"healthy" | "degraded" | "down", string> = { healthy: "Healthy", degraded: "Degraded", down: "Down" };
 
 /** A source's state for a chip: its health, or Unknown before its first publish. */
-export function sourceChip(s: LiveSourceDto): { health: Health; label: string } {
+export function sourceChip(s: LiveSourceDto): { health: StatusTone; label: string } {
   return s.health ? statusChip(s.health.state, HEALTH_LABEL[s.health.state]) : statusChip("no_data", "Not ingesting");
 }
 /** How far a source is: a pull's lag ("21 min behind"), else what it is complete through. */

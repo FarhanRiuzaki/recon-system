@@ -1,9 +1,9 @@
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 import type { ReconRowDto } from "@starterkit/shared/contracts/recon";
 import type { VersionStatus } from "@starterkit/shared/sources";
 import { statusTone } from "./categories";
 
-type Status = { health: Health; label: string; description: string };
+type Status = { health: StatusTone; label: string; description: string };
 
 /**
  * One mapping for a recon's chip on every recon screen: no published version yet = Draft (nothing runs), or In review

@@ -6,7 +6,7 @@ import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { PassSpec, ReconRunDto, ReconRunItemDto, ReconSpec, RunDay, RunProjection } from "@starterkit/shared/contracts/recon";
 import { BREAK_REASONS, RUN_RANGE_MAX_DAYS } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 import { type Chip, statusChip } from "@/lib/shared/categories";
 
 type Run = Pick<ReconRunDto, "status" | "mode" | "from" | "to" | "counters" | "error" | "finishedAt" | "specHash">;
@@ -281,7 +281,7 @@ export function countLine(t: Totals, labels: readonly [string, string]): string 
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
 /** `chip`: a StatusChip by meaning (owner 24 Nov): running blue, not simulated or out of date amber, stopped red, simulated green. */
-export type SimView = { chip: { health: Health; label: string }; line: string; counts: Run | null; dim: boolean };
+export type SimView = { chip: { health: StatusTone; label: string }; line: string; counts: Run | null; dim: boolean };
 /** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
 export const STOPPED_CHIP = statusChip("failed", "Stopped");
 /** A run that finished: Done, or Simulated for a simulation; both worked, so both green (owner 24 Nov). */

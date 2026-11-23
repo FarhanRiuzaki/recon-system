@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { Avatar, BlockedButton, type Column, ColumnsMenu, DataTable, Notice, Panel, RelativeTime, StatusChip, Toolbar, Truncate } from "@starterkit/ui/ds";
-import type { Health } from "@starterkit/ui/lib/status";
+import type { StatusTone } from "@starterkit/ui/lib/status";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Input } from "@starterkit/ui/ui/input";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
@@ -28,7 +28,7 @@ import { statusTone } from "@/lib/shared/categories";
 
 const none = <span className="text-fg-3">—</span>;
 const mono = (text: string) => <span className="font-mono text-mono">{text}</span>;
-type Chip = { health: Health; label: string; description: string };
+type Chip = { health: StatusTone; label: string; description: string };
 const FILE_STATUS: Record<SourceFileDto["status"], Chip> = {
   ingested: { health: statusTone("success"), label: "Ingested", description: "Read and stored; its quarantined rows are listed under Quarantine." },
   rejected: { health: statusTone("nothing"), label: "Rejected", description: "The same content was ingested already; nothing changed." },

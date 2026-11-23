@@ -1,5 +1,5 @@
 import type { CategorySlot, StatusChipProps } from "@starterkit/ui/ds";
-import type { Health } from "@starterkit/ui/lib/status";
+import { type Health, type StatusTone, toStatusTone } from "@starterkit/ui/lib/status";
 import type { ApprovalKind } from "@starterkit/shared/approvals";
 import type { ActionRunRowDto } from "@starterkit/shared/contracts/breaks";
 import type { LiveReconDto, SignoffRowDto } from "@starterkit/shared/contracts/recon";
@@ -24,18 +24,27 @@ const TONE_OF = {
   unknown: ["unknown", "no_data"],
 } as const satisfies Record<Health, readonly string[]>;
 export type StatusMeaning = (typeof TONE_OF)[Health][number];
-export const STATUS_TONE = Object.fromEntries(Object.entries(TONE_OF).flatMap(([tone, ms]) => ms.map((m) => [m, tone]))) as Record<StatusMeaning, Health>;
-export const statusTone = (meaning: StatusMeaning): Health => STATUS_TONE[meaning];
-export const statusChip = (meaning: StatusMeaning, label: string): { health: Health; label: string } => ({ health: STATUS_TONE[meaning], label });
+export const STATUS_TONE = Object.fromEntries(Object.entries(TONE_OF).flatMap(([tone, ms]) => ms.map((m) => [m, toStatusTone(tone as Health)]))) as Record<StatusMeaning, StatusTone>;
+/** The tone of a meaning: the only way a screen gets a `StatusTone` (the type StatusChip takes). */
+export const statusTone = (meaning: StatusMeaning): StatusTone => STATUS_TONE[meaning];
+export type StatusChipData = { health: StatusTone; label: string };
+export const statusChip = (meaning: StatusMeaning, label: string): StatusChipData => ({ health: STATUS_TONE[meaning], label });
+/**
+ * A domain's chips from one table, key → [meaning, label], so the colour and the words of a status sit on one row and
+ * a caller passes only the domain's key (`postingChip("not_sent")`), never a meaning and a label it paired itself.
+ */
+export function statusChips<K extends string>(table: Record<K, readonly [StatusMeaning, string]>): (key: K) => StatusChipData {
+  return (key) => statusChip(table[key][0], table[key][1]);
+}
 
 /** Statuses that used to be categories (owner 24 Nov): a break's work state (New and open work blue, Resolved green), a recon's business date, a sign-off stage. */
 export const STATES = {
   workState: { new: statusTone("open"), assigned: statusTone("in_progress"), investigating: statusTone("in_progress"), pending_external: statusTone("waiting"),
-    proposed_resolution: statusTone("in_progress"), pending_approval: statusTone("waiting"), resolved: statusTone("done") } satisfies Record<BreakState, Health>,
+    proposed_resolution: statusTone("in_progress"), pending_approval: statusTone("waiting"), resolved: statusTone("done") } satisfies Record<BreakState, StatusTone>,
   // a recon's business date: open and closing are under way, closed is done
-  dayState: { open: statusTone("open"), closing: statusTone("in_progress"), closed: statusTone("done") } satisfies Record<LiveReconDto["state"], Health>,
+  dayState: { open: statusTone("open"), closing: statusTone("in_progress"), closed: statusTone("done") } satisfies Record<LiveReconDto["state"], StatusTone>,
   // a closed day's sign-off: waiting for it, prepared, signed off
-  signoffStage: { closed: statusTone("waiting"), prepared: statusTone("in_progress"), signed: statusTone("done") } satisfies Record<SignoffRowDto["stage"], Health>,
+  signoffStage: { closed: statusTone("waiting"), prepared: statusTone("in_progress"), signed: statusTone("done") } satisfies Record<SignoffRowDto["stage"], StatusTone>,
 } as const;
 
 /**

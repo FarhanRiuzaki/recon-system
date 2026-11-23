@@ -4,7 +4,7 @@ import {
   ActionCard, ActionMenu, Avatar, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
   EditorRow, Kbd, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
 } from "@starterkit/ui/ds";
-import { HEALTH, type Health } from "@starterkit/ui/lib/status";
+import { HEALTH, type Health, toStatusTone } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -71,8 +71,8 @@ export function ComponentsSections() {
         </Panel>
         <Panel title="Chips, badges and tabs" className="col-span-12 md:col-span-6">
           <div className="grid gap-4">
-            <div className="flex flex-wrap gap-2">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} description={HEALTH[h].description} />)}<StatusChip health="progress" label="Starting" pending /></div>
-            <div className="flex flex-wrap gap-2" data-status-static="">{HEALTHS.map((h) => <StatusChip key={h} health={h} label={HEALTH[h].label} strong />)}</div>
+            <div className="flex flex-wrap gap-2">{HEALTHS.map((h) => <StatusChip key={h} health={toStatusTone(h)} label={HEALTH[h].label} description={HEALTH[h].description} />)}<StatusChip health={toStatusTone("progress")} label="Starting" pending /></div>
+            <div className="flex flex-wrap gap-2" data-status-static="">{HEALTHS.map((h) => <StatusChip key={h} health={toStatusTone(h)} label={HEALTH[h].label} strong />)}</div>
             <div className="flex flex-wrap items-center gap-2">
               <CategoryChip label="api" slot={1} /><CategoryChip label="web" slot={4} /><CategoryChip label="worker" slot={6} /><CategoryChip label="Simulated" slot="neutral" /><CountBadge>312</CountBadge>
             </div>

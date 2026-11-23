@@ -3,7 +3,7 @@ import { BREAK_REASONS, BREAK_STATES } from "@starterkit/shared/recon";
 import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import { ENVIRONMENTS } from "@starterkit/shared/integrations";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
-import { CATEGORIES, categoryChip, STATES, STATUS_TONE, statusChip, statusTone } from "./categories";
+import { CATEGORIES, categoryChip, STATES, STATUS_TONE, statusChip, statusChips, statusTone } from "./categories";
 
 describe("status tones (owner 24 Nov): one map from a status's meaning to its chip colour", () => {
   it("success, new data, posted, healthy, matched green; error, failed, timeout, refused red; warning, degraded, stale, late amber", () => {
@@ -56,5 +56,13 @@ describe("categories (audit §1.1 chip map): one slot per categorical value, nev
   it("an unknown value is neutral", () => {
     expect(categoryChip("reason", "Something new")).toBe("neutral");
     expect(categoryChip("spaceRole", "owner")).toBe("neutral");
+  });
+});
+
+describe("statusChips: a domain's colour and words on one row", () => {
+  it("the caller passes the domain key only; the meaning and the label come from the same row", () => {
+    const chip = statusChips<"ok" | "bad">({ ok: ["success", "Answered"], bad: ["failed", "Failed"] });
+    expect(chip("ok")).toEqual({ health: "healthy", label: "Answered" });
+    expect(chip("bad")).toEqual({ health: "down", label: "Failed" });
   });
 });

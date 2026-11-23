@@ -750,9 +750,12 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   Pending approval blue (open work; green only once done),
   Resolved green; a recon's day Open and Closing blue, Closed green; a sign-off stage Waiting and Prepared blue, Signed
   off green; Simulated and Done green, Not simulated amber; a required secret Not set amber, the optional CA bundle grey.
-  `STATES` holds the work state, day state and sign-off stage maps. `architecture.test.ts` "status chips take their
-  tone from the shared map" fails on a tone literal in a screen (`health="down"`, `health: "healthy"`, a ternary of
-  two, a `Record<…, Health>` map or an array of tones); the /ds pages, which show every tone, are exempt.
+  `STATES` holds the work state, day state and sign-off stage maps. A StatusChip's `health` and a legend entry's take
+  a `StatusTone` (`packages/ui/src/lib/status.ts`), a branded Health only `statusTone`/`statusChip` make, so a
+  literal, `as Health` or a hand-written map fails typecheck (`status-chip.test.ts`); `architecture.test.ts` "status
+  chips take their tone from the shared map" fails on `toStatusTone` or a cast to `StatusTone` outside categories.ts,
+  the design system and the /ds pages. A domain's chips come from one table, `statusChips({ key: [meaning, label] })`,
+  so a caller passes only the domain's key (`postingChip("not_sent")`).
 - **Categories** (audit P4, the same file): a categorical value that is not a status is a Category chip whose slot
   comes from one map, `CATEGORIES`, read through `categoryChip(domain, value)` (an unknown value is neutral): reason
   (No counterpart neutral, Amount differs 4, Date differs 1, the rest 6), change kind (Posting 1, Force match 4,

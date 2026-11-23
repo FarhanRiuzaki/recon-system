@@ -1,6 +1,6 @@
 import { formatDate, formatTime } from "@starterkit/ui/lib/format";
-import type { Health } from "@starterkit/ui/lib/status";
-import { statusChip, type StatusMeaning } from "./categories";
+import type { StatusTone } from "@starterkit/ui/lib/status";
+import { statusChip, statusChips } from "./categories";
 import { groupKeyText as keyText, POSTING_STATUS_LABEL as L, type PostingStatus } from "@starterkit/shared/posting";
 
 // An approval action's run (stage 4) as people read it: its status by meaning (categories.ts STATUS_TONE) with its own
@@ -9,8 +9,10 @@ import { groupKeyText as keyText, POSTING_STATUS_LABEL as L, type PostingStatus 
 export { postingEvent, type PostingStatus } from "@starterkit/shared/posting";
 // a timeout's effect at the bank is unknown: red with the failures (owner 24 Nov); not sent sent nothing, so it needs a
 // manual posting: red too (review 24 Nov)
-const MEANING: Record<PostingStatus, StatusMeaning> = { posted: "posted", failed: "failed", not_sent: "not_sent", timeout: "timeout", no_rule: "no_rule", skipped: "skipped", queued: "queued", sending: "sending", grouped: "waiting" };
-export const postingChip = (s: PostingStatus) => statusChip(MEANING[s], L[s]);
+export const postingChip = statusChips<PostingStatus>({
+  posted: ["posted", L.posted], failed: ["failed", L.failed], not_sent: ["not_sent", L.not_sent], timeout: ["timeout", L.timeout], no_rule: ["no_rule", L.no_rule],
+  skipped: ["skipped", L.skipped], queued: ["queued", L.queued], sending: ["sending", L.sending], grouped: ["waiting", L.grouped],
+});
 /** The status filter, the ones that need someone first (a timeout's effect at the bank is unknown: check it there). */
 export const POSTING_FILTER: readonly { value: PostingStatus; label: string }[] = (["failed", "timeout", "not_sent", "posted", "no_rule", "skipped", "queued", "sending"] as const)
   .map((value) => ({ value, label: L[value] }));
@@ -21,7 +23,7 @@ export const groupKeyText = (keys: readonly { label: string; value: string }[]) 
  * A posting group (stage 5): Open while it takes breaks (Degraded once `late`: still open past its due moment),
  * Closing while its run waits to send, then the run's result.
  */
-export function groupChip(g: { status: "open" | "closed"; late?: boolean; run: { status: PostingStatus } | null }): { health: Health; label: string } {
+export function groupChip(g: { status: "open" | "closed"; late?: boolean; run: { status: PostingStatus } | null }): { health: StatusTone; label: string } {
   if (g.status === "open") return g.late ? statusChip("late", "Open past its close") : statusChip("open", "Open");
   if (!g.run) return statusChip("nothing", "Nothing to send");
   return g.run.status === "queued" || g.run.status === "sending" ? statusChip("in_progress", "Closing") : postingChip(g.run.status);

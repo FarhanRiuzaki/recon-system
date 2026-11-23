@@ -113,19 +113,16 @@ function sharedViolations(fs: F[]): string[] {
 }
 
 /**
- * Status chips by meaning (owner 24 Nov): a status's tone comes from `STATUS_TONE` (`lib/shared/categories.ts`, through
- * `statusTone` / `statusChip`), never a literal in the screen: no `health="down"`, `health: "healthy"`,
- * `health={ok ? "healthy" : "down"}`, `Record<…, Health> = { a: "down" }` or `["healthy", …]` outside that file.
+ * Status chips by meaning (owner 24 Nov; by type since review 24 Nov): StatusChip and a legend entry take a
+ * `StatusTone`, a branded Health (`packages/ui/src/lib/status.ts`), so a literal, `as Health`, a map over any number of
+ * lines or another prop name fails typecheck. This checks the one way around it: making the brand. Only the meaning
+ * map (`lib/shared/categories.ts`), the design system (`packages/ui/src/{lib/status.ts,ds/}`, the /ds pages, which
+ * show every tone) and tests call `toStatusTone` or cast to `StatusTone`.
  */
-const TONE_WORD = `"(?:healthy|degraded|down|stopped|unknown|progress)"`;
-const TONE_LITERAL = [
-  new RegExp(`\\bhealth\\s*(?::|=\\s*\\{?)\\s*(?:[^,;{}\\n"]*\\?\\s*)?${TONE_WORD}`),
-  new RegExp(`Record<[^>]*\\bHealth>\\s*=\\s*\\{[^}]*${TONE_WORD}`),
-  new RegExp(`\\[\\s*${TONE_WORD}\\s*,`),
-];
+const BRAND_MAKERS = [`${WEB}lib/shared/categories.ts`, `${UI}lib/status.ts`, `${UI}ds/`, `${WEB}features/ds/`];
 function statusToneViolations(fs: F[]): string[] {
-  return fs.filter(({ r }) => r.startsWith(WEB) && !r.startsWith(`${WEB}features/ds/`) && /\.tsx?$/.test(r) && !/\.test\.tsx?$/.test(r) && r !== `${WEB}lib/shared/categories.ts`)
-    .flatMap(({ r, src }) => src.split("\n").flatMap((l, i) => (TONE_LITERAL.some((re) => re.test(l)) ? [`${r}:${i + 1}`] : [])));
+  return fs.filter(({ r }) => /\.tsx?$/.test(r) && !/\.test\.tsx?$/.test(r) && !BRAND_MAKERS.some((p) => r.startsWith(p)))
+    .flatMap(({ r, src }) => src.split("\n").flatMap((l, i) => (/\btoStatusTone\b|\bas\s+(unknown\s+as\s+)?StatusTone\b|<StatusTone>/.test(l) ? [`${r}:${i + 1}`] : [])));
 }
 
 /** Tailwind 4: `outline-none` sets --tw-outline-style: none, which `focus-visible:outline-2` reads, so no ring shows unless `focus-visible:outline-solid` is also there (AGENTS.md §7). */
@@ -477,7 +474,7 @@ describe("architecture", () => {
   it("every button says its intent: create (green), edit (blue), remove (red), caution for a negative decision, the verb icon on Edit / Export / Retry", () => {
     expect(intentViolations(files)).toEqual([]);
   });
-  it("status chips take their tone from the shared map (lib/shared/categories.ts STATUS_TONE), never a literal", () => {
+  it("status chips take their tone from the shared map (lib/shared/categories.ts STATUS_TONE): nothing else makes the StatusTone brand", () => {
     expect(statusToneViolations(files)).toEqual([]);
   });
   it("a dialog with a footer holds its content in DialogBody (owner, 22 Nov: modals tidy and symmetric)", () => {
@@ -605,14 +602,16 @@ describe("architecture checkers (fixtures)", () => {
     ])).toEqual([`${WEB}features/x/a.tsx: Review link is variant="default", not link`, `${WEB}features/x/a.tsx: Review link without its trailing icon`,
       `${WEB}features/x/a.tsx: View history link without its trailing icon`]);
   });
-  it("status tone: a literal health in a chip, a ternary, a Record<…, Health> map or an array; the shared map and reads are fine", () => {
+  it("status tone: only the meaning map, the design system and tests make a StatusTone (the brand StatusChip takes)", () => {
     expect(statusToneViolations([
-      f(`${WEB}features/x/a.tsx`, `<StatusChip health="down" label="Failed" />\n<StatusChip health={ok ? "healthy" : "down"} label={l} />\nconst c = { health: "stopped" as const, label: "Off" };`),
-      f(`${WEB}features/x/b.ts`, `const H: Record<S, Health> = { posted: "healthy" };\nconst L = (["healthy", "stopped"] as const).map((h) => h);`),
-      f(`${WEB}features/x/c.tsx`, `<StatusChip health={statusTone("failed")} label="Failed" />\nconst c = statusChip("queued", "Queued");\nif (s.health === "down") go();\nconst d = { direction: "down" };`),
-      f(`${WEB}lib/shared/categories.ts`, `const STATES = { workState: { new: "healthy" } };\nconst x = { health: "down" };`),
-      f(`${WEB}features/x/d.test.ts`, `expect(c).toEqual({ health: "down", label: "Failed" });`),
-    ])).toEqual([`${WEB}features/x/a.tsx:1`, `${WEB}features/x/a.tsx:2`, `${WEB}features/x/a.tsx:3`, `${WEB}features/x/b.ts:1`, `${WEB}features/x/b.ts:2`]);
+      f(`${WEB}features/x/a.tsx`, `import { toStatusTone } from "@starterkit/ui/lib/status";\n<StatusChip health={toStatusTone("down")} label="Failed" />`),
+      f(`${WEB}lib/shared/b.ts`, `const H = { posted: "healthy" as StatusTone };\nconst L = "down" as unknown as StatusTone;\nconst M = <StatusTone>"down";`),
+      f(`${WEB}features/x/c.tsx`, `<StatusChip health={statusTone("failed")} label="Failed" />\nconst c = statusChip("queued", "Queued");\nconst t: StatusTone = STATES.workState[s];`),
+      f(`${WEB}lib/shared/categories.ts`, `[m, toStatusTone(tone as Health)]`),
+      f(`${UI}ds/status-legend.tsx`, `toStatusTone("healthy")`),
+      f(`${WEB}features/ds/pages/x.tsx`, `toStatusTone(h)`),
+      f(`${WEB}features/x/d.test.ts`, `toStatusTone("down")`),
+    ])).toEqual([`${WEB}features/x/a.tsx:1`, `${WEB}features/x/a.tsx:2`, `${WEB}lib/shared/b.ts:1`, `${WEB}lib/shared/b.ts:2`, `${WEB}lib/shared/b.ts:3`]);
   });
   it("focus ring: outline-none + focus-visible:outline-2 without outline-solid", () => {
     expect(focusRingViolations([

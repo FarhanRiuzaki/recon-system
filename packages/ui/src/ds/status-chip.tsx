@@ -6,7 +6,7 @@ import { Icon } from "../ui/icon";
 import { SpinnerIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
-import type { Health } from "../lib/status";
+import type { Health, StatusTone } from "../lib/status";
 
 /** Shape colour = status mark (≥ 3:1), label = status ink (≥ 4.5:1 on card and on soft), spec §3.1 / §5.8. */
 const TONE: Record<Health, string> = {
@@ -21,7 +21,8 @@ const SOFT: Record<Health, string> = {
 const INTERACTIVE = "a[href],button,[role=button],[role=link],[role=menuitem],[role=tab],summary,label";
 
 /** A distinct shape per status (spec §4), so meaning never relies on color alone. */
-export function StatusIcon({ health, className }: { health: Health; className?: string }) {
+export function StatusIcon({ health: tone, className }: { health: StatusTone; className?: string }) {
+  const health: Health = tone;
   const cls = cn("size-3 shrink-0", TONE[health], className);
   switch (health) {
     case "healthy": return <svg viewBox="0 0 10 10" className={cls} aria-hidden="true"><circle cx="5" cy="5" r="4.2" fill="currentColor" /></svg>;
@@ -35,7 +36,8 @@ export function StatusIcon({ health, className }: { health: Health; className?: 
 }
 
 export type StatusChipProps = {
-  health: Health;
+  /** From the meaning map (`statusTone` / `statusChip`), never a literal: see StatusTone. */
+  health: StatusTone;
   /** Visible text. */
   label: string;
   /** One-sentence meaning, shown in the tooltip; omit for a bare chip. */
@@ -84,7 +86,8 @@ function detect(el: HTMLElement | null): { mode: Mode; card: boolean } {
  * colour. Shape + colour + text, with an optional one-sentence description in a tooltip.
  */
 export function StatusChip(props: StatusChipProps) {
-  const { health, label } = props;
+  const { label } = props;
+  const health: Health = props.health;
   const description = props.description ?? null;
   const ref = useRef<HTMLSpanElement>(null);
   // The label crossfades when the status changes (keyed remount, so re-renders do not cancel it).
@@ -111,9 +114,9 @@ export function StatusChip(props: StatusChipProps) {
       {props.pending ? <Icon icon={SpinnerIcon} className="size-3 shrink-0 motion-safe:animate-spin text-fg-2" /> : props.live ? (
         <span className="relative inline-grid size-3 shrink-0 place-items-center" aria-hidden="true">
           <span className={cn("absolute inset-0 rounded-full opacity-60 motion-safe:animate-ping", TONE[health], "bg-current")} />
-          <StatusIcon health={health} className="relative" />
+          <StatusIcon health={props.health} className="relative" />
         </span>
-      ) : <StatusIcon health={health} />}
+      ) : <StatusIcon health={props.health} />}
       <span key={k} className={cn(k > 0 && "motion-safe:animate-reveal-in")}>{label}</span>
       {description && (mode !== "static" || props.descriptionId) && (mode === "nested" && !props.descriptionId
         ? <span className="sr-only">{`: ${description}`}</span>
