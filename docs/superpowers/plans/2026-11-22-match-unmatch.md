@@ -29,14 +29,14 @@ screen only (no enum or column renamed).
 ---
 
 ### Task 1: contract and engine — carry over null = always
-- [ ] Test (engine integration): with `carry_over_days: null`, a No counterpart break 40 days old is closed by a late counterpart in today's run (AUTO_MATCHED_LATE_DATA); with 0 it stays. RED.
-- [ ] `ReconSpec.carry_over_days: z.number().int().min(0).max(31).nullable()`; `effectiveCarry(tx, k, spec, from)` in the engine (null → days from the oldest open or late-match break of the live config to `from`, at least 0); every use site takes the resolved number; recon rules' cross-day gate skips null. GREEN, commit.
+- [x] Test (engine integration): with `carry_over_days: null`, a No counterpart break 40 days old is closed by a late counterpart in today's run (AUTO_MATCHED_LATE_DATA); with 0 it stays. RED.
+- [x] `ReconSpec.carry_over_days: z.number().int().min(0).max(31).nullable()`; `effectiveCarry(tx, k, spec, from)` in the engine (null → days from the oldest open or late-match break of the live config to `from`, at least 0); every use site takes the resolved number; recon rules' cross-day gate skips null. GREEN, commit.
 
 ### Task 2: Schedule step — the three modes
-- [ ] The carry over control: "Only on its day" (0) / "Up to day + N" (1–31) / "Always, until matched or closed" (null); version review and inspector text; `carryOverText` helper with a unit test. Commit.
+- [x] The carry over control: "Only on its day" (0) / "Up to day + N" (1–31) / "Always, until matched or closed" (null); version review and inspector text; `carryOverText` helper with a unit test. Commit.
 
 ### Task 3: words on screen — Match, Unmatch, Undo match
-- [ ] Item statuses shown as Match / Unmatch (suggested pair, no longer checked as notes); Breaks → Unmatch (nav, page, detail, Today); approval change and request "Unmatch" → "Undo match"; copy-guide glossary; tests that pin the labels updated. Commit.
+- [x] Item statuses shown as Match / Unmatch (suggested pair, no longer checked as notes); Breaks → Unmatch (nav, page, detail, Today); approval change and request "Unmatch" → "Undo match"; copy-guide glossary; tests that pin the labels updated. Commit.
 
 ### Task 4: docs, check, review
-- [ ] DEC-043 amendment (carry modes, words), `bun run check`, final review (opus), push.
+- [x] DEC-043 amendment (carry modes, words), `bun run check`, final review (opus); push not done here (Batch 8 commits only).

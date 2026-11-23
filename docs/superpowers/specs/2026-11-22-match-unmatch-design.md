@@ -1,6 +1,6 @@
 # Match dan Unmatch, carry over 0 / N hari / selalu
 
-Tanggal: 22 Nov 2026 · Status: disetujui owner (22 Nov: "setuju.. but carry over bisa kita set juga … ada yg unmatch ini
+Tanggal: 22 Nov 2026 · Status: diimplementasikan (23 Nov 2026, DEC-043 amandemen) · disetujui owner (22 Nov: "setuju.. but carry over bisa kita set juga … ada yg unmatch ini
 di cek terus ada juga yg di cek sampe day +"; "ada kondisi data yg unmatch tidak di cek, jadi ini di set carry over nya 0").
 
 ## Maksud
