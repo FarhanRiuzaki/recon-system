@@ -12,6 +12,7 @@ import { enqueue, type JobHandler, QUEUES } from "../../kernel/jobs";
 import { log } from "../../kernel/log";
 import { spaces, withSpace } from "../spaces";
 import { actionRuns, connectorCircuits, connectors, connectorVersions } from "./schema";
+import { closeDueGroups } from "./groups";
 import { secretsOf } from "./service";
 import { type SendResult, sendOperation } from "./transport";
 
@@ -37,8 +38,9 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
   const taken = await withSpace(scope, async (tx) => {
     const [r] = await tx.select().from(actionRuns).where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.id, runId)));
     if (!r || r.status !== "queued") return "skip" as const;
-    const [before] = await tx.select({ n: sql<number>`count(*)::int` }).from(actionRuns)
-      .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.requestId, r.requestId), lt(actionRuns.seq, r.seq), inArray(actionRuns.status, ["queued", "sending"])));
+    // a group's run (no request) waits for nothing
+    const [before] = r.requestId ? await tx.select({ n: sql<number>`count(*)::int` }).from(actionRuns)
+      .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.requestId, r.requestId), lt(actionRuns.seq, r.seq), inArray(actionRuns.status, ["queued", "sending"]))) : [];
     if ((before?.n ?? 0) > 0) return "waiting" as const;
     const [c] = await tx.select().from(connectors).where(eq(connectors.id, r.connectorId!));
     const [cv] = await tx.select({ spec: connectorVersions.spec }).from(connectorVersions).where(and(eq(connectorVersions.connectorId, r.connectorId!), eq(connectorVersions.version, r.connectorVersion!)));
@@ -120,7 +122,8 @@ export async function sweepStale(on: Tx): Promise<number> {
 /** The job handlers of the integrations queue: a run to send, or (the per-minute schedule) the sweep. */
 export const integrationsHandlers = (on: Tx): Partial<Record<(typeof QUEUES)[keyof typeof QUEUES], JobHandler>> => ({
   [QUEUES.integrationsAction]: async ({ data }) => {
-    const d = data as { spaceId?: string; runId?: string; sweep?: true };
+    const d = data as { spaceId?: string; runId?: string; sweep?: true; groups?: true };
+    if (d.groups) { const n = await closeDueGroups(on); if (n) log.info({ groups: n }, "posting groups closed at their cutoff"); return; }
     if (d.sweep) { const n = await sweepStale(on); if (n) log.warn({ runs: n }, "action runs left sending became timeout"); return; }
     if (!d.spaceId || !d.runId) return;
     // a run waiting for an earlier run of its request comes back in 2 s

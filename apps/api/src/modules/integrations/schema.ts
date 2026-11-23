@@ -75,7 +75,10 @@ export const connectorExternalIds = pgTable("connector_external_ids", {
 export const actionRuns = pgTable("action_runs", {
   id: uuid("id").primaryKey(),
   spaceId: uuid("space_id").notNull(),
-  requestId: uuid("request_id").notNull(),
+  /** The request it was written for; null for a group's run (`group_id`). */
+  requestId: uuid("request_id"),
+  /** The posting group it sends (stage 5): one run per group. */
+  groupId: uuid("group_id"),
   configVersionId: uuid("config_version_id").notNull(),
   actionIndex: smallint("action_index").notNull(),
   actionName: text("action_name").notNull(),
@@ -112,6 +115,7 @@ export const actionRuns = pgTable("action_runs", {
   index("action_runs_request").on(t.spaceId, t.requestId, t.seq),
   index("action_runs_item").on(t.spaceId, t.itemId),
   index("action_runs_sending").on(t.status, t.sendingAt),
+  uniqueIndex("action_runs_group").on(t.groupId).where(sql`${t.groupId} is not null`),
   check("action_runs_status_check", sql`status in ('queued', 'sending', 'posted', 'failed', 'not_sent', 'timeout', 'no_rule', 'skipped')`),
 ]);
 
@@ -122,3 +126,62 @@ export const connectorCircuits = pgTable("connector_circuits", {
   failures: integer("failures").notNull().default(0),
   openUntil: timestamp("open_until", { withTimezone: true }),
 }, (t) => [primaryKey({ name: "connector_circuits_pkey", columns: [t.connectorId, t.environment] })]);
+
+/**
+ * A posting group (stage 5, design §4.6.5, O7/O10): the breaks of one recon version's grouped variant approved in one
+ * period (approval date, Asia/Jakarta) with the same key values and currency, sent as one run once it closes (at
+ * `closes_at` for a cutoff, at the recon day's close otherwise). `keys` = [{ field, label, value }] (label as the
+ * catalog said at the first join; "" = the break had no value); `key_text` = the values as one text for the unique
+ * index. A full group (GROUP_MAX members) takes no more: the next one opens `part` + 1. Closed = never takes members.
+ */
+export const postingGroups = pgTable("posting_groups", {
+  id: uuid("id").primaryKey(),
+  spaceId: uuid("space_id").notNull(),
+  configId: uuid("config_id").notNull(),
+  configVersionId: uuid("config_version_id").notNull(),
+  /** The change whose action it is (unmatch, write_off, …): action indexes count per change. */
+  change: text("change").notNull(),
+  actionIndex: smallint("action_index").notNull(),
+  variantIndex: smallint("variant_index").notNull(),
+  actionName: text("action_name").notNull(),
+  variantName: text("variant_name").notNull(),
+  keys: jsonb("keys").notNull(),
+  keyText: text("key_text").notNull(),
+  currency: text("currency").notNull(),
+  period: date("period").notNull(),
+  part: smallint("part").notNull().default(1),
+  at: text("at").notNull(),
+  closesAt: timestamp("closes_at", { withTimezone: true }),
+  status: text("status").notNull().default("open"),
+  members: integer("members").notNull().default(0),
+  totalMinor: bigint("total_minor", { mode: "bigint" }).notNull().default(sql`0`),
+  runId: uuid("run_id"),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("posting_groups_once").on(t.configVersionId, t.change, t.actionIndex, t.variantIndex, t.keyText, t.currency, t.period, t.part),
+  index("posting_groups_list").on(t.spaceId, t.configId, t.period),
+  index("posting_groups_due").on(t.status, t.closesAt),
+  check("posting_groups_status_check", sql`${t.status} in ('open', 'closed')`),
+  check("posting_groups_at_check", sql`${t.at} in ('cutoff', 'day_close')`),
+]);
+
+/**
+ * A break in a posting group: joined in its approval's transaction, once per (request, action, break). `context` = the
+ * values the payload is built from (the break and the approval, as at the approval), cleared once the group is closed.
+ */
+export const postingGroupItems = pgTable("posting_group_items", {
+  groupId: uuid("group_id").notNull().references(() => postingGroups.id, { onDelete: "cascade" }),
+  spaceId: uuid("space_id").notNull(),
+  requestId: uuid("request_id").notNull(),
+  actionIndex: smallint("action_index").notNull(),
+  itemId: uuid("item_id").notNull(),
+  ref: text("ref"),
+  amountMinor: bigint("amount_minor", { mode: "bigint" }),
+  context: jsonb("context"),
+  joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("posting_group_items_once").on(t.requestId, t.actionIndex, t.itemId),
+  index("posting_group_items_group").on(t.groupId, t.joinedAt),
+  index("posting_group_items_item").on(t.spaceId, t.itemId),
+]);

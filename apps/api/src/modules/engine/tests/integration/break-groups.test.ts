@@ -1,0 +1,195 @@
+// Grouped posting (stage 5, design §4.6.5, O7/O10): an approved break joins the open group of its key values,
+// currency and period (approval date, Asia/Jakarta; at or after the cutoff the next day; after its recon day started
+// closing the next day), once per request; the group is sent as one run when it closes (its cutoff, or the recon day's
+// close), once; sign-off waits for it.
+import { beforeEach, describe, expect, it } from "bun:test";
+import type { BreakDetailDto } from "@starterkit/shared/contracts/breaks";
+import { periodOf } from "@starterkit/shared/mapping";
+import type { SpaceRole } from "@starterkit/shared/spaces";
+import { and, asc, eq } from "drizzle-orm";
+import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { decryptSecret } from "../../../../kernel/crypto";
+import { db } from "../../../../kernel/db";
+import { ensureMonthPartitions } from "../../../../kernel/partitions";
+import { workflows, workflowVersions } from "../../../approvals";
+import { records } from "../../../ingest";
+import { actionRuns, closeDueGroups, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
+import { QUEUES } from "../../../../kernel/jobs";
+import { closeDay } from "../../breaks";
+import { reconConfigVersions } from "../../../recon";
+import { spaceMembers, spaces, withSpace } from "../../../spaces";
+import { users } from "../../../users";
+import { reconDays, reconItems } from "../../schema";
+import { ccyEq, D, makeSource, plainSource, put, recon, spec } from "../fixtures";
+
+const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
+const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
+let A: string, cfg: string, cid: string;
+let t: Record<"op" | "rev" | "adm", string>;
+let I: Record<"a1" | "a2" | "b2", string>;
+const env = { baseUrl: "", host: "", partnerId: "", channelId: "", verifyTls: false };
+const OP = { key: "post", name: "Post", method: "POST", path: "/post", timeoutMs: 30000,
+  request: [{ name: "Amount", type: "numeric", required: true }, { name: "Remark", type: "string", required: true },
+    { name: "Items", type: "array", required: false, children: [{ name: "Ref", type: "string", required: true }] }],
+  response: [], success: null, reference: null, masked: [], presets: {}, auto: {} };
+const anyOf = { spaceRoles: ["reviewer"], globalRoles: [], users: [], need: { kind: "any" } };
+const grouped = (group: object, o: object = {}) => ({ name: "Grouped", when: null, operation: { connectorId: cid, version: 1, key: "post" }, per: "group", zeroOrNegative: "skip",
+  group: { key: ["break.reason"], at: "day_close", cutoff: null, ...group },
+  mapping: { Amount: { kind: "field", key: "group.sum", transforms: [] }, Remark: { kind: "template", text: "{group.count} items {group.key.break.reason}" }, "Items.Ref": { kind: "field", key: "break.reference", transforms: [] } }, ...o });
+const today = () => periodOf(new Date(), null);
+const tomorrow = () => new Date(Date.parse(`${today()}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+
+/** The recon's published version: write-off by one reviewer, a posting action with this variant. */
+async function setup(variant: object, action: object = {}) {
+  const w = Bun.randomUUIDv7();
+  await db.insert(workflows).values({ id: w, spaceId: A, name: `One level ${w}` });
+  await db.insert(workflowVersions).values({ id: Bun.randomUUIDv7(), spaceId: A, workflowId: w, version: 1, status: "published", spec: { name: "One level", levels: [{ name: "Review", groups: [anyOf] }] } });
+  const [v] = await db.select().from(reconConfigVersions).where(and(eq(reconConfigVersions.configId, cfg), eq(reconConfigVersions.status, "published")));
+  await db.update(reconConfigVersions).set({ spec: { ...(v!.spec as object), approvals: { accounts: [], lookups: [], changes: { write_off: { workflow: { default: { id: w, version: 1 }, rules: [] },
+    actions: [{ name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant], ...action }] } } } } }).where(eq(reconConfigVersions.id, v!.id));
+}
+const detail = (id: string, token = t.op) => json<BreakDetailDto>(call("GET", `/v1/spaces/${A}/breaks/${id}`, { token }));
+const ask = (id: string) => call("POST", `/v1/spaces/${A}/breaks/${id}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
+const approve = async (id: string) => call("POST", `/v1/spaces/${A}/approval-requests/${(await detail(id, t.rev)).request!.id}/approve`, { token: t.rev, body: {} });
+const groups = () => db.select().from(postingGroups).orderBy(asc(postingGroups.period), asc(postingGroups.part), asc(postingGroups.createdAt));
+const members = () => db.select().from(postingGroupItems).orderBy(asc(postingGroupItems.joinedAt));
+
+beforeEach(async () => {
+  await resetData();
+  await db.delete(spaces);
+  await db.delete(connectors);
+  A = Bun.randomUUIDv7();
+  await db.insert(spaces).values({ id: A, code: "treasury", name: "Treasury" });
+  const grant = async (u: string, role: SpaceRole) => db.insert(spaceMembers).values({ spaceId: A, userId: await idOf(u), role });
+  await grant("viewer", "operator"); await grant("google", "reviewer"); await grant("admin", "space_admin");
+  await db.transaction(async (tx) => {
+    await ensureMonthPartitions(tx, records, new Date(`${D}T00:00:00Z`), 1);
+    await ensureMonthPartitions(tx, reconItems, new Date(`${D}T00:00:00Z`), 1);
+  });
+  const [sa, sb] = [await makeSource(A, plainSource()), await makeSource(A, plainSource())];
+  const [ra1, ra2] = await put(sa, [{ ref: "P1", amount: 10_000n }, { ref: "P2", amount: 2_500n }]);
+  const [, rb2] = await put(sb, [{ ref: "Q1", amount: 10_000n }, { ref: "Q2", amount: 9_900n }]);
+  cfg = (await recon(A, spec(sa.sourceId, sb.sourceId, [{ no: 1, name: "Exact", cardinality: "1:1", blocking: ["ext_ref"], accept: "auto", on_ambiguous: "break", predicates: [ccyEq, { op: "eq", field: "amount_minor" }] }]))).configId;
+  const item = (side: "a" | "b", recordId: string) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: cfg, recordId, side, status: "break", businessDate: D, breakReason: "No counterpart" });
+  const rows = { a1: item("a", ra1!), a2: item("a", ra2!), b2: item("b", rb2!) };
+  await db.insert(reconItems).values(Object.values(rows));
+  I = { a1: rows.a1.id, a2: rows.a2.id, b2: rows.b2.id };
+  cid = Bun.randomUUIDv7();
+  await db.insert(connectors).values({ id: cid, name: "Bank Mega" });
+  await db.insert(connectorVersions).values({ id: Bun.randomUUIDv7(), connectorId: cid, version: 1, status: "published", spec: { name: "Bank Mega", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [OP] } });
+  t = { op: await signIn("viewer"), rev: await signIn("google"), adm: await signIn("admin") };
+  await call("POST", `/v1/spaces/${A}/breaks/take`, { token: t.op, body: { ids: [I.a1, I.a2, I.b2] } });
+});
+
+describe("joining a group in the approval", () => {
+  it("approved breaks with the same key join one open group of today; no run is written yet", async () => {
+    await setup(grouped({}));
+    for (const id of [I.a1, I.a2]) { await ask(id); await approve(id); }
+    const [g, ...more] = await groups();
+    expect(more).toEqual([]);
+    expect(g).toMatchObject({ status: "open", period: today(), part: 1, members: 2, totalMinor: 12_500n, currency: "IDR", at: "day_close", closesAt: null,
+      keys: [{ field: "break.reason", label: "Break reason", value: "No counterpart" }] });
+    expect((await members()).map((m) => [m.itemId, m.ref])).toEqual([[I.a1, "P1"], [I.a2, "P2"]]);
+    expect(await db.select().from(actionRuns)).toEqual([]);
+  });
+
+  it("another key value is another group; an empty one is a group with an empty value, not dropped", async () => {
+    await setup(grouped({ key: ["side_a.ext_ref"] }));
+    for (const id of [I.a1, I.b2]) { await ask(id); await approve(id); }
+    expect((await groups()).map((g) => (g.keys as { value: string }[])[0]!.value).sort()).toEqual(["", "P1"]);
+  });
+
+  it("at or after the cutoff the next day's period; a cutoff group closes at that time", async () => {
+    await setup(grouped({ at: "cutoff", cutoff: "00:00" }));
+    await ask(I.a1); await approve(I.a1);
+    const [g] = await groups();
+    expect([g!.period, g!.closesAt?.toISOString()]).toEqual([tomorrow(), new Date(`${tomorrow()}T00:00:00+07:00`).toISOString()]);
+  });
+
+  it("once today's recon day has started closing, or its group is closed, a joiner opens tomorrow's", async () => {
+    await setup(grouped({}));
+    await db.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closing" });
+    await ask(I.a1); await approve(I.a1);
+    expect((await groups()).map((g) => g.period)).toEqual([tomorrow()]);
+    await db.delete(reconDays);
+    await db.update(postingGroups).set({ period: today(), status: "closed" });
+    await ask(I.a2); await approve(I.a2);
+    expect((await groups()).map((g) => [g.period, g.status])).toEqual([[today(), "closed"], [tomorrow(), "open"]]);
+  });
+
+  it("a full group opens part 2 of the same period", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    await db.update(postingGroups).set({ members: 500 });
+    await ask(I.a2); await approve(I.a2);
+    expect((await groups()).map((g) => [g.part, g.members])).toEqual([[1, 500], [2, 1]]);
+  });
+
+  it("two approvals at once into a new group: one group, two members", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await ask(I.a2);
+    const ids = [(await detail(I.a1, t.rev)).request!.id, (await detail(I.a2, t.rev)).request!.id];
+    await Promise.all(ids.map((id) => call("POST", `/v1/spaces/${A}/approval-requests/${id}/approve`, { token: t.rev, body: {} })));
+    expect((await groups()).map((g) => g.members)).toEqual([2]);
+    expect(await members()).toHaveLength(2);
+  });
+
+  it("Approve clicked twice at once: one member", async () => {
+    await setup(grouped({}));
+    await ask(I.a1);
+    const id = (await detail(I.a1, t.rev)).request!.id;
+    await Promise.all([1, 2].map(() => call("POST", `/v1/spaces/${A}/approval-requests/${id}/approve`, { token: t.rev, body: {} })));
+    expect(await members()).toHaveLength(1);
+  });
+});
+
+describe("closing a group", () => {
+  const close = (d = today()) => withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroupsOfDay(tx, A, cfg, d));
+
+  it("one run with the group's payload, its members pointing at it, its values cleared; closing again writes nothing", async () => {
+    await setup(grouped({}));
+    for (const id of [I.a1, I.a2]) { await ask(id); await approve(id); }
+    expect(await close()).toBe(1);
+    expect(await close()).toBe(0);
+    const [g] = await groups(), runs = await db.select().from(actionRuns);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ groupId: g!.id, requestId: null, itemId: null, status: "queued", actionName: "Post", variantName: "Grouped", kind: "posting", event: "approved", seq: 1 });
+    expect(JSON.parse(decryptSecret(runs[0]!.payloadEnc!))).toEqual({ Amount: 12500, Remark: "2 items No counterpart", Items: [{ Ref: "P1" }, { Ref: "P2" }] });
+    expect([g!.status, g!.runId]).toEqual(["closed", runs[0]!.id]);
+    expect((await members()).map((m) => m.context)).toEqual([null, null]);
+    // the worker takes it at once (no request, so no earlier run to wait for); this test bank is unreachable
+    expect(await sendRun(db, A, runs[0]!.id)).not.toBe("waiting");
+    expect((await db.select({ s: actionRuns.status }).from(actionRuns))[0]!.s).not.toBe("queued");
+  });
+
+  it("the cutoff job closes groups whose time has passed, and no others", async () => {
+    await setup(grouped({ at: "cutoff", cutoff: "16:00" }));
+    await ask(I.a1); await approve(I.a1);
+    const [g] = await groups();
+    expect(await closeDueGroups(db, new Date(g!.closesAt!.getTime() - 1000))).toBe(0);
+    expect(await closeDueGroups(db, g!.closesAt!)).toBe(1);
+    expect((await groups())[0]!.status).toBe("closed");
+  });
+
+  it("the recon day's close sends its day-close groups and its cutoff groups early; the per-minute job does the cutoff ones", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    expect(await closeDay(db, { spaceId: A, configId: cfg }, today(), new Date(Date.now() + 3 * 86_400_000))).not.toBe("not_due");
+    expect((await groups()).map((g) => g.status)).toEqual(["closed"]);
+    expect(await db.select({ s: actionRuns.status }).from(actionRuns)).toEqual([{ s: "queued" }]);
+    await setup(grouped({ at: "cutoff", cutoff: "00:00" }));
+    await db.delete(reconDays);
+    await ask(I.a2); await approve(I.a2); // tomorrow's, closes at tomorrow 00:00 WIB
+    await integrationsHandlers(db)[QUEUES.integrationsAction]!({ data: { groups: true } } as never);
+    expect((await groups()).map((g) => g.status)).toEqual(["closed", "open"]);
+  });
+
+  it("an empty group closes without a run", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    await db.delete(postingGroupItems);
+    await db.update(postingGroups).set({ members: 0 });
+    expect(await close()).toBe(1);
+    expect(await db.select().from(actionRuns)).toEqual([]);
+  });
+});

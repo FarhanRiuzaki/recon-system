@@ -82,12 +82,17 @@ export function buildCatalog(sides: readonly [{ label: string; fields: ReadonlyM
   const out = [...BREAK_FIELDS];
   sides.forEach((s, i) => {
     const group: CatalogGroup = i === 0 ? "side_a" : "side_b";
-    for (const [ref, f] of s.fields) {
-      const name = ref.startsWith("attrs.") ? humanise(ref.slice(6)) : FIELD_LABEL[ref as keyof typeof CORE_FIELDS] ?? humanise(ref);
-      out.push({ key: `${group}.${ref}`, label: `${s.label} · ${name}`, group, kind: kindOf(ref, f) });
-    }
+    for (const [ref, f] of s.fields) out.push({ key: `${group}.${ref}`, label: `${s.label} · ${fieldName(`${group}.${ref}`)}`, group, kind: kindOf(ref, f) });
   });
   return out;
+}
+
+/** A catalog field's own name, without its side ("side_a.attrs.merchant_id" → "Merchant id"): a group key's label. */
+export function fieldName(key: string): string {
+  const known = BREAK_FIELDS.find((f) => f.key === key);
+  if (known) return known.label;
+  const ref = key.replace(/^(side_a|side_b)\./, "");
+  return ref.startsWith("attrs.") ? humanise(ref.slice(6)) : FIELD_LABEL[ref as keyof typeof CORE_FIELDS] ?? humanise(ref);
 }
 
 const isGroup = (x: Clause | Condition): x is Condition => "all" in x || "any" in x;

@@ -22,6 +22,7 @@ import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
 import { breakContextOf, itemsOf } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
+import { joinGroup } from "./groups";
 import { actionRuns, connectors, connectorVersions } from "./schema";
 
 export type ActionEvent = { event: "level_approved"; level: number } | { event: "approved" } | { event: "rejected" };
@@ -31,6 +32,8 @@ type Rq = {
 };
 type Action = NonNullable<ReconApprovalSpec["changes"]["unmatch"]>["actions"][number];
 
+/** A whole amount of 0 or below (what a variant's "skip" leaves unsent). */
+const notPositive = (v: unknown) => { const a = String(v ?? "").trim(); return /^-?\d+$/.test(a) && BigInt(a) <= 0n; };
 const fires = (a: Action, e: ActionEvent) => a.on.event === e.event && (a.on.event !== "level_approved" || (e.event === "level_approved" && a.on.level === e.level));
 
 /** Writes the runs of `events` (in order) for request `rq`; answers how many were written. */
@@ -72,6 +75,12 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
       for (const item of items) {
         const context = { ...(await contextOf(item)), ...approval };
         const picked = pickVariant(a.variants, context);
+        // grouped (stage 5): the break joins its group, sent when the group closes; an amount of 0 it skips is a run
+        if (picked?.variant.per === "group" && picked.variant.group && !(picked.variant.zeroOrNegative === "skip" && notPositive(context["break.amount"]))) {
+          const g = { spaceId: rq.spaceId, configId: rq.configId, configVersionId: rq.configVersionId!, change: rq.kind, actionIndex: ai, variantIndex: picked.index, actionName: a.name, variant: picked.variant };
+          if (await joinGroup(tx, g, { requestId: rq.id, itemId: item, context })) written++;
+          continue;
+        }
         if (picked?.variant.per === "request") { if (once || item !== rq.itemId) continue; once = true; }
         else if (!picked && item !== rq.itemId) continue; // one "no posting rule" per action, on the break asked about
         const base = {
