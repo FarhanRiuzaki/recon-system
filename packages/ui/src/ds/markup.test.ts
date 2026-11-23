@@ -285,3 +285,11 @@ describe("EditToggle (audit 2 A8)", () => {
     expect(at(false, true)).toContain("w-20");
   });
 });
+
+describe("Checkbox (audit 2 A7)", () => {
+  it("its 28 px hit area takes back the 6 px past the mark, so the mark lines up with the fields above", async () => {
+    const { Checkbox } = await import("./checkbox");
+    const c = /<button[^>]*class="([^"]*)"/.exec(html(h(Checkbox, { checked: false, label: "Check the certificate", onToggle: () => {} })))![1]!.split(" ");
+    expect(c).toEqual(expect.arrayContaining(["-mx-1.5", "size-7"]));
+  });
+});
