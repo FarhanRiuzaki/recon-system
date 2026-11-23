@@ -168,7 +168,7 @@ describe("Table geometry (audit 2 A2, A4)", () => {
   });
   it("from 768 px the first and last cell of every row sit 16 px from the card edge", async () => {
     const { TABLE_INSET } = await import("../ui/table");
-    expect(TABLE_INSET.split(" ")).toEqual(["md:[&_tr>*:first-child]:pl-4", "md:[&_tr>*:last-child]:pr-4"]);
+    expect(TABLE_INSET.split(" ")).toEqual(["md:[&>*>tr>*:first-child:not([colspan])]:pl-4", "md:[&>*>tr>*:last-child:not([colspan])]:pr-4"]);
   });
   it("an expanded row's panel: one cell across the columns, 12 under the row, 16 at the sides and bottom; its row drops its line", async () => {
     const { TableExpandRow, TableRow } = await import("../ui/table");
@@ -290,6 +290,10 @@ describe("Checkbox (audit 2 A7)", () => {
   it("its 28 px hit area takes back the 6 px past the mark, so the mark lines up with the fields above", async () => {
     const { Checkbox } = await import("./checkbox");
     const c = /<button[^>]*class="([^"]*)"/.exec(html(h(Checkbox, { checked: false, label: "Check the certificate", onToggle: () => {} })))![1]!.split(" ");
-    expect(c).toEqual(expect.arrayContaining(["-mx-1.5", "size-7"]));
+    expect(c).toEqual(expect.arrayContaining(["-ml-1.5", "size-7"]));
+    // on the label's side it gives back only 2 of the 6 px: with the 8 px gap its hover fill and its 3 px focus ring
+    // (1 offset + 2 width) stay 6 px clear of the label (review 24 Nov)
+    expect(c).toContain("-mr-0.5");
+    expect(c).not.toContain("-mx-1.5");
   });
 });

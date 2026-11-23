@@ -41,3 +41,12 @@ describe("Table container (scrolls sideways inside its card on a narrow screen)"
     expect(await container()).toEqual({ tabIndex: null, role: null, label: null, scrolls: null, overflow: "visible", fades: [] });
   });
 });
+
+describe("TABLE_INSET (review 24 Nov): the 16 px edge inset on the table's own rows only", async () => {
+  const { TABLE_INSET } = await import("./table");
+  it("reaches only the rows of this table (not a table nested in a cell) and leaves a spanning cell its own padding", () => {
+    for (const c of TABLE_INSET.split(" ")) {
+      expect(c, c).toMatch(/^md:\[&>\*>tr>\*:(first|last)-child:not\(\[colspan\]\)\]:p[lr]-4$/);
+    }
+  });
+});

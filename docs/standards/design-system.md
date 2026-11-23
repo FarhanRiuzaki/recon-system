@@ -760,7 +760,7 @@ every table and `DataTable` has it; decoration only (`aria-hidden`): the scroll 
   Timeout and Not sent red (each needs a manual posting), Waiting to send blue; a break's work state New, Assigned …
   Pending approval blue (open work; green only once done),
   Resolved green; a recon's day Open and Closing blue, Closed green; a sign-off stage Waiting and Prepared blue, Signed
-  off green; Simulated and Done green, Not simulated amber; a required secret Not set amber, the optional CA bundle grey.
+  off green; Simulated and Done green (Done is never amber: a test over dates without a record is No records, amber), Not simulated amber, a failed run Failed red (Stopped is only the grey of turned off on purpose); a required secret Not set amber, the optional CA bundle grey.
   `STATES` holds the work state, day state and sign-off stage maps. A StatusChip's `health` and a legend entry's take
   a `StatusTone` (`packages/ui/src/lib/status.ts`), a branded Health only `statusTone`/`statusChip` make, so a
   literal, `as Health` or a hand-written map fails typecheck (`status-chip.test.ts`); `architecture.test.ts` "status
@@ -1371,7 +1371,7 @@ This folder is a second visual language beside §3-§7, not part of it:
 ## 9. Copy and accessibility (binding)
 
 - Copy follows `docs/standards/copy-guide.md` exactly: English, sentence case, numerals, house date/time format with WIB,
-  the glossary terms, and the five health states **Healthy / Degraded / Down / Stopped / Unknown**. Delta pills and
+  the glossary terms, and the six health states **Healthy / Degraded / Down / Stopped / Unknown / In progress**. Delta pills and
   "vs previous 7 days" captions follow the number-first rule. Eyebrow text is sentence case in source and uppercased
   by CSS.
 - `docs/standards/ui-standard.md` stays binding: page anatomy, URL state, `LazyMount` for below-the-fold charts, the

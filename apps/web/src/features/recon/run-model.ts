@@ -280,16 +280,19 @@ export function countLine(t: Totals, labels: readonly [string, string]): string 
 }
 
 const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-/** `chip`: a StatusChip by meaning (owner 24 Nov): running blue, not simulated or out of date amber, stopped red, simulated green. */
+/** `chip`: a StatusChip by meaning (owner 24 Nov): running blue, not simulated, out of date or no records amber, failed red, simulated green. */
 export type SimView = { chip: { health: StatusTone; label: string }; line: string; counts: Run | null; dim: boolean };
-/** A run that failed, as the bar and the run page say it: chip "Stopped", "The simulation stopped: <its reason>". */
-export const STOPPED_CHIP = statusChip("failed", "Stopped");
+/**
+ * A run that failed, as the bar and the run page say it: chip "Failed" (red), "The simulation stopped: <its reason>".
+ * Never the word Stopped, which is the grey of something turned off on purpose (review 24 Nov: one word, one colour).
+ */
+export const FAILED_CHIP = statusChip("failed", "Failed");
 /** A run that finished: Done, or Simulated for a simulation; both worked, so both green (owner 24 Nov). */
 export const doneChip = (mode: string): Chip => statusChip("done", mode === "simulation" ? "Simulated" : "Done");
 const MODE: Record<ReconRunDto["mode"], string> = { tick: "Scheduled", daily: "Scheduled", manual: "Manual", rerun: "Rerun", simulation: "Simulation" };
-/** A run as the state chip says it: Queued / Running, Stopped, else its finish (`doneChip`). */
+/** A run as the state chip says it: Queued / Running, Failed, else its finish (`doneChip`). */
 export const runChip = (r: Pick<ReconRunDto, "status" | "mode">): Chip => (isLive(r) ? (r.status === "queued" ? statusChip("queued", "Queued") : statusChip("running", "Running"))
-  : r.status === "failed" ? STOPPED_CHIP : doneChip(r.mode));
+  : r.status === "failed" ? FAILED_CHIP : doneChip(r.mode));
 /** A run history row: its state chip and its kind, the kind left out when the state says it already (Simulated). */
 export function runRowChips(r: Pick<ReconRunDto, "status" | "mode">): { chip: Chip; mode: string | null } {
   const chip = runChip(r);
@@ -307,7 +310,7 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   const draft = `Draft v${v.version}`;
   if (run && isLive(run)) return { chip: statusChip("running", "Running"), line: `${draft} · ${rangeText(run.from, run.to)}`, counts: shown, dim: true };
   if (run?.status === "failed") {
-    return { chip: STOPPED_CHIP, line: stoppedLine(run), counts: null, dim: false };
+    return { chip: FAILED_CHIP, line: stoppedLine(run), counts: null, dim: false };
   }
   if (v.simulatedHash === null || !shown) return { chip: statusChip("warning", "Not simulated"), line: `${draft} · not simulated yet`, counts: null, dim: false };
   // a run carries the matching hash (no approval setup): an approval-only edit leaves it current
@@ -317,7 +320,8 @@ export function simView(v: Version, run: Run | null, shown: Run | null, dirty: b
   const items = shown.counters.intake.a - shown.counters.replaced.a + shown.counters.intake.b - shown.counters.replaced.b;
   const at = shown.finishedAt ? ` · ${formatTime(Date.parse(shown.finishedAt))} ${APP_TIME_ZONE_LABEL}` : "";
   // finished over dates without a record: it ran, but tested nothing (S5)
-  if (!items) return { chip: statusChip("warning", "Done"), line: `No records on ${rangeText(shown.from, shown.to)} · ${draft}${at}`, counts: shown, dim: false };
+  // it ran but tested nothing: amber, and not "Done", which is green everywhere else (review 24 Nov)
+  if (!items) return { chip: statusChip("warning", "No records"), line: `No records on ${rangeText(shown.from, shown.to)} · ${draft}${at}`, counts: shown, dim: false };
   return { chip: statusChip("done", "Simulated"), line: `${draft} · ${rangeText(shown.from, shown.to)} · ${itemsText(items)}${at}`, counts: shown, dim: false };
 }
 

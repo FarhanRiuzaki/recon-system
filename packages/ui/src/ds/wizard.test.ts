@@ -14,4 +14,14 @@ describe("Wizard", () => {
     expect(out.replace(/<[^>]+>/g, "")).toContain("Step 2 of 3 · Fields · In progress");
     expect(out).toContain('aria-current="step"');
   });
+  it("the one line also names any other step that needs attention (review 24 Nov), which the hidden rail would show", () => {
+    const st = (label: string, status: "done" | "current" | "todo" | "error") => ({ id: label, label, status });
+    const line = (steps: ReturnType<typeof st>[]) => {
+      const out = renderToStaticMarkup(h(Wizard, { title: "Setup progress", steps, children: h("form") }));
+      return out.slice(out.indexOf('data-slot="wizard-step-line"')).replace(/<[^>]+>/g, "");
+    };
+    expect(line([st("Sources", "done"), st("Matching", "current"), st("Test", "error")])).toContain("Step 2 of 3 · Matching · In progress · Test needs attention");
+    expect(line([st("Sources", "error"), st("Matching", "current"), st("Test", "error")])).toContain("Step 2 of 3 · Matching · In progress · Sources and Test need attention");
+    expect(line([st("Sources", "done"), st("Matching", "current"), st("Test", "todo")])).not.toContain("attention");
+  });
 });

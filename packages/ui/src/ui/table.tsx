@@ -34,8 +34,12 @@ export function useScrollsX<T extends HTMLElement>(): [React.RefCallback<T>, boo
   return [setEl, scrolls, measured, edges];
 }
 
-/** First and last cell 16 px from the card edge from 768 px (audit 2 A2); a phone card row sets its own padding. */
-export const TABLE_INSET = "md:[&_tr>*:first-child]:pl-4 md:[&_tr>*:last-child]:pr-4";
+/**
+ * First and last cell 16 px from the card edge from 768 px (audit 2 A2); a phone card row sets its own padding. Only
+ * this table's own rows (`table > thead|tbody|tfoot > tr`), never a table nested in a cell, and never a cell spanning
+ * the row (an expanded row's panel, a loading or empty row), which keeps its own padding (review 24 Nov).
+ */
+export const TABLE_INSET = "md:[&>*>tr>*:first-child:not([colspan])]:pl-4 md:[&>*>tr>*:last-child:not([colspan])]:pr-4";
 
 /** The fade on a side of a sideways-scrolling box while content is hidden past it (owner, 21 Nov): the row divider's --line through the tray surface to clear: DS surfaces only, visible on a white card. */
 const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tray to-transparent opacity-0 transition-opacity duration-(--dur-fast) data-[on]:opacity-100";

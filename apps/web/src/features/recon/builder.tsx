@@ -451,7 +451,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
     id: String(n), label: STEP_LABEL[n],
     status: (n === step ? "current" : n === 6 ? "todo" : n < step || reached >= n ? (why[n] ? "error" : "done") : "todo") as "current" | "done" | "error" | "todo",
     // a test over dates without a record ran but tested nothing: the rail says so, not a plain Complete (S5)
-    ...(n === 5 && n !== step && "health" in sim.chip && sim.chip.label === "Done" && simulation.shown ? { description: `Done · no records on ${rangeText(simulation.shown.from, simulation.shown.to)}` } : {}),
+    ...(n === 5 && n !== step && "health" in sim.chip && sim.chip.label === "No records" && simulation.shown ? { description: `No records on ${rangeText(simulation.shown.from, simulation.shown.to)}` } : {}),
   }));
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
