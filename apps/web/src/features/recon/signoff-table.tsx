@@ -16,10 +16,20 @@ import { STATES } from "@/lib/shared/categories";
 import { reconSignoffs, type SignoffFilters } from "@/lib/shared/queries-recon";
 
 const dayText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
-const STAGE_LABEL: Record<SignoffRowDto["stage"], string> = { closed: "Waiting for sign-off", prepared: "Prepared", signed: "Signed off" };
-/** Who did a step and when, or a dash. */
-const Step = ({ by, at }: { by: SignoffRowDto["preparedBy"]; at: string | null }) =>
-  at ? <span className="grid"><span className="text-fg">{by?.name ?? "A removed user"}</span><span className="text-caption text-fg-3"><RelativeTime at={Date.parse(at)} /></span></span> : <span className="text-fg-3">—</span>;
+// short, so the table fits half the Overview at 1440 without scrolling sideways (review 24 Nov)
+const STAGE_LABEL: Record<SignoffRowDto["stage"], string> = { closed: "Waiting", prepared: "Prepared", signed: "Signed off" };
+const nameOf = (by: SignoffRowDto["preparedBy"]) => by?.name ?? "A removed user";
+/** Who took the day's last step and when ("Signed by Ana", with who prepared it under), or a dash: one By column. */
+const By = ({ r }: { r: SignoffRowDto }) => {
+  const at = r.signedAt ?? r.preparedAt;
+  if (!at) return <span className="text-fg-3">—</span>;
+  return (
+    <span className="grid">
+      <span className="text-fg">{r.signedAt ? `Signed by ${nameOf(r.signedBy)}` : `Prepared by ${nameOf(r.preparedBy)}`}</span>
+      <span className="text-caption text-fg-3">{r.signedAt && r.preparedAt ? `Prepared by ${nameOf(r.preparedBy)} · ` : ""}<RelativeTime at={Date.parse(at)} /></span>
+    </span>
+  );
+};
 
 /**
  * A recon's closed days and their sign-off (Plan 5 Task 4, spec §11b), on its Overview: a reviewer or space admin
@@ -48,9 +58,8 @@ export function SignoffTable({ spaceId, id }: { spaceId: string; id: string }) {
     { key: "date", header: "Business date", sortable: true, mobile: "title", className: "whitespace-nowrap", cell: (r) => <span className="text-fg">{dayText(r.date)}</span> },
     { key: "stage", header: "Stage", mobile: "meta", cell: (r) => <StatusChip health={STATES.signoffStage[r.stage]} label={STAGE_LABEL[r.stage]} /> },
     { key: "open", header: "Open", align: "right", mobile: "meta", cell: (r) => <span className="tabular">{formatNumber(r.openBreaks)}</span> },
-    { key: "pending", header: "Requests waiting", align: "right", mobile: "meta", cell: (r) => <span className={r.pending ? "tabular text-fg" : "tabular text-fg-3"}>{formatNumber(r.pending)}</span> },
-    { key: "prepared", header: "Prepared by", mobile: "meta", cell: (r) => <Step by={r.preparedBy} at={r.preparedAt} /> },
-    { key: "signed", header: "Signed by", mobile: "meta", cell: (r) => <Step by={r.signedBy} at={r.signedAt} /> },
+    { key: "pending", header: "Requests", align: "right", mobile: "meta", cell: (r) => <span className={r.pending ? "tabular text-fg" : "tabular text-fg-3"}>{formatNumber(r.pending)}</span> },
+    { key: "by", header: "By", mobile: "meta", cell: (r) => <By r={r} /> },
     { key: "action", header: "Next step", mobile: "meta", hideable: false, className: "min-w-40", cell: (r) => r.stage === "signed"
       ? <span className="text-body-sm text-fg-3">Frozen</span>
       : (

@@ -6,6 +6,8 @@ import { formatDate } from "@starterkit/ui/lib/format";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SuggestedIcon } from "@starterkit/ui/ui/icons";
+import { CELL_TRUNCATE } from "@starterkit/ui/ui/table";
+import { cn } from "@starterkit/ui/lib/cn";
 import { amountText } from "@/lib/shared/amount";
 import { categoryChip, STATES } from "@/lib/shared/categories";
 import { checkChip, STATE_LABEL } from "./break-model";
@@ -31,7 +33,8 @@ export const recheckText = (r: BreakRowDto["recheck"]) => (r.kind === "until" ? 
 export function breakColumns(spaceId: string, select?: Selection): Column<BreakRowDto>[] {
   const href = (r: BreakRowDto) => `/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.id)}`;
   const cols: Column<BreakRowDto>[] = [
-    { key: "break", header: "Item", mobile: "title", className: "min-w-48", cell: (r) => (
+    // the reference on one line, cut with its tooltip past the column (a machine id wraps into a third line otherwise)
+    { key: "break", header: "Item", mobile: "title", className: cn("min-w-48", CELL_TRUNCATE), cell: (r) => (
       <span className="grid min-w-0 max-w-72">
         <Truncate title={r.ref ?? "No reference"}><Link href={href(r)} className="font-mono text-body-sm font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{r.ref ?? "No reference"}</Link></Truncate>
         {r.source && <span className="truncate text-caption text-fg-3">{r.source}</span>}
@@ -55,15 +58,12 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
         ? <CategoryChip label={r.proposedRef} slot="neutral" className="font-mono"><Icon icon={SuggestedIcon} className="size-3.5 shrink-0 text-fg-3" /></CategoryChip>
         : <span className="text-fg-3">–</span>
     ) },
-    { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => (
-      <span className="flex flex-wrap items-center gap-1.5">
-        <StatusChip label={STATE_LABEL[r.state]} health={STATES.workState[r.state]} />
-        <CheckChip label={chipOf(r)} />
-      </span>
-    ) },
+    // one chip (review 24 Nov: rows 52 px at most); whether runs still check it lives in Checked until
+    { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => <StatusChip label={STATE_LABEL[r.state]} health={STATES.workState[r.state]} /> },
     { key: "assignee", header: "Assignee", mobile: "meta", cell: (r) => (r.assignee ? (r.assignee.name ?? "A removed user") : <span className="text-fg-3">Unassigned</span>) },
     { key: "recheck", header: "Checked until", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => (
-      r.recheck.kind === "no" ? <CheckChip label={chipOf(r)} /> : recheckText(r.recheck)
+      r.recheck.kind === "no" ? <CheckChip label={chipOf(r)} />
+        : chipOf(r) ? <span className="inline-flex items-center gap-1.5">{recheckText(r.recheck)}<CheckChip label={chipOf(r)} /></span> : recheckText(r.recheck)
     ) },
     { key: "recon", header: "Recon", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => r.recon.name },
   ];

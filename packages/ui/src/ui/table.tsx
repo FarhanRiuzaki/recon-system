@@ -87,6 +87,8 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
  */
 export const CHIP_NOWRAP = "[&_[data-slot$=chip]]:whitespace-nowrap [&_[data-slot$=chip]_.truncate]:overflow-hidden [&_[data-slot$=chip]_.truncate]:whitespace-nowrap [&_[data-slot$=chip]_.truncate]:break-normal";
 export const CELL_WRAP = `whitespace-normal break-words [&_.truncate]:overflow-visible [&_.truncate]:whitespace-normal [&_.truncate]:break-words ${CHIP_NOWRAP}`;
+/** A column whose `truncate` text stays one line, cut with its `Truncate` tooltip (a machine id that would wrap a row taller). */
+export const CELL_TRUNCATE = "[&_.truncate]:overflow-hidden [&_.truncate]:whitespace-nowrap [&_.truncate]:break-normal";
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return <td data-slot="table-cell" className={cn("h-(--row-h) border-b border-line px-3 py-1.5 align-middle", CELL_WRAP, className)} {...props} />;
 }
