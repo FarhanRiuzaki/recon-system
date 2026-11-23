@@ -64,9 +64,12 @@
         "Unconfirmed suggestion"
       ]
     },
-    "own": {
+    "dates": {
       "type": "string",
-      "const": "1"
+      "enum": [
+        "own",
+        "carried"
+      ]
     }
   }
 }

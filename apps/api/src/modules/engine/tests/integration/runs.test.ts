@@ -203,6 +203,11 @@ describe("runs and simulations through the API", () => {
     // its days hold D (carry over, the first run's pair) and D1; live only D1
     expect(done.days!.map((d) => [d.date, d.passes["1"]!.matched])).toEqual([[D, 1], [D1, 1]]);
     expect(done.live).toMatchObject({ matched: 1 });
+    // the items as the tabs count them: dates=own the run's own dates (C2), dates=carried the carry-over date before them
+    // (C1, its own count), neither the whole window
+    const refs = async (q2: string) => (await items(r.configId, second.id, `pass=1&side=a&${q2}`)).items.map((i) => i.extRef);
+    expect([await refs("dates=own"), await refs("dates=carried"), (await refs("")).sort()]).toEqual([["C2"], ["C1"], ["C1", "C2"]]);
+    expect((await call("GET", `${base(r.configId)}/runs/${second.id}/items?dates=past`, { token: t.rv })).status).toBe(400);
   });
 
   it("DEC-047: a break a later run's suggesting pass pairs shows the proposed pair", async () => {
@@ -536,7 +541,7 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
       breakReasons: { "Amount differs": side(15), "Currency differs": side(3), "Date differs": side(10), Duplicate: side(15), "No counterpart": side(20) },
     });
     // the Breaks tab: one reason, the run's own dates only; a reason the engine never writes is refused
-    expect((await items(gate.configId, q.id, "reason=No%20counterpart&own=1")).total).toBe(40);
+    expect((await items(gate.configId, q.id, "reason=No%20counterpart&dates=own")).total).toBe(40);
     expect((await call("GET", `${base(gate.configId)}/runs/${q.id}/items?reason=Gone`, { token: t.rv })).status).toBe(400);
     expect(days.reduce((n, d) => n + d.passes["1"]!.brokenRefs, 0)).toBe(10);
     // a run whose days are missing (before 0032, or failed): GET answers 200 without them (it never aggregates on the
@@ -565,7 +570,9 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     // the date filter counts as the strip does: 3 Nov = 313 pairs + 8 suggested (both sides) + 16 waiting + 9 duplicate,
     // the suggested and waiting ones breaks since the close
     expect(await total("date=2026-11-03")).toBe(2 * 313 + 2 * 8 + 16 + 9);
-    expect([await total("date=2026-11-03&pass=1&status=matched"), await total("date=2026-11-05&status=break")]).toEqual([626, 8]);
+    // a break counts on its own date, as the day's reasons do (a Date differs pair kept from close is on two dates)
+    const reasons5 = Object.values(days.find((d) => d.date === "2026-11-05")!.breakReasons!).reduce((n, x) => n + x.a + x.b, 0);
+    expect([await total("date=2026-11-03&pass=1&status=matched"), await total("date=2026-11-05&status=break"), reasons5]).toEqual([626, 4, 4]);
     // a pair is one row: the item's group has both sides' records
     const [row] = (await items(gate.configId, q.id, "pass=2&side=a&pageSize=15")).items;
     expect(row!.group!.members.map((m) => [m.side, m.extRef === row!.extRef, m.currency])).toEqual([["a", true, "IDR"], ["b", true, "IDR"]]);

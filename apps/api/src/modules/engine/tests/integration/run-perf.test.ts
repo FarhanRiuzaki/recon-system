@@ -233,10 +233,12 @@ describe.if(!!process.env.PERF_READ)("results screen reads over history", () => 
     const reads = [
       ["GET run", () => runDetail(ctx, configId, runId), 50],
       ["items pass=1", () => runItemPage(ctx, configId, runId, { ...q, pass: 1 }), 2000],
+      // the results tab's own read: a pass on the run's own dates (by the date each row counts on)
+      ["items pass=1 dates=own", () => runItemPage(ctx, configId, runId, { ...q, pass: 1, dates: "own" }), 2000],
       ["items pass=2 page 2", () => runItemPage(ctx, configId, runId, { ...q, pass: 2, page: 2 }), 2000],
       [`items date=${mid}`, () => runItemPage(ctx, configId, runId, { ...q, date: mid }), 2000],
       ["items status=suggested (pairs)", () => runItemPage(ctx, configId, runId, { ...q, status: "suggested" }), 2000],
-      ["items own=1 page 50", () => runItemPage(ctx, configId, runId, { ...q, own: "1", page: 50 }), 2000],
+      ["items dates=own page 50", () => runItemPage(ctx, configId, runId, { ...q, dates: "own", page: 50 }), 2000],
     ] as const;
     const out: string[] = [];
     for (const [name, read, limit] of reads) {

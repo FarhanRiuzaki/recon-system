@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReconRunDto, ReconSpec } from "@starterkit/shared/contracts/recon";
-import { dayTilesOf, tileBreaks, tileOption } from "./run-days";
+import { CARRIED, carriedDay, dayLabel, dayTilesOf, tileBreaks, tileOption } from "./run-days";
 
 // The gate after day close: 2 Nov with its duplicates among the breaks (one definition), and a simulation's day.
 const spec = { sides: [{ label: "src1 r2" }, { label: "src2 r2b" }], passes: [{ no: 1, blocking: ["ext_ref"], predicates: [{ op: "eq" }], cardinality: "1:1", accept: "auto" }] } as unknown as ReconSpec;
@@ -25,5 +25,24 @@ describe("a run's date tiles: unmatch per side with the date's duplicates in the
     const [, d2] = dayTilesOf({ ...run, mode: "simulation" } as ReconRunDto, spec);
     expect(d2!.b).toBeNull();
     expect(tileBreaks(d2!, L)).toBe("12 src1 r2 · 13 src2 r2b unmatch");
+  });
+});
+
+describe("a run's date tiles: the carry-over dates as one Carried over tile, then the run's own dates", () => {
+  const carry = (date: string, matched: number, open: number, noCounterpart: number) => ({
+    date, closed: true, open: { a: open, b: 0 }, breaks: { a: noCounterpart, b: 0 }, items: { a: matched + open + noCounterpart, b: matched },
+    passes: { 1: { matched, suggested: 0, broken: 0, brokenRefs: 0 } }, breakReasons: { "No counterpart": { a: noCounterpart, b: 0 } },
+  });
+  const withCarry = { ...run, days: [carry("2026-10-31", 2, 0, 1), carry("2026-11-01", 3, 1, 2), day] } as unknown as ReconRunDto;
+  it("one tile sums the dates before the run's; the run's own dates keep a tile each", () => {
+    const tiles = dayTilesOf(withCarry, spec);
+    expect(tiles.map((x) => dayLabel(x.date))).toEqual(["All dates", "Carried over", "2 Nov"]);
+    const c = carriedDay(withCarry)!;
+    expect([c.date, c.passes["1"]!.matched, c.open, c.items, c.breakReasons, c.closed]).toEqual([CARRIED, 5, { a: 1, b: 0 }, { a: 9, b: 5 }, { "No counterpart": { a: 3, b: 0 } }, true]);
+    expect(tileBreaks(tiles[1]!, L)).toBe("3 src1 r2 · 0 src2 r2b unmatch");
+  });
+  it("no carry-over date with anything on it: no tile", () => {
+    expect(carriedDay(run)).toBeNull();
+    expect(dayTilesOf(run, spec).map((x) => x.date)).toEqual(["", "2026-11-02"]);
   });
 });

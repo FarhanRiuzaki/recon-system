@@ -22,7 +22,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
 import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, readIn, reasonOptions, runCurrency, runDays, scopeCaption } from "./run-model";
 import { RunSummary } from "./run-summary";
-import { dayLabel, dayTilesOf, tileOption } from "./run-days";
+import { CARRIED, carriedDay, dayLabel, dayTilesOf, tileOption } from "./run-days";
 import { RECON_RUN_SHAPE } from "./shapes";
 import type { Fields } from "./spec-model";
 import { reconHref, reconsHref, useRecon, useReconVersion, useRun, useSideSource } from "./use-recons";
@@ -56,6 +56,9 @@ function passLabel(p: PassSpec, x: { matched: number; suggested: number; broken:
 }
 
 /** The summary card: the run's state, its facts, its counts and what day close would do with what waits. */
+/** A date tile's filters: "" All dates, CARRIED the carry-over dates, else that date. */
+const datePatch = (v: string): Partial<RunItemFilters> => (v === CARRIED ? { date: "", carried: "1" } : { date: v, carried: "" });
+
 /**
  * A run's results per pass (Task 5, Figma page 03 v1.0.4 "Results per pass"): the summary, a strip of the run's
  * business dates (each a filter), a tab per pass and Waiting, and the server-paged items: a pass's pairs one row per
@@ -88,10 +91,11 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
     if (!isLive({ status: before ?? "" }) || isLive(run)) return;
     void qc.invalidateQueries({ predicate: (x) => x.queryKey[0] === def.key && String(x.queryKey[1]).startsWith(`${def.path}?`) });
   }, [run, qc, def]);
-  // a date the run doesn't have (an old link): no date filter
+  // a date the run doesn't have among its own (an old link, a carry-over date: Carried over holds those), or Carried over
+  // on a run without carry-over dates: no date filter
   const setTable = t.set;
-  const strayDate = !!t.state.date && !!run?.days && !run.days.some((d) => d.date === t.state.date);
-  useEffect(() => { if (strayDate) setTable({ date: "" }, { history: "replace" }); }, [strayDate, setTable]);
+  const strayDate = !!run?.days && ((!!t.state.date && !runDays(run).some((d) => d.date === t.state.date)) || (!!t.state.carried && !carriedDay(run)));
+  useEffect(() => { if (strayDate) setTable({ date: "", carried: "" }, { history: "replace" }); }, [strayDate, setTable]);
   const skeleton = useDelayedFlag(!run || !spec || !recon);
   const labels = useMemo((): readonly [string, string] => (spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"]), [spec]);
   // one currency for the run (both sources write it fixed): in the amount headers, no column of its own (§5.9); else a
@@ -114,7 +118,8 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const breaksTab = s.status === "break" && !s.pass;
   const passNo = waiting || breaksTab ? 0 : Number(s.pass || "1");
   const pass = spec.passes[passNo - 1];
-  const day = s.date ? run.days?.find((d) => d.date === s.date) : undefined;
+  // the picked tile: a date of the run, or Carried over (its carry-over dates as one); the tabs count what the table holds
+  const day = s.carried ? (carriedDay(run) ?? undefined) : s.date ? run.days?.find((d) => d.date === s.date) : undefined;
   // as they stand now once the API has the run's days (live), else what the run itself did
   const standing = run.live && run.days ? runDays(run) : null;
   const counts = day ? day.passes : standing ? dayPasses(standing) : run.counters.passes;
@@ -122,7 +127,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const breaks = breakCounts(run);
   // breaks by the one definition (Duplicate included) over the run's own dates: the tab's title and the All dates tile
   const real = run.mode !== "simulation";
-  const allBreaks = real ? breaksOf(run.live?.breakReasons) : null;
+  const allBreaks = real ? breaksOf(day ? day.breakReasons : run.live?.breakReasons) : null;
   const passCount = (p: PassSpec) => { const c = counts[String(p.no)]; return (p.accept === "suggest" ? c?.suggested : c?.matched) ?? 0; };
   const breakTotal = allBreaks ? allBreaks.breaks.a + allBreaks.breaks.b : breaks ? breaks.a + breaks.b : 0;
   const tabs: Tab[] = [...spec.passes.map((p) => ({ key: `p${p.no}`, name: `Pass ${p.no}`, count: passCount(p), label: passLabel(p, counts[String(p.no)]), pass: p.no })),
@@ -143,7 +148,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
   const strip = dayTiles.length > 2 ? (run.days ?? []) : [];
   // the table's caption names what it holds (audit R8): the tab, its rows, of the records read on its dates
   const what = waiting ? "waiting items" : breaksTab ? "unmatch items" : status === "break" ? `${breakLabel(pass!).toLowerCase()} items` : `${status} pairs`;
-  const scopeDays = day ? [day] : (run.days ?? []);
+  const scopeDays = day ? [day] : runDays(run);
   const caption = t.total == null ? "" : scopeCaption(`${tabs.find((x) => x.key === tabKey)?.name ?? "Pass"}${day ? ` · ${dayLabel(day.date)}` : ""}`, t.total, what, readIn(scopeDays));
   const tabPatch = (tab: Tab): Partial<RunItemFilters> => (tab.status ? { pass: "", status: tab.status, side: "", reason: "" } : { pass: tab.pass === 1 ? "" : String(tab.pass), status: "", side: "", reason: "" });
   // the Breaks tab's reasons, on the picked date or over the run's own dates
@@ -163,7 +168,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
           {/* from 768 px: a tile per business date and a tab per pass; on a phone the same choices as two selects */}
           <div className="grid gap-2 md:hidden">
             {strip.length > 0 && (
-              <Select aria-label="Business date" value={s.date} onChange={(e) => t.set({ date: e.target.value })} className="w-full">
+              <Select aria-label="Business date" value={s.carried ? CARRIED : s.date} onChange={(e) => t.set(datePatch(e.target.value))} className="w-full">
                 {dayTiles.map((x) => <option key={x.date || "all"} value={x.date}>{tileOption(x, labels)}</option>)}
               </Select>
             )}
@@ -175,7 +180,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
               passes as line tabs with their counts (audit R8) */}
           {strip.length > 0 && (
             <ScrollFade className="scroll-quiet overflow-x-auto max-md:hidden">
-              <Segmented label="Business date" value={s.date || "all"} onChange={(v) => t.set({ date: v === "all" ? "" : v })}
+              <Segmented label="Business date" value={s.carried ? CARRIED : s.date || "all"} onChange={(v) => t.set(datePatch(v === "all" ? "" : v))}
                 options={dayTiles.map((x) => ({ value: x.date || "all", label: `${dayLabel(x.date)}${x.t.closed ? " · closed" : ""}` }))} />
             </ScrollFade>
           )}

@@ -789,10 +789,15 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
       itemId: matchMembers.itemId, id: matchGroups.id, passNo: matchGroups.passNo, kind: matchGroups.kind, businessDate: matchGroups.businessDate, evidence: matchGroups.evidence,
     }).from(matchMembers).innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
       .where(and(eq(matchMembers.spaceId, spaceId), eq(matchGroups.configId, configId), scopeG, isNull(matchGroups.reversedBy))).as("cur");
+    // the date an item counts on, as daysOf counts it: a pair (matched, suggested) on its group's (the latest member's,
+    // so its own is within carry over before it), every other item on its own
+    const countsOn = sql`case when ${reconItems.status} in ('matched', 'suggested') then coalesce(${cur.businessDate}, ${reconItems.businessDate}) else ${reconItems.businessDate} end`;
     const where = and(
       eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId),
       scopeI,
-      sql`${reconItems.businessDate} between ${q.own ? run.dateFrom : addDays(run.dateFrom, -carry)}::date and ${run.dateTo}::date`,
+      sql`${reconItems.businessDate} between ${addDays(run.dateFrom, -carry)}::date and ${run.dateTo}::date`,
+      q.dates === "own" ? sql`${countsOn} between ${run.dateFrom}::date and ${run.dateTo}::date` : undefined,
+      q.dates === "carried" ? sql`${countsOn} < ${run.dateFrom}::date` : undefined,
       q.status ? eq(reconItems.status, q.status) : undefined, q.side ? eq(reconItems.side, q.side) : undefined,
       q.reason ? and(eq(reconItems.status, "break"), eq(reconItems.breakReason, q.reason)) : undefined,
       // pass: a member of one of its groups, or an item it broke. Per item (an index lookup each), so the page walks the
@@ -804,9 +809,8 @@ export function runItemPage(ctx: Ctx, configId: string, runId: string, q: ReconR
             eq(matchGroups.passNo, q.pass), inWindow(matchGroups.businessDate)))),
         eq(reconItems.breakPass, q.pass),
       ) : undefined,
-      // the date it counts on: its group's (the latest member's, so its own is within carry over before it), else its own
       q.date ? and(sql`${reconItems.businessDate} between ${addDays(q.date, -carry)}::date and ${q.date}::date`,
-        sql`coalesce(${cur.businessDate}, ${reconItems.businessDate}) = ${q.date}::date`) : undefined,
+        sql`${countsOn} = ${q.date}::date`) : undefined,
     );
     const record = and(inArray(records.spaceId, recordSpaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     // a proposal's item and its record (DEC-047): joined once for the page, as the item's own

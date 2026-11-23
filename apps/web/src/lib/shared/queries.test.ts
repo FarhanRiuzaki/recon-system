@@ -47,29 +47,36 @@ it("relative timestamp filters stay in stable API paths and keys for refresh and
 
 describe("reconRunItems: the request a results tab sends", () => {
   const passes = [{ accept: "auto", cardinality: "1:1" }, { accept: "suggest", cardinality: "N:1" }];
-  const params = (f: Partial<qr.RunItemFilters>) => qr.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", reason: "", ...f });
-  it("no tab = pass 1's pairs: its own outcome, one row per group from side A", () => {
-    expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
+  const params = (f: Partial<qr.RunItemFilters>) => qr.reconRunItems("s", "c", "r", passes).params!({ pass: "", status: "", side: "", date: "", reason: "", carried: "", ...f });
+  it("no tab = pass 1's pairs on the run's own dates: its own outcome, one row per group from side A", () => {
+    expect(params({})).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "", carried: "", dates: "own" });
   });
   it("a suggest pass shows its suggestions; an N:1 pass's single side is B", () => {
-    expect(params({ pass: "2" })).toEqual({ pass: "2", status: "suggested", side: "b", date: "", reason: "" });
+    expect(params({ pass: "2" })).toMatchObject({ pass: "2", status: "suggested", side: "b", dates: "own" });
   });
   it("the items a pass broke: both sides unless one is picked", () => {
-    expect(params({ pass: "1", status: "break" })).toEqual({ pass: "1", status: "break", side: "", date: "", reason: "" });
-    expect(params({ pass: "1", status: "break", side: "b" })).toEqual({ pass: "1", status: "break", side: "b", date: "", reason: "" });
+    expect(params({ pass: "1", status: "break" })).toMatchObject({ pass: "1", status: "break", side: "" });
+    expect(params({ pass: "1", status: "break", side: "b" })).toMatchObject({ pass: "1", status: "break", side: "b" });
   });
   it("Breaks is every break item of the run's own dates, no pass, narrowed by a reason", () => {
-    expect(params({ status: "break" })).toEqual({ pass: "", status: "break", side: "", date: "", reason: "", own: "1" });
-    expect(params({ status: "break", reason: "No counterpart" })).toEqual({ pass: "", status: "break", side: "", date: "", reason: "No counterpart", own: "1" });
+    expect(params({ status: "break" })).toEqual({ pass: "", status: "break", side: "", date: "", reason: "", carried: "", dates: "own" });
+    expect(params({ status: "break", reason: "No counterpart" })).toMatchObject({ reason: "No counterpart", dates: "own" });
     // a reason left in the URL never narrows a pass tab or Waiting
     expect(params({ pass: "2", reason: "Duplicate" }).reason).toBe("");
     expect(params({ status: "open", reason: "Duplicate" }).reason).toBe("");
   });
-  it("Waiting is the open items, with no pass; the date passes through", () => {
-    expect(params({ status: "open", side: "a", date: "2026-11-04", reason: "" })).toEqual({ pass: "", status: "open", side: "a", date: "2026-11-04", reason: "" });
+  it("Waiting is the open items of the run's own dates, with no pass", () => {
+    expect(params({ status: "open", side: "a" })).toEqual({ pass: "", status: "open", side: "a", date: "", reason: "", carried: "", dates: "own" });
+  });
+  it("every tab agrees on the dates: a picked date alone, Carried over the dates before the run's", () => {
+    for (const tab of [{}, { pass: "2" }, { status: "open" }, { status: "break" }, { pass: "1", status: "break" }]) {
+      expect(params({ ...tab, date: "2026-11-04" })).toMatchObject({ date: "2026-11-04", dates: "", carried: "" });
+      expect(params({ ...tab, carried: "1" })).toMatchObject({ date: "", dates: "carried", carried: "" });
+      expect(params(tab)).toMatchObject({ dates: "own" });
+    }
   });
   it("a pair outcome ignores a side left in the URL", () => {
-    expect(params({ pass: "1", status: "matched", side: "b" })).toEqual({ pass: "1", status: "matched", side: "a", date: "", reason: "" });
+    expect(params({ pass: "1", status: "matched", side: "b" })).toMatchObject({ pass: "1", status: "matched", side: "a" });
   });
 });
 

@@ -463,8 +463,11 @@ export const ReconRunItemQuery = ListQuery.omit({ q: true }).extend({
   date: isoDate.optional(),
   /** Break items with this reason. */
   reason: z.enum(BREAK_REASONS).optional(),
-  /** "1": the run's own dates only (from–to), without the carry-over dates before them. */
-  own: z.literal("1").optional(),
+  /**
+   * Which of the run's dates, by the date an item counts on (a pair its group's, else its own, as `days`): `own` its
+   * from–to, `carried` the carry-over dates before them; neither = both.
+   */
+  dates: z.enum(["own", "carried"]).optional(),
 });
 export type ReconRunItemQuery = z.infer<typeof ReconRunItemQuery>;
 

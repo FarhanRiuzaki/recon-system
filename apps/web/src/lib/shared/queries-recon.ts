@@ -140,12 +140,13 @@ export const LIVE_POLL_MS = 15_000;
 export const MY_APPROVALS_POLL_MS = 60_000;
 /** While a run of the recon (or of one of the space's) is queued or under way: its numbers move with every step. */
 export const LIVE_RUN_POLL_MS = 5_000;
-export type RunItemFilters = { pass: string; status: string; side: string; date: string; reason: string };
+/** `carried` "1": the carry-over dates before the run's (one choice beside the run's own dates). */
+export type RunItemFilters = { pass: string; status: string; side: string; date: string; reason: string; carried: string };
 const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
   sorts: RECON_RUN_ITEM_SORTS, defaultSort: "businessDate",
   filters: {
     pass: oneOf(["", ...Array.from({ length: PASSES_MAX }, (_, i) => String(i + 1))], ""), status: oneOf(["", ...ITEM_STATUSES], ""),
-    side: oneOf(["", "a", "b"], ""), date: isoDate, reason: oneOf(["", ...BREAK_REASONS], ""),
+    side: oneOf(["", "a", "b"], ""), date: isoDate, reason: oneOf(["", ...BREAK_REASONS], ""), carried: oneOf(["", "1"], ""),
   },
 };
 type PassLike = { accept: string; cardinality: string };
@@ -153,18 +154,20 @@ type PassLike = { accept: string; cardinality: string };
  * A run's items as its results tabs ask for them: a pass tab (`pass`, the first when no tab is chosen) shows its pairs,
  * one row per group from the group's single side (`status` matched or suggested, the pass's own by default), or the
  * items it broke (`status` break with its `pass`, both sides); the Waiting tab is `status` open, the Breaks tab `status`
- * break without a pass. `date` = the day the strip picked.
+ * break without a pass. Every tab reads the dates its count is of: `date` = the day the strip picked, else Carried over
+ * (`carried`), else the run's own dates (`dates=own`, as the tabs' counts).
  * `passes` = the run version's passes (their accept and cardinality decide the defaults).
  */
 export const reconRunItems = (spaceId: string, id: string, runId: string, passes: readonly PassLike[] = []): TableDef<RunItemFilters> => ({
   key: ENGINE_KEY[0], path: `${runsPath(spaceId, id)}/${encodeURIComponent(runId)}/items`, spec: RUN_ITEMS_SPEC,
   params: (f) => {
-    // Waiting (open) and Breaks (break, every pass and day close, the run's own dates, a reason) are tabs without a pass
-    if (f.status === "open" && !f.pass) return { ...f, reason: "" };
-    if (f.status === "break" && !f.pass) return { ...f, own: "1" };
+    const g = { ...f, carried: "", dates: f.date ? "" : f.carried ? "carried" : "own" };
+    // Waiting (open) and Breaks (break, every pass and day close, a reason) are tabs without a pass
+    if (f.status === "open" && !f.pass) return { ...g, reason: "" };
+    if (f.status === "break" && !f.pass) return g;
     const pass = f.pass || "1", p = passes[Number(pass) - 1];
     const status = f.status || (p?.accept === "suggest" ? "suggested" : "matched");
-    return { ...f, pass, status, reason: "", side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
+    return { ...g, pass, status, reason: "", side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
   },
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */
