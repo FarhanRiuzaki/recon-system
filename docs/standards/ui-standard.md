@@ -128,7 +128,12 @@ it is drawn.
 - Content fills the sheet's width, no max (padding 32 px horizontal, 24 top, 40 bottom): a collapsed sidebar or a wide
   screen widens the grid instead of leaving empty margins. Rhythm tokens (spec §2.2):
   page sections `gap-section` (24), sibling panels/tiles `gap-gutter` (16; `--gap-grid` in tokens.css), tray padding `p-tray` (4), inside a card
-  `gap-panel` (16), dense rows `gap-dense` (8).
+  `gap-panel` (16), dense rows `gap-dense` (8). Audit 2 (24 Nov 2026): a card body pads `p-card` (16); stacked panels
+  sit `gap-section` (24) apart, `gap-gutter` only between panels side by side; items of one list `gap-list` (12); a
+  table in a card is flush with its first and last cell 16 in (`Table`); a row's in-place panel is `TableExpandRow`
+  (12 under the row, 16 at the sides and bottom) and its Edit/Done is `EditToggle` (one variant, one width); a dialog
+  body ends 16 above the footer line; label/value rows are `Facts`; a KPI value that doesn't fit shows compact with
+  the exact value in its title; a chip in a table cell never wraps.
 - Content padding: 32 px sides from 768 px, 16 px on a phone (the sheet is edge to edge there).
 - 12-column grid at every desktop width; siblings in a row share width and height. Spans: KPI strip = one tray of
   4 (or 3) equal tiles; primary chart 8 + 4 companion; paired charts 6 + 6; card grids 3 col (4 per row) ≥ 1440,
