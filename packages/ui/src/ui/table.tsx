@@ -69,7 +69,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
   return <thead data-slot="table-header" className={cn("bg-tray", className)} {...props} />;
 }
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
-  return <tbody data-slot="table-body" className={cn("[&_tr:last-child_td]:border-b-0", className)} {...props} />;
+  return <tbody data-slot="table-body" className={cn("[&_tr:last-child>*]:border-b-0", className)} {...props} />;
 }
 function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   return <tfoot data-slot="table-footer" className={cn("bg-tray font-medium", className)} {...props} />;

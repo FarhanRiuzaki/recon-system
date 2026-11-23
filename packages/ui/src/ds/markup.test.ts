@@ -162,6 +162,10 @@ describe("TableCell", () => {
 });
 
 describe("Table geometry (audit 2 A2, A4)", () => {
+  it("the last row draws no line at the card's edge, a row header (th scope=row) included", async () => {
+    const { TableBody } = await import("../ui/table");
+    expect(html(h("table", null, h(TableBody, null))).replaceAll("&amp;", "&").replaceAll("&gt;", ">")).toContain("[&_tr:last-child>*]:border-b-0");
+  });
   it("from 768 px the first and last cell of every row sit 16 px from the card edge", async () => {
     const { TABLE_INSET } = await import("../ui/table");
     expect(TABLE_INSET.split(" ")).toEqual(["md:[&_tr>*:first-child]:pl-4", "md:[&_tr>*:last-child]:pr-4"]);
