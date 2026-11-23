@@ -4,8 +4,27 @@
 import { CORE_FIELDS, FIELD_LABEL, type RecordField } from "./recon";
 
 export type CatalogKind = "number" | "money" | "text" | "date" | "list";
-export type CatalogGroup = "break" | "recon" | "side_a" | "side_b" | "approval";
+export type CatalogGroup = "break" | "recon" | "side_a" | "side_b" | "approval" | "group";
 export type CatalogField = { key: string; label: string; group: CatalogGroup; kind: CatalogKind };
+
+/**
+ * A grouped variant's key fields (stage 5, design §4.4 check 6): the break's, the recon's or a side's fields of these
+ * kinds (number too: an ID-like code catalogued as a number groups by its exact text; never money).
+ */
+export const KEY_KINDS: readonly CatalogKind[] = ["text", "date", "list", "number"];
+export const isKeyField = (f: CatalogField) => KEY_KINDS.includes(f.kind) && f.group !== "approval" && f.group !== "group";
+/** What a grouped variant's mapping reads of its group: the total, the count, the period and each key by its label. */
+export function groupFields(keys: readonly string[], catalog: readonly CatalogField[]): CatalogField[] {
+  return [
+    { key: "group.sum", label: "Total amount", group: "group", kind: "money" },
+    { key: "group.count", label: "Number of items", group: "group", kind: "number" },
+    { key: "group.period", label: "Period", group: "group", kind: "date" },
+    ...keys.map((k): CatalogField => {
+      const f = catalog.find((x) => x.key === k);
+      return { key: `group.key.${k}`, label: `Group key: ${f?.label ?? "A field no longer read"}`, group: "group", kind: f?.kind ?? "text" };
+    }),
+  ];
+}
 
 export const OPS = ["eq", "ne", "in", "not_in", "starts_with", "contains", "gte", "gt", "lte", "lt", "empty", "not_empty"] as const;
 export type Op = (typeof OPS)[number];

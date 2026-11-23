@@ -175,6 +175,64 @@ export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }
   return { ok: true, payload, sources };
 }
 
+// ---- grouped variants (stage 5, design §4.4 dispatch group, §4.6.5, O7/O10) ----
+/** ponytail: one group sends at most 500 breaks; the next one opens part 2 of the same period. A setting when a bank needs less. */
+export const GROUP_MAX = 500, GROUP_KEY_MAX = 5;
+const DAY_MS = 86_400_000, WIB_MS = 7 * 3_600_000;
+/** The period an approval at `at` belongs to: its date in Asia/Jakarta (UTC+7 all year), the next day at or after `cutoff` (HH:MM). */
+export function periodOf(at: Date, cutoff: string | null): string {
+  const wib = new Date(at.getTime() + WIB_MS).toISOString();
+  const day = wib.slice(0, 10);
+  return cutoff && wib.slice(11, 16) >= cutoff ? new Date(Date.parse(`${day}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10) : day;
+}
+/** When a cutoff group of `period` is sent: that day at `cutoff`, Asia/Jakarta. */
+export const closesAtOf = (period: string, cutoff: string) => new Date(`${period}T${cutoff}:00+07:00`);
+
+/** Every array field of a request tree (dot paths), outermost only: their fields are filled once per break of a group. */
+function arrayPaths(fields: readonly OpField[], prefix = ""): string[] {
+  return fields.flatMap((f) => (f.type === "array" ? [`${prefix}${f.name}`] : f.children?.length ? arrayPaths(f.children, `${prefix}${f.name}.`) : []));
+}
+const leafPaths = (fields: readonly OpField[], prefix: string): string[] =>
+  fields.flatMap((f) => (f.children?.length ? leafPaths(f.children, `${prefix}${f.name}.`) : [`${prefix}${f.name}`]));
+
+/**
+ * One payload for a group of breaks (`members`: each break's context at its approval, in joining order). The group's
+ * fields are read like recon fields: `group.sum` (the amounts in minor units), `group.count`, `group.period`,
+ * `group.key.<field>`; any other field outside an array is the first break's (they share the key). Fields under an
+ * array request field are built once per break, one element each (the bank's item list). A total of 0 or below is
+ * skipped when the variant says so; an element that can't be built fails naming it (`Items[2].Ref`).
+ */
+export function buildGroupPayload(v: VariantLike, op: { request: readonly OpField[] }, members: readonly Context[], group: { period: string; keys: readonly { field: string; value: string }[] }, setup: Setup, handled: ReadonlySet<string>): Built {
+  let sum = 0n;
+  for (const m of members) { const a = str(m["break.amount"]).trim(); if (/^-?\d+$/.test(a)) sum += BigInt(a); }
+  if (v.zeroOrNegative === "skip" && sum <= 0n) return { ok: false, code: "skipped", field: "", message: "The group's total is 0 or below: nothing to post." };
+  const ctx: Context = {
+    ...members[0], "group.sum": sum.toString(), "group.count": members.length, "group.period": group.period,
+    ...Object.fromEntries(group.keys.map((k) => [`group.key.${k.field}`, k.value])),
+  };
+  const arrays = arrayPaths(op.request).map((path) => ({ path, children: fieldAt(op.request, path)?.children ?? [] }));
+  const under = (p: string) => arrays.find((a) => p.startsWith(`${a.path}.`));
+  const top = Object.fromEntries(Object.entries(v.mapping).filter(([p]) => !under(p)));
+  const inArrays = new Set([...handled, ...arrays.flatMap((a) => leafPaths(a.children, `${a.path}.`))]);
+  const built = buildPayload({ ...v, mapping: top, zeroOrNegative: "absolute_swap" }, op, ctx, setup, inArrays);
+  if (!built.ok) return built;
+  for (const a of arrays) {
+    const sub = Object.fromEntries(Object.entries(v.mapping).flatMap(([p, s]) => (p.startsWith(`${a.path}.`) ? [[p.slice(a.path.length + 1), s]] : [])));
+    if (!Object.keys(sub).length) continue;
+    const rel = new Set([...handled].flatMap((p) => (p.startsWith(`${a.path}.`) ? [p.slice(a.path.length + 1)] : [])));
+    const items: unknown[] = [];
+    for (const [i, m] of members.entries()) {
+      const one = buildPayload({ name: v.name, when: null, mapping: sub, zeroOrNegative: "absolute_swap" }, { request: a.children }, { ...ctx, ...m }, setup, rel);
+      if (!one.ok) { const field = `${a.path}[${i + 1}].${one.field}`; return { ...one, field, message: one.message.replace(one.field, field) }; }
+      items.push(one.payload);
+    }
+    setAt(built.payload, a.path, items);
+    for (const [p, s] of Object.entries(sourceNames(sub))) built.sources[`${a.path}.${p}`] = s;
+  }
+  return built;
+}
+const sourceNames = (m: Readonly<Record<string, Source>>) => Object.fromEntries(Object.entries(m).map(([p, s]) => [p, sourceName(s)]));
+
 /** The first variant whose condition holds on the context (no condition = always), or null (no posting rule, O6). */
 export function pickVariant<V extends { when: Condition | null }>(variants: readonly V[], ctx: Context): { index: number; variant: V } | null {
   const index = variants.findIndex((x) => !x.when || evaluate(x.when, ctx));

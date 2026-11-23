@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ReconApprovalSpec } from "./contracts/recon";
-import { applyTransforms, buildPayload, pickVariant, renderTemplate } from "./mapping";
+import { groupFields } from "./conditions";
+import type { OpField } from "./integrations";
+import { applyTransforms, buildGroupPayload, buildPayload, closesAtOf, periodOf, pickVariant, renderTemplate } from "./mapping";
 
 const OP = { connectorId: "0190f5a0-0000-7000-8000-0000000000c1", version: 1, key: "misc_dc" };
 const variant = (o: object = {}) => ({ name: "Default", when: { all: [{ field: "break.amount", op: "gte", value: "1" }] }, operation: OP, mapping: { Amount: { kind: "field", key: "break.amount", transforms: ["amount:minor"] } }, ...o });
@@ -115,5 +117,64 @@ describe("amount changes refuse a value that isn't whole minor units (final revi
   it("still converts whole minor units", () => {
     expect(applyTransforms("250050", ["amount:major:2"], { currency: "IDR" })).toBe("2500.50");
     expect(applyTransforms(" -150 ", ["amount:minor"], {})).toBe("-150");
+  });
+});
+
+describe("grouped variants (stage 5)", () => {
+  it("a grouped variant names its keys and its time; a cutoff needs its HH:MM", () => {
+    const g = (group: unknown) => spec([action({ variants: [variant({ per: "group", group })] })]);
+    expect(issues(spec([action({ variants: [variant({ per: "group" })] })]))).toContain("Say how the group is formed and when it is sent.");
+    expect(issues(g({ key: ["side_a.attrs.merchant_id"], at: "cutoff", cutoff: null }))).toContain("Give the cutoff time, HH:MM.");
+    expect(issues(g({ key: ["side_a.attrs.merchant_id"], at: "cutoff", cutoff: "16:00" }))).toEqual([]);
+    expect(issues(g({ key: [], at: "day_close", cutoff: null }))).toEqual([]);
+    expect(issues(g({ key: Array(6).fill("break.reference"), at: "day_close", cutoff: null }))).toContain("A group has at most 5 key fields.");
+    // a group field is a recon field source like any other
+    expect(issues(spec([action({ variants: [variant({ per: "group", group: { key: [], at: "day_close", cutoff: null }, mapping: { Amount: { kind: "field", key: "group.sum", transforms: [] } } })] })]))).toEqual([]);
+  });
+
+  it("periodOf: the approval's date in Asia/Jakarta, the next day at or after the cutoff", () => {
+    expect(periodOf(new Date("2026-11-23T08:59:00Z"), "16:00")).toBe("2026-11-23"); // 15:59 WIB
+    expect(periodOf(new Date("2026-11-23T09:00:00Z"), "16:00")).toBe("2026-11-24"); // 16:00 WIB
+    expect(periodOf(new Date("2026-11-23T16:30:00Z"), null)).toBe("2026-11-23"); // 23:30 WIB
+    expect(periodOf(new Date("2026-11-23T17:00:00Z"), null)).toBe("2026-11-24"); // 00:00 WIB
+    expect(periodOf(new Date("2026-11-30T16:30:00Z"), "23:00")).toBe("2026-12-01");
+    expect(closesAtOf("2026-11-23", "16:00").toISOString()).toBe("2026-11-23T09:00:00.000Z");
+  });
+
+  it("groupFields: the group's own values, its keys by their labels", () => {
+    const catalog = [{ key: "side_a.attrs.merchant_id", label: "BI · Merchant id", group: "side_a", kind: "text" }] as const;
+    expect(groupFields(["side_a.attrs.merchant_id"], catalog).map((f) => [f.key, f.label, f.kind])).toEqual([
+      ["group.sum", "Total amount", "money"], ["group.count", "Number of items", "number"], ["group.period", "Period", "date"],
+      ["group.key.side_a.attrs.merchant_id", "Group key: BI · Merchant id", "text"],
+    ]);
+  });
+
+  const op = { request: [
+    { name: "Total", type: "numeric", required: true }, { name: "Count", type: "numeric", required: true }, { name: "Merchant", type: "string", required: true },
+    { name: "Items", type: "array", required: true, children: [{ name: "Ref", type: "string", required: true }, { name: "Amount", type: "numeric", required: false }] },
+  ] } as { request: OpField[] };
+  const members = [
+    { "break.amount": "150000", "break.currency": "IDR", "break.reference": "R1", "side_a.attrs.merchant_id": "M1" },
+    { "break.amount": "250050", "break.currency": "IDR", "break.reference": "R2", "side_a.attrs.merchant_id": "M1" },
+  ];
+  const g = { period: "2026-11-23", keys: [{ field: "side_a.attrs.merchant_id", value: "M1" }] };
+  const gv = (mapping: object, o: object = {}) => ({ name: "Grouped", when: null, zeroOrNegative: "skip" as const, mapping: mapping as never, ...o });
+  const none = { accounts: [], lookups: [] };
+
+  it("buildGroupPayload: sum, count and key from the group, one array element per item", () => {
+    const r = buildGroupPayload(gv({
+      Total: { kind: "field", key: "group.sum", transforms: ["amount:major:2"] }, Count: { kind: "field", key: "group.count", transforms: [] },
+      Merchant: { kind: "template", text: "{group.key.side_a.attrs.merchant_id}-{group.period|date:yyMMdd}" },
+      "Items.Ref": { kind: "field", key: "break.reference", transforms: [] }, "Items.Amount": { kind: "field", key: "break.amount", transforms: [] },
+    }), op, members, g, none, new Set());
+    expect(r).toEqual({ ok: true, payload: { Total: 4000.5, Count: 2, Merchant: "M1-261123", Items: [{ Ref: "R1", Amount: 150000 }, { Ref: "R2", Amount: 250050 }] }, sources: expect.any(Object) });
+  });
+
+  it("an item without a required element field fails naming it; a sum of 0 is skipped", () => {
+    const m = { Total: { kind: "field", key: "group.sum", transforms: [] }, Count: { kind: "field", key: "group.count", transforms: [] }, Merchant: { kind: "const", value: "x" }, "Items.Ref": { kind: "field", key: "break.reference", transforms: [] } };
+    const r = buildGroupPayload(gv(m), op, [members[0]!, { ...members[1]!, "break.reference": "" }], g, none, new Set());
+    expect(r).toMatchObject({ ok: false, code: "build_error", field: "Items[2].Ref" });
+    const zero = buildGroupPayload(gv(m), op, [{ ...members[0]!, "break.amount": "100" }, { ...members[1]!, "break.amount": "-100" }], g, none, new Set());
+    expect(zero).toMatchObject({ ok: false, code: "skipped" });
   });
 });

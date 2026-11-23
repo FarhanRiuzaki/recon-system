@@ -33,7 +33,7 @@ import { Mapper } from "./mapper";
 
 type Account = { key: string; label: string; number: string; currency: string };
 type Setup = { accounts: readonly Account[]; lookups: readonly { name: string }[] };
-const GROUP = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval" } as const;
+const GROUP = { break: "Unmatch item", recon: "Recon", side_a: "Side A", side_b: "Side B", approval: "Approval", group: "Group" } as const;
 const KIND_LABEL = { field: "A recon field", const: "A fixed value", template: "A template", lookup: "A lookup table", account: "An account" } as const;
 const blankClause = { all: [{ field: "", op: "eq", value: "" }] } as const;
 
