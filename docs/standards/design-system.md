@@ -566,8 +566,12 @@ Padding 0 12, icon 16 + 6 gap, radius 10, `label`→ `body` 14/500. Press: scale
 Intents by verb (owner, 24 Nov; supersedes 22 Nov's add blue and the Ghost Edit): **Create / Add / New** is
 `variant="create"` (green), **Edit** is `variant="edit"` (blue), **Delete / Remove** is `variant="remove"` (red),
 whether it shows a bin or an X. All three are soft-filled: the ink on its soft fill at rest, one step darker under the
-pointer. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's one main
-CTA ("Create recon") may stay Primary; a confirm dialog's "Remove …" / "Delete …" stays Danger. A list adder ("Add a
+pointer. An X that closes (a dialog, a sheet, a chip's filter) stays ghost: closing loses nothing. The page's main
+Create / Add / New ("Create recon", "New workflow", "Add member", a create dialog's submit) is `variant="create-solid"`:
+the page's one primary, solid `--create-solid` `#0f6e3f` with `--create-solid-fg` white (dark `#4cc98a` with
+`#0b2216`), `--create-solid-hover` `#0c5a33` (dark `#6dd6a0`). A confirm dialog's "Remove …" / "Delete …" stays Danger.
+"Edit", "Replace" and "Continue editing" are edit; an Edit ↔ Done toggle keeps edit in both states. A header action
+whose label is data takes its variant from `verbVariant(label, "secondary")` (`ds/intent-verbs.ts`). A list adder ("Add a
 rule for some cases", "Add an action", "Add a condition") is `create` at `size="sm"` with its `AddIcon`, never a bare
 link. Light / dark values: create `#0f6e3f` on `#e9f7ef` / `#d9f1e3` (dark `#4cc98a` on `#143323` / `#1a4230`), edit
 `#1d5fcc` on `#ebf2fe` / `#dde9fd` (dark `#7aaeff` on `#172540` / `#1e3156`); each ink ≥ 4.5:1 on every surface and on
@@ -580,7 +584,7 @@ request) `variant="caution"` with `ErrorIcon`, its confirm inside a dialog Dange
 Replace `variant="edit"` with `EditIcon`, never the bare word; Open / View / Review a link with a trailing arrow; Export a
 Secondary with `ExportIcon`; Retry / Try again a Secondary with `RefreshIcon`. `architecture.test.ts` reads
 `INTENTS`: a Button or BlockedButton labelled Reject / Turn off / Cancel request is caution (or Danger), one labelled
-Create / Add / New is create (or the Primary), Edit … is edit, Delete / Remove … is remove (or Danger), one labelled
+Create / Add / New is create (or create-solid), Edit / Replace / Continue editing is edit, Delete / Remove … is remove (or Danger), one labelled
 Edit / Replace / Export / Retry renders an `<Icon>`, and a `Button asChild` around a `Link` labelled View / Open /
 Review is `variant="link"` with its `<Icon>` after the words.
 Disabled: opacity 0.4; a `BlockedButton` stays at 0.5, since it keeps focus and its label must stay readable. A
