@@ -9,7 +9,7 @@ import { type LegendItem, StatusLegend } from "./status-legend";
 
 /**
  * Panel = tray + card, the v3 signature (spec §5.4).
- * - Tray: radius 20, --tray, 1 px line, padding 4. Header on the tray: 44 px, padding 0 12, optional 16 px fg-2
+ * - Tray: radius 20, --tray, 1 px line, padding 4. Header on the tray: 44 px, padding 0 16 (its title on the line of the card's content, audit 2 A2), optional 16 px fg-2
  *   icon, `title-3` (600) title, optional count pill, caption (`description`) after a middot, actions right.
  * - `tone="quiet"`: a history region (run history, activity, past decisions) that should read after the page's
  *   summary and actions: no tray fill (the 1 px line stays), the title in fg-2. The card inside is unchanged.
@@ -36,7 +36,7 @@ export function Panel({ title, description, actions, children, flush, className,
   const level = useContext(PanelHeading);
   const titleClass = cn("text-title-3", quiet ? "text-fg-2" : "text-fg");
   const header = (title || actions || legend || toolbar) && (
-    <header className={cn("flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1", variant === "tray" ? "px-3 py-1.5" : "px-4 pt-3")}>
+    <header className={cn("flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1", variant === "tray" ? "px-4 py-1.5" : "px-4 pt-3")}>
       {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-2" />}
       {title && (level === "h3" ? <h3 className={titleClass}>{title}</h3> : <h2 className={titleClass}>{title}</h2>)}
       {count != null && <CountBadge inTray={variant === "tray"}>{count}</CountBadge>}
@@ -51,7 +51,7 @@ export function Panel({ title, description, actions, children, flush, className,
       {(actions || legend) && <div className={cn("ml-auto flex flex-wrap items-center gap-2", toolbar && "order-1 md:order-3")}>{actions}{legend && <StatusLegend items={legend} />}</div>}
     </header>
   );
-  const foot = footnote && <div className="px-3 pt-2 pb-1.5 text-caption text-fg-3">{footnote}</div>;
+  const foot = footnote && <div className="px-4 pt-2 pb-1.5 text-caption text-fg-3">{footnote}</div>;
   if (variant === "flat") {
     return (
       <section className={cn("flex min-w-0 flex-col rounded-lg border border-line bg-card", className)}>
