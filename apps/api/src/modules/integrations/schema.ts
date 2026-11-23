@@ -132,7 +132,10 @@ export const connectorCircuits = pgTable("connector_circuits", {
  * period (approval date, Asia/Jakarta) with the same key values and currency, sent as one run once it closes (at
  * `closes_at` for a cutoff, at the recon day's close otherwise). `keys` = [{ field, label, value }] (label as the
  * catalog said at the first join; "" = the break had no value); `key_text` = the values as one text for the unique
- * index. A full group (GROUP_MAX members) takes no more: the next one opens `part` + 1. Closed = never takes members.
+ * index; `negative` = its breaks' amounts are below 0 (a sign never nets against the other, review I4). `closes_at` =
+ * when it is due: the cutoff, or the recon day's close moment (the per-minute job sends a day-close group its day close
+ * missed once that moment + the version's grace has passed). A full group (GROUP_MAX members) takes no more: the next
+ * one opens `part` + 1. Closed = never takes members.
  */
 export const postingGroups = pgTable("posting_groups", {
   id: uuid("id").primaryKey(),
@@ -148,6 +151,7 @@ export const postingGroups = pgTable("posting_groups", {
   keys: jsonb("keys").notNull(),
   keyText: text("key_text").notNull(),
   currency: text("currency").notNull(),
+  negative: boolean("negative").notNull().default(false),
   period: date("period").notNull(),
   part: smallint("part").notNull().default(1),
   at: text("at").notNull(),
@@ -159,7 +163,7 @@ export const postingGroups = pgTable("posting_groups", {
   closedAt: timestamp("closed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex("posting_groups_once").on(t.configVersionId, t.change, t.actionIndex, t.variantIndex, t.keyText, t.currency, t.period, t.part),
+  uniqueIndex("posting_groups_once").on(t.configVersionId, t.change, t.actionIndex, t.variantIndex, t.keyText, t.currency, t.negative, t.period, t.part),
   index("posting_groups_list").on(t.spaceId, t.configId, t.period),
   index("posting_groups_due").on(t.status, t.closesAt),
   check("posting_groups_status_check", sql`${t.status} in ('open', 'closed')`),
@@ -167,8 +171,10 @@ export const postingGroups = pgTable("posting_groups", {
 ]);
 
 /**
- * A break in a posting group: joined in its approval's transaction, once per (request, action, break). `context` = the
- * values the payload is built from (the break and the approval, as at the approval), cleared once the group is closed.
+ * A break in a posting group: joined in its approval's transaction, once per (request, action, break). `context_enc` =
+ * the values the payload is built from (the break and the approval, as at the approval), encrypted as a run's payload
+ * is; `context` = the same in plain JSON from before it was encrypted (read once, never written). Both cleared once the
+ * group is closed.
  */
 export const postingGroupItems = pgTable("posting_group_items", {
   groupId: uuid("group_id").notNull().references(() => postingGroups.id, { onDelete: "cascade" }),
@@ -179,6 +185,7 @@ export const postingGroupItems = pgTable("posting_group_items", {
   ref: text("ref"),
   amountMinor: bigint("amount_minor", { mode: "bigint" }),
   context: jsonb("context"),
+  contextEnc: text("context_enc"),
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   uniqueIndex("posting_group_items_once").on(t.requestId, t.actionIndex, t.itemId),

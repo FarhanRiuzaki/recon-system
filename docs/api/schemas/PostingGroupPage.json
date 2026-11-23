@@ -81,6 +81,9 @@
               "closed"
             ]
           },
+          "late": {
+            "type": "boolean"
+          },
           "run": {
             "anyOf": [
               {
@@ -161,6 +164,7 @@
           "action",
           "variant",
           "status",
+          "late",
           "run"
         ],
         "additionalProperties": false

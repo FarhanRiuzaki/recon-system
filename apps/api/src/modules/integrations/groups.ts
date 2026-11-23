@@ -1,27 +1,35 @@
 // Posting groups (stage 5, design §4.4 dispatch group, §4.6.5, O7/O10). A grouped variant's breaks join, in their
-// approval's transaction, the open group of their recon version, action, variant, key values, currency and period
-// (the approval's date in Asia/Jakarta; at or after the cutoff, the next day; once the recon day of that date has
-// started closing, the next day too). The group row is locked while a break joins, so a close and a join never pass
-// each other: a closed group takes no one, and the joiner opens the next period's. A full group opens part + 1.
+// approval's transaction, the open group of their recon version, action, variant, key values, currency, sign and
+// period (the approval's date in Asia/Jakarta; at or after the cutoff, the next day; once the recon day of that date
+// has started closing, the next day too). Joining holds the recon's posting groups lock shared and closing holds it
+// exclusive, and the group row is locked while a break joins, so a close and a join never pass each other: a closed
+// group takes no one, and the joiner opens the next period's. A full group opens part + 1.
 import { type Context, fieldName } from "@starterkit/shared/conditions";
 import type { ConnectorSpec, PostingGroupDto, PostingGroupListQuery, PostingGroupRowDto } from "@starterkit/shared/contracts/integrations";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReconApprovalSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
+import type { ReconApprovalSpec, ReconSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
 import { buildGroupPayload, closesAtOf, GROUP_MAX, periodOf } from "@starterkit/shared/mapping";
-import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { encryptSecret } from "../../kernel/crypto";
+import { and, asc, desc, eq, inArray, lt, lte, or, sql } from "drizzle-orm";
+import { decryptSecret, encryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
 import { notFound } from "../../kernel/errors";
 import { enqueue, QUEUES } from "../../kernel/jobs";
+import { postingGroupsLock } from "../../kernel/locks";
+import { log } from "../../kernel/log";
 import { one, pageQuery, sortSql } from "../../kernel/pagination";
 import type { Ctx } from "../auth";
-import { reconDays } from "../engine";
+import { closeMoment, reconDays } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { actionRuns, connectorVersions, postingGroupItems, postingGroups } from "./schema";
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 const nextDay = (d: string) => new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+/** When a day-close group of `period` is due: the recon day's close moment by its version's schedule; without one, the end of that day. */
+const dayCloseOf = (recon: Pick<ReconSpec, "close_at" | "schedule"> | null, period: string) =>
+  recon?.schedule ? closeMoment(recon, period) : new Date(`${nextDay(period)}T00:00:00+07:00`);
+/** ponytail: a group still open this long after it was due shows late (Today, the Posting groups tab); a setting if 5 minutes is wrong for a recon. */
+export const GROUP_LATE_MS = 5 * 60_000;
 
 /** Whether the recon day `d` of config `configId` has started closing (a `recon_days` row: closing or closed). */
 async function dayStarted(tx: InTx, spaceId: string, configId: string, d: string): Promise<boolean> {
@@ -30,35 +38,39 @@ async function dayStarted(tx: InTx, spaceId: string, configId: string, d: string
   return !!r;
 }
 
-export type GroupTarget = { spaceId: string; configId: string; configVersionId: string; change: string; actionIndex: number; variantIndex: number; actionName: string; variant: VariantSpec };
+/** Where a break joins: the recon version's grouped variant, and that version's spec (its schedule dates a day-close group). */
+export type GroupTarget = { spaceId: string; configId: string; configVersionId: string; change: string; actionIndex: number; variantIndex: number; actionName: string; variant: VariantSpec; recon: Pick<ReconSpec, "close_at" | "schedule"> | null };
 
 /**
  * Break `m.itemId` of request `m.requestId` joins its group (approved at `now`, `m.context` its values then); answers
  * the group's id, or null when it is a member already (a decision fired twice).
  */
 export async function joinGroup(tx: InTx, t: GroupTarget, m: { requestId: string; itemId: string; context: Context }, now = new Date()): Promise<string | null> {
+  await postingGroupsLock(tx, t.configId, "shared");
   const g0 = t.variant.group!;
   const keys = g0.key.map((field) => ({ field, label: fieldName(field), value: str(m.context[field]) }));
   const keyText = JSON.stringify(keys.map((k) => k.value)), currency = str(m.context["break.currency"]).toUpperCase();
   const cutoff = g0.at === "cutoff" ? g0.cutoff : null;
   const amount = /^-?\d+$/.test(str(m.context["break.amount"])) ? BigInt(str(m.context["break.amount"])) : 0n;
+  // a negative amount is a group of its own: a total never nets one sign against the other (review I4)
+  const negative = amount < 0n;
   let period = periodOf(now, cutoff);
   for (let tries = 0; tries < 20; tries++) {
     if (await dayStarted(tx, t.spaceId, t.configId, period)) { period = nextDay(period); continue; }
     const row = (part: number) => ({
       id: Bun.randomUUIDv7(), spaceId: t.spaceId, configId: t.configId, configVersionId: t.configVersionId, change: t.change, actionIndex: t.actionIndex, variantIndex: t.variantIndex,
-      actionName: t.actionName, variantName: t.variant.name, keys, keyText, currency, period, part, at: g0.at, closesAt: cutoff ? closesAtOf(period, cutoff) : null,
+      actionName: t.actionName, variantName: t.variant.name, keys, keyText, currency, negative, period, part, at: g0.at, closesAt: cutoff ? closesAtOf(period, cutoff) : dayCloseOf(t.recon, period),
     });
     const [g] = await tx.select().from(postingGroups).where(and(eq(postingGroups.spaceId, t.spaceId), eq(postingGroups.configVersionId, t.configVersionId), eq(postingGroups.change, t.change),
       eq(postingGroups.actionIndex, t.actionIndex), eq(postingGroups.variantIndex, t.variantIndex), eq(postingGroups.keyText, keyText),
-      eq(postingGroups.currency, currency), eq(postingGroups.period, period))).orderBy(desc(postingGroups.part)).limit(1).for("update");
+      eq(postingGroups.currency, currency), eq(postingGroups.negative, negative), eq(postingGroups.period, period))).orderBy(desc(postingGroups.part)).limit(1).for("update");
     // a new group, or the next part of a full one: whoever inserts first wins, the other finds it on the next look
     if (!g) { await tx.insert(postingGroups).values(row(1)).onConflictDoNothing(); continue; }
     if (g.status !== "open") { period = nextDay(period); continue; }
     if (g.members >= GROUP_MAX) { await tx.insert(postingGroups).values(row(g.part + 1)).onConflictDoNothing(); continue; }
     const [joined] = await tx.insert(postingGroupItems).values({
       groupId: g.id, spaceId: t.spaceId, requestId: m.requestId, actionIndex: t.actionIndex, itemId: m.itemId,
-      ref: str(m.context["break.reference"]) || null, amountMinor: amount, context: m.context,
+      ref: str(m.context["break.reference"]) || null, amountMinor: amount, contextEnc: encryptSecret(JSON.stringify(m.context)),
     }).onConflictDoNothing().returning({ id: postingGroupItems.itemId });
     if (!joined) return null;
     await tx.update(postingGroups).set({ members: sql`${postingGroups.members} + 1`, totalMinor: sql`${postingGroups.totalMinor} + ${amount.toString()}::bigint` }).where(eq(postingGroups.id, g.id));
@@ -68,14 +80,20 @@ export async function joinGroup(tx: InTx, t: GroupTarget, m: { requestId: string
 }
 
 /**
- * Closes group `groupId` (locked; one already closed answers "already"): its members' values as at their approval
- * build one payload (buildGroupPayload), written as one run (`group_id`, no request) queued for the worker, or ended
- * at once (failed build, skipped total); an empty group sends nothing. The members' saved values are cleared.
+ * Closes group `groupId` (under its recon's posting groups lock, the row locked; one already closed answers
+ * "already"): its members' values as at their approval build one payload (buildGroupPayload), written as one run
+ * (`group_id`, no request) queued for the worker, or ended at once (failed build, skipped total); an empty group sends
+ * nothing. A build that throws ends as a failed run in a savepoint of its own, so it never undoes the caller's other
+ * work (a day close, the other groups). The members' saved values are cleared.
  */
 export async function closeGroup(tx: InTx, spaceId: string, groupId: string): Promise<"sent" | "empty" | "already"> {
+  const [c] = await tx.select({ configId: postingGroups.configId }).from(postingGroups).where(and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.id, groupId)));
+  if (!c) return "already";
+  await postingGroupsLock(tx, c.configId, "exclusive");
   const [g] = await tx.select().from(postingGroups).where(and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.id, groupId), eq(postingGroups.status, "open"))).for("update");
   if (!g) return "already";
-  const ms = await tx.select({ context: postingGroupItems.context }).from(postingGroupItems).where(eq(postingGroupItems.groupId, g.id)).orderBy(asc(postingGroupItems.joinedAt), asc(postingGroupItems.itemId));
+  const ms = (await tx.select({ context: postingGroupItems.context, contextEnc: postingGroupItems.contextEnc }).from(postingGroupItems).where(eq(postingGroupItems.groupId, g.id))
+    .orderBy(asc(postingGroupItems.joinedAt), asc(postingGroupItems.itemId))).map((m) => (m.contextEnc ? JSON.parse(decryptSecret(m.contextEnc)) : m.context ?? {}) as Context);
   let runId: string | null = null;
   if (ms.length) {
     const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, g.configVersionId)));
@@ -91,25 +109,34 @@ export async function closeGroup(tx: InTx, spaceId: string, groupId: string): Pr
       kind: action?.kind ?? "posting", event: action?.on.event ?? "approved", level: action?.on.event === "level_approved" ? action.on.level : null, itemId: null, seq: 1, override: false,
       connectorId: variant?.operation.connectorId ?? null, connectorVersion: variant?.operation.version ?? null, operationKey: variant?.operation.key ?? null,
     };
-    let row: typeof actionRuns.$inferInsert;
-    if (!variant || !op) row = { ...base, status: "failed", code: "build_error", message: "The recon version or connector version this group pins has no such action or operation any more.", finishedAt: new Date() };
-    else {
-      const built = buildGroupPayload(variant, op, ms.map((m) => (m.context ?? {}) as Context), { period: g.period, keys: g.keys as { field: string; value: string }[] },
-        { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
-      row = built.ok
-        ? { ...base, status: "queued", payloadEnc: encryptSecret(JSON.stringify(built.payload)), sources: built.sources }
-        : { ...base, status: built.code === "skipped" ? "skipped" : "failed", code: built.code === "skipped" ? null : built.code, message: built.message, finishedAt: new Date() };
+    const failed = (message: string): typeof actionRuns.$inferInsert => ({ ...base, status: "failed", code: "build_error", message, finishedAt: new Date() });
+    try {
+      await tx.transaction(async (sp) => {
+        let row: typeof actionRuns.$inferInsert;
+        if (!variant || !op) row = failed("The recon version or connector version this group pins has no such action or operation any more.");
+        else {
+          const built = buildGroupPayload(variant, op, ms, { period: g.period, keys: g.keys as { field: string; value: string }[] },
+            { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]));
+          row = built.ok
+            ? { ...base, status: "queued", payloadEnc: encryptSecret(JSON.stringify(built.payload)), sources: built.sources }
+            : { ...base, status: built.code === "skipped" ? "skipped" : "failed", code: built.code === "skipped" ? null : built.code, message: built.message, finishedAt: new Date() };
+        }
+        await sp.insert(actionRuns).values(row);
+        if (row.status === "queued") await enqueue(QUEUES.integrationsAction, { spaceId, runId: base.id }, { key: base.id, tx: sp });
+      });
+    } catch (e) {
+      log.warn({ err: e instanceof Error ? e.name : "error", groupId: g.id }, "posting group failed to build");
+      await tx.insert(actionRuns).values(failed("This group's request couldn't be built. Check the variant's mapping in the recon's Approval step."));
     }
-    await tx.insert(actionRuns).values(row);
-    if (row.status === "queued") await enqueue(QUEUES.integrationsAction, { spaceId, runId }, { key: runId, tx });
   }
   await tx.update(postingGroups).set({ status: "closed", runId, closedAt: sql`now()` }).where(eq(postingGroups.id, g.id));
-  await tx.update(postingGroupItems).set({ context: null }).where(eq(postingGroupItems.groupId, g.id));
+  await tx.update(postingGroupItems).set({ context: null, contextEnc: null }).where(eq(postingGroupItems.groupId, g.id));
   return ms.length ? "sent" : "empty";
 }
 
 /** At the recon day `date`'s close (engine closeDay): every open group of config `configId` up to that period; answers how many closed. */
 export async function closeGroupsOfDay(tx: InTx, spaceId: string, configId: string, date: string): Promise<number> {
+  await postingGroupsLock(tx, configId, "exclusive");
   const open = await tx.select({ id: postingGroups.id }).from(postingGroups)
     .where(and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.configId, configId), eq(postingGroups.status, "open"), lte(postingGroups.period, date)));
   let n = 0;
@@ -131,15 +158,37 @@ export async function groupsWaiting(tx: InTx, spaceId: string, configId: string,
   return new Map(dates.map((d) => [d, rows.filter((r) => r.period <= d).length]));
 }
 
-/** The per-minute job: every space's open cutoff groups whose time has come, each closed in its own transaction. */
+/**
+ * The per-minute job: every space's open groups whose time has come, each closed in its own transaction (one that
+ * fails is logged and the others go on): a cutoff group at its cutoff; a day-close group whose day close never came
+ * (no successful scheduled run, no published version) once its close moment + the version's grace has passed (an hour
+ * when the version has none), review I3.
+ */
 export async function closeDueGroups(on: Tx, now = new Date()): Promise<number> {
   const ids = (await on.select({ id: spaces.id }).from(spaces)).map((s) => s.id);
   if (!ids.length) return 0;
+  const grace = sql`make_interval(mins => coalesce((${reconConfigVersions.spec} ->> 'grace_minutes')::int, 60))`;
   const due = await withSpace({ spaceIds: ids, userId: null }, (tx) => tx.select({ id: postingGroups.id, spaceId: postingGroups.spaceId }).from(postingGroups)
-    .where(and(eq(postingGroups.status, "open"), eq(postingGroups.at, "cutoff"), lte(postingGroups.closesAt, now))), on);
+    .leftJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, postingGroups.spaceId), eq(reconConfigVersions.id, postingGroups.configVersionId)))
+    .where(and(eq(postingGroups.status, "open"), or(and(eq(postingGroups.at, "cutoff"), lte(postingGroups.closesAt, now)),
+      and(eq(postingGroups.at, "day_close"), sql`${postingGroups.closesAt} + ${grace} <= ${now.toISOString()}::timestamptz`)))), on);
   let n = 0;
-  for (const g of due) if ((await withSpace({ spaceIds: [g.spaceId], userId: null }, (tx) => closeGroup(tx, g.spaceId, g.id), on)) !== "already") n++;
+  for (const g of due) {
+    try {
+      if ((await withSpace({ spaceIds: [g.spaceId], userId: null }, (tx) => closeGroup(tx, g.spaceId, g.id), on)) !== "already") n++;
+    } catch (e) {
+      log.warn({ err: e instanceof Error ? e.name : "error", groupId: g.id }, "posting group failed to close");
+    }
+  }
   return n;
+}
+
+/** Per recon of the space: how many of its posting groups are still open past their due moment (Today, review I3). */
+export async function lateGroups(tx: InTx, spaceId: string, now = new Date()): Promise<Map<string, number>> {
+  const rows = await tx.select({ configId: postingGroups.configId, n: sql<number>`count(*)::int` }).from(postingGroups)
+    .where(and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.status, "open"), lt(postingGroups.closesAt, new Date(now.getTime() - GROUP_LATE_MS))))
+    .groupBy(postingGroups.configId);
+  return new Map(rows.map((r) => [r.configId, r.n]));
 }
 
 // ---- read side: Recon → Posting groups (design §4.8) ----
@@ -151,10 +200,11 @@ async function reconOf(tx: InTx, spaceId: string, configId: string) {
 type GroupRow = { g: typeof postingGroups.$inferSelect; run: typeof actionRuns.$inferSelect | null };
 const groupRows = (tx: InTx) => tx.select({ g: postingGroups, run: actionRuns }).from(postingGroups)
   .leftJoin(actionRuns, and(eq(actionRuns.spaceId, postingGroups.spaceId), eq(actionRuns.id, postingGroups.runId)));
-const toGroupRow = ({ g, run }: GroupRow): PostingGroupRowDto => ({
+const toGroupRow = ({ g, run }: GroupRow, now = Date.now()): PostingGroupRowDto => ({
   id: g.id, period: g.period, part: g.part, keys: (g.keys as { label: string; value: string }[]).map(({ label, value }) => ({ label, value })), currency: g.currency,
   items: g.members, totalMinor: g.totalMinor.toString(), at: g.at as PostingGroupRowDto["at"], closesAt: g.closesAt?.toISOString() ?? null, closedAt: g.closedAt?.toISOString() ?? null,
   action: g.actionName, variant: g.variantName, status: g.status as PostingGroupRowDto["status"],
+  late: g.status === "open" && !!g.closesAt && now - g.closesAt.getTime() > GROUP_LATE_MS,
   run: run ? { id: run.id, status: run.status as NonNullable<PostingGroupRowDto["run"]>["status"], code: run.code, message: run.message, bankReference: run.bankReference, externalId: run.externalId, at: (run.finishedAt ?? run.createdAt).toISOString() } : null,
 });
 
@@ -165,7 +215,7 @@ export function groupPage(ctx: Ctx, configId: string, q: PostingGroupListQuery):
     const where = and(eq(postingGroups.spaceId, spaceId), eq(postingGroups.configId, configId), q.status?.length ? inArray(postingGroups.status, q.status) : undefined);
     return pageQuery({
       rows: groupRows(tx).where(where).$dynamic(), count: tx.select(one).from(postingGroups).where(where).$dynamic(),
-      orderBy: sortSql(q.sort, { period: postingGroups.period }, "-period", postingGroups.id), query: q, map: toGroupRow, on: tx,
+      orderBy: sortSql(q.sort, { period: postingGroups.period }, "-period", postingGroups.id), query: q, map: (r) => toGroupRow(r), on: tx,
     });
   });
 }

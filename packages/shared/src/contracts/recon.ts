@@ -589,8 +589,8 @@ export type LiveReconDto = z.infer<typeof LiveReconDto>;
  */
 export const TodayDto = z.object({
   recons: z.array(LiveReconDto), sources: z.array(LiveSourceDto), capped: z.boolean(),
-  /** Per recon, its approval actions of the last 24 hours that need someone (stage 4); a recon with none is left out. */
-  posting: z.array(z.object({ reconId: z.string(), failed: z.number().int(), timeout: z.number().int(), notSent: z.number().int() })),
+  /** Per recon, its approval actions of the last 24 hours that need someone (stage 4) and its posting groups open past their due moment (`lateGroups`, stage 5); a recon with neither is left out. */
+  posting: z.array(z.object({ reconId: z.string(), failed: z.number().int(), timeout: z.number().int(), notSent: z.number().int(), lateGroups: z.number().int() })),
 });
 export type TodayDto = z.infer<typeof TodayDto>;
 /**

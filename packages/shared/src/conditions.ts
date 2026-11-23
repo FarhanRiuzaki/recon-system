@@ -74,6 +74,8 @@ export const APPROVAL_FIELDS: readonly CatalogField[] = [
 
 /** "e2e_id" → "E2e id". */
 const humanise = (name: string) => { const s = name.replace(/_/g, " ").trim(); return s.charAt(0).toUpperCase() + s.slice(1); };
+/** The context keys of money (minor units): the break's amount and each side's amount (kindOf's "money"). */
+export const isMoneyKey = (k: string) => k === "break.amount" || /^side_[ab]\.amount_minor$/.test(k);
 const kindOf = (ref: string, f: RecordField): CatalogKind =>
   ref === "amount_minor" ? "money" : f.kind === "decimal" ? "number" : f.kind === "date" ? "date" : f.kind === "boolean" ? "list" : "text";
 

@@ -3,7 +3,7 @@
 // published recon holds its sources to (Plan 3 A4). Sentences name fields as people do (fieldLabel), never by code.
 import { APPROVAL_FIELDS, type CatalogField, type Condition, conditionFields, fieldName, groupFields, isKeyField, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
 import { fieldPaths, type OpField } from "@starterkit/shared/integrations";
-import { type Source, templateParts } from "@starterkit/shared/mapping";
+import { arrayPaths, type Source, templateParts } from "@starterkit/shared/mapping";
 import type { ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { type FieldKind, fieldLabel, type FieldPair, type Operator, recordFields, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
@@ -250,11 +250,38 @@ export function checkActions(approvals: ReconApprovalSpec | undefined, catalog: 
           if (!f) lostKeys.push(k);
           else if (!isKeyField(f)) out.push(`${where}: ${fieldName(k)} can't be a group key. Pick a text, date, list or number field.`);
         }
-        if (lostKeys.length) out.push(`${where}: a group key is no longer read from the sources (${lostKeys.join(", ")}).`);
+        if (lostKeys.length) out.push(`${where}: a group key is no longer read from the sources (${lostKeys.map(fieldName).join(", ")}).`);
         const groupKnown = new Set(grouped ? groupFields(v.group!.key, catalog).map((f) => f.key) : []);
         if (!grouped && reads.some((k) => k.startsWith("group."))) out.push(`${where}: it reads the group's values (total, count, key), which only a grouped variant has.`);
         const lost = [...new Set(reads.filter((k) => k && !known.has(k) && !groupKnown.has(k) && !(k.startsWith("group.") && !grouped)))];
-        if (lost.length) out.push(`${where}: a field it reads is no longer read from the sources (${lost.join(", ")}).`);
+        if (lost.length) out.push(`${where}: a field it reads is no longer read from the sources (${lost.map(fieldName).join(", ")}).`);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * What a grouped variant reads from the first break of each group only (stage 5, review C1): outside an item list
+ * (an array request field), a break or side field that is neither one of its keys nor money (money reads the group's
+ * total). Warnings, never refusing: a field every break of a group shares by its data is right as it is.
+ */
+export function firstItemReads(approvals: ReconApprovalSpec | undefined, catalog: readonly CatalogField[], connectors: ReadonlyMap<string, ConnectorFact>): string[] {
+  const out: string[] = [];
+  for (const change of TRIGGERS) {
+    for (const action of approvals?.changes[change]?.actions ?? []) {
+      for (const v of action.variants) {
+        if (v.per !== "group" || !v.group) continue;
+        const op = connectors.get(v.operation.connectorId)?.versions.get(v.operation.version)?.operations.get(v.operation.key);
+        const arrays = op ? arrayPaths(op.request) : [];
+        const reads = Object.entries(v.mapping).filter(([p]) => !arrays.some((a) => p.startsWith(`${a}.`))).flatMap(([, src]) => sourceFields(src));
+        const first = [...new Set(reads)].flatMap((k) => {
+          const f = catalog.find((x) => x.key === k);
+          return f && ["break", "side_a", "side_b"].includes(f.group) && f.kind !== "money" && !v.group!.key.includes(k) ? [f.label] : [];
+        });
+        if (!first.length) continue;
+        const one = first.length === 1;
+        out.push(`${TRIGGER_LABEL[change]} · ${action.name} · ${v.name}: ${first.length > 2 ? `${first.slice(0, -1).join(", ")} and ${first.at(-1)}` : first.join(" and ")} ${one ? "is" : "are"} read from the first item of each group only. ${one ? "Make it a group key, or map it" : "Make them group keys, or map them"} inside an item list.`);
       }
     }
   }

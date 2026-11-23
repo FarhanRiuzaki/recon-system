@@ -177,4 +177,23 @@ describe("grouped variants (stage 5)", () => {
     const zero = buildGroupPayload(gv(m), op, [{ ...members[0]!, "break.amount": "100" }, { ...members[1]!, "break.amount": "-100" }], g, none, new Set());
     expect(zero).toMatchObject({ ok: false, code: "skipped" });
   });
+
+  it("a break's money fields read as the group's totals (signed); its other plain fields as the first break's (review C1)", () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ "break.amount": String(1000 + i), "break.currency": "IDR", "break.reference": `R${i + 1}`, "side_a.amount_minor": String(-(1000 + i)) }));
+    const m = { Total: { kind: "field", key: "break.amount", transforms: [] }, Count: { kind: "field", key: "side_a.amount_minor", transforms: [] }, Merchant: { kind: "field", key: "break.reference", transforms: [] },
+      "Items.Ref": { kind: "field", key: "break.reference", transforms: [] }, "Items.Amount": { kind: "field", key: "break.amount", transforms: [] } };
+    const r = buildGroupPayload(gv(m), op, many, g, none, new Set());
+    const total = many.reduce((t, x) => t + Number(x["break.amount"]), 0);
+    expect(r).toMatchObject({ ok: true, payload: { Total: total, Count: -total, Merchant: "R1" } });
+    expect((r as unknown as { payload: { Items: { Amount: number }[] } }).payload.Items.map((x) => x.Amount)).toEqual(many.map((x) => Number(x["break.amount"])));
+  });
+
+  it("a number the bank's JSON can't hold exactly is refused, alone or as a group's total (review I5)", () => {
+    const amount = { request: [{ name: "Amount", type: "numeric", required: true }] } as { request: OpField[] };
+    const v = gv({ Amount: { kind: "field", key: "break.amount", transforms: [] } });
+    expect(buildPayload(v, amount, { "break.amount": "9007199254740991" }, none, new Set())).toMatchObject({ ok: true, payload: { Amount: 9007199254740991 } });
+    expect(buildPayload(v, amount, { "break.amount": "9007199254740993" }, none, new Set())).toEqual({ ok: false, code: "build_error", field: "Amount", message: "Amount: 9007199254740993 is too large an amount to send as a number without losing digits." });
+    const half = String(2n ** 52n);
+    expect(buildGroupPayload(v, amount, [{ "break.amount": half }, { "break.amount": half }], g, none, new Set())).toMatchObject({ ok: false, code: "build_error", field: "Amount" });
+  });
 });

@@ -60,7 +60,7 @@ describe("Today's KPI tray (audit T1)", () => {
     expect(todayKpis({
       recons: [{ openBreaks: 3 }, { openBreaks: 4 }] as unknown as TodayDto["recons"],
       sources: [src("healthy"), src("degraded"), src("down"), src(null)],
-      posting: [{ reconId: "r", failed: 1, timeout: 2, notSent: 3 }],
+      posting: [{ reconId: "r", failed: 1, timeout: 2, notSent: 3, lateGroups: 1 }],
     })).toEqual({ unmatch: 7, posting: 6, behind: 2 });
   });
 

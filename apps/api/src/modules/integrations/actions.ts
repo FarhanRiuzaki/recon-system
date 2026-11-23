@@ -5,11 +5,11 @@
 // item: a second click finds it there) and its job, in the same transaction. Nothing is sent here.
 import type { Context } from "@starterkit/shared/conditions";
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
-import type { ReconApprovalSpec, TodayDto } from "@starterkit/shared/contracts/recon";
+import type { ReconApprovalSpec, ReconSpec, TodayDto } from "@starterkit/shared/contracts/recon";
 import { buildGroupPayload, buildPayload, periodOf, pickVariant, type Source, templateParts } from "@starterkit/shared/mapping";
-import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, notInArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, isNull, max, ne, notInArray, or, sql } from "drizzle-orm";
 import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
-import { POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
+import { groupKeyText, POSTING_STATUS_LABEL, postingEvent } from "@starterkit/shared/posting";
 import type { ActionRunDto, ActionRunListQuery, ActionRunRowDto, BreakDetailDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
 import { likeEscape, pageQuery, sortSql } from "../../kernel/pagination";
@@ -20,9 +20,9 @@ import { maskTree, maskValue } from "@starterkit/shared/integrations";
 import type { InTx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
-import { breakContextOf, itemsOf } from "../engine";
+import { breakContextOf, itemsOf, reconItems } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
-import { joinGroup } from "./groups";
+import { joinGroup, lateGroups } from "./groups";
 import { actionRuns, connectors, connectorVersions, postingGroupItems, postingGroups } from "./schema";
 
 export type ActionEvent = { event: "level_approved"; level: number } | { event: "approved" } | { event: "rejected" };
@@ -75,9 +75,11 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
       for (const item of items) {
         const context = { ...(await contextOf(item)), ...approval };
         const picked = pickVariant(a.variants, context);
-        // grouped (stage 5): the break joins its group, sent when the group closes; an amount of 0 it skips is a run
-        if (picked?.variant.per === "group" && picked.variant.group && !(picked.variant.zeroOrNegative === "skip" && notPositive(context["break.amount"]))) {
-          const g = { spaceId: rq.spaceId, configId: rq.configId, configVersionId: rq.configVersionId!, change: rq.kind, actionIndex: ai, variantIndex: picked.index, actionName: a.name, variant: picked.variant };
+        // grouped (stage 5): a posting on an approval joins its group, sent when the group closes; an amount of 0 it
+        // skips is a run. Anything else the publish check refused is sent one call per item (a version written around it).
+        if (picked?.variant.per === "group" && picked.variant.group && a.kind === "posting" && e.event !== "rejected" && !(picked.variant.zeroOrNegative === "skip" && notPositive(context["break.amount"]))) {
+          const g = { spaceId: rq.spaceId, configId: rq.configId, configVersionId: rq.configVersionId!, change: rq.kind, actionIndex: ai, variantIndex: picked.index, actionName: a.name, variant: picked.variant,
+            recon: (v?.spec ?? null) as ReconSpec | null };
           if (await joinGroup(tx, g, { requestId: rq.id, itemId: item, context })) written++;
           continue;
         }
@@ -140,24 +142,25 @@ export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemI
   return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null };
 }
 
-/** The space's action runs that `q` filters, with their recon; `status` one or more, `kind`, `q` = reference, external id or bank reference. */
-function runsWhere(spaceId: string, q: ActionRunListQuery) {
+/** The space's action runs that `q` filters, with their recon; `status` one or more, `kind`, `q` = reference, external id, bank reference or a group's key values. */
+function runsWhere(tx: InTx, spaceId: string, q: ActionRunListQuery) {
   const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
   return and(
     eq(actionRuns.spaceId, spaceId),
     q.status?.length ? inArray(actionRuns.status, q.status) : undefined,
     q.kind ? eq(actionRuns.kind, q.kind) : undefined,
-    like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like)) : undefined,
+    like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like),
+      inArray(actionRuns.groupId, tx.select({ id: postingGroups.id }).from(postingGroups).where(and(eq(postingGroups.spaceId, spaceId), ilike(postingGroups.keyText, like))))) : undefined,
   );
 }
 const runRows = (tx: InTx, where: ReturnType<typeof runsWhere>) =>
   tx.select({ r: actionRuns, reconId: reconConfigs.id, recon: reconConfigs.name, connector: connectors.name,
-    group: { members: postingGroups.members, total: postingGroups.totalMinor, currency: postingGroups.currency } }).from(actionRuns)
+    group: { members: postingGroups.members, total: postingGroups.totalMinor, currency: postingGroups.currency, period: postingGroups.period, keys: postingGroups.keys } }).from(actionRuns)
     .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
     .innerJoin(reconConfigs, eq(reconConfigs.id, reconConfigVersions.configId))
     .leftJoin(connectors, eq(connectors.id, actionRuns.connectorId))
     .leftJoin(postingGroups, and(eq(postingGroups.spaceId, actionRuns.spaceId), eq(postingGroups.id, actionRuns.groupId))).where(where).$dynamic();
-type RunRow = { r: typeof actionRuns.$inferSelect; reconId: string; recon: string; connector: string | null; group: { members: number; total: bigint; currency: string } | null };
+type RunRow = { r: typeof actionRuns.$inferSelect; reconId: string; recon: string; connector: string | null; group: { members: number; total: bigint; currency: string; period: string; keys: unknown } | null };
 const toRunRow = ({ r, reconId, recon, connector, group }: RunRow, extra?: { amount: ActionRunRowDto["amount"]; attempts: number }): ActionRunRowDto => ({
   id: r.id, action: r.actionName, kind: r.kind as ActionRunRowDto["kind"], event: r.event as ActionRunRowDto["event"], level: r.level, status: r.status as ActionRunRowDto["status"],
   code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId, at: (r.finishedAt ?? r.createdAt).toISOString(),
@@ -196,19 +199,26 @@ function readsOf(s: Source | undefined): string[] {
   return [];
 }
 
-/** Today: per recon, its posting runs (not notify) created in the last 24 hours that ended failed, timeout or not sent (none = left out). */
+/**
+ * Today: per recon, its posting runs (not notify) created in the last 24 hours that ended failed, timeout or not sent,
+ * and its posting groups still open past their due moment (none of either = left out).
+ */
 export async function postingAttention(tx: InTx, spaceId: string, now = new Date()): Promise<TodayDto["posting"]> {
   const n = (s: string) => sql<number>`count(*) filter (where ${actionRuns.status} = ${s})::int`;
-  return tx.select({ reconId: reconConfigVersions.configId, failed: n("failed"), timeout: n("timeout"), notSent: n("not_sent") }).from(actionRuns)
+  const runs = await tx.select({ reconId: reconConfigVersions.configId, failed: n("failed"), timeout: n("timeout"), notSent: n("not_sent") }).from(actionRuns)
     .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
     .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.kind, "posting"), inArray(actionRuns.status, ["failed", "timeout", "not_sent"]), gte(actionRuns.createdAt, new Date(now.getTime() - 86_400_000))))
     .groupBy(reconConfigVersions.configId);
+  const late = await lateGroups(tx, spaceId, now);
+  const out = runs.map((r) => ({ ...r, lateGroups: late.get(r.reconId) ?? 0 }));
+  for (const [reconId, lateN] of late) if (!out.some((r) => r.reconId === reconId)) out.push({ reconId, failed: 0, timeout: 0, notSent: 0, lateGroups: lateN });
+  return out;
 }
 
 /** GET …/action-runs: the space's action runs, newest first. */
 export function actionRunPage(ctx: Ctx, q: ActionRunListQuery): Promise<Page<ActionRunRowDto>> {
   return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
-    const where = runsWhere(ctx.space!.id, q);
+    const where = runsWhere(tx, ctx.space!.id, q);
     const page = await pageQuery({
       rows: runRows(tx, where), count: tx.select({ id: actionRuns.id }).from(actionRuns).where(where).$dynamic(),
       orderBy: sortSql(q.sort, { createdAt: actionRuns.createdAt }, "-createdAt", actionRuns.id), query: q, map: (x) => x, on: tx,
@@ -220,14 +230,21 @@ export function actionRunPage(ctx: Ctx, q: ActionRunListQuery): Promise<Page<Act
 /** GET …/action-runs?format=csv: CSV text (with BOM) of the filtered runs, newest first, at most CSV_MAX_ROWS rows. */
 export function actionRunCsv(ctx: Ctx, q: ActionRunListQuery): Promise<string> {
   return withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, async (tx) => {
-    const rows = (await runRows(tx, runsWhere(ctx.space!.id, q)).orderBy(desc(actionRuns.createdAt), desc(actionRuns.id)).limit(CSV_MAX_ROWS)).map((x) => toRunRow(x));
+    const rows = await runRows(tx, runsWhere(tx, ctx.space!.id, q)).orderBy(desc(actionRuns.createdAt), desc(actionRuns.id)).limit(CSV_MAX_ROWS);
+    // a group's run names its group: "Group 2026-11-23 · Merchant id 0012345"
+    const subject = (x: RunRow) => (x.group && x.r.groupId ? `Group ${x.group.period} · ${groupKeyText(x.group.keys as { label: string; value: string }[])}` : x.r.subjectRef);
     return CSV_BOM + toCsv([
       ["Time (UTC)", "Recon", "Break", "Action", "Event", "Status", "Code", "Message", "Bank reference", "External ID"],
-      ...rows.map((r) => [r.at, r.recon.name, r.break.ref, r.action, postingEvent(r), POSTING_STATUS_LABEL[r.status], r.code, r.message, r.bankReference, r.externalId]),
+      ...rows.map((x) => { const r = toRunRow(x); return [r.at, r.recon.name, subject(x), r.action, postingEvent(r), POSTING_STATUS_LABEL[r.status], r.code, r.message, r.bankReference, r.externalId]; }),
     ]);
   });
 }
 
+/** How many other breaks of the recon a preview reads, looking for one of the chosen break's group. */
+const PREVIEW_SIBLINGS = 10;
+const APPROVAL_KEYS = ["approval.level", "approval.by", "approval.at", "request.kind", "request.note"];
+const approvalOf = (c: Context) => Object.fromEntries(APPROVAL_KEYS.map((k) => [k, c[k]]));
+const groupSum = (ms: readonly Context[]) => ms.reduce((t, m) => (/^-?\d+$/.test(String(m["break.amount"] ?? "")) ? t + BigInt(String(m["break.amount"])) : t), 0n).toString();
 export type ActionPreview = { variant: string | null; payload: unknown; sources: Record<string, string>; problem: { code: string; field: string; message: string } | null; context: Record<string, unknown> };
 /**
  * What action `actionIndex` of change `kind` would send for break `itemId` (on its final approval, by the caller): the
@@ -250,18 +267,33 @@ export async function previewAction(tx: InTx, ctx: Ctx, approvals: ReconApproval
     .where(and(eq(connectorVersions.connectorId, v.operation.connectorId), eq(connectorVersions.version, v.operation.version), inArray(connectorVersions.status, ["published", "retired"])));
   const op = (cv?.spec as ConnectorSpec | undefined)?.operations.find((o) => o.key === v.operation.key);
   if (!op) return { ...none("The connector version this variant pins has no such operation."), variant: v.name };
-  // the values a masked request field reads are masked in the context too (it would show what the payload hides)
-  for (const path of op.masked) for (const key of readsOf(v.mapping[path])) if (context[key] != null) context[key] = maskValue(String(context[key]));
   const setup = { accounts: approvals?.accounts ?? [], lookups: approvals?.lookups ?? [] }, handled = new Set([...Object.keys(op.presets), ...Object.keys(op.auto ?? {})]);
-  // a grouped variant: a sample group of this one break, in the period an approval now would join (stage 5)
-  const built = v.per === "group" && v.group
-    ? buildGroupPayload(v, op, [context], { period: periodOf(new Date(), v.group.at === "cutoff" ? v.group.cutoff : null), keys: v.group.key.map((field) => ({ field, value: String(context[field] ?? "").trim() })) }, setup, handled)
-    : buildPayload(v, op, context, setup, handled);
+  // a grouped variant: a sample group of this break and another of the same key, currency and sign (a copy of it when
+  // none waits), in the period an approval now would join, so the total differs from the break's own amount (stage 5)
+  let members: Record<string, string | number | null | undefined>[] = [];
   if (v.per === "group" && v.group) {
-    // the group's own values, for the editor's example column
-    Object.assign(context, { "group.sum": context["break.amount"], "group.count": 1, "group.period": periodOf(new Date(), v.group.at === "cutoff" ? v.group.cutoff : null),
-      ...Object.fromEntries(v.group.key.map((k) => [`group.key.${k}`, context[k] ?? ""])) });
+    const g = v.group, keyOf = (c: Context) => JSON.stringify([...g.key.map((k) => String(c[k] ?? "").trim()), String(c["break.currency"] ?? "").toUpperCase(), String(c["break.amount"] ?? "").startsWith("-")]);
+    const sameRecon = tx.select({ c: reconItems.configId }).from(reconItems).where(and(eq(reconItems.spaceId, ctx.space!.id), eq(reconItems.id, itemId)));
+    const others = await tx.select({ id: reconItems.id }).from(reconItems)
+      .where(and(eq(reconItems.spaceId, ctx.space!.id), inArray(reconItems.configId, sameRecon), eq(reconItems.status, "break"), ne(reconItems.id, itemId))).orderBy(asc(reconItems.id)).limit(PREVIEW_SIBLINGS);
+    let sibling: typeof context | undefined;
+    for (const o of others) {
+      const c = { ...(await breakContextOf(tx, ctx.space!.id, o.id, [])), "recon.code": configCode, ...approvalOf(context) };
+      if (keyOf(c) === keyOf(context)) { sibling = c; break; }
+    }
+    members = [{ ...context }, sibling ?? { ...context }];
+    Object.assign(context, { "group.sum": groupSum(members), "group.count": members.length, "group.period": periodOf(new Date(), g.at === "cutoff" ? g.cutoff : null),
+      ...Object.fromEntries(g.key.map((k) => [`group.key.${k}`, String(context[k] ?? "").trim()])) });
   }
+  // the values a masked request field reads (a group key too) are masked in the context: it would show what the payload hides
+  for (const path of op.masked) for (const key of readsOf(v.mapping[path])) {
+    if (context[key] == null) continue;
+    context[key] = maskValue(String(context[key]));
+    for (const m of members) if (m[key] != null) m[key] = maskValue(String(m[key]));
+  }
+  const built = members.length
+    ? buildGroupPayload(v, op, members, { period: String(context["group.period"]), keys: v.group!.key.map((field) => ({ field, value: String(context[`group.key.${field}`] ?? "") })) }, setup, handled)
+    : buildPayload(v, op, context, setup, handled);
   return built.ok
     ? { variant: v.name, payload: maskTree(built.payload, op.masked), sources: built.sources, problem: null, context }
     : { variant: v.name, payload: null, sources: {}, problem: { code: built.code, field: built.field, message: built.message }, context };

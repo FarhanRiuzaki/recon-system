@@ -4,7 +4,7 @@ import { describe, expect, it } from "bun:test";
 import { ReconSpec, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
-import { checkActions, checkApprovals, checkReconSpec, reconIssue, usedFields } from "../../rules";
+import { checkActions, checkApprovals, checkReconSpec, firstItemReads, reconIssue, usedFields } from "../../rules";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import { gate, sourceSpec } from "../spec";
 
@@ -268,7 +268,7 @@ describe("checkActions (stage 4)", () => {
     expect(checkActions(setup(variant({ mapping: { Amount: { kind: "const", value: "1" } } })), cat, facts)).toEqual([`${where}: DE48.Remark is required. Map it, or give it a fixed or auto value.`]);
     expect(checkActions(setup(variant({ mapping: { Amount: { kind: "const", value: "1" }, "DE48.Remark": { kind: "const", value: "x" }, Extra: { kind: "const", value: "x" } } })), cat, facts)).toEqual([`${where}: Extra isn't a request field of Misc D/C.`]);
     expect(checkActions(setup(variant({ mapping: { Amount: { kind: "field", key: "side_a.attrs.gone", transforms: [] }, "DE48.Remark": { kind: "template", text: "{side_b.attrs.lost}" } } })), cat, facts))
-      .toEqual([`${where}: a field it reads is no longer read from the sources (side_a.attrs.gone, side_b.attrs.lost).`]);
+      .toEqual([`${where}: a field it reads is no longer read from the sources (Gone, Lost).`]);
   });
   it("approval fields may be read by a variant", () => {
     expect(checkActions(setup(variant({ when: { all: [{ field: "approval.level", op: "eq", value: "1" }] } })), cat, facts)).toEqual([]);
@@ -282,7 +282,15 @@ describe("checkActions (stage 4)", () => {
     expect(checkActions(act({ kind: "notify" }, g([])), cat, facts)).toEqual([`${where}: only a posting action is sent grouped. Make it a posting, or send one call per item.`]);
     expect(checkActions(act({ on: { event: "rejected" } }, g([])), cat, facts)).toEqual([`${where}: a rejected change posts nothing to group. Group it on an approval.`]);
     expect(checkActions(act({}, g(["break.amount"])), cat, facts)).toEqual([`${where}: Amount can't be a group key. Pick a text, date, list or number field.`]);
-    expect(checkActions(act({}, g(["side_a.attrs.gone"])), cat, facts)).toEqual([`${where}: a group key is no longer read from the sources (side_a.attrs.gone).`]);
+    expect(checkActions(act({}, g(["side_a.attrs.gone"])), cat, facts)).toEqual([`${where}: a group key is no longer read from the sources (Gone).`]);
     expect(checkActions(act({}, { mapping: sum }), cat, facts)).toEqual([`${where}: it reads the group's values (total, count, key), which only a grouped variant has.`]);
+  });
+  it("firstItemReads (review C1): a grouped variant's plain break field outside the item list, not a key and not money, is the first item's", () => {
+    const g = (key: string[], mapping: object) => ({ accounts: [], lookups: [], changes: { unmatch: { workflow: { default: null, rules: [] }, actions: [{ name: "Post to GL", kind: "posting", on: { event: "approved" },
+      variants: [variant({ per: "group", group: { key, at: "day_close", cutoff: null }, mapping })] }] } } }) as never;
+    const remark = { Amount: { kind: "field", key: "break.amount", transforms: [] }, "DE48.Remark": { kind: "template", text: "{side_a.attrs.e2e_id} {break.reference} {group.count} {recon.code}" } };
+    expect(firstItemReads(g([], remark), cat, facts)).toEqual(["Undo match · Post to GL · Default: BI · E2e id and Reference are read from the first item of each group only. Make them group keys, or map them inside an item list."]);
+    expect(firstItemReads(g(["side_a.attrs.e2e_id", "break.reference"], remark), cat, facts)).toEqual([]);
+    expect(firstItemReads(setup(variant()), cat, facts)).toEqual([]);
   });
 });

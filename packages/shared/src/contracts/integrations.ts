@@ -167,13 +167,14 @@ export const PostingGroupListQuery = ListQuery.extend({
 });
 export type PostingGroupListQuery = z.infer<typeof PostingGroupListQuery>;
 /**
- * One posting group: its period (approval date), part, key, currency, breaks and total (minor units), when it is
- * sent (`at` cutoff with `closesAt`, or at the recon day's close), open or closed, and its run once closed (null:
- * still open, or closed empty).
+ * One posting group: its period (approval date), part, key, currency, breaks and total (minor units, below 0 for a
+ * group of negative amounts), when it is sent (`at` cutoff, or at the recon day's close; `closesAt` the moment it is
+ * due either way), open or closed, `late` (still open 5 minutes past `closesAt`), and its run once closed (null: still
+ * open, or closed empty).
  */
 export const PostingGroupRowDto = z.object({
   id: z.string(), period: z.string(), part: z.number().int(), keys: z.array(PostingGroupKey), currency: z.string(), items: z.number().int(), totalMinor: z.string(),
-  at: z.enum(["cutoff", "day_close"]), closesAt: z.string().nullable(), closedAt: z.string().nullable(), action: z.string(), variant: z.string(), status: z.enum(["open", "closed"]),
+  at: z.enum(["cutoff", "day_close"]), closesAt: z.string().nullable(), closedAt: z.string().nullable(), action: z.string(), variant: z.string(), status: z.enum(["open", "closed"]), late: z.boolean(),
   run: z.object({ id: z.string(), status: z.enum(ACTION_STATUSES), code: z.string().nullable(), message: z.string().nullable(), bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string() }).nullable(),
 });
 export type PostingGroupRowDto = z.infer<typeof PostingGroupRowDto>;

@@ -8,14 +8,16 @@ import { periodOf } from "@starterkit/shared/mapping";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { and, asc, eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
+import { holdTx, lockWaiters } from "../../../../../test/helpers/db";
 import { decryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { workflows, workflowVersions } from "../../../approvals";
 import { records } from "../../../ingest";
-import { actionRuns, closeDueGroups, closeGroup, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
+import { actionRuns, closeDueGroups, closeGroup, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, joinGroup, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
 import { QUEUES } from "../../../../kernel/jobs";
 import { closeDay } from "../../breaks";
+import { closeMoment } from "../../rules";
 import { reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces, withSpace } from "../../../spaces";
 import { users } from "../../../users";
@@ -87,7 +89,7 @@ describe("joining a group in the approval", () => {
     for (const id of [I.a1, I.a2]) { await ask(id); await approve(id); }
     const [g, ...more] = await groups();
     expect(more).toEqual([]);
-    expect(g).toMatchObject({ status: "open", period: today(), part: 1, members: 2, totalMinor: 12_500n, currency: "IDR", at: "day_close", closesAt: null,
+    expect(g).toMatchObject({ status: "open", period: today(), part: 1, members: 2, totalMinor: 12_500n, currency: "IDR", negative: false, at: "day_close", closesAt: closeMoment(spec("", "", []) as never, today()),
       keys: [{ field: "break.reason", label: "Break reason", value: "No counterpart" }] });
     expect((await members()).map((m) => [m.itemId, m.ref])).toEqual([[I.a1, "P1"], [I.a2, "P2"]]);
     expect(await db.select().from(actionRuns)).toEqual([]);
@@ -175,11 +177,26 @@ describe("reading groups: the recon's tab, the break, the posting list", () => {
 });
 
 describe("what gets posted for a grouped variant", () => {
-  it("a sample group of the chosen break: its total, count, key and one array element", async () => {
-    await setup(grouped({}));
+  const preview = async (itemId: string) => {
     const [v] = await db.select({ id: reconConfigVersions.id }).from(reconConfigVersions).where(eq(reconConfigVersions.configId, cfg));
-    const p = await json<{ payload: unknown; problem: unknown; context: Record<string, unknown> }>(call("POST", `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/actions/preview`, { token: t.adm, body: { change: "write_off", action: 0, itemId: I.a1 } }));
-    expect(p).toMatchObject({ payload: { Amount: 10000, Remark: "1 items No counterpart", Items: [{ Ref: "P1" }] }, problem: null, context: { "group.count": 1, "group.key.break.reason": "No counterpart" } });
+    return json<{ payload: unknown; problem: unknown; context: Record<string, unknown> }>(call("POST", `/v1/spaces/${A}/recons/${cfg}/versions/${v!.id}/actions/preview`, { token: t.adm, body: { change: "write_off", action: 0, itemId } }));
+  };
+  it("a sample group of the chosen break and a break of the same key: the total, not the first break's amount (review C1)", async () => {
+    await setup(grouped({}, { mapping: { ...grouped({}).mapping, Amount: { kind: "field", key: "break.amount", transforms: [] } } }));
+    expect(await preview(I.a1)).toMatchObject({ payload: { Amount: 12500, Remark: "2 items No counterpart", Items: [{ Ref: "P1" }, { Ref: "P2" }] }, problem: null,
+      context: { "group.count": 2, "group.sum": "12500", "group.key.break.reason": "No counterpart" } });
+  });
+  it("no other break shares the key: the sample group holds the chosen break twice", async () => {
+    await setup(grouped({ key: ["side_a.ext_ref"] }));
+    expect(await preview(I.a1)).toMatchObject({ payload: { Amount: 20000, Remark: "2 items ", Items: [{ Ref: "P1" }, { Ref: "P1" }] }, problem: null });
+  });
+  it("a masked request field hides the group key it reads in the example values", async () => {
+    await setup(grouped({ key: ["side_a.ext_ref"] }, { mapping: { ...grouped({}).mapping, Remark: { kind: "field", key: "group.key.side_a.ext_ref", transforms: [] } } }));
+    const [cv] = await db.select().from(connectorVersions).where(eq(connectorVersions.connectorId, cid));
+    await db.update(connectorVersions).set({ spec: { ...(cv!.spec as object), operations: [{ ...OP, masked: ["Remark"] }] } }).where(eq(connectorVersions.id, cv!.id));
+    const p = await preview(I.a1);
+    expect(p.context["group.key.side_a.ext_ref"]).not.toBe("P1");
+    expect(JSON.stringify(p.payload)).not.toContain("\"Remark\":\"P1\"");
   });
 });
 
@@ -250,5 +267,105 @@ describe("closing a group", () => {
     await db.update(postingGroups).set({ members: 0 });
     expect(await close()).toBe(1);
     expect(await db.select().from(actionRuns)).toEqual([]);
+  });
+});
+
+describe("review fixes (stage 5)", () => {
+  const close = (d = today()) => withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroupsOfDay(tx, A, cfg, d));
+  const payloads = async () => (await db.select().from(actionRuns).orderBy(asc(actionRuns.createdAt))).map((r) => (r.payloadEnc ? JSON.parse(decryptSecret(r.payloadEnc)) : r.code));
+
+  it("C1: a variant mapping the break's amount sends the group's total; the break's other fields are the first break's", async () => {
+    await setup(grouped({}, { mapping: { Amount: { kind: "field", key: "break.amount", transforms: [] }, Remark: { kind: "field", key: "break.reference", transforms: [] } } }));
+    for (const id of [I.a1, I.a2]) { await ask(id); await approve(id); }
+    await close();
+    expect(await payloads()).toEqual([{ Amount: 12500, Remark: "P1" }]);
+  });
+
+  it("I2: an approval while the day close is closing that day's groups waits for it, then joins the next day's group", async () => {
+    await setup(grouped({}));
+    await ask(I.a1);
+    const id = (await detail(I.a1, t.rev)).request!.id;
+    const held = await holdTx((tx) => withSpace({ spaceIds: [A], userId: null }, async (s) => {
+      await closeGroupsOfDay(s, A, cfg, today());
+      await s.insert(reconDays).values({ spaceId: A, configId: cfg, businessDate: today(), status: "closing" });
+    }, tx));
+    try {
+      const approving = call("POST", `/v1/spaces/${A}/approval-requests/${id}/approve`, { token: t.rev, body: {} });
+      expect(await lockWaiters(1, "%pg_advisory_xact_lock_shared%")).toBe(true);
+      await held.commit();
+      expect((await approving).status).toBe(200);
+      expect((await groups()).map((g) => [g.period, g.status])).toEqual([[tomorrow(), "open"]]);
+    } finally {
+      await held.rollback();
+    }
+  });
+
+  it("I3: a day-close group its day close never came for shows late, then the per-minute job sends it once close + grace has passed", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    const late = new Date(Date.now() - 10 * 60_000);
+    await db.update(postingGroups).set({ closesAt: late });
+    const page = await json<{ items: { late: boolean }[] }>(call("GET", `/v1/spaces/${A}/recons/${cfg}/posting-groups`, { token: t.op }));
+    expect(page.items.map((g) => g.late)).toEqual([true]);
+    const today_ = await json<{ posting: { reconId: string; lateGroups: number; failed: number; timeout: number; notSent: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }));
+    expect(today_.posting).toEqual([{ reconId: cfg, failed: 0, timeout: 0, notSent: 0, lateGroups: 1 }]);
+    const due = late.getTime() + 30 * 60_000; // the fixture's grace
+    expect(await closeDueGroups(db, new Date(due - 1000))).toBe(0);
+    expect(await closeDueGroups(db, new Date(due))).toBe(1);
+    expect((await groups()).map((g) => g.status)).toEqual(["closed"]);
+  });
+
+  it("I4: a negative break opens a group of its own sign; absolute_swap sends each total without its sign", async () => {
+    const variant = grouped({}, { zeroOrNegative: "absolute_swap", mapping: { Amount: { kind: "field", key: "break.amount", transforms: ["abs"] }, Remark: { kind: "const", value: "x" } } });
+    await setup(variant);
+    const [v] = await db.select().from(reconConfigVersions).where(and(eq(reconConfigVersions.configId, cfg), eq(reconConfigVersions.status, "published")));
+    const target = { spaceId: A, configId: cfg, configVersionId: v!.id, change: "write_off", actionIndex: 0, variantIndex: 0, actionName: "Post", variant: variant as never, recon: v!.spec as never };
+    const ctx = (amount: string) => ({ "break.amount": amount, "break.currency": "IDR", "break.reason": "No counterpart" });
+    await withSpace({ spaceIds: [A], userId: null }, async (tx) => {
+      await joinGroup(tx, target, { requestId: Bun.randomUUIDv7(), itemId: I.a1, context: ctx("10000") });
+      await joinGroup(tx, target, { requestId: Bun.randomUUIDv7(), itemId: I.a2, context: ctx("-13000") });
+    });
+    expect((await groups()).map((g) => [g.negative, g.totalMinor]).sort()).toEqual([[false, 10_000n], [true, -13_000n]]);
+    await close();
+    expect((await payloads()).map((p) => p.Amount).sort()).toEqual([10000, 13000]);
+  });
+
+  it("a group that can't be built writes a failed run; the other groups and the day close go on", async () => {
+    const one = grouped({ key: ["side_a.ext_ref"] });
+    await setup(one);
+    for (const id of [I.a1, I.b2]) { await ask(id); await approve(id); }
+    // one group pins an older version whose variant can't be built (a template that isn't text)
+    const [v] = await db.select().from(reconConfigVersions).where(and(eq(reconConfigVersions.configId, cfg), eq(reconConfigVersions.status, "published")));
+    const sp = structuredClone(v!.spec) as { approvals: { changes: { write_off: { actions: { variants: unknown[] }[] } } } };
+    sp.approvals.changes.write_off.actions[0]!.variants = [{ ...one, mapping: { Amount: { kind: "template", text: 5 }, Remark: { kind: "const", value: "x" } } }];
+    const old = Bun.randomUUIDv7();
+    await db.insert(reconConfigVersions).values({ ...v!, id: old, version: 99, status: "retired", spec: sp });
+    const [g1] = await groups();
+    await db.update(postingGroups).set({ configVersionId: old }).where(eq(postingGroups.id, g1!.id));
+    expect(await closeDay(db, { spaceId: A, configId: cfg }, today(), new Date(Date.now() + 3 * 86_400_000))).not.toBe("not_due");
+    const runs = await db.select().from(actionRuns);
+    expect(runs.map((r) => [r.groupId === g1!.id, r.status, r.code]).sort()).toEqual([[false, "queued", null], [true, "failed", "build_error"]]);
+    expect((await groups()).map((g) => g.status)).toEqual(["closed", "closed"]);
+    expect(await db.select({ d: reconDays.businessDate }).from(reconDays)).toEqual([{ d: today() }]);
+  });
+
+  it("a grouped variant on a notify action sends one call per item, it joins no group", async () => {
+    await setup(grouped({}), { kind: "notify" });
+    await ask(I.a1); await approve(I.a1);
+    expect(await groups()).toEqual([]);
+    expect(await db.select({ itemId: actionRuns.itemId }).from(actionRuns)).toEqual([{ itemId: I.a1 }]);
+  });
+
+  it("a member's values are kept encrypted; the posting list finds a group's run by its key and the CSV names the group", async () => {
+    await setup(grouped({}));
+    await ask(I.a1); await approve(I.a1);
+    const [m] = await members();
+    expect(m!.context).toBeNull();
+    expect(JSON.parse(decryptSecret(m!.contextEnc!))["break.reference"]).toBe("P1");
+    await close();
+    const found = await json<{ total: number }>(call("GET", `/v1/spaces/${A}/action-runs?show=all&q=counterpart`, { token: t.op }));
+    expect(found.total).toBe(1);
+    const csv = await (await call("GET", `/v1/spaces/${A}/action-runs?show=all&format=csv`, { token: t.op })).text();
+    expect(csv).toContain(`Group ${today()} · Break reason No counterpart`);
   });
 });

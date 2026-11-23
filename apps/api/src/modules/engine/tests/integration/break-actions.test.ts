@@ -295,10 +295,10 @@ describe("posting results of the space", () => {
     await setup("write_off", [{ name: "Tell", kind: "notify", on: { event: "approved" }, variants: [variant()] }, { name: "Post", kind: "posting", on: { event: "approved" }, variants: [variant()] }], 1);
     await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
     await decide(I.a1, "approve", {}, t.rev);
-    const today = async () => (await json<{ posting: { reconId: string; failed: number; timeout: number; notSent: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }))).posting;
+    const today = async () => (await json<{ posting: { reconId: string; failed: number; timeout: number; notSent: number; lateGroups: number }[] }>(call("GET", `/v1/spaces/${A}/today`, { token: t.op }))).posting;
     expect(await today()).toEqual([]);
     await db.update(actionRuns).set({ status: "timeout" });
-    expect(await today()).toEqual([{ reconId: cfg, failed: 0, timeout: 1, notSent: 0 }]);
+    expect(await today()).toEqual([{ reconId: cfg, failed: 0, timeout: 1, notSent: 0, lateGroups: 0 }]);
     await db.update(actionRuns).set({ createdAt: new Date(Date.now() - 25 * 3_600_000) });
     expect(await today()).toEqual([]);
   });

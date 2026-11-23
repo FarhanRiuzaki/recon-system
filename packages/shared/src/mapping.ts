@@ -2,7 +2,7 @@
 // and pure: the sources a request field takes, the changes (transforms) applied to a value, and the references a
 // template makes, so the contract and the editor check the same way.
 
-import { type Condition, type Context, evaluate } from "./conditions";
+import { type Condition, type Context, evaluate, isMoneyKey } from "./conditions";
 import { formatNow, type OpField } from "./integrations";
 import { CURRENCY_EXPONENT } from "./sources";
 
@@ -137,12 +137,18 @@ function setAt(o: Record<string, unknown>, path: string, v: unknown) {
   if (last !== "__proto__" && last !== "constructor" && last !== "prototype") at[last] = v;
 }
 
+/** `v` (digits, maybe a sign and decimals) survives as a JSON number: a whole number up to 2^53 - 1, a decimal of 15 digits at most. */
+function exactNumber(v: string): boolean {
+  if (Math.abs(Number(v)) > Number.MAX_SAFE_INTEGER) return false;
+  return !v.includes(".") || v.replace(/^-/, "").replace(".", "").replace(/^0+/, "").length <= 15;
+}
 /**
  * The request payload a variant builds for a break's context: each mapped field from its source (numbers as numbers for
  * numeric fields), refused — naming the field — when a value is longer than the bank takes, a lookup misses, or a
  * required field ends up empty (fields in `handled` are filled by the operation itself: fixed or auto). An amount of 0
  * is skipped when the variant says so.
- * ponytail: numbers beyond 2^53 lose precision as JSON numbers; send such fields as text (type string) until a bank needs them.
+ * A numeric field whose value a JSON number can't hold exactly (beyond 2^53, or more than 15 digits with decimals) is
+ * refused rather than rounded: map such a field as text (type string) when a bank needs one.
  */
 export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }, ctx: Context, setup: Setup, handled: ReadonlySet<string>): Built {
   const amount = str(ctx["break.amount"]);
@@ -159,7 +165,10 @@ export function buildPayload(v: VariantLike, op: { request: readonly OpField[] }
     if (f?.maxLength && value.length > f.maxLength) {
       return { ok: false, code: "build_error", field: path, message: `${path} is ${value.length} characters; the bank takes ${f.maxLength}. Add a change that keeps the first or the last ${f.maxLength}.` };
     }
-    setAt(payload, path, f?.type === "numeric" && /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value);
+    if (f?.type === "numeric" && /^-?\d+(\.\d+)?$/.test(value)) {
+      if (!exactNumber(value)) return { ok: false, code: "build_error", field: path, message: `${path}: ${value} is too large an amount to send as a number without losing digits.` };
+      setAt(payload, path, Number(value));
+    } else setAt(payload, path, value);
     sources[path] = sourceName(src);
   }
   const missing = (fs: readonly OpField[], prefix: string): string | null => {
@@ -189,7 +198,7 @@ export function periodOf(at: Date, cutoff: string | null): string {
 export const closesAtOf = (period: string, cutoff: string) => new Date(`${period}T${cutoff}:00+07:00`);
 
 /** Every array field of a request tree (dot paths), outermost only: their fields are filled once per break of a group. */
-function arrayPaths(fields: readonly OpField[], prefix = ""): string[] {
+export function arrayPaths(fields: readonly OpField[], prefix = ""): string[] {
   return fields.flatMap((f) => (f.type === "array" ? [`${prefix}${f.name}`] : f.children?.length ? arrayPaths(f.children, `${prefix}${f.name}.`) : []));
 }
 const leafPaths = (fields: readonly OpField[], prefix: string): string[] =>
@@ -198,16 +207,22 @@ const leafPaths = (fields: readonly OpField[], prefix: string): string[] =>
 /**
  * One payload for a group of breaks (`members`: each break's context at its approval, in joining order). The group's
  * fields are read like recon fields: `group.sum` (the amounts in minor units), `group.count`, `group.period`,
- * `group.key.<field>`; any other field outside an array is the first break's (they share the key). Fields under an
+ * `group.key.<field>`; outside an array a money field (`break.amount`, a side's amount) is the group's total of it
+ * and any other field the first break's (they share the key). Fields under an
  * array request field are built once per break, one element each (the bank's item list). A total of 0 or below is
  * skipped when the variant says so; an element that can't be built fails naming it (`Items[2].Ref`).
  */
 export function buildGroupPayload(v: VariantLike, op: { request: readonly OpField[] }, members: readonly Context[], group: { period: string; keys: readonly { field: string; value: string }[] }, setup: Setup, handled: ReadonlySet<string>): Built {
-  let sum = 0n;
-  for (const m of members) { const a = str(m["break.amount"]).trim(); if (/^-?\d+$/.test(a)) sum += BigInt(a); }
+  // every money field (the break's amount, each side's amount) is the group's total of it, signed (review C1)
+  const totals = new Map<string, bigint>();
+  for (const m of members) for (const [k, x] of Object.entries(m)) {
+    const a = str(x).trim();
+    if (isMoneyKey(k) && /^-?\d+$/.test(a)) totals.set(k, (totals.get(k) ?? 0n) + BigInt(a));
+  }
+  const sum = totals.get("break.amount") ?? 0n;
   if (v.zeroOrNegative === "skip" && sum <= 0n) return { ok: false, code: "skipped", field: "", message: "The group's total is 0 or below: nothing to post." };
   const ctx: Context = {
-    ...members[0], "group.sum": sum.toString(), "group.count": members.length, "group.period": group.period,
+    ...members[0], ...Object.fromEntries([...totals].map(([k, t]) => [k, t.toString()])), "group.sum": sum.toString(), "group.count": members.length, "group.period": group.period,
     ...Object.fromEntries(group.keys.map((k) => [`group.key.${k.field}`, k.value])),
   };
   const arrays = arrayPaths(op.request).map((path) => ({ path, children: fieldAt(op.request, path)?.children ?? [] }));
