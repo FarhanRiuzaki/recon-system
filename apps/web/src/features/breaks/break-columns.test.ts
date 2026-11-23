@@ -40,6 +40,10 @@ describe("unmatch queue columns: the set of audit §5.1", () => {
 });
 
 describe("unmatch queue columns: an item runs no longer check carries a neutral Not checked again chip", () => {
+  it("every cell of a row stays within two lines (rows 52 px at most): the reference cut on one line, a name unwrapped", () => {
+    expect(COLS.find((c) => c.key === "assignee")!.className).toContain("whitespace-nowrap");
+    expect(COLS.find((c) => c.key === "break")!.className).toContain("[&_.truncate]:whitespace-nowrap");
+  });
   it("in the Checked until column only: the State cell is one chip (review 24 Nov: rows 52 px at most)", () => {
     const no = { ...B, recheck: { kind: "no" } } as BreakRowDto;
     // checked until 21 Nov, the row 2 days old on 20 Nov: today is 22 Nov, so no longer checked (its last day stays in Checked until)

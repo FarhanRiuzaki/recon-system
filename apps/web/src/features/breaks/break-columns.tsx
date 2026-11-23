@@ -60,7 +60,7 @@ export function breakColumns(spaceId: string, select?: Selection): Column<BreakR
     ) },
     // one chip (review 24 Nov: rows 52 px at most); whether runs still check it lives in Checked until
     { key: "state", header: "State", sortable: true, mobile: "meta", className: "whitespace-nowrap", cell: (r) => <StatusChip label={STATE_LABEL[r.state]} health={STATES.workState[r.state]} /> },
-    { key: "assignee", header: "Assignee", mobile: "meta", cell: (r) => (r.assignee ? (r.assignee.name ?? "A removed user") : <span className="text-fg-3">Unassigned</span>) },
+    { key: "assignee", header: "Assignee", mobile: "meta", className: "whitespace-nowrap", cell: (r) => (r.assignee ? (r.assignee.name ?? "A removed user") : <span className="text-fg-3">Unassigned</span>) },
     { key: "recheck", header: "Checked until", mobile: "meta", defaultHidden: true, className: "whitespace-nowrap", cell: (r) => (
       r.recheck.kind === "no" ? <CheckChip label={chipOf(r)} />
         : chipOf(r) ? <span className="inline-flex items-center gap-1.5">{recheckText(r.recheck)}<CheckChip label={chipOf(r)} /></span> : recheckText(r.recheck)
