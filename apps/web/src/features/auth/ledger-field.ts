@@ -68,7 +68,7 @@ const FLOOR_VERTEX = /* glsl */ `
     // The matching plane: a faint seam of brighter dots down the middle.
     float seam = exp(-p.x * p.x * 3.0) * 0.35;
     vAlpha = reveal * (0.42 + seam) * smoothstep(30.0, 9.0, r);
-    gl_PointSize = uSize * (1.0 + sweep * 0.5 + lift * 0.6) * (16.0 / -mv.z);
+    gl_PointSize = uSize * 0.75 * (1.0 + sweep * 0.5 + lift * 0.6) * (16.0 / -mv.z);
   }
 `;
 const FLOOR_FRAGMENT = /* glsl */ `
@@ -82,7 +82,7 @@ const FLOOR_FRAGMENT = /* glsl */ `
     float d = length(gl_PointCoord - 0.5);
     float edge = 1.0 - smoothstep(0.3, 0.5, d);
     vec3 col = mix(uInk, uSun, clamp(vPass * 1.3, 0.0, 1.0));
-    float a = edge * vAlpha * uOpacity * (1.0 + vPass * 1.2 + vLift * 0.6);
+    float a = edge * vAlpha * uOpacity * 0.45 * (1.0 + vPass * 1.6 + vLift * 0.8);
     if (a < 0.01) discard;
     gl_FragColor = vec4(col, min(a, 1.0));
   }
@@ -125,7 +125,7 @@ const RECORD_VERTEX = /* glsl */ `
     vFresh = step(tM, t) * exp(-max(t - tM, 0.0) * 1.2) + sweep * 0.6;
     float shown = smoothstep(tS, tS + 0.8, t) * (1.0 - smoothstep(${(L.cycle - L.fade).toFixed(1)}, ${L.cycle.toFixed(1)}, t));
     vAlpha = shown * clamp(uRise * 2.0 - 0.6, 0.0, 1.0);
-    gl_PointSize = uSize * mix(1.9, 1.55, s) * (1.0 + vFresh * 0.5 + waiting * 0.25) * (16.0 / -mv.z);
+    gl_PointSize = uSize * mix(2.8, 2.3, s) * (1.0 + vFresh * 0.6 + waiting * 0.35) * (16.0 / -mv.z);
   }
 `;
 const RECORD_FRAGMENT = /* glsl */ `
@@ -140,10 +140,10 @@ const RECORD_FRAGMENT = /* glsl */ `
   void main() {
     float d = length(gl_PointCoord - 0.5);
     float edge = 1.0 - smoothstep(0.32, 0.5, d);
-    vec3 col = mix(uInk, mix(uInk, uMatch, 0.55), vSettled);
+    vec3 col = mix(uInk, mix(uInk, uMatch, 0.85), vSettled);
     col = mix(col, uMatch, clamp(vFresh, 0.0, 1.0));
     col = mix(col, uWait, step(0.01, vWait));
-    float a = edge * vAlpha * uOpacity * (0.85 + vFresh * 0.4 + vWait * 0.5);
+    float a = edge * vAlpha * uOpacity * (1.0 + vFresh * 0.4 + vWait * 0.5);
     if (a < 0.01) discard;
     gl_FragColor = vec4(col, min(a, 1.0));
   }
@@ -158,8 +158,8 @@ const ARC_VERTEX = /* glsl */ `
   void main() {
     float t = uClock;
     float drawn = clamp((t - (aMatch - 0.35)) / 0.35, 0.0, 1.0);
-    float fade = 1.0 - smoothstep(aMatch + 0.2, aMatch + 1.4, t);
-    vA = step(aT, drawn) * fade * 0.75;
+    float fade = 1.0 - smoothstep(aMatch + 0.8, aMatch + 2.8, t);
+    vA = step(aT, drawn) * fade;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -170,6 +170,35 @@ const ARC_FRAGMENT = /* glsl */ `
   void main() { if (vA < 0.01) discard; gl_FragColor = vec4(uMatch, clamp(vA * uOpacity, 0.0, 1.0)); }
 `;
 
+/** The arc again as round beads, so the link reads thicker than WebGL's 1 px line (owner 24 Nov: "kurang terlihat"). */
+const ARC_DOT_VERTEX = /* glsl */ `
+  uniform float uClock;
+  uniform float uSize;
+  attribute float aT;
+  attribute float aMatch;
+  varying float vA;
+  void main() {
+    float t = uClock;
+    float drawn = clamp((t - (aMatch - 0.35)) / 0.35, 0.0, 1.0);
+    float fade = 1.0 - smoothstep(aMatch + 0.8, aMatch + 2.8, t);
+    vA = step(aT, drawn) * fade * 0.8;
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mv;
+    gl_PointSize = uSize * 0.9 * (16.0 / -mv.z);
+  }
+`;
+const ARC_DOT_FRAGMENT = /* glsl */ `
+  uniform vec3 uMatch;
+  uniform float uOpacity;
+  varying float vA;
+  void main() {
+    float d = length(gl_PointCoord - 0.5);
+    float a = (1.0 - smoothstep(0.3, 0.5, d)) * vA * uOpacity;
+    if (a < 0.01) discard;
+    gl_FragColor = vec4(uMatch, min(a, 1.0));
+  }
+`;
+
 /** A soft glow over the arc's top when a pair meets. */
 const GLOW_VERTEX = /* glsl */ `
   uniform float uClock;
@@ -177,11 +206,11 @@ const GLOW_VERTEX = /* glsl */ `
   attribute float aMatch;
   varying float vA;
   void main() {
-    float k = (uClock - aMatch) / 0.55;
-    vA = exp(-k * k) * 0.9;
+    float k = (uClock - aMatch) / 0.9;
+    vA = exp(-k * k);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
     gl_Position = projectionMatrix * mv;
-    gl_PointSize = uSize * 7.0 * (16.0 / -mv.z);
+    gl_PointSize = uSize * 11.0 * (16.0 / -mv.z);
   }
 `;
 const GLOW_FRAGMENT = /* glsl */ `
@@ -258,7 +287,7 @@ export function createLedgerField(canvas: HTMLCanvasElement, { reduced, colors }
   field.add(recordDots);
 
   // One arc per pair between the two meeting points, and a glow over its top.
-  const SEGS = 16;
+  const SEGS = 28;
   const arcPos: number[] = [], arcT: number[] = [], arcMatch: number[] = [];
   const glowPos: number[] = [], glowMatch: number[] = [];
   for (const p of pairs) {
@@ -275,13 +304,17 @@ export function createLedgerField(canvas: HTMLCanvasElement, { reduced, colors }
   const arcGeo = geometry({ position: [new Float32Array(arcPos), 3], aT: [new Float32Array(arcT), 1], aMatch: [new Float32Array(arcMatch), 1] });
   const arcMat = material(ARC_VERTEX, ARC_FRAGMENT);
   field.add(new LineSegments(arcGeo, arcMat));
+  const arcDotMat = material(ARC_DOT_VERTEX, ARC_DOT_FRAGMENT);
+  const arcDots = new Points(arcGeo, arcDotMat);
+  arcDots.frustumCulled = false;
+  field.add(arcDots);
   const glowGeo = geometry({ position: [new Float32Array(glowPos), 3], aMatch: [new Float32Array(glowMatch), 1] });
   const glowMat = material(GLOW_VERTEX, GLOW_FRAGMENT);
   const glow = new Points(glowGeo, glowMat);
   glow.frustumCulled = false;
   field.add(glow);
 
-  const materials = [floorMat, recordMat, arcMat, glowMat];
+  const materials = [floorMat, recordMat, arcMat, arcDotMat, glowMat];
   const tint = (c: Color, value: string) => { const rgb = hexToRgb(value); if (rgb) c.setRGB(...rgb); };
   function setColors(c: FieldColors) {
     // Raw token values: these shaders write their colour as given, so the screen shows the token itself.
