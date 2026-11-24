@@ -693,3 +693,20 @@ watermark (`>=`).
   tanggal pada close time + grace-nya; wizard menyebutnya di catatan look back (`model.ts` `lookbackNote`).
 - Spec tersimpan dengan watermark date-only dan `lookback_seconds` di bawah 1 hari (86.400 s) akan pause pada pull
   berikutnya dengan alasannya (`lookbackOf`): perlu versi baru dengan look back minimal 1 hari.
+
+## DEC-055 — Recon satu arah (A ke B): sisi B tanpa pasangan "Not required", bukan unmatch
+
+24 November 2026 — pemilik: "recon itu bisa oneway, bisa two way … sisi A sebagai pintu, cek ke sisi B sebagai settle …
+ada juga yg 2 arah". Versi recon punya `direction` (`two_way` | `a_to_b`; tanpa kunci = two-way, jadi spec lama tetap
+sama), bagian dari spec dan matching hash: mengubahnya lewat draft, simulasi dan approval seperti setting lain. Desain:
+`docs/superpowers/specs/2026-11-24-one-way-recon-design.md`.
+
+- Representasi: status item baru `not_required` (migration 0069), bukan penanda di `break`, supaya semua pembaca break
+  (Unmatch list, facets, summary, nav count, Today, dashboard, counter hari, sign-off) mengecualikannya tanpa diubah.
+- Hanya kasus "No counterpart" polos sisi B yang not required. Near miss (currency, amount, date differs), Duplicate,
+  Ambiguous dan suggestion yang belum dikonfirmasi yang memuat item sisi B tetap unmatch.
+- Dalam carry over item not required tetap kandidat pass berikutnya (seperti break "No counterpart"); dipasangkan
+  otomatis jadi Matched tanpa resolusi. Carry over "always" tidak diperlebar olehnya (sisi B tidak pernah settle
+  sendiri), jadi ia kandidat di jendela yang dijaga unmatch sisi A (minimal 31 hari).
+- Operation result: status "Not required" (abu-abu) dan side state "Record not required"; rasio auto match dashboard
+  tidak menghitung recordnya.
