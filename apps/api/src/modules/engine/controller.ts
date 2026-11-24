@@ -8,6 +8,7 @@ import { Elysia } from "elysia";
 import { AssignBreaksBody, BreakCandidateQuery, BreakListQuery, BreakStateBody, CloseBreakBody, MatchBreakBody, RequestBreakBody, TakeBreaksBody } from "@starterkit/shared/contracts/breaks";
 import { TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody, SignoffBody, SignoffListQuery } from "@starterkit/shared/contracts/recon";
+import { ResultListQuery, ResultMembersQuery } from "@starterkit/shared/contracts/results";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
@@ -18,6 +19,7 @@ import { signoffPage, signoffStep } from "./signoff";
 import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
+import { resultCounts, resultMembers, resultPage } from "./results";
 
 /** The routes of runs and simulations. */
 export const engineController = () =>
@@ -60,6 +62,11 @@ export const engineController = () =>
       const b = await body(c, SignoffBody);
       return signoffStep(c.ctx, idParam(c.params.configId, "recon"), b, "sign");
     }, { guard: { space: ["reviewer", "space_admin"] } })
+    // Operation result: one recon's results in a business-date range (groups and lone items), any role reads
+    .get("/v1/spaces/:spaceId/recons/:configId/results", ({ ctx, params, query }) => resultPage(ctx, idParam(params.configId, "recon"), query), { query: ResultListQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/recons/:configId/results/counts", ({ ctx, params, query }) => resultCounts(ctx, idParam(params.configId, "recon"), query), { query: ResultListQuery, guard: { space: SPACE_ROLES } })
+    .get("/v1/spaces/:spaceId/recons/:configId/results/:rowId/members", ({ ctx, params, query }) =>
+      resultMembers(ctx, idParam(params.configId, "recon"), idParam(params.rowId, "result"), query), { query: ResultMembersQuery, guard: { space: SPACE_ROLES } })
     /** Live day: one recon's current business date. */
     .get("/v1/spaces/:spaceId/recons/:configId/live", ({ ctx, params }) => reconLive(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
     /** A recon's trend: its last TREND_DAYS business dates. */

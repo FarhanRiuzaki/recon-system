@@ -21,6 +21,12 @@
         }
       ]
     },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "missing": {
       "type": "boolean",
       "const": true

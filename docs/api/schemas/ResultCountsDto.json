@@ -29,24 +29,7 @@
         "type": "integer",
         "minimum": -9007199254740991,
         "maximum": 9007199254740991
-      },
-      "required": [
-        "posting_failed",
-        "posting_in_progress",
-        "posting_skipped",
-        "waiting_approval",
-        "posted",
-        "written_off",
-        "adjusted",
-        "closed",
-        "force_matched",
-        "matched_by_hand",
-        "matched_late",
-        "suggested",
-        "matched",
-        "unmatch",
-        "waiting_counterpart"
-      ]
+      }
     },
     "capped": {
       "type": "boolean"

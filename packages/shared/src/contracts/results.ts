@@ -64,10 +64,11 @@ export type ResultListQuery = z.infer<typeof ResultListQuery>;
 export const ResultSide = z.object({ state: z.enum(SIDE_STATES), count: z.number().int() });
 export type ResultSide = z.infer<typeof ResultSide>;
 /**
- * A cell: the value (amounts in minor units as text, the side's sum; "Mixed" over currencies), `many` = the side's
- * records hold that many different values, `missing` = the source no longer has the field.
+ * A cell: the value (an amount = the side's signed sum in minor units as text, with its `currency`; "Mixed" with
+ * currency null over currencies), `many` = the side's records hold that many different values, `missing` = the source
+ * no longer has the field.
  */
-export const ResultCell = z.object({ value: z.string().nullable(), many: z.number().int().nullable(), missing: z.literal(true).optional() });
+export const ResultCell = z.object({ value: z.string().nullable(), many: z.number().int().nullable(), currency: z.string().nullable().optional(), missing: z.literal(true).optional() });
 export type ResultCell = z.infer<typeof ResultCell>;
 
 /**
@@ -89,7 +90,7 @@ export const ResultRowDto = z.object({
 export type ResultRowDto = z.infer<typeof ResultRowDto>;
 
 /** GET …/results/counts: rows per overall status under every filter but `result`; `capped` = a count stopped at 100,000. */
-export const ResultCountsDto = z.object({ counts: z.record(z.enum(RESULT_STATUSES), z.number().int()), capped: z.boolean() });
+export const ResultCountsDto = z.object({ counts: z.partialRecord(z.enum(RESULT_STATUSES), z.number().int()), capped: z.boolean() });
 export type ResultCountsDto = z.infer<typeof ResultCountsDto>;
 
 /** GET …/results/{rowId}/members: `kind` says whether `rowId` is a group or a lone item. */
