@@ -20,7 +20,7 @@ import type {
   IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, readCron, type SourceKind, type SourceStatus } from "@starterkit/shared/sources";
-import { and, count, desc, eq, exists, gte, inArray, isNull, lte, max, or, sql } from "drizzle-orm";
+import { type AnyColumn, and, count, desc, eq, exists, gt, gte, inArray, isNull, lte, max, or, sql } from "drizzle-orm";
 import { loadWorkerConfig } from "../../kernel/config";
 import { decryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
@@ -34,14 +34,14 @@ import type { Ctx } from "../auth";
 import { calendars, pauseSource, sourceConnections, sources, sourceShares, sourceVersions } from "../sources";
 import { isSpaceArchived, withSpace } from "../spaces";
 import { type Column, type Connector, ConnectorError, connectorFor, type From, lookbackOf, type Row, type Secret } from "./connectors";
-import { familyOf } from "./connectors/dialect";
+import { familyOf, isTimeType } from "./connectors/dialect";
 import { insertBatch, makePartitions, MissingPartition, rawHashOf, supersede } from "./copy";
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
 import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
-import { type Baseline, completedDates, type DeliveryTally, deliveryTally, completeThroughOf, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
+import { type Baseline, completedDates, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
 import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
@@ -122,10 +122,15 @@ async function setCursor(tx: InTx, s: Scope, set: Partial<typeof sourceCursors.$
 /**
  * Business dates `dates` of `s` became complete now; the first completion of a date wins (source_deliveries). A date
  * that hasn't ended (Asia/Jakarta) is never kept: more of its data may still come (today's snapshot, a file of today).
+ * Each keeps when it was due by the rule in force now (`due_at`, rules.ts deliveryDue), so a later rule change never
+ * turns it on time or late.
  */
-async function delivered(tx: InTx, s: Scope, dates: string[], now = new Date()): Promise<void> {
+async function delivered(tx: InTx, s: Scope, l: Loaded, dates: string[], now = new Date()): Promise<void> {
   const ended = dates.filter((d) => endOfDay(d) <= now);
-  if (ended.length) await tx.insert(sourceDeliveries).values(ended.map((businessDate) => ({ ...s, businessDate }))).onConflictDoNothing();
+  if (!ended.length) return;
+  const rule = dueRule(l.spec.health, (await reconDueRules(tx, [{ spaceId: s.spaceId, id: s.sourceId }])).get(s.sourceId));
+  await tx.insert(sourceDeliveries).values(ended.map((businessDate) => ({ ...s, businessDate, dueAt: deliveryDue(l.spec.input.kind, l.calendar, businessDate, rule) })))
+    .onConflictDoNothing();
 }
 
 /** Pauses the source with `reason` as its last error and, when its columns changed, `drift` per column. */
@@ -312,7 +317,7 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
         const [was] = baseline ? [] : await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors).where(and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.sourceId)));
         const ct = completeThroughOf(mark.watermark, lookbackSeconds, wmField);
         await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, ct);
-        if (was) await delivered(tx, s, completedDates(was.ct, ct));
+        if (was) await delivered(tx, s, l, completedDates(was.ct, ct));
       }));
       reached = mark.watermark;
     }
@@ -393,7 +398,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
       // the date's records are this snapshot's alone now (a snapshot source has no others): set, not add
       await tally(tx, s, "records", new Map([[businessDate, counts.added]]), true);
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, endOfDay(businessDate));
-      if (counts.ok > 0) await delivered(tx, s, [businessDate]); // an empty snapshot completes nothing
+      if (counts.ok > 0) await delivered(tx, s, l, [businessDate]); // an empty snapshot completes nothing
       return false;
     });
     return kept ? "failed" : "active";
@@ -491,7 +496,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
         rowsTotal: counts.total, rowsOk: counts.ok, rowsNew: counts.added, rowsQuarantined: counts.quarantined,
       });
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, row.businessDate ? endOfDay(row.businessDate) : null);
-      if (row.businessDate && counts.ok > 0) await delivered(tx, s, [row.businessDate]); // a file with no row OK completes nothing
+      if (row.businessDate && counts.ok > 0) await delivered(tx, s, l, [row.businessDate]); // a file with no row OK completes nothing
       return "ingested" as const;
     }));
   } catch (e) {
@@ -562,8 +567,6 @@ const NO_STATE: SourceState = { health: null, rowsToday: null, quarantinedToday:
 
 /** Health inputs a source's recons set (recon's reconHealthInputs), by source id. */
 export type HealthInputs = Map<string, { graceMinutes: number | null; deadline: string | null }>;
-/** The stricter of two inputs: the smaller grace, the earlier deadline (HH:MM compares as text); null = not set. */
-const stricter = <T extends number | string>(a: T | null, b: T | null): T | null => (a === null ? b : b === null ? a : b < a ? b : a);
 
 /**
  * The state of each of `list` as space `viewer` sees it, by source id. A source without a published version has none.
@@ -621,37 +624,79 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
 /** A source whose deliveries are counted: its published spec and when it was made. */
 export type DeliverySource = { id: string; spaceId: string; kind: SourceKind; spec: SourceSpec; createdAt: Date };
 
+const uuids = (ids: string[]) => `{${ids.join(",")}}`;
+/**
+ * `t`'s rows of the sources `list` by (space_id, source_id), the order its indexes lead with. A source id is unique
+ * across spaces (sources.id is the primary key), so the two lists select exactly those sources' rows.
+ */
+const ofSources = (t: { spaceId: AnyColumn; sourceId: AnyColumn }, list: { spaceId: string; id: string }[]) =>
+  and(inArray(t.spaceId, [...new Set(list.map((x) => x.spaceId))]), inArray(t.sourceId, list.map((x) => x.id)));
+
+/**
+ * The due inputs each of `list` takes from the recons that read it, by source id: over every space's published recons
+ * (recon_source_due, drizzle/0068), so they never depend on who asks.
+ */
+async function reconDueRules(tx: InTx, list: { spaceId: string; id: string }[]): Promise<Map<string, DueRule>> {
+  if (!list.length) return new Map();
+  const rows = await tx.select({ id: sql<string>`source_id`, grace: sql<number | null>`grace_minutes`, deadline: sql<string | null>`deadline`, close: sql<number | null>`close_minutes` })
+    .from(sql`recon_source_due(${uuids(list.map((x) => x.spaceId))}::uuid[], ${uuids(list.map((x) => x.id))}::uuid[])`);
+  return new Map(rows.map((r) => [r.id, { graceMinutes: r.grace, deadline: r.deadline, closeMinutes: r.close }]));
+}
+
+/** Rows of `rows` grouped by source id, once. */
+function bySource<T extends { id: string }>(rows: T[]): Map<string, T[]> {
+  const out = new Map<string, T[]>();
+  for (const r of rows) {
+    const l = out.get(r.id);
+    if (l) l.push(r);
+    else out.set(r.id, [r]);
+  }
+  return out;
+}
+
 /**
  * On time, late, missing and unknown business dates `from`..`to` of each of `list` at `now`, by source id (rules.ts
- * deliveryTally). `reconDue(sourceId, date)` = when the recons reading it close that date anyway, for a source with
- * no rule of its own. A fixed number of queries for the whole list.
+ * deliveryTally); null for a source whose calendar is missing (its business dates can't be told). A completion is
+ * judged by the due time kept with it; a date without one by the source's rule today (dueRule with the recons reading
+ * it in every space). A fixed number of queries for the whole list, each by (space_id, source_id).
  */
-export async function deliveryCounts(tx: InTx, list: DeliverySource[], from: string, to: string, now: Date, reconDue: (sourceId: string, date: string) => Date | null): Promise<Map<string, DeliveryTally>> {
+export async function deliveryCounts(tx: InTx, list: DeliverySource[], from: string, to: string, now: Date): Promise<Map<string, DeliveryTally | null>> {
   if (!list.length) return new Map();
-  const ids = list.map((x) => x.id);
   const dates: string[] = [];
   for (let d = from; d <= to; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) dates.push(d);
   const cals = await tx.select({ code: calendars.code, weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars)
     .where(inArray(calendars.code, [...new Set(list.map((x) => x.spec.calendar))]));
   const calOf = new Map(cals.map((c) => [c.code, makeCalendar(c)]));
-  const done = await tx.select({ id: sourceDeliveries.sourceId, date: sourceDeliveries.businessDate, at: sourceDeliveries.completedAt }).from(sourceDeliveries)
-    .where(and(inArray(sourceDeliveries.sourceId, ids), gte(sourceDeliveries.businessDate, from), lte(sourceDeliveries.businessDate, to)));
-  const snaps = await tx.selectDistinct({ id: sourceSnapshots.sourceId, date: sourceSnapshots.businessDate }).from(sourceSnapshots)
-    .where(and(inArray(sourceSnapshots.sourceId, ids), eq(sourceSnapshots.status, "active"), gte(sourceSnapshots.businessDate, from), lte(sourceSnapshots.businessDate, to)));
-  const files = await tx.selectDistinct({ id: sourceFiles.sourceId, date: sourceFiles.businessDate }).from(sourceFiles)
-    .where(and(inArray(sourceFiles.sourceId, ids), eq(sourceFiles.status, "ingested"), gte(sourceFiles.businessDate, from), lte(sourceFiles.businessDate, to)));
-  const cursors = new Map((await tx.select({ id: sourceCursors.sourceId, ct: sourceCursors.completeThrough, ok: sourceCursors.lastSuccessAt }).from(sourceCursors)
-    .where(inArray(sourceCursors.sourceId, ids))).map((c) => [c.id, c]));
-  const out = new Map<string, DeliveryTally>();
+  const d = sourceDeliveries, sn = sourceSnapshots, f = sourceFiles;
+  const done = bySource(await tx.select({ id: d.sourceId, date: d.businessDate, at: d.completedAt, dueAt: d.dueAt }).from(d)
+    .where(and(ofSources(d, list), gte(d.businessDate, from), lte(d.businessDate, to))));
+  // a date is delivered by an active snapshot or an ingested file with rows; an empty one completes nothing
+  const snaps = await tx.selectDistinct({ id: sn.sourceId, date: sn.businessDate }).from(sn)
+    .where(and(ofSources(sn, list), eq(sn.status, "active"), gt(sn.rows, 0), gte(sn.businessDate, from), lte(sn.businessDate, to)));
+  const files = await tx.selectDistinct({ id: f.sourceId, date: f.businessDate }).from(f)
+    .where(and(ofSources(f, list), eq(f.status, "ingested"), gt(f.rowsOk, 0), gte(f.businessDate, from), lte(f.businessDate, to)));
+  const delivered = bySource([...snaps, ...files]);
+  const cursors = new Map((await tx.select({ id: sourceCursors.sourceId, ct: sourceCursors.completeThrough, columns: sourceCursors.columns }).from(sourceCursors)
+    .where(ofSources(sourceCursors, list))).map((c) => [c.id, c]));
+  const recon = await reconDueRules(tx, list);
+  const out = new Map<string, DeliveryTally | null>();
   for (const x of list) {
     const calendar = calOf.get(x.spec.calendar);
-    if (!calendar) continue;
+    if (!calendar) { out.set(x.id, null); continue; }
     const c = cursors.get(x.id);
+    // a watermark of no date or time (a sequence number) gives no completeness: told by its column's type, as first
+    // pulled (else the spec's field), so a time watermark that pulls nothing still turns missing once due
+    let untimed = false;
+    if (x.spec.input.kind === "db_watermark" && !c?.ct) {
+      const wm = x.spec.input.watermark.column;
+      const type = (c?.columns as Baseline | null)?.find((b) => b.name === wm)?.type ?? x.spec.fields.find((b) => b.name === wm)?.type;
+      untimed = type !== undefined && !isTimeType(type);
+    }
     out.set(x.id, deliveryTally({
-      kind: x.kind, calendar, createdAt: x.createdAt, health: x.spec.health,
-      completedAt: new Map(done.filter((r) => r.id === x.id).map((r) => [r.date, r.at])),
-      delivered: new Set([...snaps, ...files].filter((r) => r.id === x.id && r.date).map((r) => r.date!)),
-      completeThrough: c?.ct ?? null, untimed: !!c?.ok && !c.ct, reconDue: (d) => reconDue(x.id, d),
+      kind: x.kind, calendar, createdAt: x.createdAt, rule: dueRule(x.spec.health, recon.get(x.id)),
+      completed: new Map((done.get(x.id) ?? []).map((r) => [r.date, { at: r.at, dueAt: r.dueAt }])),
+      delivered: new Set((delivered.get(x.id) ?? []).flatMap((r) => (r.date ? [r.date] : []))),
+      completeThrough: c?.ct ?? null, untimed,
     }, dates, now));
   }
   return out;

@@ -220,6 +220,8 @@ export const sourceDeliveries = pgTable("source_deliveries", {
   sourceId: uuid("source_id").notNull(),
   businessDate: date("business_date").notNull(),
   completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+  /** When the date was due by the rule in force at its completion (rules.ts deliveryDue); null = kept before 0068. */
+  dueAt: timestamp("due_at", { withTimezone: true }),
 }, (t) => [
   primaryKey({ name: "source_deliveries_pkey", columns: [t.spaceId, t.sourceId, t.businessDate] }),
   foreignKey({ name: "source_deliveries_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),

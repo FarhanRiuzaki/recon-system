@@ -39,6 +39,7 @@ const RAW_SQL_OK: Record<string, string> = {
   "src/modules/engine/tests/integration/results-volume.test.ts": "seeds records, items and match groups with generate_series in INSERT … SELECT for the Operation result volume test (off unless RESULTS_VOLUME)",
   "src/modules/engine/tests/integration/run-perf.test.ts": "seeds records per side with generate_series in one INSERT … SELECT for the run latency measurement (off unless PERF_ENGINE)",
   "src/modules/ingest/tests/integration/rows-today-perf.test.ts":"seeds a million records per source with generate_series in one INSERT … SELECT for the rowsToday measurement (off unless PERF_ROWS_TODAY)",
+  "src/modules/ingest/tests/integration/deliveries-perf.test.ts": "seeds 92 days of deliveries, files and snapshots per source with generate_series in INSERT … SELECT for the deliveryCounts time budget",
 };
 const rawSqlOk = (file: string) => Object.keys(RAW_SQL_OK).some((k) => (k.endsWith("/") ? file.startsWith(k) : file === k));
 
@@ -250,6 +251,7 @@ const SECURITY_DEFINER: Record<string, string> = {
   recon_analyze_table: "ANALYZE of match tables a run wrote: only the owner may (drizzle/0033)",
   recon_source_day_closed: "whether any space closed a source's date: a boolean, no other space's data (drizzle/0042)",
   recon_connector_used_by: "how many recons of active spaces call a connector: (connector_id, count) only, no recon or space data (drizzle/0058)",
+  recon_source_due: "when a source's dates are due by the recons reading it in every space: (source_id, min grace, min deadline, min close) only, no recon or space data (drizzle/0068)",
 };
 
 /** Security definer functions of the current schema, by name. */

@@ -7,7 +7,6 @@ import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import type { BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { RECON_DASHBOARD_DAYS, type ReconDashboardDto, type ReconDashboardQuery } from "@starterkit/shared/contracts/dashboard";
 import { AGE_GROUPS, CLOSED_PARTS, median, POSTING_FAILED, POSTING_FINISHED, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
-import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
 import { and, desc, eq, gte, inArray, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
@@ -24,7 +23,6 @@ import { sources, sourceVersions } from "../sources";
 import { viewerSpaces, withSpace } from "../spaces";
 import { breakSummary, openBreakdown } from "./break-queue";
 import { reconDayStats, reconRuns } from "./schema";
-import { closeMoment } from "./rules";
 import { addDays } from "./service";
 import { missingDays, queueDay } from "./stats";
 
@@ -195,7 +193,8 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     computedAt: computed.length ? new Date(Math.min(...computed)).toISOString() : null,
     pending: { days: gapDays(true), prevDays: gapDays(false) },
     sources: (() => {
-      const rows = period.delivery.map((x) => ({ ...x, spaceName: scope.find((s) => s.id === x.spaceId)!.name }));
+      const spaceName = new Map(scope.map((s) => [s.id, s.name]));
+      const rows = period.delivery.map((x) => ({ ...x, spaceName: spaceName.get(x.spaceId)! }));
       const total = (k: "onTime" | "late" | "missing" | "unknown") => rows.reduce((n, r) => n + r[k], 0);
       return { onTime: total("onTime"), late: total("late"), missing: total("missing"), unknown: total("unknown"), rows };
     })(),
@@ -204,34 +203,26 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
 
 /**
  * The sources of spaces `ids` (their own and those their recons read; with `recon`, the ones it reads) with their
- * deliveries of `from`..`to` (ingest deliveryCounts). A source with no rule of its own is due when the earliest of
- * the published recons reading it closes the date anyway: close + grace_minutes (breaks.ts closeDay). `spaceId` = its
- * own space when in `ids`, else that of a recon there reading it (a shared source opens under that space).
+ * deliveries of `from`..`to` (ingest deliveryCounts: due by the source's rule and every space's recons reading it, never
+ * the viewer's). `spaceId` = its own space when in `ids`, else that of a recon there reading it (a shared source opens
+ * under that space). A source whose calendar is missing is listed with no counts (`calendarMissing`).
  */
 async function sourceDeliveries(tx: InTx, ids: string[], recon: string | null, from: string, to: string, now: Date) {
-  const uses = await tx.selectDistinct({ spaceId: reconSourceUses.spaceId, configId: reconSourceUses.configId, sourceId: reconSourceUses.sourceId }).from(reconSourceUses)
-    .where(and(inArray(reconSourceUses.spaceId, ids), recon ? eq(reconSourceUses.configId, recon) : undefined));
+  const u = reconSourceUses;
+  const uses = await tx.selectDistinct({ spaceId: u.spaceId, sourceSpaceId: u.sourceSpaceId, sourceId: u.sourceId }).from(u)
+    .where(and(inArray(u.spaceId, ids), recon ? eq(u.configId, recon) : undefined));
+  const readerSpace = new Map<string, string>();
+  for (const x of uses) if (!readerSpace.has(x.sourceId)) readerSpace.set(x.sourceId, x.spaceId);
+  const read = [...new Map(uses.map((x) => [`${x.sourceSpaceId}:${x.sourceId}`, and(eq(sources.spaceId, x.sourceSpaceId), eq(sources.id, x.sourceId))])).values()];
+  const where = recon ? (read.length ? or(...read) : sql`false`) : or(inArray(sources.spaceId, ids), ...read);
   const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
-  const usedIds = [...new Set(uses.map((u) => u.sourceId))];
   const list = await tx.select({ id: sources.id, spaceId: sources.spaceId, name: sources.name, kind: sources.kind, createdAt: sources.createdAt, spec: sourceVersions.spec })
-    .from(sources).innerJoin(sourceVersions, published)
-    .where(recon ? (usedIds.length ? inArray(sources.id, usedIds) : sql`false`) : or(inArray(sources.spaceId, ids), usedIds.length ? inArray(sources.id, usedIds) : undefined))
-    .orderBy(sql`lower(${sources.name})`, sources.id);
+    .from(sources).innerJoin(sourceVersions, published).where(where).orderBy(sql`lower(${sources.name})`, sources.id);
   if (!list.length) return [];
-  // every published recon reading them that this scope reads (for the due time), not only the filtered one
-  const readers = await tx.selectDistinct({ sourceId: reconSourceUses.sourceId, spec: reconConfigVersions.spec }).from(reconSourceUses)
-    .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, reconSourceUses.spaceId), eq(reconConfigVersions.configId, reconSourceUses.configId), eq(reconConfigVersions.status, "published")))
-    .where(inArray(reconSourceUses.sourceId, list.map((x) => x.id)));
-  const reconDue = (sourceId: string, d: string) => readers.filter((r) => r.sourceId === sourceId).reduce<Date | null>((at, r) => {
-    const spec = r.spec as ReconSpec;
-    const due = new Date(closeMoment(spec, d).getTime() + spec.grace_minutes * 60_000);
-    return at === null || due < at ? due : at;
-  }, null);
-  const counted = await deliveryCounts(tx, list.map((x): DeliverySource => ({ id: x.id, spaceId: x.spaceId, kind: x.kind as SourceKind, spec: x.spec as SourceSpec, createdAt: x.createdAt })), from, to, now, reconDue);
-  return list.flatMap((x) => {
-    const c = counted.get(x.id);
-    if (!c) return [];
-    const spaceId = ids.includes(x.spaceId) ? x.spaceId : uses.find((u) => u.sourceId === x.id)!.spaceId;
-    return [{ id: x.id, name: x.name, spaceId, ...c }];
+  const counted = await deliveryCounts(tx, list.map((x): DeliverySource => ({ id: x.id, spaceId: x.spaceId, kind: x.kind as SourceKind, spec: x.spec as SourceSpec, createdAt: x.createdAt })), from, to, now);
+  const inScope = new Set(ids);
+  return list.map((x) => {
+    const c = counted.get(x.id) ?? null;
+    return { id: x.id, name: x.name, spaceId: inScope.has(x.spaceId) ? x.spaceId : readerSpace.get(x.id)!, calendarMissing: c === null, ...(c ?? { onTime: 0, late: 0, missing: 0, unknown: 0 }) };
   });
 }

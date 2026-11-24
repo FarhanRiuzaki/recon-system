@@ -90,12 +90,13 @@ export const ReconDashboardDto = z.object({
   /**
    * The sources of the scope (the spaces' own and those their recons read; with `recon`, the ones it reads): their
    * business dates of the period on time, late, missing or unknown (ingest rules.ts deliveryTally), per source and in
-   * total. `spaceId` = the space whose source page a row opens (its own when in scope).
+   * total. `spaceId` = the space whose source page a row opens (its own when in scope); `calendarMissing` = its
+   * calendar is gone, so its business dates can't be told (counts 0).
    */
   sources: z.object({
     onTime: z.number().int(), late: z.number().int(), missing: z.number().int(), unknown: z.number().int(),
     rows: z.array(z.object({
-      id: z.string(), name: z.string(), spaceId: z.string(), spaceName: z.string(),
+      id: z.string(), name: z.string(), spaceId: z.string(), spaceName: z.string(), calendarMissing: z.boolean(),
       onTime: z.number().int(), late: z.number().int(), missing: z.number().int(), unknown: z.number().int(),
     })),
   }),

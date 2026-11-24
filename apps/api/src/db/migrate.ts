@@ -93,7 +93,7 @@ export async function resetSchema(db: SQL): Promise<string[]> {
  * Installs or upgrades pg-boss's schema (`pgboss`) as the schema owner, then grants APP_DB_ROLE, when set, DML on its
  * tables, now and on the ones later pg-boss upgrades create: the app role never runs DDL, so workers start pg-boss with
  * `migrate: false` (kernel/jobs.ts). It also grants APP_DB_ROLE EXECUTE on recon_ensure_month_partitions (0009 revokes
- * it from PUBLIC), recon_analyze_month_partitions (0026), recon_analyze_table (0033), recon_source_day_closed (0042) and recon_connector_used_by (0058).
+ * it from PUBLIC), recon_analyze_month_partitions (0026), recon_analyze_table (0033), recon_source_day_closed (0042), recon_connector_used_by (0058) and recon_source_due (0068).
  * Opens and closes its own
  * MIGRATION_DATABASE_URL connection.
  */
@@ -116,7 +116,8 @@ grant execute on function recon_ensure_month_partitions(regclass, date, int) to 
 grant execute on function recon_analyze_month_partitions(regclass, date, date, int) to ${r};
 grant execute on function recon_analyze_table(regclass, int) to ${r};
 grant execute on function recon_source_day_closed(uuid, uuid, date) to ${r};
-grant execute on function recon_connector_used_by(uuid[]) to ${r};`);
+grant execute on function recon_connector_used_by(uuid[]) to ${r};
+grant execute on function recon_source_due(uuid[], uuid[]) to ${r};`);
   } finally {
     await conn.close();
   }

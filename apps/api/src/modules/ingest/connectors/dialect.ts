@@ -52,6 +52,9 @@ const FAMILIES: Record<Dialect, [Family, RegExp][]> = {
   oracle: [["tstz", /^timestamp.*time zone$/], ["ts", /^(timestamp|date$)/], ["int", /^(number\(\d+,0\)|integer)$/], ["num", /^(number|float|binary_)/]],
 };
 
+/** Whether `type` (a native type, or a spec field type) is a date or time on some engine: a watermark of it has a time it is complete to. */
+export const isTimeType = (type: string): boolean => (Object.keys(FAMILIES) as Dialect[]).some((d) => ["tstz", "ts", "date"].includes(familyOf(d, type)));
+
 /** The family of native type `type` on `d`; anything unlisted is text. */
 export function familyOf(d: Dialect, type: string): Family {
   const t = type.trim().toLowerCase();

@@ -666,6 +666,8 @@ describe("deliveries: when each business date became complete (source_deliveries
     expect(await deliver(k)).toEqual(["ingested"]);
     const first = await deliveriesOf(k);
     expect(first.map((d) => d.date)).toEqual([D]);
+    // kept with when it was due by the rule then: no deadline and no recon, the end of the next business day (Tue 3 Nov)
+    expect((await db.select({ due: sourceDeliveries.dueAt }).from(sourceDeliveries).where(eq(sourceDeliveries.sourceId, k.sourceId)))[0]!.due?.toISOString()).toBe("2026-11-03T17:00:00.000Z");
     await put("act20261102.txt", KSEI_FILE);
     expect(await deliver(k)).toEqual(["rejected"]);
     await put("act20261102.txt", [1, 2, 3].map(kseiLine).join("\n") + "\n", new Date(Date.now() + 1000));

@@ -729,6 +729,9 @@
               "spaceName": {
                 "type": "string"
               },
+              "calendarMissing": {
+                "type": "boolean"
+              },
               "onTime": {
                 "type": "integer",
                 "minimum": -9007199254740991,
@@ -755,6 +758,7 @@
               "name",
               "spaceId",
               "spaceName",
+              "calendarMissing",
               "onTime",
               "late",
               "missing",

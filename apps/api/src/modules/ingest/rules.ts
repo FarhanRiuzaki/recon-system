@@ -20,8 +20,18 @@ export const todayIn = (now: Date, tz = DEFAULT_TIMEZONE): string => new Intl.Da
  */
 export function previousBusinessDay(calendar: Calendar, today: string): string {
   let t = Date.parse(`${today}T00:00:00Z`) - DAY;
-  for (let i = 0; i < 31; i++, t -= DAY) if (calendar.bdayIndex(iso(t)) > calendar.bdayIndex(iso(t - DAY))) return iso(t);
+  for (let i = 0; i < 31; i++, t -= DAY) if (isBusinessDay(calendar, iso(t))) return iso(t);
   return iso(Date.parse(`${today}T00:00:00Z`) - DAY); // a calendar with no business day in a month: the day before
+}
+
+/** Whether `date` is a business day of `calendar`: its index is above the day before's. */
+export const isBusinessDay = (calendar: Calendar, date: string): boolean => calendar.bdayIndex(date) > calendar.bdayIndex(iso(Date.parse(`${date}T00:00:00Z`) - DAY));
+
+/** The business day after `date` in `calendar` (Friday → Monday): when a per-date source delivers D (health's date in progress). */
+export function nextBusinessDay(calendar: Calendar, date: string): string {
+  let t = Date.parse(`${date}T00:00:00Z`) + DAY;
+  for (let i = 0; i < 31; i++, t += DAY) if (isBusinessDay(calendar, iso(t))) return iso(t);
+  return iso(Date.parse(`${date}T00:00:00Z`) + DAY); // a calendar with no business day in a month: the day after
 }
 
 /** The instant business date `date` ends in `tz` (midnight that starts the next day there). */
@@ -154,16 +164,36 @@ export function completedDates(prev: Date | null, next: Date | null): string[] {
   return out.reverse();
 }
 
+/** The stricter of two inputs: the smaller grace, the earlier deadline (HH:MM compares as text); null = not set. */
+export const stricter = <T extends number | string>(a: T | null, b: T | null): T | null => (a === null ? b : b === null ? a : b < a ? b : a);
+
 /**
- * When business date `date` of a source is due: its own rule (a pulled source's `graceMinutes` after the date's end,
- * the health's Down; a per-date source's `deadline` on the day after, when its file or snapshot of D arrives), else
- * `recon` (the earliest close + grace of the recons reading it, when they close D anyway), else the end of the next day.
+ * What a source's business dates are due on: `graceMinutes` and `deadline` (HH:MM) as health judges it, the stricter
+ * of the source's own and its recons' (recon_source_uses); `closeMinutes` = the earliest close + grace of the
+ * published recons reading it, in minutes after the date's start (Asia/Jakarta). null = not set.
  */
-export function deliveryDue(kind: SourceKind, health: SourceSpec["health"], date: string, recon: Date | null): Date {
-  const next = iso(Date.parse(`${date}T00:00:00Z`) + DAY);
-  if (kind === "db_watermark" && health?.graceMinutes) return new Date(endOfDay(date).getTime() + health.graceMinutes * 60_000);
-  if (kind !== "db_watermark" && health?.deadline) return deadlineOn(next, health.deadline);
-  return recon ?? endOfDay(next);
+export type DueRule = { graceMinutes: number | null; deadline: string | null; closeMinutes: number | null };
+/** The due rule of a source with its own inputs `own` (its spec's `health`) and those of the recons reading it. */
+export const dueRule = (own: SourceSpec["health"], recon: DueRule | undefined): DueRule => ({
+  graceMinutes: stricter(own?.graceMinutes ?? null, recon?.graceMinutes ?? null),
+  deadline: stricter(own?.deadline ?? null, recon?.deadline ?? null),
+  closeMinutes: recon?.closeMinutes ?? null,
+});
+
+/**
+ * When business date `date` of a source is due: the earlier of the source's rule (a pulled source's grace after the
+ * date's end, health's Down; a per-date source's deadline on the next business day of its calendar, when its file or
+ * snapshot of D arrives, health's date in progress) and the recons' close + grace (they close D then anyway); with
+ * neither, the end of the next business day.
+ */
+export function deliveryDue(kind: SourceKind, calendar: Calendar, date: string, r: DueRule): Date {
+  const next = nextBusinessDay(calendar, date);
+  const own = kind === "db_watermark"
+    ? (r.graceMinutes === null ? null : endOfDay(date).getTime() + r.graceMinutes * 60_000)
+    : (r.deadline === null ? null : deadlineOn(next, r.deadline).getTime());
+  const close = r.closeMinutes === null ? null : deadlineOn(date, "00:00").getTime() + r.closeMinutes * 60_000;
+  const at = [own, close].filter((x): x is number => x !== null);
+  return at.length ? new Date(Math.min(...at)) : endOfDay(next);
 }
 
 export type Delivery = "on_time" | "late" | "missing" | "unknown";
@@ -175,14 +205,13 @@ export function deliveryOf(completedAt: Date | null, completeNow: boolean, due: 
 }
 
 /**
- * What a source's deliveries rest on: its first completions by date, the dates with an ingested file or active
- * snapshot (`delivered`), its complete_through, and `untimed` = pulled with no complete_through (a watermark that is
- * no time: completeness unknown).
+ * What a source's deliveries rest on: its first completions by date with the due time kept then (`dueAt`, null for
+ * one kept before it was), the dates with an ingested file or active snapshot with rows (`delivered`), its
+ * complete_through, and `untimed` = a pulled source whose watermark is no date or time (completeness unknown).
  */
 export type DeliveryFacts = {
-  kind: SourceKind; calendar: Calendar; createdAt: Date; health: SourceSpec["health"];
-  completedAt: Map<string, Date>; delivered: Set<string>; completeThrough: Date | null; untimed: boolean;
-  reconDue: (date: string) => Date | null;
+  kind: SourceKind; calendar: Calendar; createdAt: Date; rule: DueRule;
+  completed: Map<string, { at: Date; dueAt: Date | null }>; delivered: Set<string>; completeThrough: Date | null; untimed: boolean;
 };
 export type DeliveryTally = { onTime: number; late: number; missing: number; unknown: number };
 const TALLY_KEY = { on_time: "onTime", late: "late", missing: "missing", unknown: "unknown" } as const;
@@ -191,11 +220,12 @@ const TALLY_KEY = { on_time: "onTime", late: "late", missing: "missing", unknown
 export function deliveryTally(f: DeliveryFacts, dates: string[], now: Date): DeliveryTally {
   const out: DeliveryTally = { onTime: 0, late: 0, missing: 0, unknown: 0 };
   for (const d of dates) {
-    if (f.calendar.bdayIndex(d) <= f.calendar.bdayIndex(iso(Date.parse(`${d}T00:00:00Z`) - DAY))) continue; // not a business day
-    const due = deliveryDue(f.kind, f.health, d, f.reconDue(d));
+    if (!isBusinessDay(f.calendar, d)) continue;
+    const done = f.completed.get(d);
+    const due = done?.dueAt ?? deliveryDue(f.kind, f.calendar, d, f.rule);
     if (due <= f.createdAt) continue;
     const complete = f.kind === "db_watermark" ? (f.completeThrough ? f.completeThrough >= endOfDay(d) : f.untimed) : f.delivered.has(d);
-    const r = deliveryOf(f.completedAt.get(d) ?? null, complete, due, now);
+    const r = deliveryOf(done?.at ?? null, complete, due, now);
     if (r) out[TALLY_KEY[r]]++;
   }
   return out;

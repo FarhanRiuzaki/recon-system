@@ -174,14 +174,15 @@ describe("GET /v1/dashboard/recon: sources on time vs late", () => {
       await db.insert(reconSourceUses).values([r.sa, r.sb].map((s) => ({ spaceId: r.spaceId, configId: r.configId, sourceSpaceId: s.spaceId, sourceId: s.sourceId, field: "ref", configName: "R" })));
     }
     await db.update(sources).set({ createdAt: jkt("2026-10-01T00:00:00") });
-    // R1's first source: its own deadline, 09:00 the day after; D's file in by 08:00 (on time), D1's at 10:00 (late)
+    // R1's first source: its own deadline (09:00 the next business day), but R1 closes D at 23:30 + 30 min grace, the
+    // stricter: due at D's end. D's file in at 23:00 (on time), D1's the next morning at 10:00 (late)
     await db.update(sourceVersions).set({ spec: { ...plainSource(), health: { deadline: "09:00" } } }).where(eq(sourceVersions.sourceId, F.R1.sa.sourceId));
     await db.insert(sourceDeliveries).values([
-      { spaceId: F.A, sourceId: F.R1.sa.sourceId, businessDate: D, completedAt: jkt("2026-11-03T08:00:00") },
+      { spaceId: F.A, sourceId: F.R1.sa.sourceId, businessDate: D, completedAt: jkt("2026-11-02T23:00:00") },
       { spaceId: F.A, sourceId: F.R1.sa.sourceId, businessDate: D1, completedAt: jkt("2026-11-04T10:00:00") },
     ]);
     // R1's second: no rule of its own (R1's close + grace then); D's file ingested before completions were kept (unknown), D1's never came (missing)
-    await db.insert(sourceFiles).values({ id: Bun.randomUUIDv7(), spaceId: F.A, sourceId: F.R1.sb.sourceId, name: "x20261102.csv", sha256: "s", size: 1, modifiedAt: new Date(), status: "ingested", businessDate: D });
+    await db.insert(sourceFiles).values({ id: Bun.randomUUIDv7(), spaceId: F.A, sourceId: F.R1.sb.sourceId, name: "x20261102.csv", sha256: "s", size: 1, modifiedAt: new Date(), status: "ingested", businessDate: D, rowsOk: 1 });
   }
 
   it("per source and in total, for the viewer's spaces or one recon's sources; a source links to its own space", async () => {
@@ -209,5 +210,14 @@ describe("GET /v1/dashboard/recon: sources on time vs late", () => {
     expect(r1.rows.find((r) => r.id === F.R1.sb.sourceId)).toMatchObject({ onTime: 0, late: 0, missing: 1, unknown: 0 });
     const today = (await body(t, `from=2026-12-30&to=2026-12-31&recon=${F.R1.configId}`)).sources;
     expect([today.onTime, today.late, today.missing, today.unknown]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("a source whose calendar is missing is listed as such with no counts, not dropped", async () => {
+    await seedSources();
+    await db.update(sourceVersions).set({ spec: { ...plainSource(), calendar: "gone" } }).where(eq(sourceVersions.sourceId, F.R1.sb.sourceId));
+    const r1 = (await body(await signIn("viewer"), `from=${D}&to=${D1}&recon=${F.R1.configId}`)).sources;
+    expect(r1.rows.map((r) => [r.id, r.calendarMissing, r.onTime + r.late + r.missing + r.unknown]).sort()).toEqual([
+      [F.R1.sa.sourceId, false, 2], [F.R1.sb.sourceId, true, 0],
+    ].sort());
   });
 });
