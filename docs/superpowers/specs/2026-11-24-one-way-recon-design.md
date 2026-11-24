@@ -51,6 +51,9 @@ answers `Not required` instead of `No counterpart`. Grace and day close (`sql/da
 9. Simulation: pairs do not depend on direction (no recon_sim_changes difference); the projection of day close
    (`projectDayClose`, the same classifier) shows side B's no-counterpart items as "Not required", and the matching
    hash makes a direction change need a new simulation.
+10. Back to two-way: publishing a version that is not one-way opens the config's not-required items again in the
+    publish transaction (`reopenNotRequired`; `reopened` in the approve activity), so the next close or sweep
+    classifies them: a "No counterpart" break when still unpaired.
 
 ## Screens
 

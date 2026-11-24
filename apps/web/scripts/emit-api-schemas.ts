@@ -139,7 +139,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "recon.version_create": ["recon", "–", "`{ version, from }` (`from` = the published version copied)"],
   "recon.version_update": ["recon", "`{ version, specHash }`", "`{ version, specHash }`"],
   "recon.version_submit": ["recon", "–", "`{ version, specHash }`"],
-  "recon.version_approve": ["recon", "–", "`{ version, specHash, retired }` (`retired` = the version it replaced, or null)"],
+  "recon.version_approve": ["recon", "–", "`{ version, specHash, retired, reopened? }` (`retired` = the version it replaced, or null; `reopened` = not-required items opened again when a version that is not one-way replaced a one-way one, DEC-055)"],
   "recon.version_reject": ["recon", "–", "`{ version, comment }`"],
   "recon.discard": ["recon", "`{ code, name }`", "–"],
   "recon.version_discard": ["recon", "`{ version }`", "–"],

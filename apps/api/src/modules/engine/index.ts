@@ -9,6 +9,7 @@ export { classifyUnmatched, createRun, execRun, type NearMiss, RANGE_MAX_DAYS, t
 export { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "./schema";
 export { applyBreakChange, breakContextOf, revertBreakRequest } from "./break-requests";
 export { itemsOf } from "./break-resolve";
+export { reopenNotRequired } from "./breaks";
 export { closeMoment } from "./rules";
 export { queueBackfill, queuePostingStats } from "./stats";
 export { reconDashboard } from "./dashboard";

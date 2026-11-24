@@ -14,14 +14,14 @@ import type {
   ReconApprovalSpec, ReconVersionRowDto, ReconWarning, RejectReconVersionBody, UpdateReconVersionBody,
 } from "@starterkit/shared/contracts/recon";
 import { TRIGGERS } from "@starterkit/shared/workflows";
-import { recordFields, type ReconStatus } from "@starterkit/shared/recon";
+import { isOneWay, recordFields, type ReconStatus } from "@starterkit/shared/recon";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import type { VersionStatus } from "@starterkit/shared/sources";
 import { and, desc, eq, ilike, inArray, isNull, max, min, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { InTx } from "../../kernel/db";
 import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
-import { reconItems } from "../engine";
+import { reconItems, reopenNotRequired } from "../engine";
 import { sourceFieldsLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { canStep, matchingHash, specHash } from "../../kernel/versions";
@@ -345,7 +345,9 @@ export function approveVersion(ctx: Ctx, id: string, versionId: string): Promise
       for (const field of fields) uses.set(`${sourceId} ${field}`, { spaceId, configId: c.id, sourceSpaceId: owners[i]!, sourceId, field, configName: c.name, ...health });
     });
     if (uses.size) await tx.insert(reconSourceUses).values([...uses.values()]);
-    await recordActivity(tx, ctx, { action: "recon.version_approve", target: target(c), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null } });
+    // no longer one-way (DEC-055): side B's not-required items are open again, for the next close or sweep to classify
+    const reopened = isOneWay(spec) ? 0 : await reopenNotRequired(tx, spaceId, c.id);
+    await recordActivity(tx, ctx, { action: "recon.version_approve", target: target(c), after: { version: v.version, specHash: v.specHash, retired: retired?.version ?? null, ...(reopened ? { reopened } : {}) } });
     return versionDto(row, warnings);
   });
 }

@@ -34,7 +34,10 @@ export function activitySentence(e: Entry): string {
     case "recon.version_create": { const from = field(e.after, "from"); return `${who} started Draft v${v}${from ? ` from version ${String(from)}` : ""}.`; }
     case "recon.version_update": return `${who} saved Draft v${v}.`;
     case "recon.version_submit": return `${who} sent version ${v} for approval.`;
-    case "recon.version_approve": { const retired = field(e.after, "retired"); return `${who} approved version ${v}${retired ? `; version ${String(retired)} retired` : ""}.`; }
+    case "recon.version_approve": {
+      const retired = field(e.after, "retired"), reopened = field(e.after, "reopened");
+      return `${who} approved version ${v}${retired ? `; version ${String(retired)} retired` : ""}${reopened ? `; ${String(reopened)} side-B items not required are checked again` : ""}.`;
+    }
     case "recon.version_reject": return `${who} sent version ${v} back: “${String(field(e.after, "comment") ?? "")}”`;
     case "recon.discard": return `${who} deleted the draft recon.`;
     case "recon.version_discard": return `${who} discarded Draft v${String(field(e.before, "version") ?? "")}; the live version kept running.`;

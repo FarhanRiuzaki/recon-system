@@ -10,7 +10,7 @@
 // scheduled run (sweepClosed). The engine never writes `records` or source_day_counts here either.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { isOneWay } from "@starterkit/shared/recon";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { configLock } from "../../kernel/locks";
 import { currentRecord, endOfDay } from "../ingest";
@@ -18,7 +18,7 @@ import { closeGroupsOfDay } from "../integrations";
 import { reconConfigVersions } from "../recon";
 import { withSpace } from "../spaces";
 import { closeMoment } from "./rules";
-import { reconDays, reconRuns } from "./schema";
+import { reconDays, reconItems, reconRuns } from "./schema";
 import { addDays, effectiveCarry, load, type Seen } from "./service";
 import { closeDaySql } from "./sql/days";
 import { queueDay } from "./stats";
@@ -138,4 +138,16 @@ export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string
     await addCounters(tx, k, rows);
     return { ...total(rows), dates: rows.filter((x) => x.open || x.suggested || x.nr).map((x) => x.d) };
   }, on);
+}
+
+/**
+ * A version that is not one-way was published (DEC-055): config `configId`'s not-required items (live) are open again,
+ * so the next close or sweep classifies them under the new direction (a "No counterpart" break when still unpaired).
+ * Runs in the publish transaction; answers how many it opened.
+ */
+export async function reopenNotRequired(tx: InTx, spaceId: string, configId: string): Promise<number> {
+  const rows = await tx.update(reconItems).set({ status: "open", version: sql`${reconItems.version} + 1` })
+    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), eq(reconItems.status, "not_required"), isNull(reconItems.simRunId)))
+    .returning({ id: reconItems.id });
+  return rows.length;
 }

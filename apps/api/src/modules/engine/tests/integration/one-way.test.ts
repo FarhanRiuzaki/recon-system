@@ -18,7 +18,7 @@ import { records, sourceCursors } from "../../../ingest";
 import { reconConfigVersions } from "../../../recon";
 import { calendars } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
-import { closeDay } from "../../breaks";
+import { closeDay, sweepClosed } from "../../breaks";
 import { reconDays, reconItems } from "../../schema";
 import { classifyUnmatched, runRecon } from "../../service";
 import { recomputeDayStats } from "../../stats";
@@ -190,6 +190,18 @@ describe("one-way recon (a_to_b)", () => {
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, after)).toBe("closed");
     expect((await itemsOf(r.configId)).map((i) => [i.side, i.status]).sort()).toEqual([["a", "matched"], ["b", "break"], ["b", "matched"]]);
+  }, 60_000);
+
+  it("publishing a two-way version opens the not-required items again; the next sweep breaks them as No counterpart", async () => {
+    const { r, sa, sb } = await dayD("a_to_b");
+    const v2 = Bun.randomUUIDv7();
+    await db.insert(reconConfigVersions).values({ id: v2, configId: r.configId, spaceId: A, version: 2, status: "in_review", spec: spec(sa.sourceId, sb.sourceId, [exact], 1), specHash: "h2", matchingHash: "h2", makerId: U });
+    expect((await call("POST", `/v1/spaces/${A}/recons/${r.configId}/versions/${v2}/approve`, { token })).status).toBe(200);
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => i.status)).toEqual(["open"]);
+    const acts = await json<Page<{ action: string; after: { reopened?: number } | null }>>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/activity`, { token }));
+    expect(acts.items.find((e) => e.action === "recon.version_approve")?.after?.reopened).toBe(1);
+    await sweepClosed(probe, r, D, D);
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => [i.status, i.reason])).toEqual([["break", "No counterpart"]]);
   }, 60_000);
 
   it("a draft's simulation projects side B's items without a counterpart as Not required", async () => {

@@ -321,7 +321,7 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `recon.version_create` | Recon version drafted | recon | – | `{ version, from }` (`from` = the published version copied) |
 | `recon.version_update` | Recon version edited | recon | `{ version, specHash }` | `{ version, specHash }` |
 | `recon.version_submit` | Recon version submitted | recon | – | `{ version, specHash }` |
-| `recon.version_approve` | Recon version approved | recon | – | `{ version, specHash, retired }` (`retired` = the version it replaced, or null) |
+| `recon.version_approve` | Recon version approved | recon | – | `{ version, specHash, retired, reopened? }` (`retired` = the version it replaced, or null; `reopened` = not-required items opened again when a version that is not one-way replaced a one-way one, DEC-055) |
 | `recon.version_reject` | Recon version rejected | recon | – | `{ version, comment }` |
 | `recon.discard` | Draft recon deleted | recon | `{ code, name }` | – |
 | `recon.version_discard` | Recon draft discarded | recon | `{ version }` | – |
