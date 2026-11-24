@@ -9,9 +9,7 @@ import type { ResultCountsDto } from "@starterkit/shared/contracts/results";
 import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import { AGE_GROUPS, CLOSED_PARTS, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { call, signIn } from "../../../../../test/helpers/app";
-import { db } from "../../../../kernel/db";
-import { sweepStats } from "../../stats";
-import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
+import { D, D1, type DashboardFixture, noon, rollup, seedDashboard } from "../dashboard-fixture";
 
 let F: DashboardFixture;
 beforeEach(async () => { F = await seedDashboard(); });
@@ -32,7 +30,7 @@ describe("Posting list: recon and period filters", () => {
 const dash = (token: string, qs = `from=${D}&to=${D1}`) => call("GET", `/v1/dashboard/recon?${qs}`, { token });
 const body = async (token: string, qs?: string) => { const r = await dash(token, qs); expect(r.status).toBe(200); return ReconDashboardDto.parse(await r.json()); };
 /** The rollup written as the nightly sweep would on D1. */
-const sweep = () => sweepStats(db, noon(D1));
+const sweep = () => rollup(noon(D1));
 
 describe("GET /v1/dashboard/recon: scope", () => {
   it("needs a session; a bad period is 400 before it", async () => {

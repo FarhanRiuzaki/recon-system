@@ -10,6 +10,8 @@
 import { eq } from "drizzle-orm";
 import { resetData } from "../../../../test/helpers/app";
 import { db } from "../../../kernel/db";
+import { boss, QUEUES } from "../../../kernel/jobs";
+import { statsJob, sweepStats } from "../stats";
 import { ensureMonthPartitions } from "../../../kernel/partitions";
 import { approvalRequests } from "../../approvals";
 import { records } from "../../ingest";
@@ -89,3 +91,18 @@ export async function seedDashboard() {
   return { A, B, C, R1, R2, RB, I, G };
 }
 export type DashboardFixture = Awaited<ReturnType<typeof seedDashboard>>;
+
+/** The rollup as the nightly sweep at `now` writes it: its jobs queued (stats.ts sweepStats), then each run as the worker would. */
+export async function rollup(now: Date): Promise<void> {
+  const b = await boss();
+  await b.deleteAllJobs(QUEUES.reconStats);
+  await sweepStats(db, now);
+  for (;;) {
+    const jobs = await b.fetch(QUEUES.reconStats, { batchSize: 100 });
+    if (!jobs.length) return;
+    for (const j of jobs) {
+      await statsJob(db, j.data as { spaceId: string; configId: string; date: string });
+      await b.complete(QUEUES.reconStats, j.id);
+    }
+  }
+}

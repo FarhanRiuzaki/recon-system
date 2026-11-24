@@ -58,9 +58,9 @@ export async function queueStats(tx: InTx, spaceId: string, itemIds: readonly st
   for (const d of days) await queueDay(spaceId, d.configId, d.date, tx);
 }
 
-/** Queues the recompute of (`configId`, `date`), STATS_DELAY_MS from now. */
-export function queueDay(spaceId: string, configId: string, date: string, tx?: InTx): Promise<string | null> {
-  return enqueue(QUEUES.reconStats, { spaceId, configId, date }, { key: `${configId}:${date}`, startAfter: new Date(Date.now() + STATS_DELAY_MS), tx });
+/** Queues the recompute of (`configId`, `date`), `delayMs` (STATS_DELAY_MS) from now; one already queued takes it. */
+export function queueDay(spaceId: string, configId: string, date: string, tx?: InTx, delayMs = STATS_DELAY_MS): Promise<string | null> {
+  return enqueue(QUEUES.reconStats, { spaceId, configId, date }, { key: `${configId}:${date}`, startAfter: new Date(Date.now() + delayMs), tx });
 }
 
 /**
@@ -93,14 +93,19 @@ export function statsJob(on: Tx, d: { spaceId: string; configId: string; date: s
   return withSpace({ spaceIds: [d.spaceId], userId: null }, (tx) => recomputeDayStats(tx, d.spaceId, d.configId, d.date), on);
 }
 
+/** Every config of every space (the sweep's and the backfill's reach). */
+async function allConfigs(on: Tx): Promise<{ spaceId: string; id: string }[]> {
+  const ids = (await on.select({ id: spaces.id }).from(spaces)).map((s) => s.id);
+  if (!ids.length) return [];
+  return withSpace({ spaceIds: ids, userId: null }, (tx) => tx.select({ spaceId: reconConfigs.spaceId, id: reconConfigs.id }).from(reconConfigs).where(inArray(reconConfigs.spaceId, ids)), on);
+}
+
 /**
- * The nightly sweep: every config of every space, its last SWEEP_DAYS business dates ending today (Asia/Jakarta), one
- * transaction per config and date, so a failure leaves the others written (and the next sweep tries again).
+ * The nightly sweep: every config of every space, its last SWEEP_DAYS business dates ending today (Asia/Jakarta), each
+ * queued as its own job (keyed, due now, run in parallel by the queue), so one failing leaves the others written and
+ * retried by pg-boss on its own.
  */
 export async function sweepStats(on: Tx, now = new Date()): Promise<void> {
   const today = todayIn(now);
-  for (const s of await on.select({ id: spaces.id }).from(spaces)) {
-    const configs = await withSpace({ spaceIds: [s.id], userId: null }, (tx) => tx.select({ id: reconConfigs.id }).from(reconConfigs).where(eq(reconConfigs.spaceId, s.id)), on);
-    for (const c of configs) for (let i = SWEEP_DAYS - 1; i >= 0; i--) await statsJob(on, { spaceId: s.id, configId: c.id, date: addDays(today, -i) });
-  }
+  for (const c of await allConfigs(on)) for (let i = SWEEP_DAYS - 1; i >= 0; i--) await queueDay(c.spaceId, c.id, addDays(today, -i), undefined, 0);
 }

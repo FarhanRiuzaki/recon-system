@@ -10,6 +10,7 @@ import { db, type InTx } from "../../../../kernel/db";
 import { withSpace } from "../../../spaces";
 import { matchGroups, reconDayStats, reconItems } from "../../schema";
 import { boss, QUEUES } from "../../../../kernel/jobs";
+import { reconConfigs } from "../../../recon";
 import { engineHandlers } from "../../jobs";
 import { queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
@@ -129,13 +130,26 @@ describe("recon.stats jobs", () => {
     expect(rowsOf((await rowOf(F.A, r.configId, D)).results)).toEqual({ matched_late: 1 });
   }, 30_000);
 
-  it("the job writes its row; the sweep writes every config's last 7 dates", async () => {
+  it("the job writes its row", async () => {
     const handle = engineHandlers(db)[QUEUES.reconStats]!;
     await handle({ id: "j", data: { spaceId: F.A, configId: F.R1.configId, date: D } });
     expect(rowsOf((await rowOf(F.A, F.R1.configId)).results).matched).toBe(1);
+  });
+
+  it("the sweep only queues a job per config and date, due now; one failing never stops the others (I4)", async () => {
+    await (await boss()).deleteAllJobs();
     await sweepStats(db, noon(D1));
-    const all = await withSpace({ spaceIds: [F.A, F.B, F.C], userId: null }, (tx) => tx.select({ c: reconDayStats.configId, d: reconDayStats.businessDate }).from(reconDayStats));
-    expect(all.length).toBe(3 * 7);
-    expect(all.filter((r) => r.c === F.R1.configId).map((r) => r.d).sort()).toEqual(["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", D, D1]);
+    const all = () => withSpace({ spaceIds: [F.A, F.B, F.C], userId: null }, (tx) => tx.select({ c: reconDayStats.configId, d: reconDayStats.businessDate }).from(reconDayStats));
+    expect(await all()).toEqual([]);
+    const jobs = await (await boss()).fetch(QUEUES.reconStats, { batchSize: 100 });
+    expect(jobs.length).toBe(3 * 7);
+    expect(jobs.filter((j) => (j.data as { configId: string }).configId === F.R1.configId).map((j) => (j.data as { date: string }).date).sort())
+      .toEqual(["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", D, D1]);
+    // R2 gone: its 7 jobs fail (no config to write a row of), the 14 others still write theirs
+    await db.delete(reconConfigs).where(eq(reconConfigs.id, F.R2.configId));
+    const handle = engineHandlers(db)[QUEUES.reconStats]!;
+    const done = await Promise.allSettled(jobs.map((j) => handle({ id: j.id, data: j.data })));
+    expect(done.filter((x) => x.status === "rejected").length).toBe(7);
+    expect((await all()).length).toBe(2 * 7);
   });
 });
