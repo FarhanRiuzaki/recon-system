@@ -170,9 +170,25 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
   // While scrolling sideways the row's first column (after the row checkbox, if any) sticks: it says which row this is.
   const firstAt = roles[0] === "lead" ? 1 : 0;
   const stickAt = (i: number): "lead" | "title" | null => (i === 0 && roles[0] === "lead" ? "lead" : i === firstAt ? "title" : null);
-  const leadRef = useRef<HTMLTableCellElement>(null);
-  // Where the sticky identity column starts: right of the checkbox column (set on the table, read by STICK.title).
-  useEffect(() => { const th = leadRef.current; th?.closest("table")?.style.setProperty("--lead-w", `${th.offsetWidth}px`); });
+  const leadRef = useRef<HTMLTableCellElement>(null), titleRef = useRef<HTMLTableCellElement>(null), endRef = useRef<HTMLTableCellElement>(null);
+  // Where the sticky identity column starts (right of the checkbox column; on the table, read by STICK.title), and how
+  // wide the sticky parts are on each side (on the frame, read by Table's fades), so a fade starts past them (owner 24 Nov).
+  useEffect(() => {
+    const table = (leadRef.current ?? titleRef.current)?.closest("table");
+    const frame = table?.closest<HTMLElement>('[data-slot="table-frame"]');
+    if (!table || !frame) return;
+    const measure = () => {
+      const lead = leadRef.current?.offsetWidth ?? 0;
+      table.style.setProperty("--lead-w", `${lead}px`);
+      frame.style.setProperty("--table-stick", `${lead + (titleRef.current?.offsetWidth ?? 0)}px`);
+      frame.style.setProperty("--table-stick-end", `${endRef.current?.offsetWidth ?? 0}px`);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(table);
+    return () => ro.disconnect();
+  });
   const sortId = useId();
   const topRef = useRef<HTMLDivElement>(null);
   // Fokus ke atas tabel hanya bila halaman benar-benar berganti ke target (kedaluwarsa 3 dtk bila diabaikan).
@@ -265,7 +281,7 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
               const active = sort?.key === c.key;
               const sortIcon = !active ? ChevronsUpDownIcon : sort?.dir === "asc" ? ArrowUpIcon : ArrowDownIcon;
               return (
-                <TableHead key={c.key} ref={stickAt(columns.indexOf(c)) === "lead" ? leadRef : undefined} role="columnheader"
+                <TableHead key={c.key} ref={stickAt(columns.indexOf(c)) === "lead" ? leadRef : stickAt(columns.indexOf(c)) === "title" ? titleRef : undefined} role="columnheader"
                   className={cn("bg-tray md:sticky md:top-0 md:z-10", c.align === "right" && "text-right", c.className, "font-sans text-label", stickAt(columns.indexOf(c)) && cn(STICK[stickAt(columns.indexOf(c))!], STICK_HEAD))}
                   aria-sort={active ? (sort?.dir === "asc" ? "ascending" : "descending") : undefined}>
                   {c.sortable && onSortChange ? (
@@ -277,7 +293,7 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
                 </TableHead>
               );
             })}
-            {rowActions && <TableHead role="columnheader" className={cn("bg-tray md:sticky md:top-0 md:z-10", STICK.end, STICK_HEAD)}><span className="sr-only">Actions</span></TableHead>}
+            {rowActions && <TableHead ref={endRef} role="columnheader" className={cn("bg-tray md:sticky md:top-0 md:z-10", STICK.end, STICK_HEAD)}><span className="sr-only">Actions</span></TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody ref={bodyRef} role="rowgroup" onFocus={onRowFocus} className={cn("max-md:block", loadedLate && "animate-reveal-in", server && "transition-opacity duration-(--dur-fast)", showBusy && "opacity-60")}>

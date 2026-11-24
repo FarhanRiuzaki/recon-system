@@ -116,3 +116,18 @@ describe("DataTable focus after a row goes away", () => {
     expect(document.activeElement).toBe(outside);
   });
 });
+
+describe("DataTable sticky columns and the scroll fades (owner 24 Nov: the fade sat over the sticky column)", () => {
+  it("sets --table-stick to the sticky start columns' width and --table-stick-end to the row actions', so each fade begins past them", async () => {
+    const w = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return (this as HTMLElement).tagName === "TH" ? 120 : 0; } });
+    try {
+      await mount({ rowActions: () => "x" });
+      const frame = document.querySelector<HTMLElement>('[data-slot="table-frame"]')!;
+      expect(frame.style.getPropertyValue("--table-stick")).toBe("120px");
+      expect(frame.style.getPropertyValue("--table-stick-end")).toBe("120px");
+    } finally {
+      if (w) Object.defineProperty(HTMLElement.prototype, "offsetWidth", w);
+    }
+  });
+});

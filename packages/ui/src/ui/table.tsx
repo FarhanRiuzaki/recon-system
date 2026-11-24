@@ -50,7 +50,8 @@ const FADE = "pointer-events-none absolute inset-y-0 z-20 w-12 from-line via-tra
  * Once measured to fit, the box stops being a scroll container (overflow visible), so a sticky header sticks to the
  * window; `data-scrolls` (group `scroll`) lets cells stick to the box's sides while it scrolls sideways (DataTable).
  * While it scrolls, each side with hidden content shows a fade (design-system §5.7), so the table reads as wider; a table
- * whose first column sticks sets `--table-stick` (its width) on an ancestor, so the start fade begins past that column.
+ * whose first column sticks sets `--table-stick` (its width) on an ancestor, so the start fade begins past that column,
+ * and one whose last column sticks (row actions) `--table-stick-end`, so the end fade stops before it (DataTable sets both).
  * From 768 px the first and last cell of every row sit 16 px from the card edge (audit 2 A2), so the first column's
  * text lines up with the panel title above the card; the cells between keep 12.
  */
@@ -65,7 +66,7 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
       </div>
       {/* more to see on that side: a grey edge fading to clear, shown only while content is hidden past it */}
       {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="start" data-on={edges.start || undefined} className={cn(FADE, "left-[var(--table-stick,0px)] bg-linear-to-r")} />}
-      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="end" data-on={edges.end || undefined} className={cn(FADE, "right-0 bg-linear-to-l")} />}
+      {scrolls && <span aria-hidden="true" data-slot="table-fade" data-side="end" data-on={edges.end || undefined} className={cn(FADE, "right-[var(--table-stick-end,0px)] bg-linear-to-l")} />}
     </div>
   );
 }
