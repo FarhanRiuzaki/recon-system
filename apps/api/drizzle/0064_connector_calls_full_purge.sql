@@ -1,0 +1,1 @@
+CREATE INDEX "connector_calls_full_purge" ON "connector_calls" USING btree ("started_at") WHERE "connector_calls"."full_enc" is not null;

@@ -449,6 +449,13 @@
       "when": 1795505227224,
       "tag": "0063_approval_requests_config_item",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1795505877354,
+      "tag": "0064_connector_calls_full_purge",
+      "breakpoints": true
     }
   ]
 }

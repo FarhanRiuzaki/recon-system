@@ -85,6 +85,11 @@ describe("runJanitor", () => {
     expect(Object.values((await runJanitor())!)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
+  it("the full-call purge has its partial index: started_at where the full call is still kept", async () => {
+    const r = await db.execute<{ indexdef: string }>(sql`select indexdef from pg_indexes where indexname = 'connector_calls_full_purge'`);
+    expect([...r].map((x) => x.indexdef)).toEqual([expect.stringMatching(/\(started_at\) WHERE \(full_enc IS NOT NULL\)$/)]);
+  });
+
   it("skips while another instance holds the janitor lock, and runs once it is free", async () => {
     await seedRows();
     const before = await left();

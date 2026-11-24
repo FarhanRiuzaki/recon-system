@@ -153,6 +153,8 @@ export const connectorCalls = pgTable("connector_calls", {
 }, (t) => [
   index("connector_calls_started").on(t.startedAt.desc(), t.id),
   index("connector_calls_connector").on(t.connectorId, t.startedAt),
+  // the janitor's clearing of full calls past CALL_LOG_FULL_RETENTION_DAYS (purgeCalls): only the rows still holding one
+  index("connector_calls_full_purge").on(t.startedAt).where(sql`${t.fullEnc} is not null`),
   check("connector_calls_outcome_check", sql`${t.outcome} in ('ok', 'rejected', 'timeout', 'not_sent')`),
 ]);
 

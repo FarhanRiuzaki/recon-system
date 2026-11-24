@@ -203,7 +203,8 @@ const PURGE_BATCH = 10_000;
  */
 export async function purgeCalls(tx: Tx): Promise<Record<string, number>> {
   const ago = (days: number) => sql`now() - make_interval(days => ${days})`;
-  const oldest = (days: number, full = false) => tx.select({ id: c.id }).from(c).where(and(lt(c.startedAt, ago(days)), full ? isNotNull(c.fullEnc) : undefined)).limit(PURGE_BATCH);
+  // oldest first, on connector_calls_full_purge (full) or connector_calls_started: a batch never skips older rows
+  const oldest = (days: number, full = false) => tx.select({ id: c.id }).from(c).where(and(lt(c.startedAt, ago(days)), full ? isNotNull(c.fullEnc) : undefined)).orderBy(c.startedAt).limit(PURGE_BATCH);
   const deleted = (await tx.delete(c).where(inArray(c.id, oldest(config().CALL_LOG_RETENTION_DAYS))).returning({ one: sql`1` })).length;
   const cleared = (await tx.update(c).set({ fullEnc: null }).where(inArray(c.id, oldest(config().CALL_LOG_FULL_RETENTION_DAYS, true))).returning({ one: sql`1` })).length;
   return { connector_calls: deleted, connector_calls_full: cleared };
