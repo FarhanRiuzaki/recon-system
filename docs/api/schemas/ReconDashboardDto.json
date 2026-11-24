@@ -689,6 +689,90 @@
         "null"
       ]
     },
+    "sources": {
+      "type": "object",
+      "properties": {
+        "onTime": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "late": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "missing": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "spaceId": {
+                "type": "string"
+              },
+              "spaceName": {
+                "type": "string"
+              },
+              "onTime": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "late": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "missing": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "unknown": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "spaceId",
+              "spaceName",
+              "onTime",
+              "late",
+              "missing",
+              "unknown"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "onTime",
+        "late",
+        "missing",
+        "unknown",
+        "rows"
+      ],
+      "additionalProperties": false
+    },
     "pending": {
       "type": "object",
       "properties": {
@@ -728,6 +812,7 @@
     "bySpace",
     "rows",
     "computedAt",
+    "sources",
     "pending"
   ],
   "additionalProperties": false

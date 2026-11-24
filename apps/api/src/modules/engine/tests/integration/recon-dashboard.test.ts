@@ -10,10 +10,15 @@ import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import { AGE_GROUPS, CLOSED_PARTS, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { call, signIn } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
+import { eq } from "drizzle-orm";
+import { sourceDeliveries, sourceFiles } from "../../../ingest";
 import { actionRuns } from "../../../integrations";
+import { reconSourceUses } from "../../../recon";
+import { sources, sourceVersions } from "../../../sources";
 import { withSpace } from "../../../spaces";
 import { recomputeDayStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, rollup, seedDashboard } from "../dashboard-fixture";
+import { plainSource } from "../fixtures";
 
 let F: DashboardFixture;
 beforeEach(async () => { F = await seedDashboard(); });
@@ -158,5 +163,51 @@ describe("GET /v1/dashboard/recon: numbers", () => {
     const d = await body(await signIn("viewer"), `from=${D1}&to=2026-11-04`);
     expect([d.period, d.previous]).toEqual([{ from: D1, to: "2026-11-04" }, { from: "2026-11-01", to: D }]);
     expect(d.autoRate).toMatchObject({ matched: 0, records: 1, prevMatched: 4, prevRecords: 9 });
+  });
+});
+
+describe("GET /v1/dashboard/recon: sources on time vs late", () => {
+  const jkt = (s: string) => new Date(`${s}+07:00`);
+  /** Each recon reads its two sources (recon_source_uses, as publishing writes it); every source exists since 1 Oct. */
+  async function seedSources() {
+    for (const r of [F.R1, F.R2, F.RB]) {
+      await db.insert(reconSourceUses).values([r.sa, r.sb].map((s) => ({ spaceId: r.spaceId, configId: r.configId, sourceSpaceId: s.spaceId, sourceId: s.sourceId, field: "ref", configName: "R" })));
+    }
+    await db.update(sources).set({ createdAt: jkt("2026-10-01T00:00:00") });
+    // R1's first source: its own deadline, 09:00 the day after; D's file in by 08:00 (on time), D1's at 10:00 (late)
+    await db.update(sourceVersions).set({ spec: { ...plainSource(), health: { deadline: "09:00" } } }).where(eq(sourceVersions.sourceId, F.R1.sa.sourceId));
+    await db.insert(sourceDeliveries).values([
+      { spaceId: F.A, sourceId: F.R1.sa.sourceId, businessDate: D, completedAt: jkt("2026-11-03T08:00:00") },
+      { spaceId: F.A, sourceId: F.R1.sa.sourceId, businessDate: D1, completedAt: jkt("2026-11-04T10:00:00") },
+    ]);
+    // R1's second: no rule of its own (R1's close + grace then); D's file ingested before completions were kept (unknown), D1's never came (missing)
+    await db.insert(sourceFiles).values({ id: Bun.randomUUIDv7(), spaceId: F.A, sourceId: F.R1.sb.sourceId, name: "x20261102.csv", sha256: "s", size: 1, modifiedAt: new Date(), status: "ingested", businessDate: D });
+  }
+
+  it("per source and in total, for the viewer's spaces or one recon's sources; a source links to its own space", async () => {
+    await seedSources();
+    const t = await signIn("viewer");
+    const r1 = (await body(t, `from=${D}&to=${D1}&recon=${F.R1.configId}`)).sources;
+    expect([r1.onTime, r1.late, r1.missing, r1.unknown]).toEqual([1, 1, 1, 1]);
+    expect(r1.rows.map((r) => [r.id, r.spaceId, r.spaceName, r.onTime, r.late, r.missing, r.unknown]).sort()).toEqual([
+      [F.R1.sa.sourceId, F.A, "Treasury", 1, 1, 0, 0], [F.R1.sb.sourceId, F.A, "Treasury", 0, 0, 1, 1],
+    ].sort());
+    // every source of space A: R2's two have nothing on either date
+    const all = (await body(t)).sources;
+    expect([all.onTime, all.late, all.missing, all.unknown, all.rows.length]).toEqual([1, 1, 5, 1, 4]);
+    expect(all.rows.map((r) => r.id)).not.toContain(F.RB.sa.sourceId);
+    // another space's sources only to its members
+    const b = (await body(await signIn("apple"))).sources;
+    expect([b.onTime, b.missing, b.rows.map((r) => r.id).sort()]).toEqual([0, 4, [F.RB.sa.sourceId, F.RB.sb.sourceId].sort()]);
+  });
+
+  it("a date not due yet is not counted; a source made after a date was due leaves it out", async () => {
+    await seedSources();
+    const t = await signIn("viewer");
+    await db.update(sources).set({ createdAt: jkt("2026-11-03T12:00:00") }).where(eq(sources.id, F.R1.sb.sourceId)); // D was due 3 Nov 00:00
+    const r1 = (await body(t, `from=${D}&to=${D1}&recon=${F.R1.configId}`)).sources;
+    expect(r1.rows.find((r) => r.id === F.R1.sb.sourceId)).toMatchObject({ onTime: 0, late: 0, missing: 1, unknown: 0 });
+    const today = (await body(t, `from=2026-12-30&to=2026-12-31&recon=${F.R1.configId}`)).sources;
+    expect([today.onTime, today.late, today.missing, today.unknown]).toEqual([0, 0, 0, 0]);
   });
 });

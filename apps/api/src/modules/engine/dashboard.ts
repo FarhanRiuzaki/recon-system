@@ -7,18 +7,24 @@ import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import type { BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { RECON_DASHBOARD_DAYS, type ReconDashboardDto, type ReconDashboardQuery } from "@starterkit/shared/contracts/dashboard";
 import { AGE_GROUPS, CLOSED_PARTS, median, POSTING_FAILED, POSTING_FINISHED, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
-import { and, desc, eq, gte, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
+import type { ReconSpec } from "@starterkit/shared/contracts/recon";
+import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import type { SourceKind } from "@starterkit/shared/sources";
+import { and, desc, eq, gte, inArray, isNull, lte, ne, or, sql, type SQL } from "drizzle-orm";
+import type { InTx } from "../../kernel/db";
 import { errorDetail, notFound } from "../../kernel/errors";
 import { log } from "../../kernel/log";
 import { countN } from "../../kernel/pagination";
 import { approvalRequests } from "../approvals";
 import type { Ctx } from "../auth";
-import { todayIn } from "../ingest";
+import { deliveryCounts, type DeliverySource, todayIn } from "../ingest";
 import { actionRuns } from "../integrations";
-import { reconConfigs, reconConfigVersions } from "../recon";
+import { reconConfigs, reconConfigVersions, reconSourceUses } from "../recon";
+import { sources, sourceVersions } from "../sources";
 import { viewerSpaces, withSpace } from "../spaces";
 import { breakSummary, openBreakdown } from "./break-queue";
 import { reconDayStats, reconRuns } from "./schema";
+import { closeMoment } from "./rules";
 import { addDays } from "./service";
 import { missingDays, queueDay } from "./stats";
 
@@ -68,6 +74,7 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     days: dates.map((date) => ({ date, auto: 0, manual: 0, broke: 0, matched: 0, records: 0 })),
     age: AGE_GROUPS.map((g) => ({ key: g.key, count: 0, amounts: [] })), reasons: [], closed: CLOSED_PARTS.map((p) => ({ key: p.key, rows: 0 })),
     writtenOff: [], bySpace: [], rows: [], computedAt: null, pending: { days: 0, prevDays: 0 },
+    sources: { onTime: 0, late: 0, missing: 0, unknown: 0, rows: [] },
   };
   if (!scope.length) return empty;
   const allIds = scope.map((s) => s.id);
@@ -107,7 +114,7 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
       .where(and(inArray(r.spaceId, ids), cfg(r.configId), ne(r.mode, "simulation"), isNull(r.baselineOf))).orderBy(r.configId, desc(r.startedAt));
     // dates with results whose row isn't written yet: their numbers aren't final (C2)
     const gaps = await missingDays(tx, ids, q.recon ?? null, prevFrom, to);
-    return { stats, postings, asked: asked!, decided, waiting: waiting!, lastRuns, gaps };
+    return { stats, postings, asked: asked!, decided, waiting: waiting!, lastRuns, gaps, delivery: await sourceDeliveries(tx, ids, q.recon ?? null, from, to, now) };
   });
   // and their jobs, due now (keyed: one already queued takes it); a failure here never fails the read
   for (const g of period.gaps) await queueDay(g.spaceId, g.configId, g.date, undefined, 0).catch((e: unknown) => log.warn({ err: errorDetail(e) }, "dashboard: rollup of a missing date not queued"));
@@ -187,5 +194,44 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     }),
     computedAt: computed.length ? new Date(Math.min(...computed)).toISOString() : null,
     pending: { days: gapDays(true), prevDays: gapDays(false) },
+    sources: (() => {
+      const rows = period.delivery.map((x) => ({ ...x, spaceName: scope.find((s) => s.id === x.spaceId)!.name }));
+      const total = (k: "onTime" | "late" | "missing" | "unknown") => rows.reduce((n, r) => n + r[k], 0);
+      return { onTime: total("onTime"), late: total("late"), missing: total("missing"), unknown: total("unknown"), rows };
+    })(),
   };
+}
+
+/**
+ * The sources of spaces `ids` (their own and those their recons read; with `recon`, the ones it reads) with their
+ * deliveries of `from`..`to` (ingest deliveryCounts). A source with no rule of its own is due when the earliest of
+ * the published recons reading it closes the date anyway: close + grace_minutes (breaks.ts closeDay). `spaceId` = its
+ * own space when in `ids`, else that of a recon there reading it (a shared source opens under that space).
+ */
+async function sourceDeliveries(tx: InTx, ids: string[], recon: string | null, from: string, to: string, now: Date) {
+  const uses = await tx.selectDistinct({ spaceId: reconSourceUses.spaceId, configId: reconSourceUses.configId, sourceId: reconSourceUses.sourceId }).from(reconSourceUses)
+    .where(and(inArray(reconSourceUses.spaceId, ids), recon ? eq(reconSourceUses.configId, recon) : undefined));
+  const published = and(eq(sourceVersions.spaceId, sources.spaceId), eq(sourceVersions.sourceId, sources.id), eq(sourceVersions.status, "published"));
+  const usedIds = [...new Set(uses.map((u) => u.sourceId))];
+  const list = await tx.select({ id: sources.id, spaceId: sources.spaceId, name: sources.name, kind: sources.kind, createdAt: sources.createdAt, spec: sourceVersions.spec })
+    .from(sources).innerJoin(sourceVersions, published)
+    .where(recon ? (usedIds.length ? inArray(sources.id, usedIds) : sql`false`) : or(inArray(sources.spaceId, ids), usedIds.length ? inArray(sources.id, usedIds) : undefined))
+    .orderBy(sql`lower(${sources.name})`, sources.id);
+  if (!list.length) return [];
+  // every published recon reading them that this scope reads (for the due time), not only the filtered one
+  const readers = await tx.selectDistinct({ sourceId: reconSourceUses.sourceId, spec: reconConfigVersions.spec }).from(reconSourceUses)
+    .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, reconSourceUses.spaceId), eq(reconConfigVersions.configId, reconSourceUses.configId), eq(reconConfigVersions.status, "published")))
+    .where(inArray(reconSourceUses.sourceId, list.map((x) => x.id)));
+  const reconDue = (sourceId: string, d: string) => readers.filter((r) => r.sourceId === sourceId).reduce<Date | null>((at, r) => {
+    const spec = r.spec as ReconSpec;
+    const due = new Date(closeMoment(spec, d).getTime() + spec.grace_minutes * 60_000);
+    return at === null || due < at ? due : at;
+  }, null);
+  const counted = await deliveryCounts(tx, list.map((x): DeliverySource => ({ id: x.id, spaceId: x.spaceId, kind: x.kind as SourceKind, spec: x.spec as SourceSpec, createdAt: x.createdAt })), from, to, now, reconDue);
+  return list.flatMap((x) => {
+    const c = counted.get(x.id);
+    if (!c) return [];
+    const spaceId = ids.includes(x.spaceId) ? x.spaceId : uses.find((u) => u.sourceId === x.id)!.spaceId;
+    return [{ id: x.id, name: x.name, spaceId, ...c }];
+  });
 }

@@ -4,13 +4,20 @@ import { selectionState } from "@starterkit/shared/filter-selection";
 import { readTable } from "@/lib/shared/table-state";
 import { ACTION_RUNS } from "@/lib/shared/queries";
 import { BREAKS, RESULTS } from "@/lib/shared/queries-recon";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, unmatchHref } from "./dashboard-model";
 
 const has = (...ps: PermissionName[]) => (p: PermissionName) => ps.includes(p);
 const search = (href: string) => new URLSearchParams(href.split("?")[1] ?? "");
 const P = { from: "2026-11-02", to: "2026-11-03" };
 
 describe("recon dashboard model", () => {
+  it("sources: the on-time rate leaves unknown dates out; a row opens the source's page in its space", () => {
+    expect(onTimeRate({ onTime: 3, late: 1, missing: 0, unknown: 9 })).toBe(0.75);
+    expect(onTimeRate({ onTime: 1, late: 1, missing: 2, unknown: 0 })).toBe(0.25);
+    expect(onTimeRate({ onTime: 0, late: 0, missing: 0, unknown: 4 })).toBeNull();
+    expect(sourceHref("s 1", "x")).toBe("/spaces/s%201/sources/x");
+  });
+
   it("the admin section is for holders of user.view or audit.view only", () => {
     expect(adminSection(has())).toBe(false);
     expect(adminSection(has("role.view"))).toBe(false);

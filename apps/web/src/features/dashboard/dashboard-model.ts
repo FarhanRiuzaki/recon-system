@@ -72,6 +72,11 @@ export const postingFailedHref = (spaceId: string, period: { from: string; to: s
 /** The approvals inbox with every break request of the space, not only the viewer's. */
 export const approvalsHref = (spaceId: string) => `${space(spaceId)}/approvals${q({ mine: "0", kind: REQUEST_KINDS })}`;
 
+/** A source's page, under the space the dashboard row names. */
+export const sourceHref = (spaceId: string, id: string) => `${space(spaceId)}/sources/${encodeURIComponent(id)}`;
+/** Business dates on time ÷ those judged (on time, late, missing); unknown ones stay out; null when none is judged. */
+export const onTimeRate = (t: Pick<ReconDashboardDto["sources"], "onTime" | "late" | "missing" | "unknown">): number | null => rate(t.onTime, t.onTime + t.late + t.missing);
+
 /** The one space a number's link opens: the space picked, or the viewer's only one; null across several. */
 export const linkSpace = (d: Pick<ReconDashboardDto, "spaces">, picked: string | null): string | null =>
   picked ?? (d.spaces.length === 1 ? d.spaces[0]!.id : null);

@@ -14,7 +14,7 @@ import { EmptyState, ErrorState, InfoTip, LazyMount, Notice, Panel, RelativeTime
 import { categoryColor } from "@starterkit/ui/ds/badges";
 import { Reveal } from "@starterkit/ui/motion";
 import { appDayStart, formatDate, formatDateTime, formatDuration, formatNumber, formatPercent } from "@starterkit/ui/lib/format";
-import { CheckIcon, ColumnChartIcon, ForceMatchIcon, LineChartIcon, OverviewIcon, ReportsIcon, SuccessIcon, TimeIcon, WaitIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, ColumnChartIcon, DiskIcon, ForceMatchIcon, LineChartIcon, OverviewIcon, ReportsIcon, SuccessIcon, TimeIcon, WaitIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
@@ -27,7 +27,7 @@ import { categoryChip, statusChip } from "@/lib/shared/categories";
 import { reconDashboardRead } from "@/lib/shared/queries";
 import { timeRange } from "@/lib/shared/time-controls";
 import { AdminSection } from "./admin-section";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, unmatchHref } from "./dashboard-model";
 
 type D = ReconDashboardDto;
 // series (chart slots 1–3): auto match, by hand and force, new unmatch; the rate line its own chart
@@ -195,6 +195,36 @@ function Recons({ d }: { d: D }) {
   );
 }
 
+/** Each source's business dates of the period: on time, late, missing, and unknown (complete before completion times were kept). */
+function Sources({ d }: { d: D }) {
+  const s = d.sources;
+  const count = (n: number) => <TableCell className="text-right tabular">{formatNumber(n)}</TableCell>;
+  return (
+    <Panel flush icon={DiskIcon} title="Sources" description={`On-time rate ${pct(onTimeRate(s))} · ${formatNumber(s.late)} late, ${formatNumber(s.missing)} missing over the period's business dates`}
+      actions={<InfoTip label="how a date is judged" title="On time">A date is on time when its data was complete by the source&apos;s own deadline or grace, else by the close of the recons that read it. Unknown dates were complete before completion times were kept and stay out of the rate.</InfoTip>}>
+      {!s.rows.length ? <EmptyState icon={DiskIcon} title="No sources yet" description="A source shows here once it has a published version in one of your spaces." />
+        : (
+          <Table aria-label="Sources in the period">
+            <TableHeader><TableRow>
+              <TableHead>Source</TableHead><TableHead>Space</TableHead><TableHead className="text-right">On time</TableHead><TableHead className="text-right">Late</TableHead>
+              <TableHead className="text-right">Missing</TableHead><TableHead className="text-right">Unknown</TableHead><TableHead className="text-right">On-time rate</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {s.rows.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell><Link className="text-fg underline-offset-4 hover:underline" href={sourceHref(r.spaceId, r.id)}>{r.name}</Link></TableCell>
+                  <TableCell className="text-fg-2">{r.spaceName}</TableCell>
+                  {count(r.onTime)}{count(r.late)}{count(r.missing)}{count(r.unknown)}
+                  <TableCell className="text-right tabular">{pct(onTimeRate(r))}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+    </Panel>
+  );
+}
+
 function Approvals({ d }: { d: D }) {
   const a = d.approvals;
   const fact = (label: string, value: string) => <div className="grid gap-1"><dt className="text-body-sm text-fg-2">{label}</dt><dd className="text-stat tabular">{value}</dd></div>;
@@ -265,6 +295,7 @@ export function DashboardPage() {
               <Breakdowns d={d} space={reconSpace} recon={recon} />
               {d.bySpace.length > 1 && <BySpace d={d} />}
               <Recons d={d} />
+              <Sources d={d} />
               <Approvals d={d} />
             </>
           )}
