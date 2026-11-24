@@ -28,7 +28,7 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   const arrive = i.kind === "file_inbox"
     ? { check: "Files arrive", details: `${i.path} · ${i.pattern} · complete ${i.completion.kind === "stable_seconds" ? `after ${i.completion.seconds} s with no size change` : "when its .done file arrives"}` }
     : i.kind === "db_snapshot" ? { check: "Snapshots are pulled", details: `${scheduleText(i.schedule)} · the query takes the business date` }
-      : { check: "Rows are pulled", details: `${i.table ? i.table : "a SELECT"} · after ${i.watermark.column}, then ${i.watermark.id_column}` };
+      : { check: "Rows are pulled", details: `${i.table ? i.table : "a SELECT"} · after ${i.watermark.column}, then ${i.watermark.id_columns.join(", ")}` };
   const bd = s.mapping.business_date;
   const quarantined = preview?.quarantine.map((q) => q.line) ?? [];
   // a new table is a new version (PO decision 3): the change is said here as on the version page

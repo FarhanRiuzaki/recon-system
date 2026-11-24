@@ -107,7 +107,7 @@ export function fieldError(message: string): { path: string; reason: string } | 
 }
 
 const PATH_LABEL: Record<string, string> = {
-  "input.watermark.column": "Watermark column", "input.watermark.id_column": "Id column", "input.table": "Table", "input.query": "SELECT",
+  "input.watermark.column": "Watermark column", "input.watermark.id_columns": "Id columns", "input.lookback_seconds": "Look back", "input.lookback_ids": "Look back", "input.table": "Table", "input.query": "SELECT",
   "input.schedule": "Schedule", "input.path": "Folder", "input.pattern": "File name pattern", currency: "Currency", key_fields: "Match key",
   "mapping.business_date": "Business date", "mapping.amount_minor": "Amount", "mapping.currency": "Currency", "mapping.direction": "Direction",
   "mapping.event_time": "Event time", "mapping.ext_ref": "Reference", "mapping.account_ref": "Account",
@@ -180,7 +180,7 @@ export function specDiff(before: SourceSpec | null, after: SourceSpec): DiffRow[
 }
 const INPUT_LABEL: Record<string, string> = {
   path: "Folder", pattern: "File name pattern", completion: "File is complete when", format: "File format", table: "Table", query: "Query",
-  watermark: "Watermark", lookback_seconds: "Look back", chunk: "Rows per page", schedule: "Schedule",
+  watermark: "Watermark", lookback_seconds: "Look back", lookback_ids: "Look back (ids)", chunk: "Rows per page", schedule: "Schedule",
 };
 function inputText(v: unknown): string {
   if (typeof v !== "object" || v === null) return String(v);
@@ -188,7 +188,7 @@ function inputText(v: unknown): string {
   if (o.kind === "stable_seconds") return `Size unchanged for ${String(o.seconds)} s`;
   if (o.kind === "marker_file") return "A .done file with the same name arrives";
   if (o.kind === "delimited") return `Delimited by ${o.delimiter === "\t" ? "tab" : String(o.delimiter)}, ${o.header ? "first row is a header" : "no header"}, ${String(o.encoding)}`;
-  if ("column" in o) return `${String(o.column)}, then ${String(o.id_column)}`;
+  if ("column" in o) return `${String(o.column)}, then ${(o.id_columns as string[] | undefined)?.join(", ") ?? String(o.id_column)}`;
   return JSON.stringify(v);
 }
 const healthText = (h: SourceSpec["health"]) => (!h ? null : [h.graceMinutes ? `grace ${h.graceMinutes} min` : null, h.deadline ? `deadline ${h.deadline} ${APP_TIME_ZONE_LABEL}` : null].filter(Boolean).join(", ") || null);

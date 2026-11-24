@@ -79,9 +79,10 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
         ] : i.kind === "db_snapshot" ? [
           ["Query", i.query], ["Schedule", scheduleText(i.schedule)],
         ] : [
-          [i.table !== undefined ? "Table" : "Query", i.table ?? i.query], ["Watermark column", i.watermark.column], ["Id column", i.watermark.id_column],
+          [i.table !== undefined ? "Table" : "Query", i.table ?? i.query], ["Watermark column", i.watermark.column], [i.watermark.id_columns.length > 1 ? "Id columns" : "Id column", i.watermark.id_columns.join(", ")],
           ["Pulled", readWhenText(i.when)],
-          ["Looks back", i.lookback_seconds ? `${formatNumber(i.lookback_seconds)} s` : "No"], ["Rows per page", formatNumber(i.chunk)],
+          ["Looks back", i.lookback_ids !== undefined ? (i.lookback_ids ? `${formatNumber(i.lookback_ids)} ids` : "No") : i.lookback_seconds ? `${formatNumber(i.lookback_seconds)} s` : "No"],
+          ["Rows per page", formatNumber(i.chunk)],
         ]} />
       </Panel>
 

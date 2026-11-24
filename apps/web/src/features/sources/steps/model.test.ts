@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, pullProblems, repeatedRows, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, pullProblems, repeatedRows, snapshotOf, watermarkKind, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -35,7 +35,37 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
     expect(connKey(db())).not.toBe(connKey(db({ conn: { ...EMPTY_CONN, password: "p" } })));
   });
   it("a watermark source picks its watermark and id columns in step 2", () => {
-    expect(watermarkProblems(db()).map((p) => p.id)).toEqual(["src-input-watermark-column", "src-input-watermark-id_column"]);
+    expect(watermarkProblems(db()).map((p) => p.id)).toEqual(["src-input-watermark-column", "src-input-watermark-id_columns"]);
+  });
+  it("the watermark's kind comes from the source column's type (else the field's): a date only, a date-time, an integer", () => {
+    const at = (column: string, engine: Draft["conn"]["engine"] = "postgres") => {
+      const d = db({ conn: { ...EMPTY_CONN, engine } });
+      return { ...d, spec: { ...d.spec, input: { ...d.spec.input, watermark: { column, id_columns: ["id"] } } as Draft["spec"]["input"],
+        fields: [{ name: "f", type: "integer" as const, nullable: false, trim: false }] } };
+    };
+    const cols = [{ name: "d", type: "date" }, { name: "t", type: "timestamp with time zone" }, { name: "n", type: "bigint" }, { name: "s", type: "text" }]
+      .map((c) => ({ ...c, nullable: false, unique: null, indexed: null }));
+    expect(["d", "t", "n", "s"].map((c) => watermarkKind(at(c), cols))).toEqual(["date", "time", "int", null]);
+    expect(watermarkKind(at("f"), null)).toBe("int"); // a SELECT not read here: the field's type
+    expect(watermarkKind(at("D", "oracle"), [{ name: "D", type: "DATE", nullable: false, unique: null, indexed: null }])).toBe("time"); // Oracle's DATE holds a time
+    expect(watermarkKind(at(""), cols)).toBeNull();
+  });
+  it("fitLookback: a date-only watermark looks back at least a day, an integer one in ids (1,000), a date-time in seconds", () => {
+    const i = emptySpec("db_watermark").input as Extract<Draft["spec"]["input"], { kind: "db_watermark" }>;
+    expect(fitLookback(i, "date")).toMatchObject({ lookback_seconds: 86_400 });
+    expect(fitLookback({ ...i, lookback_seconds: 172_800 }, "date")).toMatchObject({ lookback_seconds: 172_800 });
+    const int = fitLookback(i, "int");
+    expect([int.lookback_ids, "lookback_seconds" in int]).toEqual([1000, false]);
+    const back = fitLookback(int, "time");
+    expect([back.lookback_seconds, "lookback_ids" in back]).toEqual([300, false]);
+    expect(fitLookback(i, null)).toBe(i);
+  });
+  it("snapshotOf: a date-watermark table read as a snapshot per business date, its fields kept", () => {
+    const d = db();
+    const w = { ...d, spec: { ...d.spec, mutable: true, fields: [{ name: "d", type: "date" as const, nullable: false, trim: false }],
+      input: { ...d.spec.input, table: "core.daily", watermark: { column: "d", id_columns: ["id"] } } as Draft["spec"]["input"] } };
+    const s = snapshotOf(w);
+    expect([s.kind, s.spec.input, s.spec.mutable, s.spec.fields]).toEqual(["db_snapshot", { kind: "db_snapshot", query: "SELECT * FROM core.daily WHERE d = :business_date", schedule: "0 6 * * *" }, false, w.spec.fields]);
   });
   it("Next asks for the amount's unit, not a currency (optional: read as written); the fixed currency is sent only without a currency column", () => {
     const base = emptySpec("db_watermark");

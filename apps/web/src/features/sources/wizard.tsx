@@ -27,8 +27,8 @@ import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListSta
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import {
-  amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, mappingProblem, type Preview, pullProblems,
-  saveAndClose, type Tested, watermarkProblems,
+  amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, fitLookback, mappingProblem, type Preview, pullProblems,
+  saveAndClose, type Tested, watermarkKind, watermarkProblems,
 } from "./steps/model";
 import { discardConfirm } from "./discard-dialog";
 import {
@@ -375,7 +375,11 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const i = x.spec.input;
       if (i.kind !== "db_watermark") return x;
       const keep = (cur: string, was: string | null | undefined, next: string | null) => (cur && cur !== was && cols.some((c) => c.name === cur) ? cur : next ?? cur);
-      return { ...x, spec: { ...x.spec, input: { ...i, watermark: { column: keep(i.watermark.column, prev?.column, s.column), id_column: keep(i.watermark.id_column, prev?.id, s.id) } } } };
+      const ids = i.watermark.id_columns;
+      const own = ids.length > 0 && ids.join() !== (prev?.id ?? "") && ids.every((n) => cols.some((c) => c.name === n));
+      const next = { ...x, spec: { ...x.spec, input: { ...i, watermark: { column: keep(i.watermark.column, prev?.column, s.column), id_columns: own ? ids : s.id ? [s.id] : ids } } } };
+      // the look back follows what the watermark holds (a date only: a day at least; a sequence: ids)
+      return { ...next, spec: { ...next.spec, input: fitLookback(next.spec.input, watermarkKind(next, cols)) } };
     });
   }
   const kindOf = (table: string): CatalogTable["kind"] | null =>
@@ -552,9 +556,13 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       if (!file && e instanceof ApiError && e.code === "bad_request") {
         const plain: SourceSpec = { ...spec, mapping: { business_date: ARRIVED_DATE, attrs: {} }, derive: {}, key_fields: [], mutable: false };
         delete plain.keep; delete plain.currency;
-        // a sample read has no watermark predicate: one not picked yet is stood in for by the first column
+        // a sample read has no watermark predicate: one not picked yet is stood in for by the first column, and the look
+        // back is left to the column's default (one that doesn't fit the watermark is the first preview's error)
         const first = spec.fields[0]?.name ?? "";
-        if (plain.input.kind === "db_watermark") plain.input = { ...plain.input, watermark: { column: plain.input.watermark.column || first, id_column: plain.input.watermark.id_column || first } };
+        if (plain.input.kind === "db_watermark") {
+          const { lookback_seconds: _s, lookback_ids: _i, ...rest } = plain.input;
+          plain.input = { ...rest, watermark: { column: rest.watermark.column || first, id_columns: rest.watermark.id_columns.length ? rest.watermark.id_columns : [first] } };
+        }
         columns = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify({ spec: plain, ...(businessDate ? { businessDate } : {}) }) }).catch(() => null);
         if (n !== seq.current) return;
       }
@@ -736,7 +744,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             <Notice live>What you entered before the page closed is back. Enter the password again: it is never kept in this browser.</Notice>
           )}
           {step === 0 && (
-            <ConnectionStep d={d} set={set} created={!!ids} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
+            <ConnectionStep d={d} set={set} created={!!ids} wmKind={watermarkKind(d, columns)} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
               connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}
               nextVersion={source?.s.publishedVersion != null && ids ? ids.version : null}
               catalog={{
@@ -746,7 +754,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               }} />
           )}
           {step === 1 && (
-            <FieldsStep d={d} set={set} err={err} engine={file ? null : (source?.s.connection?.engine ?? d.conn.engine)} native={native} canRead={admin && !!ids}
+            <FieldsStep d={d} set={set} created={!!ids} err={err} engine={file ? null : (source?.s.connection?.engine ?? d.conn.engine)} native={native} canRead={admin && !!ids}
               reading={busy === "columns"} onReadColumns={() => void readColumns()} sample={sample.text} sampleCut={sample.cut} fileName={fileName}
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
               businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable || !file ? preview : { result: null, error: null, pending: false }}

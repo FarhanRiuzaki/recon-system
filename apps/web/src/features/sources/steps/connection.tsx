@@ -12,12 +12,14 @@ import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { DB_ENGINES, FILE_ENCODINGS, isLocalHost, READ_EVERY, type ReadWhen, readWhenText, type SourceKind } from "@starterkit/shared/sources";
+import {
+  DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, FILE_ENCODINGS, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
+} from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
-import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, withEngine, withName } from "./model";
+import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, type WatermarkKind, withEngine, withName } from "./model";
 
 // The database, schema and table pickers show only for a database source: they load after the page (preloaded when
 // the connection step mounts) and hold a field's height meanwhile, as their own combobox does (bundle budget, DEC-040).
@@ -85,6 +87,8 @@ export type ConnectionStepProps = {
   catalog: CatalogProps;
   /** Editing a published source: the version a change of how rows are read makes; null otherwise. */
   nextVersion: number | null;
+  /** What the picked watermark holds (step 2), which decides its look back; null before a pick. */
+  wmKind: WatermarkKind | null;
 };
 
 /** A rejected or untested connection string: one sentence, one step. */
@@ -476,14 +480,32 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
     );
   } else if (i.kind === "db_watermark") {
     const w = i as WatermarkInput;
+    const kind = p.wmKind;
+    const digits = (v: string) => Number(v.replace(/\D/g, "")) || 0;
+    // a date-only watermark looks back a day at least: kept while typing, raised to a day when the field is left
+    const minSeconds = kind === "date" ? DATE_LOOKBACK_MIN_SECONDS : 0;
+    const seconds = w.lookback_seconds ?? minSeconds;
     body = (
       <>
       <ReadWhenField label="Pull" when={w.when} onChange={(when) => setInput({ when } as Partial<WatermarkInput>)} />
-      <Advanced summary={`Look back ${formatNumber(w.lookback_seconds)} s · ${formatNumber(w.chunk)} rows per page`}>
-        <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" note="Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.">
-          <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(w.lookback_seconds)}
-            onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, Number(e.target.value.replace(/\D/g, "")) || 0) } as Partial<WatermarkInput>)} />
-        </Field>
+      <Advanced open={!!err(ctl("input.lookback_seconds")) || !!err(ctl("input.lookback_ids"))}
+        summary={`Look back ${kind === "int" ? `${formatNumber(w.lookback_ids ?? LOOKBACK_IDS_DEFAULT)} ids` : `${formatNumber(seconds)} s`} · ${formatNumber(w.chunk)} rows per page`}>
+        {kind === "int" ? (
+          <Field id={ctl("input.lookback_ids")} label="Look back (ids)" error={err(ctl("input.lookback_ids"))}
+            note="The watermark is a sequence: each pull starts this many ids before the last one, for rows that commit late. Rows read twice are stored once.">
+            <Input id={ctl("input.lookback_ids")} inputMode="numeric" value={String(w.lookback_ids ?? LOOKBACK_IDS_DEFAULT)}
+              onChange={(e) => setInput({ lookback_ids: Math.min(LOOKBACK_IDS_MAX, digits(e.target.value)) } as Partial<WatermarkInput>)} />
+          </Field>
+        ) : (
+          <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" error={err(ctl("input.lookback_seconds"))}
+            note={kind === "date"
+              ? "The watermark holds a date only, so each pull starts at least 1 day (86,400 s) back: a row added later on the same date with a smaller id would be skipped otherwise. Rows read twice are stored once."
+              : "Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once."}>
+            <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(seconds)}
+              onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, digits(e.target.value)) } as Partial<WatermarkInput>)}
+              onBlur={() => { if (seconds < minSeconds) setInput({ lookback_seconds: minSeconds } as Partial<WatermarkInput>); }} />
+          </Field>
+        )}
         <Field id={ctl("input.chunk")} label="Rows per page">
           <Input id={ctl("input.chunk")} inputMode="numeric" value={String(w.chunk)}
             onChange={(e) => setInput({ chunk: Math.max(1, Math.min(100_000, Number(e.target.value.replace(/\D/g, "")) || 1)) } as Partial<WatermarkInput>)} />

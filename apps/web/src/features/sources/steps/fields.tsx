@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ChangeEvent, Fragment, useRef, useState } from "react";
+import { type ChangeEvent, Fragment, type ReactElement, useRef, useState } from "react";
 import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -12,11 +12,12 @@ import { Select } from "@starterkit/ui/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES } from "@starterkit/shared/sources";
+import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES, WATERMARK_ID_COLUMNS_MAX } from "@starterkit/shared/sources";
 import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { type Column, ctl, type Draft, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows } from "./model";
+import { type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, type WatermarkInput, watermarkKind } from "./model";
+import { toast } from "@starterkit/ui/ui/toast";
 
 /**
  * Computed columns and Rows to load sit under the field table, out of the first screen: they load after the page, preloaded as soon
@@ -76,6 +77,8 @@ export type FieldsStepProps = {
   onPreview: (() => void) | null;
   /** The source's columns as read (nullability for the watermark pickers); null when not read here. */
   columns: Column[] | null;
+  /** The source exists already: its kind is fixed (a date-only watermark can't switch to a snapshot here). */
+  created: boolean;
   /** A source admin changes how the source is read (watermark, header); anyone else sees it. */
   canChangeReading: boolean;
   /** The sample's first line looks like column names while "First row is a header" is off. */
@@ -407,16 +410,17 @@ function Cap({ children, inline }: { children: string; inline?: boolean }) {
  * How new rows are found (ruling 4): the watermark and id columns, from the columns read. A column that can be empty is
  * offered disabled with the reason; a SELECT can't say, so a warning says it. A source admin's: anyone else sees it.
  */
-function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, preview }: FieldsStepProps) {
+function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, preview, created }: FieldsStepProps) {
   const i = d.spec.input;
   if (i.kind !== "db_watermark") return null;
+  const ids = i.watermark.id_columns;
   const options = columns ?? d.spec.fields.map((f) => ({ name: f.name, type: f.type, nullable: f.nullable }));
   /** A suggestion said under its picker while the pick is still it;. */
-  const said = (key: "column" | "id_column"): string | null => {
+  const said = (key: "column" | "id_columns"): string | null => {
     if (!suggested || d.from !== "table") return null;
-    const s = key === "column" ? suggested.column : suggested.id;
-    if (s && i.watermark[key] === s) return key === "column" ? watermarkNote(s) : idNote(s);
-    return key === "id_column" && !s && !i.watermark.id_column ? suggested.idWhy : null;
+    if (key === "column") return suggested.column && i.watermark.column === suggested.column ? watermarkNote(suggested.column) : null;
+    if (suggested.id && ids.length === 1 && ids[0] === suggested.id) return idNote(suggested.id);
+    return !suggested.id && !ids.length ? suggested.idWhy : null;
   };
   const cols: ComboOption[] = options.map((c) => {
     const empty = d.from === "table" && c.nullable === true;
@@ -427,49 +431,77 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, pre
   // what the table's catalog says (a table only): an unindexed watermark makes every pull scan the table; an id that
   // isn't unique on its own may tie with another row of the same watermark
   const meta = new Map((columns ?? []).map((c) => [c.name, c]));
-  const hintOf = (key: "column" | "id_column", name: string): string | null => {
+  const hintOf = (key: "column" | "id_columns", name: string): string | null => {
     const c = d.from === "table" ? meta.get(name) : undefined;
     if (!c) return null;
     if (key === "column") return c.indexed === false ? "no index" : c.indexed ? "indexed" : null;
     return c.unique === false ? "not unique" : c.unique ? "unique" : null;
   };
+  const describe = (key: "column" | "id_columns", o: ComboOption) => [o.description, hintOf(key, o.value)].filter(Boolean).join(" · ") || undefined;
   const slowWm = d.from === "table" && meta.get(i.watermark.column)?.indexed === false;
-  const pick = (key: "column" | "id_column", label: string, plain: string, help: string) => {
+  const setWatermark = (patch: Partial<WatermarkInput["watermark"]>) => set((x) => {
+    if (x.spec.input.kind !== "db_watermark") return x;
+    const next = { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, ...patch } } } };
+    // the look back follows what the watermark holds (a date only: a day at least; a sequence: ids)
+    return patch.column === undefined ? next : { ...next, spec: { ...next.spec, input: fitLookback(next.spec.input as WatermarkInput, watermarkKind(next, columns)) } };
+  });
+  const field = (key: "column" | "id_columns", label: string, plain: string, help: string, control: ReactElement<{ "aria-describedby"?: string }>) => {
     // "Suggested" is shown beside the label; any other sentence (why no id was suggested) stays the note
     const hint = said(key);
-    const suggested = hint === watermarkNote("") || hint === idNote("");
-    const note = (!suggested && hint) || plain;
+    const isSuggested = hint === watermarkNote("") || hint === idNote("");
+    const note = (!isSuggested && hint) || plain;
     return (
-    <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} suggested={suggested} error={err(ctl(`input.watermark.${key}`))} help={help}>
-      <Combobox id={ctl(`input.watermark.${key}`)} className="w-full min-w-0" label={label} placeholder="Pick a column" disabled={!canChangeReading}
-        options={cols.map((o) => ({ ...o, description: [o.description, hintOf(key, o.value)].filter(Boolean).join(" · ") || undefined }))} value={cols.find((o) => o.value === i.watermark[key]) ?? null}
-        onChange={(o) => set((x) => (x.spec.input.kind === "db_watermark"
-          ? { ...x, spec: { ...x.spec, input: { ...x.spec.input, watermark: { ...x.spec.input.watermark, [key]: o?.value ?? "" } } } } : x))} />
-    </Field>
+      <Field id={ctl(`input.watermark.${key}`)} label={label} note={canChangeReading ? note : `${note} Set by a source admin.`} suggested={isSuggested} error={err(ctl(`input.watermark.${key}`))} help={help}>
+        {control}
+      </Field>
     );
   };
-  // the watermark with its id must name one row; rows of the preview that share both are skipped or read twice by a pull
-  const wmKey = storedName(d.spec, i.watermark.column), idKey = storedName(d.spec, i.watermark.id_column);
+  const full = ids.length >= WATERMARK_ID_COLUMNS_MAX;
+  // the watermark with its ids must name one row; rows of the preview that repeat them all are read once by a pull
+  const keys = [i.watermark.column, ...ids].map((n) => storedName(d.spec, n));
   const recs = preview.result?.records ?? [];
-  const tied = wmKey && idKey ? repeatedRows(recs, (r) => (r.attrs[wmKey] == null || r.attrs[idKey] == null ? null : `${r.attrs[wmKey]}\u001f${r.attrs[idKey]}`)) : 0;
+  const tied = ids.length && keys.every((k) => k !== null)
+    ? repeatedRows(recs, (r) => (keys.some((k) => r.attrs[k!] == null) ? null : keys.map((k) => r.attrs[k!]).join("\u001f"))) : 0;
+  const dateOnly = watermarkKind(d, columns) === "date";
   return (
-    <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table?.trim() || "the table"}, after the last watermark and id` : "From the SELECT, after the last watermark and id"} bodyClassName="grid gap-4">
-      {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and an id column that always have a value: rows with no value would never be pulled.</Notice>}
+    <Panel title="How new rows are found" description={d.from === "table" ? `From ${i.table?.trim() || "the table"}, after the last watermark and ids` : "From the SELECT, after the last watermark and ids"} bodyClassName="grid gap-4">
+      {d.from === "query" && <Notice tone="warn">A SELECT can&apos;t say whether its columns can be empty. Pick a watermark and id columns that always have a value: rows with no value would never be pulled.</Notice>}
       <div className="grid gap-4 md:grid-cols-2">
-        {pick("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at.",
-          "How each pull finds what is new. Every pull reads only the rows whose value in this column is past the last one it read, so the source is never read whole again. It must grow whenever a row is added or changed, and never be empty: a row without a value is never pulled.")}
-        {pick("id_column", "Id column", "Tells apart rows with the same watermark, such as the primary key.",
-          "Puts rows with the same watermark value in a fixed order, such as many rows written in the same second. With it, a pull that stops between them goes on at the right row: none is skipped or read twice. Usually the primary key.")}
+        {field("column", "Watermark column", "Grows whenever a row is added or changed, such as updated_at or a sequence number.",
+          "How each pull finds what is new. Every pull reads only the rows whose value in this column is past the last one it read, so the source is never read whole again. It must grow whenever a row is added or changed, and never be empty: a row without a value is never pulled. A date, a date and time, or an integer sequence.",
+          <Combobox id={ctl("input.watermark.column")} className="w-full min-w-0" label="Watermark column" placeholder="Pick a column" disabled={!canChangeReading}
+            options={cols.map((o) => ({ ...o, description: describe("column", o) }))} value={cols.find((o) => o.value === i.watermark.column) ?? null}
+            onChange={(o) => setWatermark({ column: o?.value ?? "" })} />)}
+        {field("id_columns", "Id columns", `Tell apart rows with the same watermark, such as the primary key. Up to ${WATERMARK_ID_COLUMNS_MAX}, in the order picked.`,
+          "Put rows with the same watermark value in a fixed order, such as many rows written in the same second. With them, a pull that stops between such rows goes on at the right row: none is skipped or read twice. Usually the primary key; a table without one can use several columns that together are unique, compared in the order picked.",
+          <Combobox id={ctl("input.watermark.id_columns")} label="Id columns" placeholder="Pick columns" multiple disabled={!canChangeReading} value={ids}
+            options={cols.map((o) => ({
+              value: o.value, label: o.label, disabled: o.disabled || (full && !ids.includes(o.value)),
+              description: [describe("id_columns", o), full && !ids.includes(o.value) ? `Up to ${WATERMARK_ID_COLUMNS_MAX} id columns` : null].filter(Boolean).join(" · ") || undefined,
+            }))}
+            onValueChange={(v) => setWatermark({ id_columns: v.slice(0, WATERMARK_ID_COLUMNS_MAX) })} />)}
       </div>
       {slowWm && (
         <Notice tone="warn">
           {i.watermark.column} has no index in the source database, so every pull reads the whole table to find new rows. Ask the database owner for an index on it, or pick an indexed column.
         </Notice>
       )}
-      {tied > 0 && (
-        <Notice tone="warn">
-          {formatNumber(tied)} rows in the preview share the same watermark and id, so a pull that stops between them can skip or repeat rows.
-          Pick an id that is unique for each watermark value, such as the primary key. A source with no unique column is safer read as a daily snapshot.
+      {tied > 0 && <Notice tone="warn">These columns repeat in {formatNumber(tied)} preview rows: rows that repeat them are read once.</Notice>}
+      {dateOnly && (
+        <Notice>
+          <span className="grid gap-2">
+            <span>
+              {i.watermark.column} holds a date only. A table that only has a date is usually better read as a whole snapshot per business date
+              {created ? ": the way a source is read is fixed once it is made, so that is a new source." : "."}
+            </span>
+            {!created && canChangeReading && (
+              <span>
+                <Button type="button" variant="secondary" onClick={() => { set(snapshotOf); toast("Reads a whole snapshot per business date now. Check its SELECT in step 1."); }}>
+                  Read as a snapshot
+                </Button>
+              </span>
+            )}
+          </span>
         </Notice>
       )}
     </Panel>
@@ -546,7 +578,7 @@ function Left({ d }: { d: Draft }) {
     { ok: s.fields.length > 0, text: "Columns read" },
     { ok: s.fields.length > 0 && !mappingProblem(s), text: "Business date mapped" },
     ...(s.mapping.amount_minor ? [{ ok: !!s.mapping.amount_minor.unit, text: "Amount unit chosen" }] : []),
-    ...(i.kind === "db_watermark" ? [{ ok: !!i.watermark.column && !!i.watermark.id_column, text: "Watermark and id column picked" }] : []),
+    ...(i.kind === "db_watermark" ? [{ ok: !!i.watermark.column && i.watermark.id_columns.length > 0, text: "Watermark and id columns picked" }] : []),
     ...(i.kind !== "db_snapshot" && s.mutable ? [{ ok: s.key_fields.length > 0, text: "Match key picked" }] : []),
   ];
   const left = items.filter((x) => !x.ok).length;

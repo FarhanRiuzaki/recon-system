@@ -1,8 +1,10 @@
 // The source wizard's working state and the rules its steps share (no React): what the user has typed, how a spec is
 // built from it, which control an API error belongs to, and which values a connection test ran with.
 import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { type AmountUnit, type ConnectionField, DEFAULT_CALENDAR, type DbEngine, SOURCE_CODE, type SourceKind } from "@starterkit/shared/sources";
-import { FILE_DATE } from "../spec-draft";
+import {
+  type AmountUnit, type ConnectionField, DATE_LOOKBACK_MIN_SECONDS, DEFAULT_CALENDAR, type DbEngine, LOOKBACK_IDS_DEFAULT, SOURCE_CODE, type SourceKind,
+} from "@starterkit/shared/sources";
+import { FILE_DATE, fieldTypeOf } from "../spec-draft";
 import { computeSteps } from "@starterkit/shared/compute";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
@@ -56,7 +58,7 @@ export function emptySpec(kind: SourceKind): SourceSpec {
   const input: SourceSpec["input"] = kind === "file_inbox"
     ? { kind, path: "", pattern: "", completion: { kind: "stable_seconds", seconds: 60 }, format: { kind: "delimited", delimiter: "|", quote: '"', header: false, encoding: "utf-8" } }
     : kind === "db_snapshot" ? { kind, query: "", schedule: "0 6 * * *" }
-      : { kind, table: "", watermark: { column: "", id_column: "" }, lookback_seconds: 300, chunk: 5000 };
+      : { kind, table: "", watermark: { column: "", id_columns: [] }, lookback_seconds: 300, chunk: 5000 };
   return {
     fields: [], mapping: { business_date: kind === "file_inbox" ? FILE_DATE : { field: "" }, attrs: {} }, derive: {}, key_fields: [], mutable: false,
     calendar: DEFAULT_CALENDAR, input,
@@ -175,8 +177,47 @@ export function watermarkProblems(d: Draft): { id: string; reason: string }[] {
   if (i.kind !== "db_watermark") return [];
   return [
     ...(i.watermark.column ? [] : [{ id: ctl("input.watermark.column"), reason: "Pick the column that grows when a row is added or changed." }]),
-    ...(i.watermark.id_column ? [] : [{ id: ctl("input.watermark.id_column"), reason: "Pick the column that tells rows with the same watermark apart." }]),
+    ...(i.watermark.id_columns.length ? [] : [{ id: ctl("input.watermark.id_columns"), reason: "Pick the columns that tell rows with the same watermark apart." }]),
   ];
+}
+
+export type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
+/** What a watermark holds, which decides its look back: a date only (a day at least), a date and time (seconds), a sequence (ids). */
+export type WatermarkKind = "date" | "time" | "int";
+
+/**
+ * The picked watermark's kind: from the source column's type when the columns were read, else from its field's type;
+ * null before a pick or for a column of another type. Oracle has no date-only type (its DATE holds a time).
+ */
+export function watermarkKind(d: Draft, columns: readonly Column[] | null): WatermarkKind | null {
+  const i = d.spec.input;
+  if (i.kind !== "db_watermark" || !i.watermark.column) return null;
+  const c = columns?.find((x) => x.name === i.watermark.column);
+  const t = c ? fieldTypeOf(d.conn.engine, c.type).type : d.spec.fields.find((f) => f.name === i.watermark.column)?.type;
+  return t === "integer" ? "int" : t === "datetime" ? "time" : t === "date" ? (d.conn.engine === "oracle" ? "time" : "date") : null;
+}
+
+/**
+ * The look back the watermark's kind takes, keeping what was typed where it fits: a date only at least a day (a row
+ * added later on the same date with a smaller id would be skipped otherwise), a sequence in ids (1,000 to start), a
+ * date and time in seconds (300 to start).
+ */
+export function fitLookback(i: WatermarkInput, kind: WatermarkKind | null): WatermarkInput {
+  if (kind === null) return i;
+  const { lookback_seconds: s, lookback_ids: n, ...rest } = i;
+  if (kind === "int") return { ...rest, lookback_ids: n ?? LOOKBACK_IDS_DEFAULT };
+  return { ...rest, lookback_seconds: kind === "date" ? Math.max(s ?? 0, DATE_LOOKBACK_MIN_SECONDS) : s ?? 300 };
+}
+
+/**
+ * A watermark source that only has a date, read as a snapshot per business date instead: its fields and mapping kept,
+ * a SELECT of the table for that date to start from (not mutable: a snapshot replaces the date whole).
+ */
+export function snapshotOf(d: Draft): Draft {
+  const i = d.spec.input;
+  if (i.kind !== "db_watermark") return d;
+  const query = `SELECT * FROM ${i.table?.trim() || "table"} WHERE ${i.watermark.column} = :business_date`;
+  return { ...d, kind: "db_snapshot", from: "table", spec: { ...d.spec, mutable: false, input: { kind: "db_snapshot", query, schedule: "0 6 * * *" } } };
 }
 
 /** Why step 2 can't be previewed or saved yet (no field, no business date). */

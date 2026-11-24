@@ -59,7 +59,7 @@ describe("goneFields (PO decision 4)", () => {
     const s: SourceSpec = {
       fields: ["id", "updated_at", "sid", "bal", "note"].map((name) => ({ name, type: "string" as const, nullable: true, trim: true })),
       mapping: { business_date: { field: "updated_at" }, account_ref: { field: "sid" }, attrs: { bal: { field: "bal" } } }, derive: {}, key_fields: ["id"], mutable: false, calendar: "id-default",
-      input: { kind: "db_watermark", table: "core.bifast_tx_v2", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 },
+      input: { kind: "db_watermark", table: "core.bifast_tx_v2", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 300, chunk: 5000 },
     };
     const have = [col("id", "bigint", false), col("updated_at", "timestamptz", false)];
     // sid is mapped, bal is stored, note is used by nothing: only sid and bal block
