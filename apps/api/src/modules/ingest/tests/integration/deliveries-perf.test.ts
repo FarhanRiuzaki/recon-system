@@ -34,7 +34,9 @@ describe("deliveryCounts: many sources × 92 days", () => {
     await db.insert(sourceVersions).values(list.map((x) => ({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: x.id, version: 1, status: "published", spec: x.spec, specHash: "h", makerId: A, publishedAt: createdAt })));
     const files = list.filter((x) => x.kind === "file_inbox").map((x) => x.id), snaps = list.filter((x) => x.kind === "db_snapshot").map((x) => x.id);
     const days = sql`generate_series(${FROM}::date, ${TO}::date, '1 day') d`;
+    // seeding 184k rows is the fixture, not what is measured: give its transaction room past the 5 s statement timeout
     await db.transaction(async (tx) => {
+      await tx.execute(sql`set local statement_timeout = '120s'`);
       await tx.execute(sql`insert into source_deliveries (space_id, source_id, business_date, completed_at)
         select ${A}::uuid, s, d::date, d + interval '1 day 8 hours' from unnest(${`{${list.map((x) => x.id).join(",")}}`}::uuid[]) s, ${days}`);
       await tx.execute(sql`insert into source_files (id, space_id, source_id, name, sha256, size, modified_at, status, business_date, rows_ok)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { familyOf } from "../../connectors/dialect";
 import { makeCalendar } from "../../map";
-import { completedDates, completeThroughOf, cursorIds, deadlineOn, deliveryDue, type DeliveryFacts, type DueRule, deliveryOf, deliveryTally, driftOf, dueRule, endOfDay, idText, nextBusinessDay, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
+import { healthDeadline, completedDates, completeThroughOf, cursorIds, deadlineOn, deliveryDue, type DeliveryFacts, type DueRule, deliveryOf, deliveryTally, driftOf, dueRule, endOfDay, idText, nextBusinessDay, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
 
 const cal = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-02"] });
 
@@ -160,5 +160,16 @@ describe("source deliveries: on time, late, missing, unknown", () => {
     expect(deliveryTally({ ...pulled, completed: new Map(), completeThrough: null }, dates, now)).toEqual({ onTime: 0, late: 0, missing: 3, unknown: 0 });
     // a recon closing the date that evening: earlier than the source's own deadline, so both completions are late
     expect(deliveryTally({ ...base, rule: { ...base.rule, closeMinutes: 23 * 60 + 59 } }, dates, now)).toEqual({ onTime: 0, late: 2, missing: 0, unknown: 1 });
+  });
+});
+
+describe("healthDeadline: a per-date source's daily deadline falls on the business day after the date it waits for (as the dashboard's due)", () => {
+  const cal = makeCalendar({ weekend: [6, 7], holidays: [] } as never);
+  it("on a weekday the deadline is today; on a weekend it is Monday, so Friday's file is not down on Saturday", () => {
+    // Tue 2026-11-24 waits for Mon 23 → deadline Tue 24 at 09:00 WIB
+    expect(healthDeadline(cal, "2026-11-24", "09:00").toISOString()).toBe("2026-11-24T02:00:00.000Z");
+    // Sat 2026-11-28 waits for Fri 27 → deadline Mon 30
+    expect(healthDeadline(cal, "2026-11-28", "09:00").toISOString()).toBe("2026-11-30T02:00:00.000Z");
+    expect(healthDeadline(cal, "2026-11-29", "09:00").toISOString()).toBe("2026-11-30T02:00:00.000Z");
   });
 });

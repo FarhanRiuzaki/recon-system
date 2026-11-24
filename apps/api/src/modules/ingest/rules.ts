@@ -138,6 +138,12 @@ export function driftOf(cols: Column[], fields: Pick<FieldSpec, "name" | "type">
 
 /** The instant `hhmm` (HH:MM) falls on `date` in Asia/Jakarta, which keeps UTC+7 all year (no daylight saving). */
 export const deadlineOn = (date: string, hhmm: string): Date => new Date(`${date}T${hhmm}:00+07:00`);
+/**
+ * A per-date source's daily deadline as health judges it today: on the business day after the date it waits for
+ * (previousBusinessDay of today), at `hhmm` — so on a Saturday Friday's file is due Monday, as the dashboard's due is.
+ */
+export const healthDeadline = (calendar: Calendar, today: string, hhmm: string): Date =>
+  deadlineOn(nextBusinessDay(calendar, previousBusinessDay(calendar, today)), hhmm);
 
 // ------------------------------------------------------------------------------------------------ deliveries
 // A source's business date D is complete when its data for D is all in: a file of D ingested, D's snapshot active, or

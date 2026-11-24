@@ -41,7 +41,7 @@ import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
-import { type Baseline, completedDates, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
+import { type Baseline, completedDates, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, healthDeadline, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
 import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
@@ -597,7 +597,7 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
     const h = sourceHealth({
       kind: x.kind, status: x.status, lastError: c?.lastError ?? null, completeThrough: c?.completeThrough ?? null, calendar,
       latestActiveDate: latest.get(x.id) ?? null, graceSeconds: graceMinutes === null ? null : graceMinutes * 60,
-      deadline: deadline === null ? null : deadlineOn(today, deadline),
+      deadline: deadline === null ? null : healthDeadline(calendar, today, deadline),
     }, now);
     return [{ x, c, health: { ...h, lastError: c?.lastError ?? null, lastReadAt: c?.lastSuccessAt?.toISOString() ?? null, graceMinutes, deadline } }];
   });
