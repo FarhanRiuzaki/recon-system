@@ -29,6 +29,7 @@ import { useDebounced } from "@/lib/client/use-debounced";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { generatePassword, PASSWORD_MIN, passwordChecks } from "@/lib/shared/password";
 import { EDIT_USER_SHAPE } from "./shapes";
+import { SIGN_IN_METHOD, signInText } from "@/lib/shared/user-status";
 
 const CHECK = "size-4 cursor-pointer accent-primary";
 
@@ -156,11 +157,11 @@ function UserForm({ user }: { user?: UserDetailDto }) {
           </FormSection>
           {!user && (
             <FormSection title="First sign-in" description="How the user signs in the first time.">
-              <RadioGroup name="u-method" legend="Sign-in method" required value={method} onChange={(m) => f.set("method", m)} options={[
+              <RadioGroup name="u-method" legend={SIGN_IN_METHOD} required value={method} onChange={(m) => f.set("method", m)} options={[
                 { value: "password", label: "Set a password now", description: "You set it here and give it to the user." },
                 { value: "invite", label: "Invite by email", disabled: !isActive,
                   description: isActive ? "The user chooses a password using a link valid for 72 hours. Email delivery isn't confirmed here." : "Activate this user to use an invitation." },
-                { value: "directory", label: "Directory user", description: "Signs in with the directory password. No password or invitation is set here." },
+                { value: "directory", label: signInText(true), description: "Signs in with the directory password. No password or invitation is set here." },
               ]} />
               {method === "password" && (
                 <div className="grid gap-2">

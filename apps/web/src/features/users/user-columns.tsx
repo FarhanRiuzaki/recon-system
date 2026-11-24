@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Avatar, type Column, RelativeTime, StatusChip, Truncate } from "@starterkit/ui/ds";
 import { RoleChips } from "@/components/role-chips";
 import type { UserDto, UserRowDto } from "@starterkit/shared/contracts/users";
-import { userStatus } from "@/lib/shared/user-status";
+import { SIGN_IN_METHOD, signInText, userStatus } from "@/lib/shared/user-status";
 
 export function UserStatusChip({ user }: { user: UserDto }) {
   const s = userStatus(user);
@@ -30,7 +30,7 @@ export function userColumns(select?: { has: (id: string) => boolean; toggle: (id
     ) },
     { key: "roles", header: "Roles", cell: (u) => <RoleChips roles={u.roles} /> },
     { key: "status", header: "Status", cell: (u) => <UserStatusChip user={u} /> },
-    { key: "type", header: "Sign-in", mobile: "hidden", className: "max-xl:hidden", cell: (u): ReactNode => (u.isLdap ? "Directory" : "Password") },
+    { key: "type", header: SIGN_IN_METHOD, mobile: "hidden", className: "max-xl:hidden", cell: (u): ReactNode => signInText(u.isLdap) },
     { key: "lastLoginAt", header: "Last sign-in", sortable: true, cell: (u) => <RelativeTime at={u.lastLoginAt ? Date.parse(u.lastLoginAt) : null} /> },
     { key: "createdAt", header: "Created", sortable: true, mobile: "hidden", className: "max-xl:hidden", cell: (u) => <RelativeTime at={Date.parse(u.createdAt)} /> },
   ];

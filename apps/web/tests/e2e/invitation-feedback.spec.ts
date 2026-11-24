@@ -35,7 +35,7 @@ for (const method of ["invite", "password", "directory"] as const) test(`${metho
     await page.getByRole("textbox", { name: "Name", exact: true }).fill(name);
     await page.getByRole("textbox", { name: "Username", exact: true }).fill(username);
     await page.getByRole("textbox", { name: "Email", exact: true }).fill(`${username}@example.test`);
-    await page.getByRole("radio", { name: method === "invite" ? "Invite by email" : method === "password" ? "Set a password now" : "Directory user", exact: true }).check();
+    await page.getByRole("radio", { name: method === "invite" ? "Invite by email" : method === "password" ? "Set a password now" : "Directory account", exact: true }).check();
     if (method === "password") await page.getByRole("textbox", { name: "Password", exact: true }).fill("Password123!batchA");
     const save = page.getByRole("button", { name: "Create user", exact: true });
     if (method === "invite") {

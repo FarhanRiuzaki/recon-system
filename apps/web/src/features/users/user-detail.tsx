@@ -29,6 +29,7 @@ import { patchUserCache, USERS_KEY, protection, rankBlock, useLastSuperadminId, 
 import { USER_DETAIL_SHAPE } from "./shapes";
 import { UserSpaces } from "./user-spaces";
 import { Icon } from "@starterkit/ui/ui/icon";
+import { SIGN_IN_METHOD, signInText } from "@/lib/shared/user-status";
 
 const PROVIDER = { google: "Google", apple: "Apple" } as const;
 
@@ -135,7 +136,7 @@ export function UserDetail({ id }: { id: string }) {
       <Stagger className="grid gap-gutter md:grid-cols-2">
         <StaggerItem index={0} className="grid"><Panel icon={UsersIcon} title="Details" description="Account facts">
           <Rows items={[
-            { label: "Sign-in", value: u.isLdap ? "Directory" : "Password" },
+            { label: SIGN_IN_METHOD, value: signInText(u.isLdap) },
             { label: "2FA", value: u.twoFactorEnabled ? "On" : "Off" },
             { label: "Last sign-in", value: <RelativeTime at={u.lastLoginAt ? Date.parse(u.lastLoginAt) : null} /> },
             { label: "Created", value: <RelativeTime at={Date.parse(u.createdAt)} /> },
