@@ -73,7 +73,12 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
     const w = { ...d, spec: { ...d.spec, mutable: true, fields: [{ name: "d", type: "date" as const, nullable: false, trim: false }],
       input: { ...d.spec.input, table: "core.daily", watermark: { column: "d", id_columns: ["id"] } } as Draft["spec"]["input"] } };
     const s = snapshotOf(w);
-    expect([s.kind, s.spec.input, s.spec.mutable, s.spec.fields]).toEqual(["db_snapshot", { kind: "db_snapshot", query: "SELECT * FROM core.daily WHERE d = :business_date", schedule: "0 6 * * *" }, false, w.spec.fields]);
+    expect([s.kind, s.spec.input, s.spec.mutable, s.spec.fields]).toEqual(["db_snapshot", { kind: "db_snapshot", query: 'SELECT * FROM "core"."daily" WHERE "d" = :business_date', schedule: "0 6 * * *" }, false, w.spec.fields]);
+    // identifiers quoted per engine, a closing quote doubled
+    const on = (engine: Draft["conn"]["engine"], column: string) => snapshotOf({ ...w, conn: { ...w.conn, engine }, spec: { ...w.spec, input: { ...w.spec.input, watermark: { column, id_columns: ["id"] } } as Draft["spec"]["input"] } }).spec.input;
+    expect(on("mysql", "Booked Date")).toMatchObject({ query: "SELECT * FROM `core`.`daily` WHERE `Booked Date` = :business_date" });
+    expect(on("mssql", "a]b")).toMatchObject({ query: "SELECT * FROM [core].[daily] WHERE [a]]b] = :business_date" });
+    expect(on("oracle", 'BOOKED"X')).toMatchObject({ query: 'SELECT * FROM "core"."daily" WHERE "BOOKED""X" = :business_date' });
   });
   it("Next asks for the amount's unit, not a currency (optional: read as written); the fixed currency is sent only without a currency column", () => {
     const base = emptySpec("db_watermark");

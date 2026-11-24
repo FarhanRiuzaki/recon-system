@@ -238,7 +238,7 @@ describe("pullWatermark()", () => {
     expect(rows.map((r) => r.g)).toEqual(rows.map((r) => r.g!).sort());
     expect(rows).toHaveLength(9);
     const e = await fails(all(pg().pullWatermark({ from: { table: "uids" }, columns: [], watermark: { column: "d", id_columns: ["b"] }, after: null, lookback: {}, chunk: 4 })));
-    expect(e.message).toContain("encode(b, 'hex') AS b");
+    expect(e.message).toContain(`encode("b", 'hex') AS "b"`);
   });
 
   it("a custom SELECT is pulled as a subquery; a column missing from the source is a spec error", async () => {

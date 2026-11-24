@@ -342,7 +342,7 @@ export function minusIds(wm: string, n: number): string {
   return (BigInt(wm.trim()) - BigInt(n)).toString();
 }
 
-/** Binary types: their bytes sort in another order than any text kept of them; the hex text to read instead. */
+/** Binary types: their bytes sort in another order than any text kept of them; the hex text to read instead (`n` quoted). */
 const BINARY: Record<Dialect, [RegExp, (n: string) => string]> = {
   postgres: [/^bytea$/, (n) => `encode(${n}, 'hex') AS ${n}`],
   mysql: [/^(binary|varbinary|tinyblob|blob|mediumblob|longblob)\b/, (n) => `HEX(${n}) AS ${n}`],
@@ -385,7 +385,7 @@ export function rowsSql(d: Dialect, o: { from: From; columns: Column[]; keyset?:
       if (!ID_FAMILIES.includes(familyOf(d, id.type))) throw specError(`The id column "${id.name}" is ${id.type}; it must be a number or text.`);
       const [binary, hex] = BINARY[d];
       if (binary.test(id.type.trim().toLowerCase())) {
-        throw specError(`The id column "${id.name}" is ${id.type}: its bytes sort in another order than the text a pull keeps of them. Pick another id column, or read it as text in your own SELECT (${hex(id.name)}).`);
+        throw specError(`The id column "${id.name}" is ${id.type}: its bytes sort in another order than the text a pull keeps of them. Pick another id column, or read it as text in your own SELECT (${hex(quoteIdent(d, id.name))}).`);
       }
     }
     const w = ref(wm), is = ids.map((c) => idExpr(d, c, ref(c)));

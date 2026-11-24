@@ -277,7 +277,7 @@ describe("ids whose database order is not their text order", () => {
 
   it("a binary id (Oracle RAW, MySQL binary(16), SQL Server varbinary, PostgreSQL bytea) is refused with how to read it as text", () => {
     const cases: [D, string, string][] = [
-      ["oracle", "RAW(16)", "RAWTOHEX(g) AS g"], ["mysql", "binary(16)", "HEX(g) AS g"], ["mssql", "varbinary(16)", "CONVERT(char(32), g, 2) AS g"], ["postgres", "bytea", "encode(g, 'hex') AS g"],
+      ["oracle", "RAW(16)", 'RAWTOHEX("g") AS "g"'], ["mysql", "binary(16)", "HEX(`g`) AS `g`"], ["mssql", "varbinary(16)", "CONVERT(char(32), [g], 2) AS [g]"], ["postgres", "bytea", `encode("g", 'hex') AS "g"`],
     ];
     for (const [d, type, hint] of cases) {
       const w = col("w", d === "oracle" ? "TIMESTAMP(6)" : "date");

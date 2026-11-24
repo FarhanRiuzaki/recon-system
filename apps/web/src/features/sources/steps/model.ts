@@ -233,7 +233,10 @@ export function fitLookback(i: WatermarkInput, kind: WatermarkKind | null): Wate
 export function snapshotOf(d: Draft): Draft {
   const i = d.spec.input;
   if (i.kind !== "db_watermark") return d;
-  const query = `SELECT * FROM ${i.table?.trim() || "table"} WHERE ${i.watermark.column} = :business_date`;
+  // quoted as the API's connectors quote (dialect.ts quoteIdent), each part of schema.table on its own
+  const [o, c] = d.conn.engine === "mysql" ? ["`", "`"] : d.conn.engine === "mssql" ? ["[", "]"] : ['"', '"'];
+  const q = (name: string) => o + name.replaceAll(c, c + c) + c;
+  const query = `SELECT * FROM ${(i.table?.trim() || "table").split(".").map(q).join(".")} WHERE ${q(i.watermark.column)} = :business_date`;
   return { ...d, kind: "db_snapshot", from: "table", spec: { ...d.spec, mutable: false, input: { kind: "db_snapshot", query, schedule: "0 6 * * *" } } };
 }
 
