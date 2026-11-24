@@ -3,7 +3,7 @@ import { RESULT_STATUS_LABEL, RESULT_STATUSES, type ResultStatus } from "@starte
 import { statusTone } from "@/lib/shared/categories";
 import { CheckIcon, CloseIcon, NoneIcon } from "@starterkit/ui/ui/icons";
 import { SIDE_STATES } from "@starterkit/shared/results";
-import { cellText, columnKey, pickRecon, RESULT_LEGEND, resultIcon, sideIcon } from "./result-model";
+import { cellText, columnKey, pageState, pickRecon, RESULT_LEGEND, resultIcon, SIDE_HEADER, sideHelp, sideIcon } from "./result-model";
 
 // the spec's table: green done, red failed or unmatch, amber needs a look, blue under way, grey nothing or off
 const GREEN = statusTone("matched"), RED = statusTone("failed"), AMBER = statusTone("check"), BLUE = statusTone("in_progress"), GREY = statusTone("nothing");
@@ -68,6 +68,30 @@ describe("cells", () => {
   it("a column's table key is the same for the same field and fits the saved column choice", () => {
     expect(columnKey({ kind: "a", field: "attrs.merchant_id" })).toBe("a-attrs_merchant_id");
     expect(columnKey({ kind: "recon", field: "businessDate" })).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/);
+  });
+  it("two long fields that share their first 40 characters still get different keys, stable and within the shape", () => {
+    const long = "attrs.settlement_reference_of_the_switch_";
+    const [x, y] = [columnKey({ kind: "a", field: `${long}one` }), columnKey({ kind: "a", field: `${long}two` })];
+    expect(x).not.toBe(y);
+    for (const k of [x, y]) expect(k).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/);
+    expect(columnKey({ kind: "a", field: `${long}one` })).toBe(x);
+  });
+});
+
+describe("the side headers", () => {
+  it("read Side A and Side B; the side's own name is what the header explains", () => {
+    expect(SIDE_HEADER).toEqual(["Side A", "Side B"]);
+    expect(sideHelp(1, ["BI-FAST switch · settlement", "Core banking · BI-FAST outgoing"])).toBe("Side B: Core banking · BI-FAST outgoing");
+  });
+});
+
+describe("the page's state", () => {
+  it("the recon list failing with no recon in the URL is an error to retry, not an empty page", () => {
+    expect(pageState({ loaded: false, failed: true, published: 0 }, null)).toBe("error");
+    expect(pageState({ loaded: false, failed: true, published: 0 }, "r1")).toBe("table");
+    expect(pageState({ loaded: true, failed: false, published: 0 }, null)).toBe("none");
+    expect(pageState({ loaded: true, failed: false, published: 2 }, "r1")).toBe("table");
+    expect(pageState({ loaded: false, failed: false, published: 0 }, null)).toBe("table");
   });
 });
 

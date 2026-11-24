@@ -8,7 +8,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon, InfoIcon } from "@starterkit/ui/ui/icons";
 import { CELL_TRUNCATE } from "@starterkit/ui/ui/table";
 import type { ResultColumn, ResultRowDto } from "@starterkit/shared/contracts/results";
-import { cellKey, cellText, columnKey, MISSING_TEXT, resultIcon, sideIcon } from "./result-model";
+import { cellKey, cellText, columnKey, MISSING_TEXT, resultIcon, SIDE_HEADER, sideHelp, sideIcon } from "./result-model";
 
 /** The columns the API sorts by: a configured column of that field takes the sort's key. */
 const SORT_KEY: Record<string, string> = { "a:amount_minor": "amountA", "a:ext_ref": "ref", "recon:businessDate": "businessDate" };
@@ -16,7 +16,7 @@ const SORT_KEY: Record<string, string> = { "a:amount_minor": "amountA", "a:ext_r
 function Side({ s }: { s: ResultRowDto["a"] }) {
   const { icon, chip, count } = sideIcon(s);
   // the owner's picture (24 Nov): ✓ green, ✕ red, – grey, with how many records when more than one ("✓ 3")
-  return <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><StatusGlyph health={chip.health} icon={icon} label={count ? `${chip.label}, ${count}` : chip.label} />{count && <span aria-hidden="true" className="text-caption tabular text-fg-2">{s.count}</span>}</span>;
+  return <span className="inline-flex items-center gap-1 whitespace-nowrap"><StatusGlyph health={chip.health} icon={icon} label={count ? `${chip.label}, ${count}` : chip.label} />{count && <span aria-hidden="true" className="text-caption tabular text-fg-2">{s.count}</span>}</span>;
 }
 
 /**
@@ -37,10 +37,12 @@ export function resultColumns(spaceId: string, columns: readonly ResultColumn[],
       },
     };
   });
+  // Status and each side: icons, centred, and stuck to the left while the table scrolls sideways (owner 24 Nov); a side
+  // is headed "Side A" with its source's name behind the ⓘ
   return [
-    { key: "status", header: "Status", sortable: true, mobile: "title", hideable: false, className: "whitespace-nowrap", cell: (r) => { const x = resultIcon(r.status); return <StatusGlyph health={x.chip.health} icon={x.icon} label={x.chip.label} />; } },
-    { key: "sideA", header: sides[0], mobile: "meta", cell: (r) => <Side s={r.a} /> },
-    { key: "sideB", header: sides[1], mobile: "meta", cell: (r) => <Side s={r.b} /> },
+    { key: "status", header: "Status", sortable: true, mobile: "title", hideable: false, align: "center", sticky: true, className: "whitespace-nowrap", cell: (r) => { const x = resultIcon(r.status); return <StatusGlyph health={x.chip.health} icon={x.icon} label={x.chip.label} />; } },
+    { key: "sideA", header: SIDE_HEADER[0], help: sideHelp(0, sides), mobile: "meta", align: "center", sticky: true, cell: (r) => <Side s={r.a} /> },
+    { key: "sideB", header: SIDE_HEADER[1], help: sideHelp(1, sides), mobile: "meta", align: "center", sticky: true, cell: (r) => <Side s={r.b} /> },
     ...configured,
     { key: "action", header: "Action", mobile: "meta", hideable: false, className: "whitespace-nowrap", cell: (r) => (
       <span className="inline-flex items-center gap-1">

@@ -4,7 +4,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ColumnsMenu, DataTable, EmptyState, Field, FilterChecks, FilterGroup, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import { ColumnsMenu, DataTable, EmptyState, ErrorState, Field, FilterChecks, FilterGroup, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { appDayStart, formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -25,7 +25,7 @@ import { ENGINE_KEY } from "@/lib/shared/queries";
 import { reconDetail, reconOptions, RESULTS, resultColumns as columnsQuery, resultCountsUrl, type ResultFilters } from "@/lib/shared/queries-recon";
 import { withCounts } from "@/lib/shared/table-state";
 import { resultColumns } from "./result-columns";
-import { pickRecon, RESULT_LEGEND, resultIcon, SIDE_LABEL } from "./result-model";
+import { pageState, pickRecon, RESULT_LEGEND, resultIcon, SIDE_HEADER, SIDE_LABEL } from "./result-model";
 
 const ExplainDialog = dynamic(() => import("./explain-dialog"), { ssr: false });
 
@@ -35,13 +35,13 @@ const day = (d: string) => formatDate(appDayStart(d));
 const STATUS_OPTIONS = RESULT_STATUSES.map((s) => ({ value: s, label: RESULT_STATUS_LABEL[s] }));
 const SIDE_OPTIONS = SIDE_STATES.map((s) => ({ value: s, label: SIDE_LABEL[s] }));
 
-const fieldsOf = (sides: readonly [string, string]) => [
+const FIELDS = [
   { key: "q", label: "Reference" },
   { key: "dateFrom", label: "Business date from", format: day },
   { key: "dateTo", label: "Business date to", format: day },
   { key: "result", label: "Status", multiple: true, format: (v: string) => RESULT_STATUS_LABEL[v as ResultStatus] ?? v },
-  { key: "sideA", label: sides[0], multiple: true, format: (v: string) => SIDE_LABEL[v as SideState] ?? v },
-  { key: "sideB", label: sides[1], multiple: true, format: (v: string) => SIDE_LABEL[v as SideState] ?? v },
+  { key: "sideA", label: SIDE_HEADER[0], multiple: true, format: (v: string) => SIDE_LABEL[v as SideState] ?? v },
+  { key: "sideB", label: SIDE_HEADER[1], multiple: true, format: (v: string) => SIDE_LABEL[v as SideState] ?? v },
 ] as const;
 
 /**
@@ -71,24 +71,26 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
   const counts = useQuery({ queryKey: [ENGINE_KEY[0], countsUrl], queryFn: () => api<ResultCountsDto>(countsUrl), enabled: !!configId, placeholderData: keepPreviousData }).data;
 
   const columns = useMemo(() => resultColumns(spaceId, cols.data?.columns ?? [], sides, setExplaining), [spaceId, cols.data, sides]);
-  const fields = useMemo(() => fieldsOf(sides), [sides]);
   const picked = selectionValues(f.result);
   const only = (s: ResultStatus) => picked.length === 1 && picked[0] === s;
   const shownCounts = RESULT_STATUSES.filter((s) => (counts?.counts[s] ?? 0) > 0);
   const filtered = Object.entries(FILTER_DEFAULTS).some(([k]) => f[k as keyof Filters] !== "");
   const loadError = t.loadError ?? cols.error;
+  const state = pageState({ loaded: !!recons.data, failed: !!recons.error, published: published.length }, configId);
 
   return (
     <div className="grid gap-section">
       <PageHeader title="Operation result" description="Every result of one recon for the business dates you pick: matched, unmatch, posted, written off or closed. Work on an item from its Unmatch page." />
-      {recons.data && !published.length ? (
+      {state === "none" ? (
         <Panel><EmptyState icon={ReportsIcon} title="No recon has results yet" description="Results show here once a recon's first version is approved and runs." /></Panel>
+      ) : state === "error" ? (
+        <Panel><div className="p-4"><ErrorState title="Couldn't load the recons" cause={errorText(recons.error)} onRetry={() => void recons.refetch()} /></div></Panel>
       ) : (
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the results; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: f.q, dateFrom: f.dateFrom, dateTo: f.dateTo, result: f.result, sideA: f.sideA, sideB: f.sideB }}
-          defaults={FILTER_DEFAULTS} fields={fields} onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
+          defaults={FILTER_DEFAULTS} fields={FIELDS} onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
             <FilterSearch label="Search results" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
             {/* business dates, Asia/Jakarta days; none = today */}
             <FilterGroup label="Business date" value={draft.dateFrom || draft.dateTo ? [draft.dateFrom && day(draft.dateFrom), draft.dateTo && day(draft.dateTo)].filter(Boolean).join(" – ") : "Today"}>
@@ -98,8 +100,8 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
               </div>
             </FilterGroup>
             <FilterChecks label="Status" value={draft.result} options={withCounts(STATUS_OPTIONS, counts?.counts)} onChange={(result) => patch({ result })} />
-            <FilterChecks label={sides[0]} value={draft.sideA} options={SIDE_OPTIONS} onChange={(sideA) => patch({ sideA })} />
-            <FilterChecks label={sides[1]} value={draft.sideB} options={SIDE_OPTIONS} onChange={(sideB) => patch({ sideB })} />
+            <FilterChecks label={SIDE_HEADER[0]} value={draft.sideA} options={withCounts(SIDE_OPTIONS, counts?.sideA)} onChange={(sideA) => patch({ sideA })} />
+            <FilterChecks label={SIDE_HEADER[1]} value={draft.sideB} options={withCounts(SIDE_OPTIONS, counts?.sideB)} onChange={(sideB) => patch({ sideB })} />
           </>}>
           {({ summary }) => (
             <Panel flush icon={ReportsIcon} title="Results" count={t.count} legend={RESULT_LEGEND}
@@ -133,7 +135,7 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
         </FilterLayout>
       </FilterSurface>
       )}
-      {explaining && configId && <ExplainDialog spaceId={spaceId} configId={configId} row={explaining} sides={sides} columns={cols.data?.columns ?? []} onClose={() => setExplaining(null)} />}
+      {explaining && configId && <ExplainDialog spaceId={spaceId} configId={configId} reconName={published.find((r) => r.id === configId)?.name ?? null} row={explaining} sides={sides} onClose={() => setExplaining(null)} />}
     </div>
   );
 }

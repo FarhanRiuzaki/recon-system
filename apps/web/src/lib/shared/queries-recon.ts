@@ -72,7 +72,7 @@ export const resultColumns = (spaceId: string, configId: string) =>
 /** `recon` = the recon the page shows (it picks the path, never an API parameter); `dateFrom`/`dateTo` business dates (none = today). */
 export type ResultFilters = { recon: string; q: string; dateFrom: string; dateTo: string; result: string; sideA: string; sideB: string };
 const RESULTS_SPEC: TableSpec<ResultFilters> = {
-  sorts: RESULT_SORTS, defaultSort: "businessDate", search: ["q"],
+  sorts: RESULT_SORTS, defaultSort: "-businessDate", search: ["q"],
   filters: { recon: text(64), q: text(200), dateFrom: isoDate, dateTo: isoDate, result: multiChoice(), sideA: multiChoice(), sideB: multiChoice() },
 };
 const resultsPath = (spaceId: string, configId: string) => `${reconsPath(spaceId)}/${encodeURIComponent(configId)}/results` as const;

@@ -32,6 +32,11 @@ export function sideIcon(s: ResultSide): { icon: IconData; chip: StatusChipData;
   const [meaning, label, icon] = SIDE[s.state];
   return { icon, chip: statusChip(meaning, label), count: s.count > 1 ? `${s.count} records` : null };
 }
+/** The sides as the table, the filters and Explain head them; the source's name sits behind (sideHelp). */
+export const SIDE_HEADER = ["Side A", "Side B"] as const;
+/** What a side's header explains (its ⓘ, by hover, focus or press): "Side A: <the side's label>". */
+export const sideHelp = (i: 0 | 1, sides: readonly [string, string]) => `${SIDE_HEADER[i]}: ${sides[i]}`;
+
 /** The card legend: every overall status, then every side state, each with the icon the table draws. */
 export const RESULT_LEGEND = [
   ...(Object.keys(STATUS) as ResultStatus[]).map((s) => ({ ...resultIcon(s).chip, icon: resultIcon(s).icon })),
@@ -44,8 +49,33 @@ export function pickRecon(recons: readonly { id: string; publishedVersion: numbe
   return (live.find((r) => r.id === wanted) ?? live[0])?.id ?? null;
 }
 
-/** A column's DataTable key: one per field, in the shape the saved column choice keeps (prefs COLUMN_KEY). */
-export const columnKey = (c: Pick<ResultColumn, "kind" | "field">) => `${c.kind}-${c.field}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+/** FNV-1a of `s`, base 36: a short stable tag of a key cut to fit. */
+function shortHash(s: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
+/**
+ * A column's DataTable key: one per field, in the shape the saved column choice keeps (prefs COLUMN_KEY, at most 40
+ * characters); a longer one is cut and tagged with a hash of the whole, so two long fields never share a key.
+ */
+export function columnKey(c: Pick<ResultColumn, "kind" | "field">): string {
+  const k = `${c.kind}-${c.field}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+  if (k.length <= 40) return k;
+  const tag = shortHash(`${c.kind}:${c.field}`);
+  return `${k.slice(0, 39 - tag.length)}_${tag}`;
+}
+
+/**
+ * What the page shows: `none` once the recon list says no recon has a published version, `error` when that list
+ * failed and the URL names no recon (nothing to show but the failure), else the table (a recon from the URL is
+ * trusted while the list loads or fails).
+ */
+export function pageState(recons: { loaded: boolean; failed: boolean; published: number }, configId: string | null): "none" | "error" | "table" {
+  if (recons.loaded && !recons.published) return "none";
+  if (recons.failed && !configId) return "error";
+  return "table";
+}
 /** A cell's key in a row's `cells` (the API's). */
 export const cellKey = (c: Pick<ResultColumn, "kind" | "field">) => `${c.kind}:${c.field}`;
 
