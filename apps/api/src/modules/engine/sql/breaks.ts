@@ -5,7 +5,7 @@
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
 import { records } from "../../ingest";
-import { reconItems } from "../schema";
+import { reconDays, reconItems } from "../schema";
 import { candidatesSql, comparedAmount, groupsSql, type StepCtx } from "./pass";
 
 /**
@@ -17,10 +17,16 @@ export const breakReason = (p: PassSpec): string =>
 
 /**
  * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`); answers the items, those of side A, and their
- * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items").
+ * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items"). Every item it breaks
+ * was open or not required, a new break: on a closed date (a carried-over one) it adds to that date's stored open
+ * counter, as a sweep's breaks do (REC-FUT-17); no sweep sees it later, it is a break already.
  */
 const breakItems = (c: StepCtx, p: PassSpec): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}, version = i.version + 1
-    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side)
+    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side)${c.simRunId === null ? sql`,
+  dc as (update ${reconDays} d set counters = jsonb_build_object('open', coalesce((d.counters ->> 'open')::int, 0) + n.n,
+      'suggested', coalesce((d.counters ->> 'suggested')::int, 0))
+    from (select business_date, count(*)::int as n from up group by business_date) n
+    where d.space_id = ${c.spaceId} and d.config_id = ${c.configId} and d.business_date = n.business_date and d.status = 'closed')` : sql``}
   select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
     and r.id = up.record_id and r.business_date = up.business_date) as refs, string_agg(distinct up.business_date::text, ',') as dates from up`;
 

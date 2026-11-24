@@ -129,6 +129,17 @@ describe("one-way recon (a_to_b)", () => {
     ]);
   }, 60_000);
 
+  it("a pass's Duplicate that breaks a not-required item of a closed date counts on that date's open counter", async () => {
+    const { r, sa } = await dayD("a_to_b");
+    await put(sa, [{ ref: "B9", amount: 50n, date: D1 }, { ref: "B9", amount: 50n, date: D1 }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D1 });
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => [i.side, i.status, i.reason])).toEqual([
+      ["a", "break", "Duplicate"], ["a", "break", "Duplicate"], ["b", "break", "Duplicate"],
+    ]);
+    const [day] = await db.select({ c: reconDays.counters }).from(reconDays).where(and(eq(reconDays.configId, r.configId), eq(reconDays.businessDate, D)));
+    expect(day!.c).toEqual({ open: 4, suggested: 0 });
+  }, 60_000);
+
   it("carry over 0: a not-required item never meets a later date", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, oneWay(sa.sourceId, sb.sourceId, [exact], 0));
