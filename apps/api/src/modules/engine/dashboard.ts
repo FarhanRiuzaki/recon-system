@@ -25,9 +25,10 @@ import { missingDays, queueDay } from "./stats";
 type Amounts = ReconDashboardDto["open"]["amounts"];
 type Results = Record<string, [number, number]>;
 const DAY_MS = 86_400_000;
-/** The day of timestamp `col` in Asia/Jakarta. */
-const dayOf = (col: unknown) => sql`(${col} at time zone 'Asia/Jakarta')::date`;
-const between = (e: SQL, from: string, to: string) => sql`${e} between ${from}::date and ${to}::date`;
+/** The start of business date `d` (Asia/Jakarta midnight) as a timestamp. */
+const dayStart = (d: string, plus = 0) => sql`((${d}::date + ${plus}::int)::timestamp at time zone 'Asia/Jakarta')`;
+/** Timestamp `col` within business dates `from`..`to`: compared raw against their Asia/Jakarta midnights (index-friendly, M4). */
+const within = (col: unknown, from: string, to: string) => sql`(${col} >= ${dayStart(from)} and ${col} < ${dayStart(to, 1)})`;
 
 /** Amounts added per currency (never across), the most items first, then the larger amount, then the code (breakSummary's order). */
 function addAmounts(...lists: { currency: string | null; amountMinor: string | null; items: number }[][]): Amounts {
@@ -84,18 +85,18 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
   const period = await withSpace({ spaceIds: ids, userId: ctx.user.id }, async (tx) => {
     const stats = await tx.select().from(reconDayStats)
       .where(and(inArray(reconDayStats.spaceId, ids), cfg(reconDayStats.configId), gte(reconDayStats.businessDate, prevFrom), lte(reconDayStats.businessDate, to)));
-    const runDay = dayOf(sql`coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt})`);
-    const postings = await tx.select({ configId: reconConfigVersions.configId, cur: sql<boolean>`${runDay} >= ${from}::date`, status: actionRuns.status, n: countN }).from(actionRuns)
+    const runAt = sql`coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt})`;
+    const postings = await tx.select({ configId: reconConfigVersions.configId, cur: sql<boolean>`${runAt} >= ${dayStart(from)}`, status: actionRuns.status, n: countN }).from(actionRuns)
       .innerJoin(reconConfigVersions, and(eq(reconConfigVersions.spaceId, actionRuns.spaceId), eq(reconConfigVersions.id, actionRuns.configVersionId)))
-      .where(and(inArray(actionRuns.spaceId, ids), eq(actionRuns.kind, "posting"), inArray(actionRuns.status, [...POSTING_FINISHED]), between(runDay, prevFrom, to), cfg(reconConfigVersions.configId)))
+      .where(and(inArray(actionRuns.spaceId, ids), eq(actionRuns.kind, "posting"), inArray(actionRuns.status, [...POSTING_FINISHED]), within(runAt, prevFrom, to), cfg(reconConfigVersions.configId)))
       .groupBy(reconConfigVersions.configId, sql`2`, actionRuns.status);
     const ar = approvalRequests;
     const [asked] = await tx.select({
-      cur: sql<number>`count(*) filter (where ${between(dayOf(ar.requestedAt), from, to)})::int`,
-      prev: sql<number>`count(*) filter (where ${between(dayOf(ar.requestedAt), prevFrom, prevTo)})::int`,
-    }).from(ar).where(and(inArray(ar.spaceId, ids), cfg(ar.configId), between(dayOf(ar.requestedAt), prevFrom, to)));
+      cur: sql<number>`count(*) filter (where ${within(ar.requestedAt, from, to)})::int`,
+      prev: sql<number>`count(*) filter (where ${within(ar.requestedAt, prevFrom, prevTo)})::int`,
+    }).from(ar).where(and(inArray(ar.spaceId, ids), cfg(ar.configId), within(ar.requestedAt, prevFrom, to)));
     const decided = await tx.select({ status: ar.status, m: sql<number>`extract(epoch from ${ar.decidedAt} - ${ar.requestedAt}) / 60` }).from(ar)
-      .where(and(inArray(ar.spaceId, ids), cfg(ar.configId), inArray(ar.status, ["approved", "rejected"]), between(dayOf(ar.decidedAt), from, to)));
+      .where(and(inArray(ar.spaceId, ids), cfg(ar.configId), inArray(ar.status, ["approved", "rejected"]), within(ar.decidedAt, from, to)));
     // waiting: the inbox's break requests of the space, every recon (the inbox has no recon filter)
     const [waiting] = await tx.select({ n: countN, oldest: sql<Date | null>`min(${ar.requestedAt})` }).from(ar)
       .where(and(inArray(ar.spaceId, ids), eq(ar.status, "pending"), inArray(ar.kind, [...REQUEST_KINDS])));

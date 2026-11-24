@@ -9,6 +9,8 @@ import type { ResultCountsDto } from "@starterkit/shared/contracts/results";
 import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import { AGE_GROUPS, CLOSED_PARTS, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { call, signIn } from "../../../../../test/helpers/app";
+import { db } from "../../../../kernel/db";
+import { actionRuns } from "../../../integrations";
 import { withSpace } from "../../../spaces";
 import { recomputeDayStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, rollup, seedDashboard } from "../dashboard-fixture";
@@ -26,6 +28,23 @@ describe("Posting list: recon and period filters", () => {
     expect((await list(`dateFrom=${D}&dateTo=${D}&status=failed&status=timeout&status=not_sent`)).total).toBe(1);
     expect((await list(`recon=${F.R1.configId}&dateFrom=${D}&dateTo=${D1}`)).total).toBe(3);
     expect((await list(`recon=${F.R2.configId}`)).total).toBe(0);
+  });
+
+  it("the period's edges are Asia/Jakarta midnights on the raw time, in the list and the dashboard alike (M4)", async () => {
+    const [r] = await db.select().from(actionRuns).limit(1);
+    const at = (s: string) => new Date(`${s}+07:00`);
+    // last instant of D1 in, first instant of the next day out
+    await db.insert(actionRuns).values([
+      { ...r!, id: Bun.randomUUIDv7(), seq: 10, actionIndex: 10, status: "failed", createdAt: at(`${D1}T23:59:59.999`), finishedAt: at(`${D1}T23:59:59.999`) },
+      { ...r!, id: Bun.randomUUIDv7(), seq: 11, actionIndex: 11, status: "failed", createdAt: at("2026-11-04T00:00:00"), finishedAt: at("2026-11-04T00:00:00") },
+    ]);
+    const token = await signIn("viewer");
+    const list = await json<Page<ActionRunRowDto>>(call("GET", `/v1/spaces/${F.A}/action-runs?kind=posting&dateFrom=${D}&dateTo=${D1}`, { token }));
+    expect(list.total).toBe(4);
+    const d = await body(token);
+    expect([d.posting.finished, d.posting.failed]).toEqual([4, 3]);
+    const next = await body(token, `from=2026-11-04&to=2026-11-04`);
+    expect([next.posting.failed, next.posting.prevFinished]).toEqual([1, 2]);
   });
 });
 

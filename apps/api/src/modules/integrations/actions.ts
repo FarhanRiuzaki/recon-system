@@ -156,8 +156,9 @@ function runsWhere(tx: InTx, spaceId: string, q: ActionRunListQuery) {
     q.recon?.length ? inArray(actionRuns.configVersionId, tx.select({ id: reconConfigVersions.id }).from(reconConfigVersions)
       .where(and(eq(reconConfigVersions.spaceId, spaceId), inArray(reconConfigVersions.configId, q.recon)))) : undefined,
     // the day it finished in Asia/Jakarta, or was made while it goes on (the list's Time column)
-    q.dateFrom ? sql`(coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) at time zone 'Asia/Jakarta')::date >= ${q.dateFrom}::date` : undefined,
-    q.dateTo ? sql`(coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) at time zone 'Asia/Jakarta')::date <= ${q.dateTo}::date` : undefined,
+    // the raw time against the dates' Asia/Jakarta midnights (index-friendly, never a converted column)
+    q.dateFrom ? sql`coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) >= (${q.dateFrom}::date)::timestamp at time zone 'Asia/Jakarta'` : undefined,
+    q.dateTo ? sql`coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) < ((${q.dateTo}::date + 1)::timestamp at time zone 'Asia/Jakarta')` : undefined,
     like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like),
       inArray(actionRuns.groupId, tx.select({ id: postingGroups.id }).from(postingGroups).where(and(eq(postingGroups.spaceId, spaceId), ilike(postingGroups.keyText, like))))) : undefined,
   );
