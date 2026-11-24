@@ -241,6 +241,7 @@ type Allow = {
  */
 const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/dashboard": "summary numbers; its recent list is fixed at 5",
+  "GET /v1/dashboard/recon": "summary numbers of the caller's spaces; its per-space and per-recon rows are bounded by the spaces and recons in scope",
   "GET /v1/me": "the signed-in user",
   "GET /v1/spaces/:spaceId/today": "the space's recons and their sources, capped at TODAY_RECONS_MAX (capped flag)",
   "GET /v1/spaces/:spaceId/nav-counts": "three counts of the space for the sidebar, each capped at NAV_COUNT_CAP (capped flag)",

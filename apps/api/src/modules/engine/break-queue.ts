@@ -120,6 +120,24 @@ export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Prom
   });
 }
 
+/**
+ * The queue's open items under `q` (breakWhere, the list's own filter) per recon, currency, age bucket and reason, with
+ * their absolute amount and oldest business date: the dashboard's per-recon, age and reason numbers in one read.
+ */
+export function openBreakdown(ctx: Ctx, q: BreakFilter, now = new Date()) {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const today = todayIn(now);
+    const spaces = await recordSpaces(tx, spaceId);
+    const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
+    const age = sql<AgeBucket | null>`case ${sql.join(AGE_BUCKETS.map((b) => sql`when ${inBucket(today, b)} then ${b}`), sql` `)} end`;
+    return tx.select({
+      configId: reconItems.configId, ccy: records.currency, age, reason: reconItems.breakReason, n: countN,
+      sum: sql<string | null>`sum(abs(${records.amountMinor}))::text`, oldest: sql<string>`min(${reconItems.businessDate})::text`,
+    }).from(reconItems).leftJoin(records, record).where(breakWhere(tx, ctx, spaceId, today, q))
+      .groupBy(reconItems.configId, records.currency, sql`3`, reconItems.breakReason);
+  });
+}
+
 /** The live specs of `configIds` (null before a first approval), read once each. */
 async function liveSpecs(tx: InTx, spaceId: string, configIds: Iterable<string>) {
   const ids = [...new Set(configIds)];

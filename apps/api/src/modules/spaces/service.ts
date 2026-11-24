@@ -91,6 +91,19 @@ export function spacePage(ctx: Ctx, q: SpaceListQuery): Promise<Page<SpaceRowDto
   });
 }
 
+/**
+ * The spaces whose data the caller may read, by name, with their roles there: those they hold a role in, or every
+ * space for a Superadmin (DEC-051, with every role); `space.view` alone gives none (no data access). The recon
+ * dashboard's scope. ponytail: unbounded, spaces are few; page it if a fleet holds hundreds.
+ */
+export async function viewerSpaces(ctx: Ctx): Promise<{ id: string; name: string; roles: SpaceRole[] }[]> {
+  const all = isSuperadmin(ctx.user.roles);
+  const rows = await db.select({ id: spaces.id, name: spaces.name, roles: sql<string[] | null>`array_agg(${spaceMembers.role}) filter (where ${spaceMembers.role} is not null)` })
+    .from(spaces).leftJoin(spaceMembers, and(eq(spaceMembers.spaceId, spaces.id), eq(spaceMembers.userId, ctx.user.id)))
+    .groupBy(spaces.id, spaces.name).orderBy(sql`lower(${spaces.name})`, spaces.id);
+  return rows.flatMap((r) => (all ? [{ id: r.id, name: r.name, roles: [...SPACE_ROLES] }] : r.roles?.length ? [{ id: r.id, name: r.name, roles: inOrder(r.roles) }] : []));
+}
+
 /** New space without members; the code is unique ignoring letter case. */
 export async function createSpace(ctx: Ctx, b: CreateSpaceBody): Promise<SpaceDto> {
   return db.transaction(async (tx) => {
