@@ -90,6 +90,13 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
       const g = x.status === "matched" ? await groupOf(tx, spaceId, x.id) : null;
       if (!g) throw new ApiError("invalid_state", "This item isn't matched, so there is nothing to undo.");
       counterparts = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
+      // every member locked (id order), so two asks for the same group at once can't both pass the check below
+      const members = await tx.select({ id: reconItems.id, d: sql<string>`${reconItems.businessDate}::text` }).from(reconItems)
+        .where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, counterparts), isNull(reconItems.simRunId))).orderBy(reconItems.id).for("update");
+      // a member on a signed-off day can't be undone: refuse now, not at the approval
+      await assertNotSigned(tx, spaceId, x.configId, members.map((m) => m.d));
+      // the request names the group's other members, so its approval undoes this group and no later one
+      itemIds = counterparts.filter((c) => c !== x.id);
       // the group's items are held while one of them waits (one open request per group, as per item)
       const [held] = await tx.select({ id: approvalRequests.id }).from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"),
         or(inArray(approvalRequests.itemId, counterparts), sql`${approvalRequests.itemIds} && array[${sql.join(counterparts.map((c) => sql`${c}`), sql`, `)}]::uuid[]`))).limit(1);
@@ -149,6 +156,12 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
   // with whoever had it; an item that never broke open for the next run)
   const g = await groupOf(tx, spaceId, x.id);
   if (!g) throw new ApiError("invalid_state", "This item isn't matched any more. Reject the request.");
+  // the group asked about, not one a later run or intake made of the same items (requests before this kept no members)
+  if (rq.itemIds.length) {
+    const now = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id).sort();
+    const asked = [rq.itemId, ...rq.itemIds].sort();
+    if (now.length !== asked.length || now.some((id, i) => id !== asked[i])) throw new ApiError("invalid_state", "This item is in another match than the one asked about. Reject the request and ask again.");
+  }
   const days = await tx.select({ d: sql<string>`${reconItems.businessDate}::text` }).from(matchMembers)
     .innerJoin(reconItems, and(eq(reconItems.spaceId, matchMembers.spaceId), eq(reconItems.id, matchMembers.itemId))).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)));
   await assertNotSigned(tx, spaceId, x.configId, days.map((r) => r.d));
