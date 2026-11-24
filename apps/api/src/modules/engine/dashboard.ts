@@ -8,7 +8,8 @@ import type { BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { RECON_DASHBOARD_DAYS, type ReconDashboardDto, type ReconDashboardQuery } from "@starterkit/shared/contracts/dashboard";
 import { AGE_GROUPS, CLOSED_PARTS, median, POSTING_FAILED, POSTING_FINISHED, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql, type SQL } from "drizzle-orm";
-import { notFound } from "../../kernel/errors";
+import { errorDetail, notFound } from "../../kernel/errors";
+import { log } from "../../kernel/log";
 import { countN } from "../../kernel/pagination";
 import { approvalRequests } from "../approvals";
 import type { Ctx } from "../auth";
@@ -19,6 +20,7 @@ import { viewerSpaces, withSpace } from "../spaces";
 import { breakSummary, openBreakdown } from "./break-queue";
 import { reconDayStats, reconRuns } from "./schema";
 import { addDays } from "./service";
+import { missingDays, queueDay } from "./stats";
 
 type Amounts = ReconDashboardDto["open"]["amounts"];
 type Results = Record<string, [number, number]>;
@@ -62,7 +64,7 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     approvals: { waiting: 0, oldestAt: null, requested: 0, prevRequested: 0, decided: 0, rejected: 0, medianMinutes: null },
     days: dates.map((date) => ({ date, auto: 0, manual: 0, broke: 0, matched: 0, records: 0 })),
     age: AGE_GROUPS.map((g) => ({ key: g.key, count: 0, amounts: [] })), reasons: [], closed: CLOSED_PARTS.map((p) => ({ key: p.key, rows: 0 })),
-    writtenOff: [], bySpace: [], rows: [], computedAt: null,
+    writtenOff: [], bySpace: [], rows: [], computedAt: null, pending: { days: 0, prevDays: 0 },
   };
   if (!scope.length) return empty;
   const allIds = scope.map((s) => s.id);
@@ -100,8 +102,13 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     const r = reconRuns;
     const lastRuns = await tx.selectDistinctOn([r.configId], { configId: r.configId, status: r.status, at: r.startedAt }).from(r)
       .where(and(inArray(r.spaceId, ids), cfg(r.configId), ne(r.mode, "simulation"), isNull(r.baselineOf))).orderBy(r.configId, desc(r.startedAt));
-    return { stats, postings, asked: asked!, decided, waiting: waiting!, lastRuns };
+    // dates with results whose row isn't written yet: their numbers aren't final (C2)
+    const gaps = await missingDays(tx, ids, q.recon ?? null, prevFrom, to);
+    return { stats, postings, asked: asked!, decided, waiting: waiting!, lastRuns, gaps };
   });
+  // and their jobs, due now (keyed: one already queued takes it); a failure here never fails the read
+  for (const g of period.gaps) await queueDay(g.spaceId, g.configId, g.date, undefined, 0).catch((e: unknown) => log.warn({ err: errorDetail(e) }, "dashboard: rollup of a missing date not queued"));
+  const gapDays = (cur: boolean) => new Set(period.gaps.filter((g) => (g.date >= from) === cur).map((g) => g.date)).size;
 
   // live per space: the Unmatch list's summary and its breakdown under the same filter
   const filter = { page: 1, pageSize: 15, ...(q.recon ? { recon: [q.recon] } : {}) } as BreakListQuery;
@@ -172,5 +179,6 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
       };
     }),
     computedAt: computed.length ? new Date(Math.min(...computed)).toISOString() : null,
+    pending: { days: gapDays(true), prevDays: gapDays(false) },
   };
 }

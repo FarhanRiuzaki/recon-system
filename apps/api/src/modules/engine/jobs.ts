@@ -33,7 +33,7 @@ import { addDays, backfillRun, closedDates, createRun, execRun, failRun, project
  */
 const NO_JOB_MAX_MS = QUEUE_OPTIONS[QUEUES.reconHeavy].expireInSeconds! * 1000;
 import { changesSql } from "./sql/runs";
-import { queueRunStats, statsJob, sweepStats } from "./stats";
+import { backfillStats, queueRunStats, statsJob, sweepStats } from "./stats";
 
 
 /** A manual run over a closed business date. */
@@ -260,10 +260,10 @@ export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> =
     [QUEUES.reconSchedule]: async () => { await dispatch(on); },
     [QUEUES.reconTick]: run,
     [QUEUES.reconDaily]: run,
-    // the dashboard's rollup: one (config, date), or the nightly sweep
+    // the dashboard's rollup: one (config, date), the nightly sweep, or the backfill at the worker's start
     [QUEUES.reconStats]: async ({ data }) => {
-      const d = data as { spaceId: string; configId: string; date: string } | { sweep: true };
-      await ("sweep" in d ? sweepStats(on) : statsJob(on, d));
+      const d = data as { spaceId: string; configId: string; date: string } | { sweep: true } | { backfill: true };
+      await ("sweep" in d ? sweepStats(on) : "backfill" in d ? backfillStats(on) : statsJob(on, d));
     },
   };
 };

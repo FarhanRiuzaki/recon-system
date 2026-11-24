@@ -12,7 +12,7 @@ import { matchGroups, reconDayStats, reconItems } from "../../schema";
 import { boss, QUEUES } from "../../../../kernel/jobs";
 import { reconConfigs } from "../../../recon";
 import { engineHandlers } from "../../jobs";
-import { queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
+import { BACKFILL_DAYS, queueBackfill, queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { records } from "../../../ingest";
@@ -129,6 +129,26 @@ describe("recon.stats jobs", () => {
     expect(rowsOf((await rowOf(F.A, r.configId, D4)).results)).toEqual({});
     expect(rowsOf((await rowOf(F.A, r.configId, D)).results)).toEqual({ matched_late: 1 });
   }, 30_000);
+
+  it("the backfill queues each date with results and no row, back BACKFILL_DAYS, once (C2)", async () => {
+    const b = await boss();
+    await b.deleteAllJobs();
+    await recompute(F.A, F.R2.configId, D);
+    const handle = engineHandlers(db)[QUEUES.reconStats]!;
+    await handle({ id: "j", data: { backfill: true } });
+    const queued = async () => (await b.fetch(QUEUES.reconStats, { batchSize: 100 })).map((j) => j.data as { configId: string; date: string });
+    const jobs = await queued();
+    // R1 on D and D1, RB on D; R2's D has its row; dates before hold no results
+    expect(jobs.map((j) => `${j.configId}:${j.date}`).sort()).toEqual([`${F.R1.configId}:${D}`, `${F.R1.configId}:${D1}`, `${F.RB.configId}:${D}`].sort());
+    expect(BACKFILL_DAYS).toBeGreaterThanOrEqual(184);
+    for (const j of jobs) await handle({ id: "j", data: j });
+    await b.deleteAllJobs();
+    await handle({ id: "j", data: { backfill: true } });
+    expect(await queued()).toEqual([]);
+    // the worker queues the backfill under one key: a second start while one waits adds none
+    expect(await queueBackfill()).not.toBeNull();
+    expect(await queueBackfill()).toBeNull();
+  });
 
   it("the job writes its row", async () => {
     const handle = engineHandlers(db)[QUEUES.reconStats]!;

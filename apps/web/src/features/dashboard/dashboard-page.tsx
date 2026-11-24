@@ -27,7 +27,7 @@ import { categoryChip, statusChip } from "@/lib/shared/categories";
 import { reconDashboardRead } from "@/lib/shared/queries";
 import { timeRange } from "@/lib/shared/time-controls";
 import { AdminSection } from "./admin-section";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
 
 type D = ReconDashboardDto;
 // series (chart slots 1–3): auto match, by hand and force, new unmatch; the rate line its own chart
@@ -39,6 +39,9 @@ const RUN_LEGEND = [RUN_CHIP.succeeded, RUN_CHIP.running, RUN_CHIP.queued, RUN_C
 const pct = (r: number | null) => (r === null ? "–" : formatPercent(r, 1));
 const minutes = (m: number | null) => (m === null ? "–" : formatDuration(m * 60));
 const day = (d: string) => formatDate(appDayStart(d));
+/** Period numbers wait while a date of the period is still computing; a change waits for both periods (C2). */
+const pendingOf = (d: D) => ({ now: d.pending.days > 0, compare: d.pending.days === 0 && d.pending.prevDays === 0 });
+const STILL = "Still computing";
 
 /** A tile that opens its list when it has one. */
 function Linked({ href, label, children }: { href: string | null; label: string; children: ReactNode }) {
@@ -60,19 +63,20 @@ function Kpis({ d, space, recon }: { d: D; space: string | null; recon: string |
   const auto = rate(d.autoRate.matched, d.autoRate.records), prevAuto = rate(d.autoRate.prevMatched, d.autoRate.prevRecords);
   const post = rate(d.posting.posted, d.posting.finished), prevPost = rate(d.posting.prevPosted, d.posting.prevFinished);
   const h = idrHeadline(d.open.amounts);
+  const p = pendingOf(d);
   return (
     <StatTiles>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, ["matched"]) : null} label="Open the auto-matched results">
-        <StatTile icon={LineChartIcon} label="Auto-match rate" value={pct(auto)} delta={rateDelta(auto, prevAuto, "up")}
-          caption={`${formatNumber(d.autoRate.matched)} of ${formatNumber(d.autoRate.records)} records`} />
+        <StatTile icon={LineChartIcon} label="Auto-match rate" value={p.now ? "–" : pct(auto)} delta={p.compare ? rateDelta(auto, prevAuto, "up") : undefined}
+          caption={p.now ? STILL : `${formatNumber(d.autoRate.matched)} of ${formatNumber(d.autoRate.records)} records`} />
       </Linked>
       <Linked href={space ? unmatchHref(space, { recon }) : null} label="Open the unmatch list">
-        <StatTile icon={WarningIcon} label="Unmatch open" value={h.value} unit="IDR" delta={countDelta(d.open.broke, d.open.prevBroke, "down")}
+        <StatTile icon={WarningIcon} label="Unmatch open" value={h.value} unit="IDR" delta={p.compare ? countDelta(d.open.broke, d.open.prevBroke, "down") : undefined}
           caption={`${formatNumber(d.open.count)} items · ${formatNumber(d.open.pastCarryOver)} past carry over${h.others.length ? ` · also ${h.others.join(", ")}` : ""}`} />
       </Linked>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, RESOLVED_STATUSES) : null} label="Open the resolved results">
-        <StatTile icon={SuccessIcon} label="Resolved" value={formatNumber(d.resolved.rows)} delta={countDelta(d.resolved.rows, d.resolved.prevRows, "up")}
-          caption={`Median ${minutes(d.resolved.medianMinutes)} from break to resolution`} />
+        <StatTile icon={SuccessIcon} label="Resolved" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}
+          caption={p.now ? STILL : `Median ${minutes(d.resolved.medianMinutes)} from break to resolution`} />
       </Linked>
       <Linked href={space ? postingFailedHref(space, d.period, recon) : null} label="Open the failed postings">
         <StatTile icon={ReportsIcon} label="Posting success" value={pct(post)} delta={rateDelta(post, prevPost, "up")}
@@ -90,7 +94,8 @@ function PerDay({ d, label }: { d: D; label: string }) {
   const any = d.days.some((x) => x.records > 0);
   return (
     <Panel bodyClassName="overflow-clip" icon={ColumnChartIcon} title="Results per day" description={`${label} · records per business date`} actions={<ChartLegend items={legendItems(SERIES)} />}>
-      {!any ? <EmptyState icon={ColumnChartIcon} title="No results in this period" description="Each business date's records count here once a run of it finishes." />
+      {pendingOf(d).now ? <EmptyState icon={ColumnChartIcon} title="Still computing this period" description="The chart shows once every date of the period is in." />
+        : !any ? <EmptyState icon={ColumnChartIcon} title="No results in this period" description="Each business date's records count here once a run of it finishes." />
         : (
           <div className="grid gap-4">
             <LazyMount minHeight={CHART_HEIGHT.standard}>
@@ -112,7 +117,7 @@ function PerDay({ d, label }: { d: D; label: string }) {
 function Breakdowns({ d, space, recon }: { d: D; space: string | null; recon: string | null }) {
   const ageOf = (k: string) => d.age.find((a) => a.key === k)!;
   const old = ageOf("gt7");
-  const closedRows = d.closed.reduce((n, c) => n + c.rows, 0);
+  const closedRows = d.closed.reduce((n, c) => n + c.rows, 0), pend = pendingOf(d).now;
   return (
     <div className="grid gap-6 xl:grid-cols-3">
       <BreakdownCard icon={TimeIcon} title="Unmatch by age" description="Open now, by business date" unit="items" max={4} otherLabel="Older"
@@ -124,14 +129,15 @@ function Breakdowns({ d, space, recon }: { d: D; space: string | null; recon: st
         footnote={space ? <Link className="text-body-sm text-primary underline-offset-4 hover:underline" href={unmatchHref(space, { recon })}>Open the unmatch list</Link> : undefined}
         empty={{ title: "No open unmatch", description: "Items appear here when a date closes with items nothing paired." }} />
       <BreakdownCard icon={CheckIcon} title="How items were closed" description="Results of the period's business dates" unit="results" max={6} otherLabel="Other"
-        parts={closedRows ? CLOSED_PARTS.map((p, i) => ({ id: p.key, label: p.label, value: d.closed.find((c) => c.key === p.key)!.rows, slot: i })) : []}
-        footnote={d.writtenOff.length ? <span className="text-body-sm text-fg-2">Written off <Money amounts={d.writtenOff} /></span> : undefined}
-        empty={{ title: "Nothing closed in this period", description: "Results count here once a run or a person closes them." }} />
+        parts={closedRows && !pend ? CLOSED_PARTS.map((p, i) => ({ id: p.key, label: p.label, value: d.closed.find((c) => c.key === p.key)!.rows, slot: i })) : []}
+        footnote={d.writtenOff.length && !pend ? <span className="text-body-sm text-fg-2">Written off <Money amounts={d.writtenOff} /></span> : undefined}
+        empty={pend ? { title: "Still computing this period", description: "The parts show once every date of the period is in." } : { title: "Nothing closed in this period", description: "Results count here once a run or a person closes them." }} />
     </div>
   );
 }
 
 function BySpace({ d }: { d: D }) {
+  const pend = pendingOf(d).now;
   return (
     <Panel flush icon={OverviewIcon} title="By space" description="Open unmatch now; auto-match rate and write-offs over the period">
       <Table aria-label="Numbers per space">
@@ -145,8 +151,8 @@ function BySpace({ d }: { d: D }) {
               <TableCell><Link className="text-fg underline-offset-4 hover:underline" href={unmatchHref(s.id)}>{s.name}</Link></TableCell>
               <TableCell className="text-right tabular">{formatNumber(s.open)}</TableCell>
               <TableCell className="text-right"><Money amounts={s.amounts} /></TableCell>
-              <TableCell className="text-right tabular">{pct(rate(s.matched, s.records))}</TableCell>
-              <TableCell className="text-right"><Money amounts={s.writtenOff} /></TableCell>
+              <TableCell className="text-right tabular">{pend ? "–" : pct(rate(s.matched, s.records))}</TableCell>
+              <TableCell className="text-right">{pend ? "–" : <Money amounts={s.writtenOff} />}</TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -156,6 +162,7 @@ function BySpace({ d }: { d: D }) {
 }
 
 function Recons({ d }: { d: D }) {
+  const pend = pendingOf(d).now;
   return (
     <Panel flush icon={ForceMatchIcon} title="Recons" description="Volume and auto-match rate over the period; unmatch open now" legend={RUN_LEGEND}>
       {!d.rows.length ? <EmptyState icon={ForceMatchIcon} title="No recons yet" description="A recon shows here once someone creates it in one of your spaces." />
@@ -171,8 +178,8 @@ function Recons({ d }: { d: D }) {
                 <TableRow key={r.id}>
                   <TableCell><Link className="text-fg underline-offset-4 hover:underline" href={resultsHref(r.spaceId, r.id, d.period)}>{r.name}</Link></TableCell>
                   <TableCell className="text-fg-2">{r.spaceName}</TableCell>
-                  <TableCell className="text-right tabular">{formatNumber(r.records)}</TableCell>
-                  <TableCell className="text-right tabular">{pct(rate(r.matched, r.records))}</TableCell>
+                  <TableCell className="text-right tabular">{pend ? "–" : formatNumber(r.records)}</TableCell>
+                  <TableCell className="text-right tabular">{pend ? "–" : pct(rate(r.matched, r.records))}</TableCell>
                   <TableCell className="text-right tabular"><Link className="underline-offset-4 hover:underline" href={unmatchHref(r.spaceId, { recon: r.id })}>{formatNumber(r.open)}</Link></TableCell>
                   <TableCell className="text-right"><Money amounts={r.amounts} /></TableCell>
                   <TableCell>{r.oldest ? day(r.oldest) : "–"}</TableCell>
@@ -239,6 +246,7 @@ export function DashboardPage() {
       <PageHeader title="Dashboard" description={`Reconciliation over ${label.toLowerCase()}, against the same number of days before`} />
       <Filters d={d} space={picked.get("space")} recon={recon} />
       {q.isPlaceholderData && <Notice live>Updating the numbers…</Notice>}
+      {d && pendingNotice(d.pending) && <Notice tone="progress" live>{pendingNotice(d.pending)}</Notice>}
       {q.error && d && <Notice tone="warn" live>Couldn&apos;t refresh the dashboard; showing the numbers loaded before. {errorText(q.error)}</Notice>}
       {q.error && !d ? (
         <Panel><ErrorState title="Couldn't load the dashboard" cause={errorText(q.error)} onRetry={() => void q.refetch()} /></Panel>

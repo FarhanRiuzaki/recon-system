@@ -4,7 +4,7 @@ import { loadWorkerConfig } from "./kernel/config";
 import { closeJobs, enqueue, QUEUES, scheduleEvery, startWorker, unschedule, workerAlive } from "./kernel/jobs";
 import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
-import { engineHandlers } from "./modules/engine";
+import { engineHandlers, queueBackfill } from "./modules/engine";
 import { ingestHandlers } from "./modules/ingest";
 import { callsLogged, integrationsHandlers } from "./modules/integrations";
 
@@ -23,6 +23,8 @@ await scheduleEvery(QUEUES.reconSchedule, "schedule", "* * * * *", {});
 await unschedule(QUEUES.reconTick, "schedule"); // its first home (wt/task6 before review): a tick slot each minute
 // the dashboard's rollup (engine stats.ts): every config's last 7 business dates again at 01:15, the net under the per-change jobs
 await scheduleEvery(QUEUES.reconStats, "sweep", "15 1 * * *", { sweep: true });
+// and once at start: every date of the last 184 with results and no rollup row yet (keyed: a restart adds none while one waits)
+await queueBackfill();
 // approval actions left sending by a worker that died after the call went out become timeout, never sent again (O4)
 await scheduleEvery(QUEUES.integrationsAction, "sweep", "* * * * *", { sweep: true });
 // posting groups whose cutoff has passed are closed and their one run queued (stage 5)

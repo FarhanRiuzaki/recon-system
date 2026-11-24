@@ -3,7 +3,8 @@
 // item only when this statement locked it, at the status and version read (A1). Live items only.
 import { type SQL, sql } from "drizzle-orm";
 import { records, sourceCursors } from "../../ingest";
-import { matchGroups, matchMembers, reconItems } from "../schema";
+import { reconConfigs } from "../../recon";
+import { matchGroups, matchMembers, reconDayStats, reconItems } from "../schema";
 import { type ClassifyCtx, NEAR_MISS, nearMissSql } from "./breaks";
 import { CHOSEN, datesOf, type StepCtx } from "./pass";
 
@@ -77,4 +78,18 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
     sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
   select bd::text as d, count(*) filter (where st = 'open')::int as open, count(*) filter (where st = 'suggested')::int as suggested from up group by bd order by bd`;
+}
+
+/**
+ * The dashboard rollup's gaps (stats.ts, C2): each (space, config, business date) of configs of `spaceIds` (`configId`:
+ * one) in `from`..`to` that holds a live item and has no recon_day_stats row yet. One index probe per config and date
+ * (recon_items_config_date, the stats key), never a scan of the items. Rows: space_id, config_id, d.
+ */
+export function missingDaysSql(spaceIds: readonly string[], configId: string | null, from: string, to: string): SQL {
+  return sql`select c.space_id, c.id as config_id, d::date::text as d
+    from ${reconConfigs} c cross join generate_series(${from}::date, ${to}::date, interval '1 day') d
+    where c.space_id in (${sql.join(spaceIds.map((id) => sql`${id}::uuid`), sql`, `)})${configId ? sql` and c.id = ${configId}::uuid` : sql``}
+      and exists (select 1 from ${reconItems} i where i.space_id = c.space_id and i.config_id = c.id and i.business_date = d::date and i.sim_run_id is null)
+      and not exists (select 1 from ${reconDayStats} s where s.space_id = c.space_id and s.config_id = c.id and s.business_date = d::date)
+    order by d, c.id`;
 }

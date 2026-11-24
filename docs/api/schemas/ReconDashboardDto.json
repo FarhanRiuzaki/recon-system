@@ -682,6 +682,26 @@
         "string",
         "null"
       ]
+    },
+    "pending": {
+      "type": "object",
+      "properties": {
+        "days": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "prevDays": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "days",
+        "prevDays"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
@@ -701,7 +721,8 @@
     "writtenOff",
     "bySpace",
     "rows",
-    "computedAt"
+    "computedAt",
+    "pending"
   ],
   "additionalProperties": false
 }

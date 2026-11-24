@@ -4,7 +4,7 @@ import { selectionState } from "@starterkit/shared/filter-selection";
 import { readTable } from "@/lib/shared/table-state";
 import { ACTION_RUNS } from "@/lib/shared/queries";
 import { BREAKS, RESULTS } from "@/lib/shared/queries-recon";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, unmatchHref } from "./dashboard-model";
 
 const has = (...ps: PermissionName[]) => (p: PermissionName) => ps.includes(p);
 const search = (href: string) => new URLSearchParams(href.split("?")[1] ?? "");
@@ -16,6 +16,13 @@ describe("recon dashboard model", () => {
     expect(adminSection(has("role.view"))).toBe(false);
     expect(adminSection(has("user.view"))).toBe(true);
     expect(adminSection(has("audit.view"))).toBe(true);
+  });
+
+  it("dates whose rollup is still computing are named, never shown as final (C2)", () => {
+    expect(pendingNotice({ days: 0, prevDays: 0 })).toBeNull();
+    expect(pendingNotice({ days: 1, prevDays: 0 })).toBe("Still computing 1 day of this period. Its numbers show as pending until they are in.");
+    expect(pendingNotice({ days: 3, prevDays: 2 })).toBe("Still computing 3 days of this period and 2 days of the one before. Their numbers show as pending until they are in.");
+    expect(pendingNotice({ days: 0, prevDays: 1 })).toBe("Still computing 1 day of the period before. Changes against it show once it is in.");
   });
 
   it("the headline is IDR; other currencies stay apart, never added in", () => {

@@ -9,6 +9,8 @@ import type { ResultCountsDto } from "@starterkit/shared/contracts/results";
 import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import { AGE_GROUPS, CLOSED_PARTS, RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { call, signIn } from "../../../../../test/helpers/app";
+import { withSpace } from "../../../spaces";
+import { recomputeDayStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, rollup, seedDashboard } from "../dashboard-fixture";
 
 let F: DashboardFixture;
@@ -115,6 +117,19 @@ describe("GET /v1/dashboard/recon: numbers", () => {
     for (const p of CLOSED_PARTS) expect(d.closed.find((c) => c.key === p.key)!.rows).toBe(p.statuses.reduce((n, s) => n + (counts[s] ?? 0), 0));
     expect(d.resolved.rows).toBe(RESOLVED_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0));
     expect(d.rows.map((r) => r.id)).toEqual([F.R1.configId]);
+  });
+
+  it("names the dates with results whose rollup isn't written yet, in the period and the one before (C2)", async () => {
+    const t = await signIn("viewer");
+    // nothing rolled up: D and D1 hold results (R1, R2), the days before none
+    expect((await body(t)).pending).toEqual({ days: 2, prevDays: 0 });
+    expect((await body(t, `from=${D1}&to=2026-11-04`)).pending).toEqual({ days: 1, prevDays: 1 });
+    await withSpace({ spaceIds: [F.A], userId: null }, (tx) => recomputeDayStats(tx, F.A, F.R1.configId, D));
+    // D still waits on R2's row; the recon filter narrows to R1's
+    expect((await body(t)).pending).toEqual({ days: 2, prevDays: 0 });
+    expect((await body(t, `from=${D}&to=${D1}&recon=${F.R1.configId}`)).pending).toEqual({ days: 1, prevDays: 0 });
+    await sweep();
+    expect((await body(t)).pending).toEqual({ days: 0, prevDays: 0 });
   });
 
   it("the previous period compares the same number of days just before", async () => {

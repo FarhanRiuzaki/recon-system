@@ -4,7 +4,7 @@ import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import type { ReconDashboardDto } from "@starterkit/shared/contracts/dashboard";
 import { POSTING_FAILED } from "@starterkit/shared/dashboard";
 import type { PermissionName } from "@starterkit/shared/permissions";
-import { formatDecimal, formatSignedNumber } from "@starterkit/ui/lib/format";
+import { formatDecimal, formatSignedNumber, plural } from "@starterkit/ui/lib/format";
 import type { Delta } from "@starterkit/ui/ds";
 import { amountText } from "@/lib/shared/amount";
 
@@ -18,6 +18,18 @@ export const adminSection = (can: (p: PermissionName) => boolean): boolean => ca
 export function idrHeadline(amounts: Amounts): { value: string; others: string[] } {
   const idr = amounts.find((a) => a.currency === "IDR");
   return { value: amountText(idr?.amountMinor ?? "0", "IDR"), others: amounts.filter((a) => a.currency !== "IDR").map((a) => `${amountText(a.amountMinor, a.currency)} ${a.currency}`) };
+}
+
+/**
+ * The notice over a period with dates whose rollup is still computing (C2), null when none: the numbers from them are
+ * pending, never shown as final.
+ */
+export function pendingNotice(p: ReconDashboardDto["pending"]): string | null {
+  const n = (k: number) => plural(k, "day", "days");
+  if (p.days && p.prevDays) return `Still computing ${n(p.days)} of this period and ${n(p.prevDays)} of the one before. Their numbers show as pending until they are in.`;
+  if (p.days) return `Still computing ${n(p.days)} of this period. ${p.days === 1 ? "Its" : "Their"} numbers show as pending until they are in.`;
+  if (p.prevDays) return `Still computing ${n(p.prevDays)} of the period before. Changes against it show once ${p.prevDays === 1 ? "it is" : "they are"} in.`;
+  return null;
 }
 
 /** A share 0–1, null when there is nothing to divide. */

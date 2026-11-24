@@ -86,5 +86,7 @@ export const ReconDashboardDto = z.object({
     lastRun: z.object({ status: z.enum(["queued", "running", "succeeded", "failed"]), at: z.string() }).nullable(),
   })),
   computedAt: z.string().nullable(),
+  /** Dates of the period (`days`) and of the one before (`prevDays`) that hold results whose rollup row is not written yet: their period numbers are not final. */
+  pending: z.object({ days: z.number().int(), prevDays: z.number().int() }),
 });
 export type ReconDashboardDto = z.infer<typeof ReconDashboardDto>;

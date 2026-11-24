@@ -16,11 +16,14 @@ import { recordSpaces } from "./break-resolve";
 import { statusTally } from "./results";
 import { reconDayStats, reconItems, reconRuns } from "./schema";
 import { addDays } from "./service";
+import { missingDaysSql } from "./sql/days";
 
 /** How long a recompute waits for more changes of the same config and date. */
 export const STATS_DELAY_MS = 60_000;
 /** The dates the nightly sweep recomputes, ending today. */
 export const SWEEP_DAYS = 7;
+/** How far back the backfill looks for dates with results and no row: past the dashboard's longest period (6 months). */
+export const BACKFILL_DAYS = 184;
 
 /** Rewrites the row of (`configId`, `date`) from the engine's tables (live items and groups only). */
 export async function recomputeDayStats(tx: InTx, spaceId: string, configId: string, date: string): Promise<void> {
@@ -109,3 +112,27 @@ export async function sweepStats(on: Tx, now = new Date()): Promise<void> {
   const today = todayIn(now);
   for (const c of await allConfigs(on)) for (let i = SWEEP_DAYS - 1; i >= 0; i--) await queueDay(c.spaceId, c.id, addDays(today, -i), undefined, 0);
 }
+
+/** The (space, config, date) of `spaceIds` (`configId`: one) in `from`..`to` with results and no row yet (sql/days.ts). */
+export async function missingDays(tx: InTx, spaceIds: readonly string[], configId: string | null, from: string, to: string): Promise<{ spaceId: string; configId: string; date: string }[]> {
+  if (!spaceIds.length) return [];
+  const rows = (await tx.execute(missingDaysSql(spaceIds, configId, from, to))) as unknown as { space_id: string; config_id: string; d: string }[];
+  return rows.map((r) => ({ spaceId: r.space_id, configId: r.config_id, date: r.d }));
+}
+
+/**
+ * The backfill (C2): every config's dates of the last BACKFILL_DAYS that hold results and have no row (a recon live
+ * before the rollup existed, a job lost), each queued as its own job, due now. Idempotent: a date with its row, or a
+ * job already queued, adds nothing. The worker queues it once at start (queueBackfill).
+ */
+export async function backfillStats(on: Tx, now = new Date()): Promise<void> {
+  const ids = (await on.select({ id: spaces.id }).from(spaces)).map((s) => s.id);
+  const today = todayIn(now);
+  for (const id of ids) {
+    const gaps = await withSpace({ spaceIds: [id], userId: null }, (tx) => missingDays(tx, [id], null, addDays(today, 1 - BACKFILL_DAYS), today), on);
+    for (const g of gaps) await queueDay(g.spaceId, g.configId, g.date, undefined, 0);
+  }
+}
+
+/** Queues the backfill job (one key: a second start while one waits adds none). */
+export const queueBackfill = (): Promise<string | null> => enqueue(QUEUES.reconStats, { backfill: true }, { key: "backfill" });
