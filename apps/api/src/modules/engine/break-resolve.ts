@@ -13,7 +13,7 @@ import { type BreakState, type ItemStatus, type Resolution } from "@starterkit/s
 import { DEFAULT_CHAIN, TRIGGERS } from "@starterkit/shared/workflows";
 import { CURRENCY_EXPONENT, DEBIT_CODES, directionOf } from "@starterkit/shared/sources";
 import { formatMinor } from "@starterkit/ui/lib/format";
-import { and, desc, eq, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, ilike, inArray, isNotNull, isNull, ne, notInArray, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { likeEscape, one, pageQuery } from "../../kernel/pagination";
@@ -73,10 +73,18 @@ export const plain = ({ id, side, businessDate, status, reason, ref, amountMinor
   id, side, businessDate, status, reason, ref, amountMinor, direction, currency, eventTime, source,
   signedMinor: signed === null ? null : String(spec?.sides[side === "a" ? 0 : 1].amount_sign === "negate" ? -signed : signed),
 });
-/** The break `id` of the space: a live item that broke (open, resolved or matched since); else 404. */
+/**
+ * The break `id` of the space: a live item that broke (open, resolved or matched since), or one matched in a live group
+ * although it never broke (a run's match, whose undo is asked from its page or Operation result: DEC-056); else 404.
+ * Only undo match applies to the latter: every other change refuses an item that isn't an open break (mayWork).
+ */
 export async function breakOf(tx: InTx, spaceId: string, id: string) {
+  const live = tx.select({ one: sql`1` }).from(matchMembers)
+    .innerJoin(matchGroups, and(eq(matchGroups.spaceId, matchMembers.spaceId), eq(matchGroups.id, matchMembers.groupId)))
+    .where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.itemId, reconItems.id), isNull(matchGroups.reversedBy), isNull(matchGroups.simRunId)));
   const [x] = await tx.select().from(reconItems)
-    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, id), isNull(reconItems.simRunId), or(eq(reconItems.status, "break"), sql`${reconItems.breakReason} is not null`)));
+    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, id), isNull(reconItems.simRunId),
+      or(eq(reconItems.status, "break"), sql`${reconItems.breakReason} is not null`, and(eq(reconItems.status, "matched"), exists(live)))));
   if (!x) throw notFound("unmatch item");
   return x;
 }
@@ -173,7 +181,8 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
         // carry over is calendar days from the business date (engine addDays); before a first approval it reads as always
         carryOverDays: live?.carry_over_days ?? null, recheck: await recheckOf(tx, spaceId, x, live),
         routes: await routesOf(tx, spaceId, live),
-      }, state: (x.breakState ?? "new") as BreakState,
+      // a run's match that never broke has no queue state: it reads as settled, as a matched break does
+      }, state: (x.breakState ?? (x.status === "matched" ? "resolved" : "new")) as BreakState,
       assignee: x.assigneeId ? { id: x.assigneeId, name } : null,
       ageDays: Math.max(0, Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${x.businessDate}T00:00:00Z`)) / DAY_MS)),
       resolution: (x.resolution as Resolution | null) ?? null, matchedWith: matchedWith.map((i) => plain(i, live)),

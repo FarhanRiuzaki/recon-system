@@ -277,7 +277,7 @@ describe("GET results/:rowId/members", () => {
     expect(m.labels.b.map((f) => f.label)).toEqual(["Reference", "Amount", "Currency", "Business date", "Event time", "Account", "Direction", "Settlement ref", "When"]);
     expect(m.labels.a.slice(0, 2)).toEqual([{ key: "ext_ref", label: "Reference" }, { key: "amount_minor", label: "Amount" }]);
     expect(m.b[0]!.values).toMatchObject({ ext_ref: "Q2", amount_minor: "10000", currency: "IDR", business_date: D, "attrs.settlement_ref": "S1", "attrs.when": null });
-    expect(m.summary).toEqual({ groupKind: "force", pass: 0, resolution: "FORCE_MATCHED", reason: { value: "Amount differs", many: null }, assignee: { value: null, many: null }, request: null, posting: null });
+    expect(m.summary).toEqual({ groupKind: "force", pass: 0, resolution: "FORCE_MATCHED", reason: { value: "Amount differs", many: null }, assignee: { value: null, many: null }, request: null, posting: null, workItemId: I.P2 });
     const p6 = await json<ResultMembersDto>(call("GET", `${base()}/${I.P6}/members?kind=item`, { token: t.op }));
     expect(p6.summary).toMatchObject({ groupKind: null, resolution: "POSTED", request: { kind: "posting", status: "approved" }, posting: { status: { value: "failed", many: null }, bankReference: { value: "BR-6", many: null } } });
     // the signed amount the row's cell sums: a debit counts negative
@@ -290,5 +290,14 @@ describe("GET results/:rowId/members", () => {
     expect((await call("GET", `${base()}/${I.P1}/members?kind=item`, { token: t.op })).status).toBe(404); // in a live group: its row is the group
     expect((await call("GET", `${base()}/${G.force}/members?kind=row`, { token: t.op })).status).toBe(400);
     expect((await call("GET", `${base(B, CFG)}/${G.force}/members?kind=group`, { token: t.out })).status).toBe(404);
+  });
+  it("the item the row's actions go through (DEC-056): the one a waiting request holds, else one that broke, else side A's; none for a lone item that never broke", async () => {
+    const work = async (id: string, kind: "group" | "item") => (await json<ResultMembersDto>(call("GET", `${base()}/${id}/members?kind=${kind}`, { token: t.op }))).summary.workItemId;
+    expect(await work(G.auto, "group")).toBe(I.P1);
+    expect(await work(G.mixed, "group")).toBe(I.P5);
+    await request(I.Q1, { kind: "unmatch", status: "pending" });
+    expect(await work(G.auto, "group")).toBe(I.Q1);
+    expect(await work(I.P3, "item")).toBe(I.P3);
+    expect(await work(I.P9, "item")).toBeNull();
   });
 });

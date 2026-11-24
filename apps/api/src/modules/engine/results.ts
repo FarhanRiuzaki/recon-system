@@ -438,11 +438,16 @@ export function resultMembers(ctx: Ctx, configId: string, rowId: string, q: Resu
     const assignees = [...new Set(items.flatMap((i) => (i.assigneeId ? [i.assigneeId] : [])))];
     const names = new Map(assignees.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, assignees))).map((u) => [u.id, u.name]) : []);
     // the latest request holding one of the row's items (its main item or one of `item_ids`)
-    const [rq] = ids.length ? await tx.select({ kind: approvalRequests.kind, status: approvalRequests.status }).from(approvalRequests)
+    const [rq] = ids.length ? await tx.select({ kind: approvalRequests.kind, status: approvalRequests.status, itemId: approvalRequests.itemId }).from(approvalRequests)
       .where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.configId, configId),
         or(inArray(approvalRequests.itemId, ids), sql`${approvalRequests.itemIds} && array[${sql.join(ids.map((x) => sql`${x}`), sql`, `)}]::uuid[]`)))
       .orderBy(desc(approvalRequests.requestedAt)).limit(1) : [];
     const runs = ids.length ? await latestPostings(tx, spaceId, configId, ids) : [];
+    // the item its actions go through, as its Unmatch item page (breakOf): a lone item that is or was a break; in a
+    // group, the item a waiting request holds, else one that broke (yours first), else side A's first
+    const broke = items.filter((i) => i.reason !== null);
+    const workItemId = q.kind === "item" ? (items[0] && (items[0].status === "break" || items[0].reason !== null) ? items[0].id : null)
+      : (rq?.status === "pending" && ids.includes(rq.itemId) ? rq.itemId : null) ?? (broke.find((i) => i.assigneeId === ctx.user.id) ?? broke[0] ?? of("a")[0] ?? items[0])?.id ?? null;
     return {
       a: of("a").slice(0, RESULT_MEMBERS_MAX).map(member), b: of("b").slice(0, RESULT_MEMBERS_MAX).map(member),
       more: { a: Math.max(0, of("a").length - RESULT_MEMBERS_MAX), b: Math.max(0, of("b").length - RESULT_MEMBERS_MAX) },
@@ -453,6 +458,7 @@ export function resultMembers(ctx: Ctx, configId: string, rowId: string, q: Resu
         reason: same(items.map((i) => i.reason), true), assignee: same(items.map((i) => (i.assigneeId ? names.get(i.assigneeId) ?? null : null)), true),
         request: rq ? { kind: rq.kind as RequestKind, status: rq.status as "pending" | "approved" | "rejected" | "cancelled" } : null,
         posting: runs.length ? { status: same(runs.map((p) => p.st), true), bankReference: same(runs.map((p) => p.bank), true) } : null,
+        workItemId,
       },
     };
   });

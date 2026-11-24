@@ -16,16 +16,17 @@ import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { approvalRequests, workflows, workflowVersions } from "../../../approvals";
-import { matchGroups, reconItems } from "../../schema";
+import { matchGroups, matchMembers, reconItems } from "../../schema";
 import { reconConfigVersions } from "../../../recon";
-import { D, makeSource, plainSource, put, recon, spec } from "../fixtures";
+import { D, makeSource, plainSource, put, recon, spec, type Src } from "../fixtures";
 
 const idOf = async (username: string) => (await db.select({ id: users.id }).from(users).where(eq(users.username, username)))[0]!.id;
 const json = async <T>(r: Response | Promise<Response>) => (await (await r).json()) as T;
 const code = async (r: Response) => ((await r.json()) as { error: { code: string } }).error.code;
 const message = async (r: Response) => ((await r.json()) as { error: { message: string } }).error.message;
 
-let A: string, cfg: string;
+let A: string, cfg: string, ver: string;
+let S: { a: Src; b: Src };
 let t: Record<"op" | "op2" | "rev" | "sa" | "adm", string>;
 /** Items of the recon: a1 (A, 100.00, a break), b1 (B, 100.00, open), b2 (B, 99.00, a break), b3 (B, 100.00, open, EUR). */
 let I: Record<"a1" | "b1" | "b2" | "b3", string>;
@@ -44,10 +45,12 @@ beforeEach(async () => {
     await ensureMonthPartitions(tx, reconItems, new Date(`${D}T00:00:00Z`), 1);
   });
   const [sa, sb] = [await makeSource(A, plainSource()), await makeSource(A, plainSource())];
+  S = { a: sa, b: sb };
   const [ra] = await put(sa, [{ ref: "P1", amount: 10_000n }]);
   const [rb1, rb2, rb3] = await put(sb, [{ ref: "P1", amount: 10_000n }, { ref: "P2", amount: 9_900n }, { ref: "P3", amount: 10_000n, ccy: "EUR" }]);
   const r = await recon(A, spec(sa.sourceId, sb.sourceId, [{ no: 1, name: "Exact", cardinality: "1:1", blocking: ["ext_ref"], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "amount_minor" }] }]));
   cfg = r.configId;
+  ver = r.versionId;
   const item = (side: "a" | "b", recordId: string, status: string, reason: string | null) =>
     ({ id: Bun.randomUUIDv7(), spaceId: A, configId: cfg, recordId, side, status, businessDate: D, breakReason: reason });
   const rows = { a1: item("a", ra!, "break", "No counterpart"), b1: item("b", rb1!, "open", null), b2: item("b", rb2!, "break", "No counterpart"), b3: item("b", rb3!, "open", null) };
@@ -156,6 +159,59 @@ describe("the default chain (no workflow): one of reviewer or space admin", () =
     expect(await state(I.b1)).toEqual({ s: "open", st: null, r: null });
     const [g] = await db.select().from(matchGroups).where(eq(matchGroups.configId, cfg));
     expect(g).toMatchObject({ reverseReason: "unmatch", reversedBy: await idOf("google") });
+  });
+});
+
+/** A pair a run matched (group kind auto): two items matched, neither ever an unmatch item (no break reason). */
+async function autoPair(ref = "AP1") {
+  const [ra] = await put(S.a, [{ ref, amount: 5_000n }]);
+  const [rb] = await put(S.b, [{ ref, amount: 5_000n }]);
+  const p = { a: Bun.randomUUIDv7(), b: Bun.randomUUIDv7(), g: Bun.randomUUIDv7() };
+  await db.insert(reconItems).values([
+    { id: p.a, spaceId: A, configId: cfg, recordId: ra!, side: "a", status: "matched", businessDate: D },
+    { id: p.b, spaceId: A, configId: cfg, recordId: rb!, side: "b", status: "matched", businessDate: D },
+  ]);
+  await db.insert(matchGroups).values({ id: p.g, spaceId: A, configId: cfg, configVersionId: ver, runId: null, passNo: 1, kind: "auto", businessDate: D, evidence: {} });
+  await db.insert(matchMembers).values([{ groupId: p.g, spaceId: A, itemId: p.a, side: "a" }, { groupId: p.g, spaceId: A, itemId: p.b, side: "b" }]);
+  return p;
+}
+
+describe("undo match of any live group, also one a run matched that never broke (owner 24 Nov, DEC-056)", () => {
+  it("its page reads as resolved with its counterpart; a lead asks, another approves; both items open again", async () => {
+    const p = await autoPair();
+    expect(await detail(p.a, t.rev)).toMatchObject({ state: "resolved", item: { status: "matched", reason: null }, matchedWith: [{ id: p.b }], request: null });
+    expect((await req(p.a, { kind: "unmatch", note: "Wrong pair" }, t.rev)).status).toBe(200);
+    expect((await detail(p.a, t.rev)).request).toMatchObject({ kind: "unmatch", status: "pending" });
+    expect(await state(p.a)).toEqual({ s: "matched", st: null, r: null });
+    const self = await decide(p.a, "approve", {});
+    expect([self.status, await code(self)]).toEqual([409, "self_approval"]);
+    expect(await json(decide(p.a, "approve", {}, t.adm))).toEqual({ status: "approved" });
+    expect(await state(p.a)).toEqual({ s: "open", st: null, r: null });
+    expect(await state(p.b)).toEqual({ s: "open", st: null, r: null });
+    const [g] = await db.select().from(matchGroups).where(eq(matchGroups.id, p.g));
+    expect(g).toMatchObject({ reverseReason: "unmatch", reversedBy: await idOf("admin") });
+    // undone, neither is an unmatch item: its page is gone again
+    expect((await call("GET", path(p.a), { token: t.rev })).status).toBe(404);
+  });
+
+  it("who may ask: a lead (nobody has the items), not an operator; another space's item is 404; an item that never broke nor matched is 404", async () => {
+    const p = await autoPair();
+    const op = await req(p.a, { kind: "unmatch", note: "x" });
+    expect([op.status, await code(op)]).toEqual([403, "forbidden"]);
+    expect((await req(p.a, { kind: "write_off", note: "x" }, t.rev)).status).toBe(409); // only undo applies to a matched item
+    expect((await req(I.b1, { kind: "unmatch", note: "x" }, t.rev)).status).toBe(404);
+    const B = Bun.randomUUIDv7();
+    await db.insert(spaces).values({ id: B, code: "other", name: "Other" });
+    await db.insert(spaceMembers).values({ spaceId: B, userId: await idOf("google"), role: "reviewer" });
+    expect((await call("POST", `/v1/spaces/${B}/breaks/${p.a}/request`, { token: t.rev, body: { kind: "unmatch", note: "x" } })).status).toBe(404);
+    expect((await call("GET", `/v1/spaces/${B}/breaks/${p.a}`, { token: t.rev })).status).toBe(404);
+  });
+
+  it("one open request per group: while one waits, the group's other item can't be asked again", async () => {
+    const p = await autoPair();
+    await req(p.a, { kind: "unmatch", note: "Wrong pair" }, t.rev);
+    const again = await req(p.b, { kind: "unmatch", note: "Again" }, t.adm);
+    expect([again.status, await message(again)]).toEqual([409, "A change of this item already waits for a decision."]);
   });
 });
 

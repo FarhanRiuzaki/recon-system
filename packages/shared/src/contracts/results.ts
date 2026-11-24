@@ -124,7 +124,8 @@ const Agreed = z.object({ value: z.string().nullable(), many: z.number().int().n
 /**
  * Each side's records of the row, at most 100 per side (`more` = how many past that); `labels` = the fields each side's
  * source writes, in order (core fields, then its attributes); `summary` = the row's recon data: its group's kind and
- * pass (or the item's break pass), resolution, unmatch reason, assignee, its items' latest request and posting run.
+ * pass (or the item's break pass), resolution, unmatch reason, assignee, its items' latest request and posting run;
+ * `workItemId` = the item the row's actions go through (its Unmatch item page's), null for a lone item that never broke.
  */
 export const ResultMembersDto = z.object({
   a: z.array(ResultMemberDto), b: z.array(ResultMemberDto), more: z.object({ a: z.number().int(), b: z.number().int() }),
@@ -134,6 +135,7 @@ export const ResultMembersDto = z.object({
     reason: Agreed, assignee: Agreed,
     request: z.object({ kind: z.enum(REQUEST_KINDS), status: z.enum(["pending", "approved", "rejected", "cancelled"]) }).nullable(),
     posting: z.object({ status: Agreed, bankReference: Agreed }).nullable(),
+    workItemId: z.string().nullable(),
   }),
 });
 export type ResultMembersDto = z.infer<typeof ResultMembersDto>;

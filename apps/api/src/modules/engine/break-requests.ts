@@ -8,10 +8,10 @@
 import type { BreakDetailDto, RequestBreakBody } from "@starterkit/shared/contracts/breaks";
 import type { Context } from "@starterkit/shared/conditions";
 import type { Attributes } from "@starterkit/shared/workflows";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { InTx } from "../../kernel/db";
 import { ApiError } from "../../kernel/errors";
-import { openRequest } from "../approvals";
+import { approvalRequests, openRequest } from "../approvals";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { records, todayIn } from "../ingest";
@@ -90,6 +90,10 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
       const g = x.status === "matched" ? await groupOf(tx, spaceId, x.id) : null;
       if (!g) throw new ApiError("invalid_state", "This item isn't matched, so there is nothing to undo.");
       counterparts = (await tx.select({ id: matchMembers.itemId }).from(matchMembers).where(and(eq(matchMembers.spaceId, spaceId), eq(matchMembers.groupId, g.id)))).map((m) => m.id);
+      // the group's items are held while one of them waits (one open request per group, as per item)
+      const [held] = await tx.select({ id: approvalRequests.id }).from(approvalRequests).where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"),
+        or(inArray(approvalRequests.itemId, counterparts), sql`${approvalRequests.itemIds} && array[${sql.join(counterparts.map((c) => sql`${c}`), sql`, `)}]::uuid[]`))).limit(1);
+      if (held) throw new ApiError("invalid_state", "A change of this item already waits for a decision.");
     } else {
       mayWork(ctx, x);
       if (b.kind === "posting" && !postsUnmatch(await liveSpec(tx, spaceId, x.configId)))
