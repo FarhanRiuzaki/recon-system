@@ -22,6 +22,8 @@ import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
 import { sourceStatus } from "@/lib/shared/source-status";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { addPass, defaultSpec, type Fields, placeOf, SETUP_STEPS } from "./spec-model";
+import { DirectionPicker } from "./direction-picker";
+import type { ReconDirection } from "@starterkit/shared/recon";
 import { NEW_RECON_REASON, reconApi, reconEditHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
 
 type Values = { name: string; code: string; a: string; b: string };
@@ -77,6 +79,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
   const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [apiErr, setApiErr] = useState<Partial<Record<keyof Values, string>>>({});
+  const [direction, setDirection] = useState<ReconDirection>("two_way");
   const items = sources.data?.items ?? [];
   const dirty = Object.values(f.values).some(Boolean);
   const shown = { ...f.shown, ...apiErr };
@@ -85,21 +88,22 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
   const keptKey = `recon:recon-new:${spaceId}`;
   useEffect(() => {
     try {
-      const k = JSON.parse(localStorage.getItem(keptKey) ?? "null") as (Values & { codeTyped?: boolean }) | null;
+      const k = JSON.parse(localStorage.getItem(keptKey) ?? "null") as (Values & { codeTyped?: boolean; direction?: ReconDirection }) | null;
       if (!k) return;
       (["name", "code", "a", "b"] as const).forEach((key) => { if (typeof k[key] === "string") f.set(key, k[key]); });
       // the browser's copy is only readable after mount: one restore, once
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (k.codeTyped) setCodeTyped(true);
+      if (k.direction === "a_to_b" || k.direction === "two_way") setDirection(k.direction);
     } catch { /* nothing kept */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     try {
-      if (dirty && !busy) localStorage.setItem(keptKey, JSON.stringify({ ...f.values, codeTyped }));
+      if (dirty && !busy) localStorage.setItem(keptKey, JSON.stringify({ ...f.values, codeTyped, direction }));
       else if (!dirty) localStorage.removeItem(keptKey);
     } catch { /* not kept */ }
-  }, [f.values, codeTyped, dirty, busy, keptKey]);
+  }, [f.values, codeTyped, direction, dirty, busy, keptKey]);
 
   const create = (event: FormEvent<HTMLFormElement>) => f.submit(async (v) => {
     if (saving.current) return;
@@ -117,7 +121,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
         return spec ? recordFields(spec) : null;
       }));
       const fields: Fields = [fa ?? null, fb ?? null];
-      const spec = addPass(defaultSpec(a, b), fields);
+      const spec = { ...addPass(defaultSpec(a, b), fields), direction };
       const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec }) });
       try { localStorage.removeItem(keptKey); } catch { /* nothing kept */ }
       toast(`Created ${r.name} as Draft v1.`);
@@ -183,6 +187,8 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
             </Field>
             </div>
             <div className="grid items-start gap-4 md:grid-cols-2">{pick("a")}{pick("b")}</div>
+            {/* the same control as the setup's step 1 of an existing recon (owner 24 Nov: both paths the same) */}
+            <DirectionPicker value={direction} onChange={setDirection} />
             {sources.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load this space&apos;s sources. {errorText(sources.error)}</p>}
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>

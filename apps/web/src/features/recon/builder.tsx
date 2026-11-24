@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BlockedButton, FormFooter, Panel, RadioGroup, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
+import { BlockedButton, FormFooter, Panel, Segmented, StatusChip, Wizard } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -26,9 +26,10 @@ import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, carryText, DIRECTION_OPTIONS, directionOf, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, carryText, directionOf, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
+import { DirectionPicker } from "./direction-picker";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
@@ -484,10 +485,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
             ))}
             {/* which sides must find their counterpart (DEC-055): versioned like every setting */}
             <Panel className="md:col-span-2">
-              <fieldset disabled={!editable} className="contents">
-                <RadioGroup name="recon-direction" legend="Direction" variant="cards" options={DIRECTION_OPTIONS} value={directionOf(spec)}
-                  onChange={(direction) => change({ ...spec, direction })} />
-              </fieldset>
+              <DirectionPicker disabled={!editable} value={directionOf(spec)} onChange={(direction) => change({ ...spec, direction })} />
             </Panel>
           </div>
         )}
