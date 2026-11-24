@@ -260,9 +260,10 @@ const ONE_RECORD = /\/:\w+$/;
 const FACETS = /\/facets$/;
 /**
  * Routes that check their permission in the handler (`{ guard: null }`, then `ctx.perms.has(…)` before any service
- * call), because the permission depends on the body.
+ * call), because the permission depends on the body or is one of two (the guard takes one).
  */
 const IN_HANDLER_GATES: Record<string, string> = {
+  "GET /v1/dashboard": "user.view or audit.view, either one (the admin numbers' section): the session is checked (401), then either permission (403)",
   "POST /v1/users/bulk": "delete needs user.delete, the other actions user.edit: the session is checked (401), the body read, then the permission (403)",
 };
 /** Non-GET routes that change no record of the activity log's kind (an auth step, a viewer's own list preference), so they record no entry. */

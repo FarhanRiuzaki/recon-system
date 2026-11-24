@@ -65,10 +65,19 @@ describe("GET /api/dashboard", () => {
     expect(restricted.loginsPerDay[0]!.failed).toBeNull();
   });
 
-  it("needs a session (any signed-in user, no permission)", async () => {
+  it("needs a session and user.view or audit.view (M3): neither is 403 before any number is read", async () => {
     expect((await get()).status).toBe(401);
+    const token = await signIn("viewer");
     await setPerms("Viewer", []);
-    expect((await get(await signIn("viewer"))).status).toBe(200);
+    const r = await get(token);
+    expect(r.status).toBe(403);
+    expect(((await r.json()) as { error: { code: string } }).error.code).toBe("forbidden");
+    await setPerms("Viewer", ["role.view"]);
+    expect((await get(token)).status).toBe(403);
+    for (const p of ["user.view", "audit.view"]) {
+      await setPerms("Viewer", [p]);
+      expect((await get(token)).status).toBe(200);
+    }
   });
 
   it("without audit.view: recent, failedLogins24h and every day's failed count are null, the rest is filled", async () => {
