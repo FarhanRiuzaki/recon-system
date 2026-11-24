@@ -26,6 +26,8 @@ against core banking's outgoing transfers) every business day, per space (a team
 is closed. It is built on the SunnyGo starterkit (sign-in, users, roles, audit, design system, Bun + PostgreSQL API);
 those platform parts are listed under **Platform** below.
 
+<img src="docs/assets/screenshots/recon-dashboard.png" alt="The recon dashboard: auto-match rate, unmatch open, resolved, posting success, waiting approval, and results per day">
+
 ## Recon
 
 **Sources**
@@ -124,8 +126,42 @@ From the SunnyGo starterkit, kept and extended.
 
 ## Screens
 
-The starterkit's screenshots were removed: they showed the old admin dashboard and Google/Apple sign-in, which recon
-doesn't offer. Recon screenshots are owed.
+Taken from a trial stack with the demo seed (`SEED_DEMO=true`): every record, amount and reference is generated.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/recon-operation-result.png" alt="Operation result: status, side A and side B as icons, configured columns, counts per status"></td>
+    <td width="50%"><img src="docs/assets/screenshots/recon-explain.png" alt="Explain: the recon data on top, side A and side B head to head, differences marked"></td>
+  </tr>
+  <tr>
+    <td>Operation result: every result of a recon, status and sides at a glance</td>
+    <td>Explain: both sides head to head, what differs marked</td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/recon-unmatch.png" alt="Unmatch queue with open items, amounts, reasons, state and assignee"></td>
+    <td><img src="docs/assets/screenshots/recon-unmatch-item.png" alt="An unmatch item: what it is and the ways to settle it"></td>
+  </tr>
+  <tr>
+    <td>Unmatch: the work queue, counts and filters</td>
+    <td>An unmatch item: match, force match, write off, close, request posting</td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/recon-today.png" alt="Today: KPIs, the space map of sources and recons, each recon's business date"></td>
+    <td><img src="docs/assets/screenshots/recon-configuration.png" alt="A recon's configuration: sides, direction, passes in run order"></td>
+  </tr>
+  <tr>
+    <td>Today: the current business dates and the space map</td>
+    <td>A recon's configuration: sides, direction, passes</td>
+  </tr>
+  <tr>
+    <td><img src="docs/assets/screenshots/recon-signin.png" alt="Sign-in with the animated two-ledgers backdrop"></td>
+    <td><img src="docs/assets/screenshots/recon-dashboard.png" alt="The recon dashboard"></td>
+  </tr>
+  <tr>
+    <td>Sign-in: password or directory, the two-ledgers backdrop</td>
+    <td>Dashboard: the period's performance, per space and per recon</td>
+  </tr>
+</table>
 
 ## Stack
 
