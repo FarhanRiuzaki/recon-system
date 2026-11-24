@@ -21,6 +21,7 @@ import { spaces, withSpace } from "../../../spaces";
 import { type Connector, ConnectorError, type Row, type Secret } from "../../connectors";
 import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
 import { currentRecord, ensureIngestPartitions, ingestFile, ingestHooks, type InboxFile, pullSource, scanSource, snapshotSource } from "../../service";
+import { todayIn } from "../../rules";
 import { KSEI_FILE, ksei } from "../unit/fixtures";
 
 type Probe = Awaited<ReturnType<typeof appRoleDb>>;
@@ -646,6 +647,17 @@ describe("deliveries: when each business date became complete (source_deliveries
     await medallion(D, [1]);
     expect(await snapshotSource(scope(m), D, probe)).toBe("active");
     expect((await deliveriesOf(m)).map((d) => d.date)).toEqual([D]);
+  });
+
+  it("a date that hasn't ended completes nothing: today's file or snapshot is not kept as complete", async () => {
+    const today = todayIn(new Date());
+    const k = await source(A, kseiSpec());
+    await put(`act${today.replaceAll("-", "")}.txt`, KSEI_FILE, new Date(Date.now() - 3_600_000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    const m = await source(A, medallionSpec());
+    await medallion(today, [1, 2]);
+    expect(await snapshotSource(scope(m), today, probe)).toBe("active");
+    expect([...(await deliveriesOf(k)), ...(await deliveriesOf(m))]).toEqual([]);
   });
 
   it("a file: its date is complete when it is ingested; a later version or a resend keeps the first time", async () => {

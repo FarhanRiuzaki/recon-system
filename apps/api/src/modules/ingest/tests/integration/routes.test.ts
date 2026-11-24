@@ -156,6 +156,14 @@ describe("POST run", () => {
     expect(await json(run(t.adm, SNAP_SRC, { businessDate: "2026-11-03" }))).toEqual({ queued: true });
   });
 
+  it("a snapshot of a date not started yet is 400 with why; today runs (its completion is not kept until it ends)", async () => {
+    const today = todayIn(new Date()), tomorrow = new Date(Date.parse(`${today}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+    const r = await run(t.adm, SNAP_SRC, { businessDate: tomorrow });
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { error: { message: string } }).error.message).toBe(`Business date ${tomorrow} hasn't started yet. Pull a date up to today.`);
+    expect(await json(run(t.adm, SNAP_SRC, { businessDate: today }))).toEqual({ queued: true });
+  });
+
   it("REC-FUT-16: a date is closed when any config reading the source closed it, another space's through a share too", async () => {
     // the real hook (recon_source_day_closed), not a stand-in
     ingestHooks.dayClosed = dayClosed;

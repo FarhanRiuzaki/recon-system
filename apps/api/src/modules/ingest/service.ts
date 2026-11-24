@@ -119,9 +119,13 @@ async function setCursor(tx: InTx, s: Scope, set: Partial<typeof sourceCursors.$
     .onConflictDoUpdate({ target: [sourceCursors.spaceId, sourceCursors.sourceId], set: { ...set, ...ct, updatedAt: NOW } });
 }
 
-/** Business dates `dates` of `s` became complete now; the first completion of a date wins (source_deliveries). */
-async function delivered(tx: InTx, s: Scope, dates: string[]): Promise<void> {
-  if (dates.length) await tx.insert(sourceDeliveries).values(dates.map((businessDate) => ({ ...s, businessDate }))).onConflictDoNothing();
+/**
+ * Business dates `dates` of `s` became complete now; the first completion of a date wins (source_deliveries). A date
+ * that hasn't ended (Asia/Jakarta) is never kept: more of its data may still come (today's snapshot, a file of today).
+ */
+async function delivered(tx: InTx, s: Scope, dates: string[], now = new Date()): Promise<void> {
+  const ended = dates.filter((d) => endOfDay(d) <= now);
+  if (ended.length) await tx.insert(sourceDeliveries).values(ended.map((businessDate) => ({ ...s, businessDate }))).onConflictDoNothing();
 }
 
 /** Pauses the source with `reason` as its last error and, when its columns changed, `drift` per column. */
@@ -834,6 +838,7 @@ export function runSourceNow(ctx: Ctx, id: string, b: RunSourceBody): Promise<Ru
     let job: string | null;
     if (s.kind === "db_snapshot") {
       if (!b.businessDate) throw new ApiError("bad_request", "Name the business date to pull again.");
+      if (b.businessDate > todayIn(new Date())) throw new ApiError("bad_request", `Business date ${b.businessDate} hasn't started yet. Pull a date up to today.`);
       if (await ingestHooks.dayClosed(tx, scope, b.businessDate)) {
         throw new ApiError("day_closed", `Day ${b.businessDate} is closed. Pulling it again needs a rerun request (later release).`);
       }
