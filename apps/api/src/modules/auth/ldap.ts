@@ -2,6 +2,7 @@ import { Client, Filter } from "ldapts";
 import { type Config, config } from "../../kernel/config";
 import { safeEqual } from "../../kernel/crypto";
 import { log } from "../../kernel/log";
+import { gatewaySettings, verifyGateway } from "./ldap-gateway";
 
 /** The directory behind LDAP sign-in: true when `password` is the directory password of `username`. */
 export type Directory = { verify(username: string, password: string): Promise<boolean> };
@@ -57,9 +58,14 @@ async function verifyLdap(c: Config, timeoutMs: number, username: string, passwo
   }
 }
 
-/** LDAP_MOCK → the mock directory; LDAP_URL → the real one (`timeoutMs` per sign-in); neither → null (LDAP sign-in fails). */
+/**
+ * LDAP_MOCK → the mock directory; LDAP_URL → the real one by bind; LDAP_GATEWAY_URL → the Bank Mega Open API gateway
+ * (ldap-gateway.ts); `timeoutMs` per sign-in. None → null (LDAP sign-in fails). Config refuses LDAP_URL with LDAP_GATEWAY_URL.
+ */
 export function directory(c: Config = config(), timeoutMs = TIMEOUT_MS): Directory | null {
   if (c.LDAP_MOCK) return mock;
   if (c.LDAP_URL) return { verify: (username, password) => verifyLdap(c, timeoutMs, username, password) };
+  const gateway = gatewaySettings(c);
+  if (gateway) return { verify: (username, password) => verifyGateway(gateway, timeoutMs, username, password) };
   return null;
 }

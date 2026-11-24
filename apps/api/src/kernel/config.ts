@@ -50,6 +50,23 @@ const Fields = z.object({
   // Without {username} every sign-in would search the same entry.
   LDAP_USER_FILTER: z.string().refine((v) => v.includes("{username}"), { message: "must contain {username}" }).default("(uid={username})"),
   LDAP_STARTTLS: flag,
+  // LDAP through the Bank Mega Open API gateway (modules/auth/ldap-gateway.ts), instead of LDAP_URL: Keycloak token
+  // (realm LDAP_GATEWAY_REALM, password grant as the service account) then GET /openapi/v1.0/ldap/verifypassword/….
+  LDAP_GATEWAY_URL: z.string().regex(/^https?:\/\/\S+$/i, { message: "must start with http:// or https://" }).optional(),
+  /** The Host header the gateway routes on, when LDAP_GATEWAY_URL is an address rather than that name. */
+  LDAP_GATEWAY_HOST: z.string().optional(),
+  LDAP_GATEWAY_REALM: z.string().regex(/^[\w.-]+$/, { message: "must be a realm name" }).default("quarkus"),
+  LDAP_GATEWAY_USERNAME: z.string().optional(),
+  LDAP_GATEWAY_PASSWORD: z.string().optional(),
+  LDAP_GATEWAY_CLIENT_ID: z.string().optional(),
+  /** Keycloak client secret, also the HMAC-SHA512 key of X-SIGNATURE. */
+  LDAP_GATEWAY_CLIENT_SECRET: z.string().optional(),
+  /** AES-256-CBC key of the password in the verify path. */
+  LDAP_GATEWAY_SECRET_KEY: z.string().optional(),
+  LDAP_GATEWAY_PARTNER_ID: z.string().optional(),
+  LDAP_GATEWAY_CHANNEL_ID: z.string().optional(),
+  /** true skips the gateway's certificate check (the Laravel app did); prefer a trusted certificate. */
+  LDAP_GATEWAY_INSECURE_TLS: flag,
   // Google and Apple sign-in: each provider is on when all of its keys are set (redirect: APP_URL/api/auth/oauth/<provider>/callback).
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
@@ -79,6 +96,11 @@ export const CONFIG_KEYS = Object.keys(Fields.shape);
 
 export const GOOGLE_KEYS = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"] as const;
 export const APPLE_KEYS = ["APPLE_CLIENT_ID", "APPLE_TEAM_ID", "APPLE_KEY_ID", "APPLE_PRIVATE_KEY"] as const;
+/** What LDAP_GATEWAY_URL needs besides itself (LDAP_GATEWAY_HOST and _REALM are optional). */
+export const LDAP_GATEWAY_KEYS = [
+  "LDAP_GATEWAY_USERNAME", "LDAP_GATEWAY_PASSWORD", "LDAP_GATEWAY_CLIENT_ID", "LDAP_GATEWAY_CLIENT_SECRET",
+  "LDAP_GATEWAY_SECRET_KEY", "LDAP_GATEWAY_PARTNER_ID", "LDAP_GATEWAY_CHANNEL_ID",
+] as const;
 
 /**
  * Rules across keys, on the raw env so they're reported even when a field is invalid (zod skips refinements of an
@@ -91,6 +113,11 @@ function crossKeyProblems(e: Record<string, string>): string[] {
     if (!e.MAIL_FROM) out.push("MAIL_FROM (required when MAIL_TRANSPORT=smtp)");
   }
   if (e.LDAP_URL && !e.LDAP_BASE_DN) out.push("LDAP_BASE_DN (required when LDAP_URL is set)");
+  if (e.LDAP_GATEWAY_URL) {
+    out.push(...LDAP_GATEWAY_KEYS.filter((k) => !e[k]).map((k) => `${k} (required when LDAP_GATEWAY_URL is set)`));
+    // One directory: a sign-in must not depend on which of the two the code happens to try first.
+    if (e.LDAP_URL) out.push("LDAP_GATEWAY_URL (set LDAP_URL or LDAP_GATEWAY_URL, not both)");
+  }
   // A provider's keys come all together or not at all: half a provider would show a button that can't work.
   for (const keys of [GOOGLE_KEYS, APPLE_KEYS]) {
     if (keys.some((k) => e[k])) out.push(...keys.filter((k) => !e[k]).map((k) => `${k} (required with ${keys.filter((x) => e[x]).join(", ")})`));
