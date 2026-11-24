@@ -704,7 +704,15 @@ sama), bagian dari spec dan matching hash: mengubahnya lewat draft, simulasi dan
 - Representasi: status item baru `not_required` (migration 0069), bukan penanda di `break`, supaya semua pembaca break
   (Unmatch list, facets, summary, nav count, Today, dashboard, counter hari, sign-off) mengecualikannya tanpa diubah.
 - Hanya kasus "No counterpart" polos sisi B yang not required. Near miss (currency, amount, date differs), Duplicate,
-  Ambiguous dan suggestion yang belum dikonfirmasi yang memuat item sisi B tetap unmatch.
+  Ambiguous dan suggestion yang belum dikonfirmasi yang memuat item sisi B tetap unmatch. Item sisi B baru not required
+  bila tidak ada item sisi A dengan referensi yang sama di jendela dalam status apa pun selain `closed`: item B kedua
+  untuk A yang sudah matched atau di-suggest dengan B lain (double settlement) tetap "No counterpart".
+- Kembali ke two-way: approve versi yang bukan one-way membuka lagi item not_required config itu (status `open`, dalam
+  transaksi publish, `reopened` di activity approve), lalu close/sweep berikutnya mengklasifikasikannya.
+- Migration 0069 berjalan dalam satu transaksi (runner membungkus tiap file), jadi `CONCURRENTLY` tidak mungkin.
+  `CREATE INDEX` menahan write ke `recon_items` dan `ADD CONSTRAINT … CHECK` memvalidasi dengan lock eksklusif, masing-
+  masing satu scan penuh. Pada `recon_items` produksi yang besar jalankan di maintenance window. File yang sudah applied
+  tidak diubah (forward-only).
 - Dalam carry over item not required tetap kandidat pass berikutnya (seperti break "No counterpart"); dipasangkan
   otomatis jadi Matched tanpa resolusi. Carry over "always" tidak diperlebar olehnya (sisi B tidak pernah settle
   sendiri), jadi ia kandidat di jendela yang dijaga unmatch sisi A (minimal 31 hari).
