@@ -39,8 +39,9 @@ const NOT_SENT_AT_ALL = ["no_rule", "skipped"];
  * What the call log keeps of run `r`'s call: origin approvals/action (the run, its action and item, the Posting list
  * filtered by the item), the system as actor on behalf of the last person who decided its request, and which attempt
  * it is: the sends of the same action, event and level for the same item up to it (ActionRunRowDto.attempts).
+ * Read after the claim committed, for the log only: a failure here is the fallback of `sendRun`, never the send's.
  */
-async function callMeta(tx: InTx, spaceId: string, r: Run): Promise<CallMeta> {
+export async function callMeta(tx: InTx, spaceId: string, r: Run): Promise<CallMeta> {
   const [who] = r.requestId ? await tx.select({ id: approvalDecisions.userId }).from(approvalDecisions)
     .where(and(eq(approvalDecisions.spaceId, spaceId), eq(approvalDecisions.requestId, r.requestId))).orderBy(desc(approvalDecisions.at)).limit(1) : [];
   const [n] = r.itemId ? await tx.select({ n: sql<number>`count(*)::int` }).from(actionRuns).where(and(
@@ -48,10 +49,14 @@ async function callMeta(tx: InTx, spaceId: string, r: Run): Promise<CallMeta> {
     r.level === null ? isNull(actionRuns.level) : eq(actionRuns.level, r.level), notInArray(actionRuns.status, NOT_SENT_AT_ALL),
     or(lt(actionRuns.createdAt, r.createdAt), and(eq(actionRuns.createdAt, r.createdAt), lte(actionRuns.id, r.id))),
   )) : [];
+  return { ...fallbackMeta(spaceId, r), onBehalfOf: who?.id ?? null, attempt: Math.max(1, n?.n ?? 1) };
+}
+/** The call log's meta without a query: the origin, the system as actor, on nobody's behalf, attempt 1. */
+function fallbackMeta(spaceId: string, r: Run): CallMeta {
   const q = new URLSearchParams({ ...(r.subjectRef ? { q: r.subjectRef } : {}), show: "all" });
   return {
     origin: { module: "approvals", kind: "action", refId: r.id, label: [r.actionName, r.subjectRef].filter(Boolean).join(" · "), href: `/spaces/${spaceId}/posting?${q}` },
-    actorId: null, onBehalfOf: who?.id ?? null, attempt: Math.max(1, n?.n ?? 1), connectorVersion: r.connectorVersion,
+    actorId: null, onBehalfOf: null, attempt: 1, connectorVersion: r.connectorVersion,
   };
 }
 
@@ -79,7 +84,7 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
     if (circuit?.openUntil && circuit.openUntil > new Date()) { await finish(tx, r.id, { status: "not_sent", message: "The bank is unreachable: calls paused for 60 s.", payloadMasked: masked }); return "skip" as const; }
     const [claimed] = await tx.update(actionRuns).set({ status: "sending", sendingAt: sql`now()` }).where(and(eq(actionRuns.id, r.id), eq(actionRuns.status, "queued"))).returning({ id: actionRuns.id });
     if (!claimed) return "skip" as const;
-    return { r, op, env, settings: spec.environments[env], secrets: await secretsOf(tx, c.id, env), payload, masked, call: await callMeta(tx, spaceId, r) };
+    return { r, op, env, settings: spec.environments[env], secrets: await secretsOf(tx, c.id, env), payload, masked };
   }, on).catch((e: unknown) => ({ failed: e }) as const);
   if (typeof taken === "object" && "failed" in taken) {
     log.warn({ err: taken.failed instanceof Error ? taken.failed.name : "error" }, "action run failed before its call");
@@ -88,7 +93,12 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
     return "skip";
   }
   if (typeof taken === "string") return taken;
-  const { r, op, env, settings, secrets, payload, masked, call } = taken;
+  const { r, op, env, settings, secrets, payload, masked } = taken;
+  // after the claim committed, on its own: the log's lookup can never roll the claim back or stop the send
+  const call = await withSpace(scope, (tx) => callMeta(tx, spaceId, r), on).catch((e: unknown) => {
+    log.warn({ err: e instanceof Error ? e.name : "error" }, "connector call meta not read; logged without it");
+    return fallbackMeta(spaceId, r);
+  });
   let res: Awaited<ReturnType<typeof sendOperation>>;
   try {
     // sendOperation throws only before its fetch (token, external id, sealing): the call never left

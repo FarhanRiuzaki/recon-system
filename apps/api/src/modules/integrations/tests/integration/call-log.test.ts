@@ -1,11 +1,12 @@
 // The connector call log (spec 2026-11-24-connector-call-log-design): every outbound call is one row written by the
 // transport after the call, with the caller's origin and actor; a call that never left is a not-sent row; no row, no
 // full call and no activity entry holds the client secret, the Basic credential or a whole access token.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import type { ConnectorDetailDto } from "@starterkit/shared/contracts/integrations";
 import { asc, eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { type FakeBank, fakeBank } from "../../../../../test/helpers/fake-bank";
+import * as crypto from "../../../../kernel/crypto";
 import { decryptSecret, encryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
@@ -16,6 +17,7 @@ import { spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { callsLogged } from "../../call-log";
 import { actionRuns, connectorCalls, connectors, connectorSecrets, connectorTokens, connectorVersions } from "../../schema";
+import * as worker from "../../worker";
 import { sendRun } from "../../worker";
 
 const C = "/v1/integrations/connectors";
@@ -26,9 +28,10 @@ const op = { key: "post", name: "Post to GL", method: "POST", path: "/ok?b=2&a=1
   success: { field: "ResponseCode", equals: "00" }, reference: "Ref", masked: ["Account"], presets: {}, auto: {} };
 
 /** A connector through the API (draft, dev and prod secrets), as the Try panel and Check token use it. */
-async function apiConnector(o: { url?: string; secret?: string } = {}) {
+async function apiConnector(o: { url?: string; secret?: string; path?: string } = {}) {
   const env = { baseUrl: o.url ?? bank.url, host: "localhost", partnerId: "P1", channelId: "C1", verifyTls: false };
-  const c = await json<ConnectorDetailDto>(call("POST", C, { token: t, body: { spec: { name: `Bank ${Bun.randomUUIDv7().slice(-6)}`, profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [op] } } }));
+  const ops = [{ ...op, path: o.path ?? op.path }];
+  const c = await json<ConnectorDetailDto>(call("POST", C, { token: t, body: { spec: { name: `Bank ${Bun.randomUUIDv7().slice(-6)}`, profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: ops } } }));
   await call("PUT", `${C}/${c.id}/secrets`, { token: t, body: { environment: "dev", clientId: bank.clientId, clientSecret: o.secret ?? bank.clientSecret, publicKey: bank.publicKey } });
   return c.id;
 }
@@ -36,6 +39,14 @@ const rows = async () => { await callsLogged(); return db.select().from(connecto
 /** Everything stored about the calls, the full calls decrypted, as one text. */
 const stored = async () => (await rows()).map((r) => JSON.stringify(r) + (r.fullEnc ? decryptSecret(r.fullEnc) : "")).join("\n");
 const basic = () => Buffer.from(`${bank.clientId}:${bank.clientSecret}`).toString("base64");
+
+/** A bank whose token endpoint answers `text` as it is (its own JSON spelling, `\/` included). */
+const tokenEndpoint = (tokenAnswer: string) => fakeBank({ tokenAnswer });
+/** `s` in every spelling a stored text could hold: as is, JSON-escaped, with `\/`, and that escaped once more. */
+function spellings(s: string): string[] {
+  const esc = (x: string) => JSON.stringify(x).slice(1, -1), slash = (x: string) => x.replaceAll("/", "\\/");
+  return [s, esc(s), slash(esc(s)), esc(slash(esc(s)))];
+}
 
 beforeAll(() => { bank = fakeBank(); });
 afterAll(() => bank.stop());
@@ -104,7 +115,9 @@ describe("the transport writes one row per call", () => {
     const id = await apiConnector({ secret: "wrong-secret-value" });
     await call("POST", `${C}/${id}/try`, { token: t, body: { operation: "post", body: { Amount: "1" } } });
     const all = await rows();
-    expect(all.map((r) => [r.operationKey, r.outcome, r.httpStatus])).toEqual([[null, "rejected", 401], ["post", "not_sent", null]]);
+    // in either order: the token request counts from its fetch, the operation that never left from when it began
+    expect(all.map((r) => [r.operationKey, r.outcome, r.httpStatus])).toEqual(expect.arrayContaining([[null, "rejected", 401], ["post", "not_sent", null]]));
+    expect(all).toHaveLength(2);
     const text = await stored();
     expect(text).not.toContain("wrong-secret-value");
     expect(text).not.toContain(Buffer.from(`${bank.clientId}:wrong-secret-value`).toString("base64"));
@@ -122,8 +135,62 @@ describe("the transport writes one row per call", () => {
   });
 });
 
+describe("what a token call keeps", () => {
+  it("a token the bank wrote with \\/ is in no row, full call or activity entry, in any spelling", async () => {
+    const whole = `ab/cd/ef/${Bun.randomUUIDv7()}/gh`;
+    const srv = tokenEndpoint(`{"access_token":"${whole.replaceAll("/", "\\/")}","expires_in":300}`);
+    try {
+      const id = await apiConnector({ url: srv.url });
+      await call("POST", `${C}/${id}/token-check`, { token: t, body: { environment: "dev" } });
+      const all = await rows();
+      expect(all.map((r) => r.outcome)).toEqual(["ok"]);
+      const text = await stored() + JSON.stringify(await db.select().from(activity));
+      for (const form of spellings(whole)) expect(text).not.toContain(form);
+      const full = JSON.parse(decryptSecret(all[0]!.fullEnc!)) as { response: { raw: string } };
+      expect(JSON.parse(full.response.raw)).toEqual({ access_token: `…${whole.slice(-8)}`, expires_in: 300 });
+    } finally { srv.stop(); }
+  });
+
+  it("a token answer keeps token_type, expires_in, scope and the token's last 8, nothing else", async () => {
+    const srv = tokenEndpoint(JSON.stringify({ access_token: "tok-0123456789abcdef", expires_in: 300, token_type: "Bearer", scope: "openid", refresh_token: "refresh-secret-value", id_token: "id-token-value", session_state: "state-value" }));
+    try {
+      const id = await apiConnector({ url: srv.url });
+      await call("POST", `${C}/${id}/token-check`, { token: t, body: { environment: "dev" } });
+      const [r] = await rows();
+      const kept = { access_token: "…89abcdef", expires_in: 300, token_type: "Bearer", scope: "openid" };
+      expect(r!.responseMasked).toEqual(kept);
+      expect((JSON.parse(decryptSecret(r!.fullEnc!)) as { response: { json: unknown } }).response.json).toEqual(kept);
+      const text = await stored();
+      for (const s of ["refresh-secret-value", "id-token-value", "state-value"]) expect(text).not.toContain(s);
+    } finally { srv.stop(); }
+  });
+
+  it("a token that came but couldn't be cached is still a row", async () => {
+    const id = await apiConnector();
+    const enc = spyOn(crypto, "encryptSecret").mockImplementationOnce(() => { throw new Error("cache down"); });
+    try {
+      await call("POST", `${C}/${id}/token-check`, { token: t, body: { environment: "dev" } });
+    } finally { enc.mockRestore(); }
+    const all = await rows();
+    expect(all).toHaveLength(1);
+    expect(all[0]).toMatchObject({ operationKey: null, httpStatus: 200 });
+  });
+});
+
+describe("an answer that couldn't be read", () => {
+  it("is masked as unreadable with its length; its text is only in the full call", async () => {
+    const id = await apiConnector({ path: "/html" });
+    await call("POST", `${C}/${id}/try`, { token: t, body: { operation: "post", body: { Amount: "1" } } });
+    const sent = (await rows()).find((r) => r.operationKey === "post")!;
+    expect(sent).toMatchObject({ outcome: "timeout", httpStatus: 502 });
+    expect(sent.responseMasked).toEqual({ raw: "(not shown: answer not readable)", length: "<html>bad gateway</html>".length });
+    expect((JSON.parse(decryptSecret(sent.fullEnc!)) as { response: { raw: string } }).response.raw).toBe("<html>bad gateway</html>");
+  });
+});
+
 describe("the worker's sends", () => {
-  it("a run's call: origin approvals/action with the run, attempt, on behalf of the approver, System as actor", async () => {
+  /** A queued run (attempt 2: an earlier send of the same action for the same item failed) of a published connector. */
+  async function queuedRun() {
     const A = Bun.randomUUIDv7(), cfg = Bun.randomUUIDv7(), rq = Bun.randomUUIDv7(), item = Bun.randomUUIDv7();
     await db.insert(spaces).values({ id: A, code: "treasury", name: "Treasury" });
     await db.insert(reconConfigs).values({ id: cfg, spaceId: A, code: "r1", name: "R1" });
@@ -141,12 +208,34 @@ describe("the worker's sends", () => {
     // an earlier send of the same action for the same item failed: this run is attempt 2
     const first = run(0, "failed"), second = run(1);
     await db.insert(actionRuns).values([first, second]);
+    return { A, second };
+  }
+  const runOrigin = (A: string, id: string) => ({ module: "approvals", kind: "action", refId: id, label: "Post to GL · P1-2", href: `/spaces/${A}/posting?q=P1-2&show=all` });
+
+  it("a run's call: origin approvals/action with the run, attempt, on behalf of the approver, System as actor", async () => {
+    const { A, second } = await queuedRun();
     expect(await sendRun(db, A, second.id)).toBe("sent");
     const all = await rows();
     expect(all.map((r) => r.operationKey)).toEqual([null, "post"]);
     for (const r of all) {
       expect(r).toMatchObject({ actorId: null, onBehalfOf: adminId, attempt: 2, connectorVersion: 3, environment: "dev" });
-      expect(r.origin).toEqual({ module: "approvals", kind: "action", refId: second.id, label: "Post to GL · P1-2", href: `/spaces/${A}/posting?q=P1-2&show=all` });
+      expect(r.origin).toEqual(runOrigin(A, second.id));
+    }
+  });
+
+  it("a call log lookup that fails never stops the send: the run is posted with its payload, the rows carry the fallback", async () => {
+    const { A, second } = await queuedRun();
+    const meta = spyOn(worker, "callMeta").mockRejectedValue(new Error("lookup failed"));
+    try {
+      expect(await sendRun(db, A, second.id)).toBe("sent");
+    } finally { meta.mockRestore(); }
+    const [run] = await db.select().from(actionRuns).where(eq(actionRuns.id, second.id));
+    expect(run).toMatchObject({ status: "posted", payloadMasked: { Amount: "1" }, code: "00" });
+    const all = await rows();
+    expect(all.map((r) => r.operationKey)).toEqual([null, "post"]);
+    for (const r of all) {
+      expect(r).toMatchObject({ actorId: null, onBehalfOf: null, attempt: 1, connectorVersion: 3 });
+      expect(r.origin).toEqual(runOrigin(A, second.id));
     }
   });
 });

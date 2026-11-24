@@ -36,10 +36,17 @@ const RAW_MAX = 64 * 1024;
 /** A token as stored: its last 8 characters ("…a1b2c3d4"), nothing for a shorter one. */
 export const tokenTail = (token: string): string => (token.length > 8 ? `…${token.slice(-8)}` : "…");
 
-/** `text` without any of `secrets`: a token becomes its tail, anything else "(hidden)". */
+const esc = (x: string) => JSON.stringify(x).slice(1, -1), slashed = (x: string) => x.replaceAll("/", "\\/");
+/** The spellings a value can take in a stored text: as is, JSON-escaped, with `\/` (as a JSON writer may send it), and that escaped once more (inside the full call's JSON). */
+const SPELLINGS: ((x: string) => string)[] = [(x) => x, esc, (x) => slashed(esc(x)), (x) => esc(slashed(esc(x)))];
+/** `text` without any of `secrets` in any spelling: a token becomes its tail, anything else "(hidden)", spelled the same way. */
 function scrub(text: string, secrets: readonly { value: string; token?: true }[]): string {
   let out = text;
-  for (const s of secrets) if (s.value.length >= 4) out = out.split(s.value).join(s.token ? tokenTail(s.value) : "(hidden)");
+  for (const s of secrets) {
+    if (s.value.length < 4) continue;
+    const shown = s.token ? tokenTail(s.value) : "(hidden)";
+    for (const spell of SPELLINGS) out = out.split(spell(s.value)).join(spell(shown));
+  }
   return out;
 }
 const scrubJson = (v: unknown, secrets: Parameters<typeof scrub>[1]): unknown => (v === null || v === undefined ? null : JSON.parse(scrub(JSON.stringify(v), secrets)));

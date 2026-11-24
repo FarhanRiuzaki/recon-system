@@ -26,7 +26,8 @@ function selfSigned() {
 
 export type FakeBank = { url: string; cert: string; publicKey: string; clientId: string; clientSecret: string; tokens: number; calls: string[]; stop: () => void };
 
-export function fakeBank(o: { clientId?: string; clientSecret?: string } = {}): FakeBank {
+/** `tokenAnswer`: the token endpoint answers this text as it is (its own JSON spelling) instead of its token. */
+export function fakeBank(o: { clientId?: string; clientSecret?: string; tokenAnswer?: string } = {}): FakeBank {
   const { cert: crt, key } = selfSigned();
   const pair = generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
   const bank = { clientId: o.clientId ?? "client-1", clientSecret: o.clientSecret ?? "s3cret-value", tokens: 0, calls: [] as string[] };
@@ -40,6 +41,7 @@ export function fakeBank(o: { clientId?: string; clientSecret?: string } = {}): 
         await Bun.sleep(50);
         const want = "Basic " + Buffer.from(`${bank.clientId}:${bank.clientSecret}`).toString("base64");
         if (req.headers.get("authorization") !== want) return Response.json({ error: "unauthorized", echo: req.headers.get("authorization") }, { status: 401 });
+        if (o.tokenAnswer !== undefined) return new Response(o.tokenAnswer, { headers: { "Content-Type": "application/json" } });
         return Response.json({ access_token: token, expires_in: 300 });
       }
       bank.calls.push(u.pathname);

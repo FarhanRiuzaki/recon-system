@@ -43,6 +43,11 @@ const tlsOf = (settings: EnvironmentSettings, s: Secrets) =>
 type Finish = Parameters<CallDraft["finish"]>[0];
 const TOKEN_BODY = "grant_type=client_credentials";
 const headersOf = (h: Headers): Record<string, string> => Object.fromEntries(h.entries());
+/** What a token answer keeps besides the token's tail: no refresh or id token, nothing else the bank adds; a refusal's OAuth error and its description. */
+const TOKEN_KEPT = ["token_type", "expires_in", "scope", "error", "error_description"];
+const pick = (o: object, keys: readonly string[]): Record<string, unknown> => Object.fromEntries(Object.entries(o).filter(([k]) => keys.includes(k)));
+/** What the masked answer says of one that couldn't be read: its text is only in the full call. */
+const UNREADABLE = "(not shown: answer not readable)";
 /** An object parsed from `text`; null when it isn't JSON or isn't an object. */
 const jsonOf = (text: string): object | null => {
   try { const v: unknown = JSON.parse(text); return v && typeof v === "object" ? v : null; } catch { return null; }
@@ -70,6 +75,7 @@ export async function accessToken(connectorId: string, env: Environment, setting
       const full: FullCall = { request: { method: "POST", url, headers: { ...headers, Authorization: "Basic (hidden)" }, json: null, body: TOKEN_BODY }, response: null };
       const requestMasked = { grant_type: "client_credentials" };
       let res: Response;
+      logged.send(); // its time and duration count from here, not from the wait for the token lock
       try {
         res = await fetch(url, { method: "POST", body: TOKEN_BODY, signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS), ...tlsOf(settings, secrets), headers });
       } catch (e) {
@@ -82,16 +88,18 @@ export async function accessToken(connectorId: string, env: Environment, setting
       const body = jsonOf(text) as { access_token?: unknown; expires_in?: number } | null;
       const token = typeof body?.access_token === "string" && body.access_token ? body.access_token : null;
       if (token) logged.hide(token, true);
-      const shown = body && typeof body === "object" ? { ...body, ...(token ? { access_token: tokenTail(token) } : {}) } : null;
-      full.response = { status: res.status, headers: headersOf(res.headers), raw: text, json: shown };
+      // only the named fields and the token's tail are kept; the bank's own text never (it may spell the token `\/`)
+      const shown = body ? { ...pick(body, TOKEN_KEPT), ...(token ? { access_token: tokenTail(token) } : {}) } : null;
+      full.response = { status: res.status, headers: headersOf(res.headers), raw: shown ? JSON.stringify(shown) : null, json: shown };
       const answered = (outcome: "ok" | "rejected", message: string): Finish => ({ outcome, httpStatus: res.status, message, requestMasked, responseMasked: shown, full });
       if (!res.ok) { out.done = answered("rejected", `The bank refused the credentials (HTTP ${res.status}).`); throw new NotSent(out.done.message); }
       if (!token) { out.done = answered("rejected", "The bank's token answer has no access token."); throw new NotSent(out.done.message); }
       const life = Math.min(3600, Math.max(1, Number(body?.expires_in) || 300)); // a token that claims longer is asked again within the hour
+      // the call is logged as it went, also when caching the token fails below
+      out.done = answered("ok", `The bank gave a token that lasts ${life} s.`);
       const enc = encryptSecret(token), expiresAt = new Date(Date.now() + life * 1000);
       await tx.insert(connectorTokens).values({ connectorId, environment: env, tokenEnc: enc, fingerprint, expiresAt })
         .onConflictDoUpdate({ target: [connectorTokens.connectorId, connectorTokens.environment], set: { tokenEnc: enc, fingerprint, expiresAt } });
-      out.done = answered("ok", `The bank gave a token that lasts ${life} s.`);
       return { token, expiresIn: life };
     });
   } finally {
@@ -122,7 +130,7 @@ export async function sendOperation(i: { connectorId: string; env: Environment; 
   const done = (r: Omit<SendResult, "ms" | "filled">): SendResult => {
     const code = r.json !== null && i.op.success ? String(readPath(r.json, i.op.success.field) ?? "") || null : null;
     logged.finish({ outcome: r.outcome, httpStatus: r.status, code, message: r.message, externalId: r.externalId, requestMasked,
-      responseMasked: r.json !== null ? maskTree(r.json, i.op.masked) : r.raw !== null ? { raw: r.raw } : null, full });
+      responseMasked: r.json !== null ? maskTree(r.json, i.op.masked) : r.raw !== null ? { raw: UNREADABLE, length: full?.response?.raw?.length ?? r.raw.length } : null, full });
     return { ...r, ms: Date.now() - start, filled };
   };
   if (!i.settings.baseUrl) return done({ outcome: "not_sent", status: null, externalId: null, json: null, raw: null, message: "Enter this environment's address first." });
