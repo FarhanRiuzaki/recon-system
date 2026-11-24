@@ -153,6 +153,21 @@ function focusRingViolations(fs: F[]): string[] {
     src.split("\n").flatMap((l, i) => (/\boutline-none\b/.test(l) && /focus-visible:-?outline-\d/.test(l) && !/focus-visible:outline-solid\b/.test(l) ? [`${r}:${i + 1}`] : [])));
 }
 
+/**
+ * Heavy decoration loads on demand: three (the sign-in backdrop's WebGL field) is imported by one file only, and other
+ * files reach that file only through import() (a type-only import is erased).
+ */
+const LAZY_LIBS = [{ lib: "three", home: `${WEB}features/auth/ledger-field.ts`, file: "ledger-field" }] as const;
+function lazyLibViolations(fs: F[]): string[] {
+  return LAZY_LIBS.flatMap(({ lib, home, file }) => {
+    const valueImport = new RegExp(`\\bimport\\s+(?!type\\b)[^;]*?from\\s+["'][^"']*/${file}["']`);
+    return fs.flatMap(({ r, src, imp }) => [
+      ...(r !== home && imp.some((i) => i === lib || i.startsWith(`${lib}/`)) ? [`${r}: imports ${lib}`] : []),
+      ...(valueImport.test(src) ? [`${r}: imports ${file} statically`] : []),
+    ]);
+  });
+}
+
 /** sonner (~10 kB gz) loads on demand: `toast` from ui/toast.ts, the Toaster through next/dynamic (providers.tsx). */
 function sonnerViolations(fs: F[]): string[] {
   const own = [`${UI}ui/sonner.tsx`, `${UI}ui/toast.ts`];
@@ -516,6 +531,17 @@ describe("architecture", () => {
     expect(dynamicSsrViolations(files)).toEqual([]);
     const calls = dynamicSsrCalls(files);
     expect(Object.keys(SSR_DYNAMIC_ALLOWED).filter((k) => !calls.includes(k))).toEqual([]);
+  });
+
+  it("three stays out of first loads: one file imports it, and that file only through import()", () => {
+    expect(lazyLibViolations(files)).toEqual([]);
+    expect(lazyLibViolations([
+      { r: `${WEB}features/x/a.tsx`, src: `import { Scene } from "three";`, imp: ["three"] },
+      { r: `${WEB}features/x/e.tsx`, src: `import { OrbitControls } from "three/addons/controls/OrbitControls.js";`, imp: ["three/addons/controls/OrbitControls.js"] },
+      { r: `${WEB}features/auth/b.tsx`, src: `import { createLedgerField } from "./ledger-field";`, imp: ["./ledger-field"] },
+      { r: `${WEB}features/auth/d.tsx`, src: `import type { LedgerField } from "./ledger-field"; void import("./ledger-field");`, imp: ["./ledger-field"] },
+      { r: `${WEB}features/auth/ledger-field.ts`, src: `import { Scene } from "three";`, imp: ["three"] },
+    ])).toEqual([`${WEB}features/x/a.tsx: imports three`, `${WEB}features/x/e.tsx: imports three`, `${WEB}features/auth/b.tsx: imports ledger-field statically`]);
   });
 
   it("sonner stays out of first loads: only ui/sonner.tsx and ui/toast.ts import it; ui/sonner only through import()", () => {
