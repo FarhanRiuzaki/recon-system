@@ -9,6 +9,7 @@ import type { UserDto } from "@starterkit/shared/contracts/users";
 import { pagePerm } from "@/lib/shared/nav";
 import { spaceDetail } from "@/lib/shared/queries";
 import type { PermissionName } from "@starterkit/shared/permissions";
+import { mayDo } from "@starterkit/shared/spaces";
 import { backendJson, v1Path } from "./backend";
 import { authContext, getSession } from "./session";
 
@@ -49,6 +50,27 @@ export const spaceIdOf = (pathname: string): string | null => /^\/spaces\/([^/?#
  * its data to members only; a space.view holder who is no member opens members, not these.
  */
 export const spaceDataPage = (pathname: string): boolean => /^\/spaces\/[^/?#]+\/sources(\/|$|\?)/.test(pathname);
+/** A space's workflows and one of them (/spaces/<id>/workflows[/<id>]). */
+const workflowsPage = (pathname: string): boolean => /^\/spaces\/[^/?#]+\/workflows(\/|$|\?)/.test(pathname);
+
+/**
+ * What the caller may do with a space's workflows, as the API's guards let them: any member or a `workflow.view`
+ * holder reads (`{ space: SPACE_ROLES, or: "workflow.view" }`); a space admin (SPACE_ACTION.editWorkflows) or a
+ * `workflow.manage` holder edits, once they read. `space` is openSpace's answer (null: not a member, no space.view).
+ */
+export function workflowAccess(space: { roles: readonly string[] } | null, perms: readonly string[]): { read: boolean; manage: boolean } {
+  const roles = space?.roles ?? [];
+  const read = roles.length > 0 || perms.includes("workflow.view");
+  return { read, manage: read && (mayDo(roles, "editWorkflows") || perms.includes("workflow.manage")) };
+}
+
+/**
+ * Whether a space page answers "Page not found" before the page itself decides: the space doesn't open for the caller
+ * (openSpace null) unless it is the workflows a `workflow.view` holder reads without a role in it, or a data page
+ * (spaceDataPage) for someone with no role in it.
+ */
+export const spacePageRefused = (pathname: string, space: { roles: readonly string[] } | null, perms: readonly string[]): boolean =>
+  space ? spaceDataPage(pathname) && !space.roles.length : !(workflowsPage(pathname) && workflowAccess(null, perms).read);
 
 /**
  * The space as the caller may see it, read once per request (`cache`: the (main) layout, the page and its title share

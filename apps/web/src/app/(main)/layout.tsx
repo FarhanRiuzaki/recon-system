@@ -6,7 +6,7 @@ import { AppShell } from "@/components/shell/app-shell";
 import { SpaceSwitcher } from "@/features/spaces/space-switcher";
 import { AuthProvider } from "@/lib/client/auth-context";
 import { PrefsProvider } from "@/lib/client/prefs-context";
-import { openSpace, requirePagePermission, spaceDataPage, spaceIdOf } from "@/lib/server/page-guard";
+import { openSpace, requirePagePermission, spaceIdOf, spacePageRefused } from "@/lib/server/page-guard";
 import { Prefetch, reads } from "@/lib/server/prefetch";
 import { pagePerm } from "@/lib/shared/nav";
 import { PREFS_COOKIE, parsePrefs } from "@/lib/shared/prefs";
@@ -35,7 +35,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const spaceId = spaceIdOf(path);
   if (spaceId && h.get("rsc") !== "1") {
     const space = await openSpace(spaceId);
-    if (!space || (spaceDataPage(path) && !space.roles.length)) notFound();
+    if (spacePageRefused(path, space, perms)) notFound();
   }
   const prefs = parsePrefs((await cookies()).get(PREFS_COOKIE)?.value);
   return (

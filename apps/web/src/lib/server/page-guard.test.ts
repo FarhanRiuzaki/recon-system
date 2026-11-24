@@ -17,7 +17,7 @@ vi.mock("next/navigation", () => ({
 
 import type { PermissionName } from "@starterkit/shared/permissions";
 import { fakeApi, pathOf, sealCookie, TEST_CSRF, TEST_TOKEN } from "@/test/session";
-import { guardedTitle, requirePagePermission, spaceDataPage } from "./page-guard";
+import { guardedTitle, requirePagePermission, spaceDataPage, spacePageRefused, workflowAccess } from "./page-guard";
 
 const user = { id: "0199f0a0-0000-7000-8000-000000000001", name: "Viewer User", username: "viewer", email: "viewer@example.com" };
 /** The API's /v1/auth/context: `perms` for TEST_TOKEN, 401 for any other bearer. */
@@ -78,6 +78,31 @@ describe("spaceDataPage", () => {
   it("a space's sources and below need a role in it; members, other pages and look-alikes don't", () => {
     for (const p of ["/spaces/s-1/sources", "/spaces/s-1/sources/x", "/spaces/s-1/sources?tab=quarantine"]) expect(spaceDataPage(p), p).toBe(true);
     for (const p of ["/spaces/s-1/members", "/spaces", "/sources", "/spaces/s-1/sourcesx", "/users/sources"]) expect(spaceDataPage(p), p).toBe(false);
+  });
+});
+
+describe("workflows without a role in the space (the API's or: workflow.view / workflow.manage)", () => {
+  const member = { roles: ["viewer"] }, admin = { roles: ["space_admin"] }, outsider = { roles: [] }; // outsider: a space.view holder
+  it("the frame lets a workflow.view holder into a space's workflows they can't open, nothing else of it", () => {
+    for (const p of ["/spaces/s-1/workflows", "/spaces/s-1/workflows/w-1", "/spaces/s-1/workflows?page=2"]) {
+      expect(spacePageRefused(p, null, ["workflow.view"]), p).toBe(false);
+      expect(spacePageRefused(p, null, ["workflow.manage"]), p).toBe(true); // the API's reads need workflow.view
+      expect(spacePageRefused(p, null, []), p).toBe(true);
+    }
+    for (const p of ["/spaces/s-1/members", "/spaces/s-1/workflowsx", "/spaces/s-1/recons"]) expect(spacePageRefused(p, null, ["workflow.view"]), p).toBe(true);
+    expect(spacePageRefused("/spaces/s-1/sources", outsider, ["workflow.view"])).toBe(true);
+    expect(spacePageRefused("/spaces/s-1/sources", member, [])).toBe(false);
+    expect(spacePageRefused("/spaces/s-1/members", outsider, [])).toBe(false);
+  });
+  it("reads: any member or workflow.view; edits: a space admin (SPACE_ACTION.editWorkflows) or workflow.manage, who also reads", () => {
+    expect(workflowAccess(null, [])).toEqual({ read: false, manage: false });
+    expect(workflowAccess(outsider, [])).toEqual({ read: false, manage: false });
+    expect(workflowAccess(null, ["workflow.view"])).toEqual({ read: true, manage: false });
+    expect(workflowAccess(null, ["workflow.view", "workflow.manage"])).toEqual({ read: true, manage: true });
+    expect(workflowAccess(null, ["workflow.manage"])).toEqual({ read: false, manage: false });
+    expect(workflowAccess(member, [])).toEqual({ read: true, manage: false });
+    expect(workflowAccess(member, ["workflow.manage"])).toEqual({ read: true, manage: true });
+    expect(workflowAccess(admin, [])).toEqual({ read: true, manage: true });
   });
 });
 
