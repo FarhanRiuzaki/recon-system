@@ -299,6 +299,8 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
     const lookbackSeconds = "by" in lb && lb.by === "seconds" ? lb.n : 0;
     const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns) } : null;
     const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
+    // a source's first pull (no complete_through before this run) is its baseline: no page of it completes a date
+    const baseline = !l.cursor?.completeThrough;
     let n = 0;
     for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookback: { seconds: input.lookback_seconds, ids: input.lookback_ids }, chunk: input.chunk })) {
       const last = page[page.length - 1]!;
@@ -307,10 +309,10 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
       await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);
         await writeLines(tx, s, l, origin, lines, counts);
-        const [was] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors).where(and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.sourceId)));
+        const [was] = baseline ? [] : await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors).where(and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.sourceId)));
         const ct = completeThroughOf(mark.watermark, lookbackSeconds, wmField);
         await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, ct);
-        await delivered(tx, s, completedDates(was?.ct ?? null, ct));
+        if (was) await delivered(tx, s, completedDates(was.ct, ct));
       }));
       reached = mark.watermark;
     }

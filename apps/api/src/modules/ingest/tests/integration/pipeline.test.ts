@@ -705,6 +705,21 @@ describe("deliveries: when each business date became complete (source_deliveries
     expect(await pullSource(scope(s), probe)).toBe("pulled"); // the same watermark again: nothing more
     expect(await deliveriesOf(s)).toEqual(done);
   });
+
+  it("a watermark pull: every page of the first pull is the baseline, not only its first", async () => {
+    const pages = ["2026-11-19T10:00:00Z", "2026-11-20T10:00:00Z", "2026-11-22T10:00:00Z"];
+    const cols = [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"], ["updated_at", "timestamp with time zone"], ["id", "bigint"]];
+    ingestHooks.connect = () => ({
+      introspect: async () => cols.map(([name, type]) => ({ name: name!, type: type!, nullable: false })),
+      pullWatermark: async function* () {
+        for (const [i, wm] of pages.entries()) yield [{ ext_ref: `R${i}`, account_ref: "ACC1", amount: "1.00", event_time: "2026-11-19T01:00:00Z", updated_at: wm, id: String(i + 1) }];
+      },
+      close: async () => {},
+    }) as unknown as Connector;
+    const s = await source(A, bifastSpec({ lookback: 0 }));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await deliveriesOf(s)).toEqual([]);
+  });
 });
 
 describe("maintenance.partitions", () => {
