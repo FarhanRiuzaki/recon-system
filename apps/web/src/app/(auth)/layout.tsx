@@ -13,8 +13,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
           The field covers the whole page: the headline and the footer note sit on a soft scrim, the form on its card. */}
       <AuthBackdrop />
       <header className="relative mx-auto flex w-full max-w-320 py-5 md:py-10"><SunnyGoWordmark className="w-30.5" /></header>
-      <div className="relative mx-auto grid w-full max-w-308 flex-1 items-start gap-10 py-6 md:grid-cols-2 md:gap-12 md:py-4 xl:gap-24">
-        <div className="auth-scrim grid gap-6 pt-4 max-md:hidden xl:pt-23">
+      {/* The headline and the card sit centred on one line in the height between the header and the footer. */}
+      <div className="relative mx-auto grid w-full max-w-308 flex-1 content-center items-center gap-10 py-6 md:grid-cols-2 md:gap-12 md:py-4 xl:gap-24">
+        <div className="auth-scrim grid gap-6 max-md:hidden">
           <p className="text-display xl:text-welcome">Every record.<br />One clear match.</p>
           <p className="max-w-100 text-body text-fg-2">Match records across your sources in {BRAND.name}, and follow every unmatch item until it closes.</p>
         </div>
