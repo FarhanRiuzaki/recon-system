@@ -133,6 +133,10 @@ export const ActionRunListQuery = ListQuery.extend({
   sort: sortParam(ACTION_RUN_SORTS),
   status: filterSelection(z.enum(ACTION_STATUSES)).optional(),
   kind: z.enum(["posting", "notify"]).optional(),
+  /** One recon or several (repeated `recon`); `dateFrom`/`dateTo` the day (Asia/Jakarta) it finished, or was made while it goes on. */
+  recon: filterSelection(z.uuid()).optional(),
+  dateFrom: z.iso.date().optional(),
+  dateTo: z.iso.date().optional(),
   // csv = the whole filtered list (newest first, CSV_MAX_ROWS at most) instead of a page
   format: z.enum(["json", "csv"]).default("json"),
 });
