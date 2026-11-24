@@ -2,7 +2,7 @@
 // the changes a recon binds a workflow to, the limits, and the pure helpers the API and the editors share. A workflow
 // (owned by a space) = named chain of levels; a level passes when every group in it has its approvals (any / all / N of
 // its eligible people). Which workflow a change takes is set in the recon version (conditions.ts).
-import type { SpaceRole } from "./spaces";
+import { ROLE_LABEL, type SpaceRole } from "./spaces";
 
 /** What approval rules bind: phase A the changes of a break; phase B adds versions, sign-off, reopen and rerun. */
 // posting first: the usual way an unmatch is settled (owner, 22 Nov); undoing a match is rare
@@ -49,6 +49,15 @@ export type Attributes = { amount?: string; currency?: string | null; recon?: st
 /** The chain a request takes when its space has no published approval rules, or they end in the default: today's rule. */
 export const DEFAULT_LEVELS: Level[] = [{ name: "Checker", groups: [{ spaceRoles: ["reviewer", "space_admin"], globalRoles: [], users: [], need: { kind: "any" } }] }];
 export const DEFAULT_CHAIN: Chain = { name: "Default", levels: DEFAULT_LEVELS };
+/** The built-in chain's name on screen. */
+export const DEFAULT_CHAIN_NAME = "Default chain";
+/** Who decides a chain, level by level: "one of Reviewer or Space admin". */
+export const defaultChainText = (levels: readonly Level[] = DEFAULT_LEVELS) => levels.map((l) => l.groups.map((g) => {
+  const need = g.need.kind === "any" ? "one" : g.need.kind === "all" ? "all" : String(g.need.n);
+  return `${need} of ${g.spaceRoles.map((r) => ROLE_LABEL[r]).join(" or ")}`;
+}).join(" and ")).join(", then ");
+/** The built-in chain in words, the one text every screen shows for it (DEFAULT_LEVELS). */
+export const DEFAULT_CHAIN_TEXT = `${DEFAULT_CHAIN_NAME}: ${defaultChainText()}`;
 
 const num = (v: string | number | undefined | null): bigint | null => {
   if (v === undefined || v === null || v === "") return null;

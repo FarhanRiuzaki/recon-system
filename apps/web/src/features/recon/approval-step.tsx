@@ -13,12 +13,12 @@ import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, condi
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconApprovalSpec, ReconSpec, WorkflowRef } from "@starterkit/shared/contracts/recon";
 import type { LibraryRowDto, PreviewDto } from "@starterkit/shared/contracts/workflows";
-import { type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
+import { DEFAULT_CHAIN_TEXT, RULES_MAX, type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SortableList } from "@/components/sortable-list";
 import { movedIndex } from "@/components/sortable-model";
 import { api, errorText } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
-import { approvalRow, condDone, DEFAULT_CHAIN_TEXT as DEFAULT_TEXT, keptCopy, ruleDone, savable } from "./approval-model";
+import { approvalRow, condDone, keptCopy, ruleDone, savable } from "./approval-model";
 import dynamic from "next/dynamic";
 import { ConditionEditor } from "./condition-editor";
 
@@ -33,7 +33,6 @@ import type { Fields } from "./spec-model";
 
 type Setup = NonNullable<ReconApprovalSpec["changes"][Trigger]>;
 type Rule = Setup["workflow"]["rules"][number];
-const RULES_MAX = 20;
 
 /** "Version 3 is newer · Use it" beside a pin older than the workflow's live version. */
 function Newer({ pin, rows, onUse, disabled }: { pin: WorkflowRef; rows: readonly LibraryRowDto[]; onUse: (v: number) => void; disabled: boolean }) {
@@ -56,7 +55,7 @@ function WorkflowSelect({ value, rows, onChange, label, disabled, allowDefault }
   return (
     <Select aria-label={label} value={value?.id ?? ""} disabled={disabled} className="min-w-0 md:max-w-sm"
       onChange={(e) => { const r = live.find((x) => x.id === e.target.value); onChange(r ? { id: r.id, version: r.published!.version } : null); }}>
-      {allowDefault ? <option value="">{DEFAULT_TEXT}</option> : <option value="" disabled>Pick a workflow</option>}
+      {allowDefault ? <option value="">{DEFAULT_CHAIN_TEXT}</option> : <option value="" disabled>Pick a workflow</option>}
       {!known && <option value={value!.id}>{rows.find((r) => r.id === value!.id)?.name ?? "A workflow no longer available"}</option>}
       {live.map((r) => <option key={r.id} value={r.id}>{r.name} · {r.levels} {r.levels === 1 ? "level" : "levels"}</option>)}
     </Select>

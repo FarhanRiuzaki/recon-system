@@ -9,8 +9,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, BranchIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { LibraryDetailDto, LibraryRowDto } from "@starterkit/shared/contracts/workflows";
-import { ROLE_LABEL } from "@starterkit/shared/spaces";
-import { DEFAULT_LEVELS, type Level } from "@starterkit/shared/workflows";
+import { DEFAULT_CHAIN_NAME, DEFAULT_LEVELS, defaultChainText } from "@starterkit/shared/workflows";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
@@ -26,14 +25,9 @@ const FILTER_FIELDS = [{ key: "q", label: "Search" }] as const;
 /** The built-in default chain as the list's first row, read only (audit §5.7): what a change without a workflow takes. */
 export const DEFAULT_ROW_ID = "default";
 const DEFAULT_ROW: LibraryRowDto = {
-  id: DEFAULT_ROW_ID, name: "Default chain", levels: DEFAULT_LEVELS.length, levelNames: DEFAULT_LEVELS.map((l) => l.name), archived: false,
+  id: DEFAULT_ROW_ID, name: DEFAULT_CHAIN_NAME, levels: DEFAULT_LEVELS.length, levelNames: DEFAULT_LEVELS.map((l) => l.name), archived: false,
   published: null, open: null, reconsUsing: 0, updatedAt: "",
 };
-/** Who decides a chain, level by level: "one of Reviewer or Space admin" (the built-in chain's words, from DEFAULT_LEVELS). */
-export const defaultChainText = (levels: readonly Level[] = DEFAULT_LEVELS) => levels.map((l) => l.groups.map((g) => {
-  const need = g.need.kind === "any" ? "one" : g.need.kind === "all" ? "all" : String(g.need.n);
-  return `${need} of ${g.spaceRoles.map((r) => ROLE_LABEL[r]).join(" or ")}`;
-}).join(" and ")).join(", then ");
 /**
  * The list's rows: the built-in chain leads the first page of the unsearched list once it has loaded workflows (it
  * isn't one of the space's, nor counted), so a space without any still shows No workflows yet.

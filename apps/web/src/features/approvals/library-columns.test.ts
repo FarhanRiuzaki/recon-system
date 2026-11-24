@@ -2,8 +2,8 @@ import { createElement as h, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { LibraryRowDto } from "@starterkit/shared/contracts/workflows";
-import { DEFAULT_LEVELS } from "@starterkit/shared/workflows";
-import { DEFAULT_ROW_ID, defaultChainText, levelsText, libraryColumns, libraryRows } from "./library-page";
+import { DEFAULT_LEVELS, defaultChainText } from "@starterkit/shared/workflows";
+import { DEFAULT_ROW_ID, levelsText, libraryColumns, libraryRows } from "./library-page";
 
 const COLS = libraryColumns("sp-1");
 const W: LibraryRowDto = { id: "w1", name: "Treasury head", levels: 2, levelNames: ["Review", "Head"], archived: false, published: { version: 3, decidedAt: null }, open: null, reconsUsing: 2, updatedAt: "2026-11-20T00:00:00Z" };

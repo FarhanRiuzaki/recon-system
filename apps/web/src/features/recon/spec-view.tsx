@@ -13,7 +13,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { LibraryRowDto } from "@starterkit/shared/contracts/workflows";
 import { recordFields } from "@starterkit/shared/recon";
 import { buildCatalog, type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
-import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
+import { DEFAULT_CHAIN_NAME, DEFAULT_CHAIN_TEXT, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { carryText, conditionParts, directionOf, directionText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { approvalChanges, approvalRow, changeIsSet } from "./approval-model";
@@ -164,7 +164,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
   );
 }
 
-const SET = statusChip("set", "Set"), NOT_SET = statusChip("nothing", "Default chain"), CHANGED = statusChip("check", "Changed from the live version");
+const SET = statusChip("set", "Set"), NOT_SET = statusChip("nothing", DEFAULT_CHAIN_NAME), CHANGED = statusChip("check", "Changed from the live version");
 
 /** The approval setup as sentences: per change, its rules in order and who approves every other request. */
 function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[]; live?: ReconSpec }) {
@@ -172,7 +172,7 @@ function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: strin
   const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`), enabled: !!approvals || !!live?.approvals });
   const changed = approvalChanges(live?.approvals, approvals, !!live);
   const name = (id: string) => wf.data?.items.find((r) => r.id === id)?.name ?? "a workflow";
-  const pin = (w: { id: string; version: number } | null) => (w ? `${name(w.id)} (version ${w.version})` : "the default chain (1 of Reviewer or Space admin)");
+  const pin = (w: { id: string; version: number } | null) => (w ? `${name(w.id)} (version ${w.version})` : DEFAULT_CHAIN_TEXT);
   return (
     <ul className="grid gap-3">
       {TRIGGERS.map((k) => {

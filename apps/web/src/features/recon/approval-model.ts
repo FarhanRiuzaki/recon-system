@@ -1,6 +1,6 @@
 import { type Clause, type Condition, NO_VALUE_OPS } from "@starterkit/shared/conditions";
 import type { ReconApprovalInput, ReconApprovalSpec, ReconWarning } from "@starterkit/shared/contracts/recon";
-import { TRIGGERS } from "@starterkit/shared/workflows";
+import { DEFAULT_CHAIN_TEXT, TRIGGERS } from "@starterkit/shared/workflows";
 
 // The Approval step's draft (DEC-052 rev 2): what of it the recon draft can hold now, and the copy of an unfinished
 // rule this browser keeps meanwhile. Pure.
@@ -31,8 +31,6 @@ export function savable(a: ReconApprovalInput): { approvals: ReconApprovalSpec |
   const any = Object.keys(changes).length || accounts.length || lookups.length;
   return { approvals: any ? { accounts, lookups, changes } : undefined, unfinished };
 }
-
-export const DEFAULT_CHAIN_TEXT = "Default · 1 of Reviewer or Space admin";
 
 type ChangeSetup = ReconApprovalInput["changes"][(typeof TRIGGERS)[number]];
 /**
