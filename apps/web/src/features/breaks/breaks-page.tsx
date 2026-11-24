@@ -23,7 +23,7 @@ import { majorAmount } from "@/lib/shared/amount";
 import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { BREAKS, type BreakFilters, reconOptions as reconOptionsQuery } from "@/lib/shared/queries-recon";
 import { breakColumns } from "./break-columns";
-import { AGE_LABEL, STATE_LABEL } from "./break-model";
+import { AGE_LABEL, STATE_LABEL } from "@/components/unmatch/break-model";
 import { BreakSummary } from "./break-summary";
 import { withCounts } from "@/lib/shared/table-state";
 import { selectionState } from "@starterkit/shared/filter-selection";

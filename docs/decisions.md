@@ -718,3 +718,24 @@ sama), bagian dari spec dan matching hash: mengubahnya lewat draft, simulasi dan
   sendiri), jadi ia kandidat di jendela yang dijaga unmatch sisi A (minimal 31 hari).
 - Operation result: status "Not required" (abu-abu) dan side state "Record not required"; rasio auto match dashboard
   tidak menghitung recordnya.
+
+## DEC-056 — Operation result mengerjakan item seperti halaman Unmatch item; undo match juga untuk group yang tidak pernah break
+
+24 November 2026 — pemilik: "fungsi2 yg bisa dilakukan di detail, masukan juga ke operation results". Membalik non-goal
+"preview only" di `docs/superpowers/specs/2026-11-24-operation-result-design.md` (amandemen bertanggal di file itu).
+
+- Dialog Explain memakai komponen yang sama dengan halaman Unmatch item (`apps/web/src/components/unmatch/`: hook
+  `useUnmatchWork`, `SettleZone`, `RequestZone`, `UndoMatchButton`, model `workView` di `break-model.ts`). Satu
+  implementasi, jadi aksi, konsekuensi dan alasan blocked tidak bisa berbeda antara kedua layar.
+- Item yang dikerjakan sebuah baris: `summary.workItemId` dari `GET …/results/{rowId}/members` (item lone yang pernah
+  break; dalam group: item yang ditahan request pending, lalu yang pernah break milik viewer, lalu yang pernah break,
+  lalu item sisi A pertama).
+- `breakOf` (`apps/api/src/modules/engine/break-resolve.ts`) juga menerima item `matched` dalam group live (bukan
+  reversed, bukan simulasi) walau tanpa break reason, jadi undo match bisa diminta untuk group auto. Perubahan lain
+  tetap ditolak `mayWork` (bukan break terbuka, 409). Detailnya membaca state `resolved`. Sesudah undo, item yang tidak
+  pernah break kembali `open` dan halamannya 404 lagi.
+- Aturan tetap: yang boleh meminta (pemegang item, reviewer, space admin, Superadmin), self-approval ditolak, satu
+  request pending per item. Baru: satu request pending per group (request kedua pada item lain group itu 409); dulu
+  hanya kebetulan terjaga karena item tanpa reason 404, dan dua break dalam satu group bisa masing-masing diminta.
+- Tes: `break-requests.test.ts` "undo match of any live group …", `results.test.ts` "the item the row's actions go
+  through", `apps/web/src/components/unmatch/break-model.test.ts` "workView …".

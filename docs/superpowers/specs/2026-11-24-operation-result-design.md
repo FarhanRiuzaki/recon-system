@@ -192,3 +192,26 @@ to a per-day count kept by the engine and the run's state changes; the table sta
 - SQL shape (one query with a union of groups and lone items, or two pages merged) as long as paging is stable and the
   performance test holds.
 - Contract names under `packages/shared/src/contracts/`.
+
+## Amendment 2026-11-24 (owner): actions in Explain
+
+Owner: "fungsi2 yg bisa dilakukan di detail, masukan juga ke operation results". This reverses "It is a preview",
+the non-goal "No actions on this screen" and "Preview only" under Decided by the owner. Export stays out of this
+round. Decision: DEC-056.
+
+- Explain shows, below the head to head, the work the row's Unmatch item page offers, from the same components
+  (`apps/web/src/components/unmatch/`, `workView` in `break-model.ts`): on a lone unmatch item Take item, the settle
+  cards with their consequences and blocked reasons, the counterpart finder Match and Force match use, Request
+  posting, and the waiting request's Approve / Reject / Override / Cancel request; on a matched group (auto, manual,
+  force, late) Request undo match (request kind `unmatch`, same workflow and approval, same dialog text) and the
+  waiting request.
+- The item the work goes through is `summary.workItemId` of `GET …/results/{rowId}/members`: a lone item that is or
+  was a break; in a group, the item a waiting request holds, else one that broke (the viewer's first), else side A's
+  first.
+- Undo match works on a group a run matched that never broke: `breakOf` also opens an item matched in a live group.
+  Who may ask (whoever has the item, or a reviewer, space admin or Superadmin), self-approval refused and one open
+  request per item stay; one open request per group is now enforced too.
+- After any change the results list, counts, nav counts, Unmatch, approvals and dashboard queries are read again. A
+  row that changed shape (matched, undone) answers 404 to Explain, which then says the result has changed.
+- On a desktop the dialog widens (`max-w-6xl`) while it holds settle cards or a waiting request; below 768 px it stays
+  the bottom sheet. All of it sits in the already dynamic Explain chunk, so the route's first load does not grow.

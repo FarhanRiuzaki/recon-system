@@ -312,7 +312,7 @@ const LIST_CALL = /\buseTableQuery\s*[<(]/;
  * check fails when a file listed here no longer calls useTableQuery.
  */
 const COLUMNS_MENU_ALLOWED: Record<string, string> = {
-  [`${WEB}features/breaks/break-page.tsx`]: "the counterpart picker inside the unmatch item page: five fixed columns to tick from, not a list to keep views of (audit B7)",
+  [`${WEB}components/unmatch/unmatch-work.tsx`]: "the counterpart picker of the unmatch work (item page, Explain): five fixed columns to tick from, not a list to keep views of (audit B7)",
   [`${WEB}features/breaks/break-activity.tsx`]: "the unmatch item's Activity log zone: a quiet three-column trail, not a list page (audit B9)",
   [`${WEB}features/approvals/used-by.tsx`]: "the workflow page's Used by side panel: four fixed columns beside the editor, not a list to keep views of (audit W8)",
 };

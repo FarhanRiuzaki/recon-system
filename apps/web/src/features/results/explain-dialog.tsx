@@ -2,21 +2,27 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Facts, Failure, StatusGlyph } from "@starterkit/ui/ds";
+import { Facts, Failure, Notice, StatusGlyph } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { appDayStart, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ArrowRightIcon } from "@starterkit/ui/ui/icons";
+import { ArrowRightIcon, RefreshIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { ResultFieldDto, ResultMemberDto, ResultMembersDto, ResultRowDto } from "@starterkit/shared/contracts/results";
 import { APPROVAL_KIND_LABEL } from "@starterkit/shared/approvals";
 import { BRAND } from "@starterkit/shared/brand";
 import { POSTING_STATUS_LABEL, type PostingStatus } from "@starterkit/shared/posting";
-import { api } from "@/lib/client/api";
+import type { BreakDetailDto } from "@starterkit/shared/contracts/breaks";
+import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
+import { workView } from "@/components/unmatch/break-model";
+import { RequestZone, SettleZone, UndoMatchButton, useUnmatchWork, WorkDialog } from "@/components/unmatch/unmatch-work";
+import { useAuth } from "@/lib/client/auth-context";
+import { api, errorText, isNotFound } from "@/lib/client/api";
 import { amountText } from "@/lib/shared/amount";
-import { resultMembers } from "@/lib/shared/queries-recon";
+import { spaceDetail } from "@/lib/shared/queries";
+import { breakDetail, LIVE_POLL_MS, resultMembers } from "@/lib/shared/queries-recon";
 import { differences, explainFields, sideTotal, type SideTotal, totalsDiffer } from "./explain-model";
 import { resultIcon, SIDE_HEADER } from "./result-model";
 
@@ -88,7 +94,9 @@ function SideColumn({ i, name, members, more, fields, differs, total, totalDiffe
 /**
  * Explain (loaded on demand: next/dynamic): the row's recon data on top, then side A left and side B right, head to
  * head (stacked below 768 px, where the dialog is a bottom sheet): every field of every record, a field on the same row
- * on both sides, what differs marked as the Unmatch item page's compare marks it (explain-model.ts).
+ * on both sides, what differs marked as the Unmatch item page's compare marks it (explain-model.ts). Below it, the
+ * work its Unmatch item page offers (DEC-056, components/unmatch) on the item `workItemId` names: on a lone unmatch item
+ * take, settle and the request that waits; on a matched group Request undo match and its waiting request.
  */
 export default function ExplainDialog({ spaceId, configId, reconName, row, sides, onClose }: {
   spaceId: string; configId: string; reconName: string | null; row: ResultRowDto; sides: readonly [string, string]; onClose: () => void;
@@ -101,9 +109,20 @@ export default function ExplainDialog({ spaceId, configId, reconName, row, sides
   const differs = d ? differences(d.a, d.b) : new Set<string>();
   const totals = d ? ([sideTotal(d.a), sideTotal(d.b)] as const) : null;
   const totalDiffers = !!totals && (d!.a.length > 1 || d!.b.length > 1) && totalsDiffer(totals[0], totals[1]);
+  // the work on the row's item, as its Unmatch item page has it
+  const { user } = useAuth();
+  const workId = s?.workItemId ?? null;
+  const bd = breakDetail(spaceId, workId ?? "");
+  const wq = useQuery({ queryKey: bd.key, queryFn: () => api<BreakDetailDto>(bd.url), enabled: !!workId, refetchInterval: (x) => (x.state.data?.request?.status === "pending" ? LIVE_POLL_MS : false) });
+  const rolesQ = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) });
+  const b = workId ? wq.data : undefined;
+  const u = useUnmatchWork(spaceId, workId ?? "", b);
+  const v = b && rolesQ.data ? workView(b, { user, roles: rolesQ.data.roles, picked: u.picked }) : null;
+  const other = b ? b.recon.sides[b.item.side === "a" ? 1 : 0] : "";
+  const wide = !!v && (v.settle.length > 0 || b?.request?.status === "pending");
   return (
-    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-5xl">
+    <Dialog open onOpenChange={(o) => { if (!o && !u.busy) onClose(); }}>
+      <DialogContent className={wide ? "max-w-6xl" : "max-w-5xl"}>
         <DialogHeader>
           <DialogTitle>{row.kind === "group" ? "Matched group" : "Item"}</DialogTitle>
           <DialogDescription className="flex flex-wrap items-center gap-2"><StatusGlyph health={x.chip.health} icon={x.icon} label={x.chip.label} /><span className="text-fg">{x.chip.label}</span></DialogDescription>
@@ -117,7 +136,8 @@ export default function ExplainDialog({ spaceId, configId, reconName, row, sides
               ["Request", s?.request ? `${APPROVAL_KIND_LABEL[s.request.kind]}, ${REQUEST_STATUS[s.request.status]}` : null],
               ["Posting", s?.posting ? agreed(s.posting.status, (v) => POSTING_STATUS_LABEL[v as PostingStatus] ?? v) : null], ["Bank reference", s?.posting ? agreed(s.posting.bankReference) : null],
             ]} />
-            {q.error ? <Failure title="Couldn't load the records" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} />
+            {isNotFound(q.error) ? <Notice>This result has changed: its items show on other rows now. Close to see the list as it is.</Notice>
+              : q.error ? <Failure title="Couldn't load the records" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} />
               : !d ? <div role="status" aria-label="Loading the records" className="grid gap-4 md:grid-cols-2"><Skeleton className="h-48" /><Skeleton className="h-48" /></div>
               : (
                 <div className="grid gap-4 md:grid-cols-2">
@@ -125,13 +145,31 @@ export default function ExplainDialog({ spaceId, configId, reconName, row, sides
                   <SideColumn i={1} name={sides[1]} members={d.b} more={d.more.b} fields={fields} differs={differs} total={totals![1]} totalDiffers={totalDiffers} />
                 </div>
               )}
+            {d && workId && (wq.error && !wq.data ? <Failure title="Couldn't load what you can do with it" error={wq.error} source={BRAND.name} onRetry={() => void wq.refetch()} />
+              : rolesQ.error && !rolesQ.data ? (
+                <Notice tone="warn">
+                  <span className="grid justify-items-start gap-2">
+                    <span>Couldn&apos;t load your roles in this space, so what you can do here can&apos;t be shown. {errorText(rolesQ.error)}</span>
+                    <Button type="button" variant="secondary" size="sm" disabled={rolesQ.isFetching} aria-busy={rolesQ.isFetching || undefined} onClick={() => void rolesQ.refetch()}><Icon icon={rolesQ.isFetching ? SpinnerIcon : RefreshIcon} className={rolesQ.isFetching ? "motion-safe:animate-spin" : undefined} />Try again</Button>
+                  </span>
+                </Notice>
+              )
+              : !b || !v ? <div role="status" aria-label="Loading what you can do" className="grid gap-4 md:grid-cols-2"><Skeleton className="h-36" /><Skeleton className="h-36" /></div>
+              : (
+                <>
+                  {v.undo && <p className="flex justify-end"><UndoMatchButton u={u} v={v} /></p>}
+                  <RequestZone u={u} b={b} />
+                  {!v.pending && <SettleZone u={u} v={v} b={b} other={other} />}
+                </>
+              ))}
           </div>
         </DialogBody>
         <DialogFooter>
           {row.openItemId && <Button asChild variant="link"><Link href={`/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(row.openItemId)}`}>Open the item<Icon icon={ArrowRightIcon} /></Link></Button>}
           {row.explain.runId && <Button asChild variant="link"><Link href={`/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/runs/${encodeURIComponent(row.explain.runId)}`}>See how the run matched it<Icon icon={ArrowRightIcon} /></Link></Button>}
-          <Button type="button" variant="secondary" onClick={onClose}>Close</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={!!u.busy}>Close</Button>
         </DialogFooter>
+        <WorkDialog u={u} />
       </DialogContent>
     </Dialog>
   );

@@ -10,7 +10,7 @@ import { CELL_TRUNCATE } from "@starterkit/ui/ui/table";
 import { cn } from "@starterkit/ui/lib/cn";
 import { amountText } from "@/lib/shared/amount";
 import { categoryChip, STATES } from "@/lib/shared/categories";
-import { checkChip, STATE_LABEL } from "./break-model";
+import { checkChip, STATE_LABEL } from "@/components/unmatch/break-model";
 
 const ageText = (n: number) => (n === 0 ? "Today" : n === 1 ? "1 day old" : `${n} days old`);
 const dateText = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));

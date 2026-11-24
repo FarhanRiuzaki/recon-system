@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, candidateState, checkedAgain, checkChip, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, candidateState, checkedAgain, checkChip, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess, workView } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -193,5 +193,39 @@ describe("candidateState", () => {
   it("a candidate without a break reason: not required (a one-way recon's side B) or waiting", () => {
     expect(candidateState(item({ status: "not_required", reason: null }))).toBe("Not required");
     expect(candidateState(item({ status: "open", reason: null }))).toBe("Waiting");
+  });
+});
+
+describe("workView: the Unmatch item page and Operation result's Explain offer the same work for one item (DEC-056)", () => {
+  const detail = (o: Partial<BreakDetailDto> = {}): BreakDetailDto => ({
+    item: item(), recon: recon(), state: "new", assignee: null, ageDays: 0, resolution: null, matchedWith: [], proposed: null, request: null,
+    actions: [], posting: null, seesPayload: false, ...o,
+  });
+  const op = { user: { id: "u1", roles: [] }, roles: ["operator"], picked: new Map<string, BreakItemDto>() };
+  const lead = { ...op, roles: ["reviewer"] };
+  it("an open item: the settle actions, keys and blocked reasons, are the item page's (settleActions on workAccess)", () => {
+    const b = detail({ proposed: { item: item({ id: "b1", side: "b" }), pass: 2, available: true } });
+    for (const who of [op, lead]) {
+      const v = workView(b, who);
+      const page = settleActions({ recon: b.recon, access: workAccess({ lead: who === lead, operator: !who.roles.includes("reviewer"), mine: false, assignee: null, open: true, pending: false }), target: { kind: "proposed" } });
+      expect(v.settle.map((s) => [s.key, s.blocked, s.primary])).toEqual(page.map((s) => [s.key, s.blocked, s.primary]));
+    }
+    expect(workView(b, op).settle.every((s) => s.blocked === "Take this item first.")).toBe(true);
+    expect(workView(b, op).access.take).toBe("first");
+    // picked items replace the proposed pair as what Match acts on
+    const picked = workView(b, { ...lead, picked: new Map([["b2", item({ id: "b2", side: "b" })]]) });
+    expect([picked.target, picked.settle.find((s) => s.key === "match")!.label]).toEqual([["b2"], "Match with picked item"]);
+    expect(workView(b, lead).undo).toBe(false);
+  });
+  it("a matched group (a run's match too): nothing to settle; a lead or whoever has it may request undo match, not while a request waits", () => {
+    const b = detail({ item: item({ status: "matched", reason: null }), state: "resolved", matchedWith: [item({ id: "b1", side: "b", status: "matched" })] });
+    expect(workView(b, lead)).toMatchObject({ settle: [], undo: true, open: false });
+    expect(workView(b, op).undo).toBe(false);
+    expect(workView({ ...b, assignee: { id: "u1", name: "Op" } }, op).undo).toBe(true);
+    const waiting = { ...b, request: { status: "pending" } } as unknown as BreakDetailDto;
+    expect(workView(waiting, lead).undo).toBe(false);
+  });
+  it("a request waiting: nothing to settle meanwhile", () => {
+    expect(workView(detail({ state: "pending_approval" }), lead).settle).toEqual([]);
   });
 });

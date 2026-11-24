@@ -49,7 +49,7 @@ const FIELDS = [
 /**
  * Operation result (spec docs/superpowers/specs/2026-11-24-operation-result-design.md): one recon's results for a
  * business-date range (today by default), one row per match group or lone item, its overall status and each side's,
- * the columns its recon chose. A preview: work on a row happens on its Unmatch page (Open).
+ * the columns its recon chose. Explain a row to work on it as its Unmatch item page does (DEC-056), or Open that page.
  */
 export function ResultsPage({ spaceId }: { spaceId: string }) {
   const ro = reconOptions(spaceId);
@@ -86,7 +86,7 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title="Operation result" description="Every result of one recon for the business dates you pick: matched, unmatch, posted, written off or closed. Work on an item from its Unmatch page."
+      <PageHeader title="Operation result" description="Every result of one recon for the business dates you pick: matched, unmatch, posted, written off or closed. Explain a row to see both sides and work on it."
         actions={setupHref ? <Link href={setupHref} className={buttonVariants({ variant: "edit", size: "sm" })}><Icon icon={EditIcon} />Set up columns</Link> : undefined} />
       {state === "none" ? (
         <Panel><EmptyState icon={ReportsIcon} title="No recon has results yet" description="Results show here once a recon's first version is approved and runs." /></Panel>

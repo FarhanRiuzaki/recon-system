@@ -1,8 +1,10 @@
-// The unmatch item page's words and choices, pure (no React): the comparison with its counterpart, how long it is
-// checked again, where a request goes, and the ways to settle it in the page's order with one primary (audit B1–B6).
+// An unmatch item's words and choices, pure (no React), for its page and Operation result's Explain (DEC-056): the
+// comparison with its counterpart, how long it is checked again, where a request goes, and the ways to settle it in the
+// page's order with one primary (audit B1–B6).
 import { appDayStart, formatDate, formatMinor } from "@starterkit/ui/lib/format";
 import type { RequestKind } from "@starterkit/shared/approvals";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
+import { isSuperadmin } from "@starterkit/shared/permissions";
 import type { AgeBucket, BreakState } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { amountText } from "@/lib/shared/amount";
@@ -201,3 +203,25 @@ export function settleActions(o: { recon: BreakDetailDto["recon"]; access: Acces
   const next = blocked ? null : posting && !posting.blocked ? "posting" : t.kind === "proposed" ? "match" : null;
   return all.map((a) => (a.key === next && !a.blocked ? { ...a, primary: true } : a));
 }
+
+/**
+ * What one person can do with an unmatch item, the same wherever it is worked (its page, Operation result's Explain,
+ * DEC-056): who works it (workAccess; a lead = Superadmin, or space admin or reviewer in `roles`, the user's roles in
+ * the space), whether they may ask to undo its match, the proposed pair still free, what Match and Force match act on
+ * (the `picked` items, else that pair), and the ways to settle it (only while it is open, no request waits and they
+ * work breaks).
+ */
+export function workView(b: BreakDetailDto, o: { user: { id: string; roles: readonly string[] }; roles: readonly string[]; picked: ReadonlyMap<string, BreakItemDto> }) {
+  const open = b.state !== "resolved";
+  const lead = isSuperadmin(o.user.roles) || o.roles.some((r) => r === "space_admin" || r === "reviewer");
+  const mine = b.assignee?.id === o.user.id;
+  const pending = b.state === "pending_approval";
+  const access = workAccess({ lead, operator: o.roles.includes("operator"), mine, assignee: b.assignee ? b.assignee.name ?? "A removed user" : null, open, pending });
+  const asks = b.request?.status !== "pending" && (lead || mine);
+  const proposedFree = open && b.proposed?.available ? b.proposed : null;
+  const target = o.picked.size ? [...o.picked.keys()] : proposedFree ? [proposedFree.item.id] : [];
+  const settle = open && !pending && access.worker
+    ? settleActions({ recon: b.recon, access, target: o.picked.size ? { kind: "picked", count: o.picked.size } : proposedFree ? { kind: "proposed" } : { kind: "none" } }) : [];
+  return { open, mine, pending, access, asks, undo: b.item.status === "matched" && asks, proposedFree, target, settle };
+}
+export type WorkView = ReturnType<typeof workView>;
