@@ -94,14 +94,18 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
         {!cols.length && <li className="text-body-sm text-fg-2">No columns: saving shows the default columns.</li>}
       </ol>
 
+      {/* the button sits on the field's line (owner 24 Nov: the note under the field pushed it below); the count under both */}
+      <div className="grid gap-2">
       <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
-        <Field id="result-col-add" label="Field to add" optional note={`${cols.length} of ${RESULT_COLUMNS_MAX} columns`} error={addError}>
+        <Field id="result-col-add" label="Field to add" optional error={addError}>
           {/* searchable and scrollable, like the app's other column pickers (owner 24 Nov: the native select didn't scroll) */}
           <Combobox id="result-col-add" className="w-full min-w-0" label="Field to add" placeholder={sa.isPending || sb.isPending ? "Loading the sources' fields…" : "Pick a field"}
             options={choiceOptions} value={choiceOptions.find((o) => o.value === pick) ?? null}
             onChange={(o) => { setPick(o?.value ?? ""); setAddError(null); }} />
         </Field>
-        <Button type="button" variant="create" disabled={!pick} onClick={add}><Icon icon={AddIcon} />Add column</Button>
+        <Button type="button" variant="create" className={addError ? "md:mb-6" : undefined} disabled={!pick} onClick={add}><Icon icon={AddIcon} />Add column</Button>
+      </div>
+      <p className="text-caption text-fg-3">{cols.length} of {RESULT_COLUMNS_MAX} columns</p>
       </div>
 
       {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
