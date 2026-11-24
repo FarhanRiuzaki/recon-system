@@ -8,11 +8,11 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, CHART_HEIGHT } from "@starterkit/ui/charts";
 import { CategoryChip, EmptyState, Facts, LazyMount, Panel, RelativeTime, ScrollFade } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
-import { APP_TIME_ZONE_LABEL, formatDate, formatNumber } from "@starterkit/ui/lib/format";
+import { formatDate, formatNumber } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon, ColumnChartIcon, ComponentsIcon, LogIcon, SpinnerIcon, TimeIcon } from "@starterkit/ui/ui/icons";
 import type { Page } from "@starterkit/shared/contracts/common";
@@ -24,10 +24,11 @@ import { RUN_PAGE, reconLastTick, reconRunsFirst } from "@/lib/shared/queries-re
 import { LiveDay } from "./live-day";
 import { nextRunText, scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
-import { carryText, directionText } from "./spec-model";
+import { directionText, type Fields, settingsFacts } from "./spec-model";
+import { recordFields } from "@starterkit/shared/recon";
 import { rangeText, rateText, runChip, runRowChips } from "./run-model";
 import { at } from "./recon-text";
-import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
+import { reconApi, reconRunHref, useReconTrend, useSideSource } from "./use-recons";
 
 const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
 
@@ -37,6 +38,9 @@ const day = (d: string) => formatDate(Date.parse(`${d}T00:00:00+07:00`));
  */
 function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: string; id: string; r: ReconDto; runner: boolean; last: ReconRunDto | undefined; scheduledAt: string | null }) {
   const spec = r.published!.spec;
+  const sa = useSideSource(spaceId, spec.sides[0].source_id), sb = useSideSource(spaceId, spec.sides[1].source_id);
+  const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
+  const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
   // the clock is read after mount (the server's would differ) and every 30 s; the line keeps its height meanwhile
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
@@ -49,10 +53,9 @@ function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: strin
     <Panel icon={TimeIcon} title="Run" description={scheduleLine(spec.schedule)} className="h-full" bodyClassName="flex flex-col">
       <div className="flex flex-1 flex-col gap-4">
         <Facts items={[
-          ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
-          ["Grace", `${spec.grace_minutes} min after the other side is complete`],
+          // the version review's words (settingsFacts); the schedule is the card's description
+          ...settingsFacts(spec, fields).filter((f) => f.key !== "schedule").map((f): [string, string] => [f.label, f.text]),
           ["Direction", directionText(spec)],
-          ["Carry over", carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
               <StateChip chip={runChip(last)} />
