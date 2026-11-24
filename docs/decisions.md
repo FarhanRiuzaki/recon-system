@@ -675,3 +675,21 @@ pernah ada sertifikat dev atau prod"; Recon-QR memakai `CURLOPT_SSL_VERIFYPEER f
 Body dan jawaban tetap terenkripsi oleh profil keamanan; yang tidak terlindung tanpa cek sertifikat adalah panggilan
 token (Basic auth client id dan secret) bila jaringan internal disadap. Field request dapat bernilai otomatis (message
 ID = X-EXTERNAL-ID, tanggal-jam panggilan dengan format), diisi server di setiap panggilan, tidak pernah diketik user.
+
+## DEC-054 — Pull watermark berhenti (pause) daripada melewati baris
+
+24 November 2026 — review pull watermark DB. Baris sumber yang terlewat diam-diam menjadi unmatch palsu, jadi setiap
+kasus yang tidak bisa diletakkan keyset membuat source pause dengan alasannya (`connectors/index.ts` `pullWatermark`):
+baris yang mengulang watermark dan semua id column tepat di batas halaman (tiap halaman membaca satu baris lebih), dan
+watermark atau id yang NULL (dicek per halaman; kolom yang bisa NULL, misalnya SELECT dengan LEFT JOIN, dicari sekali per
+pull sebelum paging). Id teks diurutkan dan dibandingkan lewat satu ekspresi biner di kedua sisi pada SQL Server, MySQL
+dan Oracle (`dialect.ts` `idExpr`); index pada id teks tidak lagi dipakai untuk ORDER BY di luar PostgreSQL. Cursor
+menyimpan nama id column bersama id-nya (`{ columns, ids }`); id column lain (nama, urutan, jumlah) mulai lagi dari
+watermark (`>=`).
+
+- Watermark integer (sequence) tidak pernah mengisi `complete_through`: sequence tidak membawa waktu, dan transaksi
+  dengan id lebih kecil bisa commit setelah id yang lebih besar terbaca, kapan pun. Margin waktu dari jam pull akan
+  menjadi angka karangan yang bisa menutup tanggal sebelum baris terlambat tiba. Recon atas source seperti ini menutup
+  tanggal pada close time + grace-nya; wizard menyebutnya di catatan look back (`model.ts` `lookbackNote`).
+- Spec tersimpan dengan watermark date-only dan `lookback_seconds` di bawah 1 hari (86.400 s) akan pause pada pull
+  berikutnya dengan alasannya (`lookbackOf`): perlu versi baru dengan look back minimal 1 hari.

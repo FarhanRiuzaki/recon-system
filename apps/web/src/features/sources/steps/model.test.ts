@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, lookbackNote, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -50,6 +50,14 @@ describe("the connection on screen against the stored one (fix round 1, I2)", ()
     expect(watermarkKind(at("D", "oracle"), [{ name: "D", type: "DATE", nullable: false, unique: null, indexed: null }])).toBe("time"); // Oracle's DATE holds a time
     expect(watermarkKind(at(""), cols)).toBeNull();
   });
+  it("lookbackNote: what the look back protects against, and that a sequence says no date is complete", () => {
+    expect(lookbackNote("int")).toBe("The watermark is a sequence: each pull starts this many ids before the last one, for a row that took a lower id "
+      + "but committed after a higher one was read (a late commit), which would be skipped otherwise. Rows read twice are stored once. A sequence holds no time, "
+      + "so this source never says a date is complete: a recon waits for its close time and grace before it closes a date.");
+    expect(lookbackNote("date")).toContain("at least 1 day (86,400 s)");
+    expect(lookbackNote("time")).toBe("Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.");
+  });
+
   it("fitLookback: a date-only watermark looks back at least a day, an integer one in ids (1,000), a date-time in seconds", () => {
     const i = emptySpec("db_watermark").input as Extract<Draft["spec"]["input"], { kind: "db_watermark" }>;
     expect(fitLookback(i, "date")).toMatchObject({ lookback_seconds: 86_400 });

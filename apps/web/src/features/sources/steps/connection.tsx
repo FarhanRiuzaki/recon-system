@@ -19,7 +19,7 @@ import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
-import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, type Tested, type WatermarkKind, withEngine, withName } from "./model";
+import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, lookbackNote, type Tested, type WatermarkKind, withEngine, withName } from "./model";
 
 // The database, schema and table pickers show only for a database source: they load after the page (preloaded when
 // the connection step mounts) and hold a field's height meanwhile, as their own combobox does (bundle budget, DEC-040).
@@ -492,15 +492,13 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
         summary={`Look back ${kind === "int" ? `${formatNumber(w.lookback_ids ?? LOOKBACK_IDS_DEFAULT)} ids` : `${formatNumber(seconds)} s`} · ${formatNumber(w.chunk)} rows per page`}>
         {kind === "int" ? (
           <Field id={ctl("input.lookback_ids")} label="Look back (ids)" error={err(ctl("input.lookback_ids"))}
-            note="The watermark is a sequence: each pull starts this many ids before the last one, for rows that commit late. Rows read twice are stored once.">
+            note={lookbackNote(kind)}>
             <Input id={ctl("input.lookback_ids")} inputMode="numeric" value={String(w.lookback_ids ?? LOOKBACK_IDS_DEFAULT)}
               onChange={(e) => setInput({ lookback_ids: Math.min(LOOKBACK_IDS_MAX, digits(e.target.value)) } as Partial<WatermarkInput>)} />
           </Field>
         ) : (
           <Field id={ctl("input.lookback_seconds")} label="Look back (seconds)" error={err(ctl("input.lookback_seconds"))}
-            note={kind === "date"
-              ? "The watermark holds a date only, so each pull starts at least 1 day (86,400 s) back: a row added later on the same date with a smaller id would be skipped otherwise. Rows read twice are stored once."
-              : "Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once."}>
+            note={lookbackNote(kind)}>
             <Input id={ctl("input.lookback_seconds")} inputMode="numeric" value={String(seconds)}
               onChange={(e) => setInput({ lookback_seconds: Math.min(604_800, digits(e.target.value)) } as Partial<WatermarkInput>)}
               onBlur={() => { if (seconds < minSeconds) setInput({ lookback_seconds: minSeconds } as Partial<WatermarkInput>); }} />

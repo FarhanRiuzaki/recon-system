@@ -199,6 +199,22 @@ export function watermarkKind(d: Draft, columns: readonly Column[] | null): Wate
 }
 
 /**
+ * The note under the look back: what it protects against, by what the watermark holds. A sequence gives no
+ * complete_through (rules.ts completeThroughOf): a lower id can commit after a higher one was read, at no time a
+ * sequence could tell, so the recon closes a date at its close time and grace instead.
+ */
+export function lookbackNote(kind: WatermarkKind | null): string {
+  if (kind === "int") {
+    return "The watermark is a sequence: each pull starts this many ids before the last one, for a row that took a lower id but committed after a higher one was read "
+      + "(a late commit), which would be skipped otherwise. Rows read twice are stored once. A sequence holds no time, so this source never says a date is complete: "
+      + "a recon waits for its close time and grace before it closes a date.";
+  }
+  return kind === "date"
+    ? "The watermark holds a date only, so each pull starts at least 1 day (86,400 s) back: a row added later on the same date with a smaller id would be skipped otherwise. Rows read twice are stored once."
+    : "Each pull starts this far before the last one, for rows that commit late. Rows read twice are stored once.";
+}
+
+/**
  * The look back the watermark's kind takes, keeping what was typed where it fits: a date only at least a day (a row
  * added later on the same date with a smaller id would be skipped otherwise), a sequence in ids (1,000 to start), a
  * date and time in seconds (300 to start).
