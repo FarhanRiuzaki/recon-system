@@ -1,6 +1,6 @@
 "use client";
 
-import { type KeyboardEvent, type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { DragHandleIcon } from "@starterkit/ui/ui/icons";
@@ -15,10 +15,29 @@ import type { DragBits } from "./sortable-list-dnd";
 type DndModule = typeof import("./sortable-list-dnd");
 let loaded: DndModule | null = null;
 
+/** Where focus is inside `list`, as child indexes from the list down, with a text field's selection. */
+type FocusAt = { path: number[]; sel: [number | null, number | null] | null };
+function focusAt(list: HTMLElement | null): FocusAt | null {
+  const el = document.activeElement;
+  if (!list || !el || el === list || !list.contains(el)) return null;
+  const path: number[] = [];
+  for (let n: Element = el; n !== list; n = n.parentElement!) path.unshift([...n.parentElement!.children].indexOf(n));
+  let sel: FocusAt["sel"] = null;
+  try { if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) sel = [el.selectionStart, el.selectionEnd]; } catch { /* no selection on this type */ }
+  return { path, sel };
+}
+function refocus(list: HTMLElement | null, at: FocusAt) {
+  let n: Element | undefined = list ?? undefined;
+  for (const i of at.path) n = n?.children[i];
+  if (!(n instanceof HTMLElement)) return;
+  n.focus();
+  try { if (at.sel && (n instanceof HTMLInputElement || n instanceof HTMLTextAreaElement)) n.setSelectionRange(at.sel[0], at.sel[1]); } catch { /* no selection on this type */ }
+}
+
 export type SortableRow = {
   /** The row's place now (0-based): its number in labels ("Column 3 heading"). */
   index: number;
-  /** The grip to place in the row (null when the list is disabled). */
+  /** The grip to place in the row (null when the list can't be sorted: disabled, or one row). */
   handle: ReactNode;
   /** Lifted by pointer, touch or keyboard. */
   dragging: boolean;
@@ -48,6 +67,8 @@ export function SortableList<T>({ items, getKey = (_, i) => String(i), noun, lab
   const [lift, setLift] = useState<Lift | null>(null);
   const [said, setSaid] = useState("");
   const handles = useRef<(HTMLButtonElement | null)[]>([]);
+  const listRef = useRef<HTMLOListElement>(null);
+  const kept = useRef<FocusAt | null>(null);
   const hint = useId();
   const keys = items.map(getKey);
   const can = !disabled && items.length > 1;
@@ -56,13 +77,14 @@ export function SortableList<T>({ items, getKey = (_, i) => String(i), noun, lab
   useEffect(() => {
     if (!can || dnd) return;
     let on = true;
-    // a failed chunk leaves the keyboard order: nothing to show
-    import("./sortable-list-dnd").then((m) => { loaded = m; if (on) setDnd(m); }, () => undefined);
+    // the rows remount as dnd rows: focus (and a field's caret) goes back where it was; a failed chunk keeps the keyboard
+    import("./sortable-list-dnd").then((m) => { loaded = m; if (on) { kept.current = focusAt(listRef.current); setDnd(m); } }, () => undefined);
     return () => { on = false; };
   }, [can, dnd]);
-  // the lifted row's handle keeps focus wherever the row went (a moved DOM node loses it, so does the swap to dnd rows)
-  const at = lift?.at;
-  useEffect(() => { if (at !== undefined) handles.current[at]?.focus(); }, [at, keys.join("\n"), dnd]);
+  useLayoutEffect(() => { if (kept.current) refocus(listRef.current, kept.current); kept.current = null; }, [dnd]);
+  // the lifted row's handle keeps focus wherever the row went (a moved DOM node loses it)
+  const at = lift?.at, order = keys.join("\n");
+  useEffect(() => { if (at !== undefined) handles.current[at]?.focus(); }, [at, order]);
 
   function onKey(e: KeyboardEvent, i: number) {
     const step = sortKey(lift, i, e.key, items.length, name);
@@ -78,7 +100,7 @@ export function SortableList<T>({ items, getKey = (_, i) => String(i), noun, lab
       <button ref={(el) => { handles.current[i] = el; bits?.setHandleRef(el); }} type="button" aria-label={`Move ${noun.toLowerCase()} ${i + 1}`}
         aria-describedby={hint} aria-pressed={lift?.at === i || undefined} {...bits?.listeners} onKeyDown={(e) => onKey(e, i)}
         // focus left the list (Tab, a click elsewhere): the row stays where it is
-        onBlur={(e) => { if (lift && e.relatedTarget && !e.currentTarget.closest("ol")?.contains(e.relatedTarget as Node)) setLift(null); }}
+        onBlur={(e) => { if (lift && e.relatedTarget && !listRef.current?.contains(e.relatedTarget as Node)) setLift(null); }}
         className="inline-flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-fg-3 hover:bg-tray hover:text-fg focus-visible:outline-2 focus-visible:outline-primary active:cursor-grabbing">
         <Icon icon={DragHandleIcon} />
       </button>
@@ -86,14 +108,15 @@ export function SortableList<T>({ items, getKey = (_, i) => String(i), noun, lab
     return renderItem(item, { index: i, handle, dragging: !!bits?.dragging || lift?.at === i });
   };
   const lifted = (i: number) => lift?.at === i;
-  const rows = items.map((item, i) => (dnd && can
-    ? <dnd.DndItem key={keys[i]} id={keys[i]!} wholeRow={!!wholeRow} lifted={lifted(i)} className={itemClassName}>{row(item, i)}</dnd.DndItem>
+  // once loaded, the rows stay dnd rows (drag off while the list can't sort), so they remount only that once
+  const rows = items.map((item, i) => (dnd
+    ? <dnd.DndItem key={keys[i]} id={keys[i]!} disabled={!can} wholeRow={!!wholeRow} lifted={lifted(i)} className={itemClassName}>{row(item, i)}</dnd.DndItem>
     : <li key={keys[i]} className={cn(itemClassName, lifted(i) && "relative z-10 shadow-overlay")}>{row(item, i)()}</li>));
 
   return (
     <div className="contents">
-      <ol aria-label={label} className={cn("grid", className)}>
-        {dnd && can ? <dnd.DndList keys={keys} name={name} onMove={(from, to) => onReorder(moveItem(items, from, to), from, to)}>{rows}</dnd.DndList> : rows}
+      <ol ref={listRef} aria-label={label} className={cn("grid", className)}>
+        {dnd ? <dnd.DndList keys={keys} name={name} onMove={(from, to) => onReorder(moveItem(items, from, to), from, to)}>{rows}</dnd.DndList> : rows}
       </ol>
       {can && <span id={hint} hidden>Press Space or Enter to pick it up, the arrow keys to move it, Space or Enter to drop it, Escape to cancel.</span>}
       <span data-slot="sortable-status" aria-live="assertive" className="sr-only">{said}</span>

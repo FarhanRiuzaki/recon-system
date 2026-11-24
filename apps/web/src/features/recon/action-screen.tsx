@@ -11,7 +11,7 @@ import { FullScreenEditor } from "@starterkit/ui/ds/full-screen-editor";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, CloseIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, CloseIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
@@ -21,6 +21,8 @@ import { type CatalogField, type Condition, conditionText, groupFields, isKeyFie
 import { readPath } from "@starterkit/shared/integrations";
 import { GROUP_KEY_MAX, type Source } from "@starterkit/shared/mapping";
 import type { Trigger } from "@starterkit/shared/workflows";
+import { SortableList } from "@/components/sortable-list";
+import { movedIndex } from "@/components/sortable-model";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { EventPicker, type Ops, opOf, OperationPicker } from "./action-parts";
@@ -194,7 +196,6 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
   const graph = useMemo(() => (op ? mapGraph(v.mapping, fields, op, setup.accounts) : null), [v.mapping, fields, op, setup.accounts]);
   const blocked = unfinishedReason(a);
   const dirty = a !== initial;
-  const move = (d: -1 | 1) => { const vs = [...a.variants]; [vs[vi + d], vs[vi]] = [vs[vi]!, vs[vi + d]!]; setA({ ...a, variants: vs }); setVi(vi + d); };
   const setSource = (path: string, s: Source | undefined) => { const { [path]: _, ...rest } = v.mapping; setV({ ...v, mapping: s ? { ...rest, [path]: s } : rest }); };
 
   const rail = (
@@ -212,18 +213,20 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
       </section>
       <section className="grid gap-3 border-t border-line-strong pt-5">
         <SectionHeading n={2} level={3} title="Variants" description="First match wins" />
-        <ol className="grid gap-1.5">
-          {a.variants.map((x, i) => (
-            <li key={i}>
+        {/* a variant is a button with no field: the whole row drags (owner 24 Nov: no arrow buttons) */}
+        <SortableList items={a.variants} noun="Variant" label="Variants, first match wins" wholeRow className="gap-1.5" itemClassName="rounded-md"
+          onReorder={(variants, from, to) => { setA({ ...a, variants }); setVi(movedIndex(vi, from, to)); }}
+          renderItem={(x, { index: i, handle }) => (
+            <div className={cn("flex items-center gap-1 rounded-md border pl-1 transition-colors duration-(--dur-fast)",
+              i === vi ? "border-primary bg-primary-soft" : "border-line-strong bg-card hover:bg-tray")}>
+              {handle}
               <button type="button" aria-current={i === vi || undefined} onClick={() => { setVi(i); setPicked(null); }}
-                className={cn("grid w-full gap-0.5 rounded-md border px-3 py-2 text-left transition-colors duration-(--dur-fast) focus-visible:outline-2 focus-visible:outline-primary",
-                  i === vi ? "border-primary bg-primary-soft" : "border-line-strong bg-card hover:bg-tray")}>
+                className="grid min-w-0 flex-1 gap-0.5 rounded-md py-2 pr-3 pl-1 text-left focus-visible:outline-2 focus-visible:outline-primary">
                 <span className="flex items-center gap-2 text-body-sm text-fg"><span className="text-caption text-fg-3 tabular">{i + 1}</span>{x.name || "Unnamed"}</span>
                 <span className="truncate text-caption text-fg-3">{x.when ? conditionText(x.when as Condition, catalog) : "Every item"} → {opOf(ops, x.operation).op?.name ?? "nowhere yet"}</span>
               </button>
-            </li>
-          ))}
-        </ol>
+            </div>
+          )} />
         {a.variants.length < 20 && (
           <Button type="button" variant="create" size="sm" className="justify-self-start" onClick={() => { setA({ ...a, variants: [...a.variants, { ...v, name: `Variant ${a.variants.length + 1}`, when: blankClause, mapping: {} } as unknown as VariantSpec] }); setVi(a.variants.length); setPicked(null); }}>
               <Icon icon={AddIcon} />Add a variant
@@ -234,8 +237,6 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
         <SectionHeading n={3} level={3} title={v.name || "This variant"}
           description={v.per === "group" ? "Approved items with the same key and currency go as one call; approved at or after a cutoff, they wait for the next day's" : "Its items and where it sends"}
           actions={<span className="flex">
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant earlier" disabled={vi === 0} onClick={() => move(-1)}><Icon icon={ArrowUpIcon} /></Button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Move this variant later" disabled={vi === a.variants.length - 1} onClick={() => move(1)}><Icon icon={ArrowDownIcon} /></Button>
             <Button type="button" variant="remove" size="icon-sm" aria-label="Remove this variant" disabled={a.variants.length === 1} onClick={() => { setA({ ...a, variants: a.variants.filter((_, j) => j !== vi) }); setVi(0); setPicked(null); }}><Icon icon={RemoveIcon} /></Button>
           </span>} />
         <Field id="var-name" label="Variant name" required><Input id="var-name" value={v.name} maxLength={80} onChange={(e) => setV({ ...v, name: e.target.value })} /></Field>

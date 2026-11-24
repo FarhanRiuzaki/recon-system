@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ResultColumn } from "@starterkit/shared/contracts/results";
 import type { RecordField } from "@starterkit/shared/recon";
-import { addColumn, columnChoices, moveColumn } from "./result-columns-model";
+import { addColumn, columnChoices } from "./result-columns-model";
 
 const f = (kind: RecordField["kind"], from: string | null = null): RecordField => ({ kind, from, fromType: null });
 const sides = [
@@ -33,10 +33,5 @@ describe("adding and moving columns", () => {
   it("a 21st column is refused", () => {
     const twenty = Array.from({ length: 20 }, (_, i): ResultColumn => ({ kind: "a", field: `attrs.f${i}`, label: `F${i}` }));
     expect(addColumn(twenty, "recon:pass", sides)).toEqual({ error: "At most 20 columns" });
-  });
-  it("move up and down within the list; past an end nothing moves", () => {
-    const two: ResultColumn[] = [ref, { kind: "recon", field: "pass", label: "Pass" }];
-    expect(moveColumn(two, 1, -1).map((c) => c.field)).toEqual(["pass", "ext_ref"]);
-    expect(moveColumn(two, 0, -1)).toBe(two);
   });
 });

@@ -6,7 +6,7 @@ import { EditToggle, Field, Panel, SectionHeading } from "@starterkit/ui/ds";
 import { Table, TableBody, TableCell, TableExpandRow, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { APPROVAL_FIELDS, buildCatalog, type CatalogField, type Condition, conditionFields, conditionText } from "@starterkit/shared/conditions";
@@ -14,6 +14,8 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconApprovalSpec, ReconSpec, WorkflowRef } from "@starterkit/shared/contracts/recon";
 import type { LibraryRowDto, PreviewDto } from "@starterkit/shared/contracts/workflows";
 import { type Trigger, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
+import { SortableList } from "@/components/sortable-list";
+import { movedIndex } from "@/components/sortable-model";
 import { api, errorText } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
 import { approvalRow, condDone, DEFAULT_CHAIN_TEXT as DEFAULT_TEXT, keptCopy, ruleDone, savable } from "./approval-model";
@@ -85,19 +87,22 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
           {w.default && <Newer pin={w.default} rows={rows} disabled={disabled} onUse={(v) => onChange({ ...setup, workflow: { ...w, default: { ...w.default!, version: v } } })} />}
         </div>
         {w.rules.length > 0 && (
-          <ol className="grid gap-list" aria-label={`${TRIGGER_LABEL[kind]}: rules, first match wins`}>
-            {w.rules.map((r, i) => (
-              <li key={i} className="grid gap-2 rounded-lg border border-line-strong bg-card p-3 shadow-xs motion-safe:animate-enter">
+          <SortableList items={w.rules} noun="Rule" label={`${TRIGGER_LABEL[kind]}: rules, first match wins`} disabled={disabled} className="gap-list"
+            itemClassName="grid gap-2 rounded-lg border border-line-strong bg-card p-3 shadow-xs motion-safe:animate-enter"
+            onReorder={(next, from, to) => { setRules(next); if (open !== null) setOpen(movedIndex(open, from, to)); }}
+            renderItem={(r, { index: i, handle }) => (
+              <>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 text-body-sm">
+                  <span className="flex min-w-0 items-center gap-1 text-body-sm">
+                    {handle}
+                    <span className="min-w-0">
                     <span className="text-label text-fg">{r.name.trim() || `Rule ${i + 1}`}</span>
                     {open !== i && <span className="text-fg-2"> · {condDone(r.when as Condition) ? conditionText(r.when as Condition, catalog) : "unfinished"} → {rows.find((x) => x.id === r.workflow.id)?.name ?? "pick a workflow"}</span>}
+                    </span>
                   </span>
                   {!disabled && (
                     <span className="flex shrink-0 items-center gap-1">
                       <EditToggle open={open === i} onToggle={() => setOpen(open === i ? null : i)} name={`rule ${i + 1}`} />
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${i + 1} up`} disabled={i === 0} onClick={() => setRules(w.rules.map((x, j) => (j === i - 1 ? w.rules[i]! : j === i ? w.rules[i - 1]! : x)))}><Icon icon={ArrowUpIcon} /></Button>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move rule ${i + 1} down`} disabled={i === w.rules.length - 1} onClick={() => setRules(w.rules.map((x, j) => (j === i + 1 ? w.rules[i]! : j === i ? w.rules[i + 1]! : x)))}><Icon icon={ArrowDownIcon} /></Button>
                       <Button type="button" variant="remove" size="icon-sm" aria-label={`Remove rule ${i + 1}`} onClick={() => { setRules(w.rules.filter((_, j) => j !== i)); setOpen(null); }}><Icon icon={RemoveIcon} /></Button>
                     </span>
                   )}
@@ -116,9 +121,8 @@ function ChangeEditor({ kind, recon, setup, onChange, rows, catalog, disabled, c
                     {r.workflow.id && <Newer pin={r.workflow} rows={rows} disabled={false} onUse={(v) => setRule(i, { ...r, workflow: { ...r.workflow, version: v } })} />}
                   </div>
                 )}
-              </li>
-            ))}
-          </ol>
+              </>
+            )} />
         )}
         {!disabled && w.rules.length < RULES_MAX && (
           <Button type="button" variant="create" size="sm" className="justify-self-start"

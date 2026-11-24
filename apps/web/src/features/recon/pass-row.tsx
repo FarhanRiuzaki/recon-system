@@ -1,9 +1,9 @@
 "use client";
 
-import type { CSSProperties, KeyboardEvent, ReactNode, Ref } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { MenuIcon, RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
+import { RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
 import { conditionParts, type Fields, keysText } from "./spec-model";
 
@@ -85,29 +85,17 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
 }
 const CARD_SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
 
-/** What dnd-kit's useSortable adds to a row once the sortable list has loaded (sortable-passes.tsx). */
-export type SortableBits = {
-  setNodeRef: Ref<HTMLLIElement>; setActivatorNodeRef: Ref<HTMLButtonElement>; handle: Record<string, unknown>; style?: CSSProperties; dragging: boolean;
-};
-
 /**
  * A pass of the run order: drag handle, the pass (select it; Alt+↑/↓ moves it), its outcome, its warnings, and the
- * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is; the
- * same markup with or without `sortable`, so the list doesn't move when the sortable code arrives.
+ * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is.
+ * `handle` is SortableList's grip (the builder's editable list); `dragging` while it is lifted.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, results = true, sortable }: PassRowProps & { sortable?: SortableBits }) {
-  const dragging = !!sortable?.dragging;
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, results = true, handle, dragging = false }: PassRowProps & { handle?: ReactNode; dragging?: boolean }) {
   return (
-    <li ref={sortable?.setNodeRef} style={sortable?.style}
-      className={cn(dragging ? "relative z-10" : "motion-safe:transition-transform motion-safe:duration-(--dur-enter)")}>
+    <>
       <div className={cn("grid gap-3", results ? "md:grid-cols-[minmax(0,1fr)_12rem]" : "mb-3")}>
         <div className={cn("flex min-w-0 items-start gap-1 rounded-md border bg-card p-3", selected ? "border-fg shadow-sm" : "border-line", dragging && "shadow-overlay")}>
-          {editable && (
-            <button ref={sortable?.setActivatorNodeRef} type="button" {...sortable?.handle} aria-label={`Drag pass ${pass.no}`}
-              className="mt-0.5 inline-flex size-7 shrink-0 cursor-grab touch-none items-center justify-center rounded-sm text-fg-3 hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary">
-              <Icon icon={MenuIcon} />
-            </button>
-          )}
+          {editable && handle && <span className="mt-0.5 flex shrink-0">{handle}</span>}
           <button id={`pass-${id}`} type="button" aria-pressed={selected} onClick={onSelect} onKeyDown={onKey}
             className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
             <PassBody pass={pass} fields={fields} />
@@ -139,6 +127,6 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
       </div>
       {notes.map((n) => <p key={n} className="flex items-start gap-1.5 pt-1.5 text-caption text-degraded-ink"><Icon icon={WarningIcon} className="mt-px size-3.5 shrink-0" />{n}</p>)}
       {results && <Connector text={sim ? sim.connector : undefined} dim={sim?.dim} />}
-    </li>
+    </>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { arrayMove } from "@dnd-kit/sortable";
-import { Fragment, useEffect, useId, useReducer, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useReducer, useRef, useState } from "react";
 import { ActionMenu, CategoryChip, Combobox, type ComboOption, EditorRow, EditToggle } from "@starterkit/ui/ds";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
+import { SortableList } from "@/components/sortable-list";
+import { movedIndex } from "@/components/sortable-model";
 import { cn } from "@starterkit/ui/lib/cn";
 import { plural } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -94,7 +95,9 @@ type CardProps = {
   editing: boolean; readOnly: boolean;
   /** Done was pressed with a group that names nobody: its error shows (never while the user is still picking). */
   checked: boolean;
-  onChange: (l: Level) => void; onEdit: () => void; onDone: () => void; onMove: (d: -1 | 1) => void; onRemove: () => void;
+  onChange: (l: Level) => void; onEdit: () => void; onDone: () => void; onRemove: () => void;
+  /** The grip that drags the card to another place (SortableList); none when read-only. */
+  handle?: ReactNode;
 };
 
 /**
@@ -103,15 +106,16 @@ type CardProps = {
  * EditorRow grid: the name, then each group in a tray block (how many · who, chips in the field · X), "and" between
  * groups, "Add a group" under the main column.
  */
-export function LevelCard({ level: l, index: i, count, options, editing, readOnly, checked, onChange, onEdit, onDone, onMove, onRemove }: CardProps) {
+export function LevelCard({ level: l, index: i, count, options, editing, readOnly, checked, onChange, onEdit, onDone, onRemove, handle }: CardProps) {
   const id = useId();
   const n = i + 1;
   const empty = checked ? emptyGroups(l) : [];
   const [added, setAdded] = useState<number | null>(null); // the group just added enters; the others don't replay it
   const setGroup = (gi: number, g: Group) => onChange({ ...l, groups: l.groups.map((x, j) => (j === gi ? g : x)) });
   return (
-    <li data-slot="level-card" data-mode={editing ? "edit" : "read"} className="grid rounded-lg border border-line bg-card shadow-xs">
-      <div data-slot="level-head" className="flex min-h-12 items-center gap-3 px-4 py-2">
+    <div data-slot="level-card" data-mode={editing ? "edit" : "read"} className="grid rounded-lg border border-line bg-card shadow-xs">
+      <div data-slot="level-head" className={cn("flex min-h-12 items-center gap-3 py-2 pr-4", handle ? "pl-2" : "pl-4")}>
+        {handle}
         <span aria-hidden="true" className={cn("grid size-7 shrink-0 place-items-center rounded-full text-label tabular transition-colors duration-(--dur-fast)",
           editing ? "bg-primary text-primary-foreground" : "bg-primary-soft text-primary")}>{n}</span>
         <h3 className="min-w-0 flex-1 truncate text-body font-medium text-fg">{`Level ${n}${l.name ? ` · ${l.name}` : ""}`}</h3>
@@ -119,8 +123,6 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
           <span className="flex shrink-0 items-center gap-1">
             <EditToggle open onToggle={onDone} data-focus="done" />
             <ActionMenu label={`Actions for level ${n}`} actions={[
-              { id: "up", label: "Move up", disabled: i === 0, hint: i === 0 ? "It is the first level." : undefined, onSelect: () => onMove(-1) },
-              { id: "down", label: "Move down", disabled: i === count - 1, hint: i === count - 1 ? "It is the last level." : undefined, onSelect: () => onMove(1) },
               { id: "remove", label: "Remove level", destructive: true, disabled: count === 1, hint: count === 1 ? "A workflow needs at least one level." : undefined, onSelect: onRemove },
             ]} />
           </span>
@@ -168,29 +170,30 @@ export function LevelCard({ level: l, index: i, count, options, editing, readOnl
           )}
         </>}
       </div>
-    </li>
+    </div>
   );
 }
 
 /**
  * A workflow's levels as cards, approvals in order top to bottom. One level is open to edit at a time: Done, Edit on
  * another card and "Add level" all close it only once every group names someone, else it stays open and says which
- * group needs a pick. Adding a level opens it. Moving and removing a level sit in the open card's ⋯ menu; removing
- * asks first. `reveal` (a count, raised by a blocked Send) opens the first level with a group naming nobody, with its
- * error. Focus follows: the button that replaced the one pressed, the moved card's ⋯, the card after a removed one.
+ * group needs a pick. Adding a level opens it. A card moves by its grip (drag, or Space and the arrow keys); removing
+ * sits in the open card's ⋯ menu and asks first. `reveal` (a count, raised by a blocked Send) opens the first level with a group naming nobody, with its
+ * error. Focus follows: the button that replaced the one pressed, the moved card's grip, the card after a removed one.
  */
 export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { levels: Level[]; onChange: (l: Level[]) => void; options: Options; disabled: boolean; reveal?: number }) {
   const [open, setOpen] = useState<number | null>(null);
   const [checked, setChecked] = useState<number | null>(null);
   const [removing, setRemoving] = useState<number | null>(null);
-  const listRef = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const cards = () => listRef.current?.querySelector("ol")?.children;
   // where focus goes once the change is on screen: card index + selector (a new object each time, so the same target again counts)
   const [want, focus] = useReducer((_: { i: number; on: string } | null, next: { i: number; on: string }) => next, null);
   const editing = disabled ? null : open;
   useEffect(() => {
     if (!want) return;
     // a task later: a closing menu or dialog puts focus back on its (gone) trigger first
-    setTimeout(() => listRef.current?.children[want.i]?.querySelector<HTMLElement>(want.on)?.focus(), 0);
+    setTimeout(() => cards()?.[want.i]?.querySelector<HTMLElement>(want.on)?.focus(), 0);
   }, [want]);
   /** The open level may close only when every group names someone; else it stays open with its error. */
   const mayLeave = () => {
@@ -210,18 +213,18 @@ export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { le
     if (at >= 0 && !disabled) { setOpen(at); setChecked(at); focus({ i: at, on: '[aria-invalid="true"]' }); }
   }
   const setLevel = (i: number, l: Level) => onChange(levels.map((x, j) => (j === i ? l : x)));
-  const move = (i: number, d: -1 | 1) => { onChange(arrayMove(levels, i, i + d)); setOpen(i + d); setChecked(null); focus({ i: i + d, on: '[data-slot="action-menu-trigger"]' }); };
   const gone = removing === null ? null : levels[removing];
   const removedAt = useRef<number | null>(null);
   return (
     <>
-      <ol ref={listRef} className="grid gap-list" aria-label="Levels in order">
-        {levels.map((l, i) => (
-          <LevelCard key={i} level={l} index={i} count={levels.length} options={options} editing={editing === i} readOnly={disabled} checked={checked === i}
-            onChange={(x) => setLevel(i, x)} onEdit={() => openLevel(i)} onMove={(d) => move(i, d)} onRemove={() => setRemoving(i)}
-            onDone={() => openLevel(null)} />
-        ))}
-      </ol>
+      <div ref={listRef} className="contents">
+        <SortableList items={levels} noun="Level" label="Levels in order" disabled={disabled} className="gap-list" itemClassName="rounded-lg"
+          onReorder={(next, from, to) => { onChange(next); if (open !== null) setOpen(movedIndex(open, from, to)); setChecked(null); }}
+          renderItem={(l, { index: i, handle }) => (
+            <LevelCard level={l} index={i} count={levels.length} options={options} editing={editing === i} readOnly={disabled} checked={checked === i} handle={handle}
+              onChange={(x) => setLevel(i, x)} onEdit={() => openLevel(i)} onRemove={() => setRemoving(i)} onDone={() => openLevel(null)} />
+          )} />
+      </div>
       {!disabled && levels.length < LEVELS_MAX && (
         <Button type="button" variant="create" size="sm" className="justify-self-start"
           onClick={() => { if (!mayLeave()) return; onChange([...levels, newLevel()]); setOpen(levels.length); setChecked(null); focus({ i: levels.length, on: '[data-focus="name"]' }); }}>
@@ -239,10 +242,10 @@ export function Levels({ levels, onChange, options, disabled, reveal = 0 }: { le
           onCloseAutoFocus={(e) => {
             // opened from a menu item that is gone: removed → the card now there (or the one before), kept → its ⋯
             e.preventDefault();
-            const at = removedAt.current, cards = listRef.current?.children;
+            const at = removedAt.current, list = cards();
             removedAt.current = null;
-            if (at === null) cards?.[removing]?.querySelector<HTMLElement>('[data-slot="action-menu-trigger"]')?.focus();
-            else (cards?.[at] ?? cards?.[at - 1])?.querySelector<HTMLElement>('[data-focus="edit"]')?.focus();
+            if (at === null) list?.[removing]?.querySelector<HTMLElement>('[data-slot="action-menu-trigger"]')?.focus();
+            else (list?.[at] ?? list?.[at - 1])?.querySelector<HTMLElement>('[data-focus="edit"]')?.focus();
           }}
           onConfirm={async () => { removedAt.current = removing; onChange(levels.filter((_, j) => j !== removing)); setOpen(null); setChecked(null); }} />
       )}

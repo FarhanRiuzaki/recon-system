@@ -29,14 +29,5 @@ export function addColumn(columns: readonly ResultColumn[], value: string, sides
   return { columns: [...columns, col] };
 }
 
-/** Column `i` one place up (-1) or down (1); past an end, the same list. */
-export function moveColumn(columns: ResultColumn[], i: number, by: -1 | 1): ResultColumn[] {
-  const j = i + by;
-  if (j < 0 || j >= columns.length) return columns;
-  const next = [...columns];
-  [next[i], next[j]] = [next[j]!, next[i]!];
-  return next;
-}
-
 /** A column's pick value, its key in a list. */
 export const columnValue = valueOf;

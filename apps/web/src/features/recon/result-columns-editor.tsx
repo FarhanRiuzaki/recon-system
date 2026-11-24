@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { Combobox, Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { ReconSpec } from "@starterkit/shared/contracts/recon";
@@ -13,15 +13,16 @@ import type { ResultColumn, ResultColumnsDto } from "@starterkit/shared/contract
 import { recordFields } from "@starterkit/shared/recon";
 import { RESULT_COLUMNS_MAX, RESULT_LABEL_MAX } from "@starterkit/shared/results";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
+import { SortableList } from "@/components/sortable-list";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { ENGINE_KEY } from "@/lib/shared/queries";
 import { resultColumns } from "@/lib/shared/queries-recon";
-import { addColumn, columnChoices, type ColumnSide, columnValue, fieldText, moveColumn } from "./result-columns-model";
+import { addColumn, columnChoices, type ColumnSide, columnValue, fieldText } from "./result-columns-model";
 import { useSideSource } from "./use-recons";
 
 /**
- * The columns' editor in place (loaded on Edit): each column's heading, order and removal, a field to add (each side's
+ * The columns' editor in place (loaded on Edit): each column's heading, its order (drag, or the grip's keyboard) and removal, a field to add (each side's
  * fields under its name, then recon info), Save, Cancel and Back to default. A save applies at once (no approval).
  */
 export default function ResultColumnsEditor({ spaceId, configId, spec, value, onDone }: {
@@ -74,25 +75,22 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
 
   return (
     <div className="grid gap-4">
-      <ol aria-label="Columns in order" className="grid gap-2">
-        {cols.map((c, i) => {
+      <SortableList items={cols} getKey={columnValue} noun="Column" label="Columns in order" className="gap-2" onReorder={(next) => setCols(next)}
+        itemClassName="grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-md border border-line bg-card p-3"
+        renderItem={(c, { index: i, handle }) => {
           const id = `result-col-${i}`;
           return (
-            <li key={columnValue(c)} className="grid items-end gap-2 rounded-md border border-line bg-card p-3 md:grid-cols-[minmax(0,1fr)_auto]">
+            <>
+              <span className="flex h-8 items-center">{handle}</span>
               <Field id={id} label={`Column ${i + 1} heading`} required note={missing.has(columnValue(c)) ? `${sideOf(c)}: field not in the source` : sideOf(c)}
                 error={c.label.trim() ? null : "Give the column a heading."}>
                 <Input id={id} value={c.label} maxLength={RESULT_LABEL_MAX} onChange={(e) => setLabel(i, e.target.value)} />
               </Field>
-              <span className="flex items-center gap-1">
-                <Button type="button" size="icon" variant="ghost" aria-label={`Move ${c.label || `column ${i + 1}`} up`} disabled={i === 0} onClick={() => setCols(moveColumn(cols, i, -1))}><Icon icon={ArrowUpIcon} /></Button>
-                <Button type="button" size="icon" variant="ghost" aria-label={`Move ${c.label || `column ${i + 1}`} down`} disabled={i === cols.length - 1} onClick={() => setCols(moveColumn(cols, i, 1))}><Icon icon={ArrowDownIcon} /></Button>
-                <Button type="button" size="icon" variant="remove" aria-label={`Remove ${c.label || `column ${i + 1}`}`} onClick={() => setCols(cols.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
-              </span>
-            </li>
+              <Button type="button" size="icon" variant="remove" aria-label={`Remove ${c.label || `column ${i + 1}`}`} onClick={() => setCols(cols.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
+            </>
           );
-        })}
-        {!cols.length && <li className="text-body-sm text-fg-2">No columns: saving shows the default columns.</li>}
-      </ol>
+        }} />
+      {!cols.length && <p className="text-body-sm text-fg-2">No columns: saving shows the default columns.</p>}
 
       {/* the button sits on the field's line (owner 24 Nov: the note under the field pushed it below); the count under both */}
       <div className="grid gap-2">

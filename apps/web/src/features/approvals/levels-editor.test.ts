@@ -12,7 +12,7 @@ const group = (g: Partial<Group> = {}): Group => ({ spaceRoles: ["reviewer"], gl
 const options = { people: [{ id: "u1", name: "Rina" }], globalRoles: [] };
 const card = (level: Level, editing: boolean, checked = false) => renderToStaticMarkup(h(LevelCard, {
   level, index: 0, count: 2, options, editing, checked, readOnly: false,
-  onChange: () => {}, onEdit: () => {}, onDone: () => {}, onMove: () => {}, onRemove: () => {},
+  onChange: () => {}, onEdit: () => {}, onDone: () => {}, onRemove: () => {},
 }));
 /** The card's header row: marker, title and the actions, up to where the body starts. */
 const head = (html: string) => html.slice(html.indexOf('data-slot="level-head"'), html.indexOf('data-slot="level-body"'));
@@ -23,7 +23,7 @@ describe("LevelCard (audit W1–W5)", () => {
   it("a level is the same card in read and edit mode: marker, title, actions in one header row", () => {
     const read = card(level, false), edit = card(level, true);
     for (const html of [read, edit]) {
-      expect(html).toMatch(/^<li[^>]*data-slot="level-card"/);
+      expect(html).toMatch(/^<div[^>]*data-slot="level-card"/);
       expect(head(html)).toContain(">1</span>");
       expect(head(html)).toContain("Level 1 · Treasury head");
     }
@@ -138,13 +138,27 @@ describe("Levels: one open level, closed only once every group names someone; fo
     expect(focused()).toBe("Edit level 2"); // Third, now level 2
   });
 
-  it("Move down keeps the level open in its new place, focus on its ⋯", async () => {
+  it("moving a level by its grip's keyboard keeps it open in its new place, focus on its grip", async () => {
     await mount([full, { name: "Second", groups: [group()] }]);
     await press("Edit level 1");
-    await menu(1, "Move down");
+    const key = async (k: string) => {
+      const el = document.activeElement as HTMLElement;
+      await act(async () => { el.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true })); });
+    };
+    await act(async () => document.querySelector<HTMLElement>('[aria-label="Move level 1"]')!.focus());
+    await key(" "); await key("ArrowDown"); await key(" ");
     expect(modes()).toEqual(["read", "edit"]);
     expect(document.querySelector('[data-slot="level-card"] h3')!.textContent).toBe("Level 1 · Second");
-    expect(focused()).toBe("Actions for level 2");
+    expect(focused()).toBe("Move level 2");
+  });
+
+  it("the ⋯ menu no longer moves a level (the grip does)", async () => {
+    await mount([full, full]);
+    await press("Edit level 1");
+    const trigger = document.querySelector<HTMLElement>('[aria-label="Actions for level 1"]')!;
+    await act(async () => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" })); });
+    await act(() => new Promise((r) => setTimeout(r, 50)));
+    expect([...document.querySelectorAll('[role="menuitem"]')].map((x) => x.textContent?.trim())).toEqual(["Remove level"]);
   });
 
   it("the level title is a heading", () => {

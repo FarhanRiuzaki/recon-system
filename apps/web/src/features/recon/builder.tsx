@@ -19,6 +19,7 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import { approvalNotice, stepWarnings } from "./approval-model";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
+import { SortableList } from "@/components/sortable-list";
 import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
@@ -29,7 +30,6 @@ import {
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
-import type { SortablePasses as SortableList } from "./sortable-passes";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
 // step 4 loads when it opens (first-load budget, DEC-040)
@@ -208,16 +208,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   }, [json, dirty, editable, ourHash, keptKey]);
   const conflict = editable && version.specHash !== ourHash;
   const gaps = currencyGaps(spec, sourceSpecs);
-  // the drag order loads only where it can be used (a draft with two passes or more); the cmdk field list with the
-  // first draft, so the inspector's first field picker doesn't wait on its chunk
-  const [Sortable, setSortable] = useState<typeof SortableList | null>(null);
-  const sortable = editable && spec.passes.length > 1;
-  useEffect(() => {
-    if (!sortable || Sortable) return;
-    let on = true;
-    void import("./sortable-passes").then((m) => { if (on) setSortable(() => m.SortablePasses); });
-    return () => { on = false; };
-  }, [sortable, Sortable]);
+  // the cmdk field list loads with the first draft, so the inspector's first field picker doesn't wait on its chunk
   useEffect(() => { if (editable) void import("@starterkit/ui/ds/combobox-command"); }, [editable]);
 
   const passIndex = sel.k === "pass" ? keys.indexOf(sel.key) : -1;
@@ -249,7 +240,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const onPhone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   // a pass opens in the editor dialog (the step's page stays the list); a side and the schedule are edited on their own steps
   const select = (s: Selected) => { setSel(s); setSheet(true); };
-  /** Moves a pass; `announce` for Alt+↑/↓ and Move earlier/later (a drop is announced by dnd-kit). */
+  /** Moves a pass; `announce` for Alt+↑/↓ and Move earlier/later (a drag or the grip's keyboard is announced by SortableList). */
   const move = (from: number, to: number, announce = true) => {
     if (to < 0 || to >= keys.length || from === to) return;
     change(movePass(spec, from, to));
@@ -456,8 +447,10 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
   const go = (n: WizardStep) => { setSheet(false); onStep(n); };
   const passList = (readOnly: boolean) => (
     spec.passes.length ? (
-      Sortable && sortable && !readOnly ? <Sortable rows={rows.map((x) => ({ ...x, results: false }))} onMove={(from, to) => move(from, to, false)} />
-        : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <PassRow key={p.id} {...p} {...(readOnly ? { editable: false, selected: false, onSelect: () => {}, onRemove: undefined, needs: [] } : { results: false })} />)}</ol>
+      !readOnly ? (
+        <SortableList items={rows} getKey={(r) => r.id} noun="Pass" label="Passes in run order" disabled={!editable} onReorder={(_, from, to) => move(from, to, false)}
+          renderItem={(r, { handle, dragging }) => <PassRow {...r} results={false} handle={handle} dragging={dragging} />} />
+      ) : <ol aria-label="Passes in run order" className="grid">{rows.map((p) => <li key={p.id}><PassRow {...p} editable={false} selected={false} onSelect={() => {}} onRemove={undefined} needs={[]} /></li>)}</ol>
     ) : null
   );
   const addPass = (t: PassTemplate) => { const k = `p${keySeq.current++}`; change(addTemplatePass(spec, fields, t)); setKeys([...keys, k]); select({ k: "pass", key: k }); };

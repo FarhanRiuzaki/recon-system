@@ -40,13 +40,13 @@ export function DndList({ keys, name, onMove, children }: { keys: string[]; name
   );
 }
 
-export function DndItem({ id, wholeRow, lifted, className, children }: {
-  id: string; wholeRow: boolean; lifted: boolean; className?: string; children: (bits: DragBits) => ReactNode;
+export function DndItem({ id, disabled, wholeRow, lifted, className, children }: {
+  id: string; disabled: boolean; wholeRow: boolean; lifted: boolean; className?: string; children: (bits: DragBits) => ReactNode;
 }) {
-  const { setNodeRef, setActivatorNodeRef, listeners, transform: t, isDragging } = useSortable({ id, transition: null });
+  const { setNodeRef, setActivatorNodeRef, listeners, transform: t, isDragging } = useSortable({ id, disabled, transition: null });
   const up = isDragging || lifted;
   return (
-    <li ref={setNodeRef} {...(wholeRow ? listeners : {})} style={t ? { transform: `translate3d(${Math.round(t.x)}px, ${Math.round(t.y)}px, 0)` } : undefined}
+    <li ref={setNodeRef} {...(wholeRow && !disabled ? listeners : {})} style={t ? { transform: `translate3d(${Math.round(t.x)}px, ${Math.round(t.y)}px, 0)` } : undefined}
       className={cn(className, isDragging ? "cursor-grabbing" : "motion-safe:transition-transform motion-safe:duration-(--dur-enter)", up && "relative z-10 shadow-overlay")}>
       {children({ setHandleRef: setActivatorNodeRef, listeners, dragging: isDragging })}
     </li>
