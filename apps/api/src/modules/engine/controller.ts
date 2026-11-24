@@ -19,6 +19,7 @@ import { signoffPage, signoffStep } from "./signoff";
 import { discardDraftVersion, requestRun, requestSimulation } from "./jobs";
 import { runDetail, runItemPage, runPage, simChangePage } from "./service";
 import { reconLive, reconTrend, todayDto } from "./today";
+import { navCounts } from "./nav-counts";
 import { resultCounts, resultMembers, resultPage } from "./results";
 
 /** The routes of runs and simulations. */
@@ -27,6 +28,8 @@ export const engineController = () =>
     .use(guard)
     /** Today (REC-F4): the space's recons' current business dates and the sources they read. */
     .get("/v1/spaces/:spaceId/today", ({ ctx }) => todayDto(ctx), { guard: { space: SPACE_ROLES } })
+    /** The sidebar's counts: open unmatch, what waits for the caller, postings needing attention. */
+    .get("/v1/spaces/:spaceId/nav-counts", ({ ctx }) => navCounts(ctx), { guard: { space: SPACE_ROLES } })
     // the breaks queue (Plan 5): any role reads it; a space admin or reviewer assigns; whoever works breaks takes them
     .get("/v1/spaces/:spaceId/breaks", ({ ctx, query }) => breakPage(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/breaks/facets", ({ ctx, query }) => breakFacets(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })

@@ -43,6 +43,8 @@ export const RECON_NAME_MAX = 100;
 export const PASSES_MAX = 20;
 /** At most this many recons on Today (a space has tens); more answer `capped` (TodayDto). */
 export const TODAY_RECONS_MAX = 200;
+/** The sidebar's counts (GET …/nav-counts) stop at this; past it the answer says `capped` and the badge "99+". */
+export const NAV_COUNT_CAP = 1000;
 /** How many business dates a recon's trend shows (its Overview). */
 export const TREND_DAYS = 14;
 /** HH:MM, 00:00–23:59 (Asia/Jakarta): a daily run's time and a day's close. */

@@ -611,6 +611,14 @@ export const TodayDto = z.object({
 });
 export type TodayDto = z.infer<typeof TodayDto>;
 /**
+ * GET /api/spaces/{spaceId}/nav-counts: the sidebar's numbers for the space, each the screen's own count on the same
+ * data: `unmatch` the Unmatch list's total (no filter), `approvals` what waits for the caller's decision (the inbox's
+ * "Waiting for me"), `posting` Today's postings needing attention (failed, timeout or not sent in 24 h). Each stops at
+ * NAV_COUNT_CAP; `capped` = one of them did.
+ */
+export const NavCountsDto = z.object({ unmatch: z.number().int(), approvals: z.number().int(), posting: z.number().int(), capped: z.boolean() });
+export type NavCountsDto = z.infer<typeof NavCountsDto>;
+/**
  * GET /api/spaces/{spaceId}/recons/{configId}/days: the TREND_DAYS business dates up to its current one, oldest first,
  * each as the last finalized live run covering it left it (null: no run covered it).
  */

@@ -85,6 +85,15 @@ export function approvalFacets(ctx: Ctx, q: ApprovalListQuery): Promise<FacetsDt
   });
 }
 
+/**
+ * The inbox's "Waiting for me" total (approvalPage with `mine`) up to `cap` + 1, under the caller's withSpace;
+ * `capped` as the page's `totalCapped` (more pending break requests than the inbox checks).
+ */
+export async function waitingCount(tx: InTx, ctx: Ctx, cap: number): Promise<{ n: number; capped: boolean }> {
+  const { u, capped } = await inbox(tx, ctx, { mine: "1" });
+  return { n: (await tx.select({ n: countN }).from(tx.select(one).from(u).limit(cap + 1).as("w")))[0]!.n, capped };
+}
+
 export function approvalPage(ctx: Ctx, q: ApprovalListQuery): Promise<Page<ApprovalRowDto>> {
   const spaceId = ctx.space!.id;
   return withSpace({ spaceIds: [spaceId], userId: ctx.user.id }, async (tx) => {

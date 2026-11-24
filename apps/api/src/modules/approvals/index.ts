@@ -4,4 +4,5 @@ export { approvalsController } from "./controller";
 export { MISSING_WORKFLOW, openRequest, pendingOf, previewApproval, requestView } from "./requests";
 export { approvalDecisions, approvalRequests, workflows, workflowVersions } from "./schema";
 export { pinnedVersion, workflowFacts } from "./workflows";
+export { waitingCount } from "./service";
 export { reviewRule, userNames, type VersionRow, versionDto, versionPeople } from "./versions";

@@ -243,6 +243,7 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/dashboard": "summary numbers; its recent list is fixed at 5",
   "GET /v1/me": "the signed-in user",
   "GET /v1/spaces/:spaceId/today": "the space's recons and their sources, capped at TODAY_RECONS_MAX (capped flag)",
+  "GET /v1/spaces/:spaceId/nav-counts": "three counts of the space for the sidebar, each capped at NAV_COUNT_CAP (capped flag)",
   "GET /v1/spaces/:spaceId/recons/:configId/days": "a recon's last TREND_DAYS business dates (14), fixed",
   "GET /v1/spaces/:spaceId/recons/:configId/live": "one recon's current business date and its two sources",
   "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",

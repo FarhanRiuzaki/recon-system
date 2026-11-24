@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NavCountsDto",
+  "type": "object",
+  "properties": {
+    "unmatch": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "approvals": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "posting": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "capped": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "unmatch",
+    "approvals",
+    "posting",
+    "capped"
+  ],
+  "additionalProperties": false
+}

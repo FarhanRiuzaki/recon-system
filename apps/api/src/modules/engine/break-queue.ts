@@ -169,6 +169,12 @@ export function breakSummary(ctx: Ctx, q: BreakListQuery, now = new Date()): Pro
 }
 
 /** GET …/breaks: one page of the space's queue, oldest business date first unless `sort` says otherwise. */
+/** The Unmatch list's total with no filter (breakPage's `where`), counted up to `cap` + 1 so a caller can say "more". */
+export async function openBreakCount(tx: InTx, ctx: Ctx, spaceId: string, cap: number, now = new Date()): Promise<number> {
+  const sub = tx.select(one).from(reconItems).where(breakWhere(tx, ctx, spaceId, todayIn(now), {})).limit(cap + 1).as("b");
+  return (await tx.select({ n: countN }).from(sub))[0]!.n;
+}
+
 export function breakPage(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<Page<BreakRowDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
     const today = todayIn(now);
