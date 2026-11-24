@@ -27,7 +27,7 @@ import { categoryChip, statusChip } from "@/lib/shared/categories";
 import { reconDashboardRead } from "@/lib/shared/queries";
 import { timeRange } from "@/lib/shared/time-controls";
 import { AdminSection } from "./admin-section";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, sourcesEmpty, unmatchHref } from "./dashboard-model";
 
 type D = ReconDashboardDto;
 // series (chart slots 1–3): auto match, by hand and force, new unmatch; the rate line its own chart
@@ -196,13 +196,13 @@ function Recons({ d }: { d: D }) {
 }
 
 /** Each source's business dates of the period: on time, late, missing, and unknown (complete before completion times were kept). */
-function Sources({ d }: { d: D }) {
+function Sources({ d, recon }: { d: D; recon: string | null }) {
   const s = d.sources;
   const count = (n: number) => <TableCell className="text-right tabular">{formatNumber(n)}</TableCell>;
   return (
     <Panel flush icon={DiskIcon} title="Sources" description={`On-time rate ${pct(onTimeRate(s))} · ${formatNumber(s.late)} late, ${formatNumber(s.missing)} missing over the period's business dates`}
-      actions={<InfoTip label="how a date is judged" title="On time">A date is on time when its data was complete by the source&apos;s own deadline or grace, else by the close of the recons that read it. Unknown dates were complete before completion times were kept and stay out of the rate.</InfoTip>}>
-      {!s.rows.length ? <EmptyState icon={DiskIcon} title="No sources yet" description="A source shows here once it has a published version in one of your spaces." />
+      actions={<InfoTip label="how a date is judged" title="On time">A date is on time when its data was complete by the earlier of the source&apos;s deadline or grace and the close of the recons that read it, in any space. Unknown dates were complete before completion times were kept and stay out of the rate.</InfoTip>}>
+      {!s.rows.length ? <EmptyState icon={DiskIcon} {...sourcesEmpty(recon)} />
         : (
           <Table aria-label="Sources in the period">
             <TableHeader><TableRow>
@@ -214,8 +214,9 @@ function Sources({ d }: { d: D }) {
                 <TableRow key={r.id}>
                   <TableCell><Link className="text-fg underline-offset-4 hover:underline" href={sourceHref(r.spaceId, r.id)}>{r.name}</Link></TableCell>
                   <TableCell className="text-fg-2">{r.spaceName}</TableCell>
-                  {count(r.onTime)}{count(r.late)}{count(r.missing)}{count(r.unknown)}
-                  <TableCell className="text-right tabular">{pct(onTimeRate(r))}</TableCell>
+                  {r.calendarMissing
+                    ? <TableCell colSpan={5} className="text-right text-fg-2">Calendar missing: set the source&apos;s calendar to count its dates</TableCell>
+                    : <>{count(r.onTime)}{count(r.late)}{count(r.missing)}{count(r.unknown)}<TableCell className="text-right tabular">{pct(onTimeRate(r))}</TableCell></>}
                 </TableRow>
               ))}
             </TableBody>
@@ -295,7 +296,7 @@ export function DashboardPage() {
               <Breakdowns d={d} space={reconSpace} recon={recon} />
               {d.bySpace.length > 1 && <BySpace d={d} />}
               <Recons d={d} />
-              <Sources d={d} />
+              <Sources d={d} recon={recon} />
               <Approvals d={d} />
             </>
           )}

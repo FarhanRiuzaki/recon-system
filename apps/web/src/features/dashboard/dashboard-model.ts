@@ -74,6 +74,10 @@ export const approvalsHref = (spaceId: string) => `${space(spaceId)}/approvals${
 
 /** A source's page, under the space the dashboard row names. */
 export const sourceHref = (spaceId: string, id: string) => `${space(spaceId)}/sources/${encodeURIComponent(id)}`;
+/** The Sources panel with no rows: across the spaces, or for the recon picked (`recon`). */
+export const sourcesEmpty = (recon: string | null): { title: string; description: string } => recon
+  ? { title: "This recon reads no sources", description: "Its sources show here once a published version of it reads one." }
+  : { title: "No sources yet", description: "A source shows here once it has a published version in one of your spaces." };
 /** Business dates on time ÷ those judged (on time, late, missing); unknown ones stay out; null when none is judged. */
 export const onTimeRate = (t: Pick<ReconDashboardDto["sources"], "onTime" | "late" | "missing" | "unknown">): number | null => rate(t.onTime, t.onTime + t.late + t.missing);
 

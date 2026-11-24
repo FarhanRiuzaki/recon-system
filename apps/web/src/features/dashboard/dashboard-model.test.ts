@@ -4,7 +4,7 @@ import { selectionState } from "@starterkit/shared/filter-selection";
 import { readTable } from "@/lib/shared/table-state";
 import { ACTION_RUNS } from "@/lib/shared/queries";
 import { BREAKS, RESULTS } from "@/lib/shared/queries-recon";
-import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, unmatchHref } from "./dashboard-model";
+import { adminSection, approvalsHref, countDelta, idrHeadline, linkSpace, onTimeRate, pendingNotice, postingFailedHref, rate, rateDelta, resultsHref, sourceHref, sourcesEmpty, unmatchHref } from "./dashboard-model";
 
 const has = (...ps: PermissionName[]) => (p: PermissionName) => ps.includes(p);
 const search = (href: string) => new URLSearchParams(href.split("?")[1] ?? "");
@@ -16,6 +16,11 @@ describe("recon dashboard model", () => {
     expect(onTimeRate({ onTime: 1, late: 1, missing: 2, unknown: 0 })).toBe(0.25);
     expect(onTimeRate({ onTime: 0, late: 0, missing: 0, unknown: 4 })).toBeNull();
     expect(sourceHref("s 1", "x")).toBe("/spaces/s%201/sources/x");
+  });
+
+  it("sources: no rows says why, a recon picked that reads none in its own words", () => {
+    expect(sourcesEmpty(null)).toEqual({ title: "No sources yet", description: "A source shows here once it has a published version in one of your spaces." });
+    expect(sourcesEmpty("r1")).toEqual({ title: "This recon reads no sources", description: "Its sources show here once a published version of it reads one." });
   });
 
   it("the admin section is for holders of user.view or audit.view only", () => {

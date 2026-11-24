@@ -39,20 +39,32 @@ Readers: operations team (priorities), management (value and trend), product own
 Ruling (core, 2026-11-24). For each source in scope (the spaces' own sources and those their recons read; with a recon
 picked, the sources it reads) and each business date D of the period in the source's calendar:
 
-- **Complete**: D's data is all in. A file inbox source: a file named for D ingested. A snapshot source: D's snapshot
-  active. A pulled source: `complete_through` past the end of D (Asia/Jakarta).
+- **Complete**: D's data is all in. A file inbox source: a file named for D ingested with at least one row OK. A
+  snapshot source: D's snapshot active with at least one row. A pulled source: `complete_through` past the end of D
+  (Asia/Jakarta). An empty file or snapshot completes nothing.
 - **Completed at**: the moment D first became complete, kept by ingest in `source_deliveries` (one row per source and
   date, written in the transaction that ingests the file, activates the snapshot or moves `complete_through`; the first
-  completion wins, a later file version or snapshot never moves it). A pulled source's first pull is its baseline: the
-  dates it completes at once get no row.
-- **Due**: the source's own rule: a pulled source's grace after the end of D; a file or snapshot source's deadline on the
-  day after D (its file of D arrives the next morning, as health judges it). Without one, the earliest close of D plus
-  grace among the published recons reading it (when the recon closes D anyway, marked incomplete). Without either, the
-  end of the day after D.
+  completion wins, a later file version or snapshot never moves it). Never kept before D has ended (Asia/Jakarta):
+  today's snapshot or a file of today may still grow, so such a date stays unknown. A manual snapshot run of a date
+  after today is refused. A pulled source's whole first pull (every page of it) is its baseline: its dates get no row.
+- **Due** (ruling revised 2026-11-24, review): the earlier of
+  - the source's rule, on the stricter of its own inputs and those of the recons reading it (`recon_source_uses`: the
+    smallest grace, the earliest deadline), as source health judges: a pulled source, grace after the end of D; a file
+    or snapshot source, the deadline on the next business day after D in the source's calendar (Friday's file is due
+    Monday morning, as health's date in progress);
+  - the earliest close of D plus grace among the published recons reading it (when the recon closes D anyway).
+  Without either, the end of the next business day. The recons counted are those of every active space, not only the
+  viewer's: the due time never changes with who looks (`recon_source_due`, a security-definer aggregate, drizzle/0068).
+  The due time is kept with the completion (`source_deliveries.due_at`), so a later rule change never turns a kept date
+  on time or late; a date with no completion is judged by today's rule.
 - **On time**: completed at ≤ due. **Late**: completed at > due. **Missing**: not complete and now ≥ due. **Unknown**:
-  complete but no completed-at kept (completed before the table existed, a pull's baseline, or a watermark that is no
-  time). Not complete and not yet due: not counted. A date due before the source was made: not counted.
+  complete but no completed-at kept (completed before the table existed, a pull's baseline, a date completed before it
+  ended, or a watermark that is no time: an integer or decimal watermark column). A date or time watermark that pulls
+  nothing turns missing once due. Not complete and not yet due: not counted. A date due before the source was made: not
+  counted.
 - **On-time rate** = on time ÷ (on time + late + missing); unknown stays out of it and is shown on its own.
+- A source whose calendar is missing is listed as "Calendar missing" with no counts, never dropped. With a recon picked
+  that reads no sources, the panel says so ("This recon reads no sources").
 
 ## Non-goals
 
