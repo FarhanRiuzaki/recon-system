@@ -148,17 +148,17 @@ export const INTEGRATIONS_KEY = ["integrations"] as const;
 export const CONNECTORS: TableDef<{ q: string }> = {
   key: INTEGRATIONS_KEY[0], path: "/api/integrations/connectors", spec: { sorts: CONNECTOR_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } },
 };
-export type PostingFilters = { q: string; status: string; kind: string; show: string };
+export type PostingFilters = { q: string; status: string; kind: string; show: string; recon: string; dateFrom: string; dateTo: string };
 /** The results that need someone (audit §5.3): what the Posting list shows until the viewer picks statuses or shows all. */
 export const POSTING_ATTENTION = ["failed", "timeout", "not_sent"] as const;
 /**
  * A space's approval action runs (stage 4), newest first: `status` every ticked value, `kind` posting or notify, `q` a
- * reference; `show` attention (the default) asks for POSTING_ATTENTION while no status is ticked, all for every status.
+ * reference, `recon` and `dateFrom`/`dateTo` (the day it finished; the dashboard's links); `show` attention (the default) asks for POSTING_ATTENTION while no status is ticked, all for every status.
  */
 export const ACTION_RUNS = (spaceId: string): TableDef<PostingFilters> => ({
   key: INTEGRATIONS_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/action-runs`,
-  spec: { sorts: ACTION_RUN_SORTS, defaultSort: "-createdAt", search: ["q"], filters: { q: text(200), status: multiChoice(), kind: oneOf(["", "posting", "notify"], ""), show: oneOf(["attention", "all"], "attention") } },
-  params: (f) => ({ q: f.q, kind: f.kind, status: f.status || f.show === "all" ? f.status : selectionState([...POSTING_ATTENTION]) }),
+  spec: { sorts: ACTION_RUN_SORTS, defaultSort: "-createdAt", search: ["q"], filters: { q: text(200), status: multiChoice(), kind: oneOf(["", "posting", "notify"], ""), show: oneOf(["attention", "all"], "attention"), recon: multiChoice(), dateFrom: isoDate, dateTo: isoDate } },
+  params: (f) => ({ q: f.q, kind: f.kind, recon: f.recon, dateFrom: f.dateFrom, dateTo: f.dateTo, status: f.status || f.show === "all" ? f.status : selectionState([...POSTING_ATTENTION]) }),
 });
 /** A recon's posting groups (stage 5), newest period first, on its Posting groups tab; `group` (the one open) stays when paging. */
 export const POSTING_GROUPS = (spaceId: string, configId: string): TableDef<{ status: string }> => ({

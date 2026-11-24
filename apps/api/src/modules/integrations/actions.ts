@@ -151,6 +151,11 @@ function runsWhere(tx: InTx, spaceId: string, q: ActionRunListQuery) {
     eq(actionRuns.spaceId, spaceId),
     q.status?.length ? inArray(actionRuns.status, q.status) : undefined,
     q.kind ? eq(actionRuns.kind, q.kind) : undefined,
+    q.recon?.length ? inArray(actionRuns.configVersionId, tx.select({ id: reconConfigVersions.id }).from(reconConfigVersions)
+      .where(and(eq(reconConfigVersions.spaceId, spaceId), inArray(reconConfigVersions.configId, q.recon)))) : undefined,
+    // the day it finished in Asia/Jakarta, or was made while it goes on (the list's Time column)
+    q.dateFrom ? sql`(coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) at time zone 'Asia/Jakarta')::date >= ${q.dateFrom}::date` : undefined,
+    q.dateTo ? sql`(coalesce(${actionRuns.finishedAt}, ${actionRuns.createdAt}) at time zone 'Asia/Jakarta')::date <= ${q.dateTo}::date` : undefined,
     like ? or(ilike(actionRuns.subjectRef, like), ilike(actionRuns.externalId, like), ilike(actionRuns.bankReference, like),
       inArray(actionRuns.groupId, tx.select({ id: postingGroups.id }).from(postingGroups).where(and(eq(postingGroups.spaceId, spaceId), ilike(postingGroups.keyText, like))))) : undefined,
   );

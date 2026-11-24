@@ -22,7 +22,7 @@ import { ACTION_RUNS, type PostingFilters } from "@/lib/shared/queries";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const KIND_LABEL: Record<ActionRunRowDto["kind"], string> = { posting: "Posting", notify: "Notify" };
-const FILTER_DEFAULTS: PostingFilters = { q: "", status: "", kind: "", show: "attention" };
+const FILTER_DEFAULTS: PostingFilters = { q: "", status: "", kind: "", show: "attention", recon: "", dateFrom: "", dateTo: "" };
 const ATTENTION_LABEL = "Needs attention";
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "show", label: "Show", format: (v: string) => (v === "all" ? "All results" : ATTENTION_LABEL) },
   { key: "status", label: "Status" }, { key: "kind", label: "Kind" }] as const;

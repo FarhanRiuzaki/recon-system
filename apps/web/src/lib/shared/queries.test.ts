@@ -87,6 +87,10 @@ describe("lists that open on a default view (audit §5.2, §5.3)", () => {
     expect(request(q.ACTION_RUNS("s"), "show=all").getAll("status")).toEqual([]);
     expect(request(q.ACTION_RUNS("s"), "status=posted").getAll("status")).toEqual(["posted"]);
   });
+  it("Posting passes a recon and a period on (the dashboard's links)", () => {
+    const r = request(q.ACTION_RUNS("s"), "recon=r1&dateFrom=2026-11-02&dateTo=2026-11-03&status=failed");
+    expect([r.getAll("recon"), r.get("dateFrom"), r.get("dateTo"), r.getAll("status")]).toEqual([["r1"], "2026-11-02", "2026-11-03", ["failed"]]);
+  });
   it("Approvals asks for mine unless every request is shown; Unmatch opens on the largest amount", () => {
     expect(request(qr.APPROVALS("s")).get("mine")).toBe("1");
     expect(request(qr.APPROVALS("s"), "mine=0").get("mine")).toBeNull();
