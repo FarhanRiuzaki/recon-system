@@ -26,15 +26,26 @@ the log where the call came from; the log has no recon columns.
   `{ … kind: "token_check" }`. A token request made inside a send carries the send's origin.
 - **Actor**: the user who clicked (Try, Check token), else "System" plus `onBehalfOf` (the user whose approval fired the
   send) when the caller knows it.
-- Detail: masked request and response (the connector's masking, as `action_runs.payload_masked` today). Never stored:
-  secrets, tokens, signatures, the Authorization header, the sealed body.
+- Detail, two levels (owner 2026-11-24: "data sensitif bisa masuk log, karena untuk pengecekan dan debug ke team open
+  api"):
+  - masked request and response (the connector's masking, as `action_runs.payload_masked`), for `integration.view`;
+  - the **full** call for debugging: every request header as sent (signature, timestamp, external id, partner and
+    channel ids), the plain JSON body, the sealed (encrypted) body as sent, the response headers, the raw response and
+    its decrypted JSON. Stored encrypted at rest (`encryptSecret`, as `action_runs.payload_enc`). Read only with the
+    new permission `integration.debug` through "Show full request and response"; each reveal writes an activity entry
+    (`integration.call_reveal`, the call id).
+- Never stored, even in the full call: the client secret, private keys and the whole access token. The Authorization
+  header keeps its last 8 characters (`Bearer …a1b2c3d4`) and so does a token response's `access_token`, enough to tell
+  which token was used.
 - Screen: Open API menu gets a "Call log" view (tab beside the connector list), and each connector's page links to it
   filtered by that connector. Server paging, default 15; filters: time range (default today, `DateRangeControl`),
   connector, environment, outcome, origin module/kind, search (external id, path, origin label). Detail in a dialog.
   `SavedViewsMenu` + `ColumnsMenu`; five states; outcome chips by meaning (OK green, Rejected/Timeout/Not sent red).
 - Access: `integration.view` reads the log and its masked bodies (the same people who read connector settings and
   Try results today).
-- Retention: the janitor deletes rows older than `CALL_LOG_RETENTION_DAYS` (default 90), 10,000 per run, like audit.
+- Retention: the janitor clears the full call (`full_enc`) after `CALL_LOG_FULL_RETENTION_DAYS` (default 30) and
+  deletes rows after `CALL_LOG_RETENTION_DAYS` (default 90), 10,000 per run, like audit. Bank Mega's security guide was
+  not checked for a limit on keeping customer data in logs; the 30 days is env-configurable for that.
 
 ## Non-goals
 
@@ -46,7 +57,8 @@ the log where the call came from; the log has no recon columns.
 
 - A log write that can fail or slow the send: it runs after the call, outside the send's transaction; a failure to log
   is a warning line, the send's result stands.
-- Any secret in a row or in the activity log.
+- A credential (client secret, private key, whole access token) in any row or entry.
+- Full bodies readable without `integration.debug`, or a reveal that leaves no trace.
 - Recon-specific fields in the integrations module.
 
 ## Approaches
@@ -63,13 +75,16 @@ Table `connector_calls` (owned by `integrations`, global like `connectors`: no `
 there is one, sits inside `origin`, and the log is read only with the global `integration.view`): id (uuid v7),
 connector_id, connector_version, environment, operation_key (null for a token call), method, host, path, started_at,
 duration_ms, attempt, outcome, http_status, code, message, external_id, request_masked jsonb, response_masked jsonb,
+full_enc text null (the encrypted full call, cleared at 30 days),
 origin jsonb, actor_id uuid null, on_behalf_of uuid null. Indexes: (started_at desc, id), (connector_id, started_at).
 Monthly partitions are not needed at this size (my call; revisit past ~10M rows).
 
 ## API
 
 - `GET /v1/integrations/calls` (list, `integration.view`), `GET /v1/integrations/calls/facets`,
-  `GET /v1/integrations/calls/:id` (detail with bodies).
+  `GET /v1/integrations/calls/:id` (detail with masked bodies), `POST /v1/integrations/calls/:id/reveal`
+  (`integration.debug`: the full call, and the activity entry; POST because it writes that entry).
+- Permission `integration.debug` added to the catalog (`packages/shared/src/permissions.ts`), held by Superadmin.
 
 ## My calls
 
