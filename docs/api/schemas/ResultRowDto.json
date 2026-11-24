@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResultRowDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "group",
+        "item"
+      ]
+    },
+    "businessDate": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "posting_failed",
+        "posting_in_progress",
+        "posting_skipped",
+        "waiting_approval",
+        "posted",
+        "written_off",
+        "adjusted",
+        "closed",
+        "force_matched",
+        "matched_by_hand",
+        "matched_late",
+        "suggested",
+        "matched",
+        "unmatch",
+        "waiting_counterpart"
+      ]
+    },
+    "a": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "in_group",
+            "suggested",
+            "unmatch",
+            "open",
+            "closed",
+            "none"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "state",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "b": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "in_group",
+            "suggested",
+            "unmatch",
+            "open",
+            "closed",
+            "none"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "state",
+        "count"
+      ],
+      "additionalProperties": false
+    },
+    "cells": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "many": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "missing": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "value",
+          "many"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "openItemId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "explain": {
+      "type": "object",
+      "properties": {
+        "groupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "itemId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "groupId",
+        "itemId",
+        "runId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "kind",
+    "businessDate",
+    "status",
+    "a",
+    "b",
+    "cells",
+    "openItemId",
+    "explain"
+  ],
+  "additionalProperties": false
+}

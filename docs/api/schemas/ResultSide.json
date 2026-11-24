@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResultSide",
+  "type": "object",
+  "properties": {
+    "state": {
+      "type": "string",
+      "enum": [
+        "in_group",
+        "suggested",
+        "unmatch",
+        "open",
+        "closed",
+        "none"
+      ]
+    },
+    "count": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "state",
+    "count"
+  ],
+  "additionalProperties": false
+}

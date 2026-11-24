@@ -23,6 +23,7 @@ import * as approvals from "@starterkit/shared/contracts/approvals";
 import * as breaks from "@starterkit/shared/contracts/breaks";
 import * as workflows from "@starterkit/shared/contracts/workflows";
 import * as recon from "@starterkit/shared/contracts/recon";
+import * as results from "@starterkit/shared/contracts/results";
 import * as sources from "@starterkit/shared/contracts/sources";
 import * as spaces from "@starterkit/shared/contracts/spaces";
 import * as users from "@starterkit/shared/contracts/users";
@@ -74,13 +75,14 @@ const COMPOSED = {
   ReconRunPage: pageOf(recon.ReconRunDto),
   ReconRunItemPage: pageOf(recon.ReconRunItemDto),
   ReconSimChangePage: pageOf(recon.ReconSimChangeDto),
+  ResultPage: pageOf(results.ResultRowDto),
   OkDto: z.object({ ok: z.literal(true) }),
   TemporaryPasswordDto: z.object({ temporaryPassword: z.string() }),
 };
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, me, projects, rbac, recon, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, me, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -176,6 +178,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "day.prepare": ["recon", "`{ stage }`", "`{ date, stage }` (prepared)"],
   "day.sign": ["recon", "`{ stage }`", "`{ date, stage }` (signed)"],
   "recon.run": ["recon", "–", "`{ runId, version, from, to }` (the published version run over business dates from–to)"],
+  "recon.result_columns": ["recon", "`{ columns }` (null = the default columns)", "`{ columns }` (null = back to the default columns)"],
   "recon.simulate": ["recon", "–", "`{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to)"],
 };
 

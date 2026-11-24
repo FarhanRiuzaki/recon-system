@@ -45,3 +45,5 @@ export const SIGNOFF_SORTS = ["date"] as const;
 export const RECON_RUN_SORTS = ["startedAt"] as const;
 /** GET …/runs/{runId}/items. */
 export const RECON_RUN_ITEM_SORTS = ["businessDate"] as const;
+/** GET /api/spaces/{spaceId}/recons/{configId}/results (by business date, then id, by default). */
+export const RESULT_SORTS = ["businessDate", "status", "amountA", "ref"] as const;

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ResultColumnsDto",
+  "type": "object",
+  "properties": {
+    "columns": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "a",
+                  "b"
+                ]
+              },
+              "field": {
+                "type": "string",
+                "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              }
+            },
+            "required": [
+              "kind",
+              "field",
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "recon"
+              },
+              "field": {
+                "type": "string",
+                "enum": [
+                  "businessDate",
+                  "pass",
+                  "reason",
+                  "assignee",
+                  "postingStatus",
+                  "bankReference",
+                  "resolutionNote",
+                  "resolvedAt"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              }
+            },
+            "required": [
+              "kind",
+              "field",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "isDefault": {
+      "type": "boolean"
+    },
+    "missing": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "a",
+              "b"
+            ]
+          },
+          "field": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "field"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "updatedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "columns",
+    "isDefault",
+    "missing",
+    "updatedAt"
+  ],
+  "additionalProperties": false
+}
