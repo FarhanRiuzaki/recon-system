@@ -25,6 +25,8 @@ import { missingDays, queueDay } from "./stats";
 type Amounts = ReconDashboardDto["open"]["amounts"];
 type Results = Record<string, [number, number]>;
 const DAY_MS = 86_400_000;
+/** Spaces whose live numbers are read at once. ponytail: batches of 4, a pool-wide limiter if reads elsewhere need it. */
+const LIVE_SPACES = 4;
 /** The start of business date `d` (Asia/Jakarta midnight) as a timestamp. */
 const dayStart = (d: string, plus = 0) => sql`((${d}::date + ${plus}::int)::timestamp at time zone 'Asia/Jakarta')`;
 /** Timestamp `col` within business dates `from`..`to`: compared raw against their Asia/Jakarta midnights (index-friendly, M4). */
@@ -113,11 +115,15 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
 
   // live per space: the Unmatch list's summary and its breakdown under the same filter
   const filter = { page: 1, pageSize: 15, ...(q.recon ? { recon: [q.recon] } : {}) } as BreakListQuery;
-  const live = await Promise.all(scope.map(async (s) => {
-    const c = { ...ctx, space: { id: s.id, roles: s.roles } };
-    const [summary, groups] = await Promise.all([breakSummary(c, filter, now), openBreakdown(c, filter, now)]);
-    return { s, summary, groups };
-  }));
+  // LIVE_SPACES at a time: each space holds two of the API pool's connections while it reads (M5)
+  const live: { s: (typeof scope)[number]; summary: Awaited<ReturnType<typeof breakSummary>>; groups: Awaited<ReturnType<typeof openBreakdown>> }[] = [];
+  for (let i = 0; i < scope.length; i += LIVE_SPACES) {
+    live.push(...await Promise.all(scope.slice(i, i + LIVE_SPACES).map(async (s) => {
+      const c = { ...ctx, space: { id: s.id, roles: s.roles } };
+      const [summary, groups] = await Promise.all([breakSummary(c, filter, now), openBreakdown(c, filter, now)]);
+      return { s, summary, groups };
+    })));
+  }
   const groups = live.flatMap((l) => l.groups.map((g) => ({ ...g, amount: { currency: g.ccy, amountMinor: g.sum, items: g.n } })));
 
   // the rollup per config, current period and previous
