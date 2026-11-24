@@ -291,7 +291,7 @@ const AUTH_ROUTE_FILES = ["modules/auth/controller.ts", "modules/oauth/controlle
  * Routes whose `or` permission reaches space data on purpose. workflow.manage (DEC-052): a governance role configures
  * the workflows of any space; it reads and writes only workflows (not the space's business data).
  */
-const WF = "workflow.manage configures any space's workflows (DEC-052 rev 2); workflows only";
+const WF = "workflow.view reads and workflow.manage configures any space's workflows (DEC-052 rev 2); workflows only";
 const OR_WITH_SPACE: Record<string, string> = {
   "GET /v1/spaces/:spaceId/workflows": WF, "POST /v1/spaces/:spaceId/workflows": WF, "GET /v1/spaces/:spaceId/workflows/:id": WF,
   "GET /v1/spaces/:spaceId/workflows/:id/used-by": WF, "POST /v1/spaces/:spaceId/workflows/:id/draft": WF, "PATCH /v1/spaces/:spaceId/workflows/:id/draft": WF,

@@ -1,37 +1,53 @@
 import { Panel, ScrollFade } from "@starterkit/ui/ds";
-import { ROLE_LABEL, SPACE_ROLES } from "@starterkit/shared/spaces";
+import { ROLE_LABEL, SPACE_ACTION, SPACE_ROLES, type SpaceAction, type SpaceRole } from "@starterkit/shared/spaces";
+import { DEFAULT_LEVELS } from "@starterkit/shared/workflows";
 
 type Cell = "does" | "approves" | "views" | "none";
-const CODE: Record<string, Cell> = { D: "does", A: "approves", V: "views", "-": "none" };
-/** One letter per role in SPACE_ROLES order (D does, A approves, V views, - not allowed). */
-const row = (action: string, cells: string) => ({ action, cells: [...cells].map((c) => CODE[c]!) });
+/**
+ * A row's cells come from the role lists the API's space guards read (SPACE_ACTION): `does` and `approves` name one,
+ * `approves: "chain"` is the default approval chain, `views` every member (the read guards are SPACE_ROLES), and
+ * `covers` names a list the row's does + approves roles equal (role-matrix.test.ts checks it).
+ */
+type RowSpec = { action: string; does?: SpaceAction; approves?: SpaceAction | "chain"; views?: true; covers?: SpaceAction[] };
+const CHAIN: readonly SpaceRole[] = [...new Set(DEFAULT_LEVELS.flatMap((l) => l.groups.flatMap((g) => g.spaceRoles)))];
+const has = (list: readonly SpaceRole[] | undefined, r: SpaceRole) => !!list?.includes(r);
+const row = (s: RowSpec) => ({
+  ...s,
+  cells: SPACE_ROLES.map((r): Cell => (has(s.does && SPACE_ACTION[s.does], r) ? "does"
+    : has(s.approves === "chain" ? CHAIN : s.approves && SPACE_ACTION[s.approves], r) ? "approves" : s.views ? "views" : "none")),
+});
+const work = (action: string) => row({ action, does: "work" });
 
 /**
- * What each space role may do, as the API's space guards allow it today (engine, approvals, recon, sources and spaces
- * controllers; audit M2). Read-only reference; the rules themselves live in the API.
+ * What each space role may do. Read-only reference: the cells are the lists the API's space guards read
+ * (SPACE_ACTION; apps/api/test/architecture/space-guards.test.ts), so the table can't disagree with the API.
  */
-export const ROLE_MATRIX: readonly { group: string; rows: { action: string; cells: Cell[] }[] }[] = [
+export const ROLE_MATRIX: readonly { group: string; rows: ReturnType<typeof row>[] }[] = [
   { group: "Daily work", rows: [
-    row("View recons, today and unmatch items", "VVVVVVV"),
-    row("Take an item and set its state", "D---DD-"),
-    row("Assign items to someone", "D----D-"),
-    row("Run a recon now", "D-D-D--"),
-    row("Match", "D---DD-"),
-    row("Request posting", "D---DD-"),
-    row("Force match", "D---DD-"),
-    row("Write-off", "D---DD-"),
-    row("Close without a match", "D---DD-"),
-    row("Undo match", "D---DD-"),
-    row("Approve requests", "A----A-"),
-    row("Sign off a day", "D----D-"),
+    row({ action: "View recons, today, unmatch items and operation result", views: true }),
+    row({ action: "View postings and posting groups", views: true }),
+    row({ action: "View a source's files, pulls and records", views: true }),
+    row({ action: "View the dashboard of the spaces you are in", views: true }),
+    row({ action: "See the sidebar counts", views: true }),
+    work("Take an item and set its state"),
+    row({ action: "Assign items to someone", does: "assign" }),
+    row({ action: "Run a recon now", does: "runRecon" }),
+    work("Match"), work("Request posting"), work("Force match"), work("Write-off"), work("Close without a match"), work("Undo match"),
+    work("Work an item from Explain in operation result"),
+    row({ action: "Approve requests", approves: "chain" }),
+    row({ action: "Sign off a day", does: "signOff" }),
   ] },
   { group: "Setup", rows: [
-    row("Set up recons", "--DA---"),
-    row("Set up sources", "-DDA---"),
-    row("Connect a source and pull it", "-D-----"),
-    row("Set up workflows", "D------"),
+    row({ action: "Set up recons", does: "editRecon", approves: "approveVersion" }),
+    row({ action: "Run a simulation", does: "simulate" }),
+    row({ action: "Preview a posting request", does: "previewPosting" }),
+    row({ action: "Choose operation result columns", does: "resultColumns" }),
+    row({ action: "Delete a recon", does: "deleteRecon" }),
+    row({ action: "Set up sources", does: "editSource", approves: "approveVersion", covers: ["previewSource"] }),
+    row({ action: "Connect a source and pull it", does: "connectSource" }),
+    row({ action: "Set up workflows", does: "editWorkflows" }),
   ] },
-  { group: "Space", rows: [row("Manage members", "D------"), row("Share a source with another space", "D------")] },
+  { group: "Space", rows: [row({ action: "Manage members", does: "manageMembers" }), row({ action: "Share a source with another space", does: "shareSource" })] },
 ];
 
 // Tinted chips on *-soft / inset tokens (REC-D4), never opacity; "—" in fg-3 (5.35:1 on card), never fg-4.
@@ -84,6 +100,11 @@ export function RoleMatrix() {
         <li>Each change&apos;s workflow names who approves it; without one, a Reviewer or a Space admin does.</li>
         <li>Source admin is granted and removed only by an app admin, not by a space admin.</li>
         <li>The approver can&apos;t be the preparer or anyone who resolved an item that day. Approving freezes the day.</li>
+        {/* app roles (Roles screen) add to the space roles: the API lets these permissions in on the routes named */}
+        <li>A Superadmin holds every role in every space.</li>
+        <li>Open API: Integration view reads connectors and their call log, Integration debug also shows a call in full, Integration manage edits connectors.</li>
+        <li>Workflows: Workflow view reads every space&apos;s workflows, Workflow manage edits them as a space admin does.</li>
+        <li>Spaces: Space view lists every space and its members, Space manage creates spaces and manages any space&apos;s members.</li>
       </ul>
     </Panel>
   );

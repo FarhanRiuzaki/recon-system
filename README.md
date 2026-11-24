@@ -91,6 +91,12 @@ From the SunnyGo starterkit, kept and extended.
   delete.
 - Roles with a module × action permission matrix. Superadmin holds every permission and its role is locked.
 - Each user's effective permissions, combined from all their roles. The menu shows only what the user may open.
+- Two layers of access. Global roles (Roles screen) hold permissions from the catalog in
+  `packages/shared/src/permissions.ts`: users, roles, the activity log, spaces, workflows and Open API. Space roles
+  (Members page of each space) are the seven fixed roles of `packages/shared/src/spaces.ts`; what each may do is the
+  `SPACE_ACTION` list there, read by the API's space guards and drawn as "What each role can do" on the Members page,
+  so the two can't drift (`apps/api/test/architecture/space-guards.test.ts`). Every member reads the space's data; a
+  Superadmin holds every space role in every space.
 
 **Audit**
 

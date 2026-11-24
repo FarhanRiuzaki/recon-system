@@ -6,7 +6,7 @@
 import { Elysia } from "elysia";
 import { CreateReconBody, PreviewActionBody, PreviewApprovalBody, ReconActivityQuery, ReconListQuery, ReconVersionListQuery, RejectReconVersionBody, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { ResultColumnsBody } from "@starterkit/shared/contracts/results";
-import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
@@ -27,13 +27,13 @@ export const reconController = () =>
       const r = await createRecon(c.ctx, await body(c, CreateReconBody).catch(refusedRecon));
       c.set.status = 201;
       return r;
-    }, { guard: { space: ["config_maker"] } })
+    }, { guard: { space: SPACE_ACTION.editRecon } })
     .get("/v1/spaces/:spaceId/recons/:configId", ({ ctx, params }) => reconDetail(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
     /** A draft recon never submitted, deleted with its draft. */
     .delete("/v1/spaces/:spaceId/recons/:configId", async ({ ctx, params }) => {
       await discardRecon(ctx, idParam(params.configId, "recon"));
       return { ok: true };
-    }, { guard: { space: ["config_maker", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.deleteRecon } })
     .get("/v1/spaces/:spaceId/recons/:configId/activity", ({ ctx, params, query }) =>
       reconActivity(ctx, idParam(params.configId, "recon"), query), { query: ReconActivityQuery, guard: { space: SPACE_ROLES } })
     // the Operation result columns: outside the versioned spec, no approval; any role reads, a config maker or space admin saves
@@ -41,7 +41,7 @@ export const reconController = () =>
     .put("/v1/spaces/:spaceId/recons/:configId/result-columns", async (c) => {
       const b = await body(c, ResultColumnsBody);
       return setResultColumns(c.ctx, idParam(c.params.configId, "recon"), b);
-    }, { guard: { space: ["config_maker", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.resultColumns } })
     .get("/v1/spaces/:spaceId/recons/:configId/versions", ({ ctx, params, query }) =>
       versionPage(ctx, idParam(params.configId, "recon"), query), { query: ReconVersionListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/versions/:versionId", ({ ctx, params }) =>
@@ -50,11 +50,11 @@ export const reconController = () =>
       const v = await createDraft(c.ctx, idParam(c.params.configId, "recon"));
       c.set.status = 201;
       return v;
-    }, { guard: { space: ["config_maker"] } })
+    }, { guard: { space: SPACE_ACTION.editRecon } })
     .patch("/v1/spaces/:spaceId/recons/:configId/versions/:versionId", async (c) => {
       const b = await body(c, UpdateReconVersionBody).catch(refusedRecon);
       return updateVersion(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
-    }, { guard: { space: ["config_maker"] } })
+    }, { guard: { space: SPACE_ACTION.editRecon } })
     // a read sent as POST for its body (typed field values): who would approve a change, nothing is written
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/approvals/preview", async (c) => {
       const b = await body(c, PreviewApprovalBody);
@@ -64,12 +64,12 @@ export const reconController = () =>
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/actions/preview", async (c) => {
       const b = await body(c, PreviewActionBody);
       return previewVersionAction(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
-    }, { guard: { space: ["config_maker", "config_checker", "space_admin"] } }) // who sets up or reviews the recon: the payload is a break's data
+    }, { guard: { space: SPACE_ACTION.previewPosting } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/submit", ({ ctx, params }) =>
-      submitVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: ["config_maker"] } })
+      submitVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: SPACE_ACTION.editRecon } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/approve", ({ ctx, params }) =>
-      approveVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: ["config_checker"] } })
+      approveVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version")), { guard: { space: SPACE_ACTION.approveVersion } })
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/reject", async (c) => {
       const b = await body(c, RejectReconVersionBody);
       return rejectVersion(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
-    }, { guard: { space: ["config_checker"] } });
+    }, { guard: { space: SPACE_ACTION.approveVersion } });

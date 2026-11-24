@@ -11,6 +11,7 @@ import { call, platformAdmin, resetData, signIn } from "../../../../../test/help
 import { holdTx, lockWaiters } from "../../../../../test/helpers/db";
 import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
+import { rolePermissions, roles, userRoles } from "../../../rbac";
 import { reconConfigs, reconConfigVersions } from "../../../recon";
 import { spaceMembers, spaces, withSpace } from "../../../spaces";
 import { users } from "../../../users";
@@ -75,6 +76,20 @@ describe("a space's workflows", () => {
     expect((await call("GET", W(B, `/${w.id}`), { token: t.m1 })).status).toBe(404);
     expect((await call("POST", W(B), { token: t.m1, body: { spec: { name: "checker ONLY", levels: reviewers } } })).status).toBe(200);
     expect((await err(await call("POST", W(A), { token: t.m1, body: { spec: { name: "checker ONLY", levels: reviewers } } }))).code).toBe("duplicate");
+  });
+
+  it("workflow.view reads any space's workflows without a role there, and changes nothing", async () => {
+    const w = await create(t.m1, "Checker only");
+    const roleId = Bun.randomUUIDv7();
+    await db.insert(roles).values({ id: roleId, name: "Workflow reader", locked: false });
+    await db.insert(rolePermissions).values({ roleId, permission: "workflow.view" });
+    await db.insert(userRoles).values({ userId: await idOf("apple"), roleId });
+    const reader = await signIn("apple");
+    expect((await call("GET", W(A), { token: reader })).status).toBe(200);
+    expect((await call("GET", W(A, `/${w.id}`), { token: reader })).status).toBe(200);
+    expect((await call("GET", W(A, `/${w.id}/used-by`), { token: reader })).status).toBe(200);
+    expect((await call("POST", W(A), { token: reader, body: { spec: { name: "x", levels: reviewers } } })).status).toBe(403);
+    expect((await call("POST", W(A, `/${w.id}/archive`), { token: reader })).status).toBe(403);
   });
 
   it("a Superadmin publishes their own only by override, with a reason", async () => {

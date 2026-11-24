@@ -1,10 +1,10 @@
 // /v1/spaces/:spaceId/approvals (the inbox), …/approval-requests/:id (deciding a request, DEC-052) and …/workflows (the
 // space's workflows, DEC-052 rev 2). Any role of the space reads; who decides a request follows its chain (checked in
-// the service: the guard can't know the chain); a space admin or a workflow.manage holder edits workflows.
+// the service: the guard can't know the chain); workflow.view also reads any space's workflows, and a space admin or a workflow.manage holder edits them.
 import { Elysia } from "elysia";
 import { ApprovalListQuery } from "@starterkit/shared/contracts/approvals";
 import { ApproveBody, CreateWorkflowBody, OverrideBody, RejectBody, ReviewWorkflowBody, SaveChainBody, UsedByQuery, WorkflowListQuery } from "@starterkit/shared/contracts/workflows";
-import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { approveRequest, cancelRequest, overrideRequest, rejectRequest } from "./requests";
@@ -31,26 +31,26 @@ export const approvalsController = () => new Elysia().use(guard)
   }, { guard: { space: SPACE_ROLES } })
   .post("/v1/spaces/:spaceId/approval-requests/:id/cancel", ({ ctx, params }) => cancelRequest(ctx, idParam(params.id, "request")), { guard: { space: SPACE_ROLES } })
   // the space's workflows
-  .get("/v1/spaces/:spaceId/workflows", ({ ctx, query }) => workflowPage(ctx, query), { query: WorkflowListQuery, guard: { space: SPACE_ROLES, or: "workflow.manage" } })
+  .get("/v1/spaces/:spaceId/workflows", ({ ctx, query }) => workflowPage(ctx, query), { query: WorkflowListQuery, guard: { space: SPACE_ROLES, or: "workflow.view" } })
   .post("/v1/spaces/:spaceId/workflows", async (c) => {
     const b = await body(c, CreateWorkflowBody);
     return createWorkflow(c.ctx, b);
-  }, { guard: { space: ["space_admin"], or: "workflow.manage" } })
-  .get("/v1/spaces/:spaceId/workflows/:id", ({ ctx, params }) => workflowDetail(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ROLES, or: "workflow.manage" } })
-  .get("/v1/spaces/:spaceId/workflows/:id/used-by", ({ ctx, params, query }) => usedBy(ctx, idParam(params.id, "workflow"), query), { query: UsedByQuery, guard: { space: SPACE_ROLES, or: "workflow.manage" } })
-  .post("/v1/spaces/:spaceId/workflows/:id/draft", ({ ctx, params }) => startWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: ["space_admin"], or: "workflow.manage" } })
+  }, { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
+  .get("/v1/spaces/:spaceId/workflows/:id", ({ ctx, params }) => workflowDetail(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ROLES, or: "workflow.view" } })
+  .get("/v1/spaces/:spaceId/workflows/:id/used-by", ({ ctx, params, query }) => usedBy(ctx, idParam(params.id, "workflow"), query), { query: UsedByQuery, guard: { space: SPACE_ROLES, or: "workflow.view" } })
+  .post("/v1/spaces/:spaceId/workflows/:id/draft", ({ ctx, params }) => startWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
   .patch("/v1/spaces/:spaceId/workflows/:id/draft", async (c) => {
     const b = await body(c, SaveChainBody);
     return saveWorkflowDraft(c.ctx, idParam(c.params.id, "workflow"), b);
-  }, { guard: { space: ["space_admin"], or: "workflow.manage" } })
-  .post("/v1/spaces/:spaceId/workflows/:id/draft/submit", ({ ctx, params }) => submitWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: ["space_admin"], or: "workflow.manage" } })
-  .post("/v1/spaces/:spaceId/workflows/:id/draft/discard", ({ ctx, params }) => discardWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: ["space_admin"], or: "workflow.manage" } })
+  }, { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
+  .post("/v1/spaces/:spaceId/workflows/:id/draft/submit", ({ ctx, params }) => submitWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
+  .post("/v1/spaces/:spaceId/workflows/:id/draft/discard", ({ ctx, params }) => discardWorkflowDraft(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
   .post("/v1/spaces/:spaceId/workflows/:id/review/approve", async (c) => {
     const b = await body(c, ReviewWorkflowBody);
     return reviewWorkflowDraft(c.ctx, idParam(c.params.id, "workflow"), b, "approve");
-  }, { guard: { space: ["space_admin"], or: "workflow.manage" } })
+  }, { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
   .post("/v1/spaces/:spaceId/workflows/:id/review/reject", async (c) => {
     const b = await body(c, ReviewWorkflowBody);
     return reviewWorkflowDraft(c.ctx, idParam(c.params.id, "workflow"), b, "reject");
-  }, { guard: { space: ["space_admin"], or: "workflow.manage" } })
-  .post("/v1/spaces/:spaceId/workflows/:id/archive", ({ ctx, params }) => archiveWorkflow(ctx, idParam(params.id, "workflow")), { guard: { space: ["space_admin"], or: "workflow.manage" } });
+  }, { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } })
+  .post("/v1/spaces/:spaceId/workflows/:id/archive", ({ ctx, params }) => archiveWorkflow(ctx, idParam(params.id, "workflow")), { guard: { space: SPACE_ACTION.editWorkflows, or: "workflow.manage" } });

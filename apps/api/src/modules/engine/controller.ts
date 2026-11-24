@@ -9,7 +9,7 @@ import { AssignBreaksBody, BreakCandidateQuery, BreakListQuery, BreakStateBody, 
 import { TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import { ReconRunItemQuery, ReconRunListQuery, ReconSimChangeQuery, RunRangeBody, SignoffBody, SignoffListQuery } from "@starterkit/shared/contracts/recon";
 import { ResultListQuery, ResultMembersQuery } from "@starterkit/shared/contracts/results";
-import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { assignBreaks, breakFacets, breakPage, breakSummary, setBreakState, takeBreaks } from "./break-queue";
@@ -34,9 +34,9 @@ export const engineController = () =>
     .get("/v1/spaces/:spaceId/breaks", ({ ctx, query }) => breakPage(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/breaks/facets", ({ ctx, query }) => breakFacets(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/breaks/summary", ({ ctx, query }) => breakSummary(ctx, query), { query: BreakListQuery, guard: { space: SPACE_ROLES } })
-    .post("/v1/spaces/:spaceId/breaks/assign", async (c) => assignBreaks(c.ctx, await body(c, AssignBreaksBody)), { guard: { space: ["space_admin", "reviewer"] } })
-    .post("/v1/spaces/:spaceId/breaks/take", async (c) => takeBreaks(c.ctx, await body(c, TakeBreaksBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
-    .post("/v1/spaces/:spaceId/breaks/state", async (c) => setBreakState(c.ctx, await body(c, BreakStateBody)), { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    .post("/v1/spaces/:spaceId/breaks/assign", async (c) => assignBreaks(c.ctx, await body(c, AssignBreaksBody)), { guard: { space: SPACE_ACTION.assign } })
+    .post("/v1/spaces/:spaceId/breaks/take", async (c) => takeBreaks(c.ctx, await body(c, TakeBreaksBody)), { guard: { space: SPACE_ACTION.work } })
+    .post("/v1/spaces/:spaceId/breaks/state", async (c) => setBreakState(c.ctx, await body(c, BreakStateBody)), { guard: { space: SPACE_ACTION.work } })
     // one break: its page, the other side's free items, its trail; resolving it (whoever has it, or a lead)
     .get("/v1/spaces/:spaceId/breaks/:itemId", ({ ctx, params }) => breakDetail(ctx, idParam(params.itemId, "unmatch item")), { guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/breaks/:itemId/candidates", ({ ctx, params, query }) => candidatePage(ctx, idParam(params.itemId, "unmatch item"), query), { query: BreakCandidateQuery, guard: { space: SPACE_ROLES } })
@@ -44,27 +44,27 @@ export const engineController = () =>
     .post("/v1/spaces/:spaceId/breaks/:itemId/match", async (c) => {
       const b = await body(c, MatchBreakBody);
       return matchBreak(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
-    }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
-    .post("/v1/spaces/:spaceId/breaks/:itemId/match-pair", ({ ctx, params }) => matchPair(ctx, idParam(params.itemId, "unmatch item")), { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.work } })
+    .post("/v1/spaces/:spaceId/breaks/:itemId/match-pair", ({ ctx, params }) => matchPair(ctx, idParam(params.itemId, "unmatch item")), { guard: { space: SPACE_ACTION.work } })
     .post("/v1/spaces/:spaceId/breaks/:itemId/close", async (c) => {
       const b = await body(c, CloseBreakBody);
       return closeBreak(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
-    }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.work } })
     // a change a checker decides (force match, unmatch, write-off): asked by whoever works the break, decided by a lead
     .post("/v1/spaces/:spaceId/breaks/:itemId/request", async (c) => {
       const b = await body(c, RequestBreakBody);
       return requestChange(c.ctx, idParam(c.params.itemId, "unmatch item"), b);
-    }, { guard: { space: ["operator", "reviewer", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.work } })
     // a recon's closed days and their sign-off (Task 4): any role reads; a reviewer or space admin prepares, another signs
     .get("/v1/spaces/:spaceId/recons/:configId/signoffs", ({ ctx, params, query }) => signoffPage(ctx, idParam(params.configId, "recon"), query), { query: SignoffListQuery, guard: { space: SPACE_ROLES } })
     .post("/v1/spaces/:spaceId/recons/:configId/signoffs/prepare", async (c) => {
       const b = await body(c, SignoffBody);
       return signoffStep(c.ctx, idParam(c.params.configId, "recon"), b, "prepare");
-    }, { guard: { space: ["reviewer", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.signOff } })
     .post("/v1/spaces/:spaceId/recons/:configId/signoffs/sign", async (c) => {
       const b = await body(c, SignoffBody);
       return signoffStep(c.ctx, idParam(c.params.configId, "recon"), b, "sign");
-    }, { guard: { space: ["reviewer", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.signOff } })
     // Operation result: one recon's results in a business-date range (groups and lone items), any role reads
     .get("/v1/spaces/:spaceId/recons/:configId/results", ({ ctx, params, query }) => resultPage(ctx, idParam(params.configId, "recon"), query), { query: ResultListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/results/counts", ({ ctx, params, query }) => resultCounts(ctx, idParam(params.configId, "recon"), query), { query: ResultListQuery, guard: { space: SPACE_ROLES } })
@@ -81,7 +81,7 @@ export const engineController = () =>
       const r = await requestRun(c.ctx, idParam(c.params.configId, "recon"), b);
       c.set.status = 202;
       return r;
-    }, { guard: { space: ["operator", "config_maker", "space_admin"] } })
+    }, { guard: { space: SPACE_ACTION.runRecon } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId", ({ ctx, params }) => runDetail(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run")), { guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/runs/:runId/items", ({ ctx, params, query }) =>
       runItemPage(ctx, idParam(params.configId, "recon"), idParam(params.runId, "run"), query), { query: ReconRunItemQuery, guard: { space: SPACE_ROLES } })
@@ -91,11 +91,11 @@ export const engineController = () =>
     .delete("/v1/spaces/:spaceId/recons/:configId/versions/:versionId", async ({ ctx, params, set }) => {
       await discardDraftVersion(ctx, idParam(params.configId, "recon"), idParam(params.versionId, "version"));
       set.status = 204;
-    }, { guard: { space: ["config_maker"] } })
+    }, { guard: { space: SPACE_ACTION.editRecon } })
     /** A simulation of a draft over business dates, queued; its job also simulates the published version and compares. */
     .post("/v1/spaces/:spaceId/recons/:configId/versions/:versionId/simulate", async (c) => {
       const b = await body(c, RunRangeBody);
       const r = await requestSimulation(c.ctx, idParam(c.params.configId, "recon"), idParam(c.params.versionId, "version"), b);
       c.set.status = 202;
       return r;
-    }, { guard: { space: ["config_maker"] } });
+    }, { guard: { space: SPACE_ACTION.simulate } });

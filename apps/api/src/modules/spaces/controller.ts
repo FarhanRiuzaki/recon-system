@@ -4,7 +4,7 @@
 // in service.ts).
 import { Elysia } from "elysia";
 import { CreateSpaceBody, SetSpaceMemberBody, SpaceCandidateListQuery, SpaceListQuery, SpaceMemberListQuery, UpdateSpaceBody, UserSpaceListQuery } from "@starterkit/shared/contracts/spaces";
-import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { candidatePage, createSpace, memberPage, removeMember, setMember, spaceDetail, spacePage, updateSpace, userSpacePage } from "./service";
@@ -22,18 +22,18 @@ export const spacesController = () =>
     }, { guard: "space.manage" })
     /** The space with the caller's roles in it ([] when let in through `space.view`, which `space.manage` implies). */
     .get("/v1/spaces/:spaceId", ({ ctx }) => spaceDetail(ctx.space!.id, ctx.space!.roles), { guard: { space: SPACE_ROLES, or: "space.view" } })
-    .patch("/v1/spaces/:spaceId", async (c) => updateSpace(c.ctx, c.ctx.space!.id, await body(c, UpdateSpaceBody)), { guard: { space: ["space_admin"], or: "space.manage" } })
+    .patch("/v1/spaces/:spaceId", async (c) => updateSpace(c.ctx, c.ctx.space!.id, await body(c, UpdateSpaceBody)), { guard: { space: SPACE_ACTION.manageMembers, or: "space.manage" } })
     /** Who is in the space: management data, readable by `space.view` (which lists the space anyway); no RLS data. */
     .get("/v1/spaces/:spaceId/members", ({ ctx, query }) => memberPage(ctx.space!.id, query), { query: SpaceMemberListQuery, guard: { space: SPACE_ROLES, or: "space.view" } })
     /** The app's users, each marked when already a member: who the Members screen can add. */
-    .get("/v1/spaces/:spaceId/candidates", ({ ctx, query }) => candidatePage(ctx.space!.id, query), { query: SpaceCandidateListQuery, guard: { space: ["space_admin"], or: "space.manage" } })
+    .get("/v1/spaces/:spaceId/candidates", ({ ctx, query }) => candidatePage(ctx.space!.id, query), { query: SpaceCandidateListQuery, guard: { space: SPACE_ACTION.manageMembers, or: "space.manage" } })
     .put("/v1/spaces/:spaceId/members/:userId", async (c) => {
       const b = await body(c, SetSpaceMemberBody);
       return setMember(c.ctx, c.ctx.space!.id, idParam(c.params.userId, "user"), b);
-    }, { guard: { space: ["space_admin"], or: "space.manage" } })
+    }, { guard: { space: SPACE_ACTION.manageMembers, or: "space.manage" } })
     .delete("/v1/spaces/:spaceId/members/:userId", async ({ ctx, params }) => {
       await removeMember(ctx, ctx.space!.id, idParam(params.userId, "user"));
       return { ok: true };
-    }, { guard: { space: ["space_admin"], or: "space.manage" } })
+    }, { guard: { space: SPACE_ACTION.manageMembers, or: "space.manage" } })
     /** The spaces a user is a member of, with their roles in each (the user detail's Spaces panel). */
     .get("/v1/users/:id/spaces", ({ params, query }) => userSpacePage(idParam(params.id, "user"), query), { query: UserSpaceListQuery, guard: "space.view" });

@@ -4,7 +4,7 @@
 // activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import { IngestListQuery, RecordListQuery, RunSourceBody } from "@starterkit/shared/contracts/sources";
-import { SPACE_ROLES } from "@starterkit/shared/spaces";
+import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import { filePage, pullPage, quarantinePage, recordPage, runSourceNow, snapshotPage } from "./service";
@@ -30,4 +30,4 @@ export const ingestController = () =>
     .post("/v1/spaces/:spaceId/sources/:sourceId/run", async (c) => {
       const b = await body(c, RunSourceBody);
       return runSourceNow(c.ctx, idParam(c.params.sourceId, "source"), b);
-    }, { guard: { space: ["source_admin"] } });
+    }, { guard: { space: SPACE_ACTION.connectSource } });
