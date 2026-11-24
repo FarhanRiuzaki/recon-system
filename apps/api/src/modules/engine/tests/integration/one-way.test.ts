@@ -212,12 +212,15 @@ describe("one-way recon (a_to_b)", () => {
     expect((await itemsOf(r.configId)).map((i) => [i.side, i.status]).sort()).toEqual([["a", "matched"], ["b", "break"], ["b", "matched"]]);
   }, 60_000);
 
-  it("publishing a two-way version opens the not-required items again; the next sweep breaks them as No counterpart", async () => {
+  it("publishing a two-way version makes not-required items of a closed date unmatch at once (no sweep needed), others open", async () => {
     const { r, sa, sb } = await dayD("a_to_b");
     const v2 = Bun.randomUUIDv7();
     await db.insert(reconConfigVersions).values({ id: v2, configId: r.configId, spaceId: A, version: 2, status: "in_review", spec: spec(sa.sourceId, sb.sourceId, [exact], 1), specHash: "h2", matchingHash: "h2", makerId: U });
     expect((await call("POST", `/v1/spaces/${A}/recons/${r.configId}/versions/${v2}/approve`, { token })).status).toBe(200);
-    expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => i.status)).toEqual(["open"]);
+    // D is closed: no sweep may ever reach it again, so the item is an unmatch right away (never hidden as open)
+    expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => [i.status, i.reason])).toEqual([["break", "No counterpart"]]);
+    const [day] = await db.select({ counters: reconDays.counters }).from(reconDays).where(and(eq(reconDays.configId, r.configId), eq(reconDays.businessDate, D)));
+    expect((day!.counters as { open: number }).open).toBeGreaterThanOrEqual(1);
     const acts = await json<Page<{ action: string; after: { reopened?: number } | null }>>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/activity`, { token }));
     expect(acts.items.find((e) => e.action === "recon.version_approve")?.after?.reopened).toBe(1);
     await sweepClosed(probe, r, D, D);

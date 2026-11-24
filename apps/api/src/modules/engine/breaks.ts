@@ -146,8 +146,21 @@ export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string
  * Runs in the publish transaction; answers how many it opened.
  */
 export async function reopenNotRequired(tx: InTx, spaceId: string, configId: string): Promise<number> {
-  const rows = await tx.update(reconItems).set({ status: "open", version: sql`${reconItems.version} + 1` })
-    .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), eq(reconItems.status, "not_required"), isNull(reconItems.simRunId)))
-    .returning({ id: reconItems.id });
-  return rows.length;
+  const mine = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), eq(reconItems.status, "not_required"), isNull(reconItems.simRunId));
+  const closed = sql`exists (select 1 from ${reconDays} d where d.space_id = ${reconItems.spaceId} and d.config_id = ${reconItems.configId}
+    and d.business_date = ${reconItems.businessDate} and d.status = 'closed')`;
+  // on a closed date no close or sweep may come back to them: they are unmatch now ("No counterpart", still a candidate
+  // within carry over as such breaks are), counted into that date's stored open counter; never left hidden as open
+  const broken = await tx.update(reconItems).set({ status: "break", breakReason: "No counterpart", lateMatch: true, version: sql`${reconItems.version} + 1` })
+    .where(and(mine, closed)).returning({ date: reconItems.businessDate });
+  const perDate = new Map<string, number>();
+  for (const r of broken) perDate.set(r.date, (perDate.get(r.date) ?? 0) + 1);
+  for (const [date, n] of perDate) {
+    await tx.update(reconDays).set({ counters: sql`jsonb_set(coalesce(${reconDays.counters}, '{}'::jsonb), '{open}', to_jsonb(coalesce((${reconDays.counters} ->> 'open')::int, 0) + ${n}))` })
+      .where(and(eq(reconDays.spaceId, spaceId), eq(reconDays.configId, configId), eq(reconDays.businessDate, date)));
+    await queueDay(spaceId, configId, date, tx);
+  }
+  // dates not closed yet: open again, judged at their close
+  const opened = await tx.update(reconItems).set({ status: "open", version: sql`${reconItems.version} + 1` }).where(mine).returning({ id: reconItems.id });
+  return broken.length + opened.length;
 }
