@@ -36,7 +36,7 @@ const ageOf = (d: string, now = new Date()) => Math.max(0, Math.round((Date.pars
  * its counterparts (the force match's items, the unmatched group's other members) under theirs; the first record of a
  * side wins. A side with no record has no fields, so a clause on it fails. recon.code is added by openRequest.
  */
-async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: string; businessDate: string; breakReason: string | null; breakState: string | null },
+async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: string; businessDate: string; breakReason: string | null; breakState: string | null; status: string },
   at: Attributes, counterparts: readonly string[]): Promise<Context> {
   const ids = [x.id, ...counterparts.filter((c) => c !== x.id)];
   const rows = await tx.select({ id: reconItems.id, side: reconItems.side, rec: records }).from(reconItems)
