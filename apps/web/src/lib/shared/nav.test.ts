@@ -4,27 +4,27 @@ import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
 /** The Work and Setup items in order (every one a space page; nothing is soon). */
-const WORK_SETUP = ["Today", "Unmatch", "Approvals", "Posting", "Operation result", "Recons", "Sources"];
+const WORK_SETUP = ["Today", "Unmatch", "Approvals", "Posting", "Recons", "Sources"];
 const labels = (perms: Parameters<typeof navFor>[0]) => navFor(perms).flatMap((s) => s.items.map((i) => i.label));
 
 describe("navFor", () => {
   it("user.view sees Dashboard, the coming-soon items, Members, Users, Profile only", () => {
-    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Profile"]);
+    expect(labels(new Set(["user.view"]))).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Members", "Workflows", "Users", "Profile"]);
   });
 
   it("no permissions: items without a permission only; empty groups disappear", () => {
     const sections = navFor(new Set());
     expect(sections.map((s) => s.id)).toEqual(["main", "work", "setup", "space", "personal"]);
-    expect(labels(new Set())).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Profile"]);
+    expect(labels(new Set())).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Members", "Workflows", "Profile"]);
   });
 
   it("integration.view alone shows Open API under Access", () => {
-    expect(labels(new Set(["integration.view"]))).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Open API", "Profile"]);
+    expect(labels(new Set(["integration.view"]))).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Members", "Workflows", "Open API", "Profile"]);
   });
 
   it("all permissions: every item but the hidden template pages, groups in the designed order", () => {
     const all = NAV.filter((n) => !n.hidden).map((n) => n.label);
-    expect(all).toEqual(["Dashboard", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Open API", "Activity log", "Sign-in log", "Profile"]);
+    expect(all).toEqual(["Dashboard", "Operation result", ...WORK_SETUP, "Members", "Workflows", "Users", "Roles", "Permissions", "Open API", "Activity log", "Sign-in log", "Profile"]);
     expect(labels(new Set(PERMISSIONS))).toEqual(all);
     expect(navFor(new Set(PERMISSIONS)).map((s) => s.id)).toEqual(["main", "work", "setup", "space", "access", "audit", "personal"]);
   });

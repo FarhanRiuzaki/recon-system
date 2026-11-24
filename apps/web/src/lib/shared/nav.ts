@@ -37,11 +37,11 @@ export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
 
 export const NAV: readonly NavItem[] = [
   { href: "/", label: "Dashboard", icon: "dashboard", shortcut: "G D", group: "main", perm: null },
+  { href: "/results", label: "Operation result", icon: "results", shortcut: "G L", group: "main", perm: null, space: "results" },
   { href: "/today", label: "Today", icon: "today", shortcut: "G T", group: "work", perm: null, space: "today" },
   { href: "/breaks", label: "Unmatch", icon: "breaks", shortcut: "G H", group: "work", perm: null, space: "breaks" },
   { href: "/approvals", label: "Approvals", icon: "approvals", shortcut: "G V", group: "work", perm: null, space: "approvals" },
   { href: "/posting", label: "Posting", icon: "posting", shortcut: "G N", group: "work", perm: null, space: "posting" },
-  { href: "/results", label: "Operation result", icon: "results", shortcut: "G L", group: "work", perm: null, space: "results" },
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
