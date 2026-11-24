@@ -631,6 +631,23 @@ describe("deliveries: when each business date became complete (source_deliveries
   const deliveriesOf = async (s: Src) => (await db.select().from(sourceDeliveries).where(eq(sourceDeliveries.sourceId, s.sourceId)).orderBy(asc(sourceDeliveries.businessDate)))
     .map((r) => ({ date: r.businessDate, at: r.completedAt.toISOString() }));
 
+  it("an empty delivery completes nothing: a file with no row OK, a first snapshot with no row; the first one with rows does", async () => {
+    const k = await source(A, kseiSpec());
+    const noSid = ["A1", "B1", "TSTSRE001", "D4", "E5", "F6", "G7", "H8", "I9", "J10", "K11", "L12", "", "N14"].join("|") + "\n";
+    await put("act20261102.txt", noSid, new Date(Date.now() - 3_600_000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await deliveriesOf(k)).toEqual([]);
+    await put("act20261102.txt", KSEI_FILE);
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect((await deliveriesOf(k)).map((d) => d.date)).toEqual([D]);
+    const m = await source(A, medallionSpec());
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect(await deliveriesOf(m)).toEqual([]);
+    await medallion(D, [1]);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect((await deliveriesOf(m)).map((d) => d.date)).toEqual([D]);
+  });
+
   it("a file: its date is complete when it is ingested; a later version or a resend keeps the first time", async () => {
     const k = await source(A, kseiSpec());
     await put("act20261102.txt", KSEI_FILE, new Date(Date.now() - 3_600_000));

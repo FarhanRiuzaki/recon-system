@@ -387,7 +387,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
       // the date's records are this snapshot's alone now (a snapshot source has no others): set, not add
       await tally(tx, s, "records", new Map([[businessDate, counts.added]]), true);
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, endOfDay(businessDate));
-      await delivered(tx, s, [businessDate]);
+      if (counts.ok > 0) await delivered(tx, s, [businessDate]); // an empty snapshot completes nothing
       return false;
     });
     return kept ? "failed" : "active";
@@ -485,7 +485,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
         rowsTotal: counts.total, rowsOk: counts.ok, rowsNew: counts.added, rowsQuarantined: counts.quarantined,
       });
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, row.businessDate ? endOfDay(row.businessDate) : null);
-      await delivered(tx, s, row.businessDate ? [row.businessDate] : []);
+      if (row.businessDate && counts.ok > 0) await delivered(tx, s, [row.businessDate]); // a file with no row OK completes nothing
       return "ingested" as const;
     }));
   } catch (e) {
