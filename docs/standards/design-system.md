@@ -994,9 +994,17 @@ set up, in named groups, with the progress as a count and a bar. Written for the
   (a remove button). The trailing column is reserved when the row has none (an invisible cell), so rows line up and
   nothing moves when one gains a remove button. One column below 768 px.
   A list of editable blocks (a workflow's levels, `features/approvals/levels-editor.tsx`) is one card per block with
-  the same header row read and open (number, title, Edit; open: Done and ⋯ with move and remove); the body swaps with
+  the same header row read and open (grip, number, title, Edit; open: Done and ⋯ with remove); the body swaps with
   `animate-fade` (opacity on `--dur-fast`, the same under reduced motion). Sub-rows sit in `--tray` blocks; a
   `multiple` Combobox shows its chips inside the field, a chosen option with `slot` as a CategoryChip.
+- **SortableList** (`apps/web/src/components/sortable-list.tsx`; /ds/components "Ordered list"; owner 24 Nov): every
+  list the user orders by hand (result columns, approval rules, action variants, workflow levels, recon passes). No
+  up/down buttons: a row moves by its grip (`DragHandleIcon`), or by the whole row when it has no field (`wholeRow`);
+  a mouse press that moves 4 px or a 250 ms long press on touch lifts it (a swipe still scrolls). Keyboard on the grip:
+  Space or Enter picks up, arrows (Home, End) move, Space or Enter drops, Escape puts it back; each step is announced
+  ("Column 2 moved to position 4 of 6."). The lifted row takes `shadow-overlay`, the others slide on `--dur-enter`
+  under `motion-safe` only; dnd-kit auto-scrolls near the edges. dnd-kit loads with `import()` once a list of two
+  rows or more renders, never in a route's first load; until then the keyboard already works.
 - **CompareCard** (`ds/compare-card.tsx`; /ds/data): two sides of one comparison in a Panel, a row per field (`rows`:
   `{ label, a, b, delta?, differs }`, `sides` names the columns), a Difference column when any row has a delta. A row
   that differs has a 2 px `--line-strong` left rule, bold values and a screen-reader "differs". The table's caption

@@ -15,6 +15,7 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@starterkit/ui/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/tooltip";
 import { useCallback, useState } from "react";
+import { SortableList } from "@/components/sortable-list";
 import { AffectGroup } from "../affect/gallery";
 import { sample } from "../sample-toast";
 import { useHashScroll } from "../use-hash-scroll";
@@ -139,6 +140,7 @@ export function ComponentsSections() {
                 <EditorRow lead={<span className="text-body-sm text-fg-2">Level 2</span>} trailing={<Button variant="remove" size="icon" aria-label="Remove level 2"><Icon icon={RemoveIcon} /></Button>}><Input aria-label="Approvers of level 2" defaultValue="Space admin" /></EditorRow>
               </div>
             </Panel>
+            <SortableSample />
           </PageZone>
         </div>
       </div>
@@ -158,6 +160,29 @@ export function ComponentsSections() {
           notes={["Shown once. Copy it now; the app doesn't store it and can't show it again.", "Give it to the user through a trusted channel, not email or chat."]} />
       )}
     </>
+  );
+}
+
+const SAMPLE_COLUMNS = ["Reference", "Amount", "Value date", "Counterparty"];
+
+/**
+ * SortableList (`@/components/sortable-list`): every list ordered by hand. A row moves by its grip (drag, a long press
+ * on touch) or, on the focused grip, Space, the arrow keys and Space again; Escape puts it back. Numbers follow.
+ */
+function SortableSample() {
+  const [cols, setCols] = useState(SAMPLE_COLUMNS);
+  return (
+    <Panel title="Ordered list" tone="quiet" description="Drag a row by its grip, or focus the grip and press Space, then the arrow keys">
+      <SortableList items={cols} getKey={(c) => c} noun="Column" label="Sample columns in order" className="gap-2" onReorder={setCols}
+        itemClassName="flex items-center gap-2 rounded-md border border-line bg-card p-2"
+        renderItem={(c, { index, handle }) => (
+          <>
+            {handle}
+            <span className="min-w-0 flex-1 text-body-sm text-fg"><span className="mr-2 text-caption text-fg-3 tabular">{index + 1}</span>{c}</span>
+            <Button variant="remove" size="icon" aria-label={`Remove ${c}`} disabled={cols.length === 1} onClick={() => setCols(cols.filter((x) => x !== c))}><Icon icon={RemoveIcon} /></Button>
+          </>
+        )} />
+    </Panel>
   );
 }
 
