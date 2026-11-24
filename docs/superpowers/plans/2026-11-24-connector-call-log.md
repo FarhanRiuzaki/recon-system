@@ -48,11 +48,11 @@ entry holds no secret; janitor clears `full_enc` past 30 days and deletes rows p
 ## Task 3 — web: Call log view
 
 Files: `apps/web/src/lib/shared/queries.ts` (`CONNECTOR_CALLS`, `connectorCall`, `connectorOptions`),
-`lib/server/prefetch.tsx` (reads), `lib/shared/prefs.ts` (`VIEW_PAGES`), `lib/shared/nav.ts` (Open API children),
+`lib/server/prefetch.tsx` (reads), `lib/shared/prefs.ts` (`VIEW_PAGES`), Open API tabs under the header (no nav children: `nav.test.ts` keeps children to Design system),
 `lib/shared/time-controls.ts` (refresh scope, 1-day window, "Today" label), `lib/shared/categories.ts` (call outcome
 chip), `components/route-shapes.ts`, `features/integrations/{calls-page,call-dialog,open-api-tabs,shapes}.tsx`,
 `connectors-page.tsx` and `connector-editor.tsx` (tabs, link to the log filtered by the connector),
-`app/(main)/integrations/calls/{page,loading}.tsx`, copy guide navigation label.
+`app/(main)/integrations/calls/{page,loading}.tsx`.
 
 Tests: column and chip unit tests beside the feature (`calls-columns.test.ts`), the existing architecture, nav, prefs,
 prefetch and page-anatomy tests.

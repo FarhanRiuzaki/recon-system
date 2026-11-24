@@ -16,6 +16,7 @@ import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { categoryChip, statusChip, statusTone } from "@/lib/shared/categories";
 import { CONNECTORS } from "@/lib/shared/queries";
+import { OpenApiTabs } from "./open-api-tabs";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
 const FILTER_DEFAULTS = { q: "" };
@@ -71,6 +72,7 @@ export function ConnectorsPage({ canManage }: { canManage: boolean }) {
     <div className="grid gap-section">
       <PageHeader title="Open API" description="The bank APIs that recons call when a change is approved: their environments, credentials and operations."
         actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}><Icon icon={busy ? SpinnerIcon : AddIcon} className={busy ? "motion-safe:animate-spin" : undefined} />New connector</Button> : undefined} />
+      <OpenApiTabs current="/integrations" />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the connectors; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
         <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}

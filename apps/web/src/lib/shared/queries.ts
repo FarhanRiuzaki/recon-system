@@ -7,7 +7,8 @@
 import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-range";
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
-import { ACTION_RUN_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { appDate } from "@starterkit/ui/lib/format";
+import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { selectionState } from "@starterkit/shared/filter-selection";
@@ -168,6 +169,10 @@ export const postingGroup = (spaceId: string, configId: string, id: string) => (
   key: [...INTEGRATIONS_KEY, "posting-group", spaceId, configId, id] as const,
   url: `/api/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}/posting-groups/${encodeURIComponent(id)}` as const,
 });
+/** The connectors as the call log's connector filter lists them: one page of 100, name A–Z. */
+export const CONNECTOR_OPTIONS = { key: [...INTEGRATIONS_KEY, "connector-options"] as const, url: "/api/integrations/connectors?pageSize=100" as const };
+/** One logged call, masked (the call log's dialog); its full call is a POST (reveal), never cached. */
+export const connectorCall = (id: string) => ({ key: [...INTEGRATIONS_KEY, "call", id] as const, url: `/api/integrations/calls/${encodeURIComponent(id)}` as const });
 export const connectorDetail = (id: string) => ({ key: [...INTEGRATIONS_KEY, "connector", id] as const, url: `/api/integrations/connectors/${encodeURIComponent(id)}` as const });
 
 export const RECON_KEY = ["recon"] as const;
@@ -221,4 +226,17 @@ export const AUTH_LOG: TableDef<AuthLogFilters> = {
     sorts: AUTH_LOG_SORTS, defaultSort: "-at", search: ["user"],
     filters: { ...AUDIT_FILTERS, event: multiChoice(), method: multiChoice() },
   },
+};
+
+/** The connector call log's filters: the header's range (start–end or from–to), one connector, checks, search. */
+export type CallFilters = { q: string; connector: string; environment: string; outcome: string; origin: string; start: string; end: string; from: string; to: string };
+const uuidOnly: FilterParser<string> = raw => raw && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw) ? raw.toLowerCase() : "";
+/**
+ * The connector call log (Open API), newest first; `call` (the one open in the dialog) stays while paging. Without a
+ * range in the URL it reads today (app time zone), as the header's date control says.
+ */
+export const CONNECTOR_CALLS: TableDef<CallFilters> = {
+  facets: true, key: INTEGRATIONS_KEY[0], path: "/api/integrations/calls", transient: ["call"],
+  spec: { sorts: CALL_SORTS, defaultSort: "-startedAt", search: ["q"], filters: { q: text(200), connector: uuidOnly, environment: multiChoice(), outcome: multiChoice(), origin: multiChoice(), start: timeExpression, end: timeExpression, from: isoDate, to: isoDate } },
+  params: ({ start, end, from, to, ...rest }) => ({ ...rest, ...(resolveTimeRange({ start, end }, Date.now()) ? { start, end } : customRange({ from, to }) ?? { from: appDate(Date.now()), to: appDate(Date.now()) }) }),
 };

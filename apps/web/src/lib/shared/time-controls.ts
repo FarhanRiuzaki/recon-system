@@ -12,7 +12,7 @@ export function timeRange(sp: Pick<URLSearchParams, "get">, fallback = 14, now =
   if (validDateRange(from, to)) return { range: { from, to }, params: { from, to }, selection: { start: new Date(appDayStart(from)).toISOString(), end: new Date(appDayStart(shiftDate(to, 1))).toISOString() }, custom: true, days: Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1, label: `${from} – ${to}` };
   const days = (fallback === 7 ? [7, 30, 90] : [7, 14, 30, 90]).find((d) => `${d}d` === sp.get("range")) ?? fallback;
   const end = appDate(now);
-  return { range: { from: shiftDate(end, 1 - days), to: end }, params: { from: shiftDate(end, 1 - days), to: end }, selection: { start: new Date(appDayStart(shiftDate(end, 1 - days))).toISOString(), end: new Date(appDayStart(shiftDate(end, 1))).toISOString() }, custom: false, days, label: `Last ${days} days` };
+  return { range: { from: shiftDate(end, 1 - days), to: end }, params: { from: shiftDate(end, 1 - days), to: end }, selection: { start: new Date(appDayStart(shiftDate(end, 1 - days))).toISOString(), end: new Date(appDayStart(shiftDate(end, 1))).toISOString() }, custom: false, days, label: days === 1 ? "Today" : `Last ${days} days` };
 }
 export function patchTimeSearch(sp: URLSearchParams, patch: Record<string, string>): URLSearchParams {
   const next = new URLSearchParams(sp);
@@ -31,6 +31,7 @@ export function refreshScope(path: string, tab: string | null = null): readonly 
   if (path === "/roles" || path === "/permissions") return ["rbac"];
   if (path === "/audit/activity" || path === "/audit/auth") return ["audit"];
   if (path === "/me/sessions") return ["me"];
+  if (path === "/integrations/calls") return ["integrations"];
   // a space's pages with data (owner, 22 Nov: the header's refresh on every module that has it)
   const page = /^\/spaces\/[^/]+\/(.+)$/.exec(path)?.[1];
   if (!page) return null;
@@ -51,6 +52,7 @@ export function refreshScope(path: string, tab: string | null = null): readonly 
 export function timeWindowDays(path: string, tab: string | null = null): number | null {
   if (path === "/") return 14;
   if (path.startsWith("/audit/")) return 7;
+  if (path === "/integrations/calls") return 1; // the call log opens on today
   const detail = /^\/spaces\/[^/]+\/(sources|recons)\/([^/]+)$/.exec(path);
   if (detail && detail[2] !== "new" && (detail[1] === "sources" ? tab === "activity" : tab === "history" || tab === "activity")) return 90;
   return null;

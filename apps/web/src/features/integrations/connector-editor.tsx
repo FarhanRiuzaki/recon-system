@@ -8,10 +8,10 @@ import { Failure, Field, Notice, Panel, RouteTabs, Segmented, StatusChip } from 
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatDateTime } from "@starterkit/ui/lib/format";
-import { Button } from "@starterkit/ui/ui/button";
+import { Button, buttonVariants } from "@starterkit/ui/ui/button";
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { CheckIcon, EditIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
+import { CheckIcon, EditIcon, LogIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
@@ -197,6 +197,7 @@ export function ConnectorEditor({ id }: { id: string }) {
           {TABS.map((t) => <Link key={t.value} href={hrefWith({ tab: t.value })} replace scroll={false} aria-current={tab === t.value ? "page" : undefined}>{t.label}</Link>)}
         </RouteTabs>
         <span className="flex flex-wrap items-center gap-3">
+          <Link href={`/integrations/calls?connector=${encodeURIComponent(c.id)}`} className={buttonVariants({ variant: "secondary", size: "sm" })}><Icon icon={LogIcon} />Open call log</Link>
           {c.open && c.published && (
             <Segmented label="Version shown" value={view} onChange={setView}
               options={[{ value: "open", label: c.open.status === "draft" ? `Draft ${c.open.version}` : `Version ${c.open.version}` }, { value: "live", label: `Live · ${c.published.version}` }]} />
