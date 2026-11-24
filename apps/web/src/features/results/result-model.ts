@@ -3,7 +3,7 @@
 import { appDayStart, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import type { IconData } from "@starterkit/ui/ui/icon";
 import {
-  AlertsIcon, CalendarIcon, CheckIcon, CloseIcon, EditIcon, NoneIcon, FailedIcon, ForceMatchIcon, SpinnerIcon, SuccessIcon, SuggestedIcon, TakeIcon, TimeIcon,
+  AlertsIcon, ArrowRightIcon, CalendarIcon, CheckIcon, CloseIcon, EditIcon, NoneIcon, FailedIcon, ForceMatchIcon, SpinnerIcon, SuccessIcon, SuggestedIcon, TakeIcon, TimeIcon,
   WaitIcon, WarningIcon, WriteOffIcon,
 } from "@starterkit/ui/ui/icons";
 import type { ResultCell, ResultColumn, ResultSide } from "@starterkit/shared/contracts/results";
@@ -12,18 +12,19 @@ import { RESULT_STATUS_LABEL, type ResultStatus, type SideState } from "@starter
 import { amountText } from "@/lib/shared/amount";
 import { statusChip, type StatusChipData, type StatusMeaning } from "@/lib/shared/categories";
 
-/** Each status's meaning (its tone) and icon: green done, red failed or unmatch, amber needs a look, blue under way, grey off. */
+/** Each status's meaning (its tone) and icon: green done, red failed or unmatch, amber needs a look, blue under way, grey off (not required: a one-way recon's side B, A → B). */
 const STATUS: Record<ResultStatus, readonly [StatusMeaning, IconData]> = {
   posting_failed: ["failed", FailedIcon], posting_in_progress: ["sending", SpinnerIcon], posting_skipped: ["check", WarningIcon],
   waiting_approval: ["waiting", WaitIcon], posted: ["posted", SuccessIcon], written_off: ["nothing", WriteOffIcon], adjusted: ["nothing", EditIcon],
   closed: ["off", CloseIcon], force_matched: ["matched", ForceMatchIcon], matched_by_hand: ["matched", TakeIcon], matched_late: ["matched", CalendarIcon],
-  suggested: ["check", SuggestedIcon], matched: ["matched", CheckIcon], unmatch: ["missing", AlertsIcon], waiting_counterpart: ["open", TimeIcon],
+  suggested: ["check", SuggestedIcon], matched: ["matched", CheckIcon], unmatch: ["missing", AlertsIcon], not_required: ["off", ArrowRightIcon],
+  waiting_counterpart: ["open", TimeIcon],
 };
 export const resultIcon = (s: ResultStatus): { icon: IconData; chip: StatusChipData } => ({ icon: STATUS[s][1], chip: statusChip(STATUS[s][0], RESULT_STATUS_LABEL[s]) });
 
 /** A side's state: its icon (✓ green in a group, ✕ red unmatch, … ) and words; the legend names each "Record …". */
 const SIDE: Record<SideState, readonly [StatusMeaning, string, IconData]> = {
-  in_group: ["matched", "Record matched", CheckIcon], suggested: ["check", "Record suggested", SuggestedIcon], unmatch: ["missing", "Record unmatched", CloseIcon],
+  in_group: ["matched", "Record matched", CheckIcon], suggested: ["check", "Record suggested", SuggestedIcon], unmatch: ["missing", "Record unmatched", CloseIcon], not_required: ["off", "Record not required", ArrowRightIcon],
   open: ["open", "Record waiting for a counterpart", TimeIcon], closed: ["off", "Record closed", WriteOffIcon], none: ["nothing", "No record on this side", NoneIcon],
 };
 export const SIDE_LABEL = Object.fromEntries(Object.entries(SIDE).map(([k, v]) => [k, v[1]])) as Record<SideState, string>;

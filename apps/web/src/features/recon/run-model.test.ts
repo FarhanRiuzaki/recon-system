@@ -119,6 +119,8 @@ describe("run-model", () => {
     expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L)).toBe("3 currency differs · 1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
     expect(projectionText({ ...gateProjection, unconfirmed: { a: 24, b: 24 } }, L, ["Currency differs"])).toBe("1 amount outside tolerance · 20 no counterpart · 24 unconfirmed suggestions");
     expect(projectionText({ a: { "No counterpart": 2 }, b: { "No counterpart": 1 }, unconfirmed: none }, L)).toBe("2 source1 · 1 source2 no counterpart");
+    // a one-way recon: side B without a counterpart is not required (DEC-055)
+    expect(projectionText({ a: { "No counterpart": 2 }, b: { "Not required": 5 }, unconfirmed: none }, L)).toBe("2 source1 · 0 source2 no counterpart · 0 source1 · 5 source2 not required");
     // a reason the web has no words for is never printed raw
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(projectionText({ a: { "Something new": 5 }, b: {}, unconfirmed: none }, L)).toBe("");

@@ -3,7 +3,7 @@ import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { OPERATORS } from "@starterkit/shared/recon";
 import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
-  addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, conditionText, currencyGaps, currencyGapText, defaultSpec, fieldFor, fieldName, fieldReason, type Fields, kindOf,
+  addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, conditionText, currencyGaps, currencyGapText, defaultSpec, DIRECTION_OPTIONS, directionOf, directionText, fieldFor, fieldName, fieldReason, type Fields, kindOf,
   movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
   incompleteField, toleranceProblem,
 } from "./spec-model";
@@ -44,6 +44,16 @@ describe("fields and conditions in the builder's words", () => {
     expect(fieldReason("bday_window", "date", "event_time", null)).toBe("Business days are counted on the business date.");
     expect(fieldReason("eq", "text", "ext_ref", "date")).toBe("The other side's field is date; this field is text.");
     expect(fieldReason("key", "decimal", "amount_minor", "decimal")).toBeNull();
+  });
+});
+
+describe("direction (DEC-055)", () => {
+  it("a new spec and one stored before the setting are two-way; one-way reads in the owner's words", () => {
+    expect(directionOf(base())).toBe("two_way");
+    expect(directionText(base())).toBe("Two-way: both sides must find their counterpart");
+    expect(directionOf({ ...base(), direction: "a_to_b" })).toBe("a_to_b");
+    expect(directionText({ ...base(), direction: "a_to_b" })).toBe("One-way: Side A must settle in Side B");
+    expect(DIRECTION_OPTIONS.map((o) => o.value)).toEqual(["two_way", "a_to_b"]);
   });
 });
 

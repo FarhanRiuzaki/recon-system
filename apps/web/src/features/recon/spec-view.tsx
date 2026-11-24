@@ -15,7 +15,7 @@ import { recordFields } from "@starterkit/shared/recon";
 import { buildCatalog, type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { carryText, conditionParts, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
+import { carryText, conditionParts, directionOf, directionText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
 import { approvalChanges, approvalRow, changeIsSet } from "./approval-model";
 import { statusChip } from "@/lib/shared/categories";
 import { useSideSource } from "./use-recons";
@@ -132,6 +132,14 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
             <div key={i} className="min-w-0 rounded-lg border border-line bg-card p-4"><SideSummary i={i} side={spec.sides[i]} source={sources[i]} fields={fields} /></div>
           ))}
         </div>
+        {/* which sides must find their counterpart (DEC-055); on a review, whether it differs from the live version */}
+        <dl className="mt-3 grid gap-0.5">
+          <dt className="text-caption text-fg-3">Direction</dt>
+          <dd className="flex flex-wrap items-center gap-2 text-body-sm text-fg">
+            {directionText(spec)}
+            {live && directionOf(live) !== directionOf(spec) && <><StatusChip {...CHANGED} /><span className="text-caption text-fg-3">Live version: {directionText(live)}</span></>}
+          </dd>
+        </dl>
       </Panel>
 
       <Panel title="Passes in run order" description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart" actions={edit(2)}>

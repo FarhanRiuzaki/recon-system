@@ -3,7 +3,7 @@
 // checkReconSpec (apps/api/src/modules/recon/rules.ts) stays the judge; the few checks here only explain a control
 // before a save (a field of the wrong kind, a missing currency condition, why submit is off).
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
-import { type Cardinality, type FieldKind, FIELD_LABEL, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
+import { type Cardinality, type FieldKind, FIELD_LABEL, isOneWay, type ReconDirection, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 
@@ -372,6 +372,15 @@ export const clockProblem = (setting: string, text: string): string | null => (c
 
 /** Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. */
 export const carryText = (c: number | null) => (c === null ? "Always, until matched or closed" : c === 0 ? "Only on its own day" : `Up to day + ${c}`);
+/** The direction choices (owner, 24 Nov; DEC-055), as the Sources step offers them. */
+export const DIRECTION_OPTIONS = [
+  { value: "two_way", label: "Two-way", description: "Both sides must find their counterpart", text: "Two-way: both sides must find their counterpart" },
+  { value: "a_to_b", label: "One-way", description: "Side A must settle in Side B", text: "One-way: Side A must settle in Side B" },
+] as const satisfies readonly { value: ReconDirection; label: string; description: string; text: string }[];
+/** A spec's direction: a spec without one (stored before it) is two-way. */
+export const directionOf = (spec: ReconSpec): ReconDirection => (isOneWay(spec) ? "a_to_b" : "two_way");
+/** The direction in words: "One-way: Side A must settle in Side B". */
+export const directionText = (spec: ReconSpec): string => DIRECTION_OPTIONS.find((x) => x.value === directionOf(spec))!.text;
 /** The measure: the amount by default, compared per currency. */
 export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : "Amount, per currency");
 

@@ -467,6 +467,8 @@ export const NO_COUNTERPART = "No counterpart";
 /** Day close's reasons in the order they read best (day close's classifier, engine sql/breaks.ts NEAR_MISS). */
 const REASON_TEXT: readonly (readonly [string, string])[] = [
   ["Currency differs", "currency differs"], ["Amount differs", "amount outside tolerance"], ["Date differs", "date differs"], ["No counterpart", "no counterpart"],
+  // a one-way recon's side B without a counterpart: no break (DEC-055)
+  ["Not required", "not required"],
 ];
 type Sides = readonly [string, string];
 /** "3", or "3 source1 · 2 source2" when the sides differ. */

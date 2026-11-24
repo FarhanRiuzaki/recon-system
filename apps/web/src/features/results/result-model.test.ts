@@ -9,7 +9,7 @@ import { cellText, columnKey, pageState, pickRecon, RESULT_LEGEND, resultIcon, S
 const GREEN = statusTone("matched"), RED = statusTone("failed"), AMBER = statusTone("check"), BLUE = statusTone("in_progress"), GREY = statusTone("nothing");
 const TONE: Record<ResultStatus, string> = {
   posting_failed: RED, posting_in_progress: BLUE, posting_skipped: AMBER, waiting_approval: BLUE, posted: GREEN, written_off: GREY, adjusted: GREY,
-  closed: GREY, force_matched: GREEN, matched_by_hand: GREEN, matched_late: GREEN, suggested: AMBER, matched: GREEN, unmatch: RED, waiting_counterpart: BLUE,
+  closed: GREY, force_matched: GREEN, matched_by_hand: GREEN, matched_late: GREEN, suggested: AMBER, matched: GREEN, unmatch: RED, not_required: GREY, waiting_counterpart: BLUE,
 };
 
 describe("result icons", () => {
@@ -34,6 +34,9 @@ describe("result icons", () => {
     expect(sideIcon({ state: "unmatch", count: 1 }).icon).toBe(CloseIcon);
     expect(sideIcon({ state: "none", count: 0 }).icon).toBe(NoneIcon);
     expect(sideIcon({ state: "suggested", count: 1 }).chip.health).toBe(AMBER);
+    // a one-way recon's side B without a counterpart: grey, its own words (DEC-055)
+    expect(sideIcon({ state: "not_required", count: 1 }).chip).toEqual({ health: GREY, label: "Record not required" });
+    expect(RESULT_LEGEND.map((l) => l.label)).toEqual(expect.arrayContaining(["Not required", "Record not required"]));
   });
 });
 

@@ -20,7 +20,7 @@ import { resultMembers } from "@/lib/shared/queries-recon";
 import { differences, explainFields, sideTotal, type SideTotal, totalsDiffer } from "./explain-model";
 import { resultIcon, SIDE_HEADER } from "./result-model";
 
-const ITEM_LABEL: Record<ResultMemberDto["status"], string> = { open: "Waiting for a counterpart", matched: "Matched", suggested: "Suggested", break: "Unmatch", closed: "Closed" };
+const ITEM_LABEL: Record<ResultMemberDto["status"], string> = { open: "Waiting for a counterpart", matched: "Matched", suggested: "Suggested", break: "Unmatch", closed: "Closed", not_required: "Not required" };
 const GROUP_LABEL: Record<NonNullable<ResultMembersDto["summary"]["groupKind"]>, string> = { auto: "Matched by a run", suggested: "Suggested by a run", manual: "Matched by hand", force: "Force matched" };
 const RESOLUTION_LABEL: Record<NonNullable<ResultMembersDto["summary"]["resolution"]>, string> = {
   MATCHED_MANUAL: "Matched by hand", FORCE_MATCHED: "Force matched", WRITTEN_OFF: "Written off", POSTED: "Posted", ADJUSTED: "Adjusted",

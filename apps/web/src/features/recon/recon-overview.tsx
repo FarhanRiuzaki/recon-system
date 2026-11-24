@@ -24,7 +24,7 @@ import { RUN_PAGE, reconLastTick, reconRunsFirst } from "@/lib/shared/queries-re
 import { LiveDay } from "./live-day";
 import { nextRunText, scheduleLine, totalsOfDay } from "./live-model";
 import { RunControl } from "./run-control";
-import { carryText } from "./spec-model";
+import { carryText, directionText } from "./spec-model";
 import { rangeText, rateText, runChip, runRowChips } from "./run-model";
 import { at } from "./recon-text";
 import { reconApi, reconRunHref, useReconTrend } from "./use-recons";
@@ -51,6 +51,7 @@ function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: strin
         <Facts items={[
           ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
+          ["Direction", directionText(spec)],
           ["Carry over", carryText(spec.carry_over_days)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
