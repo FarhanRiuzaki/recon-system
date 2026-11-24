@@ -117,13 +117,14 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
  * For a break's page: the runs of request `requestId` that concern break `itemId` (its own, and those for the whole
  * request), in sending order, and the latest posting one. `raw` = the caller may see the masked payload and answer.
  */
-export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemId: string, raw: boolean): Promise<{ actions: ActionRunDto[]; posting: BreakDetailDto["posting"] }> {
+export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemId: string, raw: boolean): Promise<{ actions: ActionRunDto[]; posting: BreakDetailDto["posting"]; seesPayload: boolean }> {
   const rows = await tx.select().from(actionRuns)
     .where(and(eq(actionRuns.spaceId, spaceId), eq(actionRuns.requestId, requestId), or(eq(actionRuns.itemId, itemId), isNull(actionRuns.itemId)))).orderBy(asc(actionRuns.seq));
   const toDto = (r: typeof actionRuns.$inferSelect, group: ActionRunDto["group"]): ActionRunDto => ({
     id: r.id, name: r.actionName, kind: r.kind as ActionRunDto["kind"], event: r.event as ActionRunDto["event"], level: r.level, variant: r.variantName,
     status: r.status as ActionRunDto["status"], override: r.override, code: r.code, message: r.message, bankReference: r.bankReference, externalId: r.externalId,
-    at: (r.finishedAt ?? r.createdAt).toISOString(), payload: raw ? r.payloadMasked ?? null : null, response: raw ? r.responseMasked ?? null : null, group,
+    at: (r.finishedAt ?? r.createdAt).toISOString(), payload: raw ? r.payloadMasked ?? null : null, response: raw ? r.responseMasked ?? null : null,
+    queuedAt: r.createdAt.toISOString(), sendingAt: r.sendingAt?.toISOString() ?? null, finishedAt: r.finishedAt?.toISOString() ?? null, httpStatus: r.httpStatus, group,
   });
   const actions = rows.map((r) => toDto(r, null));
   // the posting groups it joined (stage 5): the group's run once closed, else the break waiting in it
@@ -135,11 +136,12 @@ export async function runsOf(tx: InTx, spaceId: string, requestId: string, itemI
     const group: ActionRunDto["group"] = { id: g.id, configId: g.configId, period: g.period, keys: (g.keys as { label: string; value: string }[]).map(({ label, value }) => ({ label, value })), at: g.at as "cutoff" | "day_close", closesAt: g.closesAt?.toISOString() ?? null, items: g.members };
     actions.push(run ? toDto(run, group) : {
       id: g.id, name: g.actionName, kind: "posting", event: "approved", level: null, variant: g.variantName, status: "grouped", override: false,
-      code: null, message: null, bankReference: null, externalId: null, at: g.createdAt.toISOString(), payload: null, response: null, group,
+      code: null, message: null, bankReference: null, externalId: null, at: g.createdAt.toISOString(), payload: null, response: null,
+      queuedAt: g.createdAt.toISOString(), sendingAt: null, finishedAt: null, httpStatus: null, group,
     });
   }
   const last = [...actions].reverse().find((a) => a.kind === "posting");
-  return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null };
+  return { actions, posting: last ? { status: last.status, action: last.name, bankReference: last.bankReference, code: last.code, message: last.message, at: last.at } : null, seesPayload: raw };
 }
 
 /** The space's action runs that `q` filters, with their recon; `status` one or more, `kind`, `q` = reference, external id, bank reference or a group's key values. */

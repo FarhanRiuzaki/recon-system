@@ -122,6 +122,8 @@ export const ActionRunDto = z.object({
   id: z.string(), name: z.string(), kind: z.enum(["posting", "notify"]), event: z.enum(["level_approved", "approved", "rejected"]), level: z.number().int().nullable(),
   variant: z.string().nullable(), status: z.enum(BREAK_ACTION_STATUSES), override: z.boolean(), code: z.string().nullable(), message: z.string().nullable(),
   bankReference: z.string().nullable(), externalId: z.string().nullable(), at: z.string(), payload: z.unknown().nullable(), response: z.unknown().nullable(),
+  /** Its pipeline: queued (made at the approval, or when its group closed), sending, finished; the bank's HTTP status. */
+  queuedAt: z.string(), sendingAt: z.string().nullable(), finishedAt: z.string().nullable(), httpStatus: z.number().int().nullable(),
   /** The posting group it was sent in, or waits in (stage 5); null when it was sent on its own. */
   group: ActionGroupDto.nullable(),
 });
@@ -187,6 +189,8 @@ export const BreakDetailDto = z.object({
   request: RequestViewDto.extend({ items: z.array(BreakItemDto) }).nullable(),
   /** Its latest request's actions that concern it (stage 4), in the order they are sent; `payload`/`response` masked, only for an Open API reader or the space admin. */
   actions: z.array(ActionRunDto),
+  /** Whether the caller sees the actions' masked request and response (an Open API reader or the space admin). */
+  seesPayload: z.boolean(),
   /** The result of its latest posting action (posted, failed, not sent, timeout, no posting rule, skipped), or null. */
   posting: z.object({ status: z.enum(BREAK_ACTION_STATUSES), action: z.string(), bankReference: z.string().nullable(), code: z.string().nullable(), message: z.string().nullable(), at: z.string() }).nullable(),
 });

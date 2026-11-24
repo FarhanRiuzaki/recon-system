@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { attentionText, groupChip, groupKeyText, lateGroupsText, POSTING_FILTER, postingChip, postingEvent, sendsAtText, waitingText } from "./posting";
+import { attentionText, groupChip, groupKeyText, lateGroupsText, POSTING_FILTER, postingChip, postingEvent, postingPipeline, postingPollMs, sendsAtText, waitingText } from "./posting";
 
 describe("posting statuses as people read them", () => {
   it("names each status by its meaning (owner 24 Nov): posted green, failed, timeout and not sent red (each needs a manual posting), no rule / skipped grey, queued and sending blue", () => {
@@ -48,5 +48,37 @@ describe("posting statuses as people read them", () => {
   it("sums up a recon's runs that need someone, the non-zero ones only", () => {
     expect(attentionText({ failed: 2, timeout: 1, notSent: 0 })).toBe("2 failed, 1 timeout");
     expect(attentionText({ failed: 0, timeout: 0, notSent: 3 })).toBe("3 not sent");
+  });
+});
+
+describe("postingPollMs: screens ask again while a posting is on its way", () => {
+  it("5 s while one is queued or sending, 15 s while one only waits in a group, else never", () => {
+    expect(postingPollMs(["posted", "sending"])).toBe(5_000);
+    expect(postingPollMs(["queued"])).toBe(5_000);
+    expect(postingPollMs(["grouped", "posted"])).toBe(15_000);
+    expect(postingPollMs(["posted", "failed", "timeout", "not_sent", null, undefined])).toBe(false);
+    expect(postingPollMs([])).toBe(false);
+  });
+});
+
+describe("postingPipeline: an action run's steps, Queued → In group → Sending → the bank's answer", () => {
+  const base = { queuedAt: "2026-11-24T03:00:00Z", sendingAt: null, finishedAt: null, httpStatus: null, group: null };
+  const st = (a: Parameters<typeof postingPipeline>[0]) => postingPipeline(a).map((x) => `${x.label}:${x.status}`);
+  it("follows a run from queued to posted, with the HTTP status and how long it took", () => {
+    expect(st({ ...base, status: "queued" })).toEqual(["Queued:done", "Sending:todo", "Bank answer:todo"]);
+    expect(st({ ...base, status: "sending", sendingAt: "2026-11-24T03:00:01Z" })).toEqual(["Queued:done", "Sending:current", "Bank answer:todo"]);
+    const done = postingPipeline({ ...base, status: "posted", sendingAt: "2026-11-24T03:00:01Z", finishedAt: "2026-11-24T03:00:03.5Z", httpStatus: 200 });
+    expect(done.map((x) => `${x.label}:${x.status}`)).toEqual(["Queued:done", "Sending:done", "Posted:done"]);
+    expect(done[2]!.description).toMatch(/^HTTP 200 · .+ · 2\.5 s$/);
+  });
+  it("marks a failure or timeout red; a run never sent greys Sending", () => {
+    expect(st({ ...base, status: "timeout", sendingAt: base.queuedAt, finishedAt: base.queuedAt })).toEqual(["Queued:done", "Sending:done", "Timeout:error"]);
+    expect(st({ ...base, status: "not_sent" })).toEqual(["Queued:done", "Sending:disabled", "Not sent:error"]);
+    expect(st({ ...base, status: "skipped" })).toEqual(["Queued:done", "Sending:disabled", "Skipped:disabled"]);
+  });
+  it("adds the group step for a grouped run: current while it waits, done once sent", () => {
+    const group = { id: "g", configId: "c", period: "2026-11-24", keys: [], at: "day_close" as const, closesAt: null, items: 3 };
+    expect(st({ ...base, status: "grouped", group })).toEqual(["Queued:done", "In group:current", "Sending:todo", "Bank answer:todo"]);
+    expect(postingPipeline({ ...base, status: "posted", group, sendingAt: base.queuedAt, finishedAt: base.queuedAt })[1]!.description).toBe("Sent with 3 items");
   });
 });

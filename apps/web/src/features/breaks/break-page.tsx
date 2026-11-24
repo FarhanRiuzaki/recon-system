@@ -4,9 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Facts, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Toolbar } from "@starterkit/ui/ds";
+import { ActionCard, BlockedButton, CategoryChip, type Column, CompareCard, CopyValue, DataTable, Disclosure, Facts, Failure, Field, FilterSearch, focusBack, Notice, PageZone, Panel, RequiredNote, ScrollFade, StatusChip, Stepper, Toolbar } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
-import { appDate, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
+import { appDate, formatDate } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon, type IconData } from "@starterkit/ui/ui/icon";
 import { AlertsIcon, ErrorIcon, ForceMatchIcon, RefreshIcon, SpinnerIcon, TakeIcon, WriteOffIcon } from "@starterkit/ui/ui/icons";
@@ -27,9 +27,9 @@ import { useAuth } from "@/lib/client/auth-context";
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { categoryChip, STATES } from "@/lib/shared/categories";
-import { groupKeyText, postingChip, postingEvent, waitingText } from "@/lib/shared/posting";
+import { groupKeyText, postingChip, postingEvent, postingPipeline, postingPollMs, waitingText } from "@/lib/shared/posting";
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
-import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
+import { breakCandidates, breakDetail, LIVE_POLL_MS } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
 import { amountDelta, approverText, checkChip, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
@@ -73,7 +73,9 @@ export function BreakPage({ spaceId, id }: { spaceId: string; id: string }) {
   const qc = useQueryClient();
   const { user } = useAuth();
   const d = breakDetail(spaceId, id);
-  const q = useQuery({ queryKey: d.key, queryFn: () => api<BreakDetailDto>(d.url), retry: retryUnlessNotFound });
+  // asks again while a posting it sent is on its way, and every 15 s while its request waits for someone else's approval
+  const q = useQuery({ queryKey: d.key, queryFn: () => api<BreakDetailDto>(d.url), retry: retryUnlessNotFound,
+    refetchInterval: (x) => postingPollMs(x.state.data?.actions.map((a) => a.status) ?? []) || (x.state.data?.request?.status === "pending" ? LIVE_POLL_MS : false) });
   const rolesQ = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) });
   const roles = rolesQ.data?.roles ?? [];
   const skeleton = useDelayedFlag(!q.data && !q.error);
@@ -318,7 +320,8 @@ function CounterpartList({ items, side }: { items: readonly BreakItemDto[]; side
 
 /**
  * What its latest request sent to the bank (stage 4): each action in sending order with its status, the bank's code
- * and reference; the masked request and answer behind a disclosure, for an Open API reader or the space admin.
+ * and reference, its pipeline (queued → in group → sending → the answer, with times), and the masked request and response
+ * for an Open API reader or the space admin.
  */
 function PostingPanel({ b, spaceId }: { b: BreakDetailDto; spaceId: string }) {
   const chip = b.posting ? postingChip(b.posting.status) : null;
@@ -329,7 +332,7 @@ function PostingPanel({ b, spaceId }: { b: BreakDetailDto; spaceId: string }) {
         {b.actions.map((a) => {
           const c = postingChip(a.status);
           return (
-            <li key={a.id} className="grid gap-1 py-2.5 first:pt-0 last:pb-0">
+            <li key={a.id} className="grid gap-3 py-4 first:pt-0 last:pb-0">
               <span className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-body-sm text-fg">{a.name}<span className="text-fg-3"> · {postingEvent(a)}{a.override ? " (override)" : ""}{a.variant ? ` · ${a.variant}` : ""}</span></span>
                 <StatusChip health={c.health} label={c.label} />
@@ -341,24 +344,28 @@ function PostingPanel({ b, spaceId }: { b: BreakDetailDto; spaceId: string }) {
                   {a.status === "grouped" ? waitingText(a.group) : `Sent in the ${formatDate(Date.parse(`${a.group.period}T00:00:00+07:00`))} group · ${groupKeyText(a.group.keys)} · ${a.group.items === 1 ? "1 item" : `${a.group.items} items`}`}
                 </Link>
               )}
+              <Stepper layout="horizontal" label={`${a.name} pipeline`} steps={postingPipeline(a)} />
               {(a.message || a.code || a.bankReference || a.externalId) && (
                 <span className="flex flex-wrap gap-x-4 text-caption text-fg-3">
                   {a.message && <span className={a.status === "posted" || a.status === "skipped" ? "" : "text-down-ink"}>{a.message}</span>}
                   {a.code && <span>Code <span className="font-mono">{a.code}</span></span>}
                   {a.bankReference && <span>Bank reference <span className="font-mono">{a.bankReference}</span></span>}
                   {a.externalId && <span>External ID <span className="font-mono">{a.externalId}</span></span>}
-                  <span>{formatDateTime(Date.parse(a.at))}</span>
                 </span>
               )}
-              {(a.payload !== null || a.response !== null) && (
-                <details className="text-caption">
-                  <summary className="cursor-pointer text-fg-2">Request and answer (masked)</summary>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2">
-                    <ScrollFade className="max-h-64 rounded-md border border-line bg-tray" tabIndex={0} aria-label="Request sent"><pre className="p-2 font-mono text-fg">{JSON.stringify(a.payload, null, 2)}</pre></ScrollFade>
-                    <ScrollFade className="max-h-64 rounded-md border border-line bg-tray" tabIndex={0} aria-label="Bank's answer"><pre className="p-2 font-mono text-fg">{a.response === null ? "No answer" : JSON.stringify(a.response, null, 2)}</pre></ScrollFade>
-                  </div>
-                </details>
-              )}
+              {/* the API call itself, masked as the connector says, for whoever may read it */}
+              {a.status !== "grouped" && (b.seesPayload ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {([["Request", a.payload, "Not built yet"], [`Response${a.httpStatus != null ? ` · HTTP ${a.httpStatus}` : ""}`, a.response, a.finishedAt ? "No response" : "Not answered yet"]] as const).map(([title, body, none]) => (
+                    <div key={title} className="grid min-w-0 gap-1.5">
+                      <span className="text-caption text-fg-3">{title} (masked)</span>
+                      <ScrollFade className="max-h-64 rounded-md border border-line bg-tray" tabIndex={0} aria-label={title}>
+                        <pre className="p-3 font-mono text-caption text-fg">{body == null ? none : JSON.stringify(body, null, 2)}</pre>
+                      </ScrollFade>
+                    </div>
+                  ))}
+                </div>
+              ) : <span className="text-caption text-fg-3">The request and response show to an Open API reader or the space admin.</span>)}
             </li>
           );
         })}

@@ -12,7 +12,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { amountText } from "@/lib/shared/amount";
-import { groupChip, groupKeyText, sendsAtText } from "@/lib/shared/posting";
+import { groupChip, groupKeyText, postingPollMs, sendsAtText } from "@/lib/shared/posting";
 import { POSTING_GROUPS } from "@/lib/shared/queries";
 
 const GroupDialog = dynamic(() => import("./posting-group-dialog"), { ssr: false });
@@ -27,7 +27,8 @@ export const periodText = (g: { period: string; part: number }) => `${formatDate
  */
 export function PostingGroups({ spaceId, id }: { spaceId: string; id: string }) {
   const def = useMemo(() => POSTING_GROUPS(spaceId, id), [spaceId, id]);
-  const t = useTableQuery<PostingGroupRowDto, { status: string }>(def);
+  // an open group waits for its close; a closed one, for its posting run
+  const t = useTableQuery<PostingGroupRowDto, { status: string }>(def, true, (rows) => postingPollMs(rows.map((r) => (r.status === "open" ? "grouped" : r.run?.status))));
   const sp = useSearchParams(), router = useRouter(), path = usePathname();
   const open = sp.get("group");
   const withGroup = (g: string | null) => { const p = new URLSearchParams(sp); if (g) p.set("group", g); else p.delete("group"); return `${path}?${p}`; };

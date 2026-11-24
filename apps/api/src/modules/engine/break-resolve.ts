@@ -165,6 +165,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
     const names = new Map(people.length ? (await tx.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, people))).map((u) => [u.id, u.name]) : []);
     const name = x.assigneeId ? names.get(x.assigneeId) ?? null : null;
     const today = todayIn(now);
+    const seesPayload = ctx.perms.has("integration.view") || !!ctx.space?.roles.includes("space_admin");
     return {
       item: plain(item!, live), recon: {
         id: x.configId, name: c?.name ?? "Recon", sides, posts: postsUnmatch(live),
@@ -178,7 +179,7 @@ export function breakDetail(ctx: Ctx, id: string, now = new Date()): Promise<Bre
       proposed: p ? { item: plain(p, live), pass: x.proposedPass, available: free(p) } : null,
       request: rq ? { ...(await requestView(tx, ctx, rq)), items: (await itemsOf(tx, spaceId, rq.itemIds)).map((i) => plain(i, live)) } : null,
       // its actions and posting result (stage 4); the masked payload and answer for an Open API reader or the space admin
-      ...(rq ? await runsOf(tx, spaceId, rq.id, x.id, ctx.perms.has("integration.view") || !!ctx.space?.roles.includes("space_admin")) : { actions: [], posting: null }),
+      ...(rq ? await runsOf(tx, spaceId, rq.id, x.id, seesPayload) : { actions: [], posting: null, seesPayload }),
     };
   });
 }

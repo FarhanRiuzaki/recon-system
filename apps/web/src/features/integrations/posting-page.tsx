@@ -17,7 +17,7 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { amountText } from "@/lib/shared/amount";
 import { categoryChip } from "@/lib/shared/categories";
-import { POSTING_FILTER, postingChip, postingEvent } from "@/lib/shared/posting";
+import { POSTING_FILTER, postingChip, postingEvent, postingPollMs } from "@/lib/shared/posting";
 import { ACTION_RUNS, type PostingFilters } from "@/lib/shared/queries";
 
 const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -67,7 +67,7 @@ export const postingColumns = (spaceId: string): Column<ActionRunRowDto>[] => [
 export function PostingPage({ spaceId }: { spaceId: string }) {
   const def = useMemo(() => ACTION_RUNS(spaceId), [spaceId]);
   const COLUMNS = useMemo(() => postingColumns(spaceId), [spaceId]);
-  const t = useTableQuery<ActionRunRowDto, PostingFilters>(def);
+  const t = useTableQuery<ActionRunRowDto, PostingFilters>(def, true, (rows) => postingPollMs(rows.map((r) => r.status)));
   const [exporting, setExporting] = useState(false);
   const attention = t.state.show === "attention" && !t.state.status;
   const exportBlocked = t.total === undefined ? null : exportBlockedText(t.total, attention);

@@ -36,7 +36,8 @@ import { facetsRequest, historyMode, preserveTableParams, readTable, type SortSt
  */
 const NONE: readonly string[] = [];
 
-export function useTableQuery<T, F extends Record<string, string>>({ key, path, spec, params, transient = NONE, rawFilters = NONE, edit, facets: counted }: TableDef<F>, enabled = true) {
+/** `poll` = how often to ask again given the rows on screen (false = not), for lists whose rows change on their own. */
+export function useTableQuery<T, F extends Record<string, string>>({ key, path, spec, params, transient = NONE, rawFilters = NONE, edit, facets: counted }: TableDef<F>, enabled = true, poll?: (rows: readonly T[]) => number | false) {
   const sp = useSearchParams();
   const pathname = usePathname();
   const state: TableState<F> = useMemo(() => readTable(sp, spec), [sp, spec]);
@@ -66,7 +67,7 @@ export function useTableQuery<T, F extends Record<string, string>>({ key, path, 
   }, [spec, pathname, transient, edit]);
 
   const { filterQuery, url } = tableRequest(path, state, spec, params, { search: sp, keys: rawFilters });
-  const q = useQuery({ queryKey: [key, url], queryFn: () => api<Page<T>>(url), enabled, placeholderData: keepPreviousData });
+  const q = useQuery({ queryKey: [key, url], queryFn: () => api<Page<T>>(url), enabled, placeholderData: keepPreviousData, refetchInterval: poll ? (x) => poll(x.state.data?.items ?? []) : false });
   // the filters' counts (FacetsDto), read beside the rows with the same filters; the previous counts stay while it reloads
   const facetsUrl = facetsRequest(path, filterQuery);
   const fq = useQuery({ queryKey: [key, facetsUrl], queryFn: () => api<FacetsDto>(facetsUrl), enabled: enabled && !!counted, placeholderData: keepPreviousData });

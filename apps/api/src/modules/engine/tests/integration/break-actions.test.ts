@@ -236,12 +236,20 @@ describe("the posting result on the break (read side)", () => {
     ], 1);
     await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
     await decide(I.a1, "approve", {}, t.rev);
-    await db.update(actionRuns).set({ status: "posted", bankReference: "R1", payloadEnc: null, payloadMasked: { Amount: 10000 }, finishedAt: new Date() }).where(eq(actionRuns.actionName, "Post"));
+    const sent = new Date("2026-11-24T03:00:01Z"), done = new Date("2026-11-24T03:00:02Z");
+    await db.update(actionRuns).set({ status: "posted", bankReference: "R1", payloadEnc: null, payloadMasked: { Amount: 10000 }, responseMasked: { ok: true }, httpStatus: 200, sendingAt: sent, finishedAt: done }).where(eq(actionRuns.actionName, "Post"));
     const op = await detail(I.a1, t.op);
+    expect(op.seesPayload).toBe(false);
+    // its pipeline: queued, sending, finished, and the bank's HTTP status
+    expect(op.actions[1]).toMatchObject({ sendingAt: sent.toISOString(), finishedAt: done.toISOString(), httpStatus: 200, response: null });
+    expect(op.actions[0]).toMatchObject({ sendingAt: null, finishedAt: null, httpStatus: null });
+    expect(Date.parse(op.actions[1]!.queuedAt)).toBeGreaterThan(0);
     expect(op.posting).toMatchObject({ status: "posted", bankReference: "R1", action: "Post" });
     expect(op.actions.map((a) => [a.name, a.kind, a.status, a.payload])).toEqual([["Tell", "notify", "queued", null], ["Post", "posting", "posted", null]]);
     const adm = await detail(I.a1, t.adm);
     expect(adm.actions[1]!.payload).toEqual({ Amount: 10000 });
+    expect(adm.actions[1]!.response).toEqual({ ok: true });
+    expect(adm.seesPayload).toBe(true);
   });
 
   it("a break with no actions has no posting", async () => {
