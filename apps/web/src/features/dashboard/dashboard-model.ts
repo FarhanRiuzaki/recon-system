@@ -4,7 +4,7 @@ import { REQUEST_KINDS } from "@starterkit/shared/approvals";
 import type { ReconDashboardDto } from "@starterkit/shared/contracts/dashboard";
 import { POSTING_FAILED } from "@starterkit/shared/dashboard";
 import type { PermissionName } from "@starterkit/shared/permissions";
-import { formatDecimal, formatSignedNumber, plural } from "@starterkit/ui/lib/format";
+import { formatCompact, formatDecimal, formatSignedNumber, plural } from "@starterkit/ui/lib/format";
 import type { Delta } from "@starterkit/ui/ds";
 import { amountText } from "@/lib/shared/amount";
 
@@ -40,7 +40,10 @@ export const rate = (part: number, whole: number): number | null => (whole > 0 ?
  * it isn't the tile's own number (Unmatch open's change counts new unmatch).
  */
 export function countDelta(now: number, before: number, good: "up" | "down", what?: string): Delta {
-  return { text: `${formatSignedNumber(now - before)}${what ? ` ${what}` : ""} vs previous period`, direction: now > before ? "up" : now < before ? "down" : "flat", good };
+  const d = now - before;
+  // past 10,000 the change is compact ("+12.9K"), so its pill fits beside the tile's label
+  const n = Math.abs(d) >= 10_000 ? `${d > 0 ? "+" : MINUS}${formatCompact(Math.abs(d))}` : formatSignedNumber(d);
+  return { text: `${n}${what ? ` ${what}` : ""} vs previous period`, direction: now > before ? "up" : now < before ? "down" : "flat", good };
 }
 /** A rate against the period before, in percentage points; none when either side has nothing. */
 export function rateDelta(now: number | null, before: number | null, good: "up" | "down"): Delta | undefined {

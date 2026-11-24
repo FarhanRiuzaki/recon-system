@@ -39,6 +39,9 @@ describe("recon dashboard model", () => {
     expect(countDelta(3, 5, "down")).toEqual({ text: "−2 vs previous period", direction: "down", good: "down" });
     // what the change counts, when the tile shows something else (M2: Unmatch open shows the open amount)
     expect(countDelta(5, 2, "down", "new unmatch").text).toBe("+3 new unmatch vs previous period");
+    // a big change stays short, so its pill fits beside the tile label (24 Nov: "+12,884" pushed the label to two lines)
+    expect(countDelta(12_884, 0, "down").text).toBe("+12.9K vs previous period");
+    expect(countDelta(0, 12_884, "down").text).toBe("−12.9K vs previous period");
   });
 
   it("each link opens its list with the same filters the number counted", () => {
