@@ -45,7 +45,7 @@ async function breakContext(tx: InTx, spaceId: string, x: { id: string; side: st
   const own = rows.find((r) => r.id === x.id);
   const out: Record<string, string | number | null> = {
     "break.amount": at.amount ?? null, "break.currency": at.currency ?? null, "break.business_date": x.businessDate, "break.age_days": at.ageDays ?? null,
-    "break.side": x.side, "break.reason": x.breakReason, "break.state": x.breakState ?? "new", "break.reference": own?.rec.extRef ?? null,
+    "break.side": x.side, "break.reason": x.breakReason, "break.state": x.breakState ?? (x.status === "matched" ? "resolved" : "new"), "break.reference": own?.rec.extRef ?? null,
   };
   const filled = new Set<string>();
   for (const r of ids.map((id) => rows.find((row) => row.id === id)).filter((r) => !!r)) {

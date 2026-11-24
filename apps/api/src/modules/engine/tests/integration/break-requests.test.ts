@@ -207,6 +207,16 @@ describe("undo match of any live group, also one a run matched that never broke 
     expect((await call("GET", `/v1/spaces/${B}/breaks/${p.a}`, { token: t.rev })).status).toBe(404);
   });
 
+  it("a workflow rule reads a run's match as resolved, as its page shows it (not new)", async () => {
+    await publish("unmatch", [
+      { name: "Settled ones", when: { all: [{ field: "break.state", op: "eq", value: "resolved" }] }, levels: [{ name: "Head", groups: [group({ spaceRoles: ["space_admin"] })] }] },
+      { name: "Default", levels: [{ name: "Review", groups: [group({ spaceRoles: ["reviewer"] })] }] },
+    ]);
+    const p = await autoPair("AP9");
+    expect((await req(p.a, { kind: "unmatch", note: "Wrong pair" }, t.rev)).status).toBe(200);
+    expect((await detail(p.a, t.adm)).request).toMatchObject({ ruleName: "Settled ones" });
+  });
+
   it("one open request per group: while one waits, the group's other item can't be asked again", async () => {
     const p = await autoPair();
     await req(p.a, { kind: "unmatch", note: "Wrong pair" }, t.rev);
