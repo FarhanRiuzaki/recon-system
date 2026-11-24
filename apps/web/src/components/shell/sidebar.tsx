@@ -1,24 +1,25 @@
 "use client";
 
 import { Kbd } from "@starterkit/ui/ds/kbd";
-import { Brand } from "@starterkit/ui/ds";
+import { Brand, LiveCountBadge } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { SidebarCollapseIcon, SidebarExpandIcon } from "@starterkit/ui/ui/icons";
 import { ScrollArea } from "@starterkit/ui/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@starterkit/ui/ui/tooltip";
-import { useQuery } from "@tanstack/react-query";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { DUR } from "@starterkit/ui/motion";
+import { type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { DUR, usePrefersReducedMotion } from "@starterkit/ui/motion";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { usePrefs } from "@/lib/client/prefs-context";
-import { activeChild, NAV, navFor, onItem, spaceEntry } from "@/lib/shared/nav";
-import { spaceOptions } from "@/lib/shared/queries";
+import { activeChild, centerScrollTop, countText, NAV, type NavCount, type NavCounts, navCount, navFor, navLinkName, navSpaceId, onItem, spaceEntry } from "@/lib/shared/nav";
+import { APPROVALS_KEY, navCountsQuery, spaceOptions } from "@/lib/shared/queries";
 import { viewHref } from "@/lib/shared/prefs";
 import { goKeys } from "@/lib/shared/shortcuts";
 import { NavGlyph } from "./nav-icon";
@@ -51,6 +52,66 @@ export function useNavHref(): (href: string) => string {
   }, [prefs, spaces, current]);
 }
 
+/** How often the sidebar's counts are read again while the window is open (they also refresh on focus and on a change). */
+const NAV_COUNTS_POLL_MS = 30_000;
+
+/**
+ * The sidebar's counts (GET …/nav-counts) for the space its space pages link to (navSpaceId), undefined until they
+ * arrive: not prefetched, the badges fade in when they do. Under ENGINE_KEY, so a break taken or resolved refreshes
+ * them; an invalidation under APPROVALS_KEY (a decision) refetches them too.
+ */
+export function useNavCounts(): NavCounts | undefined {
+  const { prefs } = usePrefs();
+  const { key, url } = spaceOptions();
+  const spaces = useQuery({ queryKey: key, queryFn: () => api<Page<SpaceRowDto>>(url) }).data?.items;
+  const current = /^\/spaces\/([^/]+)/.exec(usePathname())?.[1] ?? null;
+  const id = spaces ? navSpaceId(spaces, prefs.space, current && decodeURIComponent(current)) : null;
+  const q = navCountsQuery(id ?? "");
+  const qc = useQueryClient();
+  useEffect(() => {
+    if (!id) return;
+    return qc.getQueryCache().subscribe((e) => {
+      if (e.type === "updated" && e.action.type === "invalidate" && e.query.queryKey[0] === APPROVALS_KEY[0])
+        void qc.invalidateQueries({ queryKey: navCountsQuery(id).key, exact: true }, { cancelRefetch: false });
+    });
+  }, [qc, id]);
+  return useQuery({ queryKey: q.key, queryFn: () => api<NavCounts>(q.url), enabled: !!id, refetchInterval: NAV_COUNTS_POLL_MS, refetchOnWindowFocus: true }).data;
+}
+
+/**
+ * A nav item's count badge: at the row's end in the full sidebar and the drawer; at the icon's top-right corner in the
+ * 64 px rail (`rail`: always, collapsed; "below-xl": the sidebar's rail below 1280 px). Hidden from screen readers
+ * (the link's name carries the count); `title` the full number.
+ */
+export function NavCountBadge({ count, rail }: { count: NavCount | null; rail?: true | "below-xl" }) {
+  if (!count) return null;
+  const corner = "absolute -top-1.5 -right-2";
+  return <LiveCountBadge value={count.value} tone={count.tone} title={count.name} format={countText}
+    className={rail === true ? corner : rail ? "max-xl:absolute max-xl:-top-1.5 max-xl:-right-2" : undefined} />;
+}
+
+/**
+ * Keeps the current page's item (the visible `aria-current="page"` link, a child over its parent) in view in the
+ * navigation's own scroll box: when it isn't fully visible, the box (never the page) scrolls it to the middle. Instant
+ * on the first run and under reduced motion, smooth after a navigation (`key`, the path).
+ */
+export function centerCurrent(box: HTMLElement | null, smooth: boolean) {
+  const item = box && [...box.querySelectorAll<HTMLElement>('[aria-current="page"]')].filter((el) => el.getClientRects().length > 0).at(-1);
+  if (!box || !item) return;
+  const top = centerScrollTop(box, { offsetTop: item.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop, offsetHeight: item.offsetHeight });
+  if (top !== null) box.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
+}
+function useCenterCurrent(ref: RefObject<HTMLElement | null>, key: string) {
+  const reduced = usePrefersReducedMotion();
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    centerCurrent(ref.current, !first.current && !reduced);
+    first.current = false;
+    // only a navigation moves the list, not a change of the motion setting
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, ref]);
+}
+
 /**
  * Sidebar. 248 px from 1280 px (`xl`), collapsible to the 64 px icon rail (preference per viewer, kept in a cookie);
  * 768–1279 px it is always the rail, so the page never scrolls sideways; below 768 px it is not shown and the same
@@ -68,6 +129,9 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
   const { prefs, update } = usePrefs();
   const navHref = useNavHref();
   const sections = navFor(perms, useNoSpace());
+  const counts = useNavCounts();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useCenterCurrent(scrollRef, path);
   const collapsed = prefs.sidebar === "collapsed";
   // The toggle swaps between two buttons, so the pressed one unmounts; hand keyboard focus to its counterpart.
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -106,7 +170,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
       {space && <div className="mt-3">{space}</div>}
       <div aria-hidden="true" className="mx-1.5 mt-3 border-t border-line" />
       <nav data-slot="sidebar-nav" aria-label="Menu" className="mt-1 flex min-h-0 flex-1 flex-col">
-        <ScrollArea className="-mx-1 px-1" thumbClassName="-right-2">
+        <ScrollArea ref={scrollRef} className="-mx-1 px-1" thumbClassName="-right-2">
         {sections.map((s, si) => (
           <div key={s.id} role="group" aria-labelledby={`nav-section-${s.id}`} className={cn("grid gap-0.5", si > 0 && "mt-3")}>
             {/* The rail has no group labels: a hairline separates the groups instead. */}
@@ -119,6 +183,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
               if (n.soon) return <SoonItem key={n.href} item={n} captionId={`nav-soon-${s.id}`} text={cn("hidden", label("xl:inline"))} dot={collapsed ? undefined : "xl:hidden"} hideTip={collapsed ? undefined : "xl:hidden"} row={cn("h-9 justify-center", square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm")} />;
               const active = onItem(path, n);
               const child = active ? activeChild(n, path, sp) : null;
+              const count = navCount(n.space, counts);
               return (
                 <div key={n.href} className="grid gap-0.5">
                 {n.children?.length ? <SidebarRailMenu item={n} active={active} child={child} collapsed={collapsed} /> : null}
@@ -126,7 +191,7 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
                   <TooltipTrigger asChild>
                     {/* aria-label: the text label is hidden in the rail; the link keeps its name. */}
                     {/* With a child view open (expanded sidebar), the child carries the highlight and the item just reads fg. */}
-                    <Link href={navHref(n.href)} aria-label={n.label} aria-current={active && !(child && !collapsed) ? "page" : undefined}
+                    <Link href={navHref(n.href)} aria-label={navLinkName(n.label, count)} aria-current={active && !(child && !collapsed) ? "page" : undefined}
                       className={cn("relative flex h-9 items-center justify-center gap-2.5 rounded-md border px-2.5 text-body text-fg-2 transition-colors duration-(--dur-fast)",
                         square, !collapsed && "xl:h-8 xl:justify-start xl:text-body-sm",
                         !!n.children?.length && "hidden xl:flex",
@@ -134,9 +199,10 @@ export function Sidebar({ mark, wordmark, space }: { mark: ReactNode; wordmark: 
                         active && child && !collapsed && "xl:border-transparent xl:bg-transparent xl:shadow-none")}>
                       <NavGlyph icon={n.icon} className="size-4 shrink-0" />
                       <span key={`label-${collapsed}`} className={cn("hidden min-w-0 flex-1 truncate", label("xl:inline"))}>{n.label}</span>
+                      <NavCountBadge count={count} rail={collapsed || "below-xl"} />
                     </Link>
                   </TooltipTrigger>
-                  <TooltipContent side="right" className={cn(!collapsed && "xl:hidden")}>{n.label}{n.shortcut && <Kbd keys={goKeys(n.shortcut)} />}</TooltipContent>
+                  <TooltipContent side="right" className={cn(!collapsed && "xl:hidden")}>{navLinkName(n.label, count)}{n.shortcut && <Kbd keys={goKeys(n.shortcut)} />}</TooltipContent>
                 </Tooltip>}
                 {active && n.children && !collapsed && (
                   <div className="nav-tree ml-4.5 hidden gap-0.5 pl-3 xl:grid">

@@ -26,3 +26,5 @@ export const ROLE_DESCRIPTION: Record<SpaceRole, string> = {
 /** Why a member action is off (Build notes 01 final copy): the role checklist and the members page show them. */
 export const SOURCE_ADMIN_REASON = "Only an app admin can grant or remove Source admin.";
 export const LAST_SPACE_ADMIN = "A space needs at least one space admin.";
+/** The sidebar's counts of a space (GET …/nav-counts) stop at this; past it the answer says `capped`. */
+export const NAV_COUNT_CAP = 1000;

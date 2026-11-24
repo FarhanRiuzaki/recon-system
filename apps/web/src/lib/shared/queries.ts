@@ -178,6 +178,11 @@ export const connectorDetail = (id: string) => ({ key: [...INTEGRATIONS_KEY, "co
 export const RECON_KEY = ["recon"] as const;
 export const ENGINE_KEY = ["engine"] as const;
 export const APPROVALS_KEY = ["approvals"] as const;
+/**
+ * The sidebar's counts for a space (GET …/nav-counts), in every route's shell, so here and not in queries-recon. Under
+ * ENGINE_KEY (taking, resolving a break refreshes it); useNavCounts also refetches it when APPROVALS_KEY is invalidated.
+ */
+export const navCountsQuery = (spaceId: string) => ({ key: [...ENGINE_KEY, "nav-counts", spaceId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/nav-counts` as const });
 export const sideSourceOptions = (spaceId: string) => ({ key: [...SOURCES_KEY, "options", spaceId] as const, url: `${sourcesPath(spaceId)}?pageSize=100` });
 
 export const AUDIT_KEY = ["audit"] as const;

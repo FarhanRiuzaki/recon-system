@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps, useCallback, useEffect, useRef, useState } from "react";
+import { type ComponentProps, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "../lib/cn";
 import { DUR } from "../motion/tokens";
 
@@ -22,15 +22,17 @@ export function thumbOf(scrollTop: number, scrollHeight: number, clientHeight: n
  * what sits above and below it lines up. Wheel, trackpad, touch and keys scroll it natively; the thumb is a cue, not
  * a handle. For a box whose width doesn't need to match its surroundings, `scroll-quiet` (CSS only) is enough.
  */
-export function ScrollArea({ className, thumbClassName = "right-0.5", children, ...props }: ComponentProps<"div"> & { thumbClassName?: string }) {
-  const ref = useRef<HTMLDivElement>(null);
+export function ScrollArea({ className, thumbClassName = "right-0.5", children, ref: outer, ...props }: ComponentProps<"div"> & { thumbClassName?: string; ref?: RefObject<HTMLDivElement | null> }) {
+  const own = useRef<HTMLDivElement>(null);
+  // `ref`: the scroll box itself, for a caller that scrolls it (the sidebar keeps its current item in view)
+  const ref = outer ?? own;
   const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null);
   const [moving, setMoving] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const measure = useCallback(() => {
     const el = ref.current;
     if (el) setThumb(thumbOf(el.scrollTop, el.scrollHeight, el.clientHeight));
-  }, []);
+  }, [ref]);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -39,7 +41,7 @@ export function ScrollArea({ className, thumbClassName = "right-0.5", children, 
     ro.observe(el);
     for (const c of el.children) ro.observe(c);
     return () => { ro.disconnect(); if (timer.current) clearTimeout(timer.current); };
-  }, [measure]);
+  }, [measure, ref]);
   const onScroll = () => {
     measure();
     setMoving(true);

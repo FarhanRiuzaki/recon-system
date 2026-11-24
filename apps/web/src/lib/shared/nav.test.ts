@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChild, crumbs, isActive, isSubPage, NAV, navFor, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, spaceEntry, type NavItem } from "./nav";
+import { activeChild, centerScrollTop, crumbs, isActive, isSubPage, NAV, navCount, navFor, navLinkName, navSpaceId, onItem, pagePerm, pagesFor, SOON_REASON, soonCaption, spaceEntry, type NavItem } from "./nav";
 import { DEFAULT_PREFS, viewHref } from "./prefs";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 
@@ -222,5 +222,56 @@ describe("nav children", () => {
     expect(crumbs("/ds/forms", new Set()).map((c) => [c.label, c.href])).toEqual([["Design system", "/ds"]]);
     expect([isSubPage("/ds"), isSubPage("/ds/forms")]).toEqual([false, true]);
     expect(pagePerm("/ds/motion")).toBeNull();
+  });
+});
+
+describe("navCount (the sidebar's live counts)", () => {
+  const c = { unmatch: 37, approvals: 3, posting: 0, capped: false };
+  it("Unmatch, Approvals and Posting carry a count, each with its tone; other pages none", () => {
+    expect(navCount("breaks", c)).toEqual({ value: 37, text: "37", name: "37 open", tone: "neutral" });
+    expect(navCount("approvals", c)).toEqual({ value: 3, text: "3", name: "3 waiting for you", tone: "progress" });
+    expect(navCount("posting", { ...c, posting: 2 })).toEqual({ value: 2, text: "2", name: "2 need attention", tone: "down" });
+    expect(navCount("today", c)).toBeNull();
+    expect(navCount("results", c)).toBeNull();
+    expect(navCount(undefined, c)).toBeNull();
+    expect(navCount("breaks", undefined)).toBeNull();
+  });
+  it("0 is a count with no name (the badge hides); past 99 the badge says 99+ and the name the full number", () => {
+    expect(navCount("posting", c)).toEqual({ value: 0, text: "0", name: "", tone: "down" });
+    expect(navCount("breaks", { ...c, unmatch: 1234 })).toMatchObject({ text: "99+", name: "1,234 open" });
+    expect(navCount("breaks", { ...c, unmatch: 1000, capped: true })).toMatchObject({ text: "99+", name: "1,000+ open" });
+  });
+  it("navLinkName adds the count to the item's name only when there is one", () => {
+    expect(navLinkName("Unmatch", navCount("breaks", c))).toBe("Unmatch, 37 open");
+    expect(navLinkName("Posting", navCount("posting", c))).toBe("Posting");
+    expect(navLinkName("Today", null)).toBe("Today");
+  });
+});
+
+describe("centerScrollTop (the current item in view in the sidebar's own scroll)", () => {
+  const box = { scrollTop: 0, clientHeight: 400, scrollHeight: 1000 };
+  it("null while the item is fully visible, edges included", () => {
+    expect(centerScrollTop(box, { offsetTop: 0, offsetHeight: 32 })).toBeNull();
+    expect(centerScrollTop(box, { offsetTop: 368, offsetHeight: 32 })).toBeNull();
+    expect(centerScrollTop({ ...box, scrollTop: 300 }, { offsetTop: 300, offsetHeight: 32 })).toBeNull();
+  });
+  it("an item below or above the view, or cut at an edge, is centred", () => {
+    expect(centerScrollTop(box, { offsetTop: 600, offsetHeight: 32 })).toBe(416);
+    expect(centerScrollTop(box, { offsetTop: 380, offsetHeight: 32 })).toBe(196);
+    expect(centerScrollTop({ ...box, scrollTop: 500 }, { offsetTop: 100, offsetHeight: 32 })).toBe(0);
+  });
+  it("stays within the scroll range: the last item can't be centred past the end", () => {
+    expect(centerScrollTop(box, { offsetTop: 980, offsetHeight: 20 })).toBe(600);
+  });
+});
+
+describe("navSpaceId", () => {
+  const spaces = [{ id: "a", roles: ["viewer"] }, { id: "b", roles: [] }, { id: "c", roles: ["operator"] }];
+  it("is the space the space pages link to: the viewed one, else the remembered, else the first with a role", () => {
+    expect(navSpaceId(spaces, "c", null)).toBe("c");
+    expect(navSpaceId(spaces, "c", "a")).toBe("a");
+    expect(navSpaceId(spaces, "b", null)).toBe("a");
+    expect(navSpaceId([], null, null)).toBeNull();
+    expect(spaceEntry("breaks", spaces, "c", null)).toBe(`/spaces/${navSpaceId(spaces, "c", null)}/breaks`);
   });
 });

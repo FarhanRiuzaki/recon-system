@@ -2,7 +2,7 @@
 
 import {
   ActionCard, ActionMenu, Avatar, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
-  EditorRow, Kbd, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
+  EditorRow, Kbd, LiveCountBadge, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
 } from "@starterkit/ui/ds";
 import { HEALTH, type Health, toStatusTone } from "@starterkit/ui/lib/status";
 import { Reveal } from "@starterkit/ui/motion";
@@ -144,7 +144,7 @@ export function ComponentsSections() {
       </div>
 
       <section id="ds-navigation" className="grid scroll-mt-20 gap-6" aria-label="Navigation patterns">
-        <Panel title="Breadcrumb, route tabs and navigation tree" description="Grey fill marks the current route. Tree branches share the same curved connector as the app sidebar."><div className="grid gap-6"><Breadcrumb items={[{ id: "home", label: "Home", href: "#ds-navigation" }, { id: "settings", label: "Settings", href: "#ds-navigation" }, { id: "users", label: "Users", href: "#ds-navigation" }, { id: "detail", label: "Alex Morgan" }]} collapsed /><RouteTabs aria-label="Sample account tabs">{["Profile", "Security", "Sessions"].map(t => <a key={t} href="#ds-navigation" aria-current={t === tab ? "page" : undefined} onClick={e => { e.preventDefault(); setTab(t); }}>{t}</a>)}</RouteTabs><div className="w-full max-w-64"><p className="mb-2 px-2.5 text-label">Users</p><NavigationPreview items={[{ id: "all-users", label: "All users" }, { id: "active-users", label: "Active users" }, { id: "invited-users", label: "Invited users" }]} /></div></div></Panel>
+        <Panel title="Breadcrumb, route tabs and navigation tree" description="Grey fill marks the current route. Tree branches share the same curved connector as the app sidebar."><div className="grid gap-6"><Breadcrumb items={[{ id: "home", label: "Home", href: "#ds-navigation" }, { id: "settings", label: "Settings", href: "#ds-navigation" }, { id: "users", label: "Users", href: "#ds-navigation" }, { id: "detail", label: "Alex Morgan" }]} collapsed /><RouteTabs aria-label="Sample account tabs">{["Profile", "Security", "Sessions"].map(t => <a key={t} href="#ds-navigation" aria-current={t === tab ? "page" : undefined} onClick={e => { e.preventDefault(); setTab(t); }}>{t}</a>)}</RouteTabs><div className="w-full max-w-64"><p className="mb-2 px-2.5 text-label">Users</p><NavigationPreview items={[{ id: "all-users", label: "All users" }, { id: "active-users", label: "Active users" }, { id: "invited-users", label: "Invited users" }]} /></div><LiveCountSample /></div></Panel>
         <Panel title="Stepper layouts and states"><div className="grid gap-8"><Stepper steps={steps} label="Horizontal setup" /><div className="grid gap-6 md:grid-cols-2"><Stepper steps={steps} label="Vertical setup" layout="vertical" onStepSelect={sample} /><Stepper steps={steps} label="Compact setup" layout="compact" /></div><div className="grid gap-4 md:grid-cols-3">{(["todo", "current", "done", "error", "disabled"] as const).map((status, i) => <StepItem key={status} number={i + 1} step={{ id: status, label: status, status }} />)}<StepItem number={6} step={{ id: "optional", label: "Invite members", status: "todo", optional: true }} /></div></div></Panel>
       </section>
 
@@ -176,5 +176,28 @@ function RevealDemo() {
         </div>
       </Reveal>
     </Panel>
+  );
+}
+
+/**
+ * The sidebar's live counts (LiveCountBadge): neutral (Unmatch), progress (Approvals, waiting on you), down (Posting,
+ * failed); "99+" past 99. Changing them pops each badge once while its number rolls; reduced motion fades.
+ */
+function LiveCountSample() {
+  const [n, setN] = useState(0);
+  const rows = [{ label: "Unmatch", value: 37 + n * 5, tone: "neutral" }, { label: "Approvals", value: 3 + n, tone: "progress" }, { label: "Posting", value: n % 2 ? 0 : 120, tone: "down" }] as const;
+  return (
+    <div className="grid w-full max-w-64 gap-2">
+      <p className="px-2.5 text-label">Live counts</p>
+      <div className="grid gap-0.5">
+        {rows.map((r) => (
+          <div key={r.label} className="flex h-8 items-center gap-2.5 rounded-md px-2.5 text-body-sm text-fg-2">
+            <span className="min-w-0 flex-1 truncate">{r.label}</span>
+            <LiveCountBadge value={r.value} tone={r.tone} format={(v) => (v > 99 ? "99+" : String(Math.round(v)))} />
+          </div>
+        ))}
+      </div>
+      <Button variant="secondary" size="sm" className="justify-self-start" onClick={() => setN((x) => x + 1)}>Change counts</Button>
+    </div>
   );
 }

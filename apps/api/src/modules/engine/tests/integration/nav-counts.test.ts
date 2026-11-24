@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { NavCountsDto, TodayDto } from "@starterkit/shared/contracts/recon";
-import { NAV_COUNT_CAP } from "@starterkit/shared/recon";
+import { NAV_COUNT_CAP } from "@starterkit/shared/spaces";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, platformAdmin, resetData, signIn } from "../../../../../test/helpers/app";

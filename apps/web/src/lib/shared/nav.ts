@@ -1,5 +1,7 @@
 import type { PermissionName } from "@starterkit/shared/permissions";
 import { canonicalSelection } from "@starterkit/shared/filter-selection";
+import { NAV_COUNT_CAP } from "@starterkit/shared/spaces";
+import { formatNumber } from "@starterkit/ui/lib/format";
 
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
   | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations" | "posting" | "results";
@@ -101,11 +103,47 @@ export const APPROVALS_FROM = "approvals";
 export const approvalsHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/approvals`;
 
 export function spaceEntry(page: SpacePage, spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null, current: string | null = null): string | null {
-  const pool = page === "members" ? spaces : spaces.filter((s) => s.roles.length);
-  // The space of the page being viewed wins: a link never leaves the space the user is working in.
-  const open = pool.find((s) => s.id === current) ?? pool.find((s) => s.id === remembered) ?? pool[0];
-  return open ? `/spaces/${encodeURIComponent(open.id)}/${page}` : null;
+  const id = page === "members" ? openSpace(spaces, remembered, current) : navSpaceId(spaces, remembered, current);
+  return id ? `/spaces/${encodeURIComponent(id)}/${page}` : null;
 }
+// The space of the page being viewed wins: a link never leaves the space the user is working in.
+const openSpace = (pool: readonly { id: string }[], remembered: string | null, current: string | null) =>
+  (pool.find((s) => s.id === current) ?? pool.find((s) => s.id === remembered) ?? pool[0])?.id ?? null;
+/** The space a space's data pages (Unmatch, Approvals, …) link to, as spaceEntry picks it: the one the sidebar's counts are for. */
+export const navSpaceId = (spaces: readonly { id: string; roles: readonly string[] }[], remembered: string | null, current: string | null = null) =>
+  openSpace(spaces.filter((s) => s.roles.length), remembered, current);
+
+/** GET /api/spaces/<id>/nav-counts (NavCountsDto), as a type here so the shell imports no contract. */
+export type NavCounts = { unmatch: number; approvals: number; posting: number; capped: boolean };
+export type NavCountTone = "neutral" | "progress" | "down";
+/** A nav item's live count: `text` on the badge ("99+" past 99), `name` for its link and tooltip ("" at 0: no badge). */
+export type NavCount = { value: number; text: string; name: string; tone: NavCountTone };
+/** Which space pages count, what: Approvals wait on the viewer (primary emphasis), Posting is a failure (down). */
+const COUNTED: Partial<Record<SpacePage, { key: "unmatch" | "approvals" | "posting"; what: string; tone: NavCountTone }>> = {
+  breaks: { key: "unmatch", what: "open", tone: "neutral" },
+  approvals: { key: "approvals", what: "waiting for you", tone: "progress" },
+  posting: { key: "posting", what: "need attention", tone: "down" },
+};
+export function navCount(page: SpacePage | undefined, c: NavCounts | undefined): NavCount | null {
+  const m = page && COUNTED[page];
+  if (!m || !c) return null;
+  const value = c[m.key];
+  const full = `${formatNumber(value)}${c.capped && value >= NAV_COUNT_CAP ? "+" : ""}`;
+  return { value, text: countText(value), name: value ? `${full} ${m.what}` : "", tone: m.tone };
+}
+/**
+ * The scrollTop that puts `item` (offsetTop measured in the container's scroll content) in the middle of the
+ * container, within its scroll range; null while the item is already fully visible (the sidebar doesn't move then).
+ */
+export function centerScrollTop(c: { scrollTop: number; clientHeight: number; scrollHeight: number }, item: { offsetTop: number; offsetHeight: number }): number | null {
+  if (item.offsetTop >= c.scrollTop && item.offsetTop + item.offsetHeight <= c.scrollTop + c.clientHeight) return null;
+  const top = item.offsetTop + item.offsetHeight / 2 - c.clientHeight / 2;
+  return Math.round(Math.max(0, Math.min(top, c.scrollHeight - c.clientHeight)));
+}
+/** A count badge's text: the number, "99+" past 99 (a frame of the roll may be fractional: rounded). */
+export const countText = (v: number) => (v > 99 ? "99+" : String(Math.round(v)));
+/** A nav link's accessible name: its label, then its count ("Unmatch, 37 open"). */
+export const navLinkName = (label: string, c: NavCount | null) => (c?.name ? `${label}, ${c.name}` : label);
 
 /** Whether the path is on nav item `n`'s page: its href or below; a space page only its own entry and /spaces/<id>/<space>[/…]. */
 export function onItem(pathname: string, n: Pick<NavItem, "href" | "space">): boolean {

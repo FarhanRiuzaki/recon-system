@@ -2,7 +2,7 @@
 // (the Unmatch list's total, the approvals inbox's "Waiting for me", Today's postings needing attention), in one
 // withSpace under the viewer (RLS), each stopped at NAV_COUNT_CAP.
 import type { NavCountsDto } from "@starterkit/shared/contracts/recon";
-import { NAV_COUNT_CAP } from "@starterkit/shared/recon";
+import { NAV_COUNT_CAP } from "@starterkit/shared/spaces";
 import { waitingCount } from "../approvals";
 import type { Ctx } from "../auth";
 import { postingAttention } from "../integrations";
