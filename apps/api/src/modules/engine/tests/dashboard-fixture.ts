@@ -80,7 +80,7 @@ export async function seedDashboard() {
   // a live run of R1 (the recons table's last run)
   await db.insert(reconRuns).values({ id: Bun.randomUUIDv7(), spaceId: A, configId: R1.configId, configVersionId: R1.versionId, mode: "daily", dateFrom: D, dateTo: D, status: "succeeded", startedAt: noon(D), finishedAt: noon(D) });
   // approvals of R1: P3's write-off pending since D; one decided (rejected) on D1
-  const rq = (over: Partial<typeof approvalRequests.$inferInsert>) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: R1.configId, kind: "write_off", label: "Write off", note: "n", configVersionId: R1.versionId, ...over });
+  const rq = (over: Partial<typeof approvalRequests.$inferInsert> & { itemId: string }) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: R1.configId, kind: "write_off", label: "Write off", note: "n", configVersionId: R1.versionId, ...over });
   const decided = rq({ itemId: I.P4!, status: "rejected", requestedAt: noon(D), decidedAt: new Date(noon(D1).getTime()) });
   await db.insert(approvalRequests).values([rq({ itemId: I.P3!, status: "pending", requestedAt: noon(D) }), decided]);
   // posting runs of R1 on D: one posted, one failed, one timeout; one posted long before the period

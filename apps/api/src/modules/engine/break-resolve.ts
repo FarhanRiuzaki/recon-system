@@ -30,6 +30,7 @@ import { matchGroups, matchMembers, reconDays, reconItems } from "./schema";
 import { addDays } from "./service";
 import { NEAR_MISS } from "./sql/breaks";
 import { assertNotSigned } from "./signoff";
+import { queueStats } from "./stats";
 
 export const inSpace = <T>(ctx: Ctx, fn: (tx: InTx, spaceId: string) => Promise<T>) =>
   withSpace({ spaceIds: [ctx.space!.id], userId: ctx.user.id }, (tx) => fn(tx, ctx.space!.id));
@@ -284,6 +285,7 @@ export async function matchIn(tx: InTx, ctx: Ctx, spaceId: string, x: { id: stri
         ...(i.status === "break" ? { breakState: "resolved", resolution: o.resolution } : {}),
       }).where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, i.id), eq(reconItems.businessDate, i.businessDate), eq(reconItems.version, i.v)));
     }
+    await queueStats(tx, spaceId, ids);
     if (o.quiet) return;
     await recordActivity(tx, ctx, {
       action: o.action, target: { type: "break", id: x.id, label: items[0]!.ref ?? "Unmatch item" },
@@ -317,6 +319,7 @@ export async function closeBreak(ctx: Ctx, id: string, b: CloseBreakBody): Promi
     if (locked?.status !== "break" || locked.v !== x.version) throw new ApiError("invalid_state", "This item changed meanwhile. Reload it and try again.");
     await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution: b.resolution, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate), eq(reconItems.version, x.version)));
+    await queueStats(tx, spaceId, [x.id]);
     const [i] = await itemsOf(tx, spaceId, [x.id]);
     await recordActivity(tx, ctx, { action: "break.close", target: { type: "break", id: x.id, label: i?.ref ?? "Unmatch item" }, before: { state: x.breakState ?? "new" }, after: { resolution: b.resolution, note: b.note } });
   });

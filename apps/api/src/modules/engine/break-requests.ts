@@ -18,6 +18,7 @@ import { records, todayIn } from "../ingest";
 import { liveSpec, postsUnmatch, breakDetail, breakOf, inSpace, itemsOf, matchIn, matchItems, mayTouch, mayWork, recordSpaces } from "./break-resolve";
 import { matchGroups, matchMembers, reconItems } from "./schema";
 import { assertNotSigned } from "./signoff";
+import { queueStats } from "./stats";
 
 /** The group the break is matched in now (not reversed). */
 async function groupOf(tx: InTx, spaceId: string, itemId: string) {
@@ -109,6 +110,7 @@ export async function requestChange(ctx: Ctx, id: string, b: RequestBreakBody): 
       await tx.update(reconItems).set({ breakState: "pending_approval", version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
         .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
     }
+    await queueStats(tx, spaceId, [x.id, ...itemIds]);
     await recordActivity(tx, ctx, {
       action: "break.request", target: { type: "break", id: x.id, label: item?.ref ?? "Unmatch item" },
       before: { state: x.breakState ?? "new" }, after: { kind: b.kind, note: b.note, ...(itemIds.length ? { items: itemIds.length } : {}) },
@@ -136,6 +138,7 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
     if (locked?.status !== "break") throw new ApiError("invalid_state", "This item changed meanwhile. Reject the request and ask again.");
     await tx.update(reconItems).set({ status: "closed", breakState: "resolved", resolution, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
       .where(and(eq(reconItems.spaceId, spaceId), eq(reconItems.id, x.id), eq(reconItems.businessDate, x.businessDate)));
+    await queueStats(tx, spaceId, [x.id]);
     return { resolution };
   }
   // unmatch: the group reversed by whoever approved; each member back where a run left it (a break in the queue again,
@@ -153,6 +156,7 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
     breakState: sql`case when ${reconItems.breakReason} is null then null when ${reconItems.assigneeId} is null then null else 'assigned' end`,
     resolution: null, version: sql`${reconItems.version} + 1`, stateAt: sql`now()`,
   }).where(and(eq(reconItems.spaceId, spaceId), inArray(reconItems.id, ids), isNull(reconItems.simRunId)));
+  await queueStats(tx, spaceId, ids);
   return { unmatched: ids.length };
 }
 
@@ -160,4 +164,5 @@ export async function applyBreakChange(tx: InTx, ctx: Ctx, rq: Rq): Promise<Reco
 export async function revertBreakRequest(tx: InTx, rq: Rq): Promise<void> {
   await tx.update(reconItems).set({ breakState: rq.prevState, version: sql`${reconItems.version} + 1`, stateAt: sql`now()` })
     .where(and(eq(reconItems.spaceId, rq.spaceId), eq(reconItems.id, rq.itemId), eq(reconItems.breakState, "pending_approval"), isNull(reconItems.simRunId)));
+  await queueStats(tx, rq.spaceId, [rq.itemId, ...rq.itemIds]);
 }

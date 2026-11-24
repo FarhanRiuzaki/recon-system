@@ -21,6 +21,8 @@ await enqueue(QUEUES.maintenancePartitions, {}, { key: "start" });
 // that was down catches up on its first minute.
 await scheduleEvery(QUEUES.reconSchedule, "schedule", "* * * * *", {});
 await unschedule(QUEUES.reconTick, "schedule"); // its first home (wt/task6 before review): a tick slot each minute
+// the dashboard's rollup (engine stats.ts): every config's last 7 business dates again at 01:15, the net under the per-change jobs
+await scheduleEvery(QUEUES.reconStats, "sweep", "15 1 * * *", { sweep: true });
 // approval actions left sending by a worker that died after the call went out become timeout, never sent again (O4)
 await scheduleEvery(QUEUES.integrationsAction, "sweep", "* * * * *", { sweep: true });
 // posting groups whose cutoff has passed are closed and their one run queued (stage 5)

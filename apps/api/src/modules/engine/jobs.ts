@@ -33,6 +33,7 @@ import { addDays, backfillRun, closedDates, createRun, execRun, failRun, project
  */
 const NO_JOB_MAX_MS = QUEUE_OPTIONS[QUEUES.reconHeavy].expireInSeconds! * 1000;
 import { changesSql } from "./sql/runs";
+import { queueRunStats, statsJob, sweepStats } from "./stats";
 
 
 /** A manual run over a closed business date. */
@@ -234,6 +235,12 @@ export async function runAndRefresh(on: Tx, d: { spaceId: string; runId: string 
     } catch (e) {
       log.warn({ err: e, runId: d.runId }, "run days not refreshed after the close");
     }
+    // the dashboard's rollup of its dates, also after a failure (what it committed counts); the nightly sweep is the net
+    try {
+      if (d.runId) await queueRunStats(on, d.spaceId, d.runId);
+    } catch (e) {
+      log.warn({ err: e, runId: d.runId }, "run dates not queued for the dashboard");
+    }
   }
 }
 
@@ -253,5 +260,10 @@ export const engineHandlers = (on: Tx): Partial<Record<QueueName, JobHandler>> =
     [QUEUES.reconSchedule]: async () => { await dispatch(on); },
     [QUEUES.reconTick]: run,
     [QUEUES.reconDaily]: run,
+    // the dashboard's rollup: one (config, date), or the nightly sweep
+    [QUEUES.reconStats]: async ({ data }) => {
+      const d = data as { spaceId: string; configId: string; date: string } | { sweep: true };
+      await ("sweep" in d ? sweepStats(on) : statsJob(on, d));
+    },
   };
 };

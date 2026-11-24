@@ -4,13 +4,18 @@
 // (debounced: one job per key waits STATS_DELAY_MS, later changes merge into it), and swept nightly over the last
 // SWEEP_DAYS dates (jobs.ts).
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
-import type { InTx } from "../../kernel/db";
+import type { InTx, Tx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import { countN } from "../../kernel/pagination";
-import { records } from "../ingest";
+import { approvalRequests } from "../approvals";
+import { records, todayIn } from "../ingest";
+import { postingGroupItems } from "../integrations";
+import { reconConfigs } from "../recon";
+import { spaces, withSpace } from "../spaces";
 import { recordSpaces } from "./break-resolve";
 import { statusTally } from "./results";
-import { reconDayStats, reconItems } from "./schema";
+import { reconDayStats, reconItems, reconRuns } from "./schema";
+import { addDays } from "./service";
 
 /** How long a recompute waits for more changes of the same config and date. */
 export const STATS_DELAY_MS = 60_000;
@@ -56,4 +61,46 @@ export async function queueStats(tx: InTx, spaceId: string, itemIds: readonly st
 /** Queues the recompute of (`configId`, `date`), STATS_DELAY_MS from now. */
 export function queueDay(spaceId: string, configId: string, date: string, tx?: InTx): Promise<string | null> {
   return enqueue(QUEUES.reconStats, { spaceId, configId, date }, { key: `${configId}:${date}`, startAfter: new Date(Date.now() + STATS_DELAY_MS), tx });
+}
+
+/**
+ * A posting run that finished (integrations' worker): the items it posted, whose Operation result status follows it —
+ * its own break, else its request's items, else its posting group's.
+ */
+export async function queuePostingStats(tx: InTx, r: { spaceId: string; itemId: string | null; requestId: string | null; groupId: string | null }): Promise<void> {
+  if (r.itemId) return queueStats(tx, r.spaceId, [r.itemId]);
+  if (r.requestId) {
+    const [rq] = await tx.select({ itemId: approvalRequests.itemId, itemIds: approvalRequests.itemIds }).from(approvalRequests)
+      .where(and(eq(approvalRequests.spaceId, r.spaceId), eq(approvalRequests.id, r.requestId)));
+    return rq ? queueStats(tx, r.spaceId, [rq.itemId, ...rq.itemIds]) : undefined;
+  }
+  if (r.groupId) {
+    const ms = await tx.select({ id: postingGroupItems.itemId }).from(postingGroupItems).where(and(eq(postingGroupItems.spaceId, r.spaceId), eq(postingGroupItems.groupId, r.groupId)));
+    return queueStats(tx, r.spaceId, ms.map((m) => m.id));
+  }
+}
+
+/** A live run's dates (each queued; a simulation changes nothing live). */
+export async function queueRunStats(on: Tx, spaceId: string, runId: string): Promise<void> {
+  const [r] = await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => tx.select({ configId: reconRuns.configId, mode: reconRuns.mode, from: reconRuns.dateFrom, to: reconRuns.dateTo })
+    .from(reconRuns).where(and(eq(reconRuns.spaceId, spaceId), eq(reconRuns.id, runId))), on);
+  if (!r || r.mode === "simulation") return;
+  for (let d = r.from; d <= r.to; d = addDays(d, 1)) await queueDay(spaceId, r.configId, d);
+}
+
+/** The job of (config, date): its row recomputed under the space's scope, on the worker's pool. */
+export function statsJob(on: Tx, d: { spaceId: string; configId: string; date: string }): Promise<void> {
+  return withSpace({ spaceIds: [d.spaceId], userId: null }, (tx) => recomputeDayStats(tx, d.spaceId, d.configId, d.date), on);
+}
+
+/**
+ * The nightly sweep: every config of every space, its last SWEEP_DAYS business dates ending today (Asia/Jakarta), one
+ * transaction per config and date, so a failure leaves the others written (and the next sweep tries again).
+ */
+export async function sweepStats(on: Tx, now = new Date()): Promise<void> {
+  const today = todayIn(now);
+  for (const s of await on.select({ id: spaces.id }).from(spaces)) {
+    const configs = await withSpace({ spaceIds: [s.id], userId: null }, (tx) => tx.select({ id: reconConfigs.id }).from(reconConfigs).where(eq(reconConfigs.spaceId, s.id)), on);
+    for (const c of configs) for (let i = SWEEP_DAYS - 1; i >= 0; i--) await statsJob(on, { spaceId: s.id, configId: c.id, date: addDays(today, -i) });
+  }
 }

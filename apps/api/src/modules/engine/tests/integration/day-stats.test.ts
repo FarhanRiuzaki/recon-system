@@ -9,7 +9,9 @@ import { asAppRole } from "../../../../../test/helpers/app-role";
 import { db, type InTx } from "../../../../kernel/db";
 import { withSpace } from "../../../spaces";
 import { matchGroups, reconDayStats, reconItems } from "../../schema";
-import { recomputeDayStats } from "../../stats";
+import { boss, QUEUES } from "../../../../kernel/jobs";
+import { engineHandlers } from "../../jobs";
+import { queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
 
 let F: DashboardFixture;
@@ -75,5 +77,32 @@ describe("recon_day_stats", () => {
     expect(await as(F.B, (tx) => tx.select().from(reconDayStats))).toEqual([]);
     const e = await as(F.B, (tx) => tx.insert(reconDayStats).values({ spaceId: F.A, configId: F.R1.configId, businessDate: D1 })).catch((x: unknown) => x);
     expect(e).toBeInstanceOf(Error);
+  });
+});
+
+describe("recon.stats jobs", () => {
+  const jobsOf = async (key: string) => (await boss()).findJobs(QUEUES.reconStats, { key });
+
+  it("a resolution queues one recompute of its config and date, a minute out; more changes merge into it", async () => {
+    await (await boss()).deleteAllJobs();
+    const token = await signIn("viewer");
+    const before = Date.now();
+    expect((await call("POST", `/v1/spaces/${F.A}/breaks/${F.I.P4}/close`, { token, body: { resolution: "DUPLICATE", note: "Sent twice" } })).status).toBe(200);
+    const [job, ...more] = await jobsOf(`${F.R1.configId}:${D}`);
+    expect(more).toEqual([]);
+    expect(job!.data).toEqual({ spaceId: F.A, configId: F.R1.configId, date: D });
+    expect(new Date(job!.startAfter).getTime()).toBeGreaterThanOrEqual(before + STATS_DELAY_MS - 1000);
+    expect(await queueDay(F.A, F.R1.configId, D)).toBeNull();
+    expect((await jobsOf(`${F.R1.configId}:${D}`)).length).toBe(1);
+  });
+
+  it("the job writes its row; the sweep writes every config's last 7 dates", async () => {
+    const handle = engineHandlers(db)[QUEUES.reconStats]!;
+    await handle({ id: "j", data: { spaceId: F.A, configId: F.R1.configId, date: D } });
+    expect(rowsOf((await rowOf(F.A, F.R1.configId)).results).matched).toBe(1);
+    await sweepStats(db, noon(D1));
+    const all = await withSpace({ spaceIds: [F.A, F.B, F.C], userId: null }, (tx) => tx.select({ c: reconDayStats.configId, d: reconDayStats.businessDate }).from(reconDayStats));
+    expect(all.length).toBe(3 * 7);
+    expect(all.filter((r) => r.c === F.R1.configId).map((r) => r.d).sort()).toEqual(["2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", D, D1]);
   });
 });

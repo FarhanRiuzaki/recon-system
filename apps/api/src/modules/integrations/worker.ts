@@ -11,6 +11,7 @@ import type { InTx, Tx } from "../../kernel/db";
 import { enqueue, type JobHandler, QUEUES } from "../../kernel/jobs";
 import { log } from "../../kernel/log";
 import { approvalDecisions } from "../approvals";
+import { queuePostingStats } from "../engine";
 import { spaces, withSpace } from "../spaces";
 import type { CallMeta } from "./call-log";
 import { actionRuns, connectorCircuits, connectors, connectorVersions } from "./schema";
@@ -25,8 +26,12 @@ type Run = typeof actionRuns.$inferSelect;
 type Finish = Partial<Pick<Run, "status" | "payloadMasked" | "responseMasked" | "filled" | "externalId" | "bankReference" | "httpStatus" | "code" | "message">>;
 
 /** Ends run `id` with `f`, only while it is still `from` (two workers never overwrite each other's outcome). */
-const finish = (tx: InTx, id: string, f: Finish, from: "queued" | "sending" = "queued") =>
-  tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(and(eq(actionRuns.id, id), eq(actionRuns.status, from)));
+async function finish(tx: InTx, id: string, f: Finish, from: "queued" | "sending" = "queued") {
+  const [r] = await tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(and(eq(actionRuns.id, id), eq(actionRuns.status, from)))
+    .returning({ spaceId: actionRuns.spaceId, itemId: actionRuns.itemId, requestId: actionRuns.requestId, groupId: actionRuns.groupId });
+  // its items' Operation result status follows the outcome: the dashboard's rollup of their dates again
+  if (r) await queuePostingStats(tx, r);
+}
 /** A run that never left (it failed while being prepared) ends not sent, naming only the error's kind. */
 const notPrepared = (e: unknown) => ({ status: "not_sent", message: `Not sent: Recon couldn't prepare the call (${e instanceof Error ? e.name : "error"}). Check the connector's settings and secrets, then post it by hand if it is still needed.` }) as const;
 const QUEUED_MAX_MS = 15 * 60_000;

@@ -10,3 +10,4 @@ export { matchGroups, matchMembers, reconDays, reconItems, reconRuns } from "./s
 export { applyBreakChange, breakContextOf, revertBreakRequest } from "./break-requests";
 export { itemsOf } from "./break-resolve";
 export { closeMoment } from "./rules";
+export { queuePostingStats } from "./stats";
