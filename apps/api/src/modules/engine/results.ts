@@ -241,6 +241,16 @@ export function resultCounts(ctx: Ctx, configId: string, q: Filter, now = new Da
   });
 }
 
+/**
+ * The recon's result rows on business dates `dates` per overall status, with their records (side A + side B items):
+ * the dashboard rollup's input (stats.ts), the same rows `resultCounts` counts with no filter.
+ */
+export async function statusTally(tx: InTx, spaceId: string, configId: string, dates: [string, string]): Promise<{ status: ResultStatus; rows: number; records: number }[]> {
+  await roomToAggregate(tx);
+  const rows = resultRows(tx, spaceId, configId, await recordSpaces(tx, spaceId), dates, {});
+  return tx.select({ status: rows.status, rows: countN, records: sql<number>`sum(${rows.nA} + ${rows.nB})::int` }).from(rows).groupBy(rows.status);
+}
+
 type Item = {
   id: string; rowId: string; side: "a" | "b"; status: ItemStatus; bd: string; reason: string | null; assigneeId: string | null; stateAt: Date | null; breakState: string | null; resolution: Resolution | null; breakPass: number | null;
   ref: string | null; amount: bigint | null; ccy: string | null; dir: string | null; acct: string | null; eventTime: Date | null; recordBd: string | null; attrs: Record<string, unknown> | null;

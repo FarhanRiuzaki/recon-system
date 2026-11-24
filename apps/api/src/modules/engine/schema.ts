@@ -262,6 +262,28 @@ export const reconSimChanges = pgTable("recon_sim_changes", {
 ]);
 
 /**
+ * The recon dashboard's rollup (docs/superpowers/plans/2026-11-24-recon-dashboard.md): one row per live config and
+ * business date, recomputed whole from the engine's tables (stats.ts recomputeDayStats), so a missed or repeated job
+ * converges. `results` = Operation result rows of the date per overall status, `{ status: [rows, records] }`; `broke` =
+ * items of the date that became unmatch; `written_off` = absolute amounts per currency of its items written off;
+ * `resolve_minutes` = per resolved item, minutes from its business date's start (Asia/Jakarta) to its resolution.
+ */
+export const reconDayStats = pgTable("recon_day_stats", {
+  spaceId: uuid("space_id").notNull(),
+  configId: uuid("config_id").notNull(),
+  businessDate: date("business_date").notNull(),
+  results: jsonb("results").notNull().default(sql`'{}'::jsonb`),
+  broke: integer("broke").notNull().default(0),
+  writtenOff: jsonb("written_off").notNull().default(sql`'{}'::jsonb`),
+  resolveMinutes: integer("resolve_minutes").array().notNull().default(sql`'{}'::integer[]`),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ name: "recon_day_stats_pkey", columns: [t.spaceId, t.configId, t.businessDate] }),
+  index("recon_day_stats_date").on(t.spaceId, t.businessDate),
+  foreignKey({ name: "recon_day_stats_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
+]);
+
+/**
  * The last freshness alert of a config (spec §9 "Freshness", REC-F4): one stale spell makes one alert, repeated at most
  * hourly, however the schedule's minutes fall (schedule.ts dispatch writes it with a conditional upsert, so two
  * dispatches at once alert once). The alert itself is a log line until an outside channel exists (REC-FUT-10).
