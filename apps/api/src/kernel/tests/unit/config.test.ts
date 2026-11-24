@@ -110,6 +110,17 @@ describe("loadConfig", () => {
     expect(msg).toContain("MAIL_FROM");
   });
 
+  it("ALLOW_MAIL_LOG=true lets production keep mail in the log (a trial); without it log is refused", () => {
+    const prod = { ...base, NODE_ENV: "production", APP_URL: "https://app.example.com", MAIL_TRANSPORT: "log" };
+    expect(failure(prod)).toContain("MAIL_TRANSPORT (must be smtp in production");
+    expect(failure({ ...prod, ALLOW_MAIL_LOG: "false" })).toContain("MAIL_TRANSPORT");
+    const c = loadConfig({ ...prod, ALLOW_MAIL_LOG: "true" });
+    expect([c.MAIL_TRANSPORT, c.ALLOW_MAIL_LOG]).toEqual(["log", true]);
+    // the switch is about log only: the SMTP rules stay as they are
+    expect(failure({ ...prod, ALLOW_MAIL_LOG: "true", MAIL_TRANSPORT: "smtp", SMTP_URL: "smtp://mail:587", MAIL_FROM: "a@b.c" })).toContain("SMTP_URL (production needs");
+    expect(loadConfig(base).ALLOW_MAIL_LOG).toBe(false);
+  });
+
   it("a provider's keys come together or not at all; the Apple key must be a PKCS#8 PEM", () => {
     const pem = "-----BEGIN PRIVATE KEY-----\\nMIGTAgEA\\n-----END PRIVATE KEY-----";
     const apple = { APPLE_CLIENT_ID: "com.example", APPLE_TEAM_ID: "T", APPLE_KEY_ID: "K", APPLE_PRIVATE_KEY: pem };

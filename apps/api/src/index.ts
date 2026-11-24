@@ -6,7 +6,8 @@ import { unexpected } from "./kernel/errors";
 import { log } from "./kernel/log";
 import { callsLogged } from "./modules/integrations";
 
-const { API_HOST, API_PORT } = config();
+const { API_HOST, API_PORT, NODE_ENV, MAIL_TRANSPORT } = config();
+if (NODE_ENV === "production" && MAIL_TRANSPORT === "log") log.warn("ALLOW_MAIL_LOG: production runs with MAIL_TRANSPORT=log; no mail is sent (trial only)");
 const app = createApp();
 // `error`: the last resort for anything the app's own handlers let through (Bun's default page would show it).
 const server = Bun.serve({ hostname: API_HOST, port: API_PORT, fetch: (r) => app.handle(r), error: (e) => unexpected(e) });

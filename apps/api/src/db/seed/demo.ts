@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, inArray, or, sql } from "drizzle-orm";
 import type { ActivityAction } from "@starterkit/shared/audit";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
 import type { AuthLogDto } from "@starterkit/shared/contracts/audit";
@@ -70,10 +70,15 @@ export const DEMO_ROLES: SeedRole[] = [
  * and 300 sign-in log entries, and three spaces (Treasury, CTOP, FICO): `viewer` is a member of Treasury and CTOP,
  * `superadmin` a source admin of Treasury (the E2E's global session reads its sources), `google` of none; each space
  * admin is a generated active Viewer-role user, so the user tests that deactivate fixed accounts or every Admin never
- * meet the last-space-admin rule. Treasury's sources and their ingest rows: demo-sources.ts. Refused in production; skipped when the demo accounts exist.
+ * meet the last-space-admin rule. Treasury's sources and their ingest rows: demo-sources.ts. Refused in production
+ * unless ALLOW_DEMO_SEED=true (a trial: the demo accounts' password is the known SEED_PASSWORD); skipped when the demo
+ * accounts exist; refused by name when a user already holds a demo username or email (e.g. SEED_SUPERADMIN_USERNAME=superadmin).
  */
 export async function seedDemo(db: Tx, env: Record<string, string | undefined> = process.env): Promise<void> {
-  if (env.NODE_ENV === "production") throw new Error("Demo data is refused when NODE_ENV=production.");
+  if (env.NODE_ENV === "production") {
+    if (env.ALLOW_DEMO_SEED !== "true") throw new Error("Demo data is refused when NODE_ENV=production; set ALLOW_DEMO_SEED=true for a trial.");
+    log.warn("ALLOW_DEMO_SEED: demo data under NODE_ENV=production; its accounts share a known password (trial only)");
+  }
   if ((await db.select({ id: usersTable.id }).from(usersTable).where(eq(sql`lower(${usersTable.email})`, "admin@example.com")).limit(1)).length) {
     log.info("demo data exists: skipped");
     return;
@@ -108,6 +113,10 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
     const roll = rnd();
     add(`${first.toLowerCase()}.${i + 1}`, name, roll < 0.2 ? "Admin" : "Viewer", { isActive: rnd() > 0.1 });
   }
+
+  const taken = await db.select({ username: usersTable.username }).from(usersTable).where(or(
+    inArray(sql`lower(${usersTable.username})`, users.map((u) => u.username.toLowerCase())), inArray(sql`lower(${usersTable.email})`, users.map((u) => u.email.toLowerCase()))));
+  if (taken.length) throw new Error(`Demo data needs its own usernames; already taken: ${taken.map((t) => t.username).join(", ")}. Pick another SEED_SUPERADMIN_USERNAME and email.`);
 
   const actors = users.filter((u) => u.isActive && u.role !== "Viewer");
   const actions: ActivityAction[] = ["user.create", "user.update", "user.deactivate", "user.delete", "role.update", "role.create", "user.reset_password"];

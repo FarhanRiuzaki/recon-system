@@ -29,6 +29,8 @@ const Fields = z.object({
   SESSION_IDLE_MINUTES: int(5, 1440, 120),
   APP_URL: z.url().default("http://localhost:3000"),
   MAIL_TRANSPORT: z.enum(["log", "smtp"]).default("log"),
+  /** A trial only: production may keep MAIL_TRANSPORT=log (no mail is sent; index.ts warns at boot). */
+  ALLOW_MAIL_LOG: flag,
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().optional(),
   AUDIT_RETENTION_DAYS: int(30, 3650, 365),
@@ -94,7 +96,7 @@ function crossKeyProblems(e: Record<string, string>): string[] {
     if (keys.some((k) => e[k])) out.push(...keys.filter((k) => !e[k]).map((k) => `${k} (required with ${keys.filter((x) => e[x]).join(", ")})`));
   }
   if (e.NODE_ENV === "production") {
-    if (e.MAIL_TRANSPORT !== "smtp") out.push("MAIL_TRANSPORT (must be smtp in production)");
+    if (e.MAIL_TRANSPORT !== "smtp" && e.ALLOW_MAIL_LOG !== "true") out.push("MAIL_TRANSPORT (must be smtp in production, or ALLOW_MAIL_LOG=true for a trial)");
     if (!e.APP_URL) out.push("APP_URL (required in production: the public origin the reset and invitation links point to)");
     if (e.OAUTH_MOCK === "true") out.push("OAUTH_MOCK (must be false in production)");
     if (e.LDAP_MOCK === "true") out.push("LDAP_MOCK (must be false in production)");

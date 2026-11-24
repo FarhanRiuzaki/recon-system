@@ -30,11 +30,14 @@ services:
   # Applies pending migrations as the schema owner (MIGRATION_DATABASE_URL), then the system seed through the same URL
   # (catalog, system roles; idempotent: an existing role is left as it is; the SEED_SUPERADMIN_* user only while no
   # active Superadmin exists, so the first Superadmin is created once and later runs leave users alone), then exits.
-  # Neither needs the server's secrets (kernel/db.ts reads only the pool keys).
+  # Neither needs the server's secrets (kernel/db.ts reads only the pool keys). With SEED_DEMO=true (a trial) the demo
+  # seed follows (db:seed:demo: demo accounts, Treasury's sources and recons, their runs; skipped once its accounts
+  # exist), which needs ALLOW_DEMO_SEED=true under the image's NODE_ENV=production and DATA_ENCRYPTION_KEY (it encrypts
+  # the demo's TOTP secret and source connections with the API's key).
   migrate:
     build: { context: ., dockerfile: apps/api/Dockerfile }
     image: ${COMPOSE_PROJECT_NAME:-starterkit}-api:local
-    command: ["sh", "-c", "bun run db:migrate && bun run db:seed"]
+    command: ["sh", "-c", "bun run db:migrate && bun run db:seed && if [ \"$$SEED_DEMO\" = true ]; then bun run db:seed:demo; fi"]
     environment:
       MIGRATION_DATABASE_URL: ${MIGRATION_DATABASE_URL:?set in .env.compose}
       DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
@@ -46,6 +49,9 @@ services:
       SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-}
       SEED_MAKER_PASSWORD: ${SEED_MAKER_PASSWORD:-}
       SEED_APPROVER_PASSWORD: ${SEED_APPROVER_PASSWORD:-}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-false}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set in .env.compose}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -57,9 +63,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:?set in .env.compose}
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?set in .env.compose}
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?set in .env.compose}
+      # smtp needs SMTP_URL and MAIL_FROM (the API refuses to start without them); log only with ALLOW_MAIL_LOG=true.
       MAIL_TRANSPORT: ${MAIL_TRANSPORT:-smtp}
-      SMTP_URL: ${SMTP_URL:?set in .env.compose}
-      MAIL_FROM: ${MAIL_FROM:?set in .env.compose}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      ALLOW_MAIL_LOG: ${ALLOW_MAIL_LOG:-false}
       APP_URL: ${APP_URL:?set in .env.compose (the public origin, e.g. https://app.example.com)}
       # Optional sign-in methods (apps/api/.env.example); empty = off.
       LDAP_URL: ${LDAP_URL:-}

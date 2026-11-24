@@ -299,6 +299,21 @@ describe("seedDemo", () => {
     await seedSystem(db, {});
     const err = await seedDemo(db, { NODE_ENV: "production" }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toContain("ALLOW_DEMO_SEED");
     expect(await userCount()).toBe(0);
+    expect(await seedDemo(db, { NODE_ENV: "production", ALLOW_DEMO_SEED: "false" }).catch((e: unknown) => e)).toBeInstanceOf(Error);
+  });
+
+  it("ALLOW_DEMO_SEED=true lets the demo seed run under NODE_ENV=production (a trial)", async () => {
+    await seedSystem(db, {});
+    await seedDemo(db, { NODE_ENV: "production", ALLOW_DEMO_SEED: "true" });
+    expect(await userCount()).toBe(50);
+  });
+
+  it("a demo username already taken (SEED_SUPERADMIN_USERNAME=superadmin) is refused by name, before anything is written", async () => {
+    await seedSystem(db, { SEED_SUPERADMIN_NAME: "Owner", SEED_SUPERADMIN_EMAIL: "owner@bank.test", SEED_SUPERADMIN_USERNAME: "superadmin", SEED_SUPERADMIN_PASSWORD: "a-long-password-1" });
+    const err = await seedDemo(db).catch((e: Error) => e.message);
+    expect(err).toContain("superadmin");
+    expect(await userCount()).toBe(1);
   });
 });
