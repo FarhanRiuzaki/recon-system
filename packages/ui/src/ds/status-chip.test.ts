@@ -1,7 +1,10 @@
 import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { StatusChip, type StatusChipProps } from "./status-chip";
+import { StatusChip, type StatusChipProps, StatusGlyph } from "./status-chip";
+import { StatusLegendList } from "./status-legend";
+import { CheckIcon } from "../ui/icons";
+import { TooltipProvider } from "../ui/tooltip";
 import type { LegendItem } from "./status-legend";
 import { type Health, toStatusTone } from "../lib/status";
 
@@ -19,6 +22,18 @@ describe("StatusChip In progress (owner 24 Nov: queued, sending, open, running a
     const out = renderToStaticMarkup(h(StatusChip, { health: toStatusTone("progress"), label: "Queued", strong: true }));
     expect(out).toContain('data-status="progress"');
     expect(out).toContain("text-progress-ink"); expect(out).toContain("bg-progress-soft"); expect(out).toContain("text-progress-mark");
+  });
+});
+
+describe("StatusGlyph (owner 24 Nov: each icon in a square badge)", () => {
+  it("a 28 px rounded square in the status's soft fill, the icon in its mark, named for assistive tech", () => {
+    const out = renderToStaticMarkup(h(TooltipProvider, null, h(StatusGlyph, { health: toStatusTone("down"), icon: CheckIcon, label: "Posting failed" })));
+    expect(out).toContain('role="img"'); expect(out).toContain('aria-label="Posting failed"');
+    for (const c of ["size-7", "rounded-sm", "bg-down-soft", "text-down-mark"]) expect(out).toContain(c);
+  });
+  it("the legend draws the same square", () => {
+    const out = renderToStaticMarkup(h(StatusLegendList, { items: [{ health: toStatusTone("healthy"), label: "Matched", icon: CheckIcon }] }));
+    for (const c of ["size-7", "rounded-sm", "bg-healthy-soft", "text-healthy-mark"]) expect(out).toContain(c);
   });
 });
 

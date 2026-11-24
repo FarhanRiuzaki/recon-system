@@ -20,17 +20,20 @@ const SOFT: Record<Health, string> = {
 };
 const INTERACTIVE = "a[href],button,[role=button],[role=link],[role=menuitem],[role=tab],summary,label";
 
+/** The square a status icon sits in: 28 px, `rounded-sm`, the status's soft fill, the icon in its mark (≥ 3:1 on it, tokens.test). */
+export const glyphBox = (health: StatusTone) => cn("inline-grid size-7 shrink-0 place-items-center rounded-sm", SOFT[health as Health], TONE[health as Health]);
+
 /**
  * A status as an icon alone (a dense table column whose card legend names every icon, e.g. Operation result): the
- * picture in the status's mark colour (≥ 3:1), its label for assistive tech and as a tooltip. Only where the card's
+ * picture in a square badge (glyphBox), its label for assistive tech and as a tooltip. Only where the card's
  * `Panel legend` lists the same icons with their words; elsewhere use StatusChip.
  */
 export function StatusGlyph({ health, icon, label, className }: { health: StatusTone; icon: IconData; label: string; className?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span role="img" aria-label={label} data-slot="status-glyph" className={cn("inline-grid size-6 shrink-0 place-items-center", TONE[health as Health], className)}>
-          <Icon icon={icon} className="size-4.5" />
+        <span role="img" aria-label={label} data-slot="status-glyph" className={cn(glyphBox(health), className)}>
+          <Icon icon={icon} className="size-4" />
         </span>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>

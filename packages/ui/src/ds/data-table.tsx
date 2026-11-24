@@ -21,7 +21,12 @@ export type Column<T> = {
   help?: ReactNode;
   /** Server-sorted column: the header button toggles `sort` (with `aria-sort`); the rows are never re-sorted here. */
   sortable?: boolean;
-  align?: "left" | "right"; className?: string;
+  align?: "left" | "right" | "center"; className?: string;
+  /**
+   * Sticks to the left while the table scrolls sideways, after the one before it: give it to the leading columns, in a
+   * run from the first (Status, Side A, Side B). Without any, the first column (the row's identity) sticks.
+   */
+  sticky?: boolean;
   /**
    * Place on a phone card (below 768 px, stacked rows): `title` = the card's heading (exactly one column), `meta` =
    * a label–value line (the header is the label), `hidden` = not on the card, `lead` = a control left of the title (the
@@ -92,18 +97,20 @@ const MetaLabel = ({ children }: { children: ReactNode }) => <span className="w-
 /**
  * Sticky parts (NN/g data tables: freeze the header and the identity column). The header row sticks to the top of the
  * window from 768 px (the table box isn't a scroll container while the table fits, ui/table.tsx). While the table
- * scrolls sideways inside its card (`data-scrolls` on the box), the row checkbox and the first column stick to its
- * left edge (`--lead-w` = the checkbox column's width) and the row actions to its right, each with a hairline on its
- * inner side and an opaque background that follows the row's hover and selection.
+ * scrolls sideways inside its card (`data-scrolls` on the box), the row checkbox and the first column (or the leading
+ * `sticky` columns) stick to its left edge, each where the one before ends (`--stick-<n>` on the table, measured), and
+ * the row actions to its right; the last one on each side has a hairline on its inner side, and all an opaque
+ * background that follows the row's hover and selection. `left` is set inline (a var), so it only acts once sticky.
  */
 // Literal class names (Tailwind reads them from the source; a built string would not be generated).
 const STICK_BODY = "md:group-data-[scrolls=true]/scroll:bg-card md:group-data-[scrolls=true]/scroll:group-hover/row:bg-tray md:group-data-[scrolls=true]/scroll:group-data-[state=selected]/row:bg-row-selected";
 const STICK_HEAD = "md:group-data-[scrolls=true]/scroll:z-20";
-const STICK: Record<"lead" | "title" | "end", string> = {
-  lead: "md:group-data-[scrolls=true]/scroll:sticky md:group-data-[scrolls=true]/scroll:left-0 md:group-data-[scrolls=true]/scroll:z-1",
-  title: "md:group-data-[scrolls=true]/scroll:sticky md:group-data-[scrolls=true]/scroll:left-[var(--lead-w,0px)] md:group-data-[scrolls=true]/scroll:z-1 md:group-data-[scrolls=true]/scroll:border-r md:group-data-[scrolls=true]/scroll:border-r-line",
+const STICK: Record<"start" | "edge" | "end", string> = {
+  start: "md:group-data-[scrolls=true]/scroll:sticky md:group-data-[scrolls=true]/scroll:z-1",
+  edge: "md:group-data-[scrolls=true]/scroll:border-r md:group-data-[scrolls=true]/scroll:border-r-line",
   end: "md:group-data-[scrolls=true]/scroll:sticky md:group-data-[scrolls=true]/scroll:right-0 md:group-data-[scrolls=true]/scroll:z-1 md:group-data-[scrolls=true]/scroll:border-l md:group-data-[scrolls=true]/scroll:border-l-line",
 };
+const ALIGN = { left: undefined, right: "text-right", center: "text-center" } as const;
 
 export type SortDir = "asc" | "desc";
 
@@ -167,20 +174,28 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
   const keep = all.map((c, i) => !hide.includes(c.key) || !canHide(c, allRoles[i]!));
   const columns = all.filter((_, i) => keep[i]);
   const roles = allRoles.filter((_, i) => keep[i]);
-  // While scrolling sideways the row's first column (after the row checkbox, if any) sticks: it says which row this is.
+  // While scrolling sideways the row checkbox and the row's first column stick (it says which row this is), or the
+  // leading run of `sticky` columns instead of that first one.
   const firstAt = roles[0] === "lead" ? 1 : 0;
-  const stickAt = (i: number): "lead" | "title" | null => (i === 0 && roles[0] === "lead" ? "lead" : i === firstAt ? "title" : null);
-  const leadRef = useRef<HTMLTableCellElement>(null), titleRef = useRef<HTMLTableCellElement>(null), endRef = useRef<HTMLTableCellElement>(null);
-  // Where the sticky identity column starts (right of the checkbox column; on the table, read by STICK.title), and how
-  // wide the sticky parts are on each side (on the frame, read by Table's fades), so a fade starts past them (owner 24 Nov).
+  let runEnd = firstAt;
+  while (columns[runEnd]?.sticky) runEnd++;
+  const sticks = [...(firstAt ? [0] : []), ...(runEnd > firstAt ? columns.slice(firstAt, runEnd).map((_, j) => firstAt + j) : [firstAt])];
+  /** Column `i`'s place among the sticky ones (its `--stick-<n>`), or -1. */
+  const stickAt = (i: number) => sticks.indexOf(i);
+  const stickClass = (i: number) => stickAt(i) < 0 ? undefined : cn(STICK.start, stickAt(i) === sticks.length - 1 && STICK.edge);
+  const stickStyle = (i: number) => (stickAt(i) < 0 ? undefined : { left: `var(--stick-${stickAt(i)}, 0px)` });
+  const stickRefs = useRef<(HTMLTableCellElement | null)[]>([]), endRef = useRef<HTMLTableCellElement>(null), stickCount = sticks.length;
+  // Where each sticky column starts (the widths of those before it; on the table, read by their `left`), and how wide
+  // the sticky parts are on each side (on the frame, read by Table's fades), so a fade starts past them (owner 24 Nov).
   useEffect(() => {
-    const table = (leadRef.current ?? titleRef.current)?.closest("table");
+    stickRefs.current.length = stickCount; // fewer sticky columns than last render (a column hidden)
+    const table = stickRefs.current.find(Boolean)?.closest("table");
     const frame = table?.closest<HTMLElement>('[data-slot="table-frame"]');
     if (!table || !frame) return;
     const measure = () => {
-      const lead = leadRef.current?.offsetWidth ?? 0;
-      table.style.setProperty("--lead-w", `${lead}px`);
-      frame.style.setProperty("--table-stick", `${lead + (titleRef.current?.offsetWidth ?? 0)}px`);
+      let at = 0;
+      stickRefs.current.forEach((th, n) => { table.style.setProperty(`--stick-${n}`, `${at}px`); at += th?.offsetWidth ?? 0; });
+      frame.style.setProperty("--table-stick", `${at}px`);
       frame.style.setProperty("--table-stick-end", `${endRef.current?.offsetWidth ?? 0}px`);
     };
     measure();
@@ -277,12 +292,12 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
       <Table aria-label={label} aria-busy={showSkeleton || showBusy || undefined} data-status-static="" role="table" className="max-md:block">
         <TableHeader role="rowgroup" className="max-md:hidden">
           <TableRow role="row" className="hover:bg-transparent">
-            {columns.map((c) => {
+            {columns.map((c, i) => {
               const active = sort?.key === c.key;
               const sortIcon = !active ? ChevronsUpDownIcon : sort?.dir === "asc" ? ArrowUpIcon : ArrowDownIcon;
               return (
-                <TableHead key={c.key} ref={stickAt(columns.indexOf(c)) === "lead" ? leadRef : stickAt(columns.indexOf(c)) === "title" ? titleRef : undefined} role="columnheader"
-                  className={cn("bg-tray md:sticky md:top-0 md:z-10", c.align === "right" && "text-right", c.className, "font-sans text-label", stickAt(columns.indexOf(c)) && cn(STICK[stickAt(columns.indexOf(c))!], STICK_HEAD))}
+                <TableHead key={c.key} ref={stickAt(i) < 0 ? undefined : (el) => { stickRefs.current[stickAt(i)] = el; }} role="columnheader" style={stickStyle(i)}
+                  className={cn("bg-tray md:sticky md:top-0 md:z-10", ALIGN[c.align ?? "left"], c.className, "font-sans text-label", stickClass(i) && cn(stickClass(i), STICK_HEAD))}
                   aria-sort={active ? (sort?.dir === "asc" ? "ascending" : "descending") : undefined}>
                   {c.sortable && onSortChange ? (
                     <button type="button" onClick={() => toggle(c)} className={cn("inline-flex cursor-pointer items-center gap-1 rounded-xs hover:text-fg focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary outline-none", active && "text-fg-2")}>
@@ -306,8 +321,8 @@ export function DataTable<T>({ columns: all, rows, rowKey, label, loading, error
                   data-new={isNew ? "true" : undefined}
                   className={cn(CARD_ROW, isNew && "motion-safe:animate-row-new")}>
                   {columns.map((c, i) => (
-                    <TableCell key={c.key} role="cell" data-mobile={roles[i]}
-                      className={cn("max-w-80", rowHeight === "identity" && "h-(--row-h-identity)", c.align === "right" && "text-right tabular", c.className, stickAt(i) && cn(STICK[stickAt(i)!], STICK_BODY), CARD_CELL, CARD_PLACE[roles[i]!])}>
+                    <TableCell key={c.key} role="cell" data-mobile={roles[i]} style={stickStyle(i)}
+                      className={cn("max-w-80", rowHeight === "identity" && "h-(--row-h-identity)", ALIGN[c.align ?? "left"], c.align === "right" && "tabular", c.className, stickClass(i) && cn(stickClass(i), STICK_BODY), CARD_CELL, CARD_PLACE[roles[i]!])}>
                       {roles[i] === "meta" && <MetaLabel>{c.header}</MetaLabel>}{c.cell(r)}
                     </TableCell>
                   ))}

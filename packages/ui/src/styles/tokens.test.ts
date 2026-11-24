@@ -73,6 +73,8 @@ const MARKS: [string, string][] = [
   ["stopped-mark", "card"], ["stopped-mark", "sheet"],
   // a Panel header (status legend, icons) sits on the tray
   ...["healthy-mark", "degraded-mark", "down-mark", "stopped-mark", "progress-mark"].map((m) => [m, "tray"] as [string, string]),
+  // StatusGlyph: the icon in its status's mark on that status's soft square (unknown draws stopped-mark)
+  ...["healthy", "degraded", "down", "stopped", "progress"].map((s) => [`${s}-mark`, `${s}-soft`] as [string, string]), ["stopped-mark", "unknown-soft"],
 ];
 
 /** Spec §3.3: slot order is fixed (hue follows the entity, never the rank). */

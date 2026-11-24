@@ -131,3 +131,37 @@ describe("DataTable sticky columns and the scroll fades (owner 24 Nov: the fade 
     }
   });
 });
+
+describe("DataTable leading sticky columns (owner 24 Nov: Status, Side A and Side B stay while the table scrolls sideways)", () => {
+  const three = [
+    { key: "status", header: "Status", sticky: true, cell: (r: S) => r.id }, { key: "sa", header: "Side A", sticky: true, cell: (r: S) => r.id },
+    { key: "sb", header: "Side B", sticky: true, cell: (r: S) => r.id }, { key: "ref", header: "Reference", cell: (r: S) => r.id },
+  ];
+  it("each sticky column starts where the one before ends, the hairline sits on the last only, and the fade starts past all three", async () => {
+    const w = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetWidth");
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, get() { return (this as HTMLElement).tagName === "TH" ? 100 : 0; } });
+    try {
+      await mount({ columns: three });
+      const ths = [...document.querySelectorAll<HTMLElement>("thead th")];
+      const left = (el: HTMLElement) => el.style.getPropertyValue("left");
+      const table = document.querySelector<HTMLElement>("table")!;
+      expect(["--stick-0", "--stick-1", "--stick-2"].map((v) => table.style.getPropertyValue(v))).toEqual(["0px", "100px", "200px"]);
+      expect(ths.map(left)).toEqual(["var(--stick-0, 0px)", "var(--stick-1, 0px)", "var(--stick-2, 0px)", ""]);
+      expect(ths.map((th) => th.className.includes("border-r-line"))).toEqual([false, false, true, false]);
+      expect(ths.slice(0, 3).every((th) => th.className.includes("scroll:sticky"))).toBe(true);
+      expect(ths[3]!.className).not.toContain("scroll:sticky");
+      expect([...document.querySelectorAll<HTMLElement>("tbody tr:first-child td")].map(left)).toEqual(["var(--stick-0, 0px)", "var(--stick-1, 0px)", "var(--stick-2, 0px)", ""]);
+      expect(document.querySelector<HTMLElement>('[data-slot="table-frame"]')!.style.getPropertyValue("--table-stick")).toBe("300px");
+    } finally {
+      if (w) Object.defineProperty(HTMLElement.prototype, "offsetWidth", w);
+    }
+  });
+});
+
+describe("DataTable align center", () => {
+  it("centers the header and the cells of a centered column", async () => {
+    await mount({ columns: [{ key: "name", header: "Name", cell: (r: S) => r.id }, { key: "st", header: "Status", align: "center", cell: (r: S) => r.id }] });
+    expect(document.querySelectorAll("thead th")[1]!.className.split(" ")).toContain("text-center");
+    expect(document.querySelectorAll("tbody td")[1]!.className.split(" ")).toContain("text-center");
+  });
+});

@@ -200,6 +200,9 @@ it is drawn.
 - Sticky parts (NN/g data tables): from 768 px the header row sticks to the top of the window while a long page
   scrolls (the table box stops being a scroll container once the table fits); while a wide table scrolls sideways in its
   card, the row checkbox and the first column stick to its left edge and the row actions to its right, with a hairline.
+  A table whose leading columns are all needed to read a row (Operation result: Status, Side A, Side B) marks them
+  `sticky` instead: each sticks where the one before ends, the hairline on the last; `align: "center"` centres an
+  icon column.
 - Select all (Polaris, Carbon batch actions): once every row of the page is ticked, the bulk bar offers "Select all N
   users" (every match of the search and filters, at most 1,000: above that it says to narrow them) and then "Select this
   page only"; a bulk action then sends the list's filters (`filter`) instead of ids, and its dialog names the count.

@@ -6,8 +6,8 @@ import { InfoIcon } from "../ui/icons";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
-import type { Health, StatusTone } from "../lib/status";
-import { StatusIcon } from "./status-chip";
+import type { StatusTone } from "../lib/status";
+import { glyphBox, StatusIcon } from "./status-chip";
 import type { IconData } from "../ui/icon";
 import { cn } from "../lib/cn";
 
@@ -15,7 +15,6 @@ const TITLE = "What these statuses mean";
 
 /** `icon`: the card shows this status as that icon (StatusGlyph), so the legend draws the same one. */
 export type LegendItem = { health: StatusTone; label: string; description?: string; icon?: IconData };
-const MARK: Record<Health, string> = { healthy: "text-healthy-mark", degraded: "text-degraded-mark", down: "text-down-mark", stopped: "text-stopped-mark", progress: "text-progress-mark", unknown: "text-stopped-mark" };
 
 /** The legend body: one vertical list, the same in every card. */
 export function StatusLegendList({ items }: { items: readonly LegendItem[] }) {
@@ -23,8 +22,8 @@ export function StatusLegendList({ items }: { items: readonly LegendItem[] }) {
     <dl className="grid gap-2">
       {items.map((e) => (
         <div key={e.label} className="grid gap-0.5">
-          <dt className="flex items-center gap-2 text-label text-fg">{e.icon ? <Icon icon={e.icon} className={cn("size-4 shrink-0", MARK[e.health as Health])} /> : <StatusIcon health={e.health} />}{e.label}</dt>
-          {e.description && <dd className="pl-5 text-body-sm text-fg-2">{e.description}</dd>}
+          <dt className="flex items-center gap-2 text-label text-fg">{e.icon ? <span aria-hidden="true" className={glyphBox(e.health)}><Icon icon={e.icon} className="size-4" /></span> : <StatusIcon health={e.health} />}{e.label}</dt>
+          {e.description && <dd className={cn("text-body-sm text-fg-2", e.icon ? "pl-9" : "pl-5")}>{e.description}</dd>}
         </div>
       ))}
     </dl>
