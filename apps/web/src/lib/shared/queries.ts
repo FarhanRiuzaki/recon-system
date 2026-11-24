@@ -32,6 +32,23 @@ export function dashboardRead(sp: Pick<URLSearchParams, "get">) {
   return { key: [...DASHBOARD_KEY, path], path };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * The recon dashboard (`/`): the URL's `space` and `recon` (ids; anything else is left out) and the header's period
+ * (none = the API's default, the last 7 days ending today, so the server and the browser ask the same URL).
+ */
+export function reconDashboardRead(sp: Pick<URLSearchParams, "get">) {
+  const params = new URLSearchParams();
+  for (const k of ["space", "recon"]) { const v = sp.get(k); if (v && UUID.test(v)) params.set(k, v); }
+  if (sp.get("range") || sp.get("from") || sp.get("to") || sp.get("start") || sp.get("end")) {
+    const { range } = timeRange(sp, 7);
+    params.set("from", range.from);
+    params.set("to", range.to);
+  }
+  const path = `/api/dashboard/recon${params.size ? `?${params}` : ""}`;
+  return { key: [...DASHBOARD_KEY, "recon", path], path };
+}
+
 /** The signed-in user; own sessions live under the same prefix, so one invalidation refreshes both. */
 export const ME_KEY = ["me"] as const;
 export const SESSIONS_SPEC: TableSpec<NoFilters> = { sorts: SESSION_SORTS, defaultSort: "-lastSeenAt", filters: {} };

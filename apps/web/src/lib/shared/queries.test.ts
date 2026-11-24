@@ -18,7 +18,7 @@ describe("query keys: one scheme", () => {
       if (Array.isArray(v)) return name.endsWith("_KEY") ? [[name, v[0]]] : [];
       if (v && typeof v === "object" && "key" in v) return [[name, Array.isArray(v.key) ? v.key[0] : v.key]];
       if (typeof v === "function" && v.length === 1) {
-        const r = name === "dashboardRead" ? q.dashboardRead(new URLSearchParams("range=7d")) : (v as (x: string) => unknown)("x");
+        const r = name === "dashboardRead" || name === "reconDashboardRead" ? (v as (sp: URLSearchParams) => unknown)(new URLSearchParams("range=7d")) : (v as (x: string) => unknown)("x");
         if (Array.isArray(r)) return [[name, r[0]]];
         if (r && typeof r === "object" && "key" in r) return [[name, Array.isArray(r.key) ? r.key[0] : r.key]];
       }
@@ -35,6 +35,12 @@ it("dashboard range uses the same dated request as its cache key, without refres
   expect(q.dashboardRead(new URLSearchParams("refresh=30"))).toEqual({ key: ["dashboard"], path: "/api/dashboard" });
 });
 
+
+it("the recon dashboard asks the default period without dates, the header's period with them, and only ids for space and recon", () => {
+  const S = "01a20c95-a92e-7110-90dc-b69d20180da3";
+  expect(q.reconDashboardRead(new URLSearchParams("refresh=30"))).toEqual({ key: ["dashboard", "recon", "/api/dashboard/recon"], path: "/api/dashboard/recon" });
+  expect(q.reconDashboardRead(new URLSearchParams(`space=${S}&recon=nope&from=2026-11-01&to=2026-11-03`)).path).toBe(`/api/dashboard/recon?space=${S}&from=2026-11-01&to=2026-11-03`);
+});
 
 it("relative timestamp filters stay in stable API paths and keys for refresh and SSR", () => {
   const params = new URLSearchParams({ start: "now-15m", end: "now", refresh: "30" });

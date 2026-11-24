@@ -25,7 +25,8 @@ const KIND_LABEL: Record<ActionRunRowDto["kind"], string> = { posting: "Posting"
 const FILTER_DEFAULTS: PostingFilters = { q: "", status: "", kind: "", show: "attention", recon: "", dateFrom: "", dateTo: "" };
 const ATTENTION_LABEL = "Needs attention";
 const FILTER_FIELDS = [{ key: "q", label: "Search" }, { key: "show", label: "Show", format: (v: string) => (v === "all" ? "All results" : ATTENTION_LABEL) },
-  { key: "status", label: "Status" }, { key: "kind", label: "Kind" }] as const;
+  { key: "status", label: "Status" }, { key: "kind", label: "Kind" }, { key: "recon", label: "Recon", format: () => "From the dashboard" },
+  { key: "dateFrom", label: "Finished from" }, { key: "dateTo", label: "Finished to" }] as const;
 
 /**
  * The posting results' columns (audit §5.3): the item, its amount, the action (kind, connector, event), status, the
@@ -87,7 +88,7 @@ export function PostingPage({ spaceId }: { spaceId: string }) {
       <PageHeader title="Posting" description="What approved changes sent to the bank and what it answered. Each posting is sent once; a failed one can be sent again from its item." />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the posting results; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
-        <FilterLayout busy={t.paging.busy} values={{ q: t.state.q, status: t.state.status, kind: t.state.kind, show: t.state.show }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}
+        <FilterLayout busy={t.paging.busy} values={{ q: t.state.q, status: t.state.status, kind: t.state.kind, show: t.state.show, recon: t.state.recon, dateFrom: t.state.dateFrom, dateTo: t.state.dateTo }} defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS} onApply={(values, options) => t.set(values, options)}
           filters={(draft, patch) => <>
             <FilterSearch label="Search posting results" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference, external ID or group key" />
             <FilterChecks label="Show" value={draft.show === "attention" ? "attention" : ""} options={[{ value: "attention", label: "Failed, timeout or not sent" }]} onChange={(v) => patch({ show: v ? "attention" : "all" })} />

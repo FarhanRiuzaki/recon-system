@@ -47,10 +47,10 @@ export function refreshScope(path: string, tab: string | null = null): readonly 
 
 /**
  * Pages whose rows are dated, so the header's date range filters them, with the days it covers by default: the
- * dashboard, both logs, a source's Activity tab and a recon's History tab (their trail, TRAIL_DAYS in queries.ts).
+ * dashboard (the last 7 days, RECON_DASHBOARD_DAYS), both logs, a source's Activity tab and a recon's History tab (their trail, TRAIL_DAYS in queries.ts).
  */
 export function timeWindowDays(path: string, tab: string | null = null): number | null {
-  if (path === "/") return 14;
+  if (path === "/") return 7;
   if (path.startsWith("/audit/")) return 7;
   if (path === "/integrations/calls") return 1; // the call log opens on today
   const detail = /^\/spaces\/[^/]+\/(sources|recons)\/([^/]+)$/.exec(path);

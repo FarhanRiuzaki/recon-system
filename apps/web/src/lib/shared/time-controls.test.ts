@@ -32,7 +32,7 @@ describe("navbar time controls", () => {
     expect(refreshScope(`${sp}/members`)).toEqual(["spaces"]);
   });
   it("the date range shows where rows are dated: the dashboard, the logs, a source's or a recon's Activity tab", () => {
-    expect(timeWindowDays("/")).toBe(14);
+    expect(timeWindowDays("/")).toBe(7);
     expect(timeWindowDays("/audit/activity")).toBe(7);
     expect(timeWindowDays("/spaces/s1/sources/x", "activity")).toBe(90);
     expect(timeWindowDays("/spaces/s1/recons/x", "history")).toBe(90);
