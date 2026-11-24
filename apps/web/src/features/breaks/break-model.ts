@@ -38,6 +38,8 @@ export function amountDelta(a: BreakItemDto, b: BreakItemDto): string | null {
 export const oppositeWays = (a: BreakItemDto, b: BreakItemDto) =>
   a.signedMinor !== null && b.signedMinor !== null && a.signedMinor.startsWith("-") !== b.signedMinor.startsWith("-");
 export const DIRECTION_LABEL = { debit: "Debit", credit: "Credit" } as const;
+/** A counterpart without a break reason: a one-way recon's not-required side-B item (DEC-055), else still waiting. */
+export const candidateState = (r: Pick<BreakItemDto, "status">) => (r.status === "not_required" ? "Not required" : "Waiting");
 
 /** Days from business date `a` to `b`. */
 export function dayDelta(a: string, b: string): string {

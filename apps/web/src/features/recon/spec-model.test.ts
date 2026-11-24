@@ -320,6 +320,9 @@ describe("carry over modes (owner, 22 Nov: match / unmatch)", () => {
     expect(carryText(1)).toBe("Up to day + 1");
     expect(carryText(7)).toBe("Up to day + 7");
     expect(carryText(null)).toBe("Always, until matched or closed");
+    // one-way: side B's not-required items never widen the window (DEC-055)
+    expect(carryText(null, "Bank")).toBe("Always, until matched or closed; Bank's items stay candidates for at least 31 days");
+    expect(carryText(3, "Bank")).toBe("Up to day + 3");
   });
 });
 

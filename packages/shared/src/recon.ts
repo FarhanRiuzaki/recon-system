@@ -111,6 +111,8 @@ export const BREAK_BULK_MAX = 100;
 export const GROUP_MEMBERS_MAX = 50;
 /** The most business dates one run or simulation covers. */
 export const RUN_RANGE_MAX_DAYS = 31;
+/** Carry over "always": the fewest days its window reaches back (engine effectiveCarry: as far as day + N goes). */
+export const CARRY_ALWAYS_MIN_DAYS = 31;
 
 /** A field of the records a source version writes: its kind and the source field it is read from (null for CEL). */
 export type RecordField = { kind: FieldKind; from: string | null; fromType: string | null };

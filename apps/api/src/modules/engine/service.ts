@@ -19,7 +19,7 @@
 // the passes, a step closes the window's open items whose record no longer counts (intake.ts closeReplacedSql), so the
 // open counters count current records only.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { isOneWay, recordFields } from "@starterkit/shared/recon";
+import { CARRY_ALWAYS_MIN_DAYS, isOneWay, recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
@@ -117,7 +117,7 @@ export async function effectiveCarry(tx: InTx, k: { spaceId: string; configId: s
       or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), eq(reconItems.lateMatch, true), eq(reconItems.breakReason, "No counterpart")))));
   const days = r?.d ? Math.round((Date.parse(`${from}T00:00:00Z`) - Date.parse(`${r.d}T00:00:00Z`)) / DAY) : 0;
   // at least 31 (as far back as day + N goes): late data dated before the oldest unmatch still comes in (blind review I1)
-  return Math.min(3660, Math.max(31, days));
+  return Math.min(3660, Math.max(CARRY_ALWAYS_MIN_DAYS, days));
 }
 const days = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY) + 1;
 

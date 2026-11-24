@@ -52,7 +52,7 @@ function RunCard({ spaceId, id, r, runner, last, scheduledAt }: { spaceId: strin
           ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}; unmatch then carries on to the next days`],
           ["Grace", `${spec.grace_minutes} min after the other side is complete`],
           ["Direction", directionText(spec)],
-          ["Carry over", carryText(spec.carry_over_days)],
+          ["Carry over", carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined)],
           ["Last run", last ? (
             <span className="flex flex-wrap items-center gap-2">
               <StateChip chip={runChip(last)} />

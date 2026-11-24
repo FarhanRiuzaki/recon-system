@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
-import { amountDelta, checkedAgain, checkChip, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
+import { amountDelta, candidateState, checkedAgain, checkChip, combined, sidesOf, compareRows, counterpartOf, dayDelta, findToggled, picksAfter, recheckText, routeBlocked, routeText, routeWarning, settleActions, takeText, workAccess } from "./break-model";
 
 const item = (o: Partial<BreakItemDto> = {}): BreakItemDto => ({
   id: "a1", side: "a", businessDate: "2026-11-02", status: "break", reason: "No counterpart", ref: "P1", amountMinor: "3607350000", currency: "IDR", eventTime: null, source: "Core banking",
@@ -186,5 +186,12 @@ describe("what you can do", () => {
     const gone = settleActions({ ...base, recon: recon({ routes: [route("posting", { connector: "Bank Mega" }), route("write_off", { blocked: "The workflow is gone." }), route("force_match", { note: "The workflow depends on the item; checked when you send it." })] }) });
     expect(gone.find((x) => x.key === "writeOff")!.blocked).toBe("The workflow is gone.");
     expect(gone.find((x) => x.key === "force")).toMatchObject({ meta: "The workflow depends on the item; checked when you send it." });
+  });
+});
+
+describe("candidateState", () => {
+  it("a candidate without a break reason: not required (a one-way recon's side B) or waiting", () => {
+    expect(candidateState(item({ status: "not_required", reason: null }))).toBe("Not required");
+    expect(candidateState(item({ status: "open", reason: null }))).toBe("Waiting");
   });
 });

@@ -31,7 +31,7 @@ import { groupKeyText, postingChip, postingEvent, postingPipeline, postingPollMs
 import { APPROVALS_KEY, ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail, LIVE_POLL_MS } from "@/lib/shared/queries-recon";
 import { BreakActivity } from "./break-activity";
-import { amountDelta, approverText, checkChip, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
+import { amountDelta, approverText, candidateState, checkChip, compareRows, counterpartOf, dateText, DIRECTION_LABEL, findToggled, money, picksAfter, oppositeWays, recheckText, type Settle, STATE_LABEL, settleActions, sidesOf, takeText, workAccess } from "./break-model";
 import { BREAK_ACT_SHAPE, BREAK_SHAPE } from "./shapes";
 
 const RESOLUTION_LABEL: Record<string, string> = {
@@ -393,7 +393,7 @@ function Counterparts({ spaceId, id, other, item, picked, onPick, panel }: { spa
     { key: "amount", header: "Amount", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular">{money(r)}{oppositeWays(item, r) && r.direction && <span className="text-fg-3"> · {DIRECTION_LABEL[r.direction]}</span>}</span> },
     { key: "difference", header: "Difference", mobile: "meta", align: "right", className: "whitespace-nowrap", cell: (r) => <span className="tabular text-fg-2">{amountDelta(item, r) ?? "–"}</span> },
     { key: "date", header: "Business date", mobile: "meta", className: "whitespace-nowrap", cell: (r) => dateText(r.businessDate) },
-    { key: "reason", header: "Reason", mobile: "meta", cell: (r) => (r.status === "break" && r.reason ? <CategoryChip label={r.reason} slot={categoryChip("reason", r.reason)} /> : <span className="text-fg-3">Waiting</span>) },
+    { key: "reason", header: "Reason", mobile: "meta", cell: (r) => (r.status === "break" && r.reason ? <CategoryChip label={r.reason} slot={categoryChip("reason", r.reason)} /> : <span className="text-fg-3">{candidateState(r)}</span>) },
   ];
   const rows = all ? t.rows : t.rows.slice(0, PICKER_ROWS);
   const more = !all && t.rows.length > PICKER_ROWS;

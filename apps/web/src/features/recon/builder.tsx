@@ -590,11 +590,11 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                   <div className="grid gap-3 text-caption text-fg-3 md:grid-cols-2">
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Waiting during the day{counters ? ` · ${formatNumber(counters.open.a)} ${spec.sides[0].label} · ${formatNumber(counters.open.b)} ${spec.sides[1].label}` : ""}</span>
-                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over: {carryText(spec.carry_over_days).toLowerCase()}</span>
+                      <span>Waits {graceText(spec.grace_minutes).toLowerCase()} after the other side is complete · carry over: {carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined).replace(/^./, (x) => x.toLowerCase())}</span>
                     </div>
                     <div className="grid gap-1 border-l-2 border-line pl-3">
                       <span className="text-label text-fg-2">Unmatch at day close</span>
-                      <span className={cn("tabular", sim.dim && "opacity-60")}>{spec.direction === "a_to_b" ? `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL}: ${spec.sides[0].label}'s stay unmatched, ${spec.sides[1].label}'s are not required` : `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL} stay unmatched`} · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
+                      <span className={cn("tabular", sim.dim && "opacity-60")}>{spec.direction === "a_to_b" ? `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL}: ${spec.sides[0].label}'s stay unmatched; ${spec.sides[1].label}'s with no counterpart at all are not required; differences and duplicates stay unmatched` : `Items still open at ${spec.close_at} ${APP_TIME_ZONE_LABEL} stay unmatched`} · {projection ? projectionText(projection, [spec.sides[0].label, spec.sides[1].label], [CURRENCY_DIFFERS]) || "none" : DASH}</span>
                     </div>
                     {currency && (
                       <div className={cn("grid gap-1 border-l-2 border-down-mark pl-3", sim.dim && "opacity-60")}>

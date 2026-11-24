@@ -3,7 +3,7 @@
 // checkReconSpec (apps/api/src/modules/recon/rules.ts) stays the judge; the few checks here only explain a control
 // before a save (a field of the wrong kind, a missing currency condition, why submit is off).
 import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
-import { type Cardinality, type FieldKind, FIELD_LABEL, isOneWay, type ReconDirection, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
+import { CARRY_ALWAYS_MIN_DAYS, type Cardinality, type FieldKind, FIELD_LABEL, isOneWay, type ReconDirection, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 
@@ -370,8 +370,14 @@ export const clockWhileTyping = (text: string): string | null => (/^\d{3}$/.test
 /** Why a typed time holds its step ("Close time: …"), or null once it reads as a time (on leaving the field at the latest). */
 export const clockProblem = (setting: string, text: string): string | null => (clockOf(text) ? null : `${setting}: Enter a time as HH:MM, such as 23:00.`);
 
-/** Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. */
-export const carryText = (c: number | null) => (c === null ? "Always, until matched or closed" : c === 0 ? "Only on its own day" : `Up to day + ${c}`);
+/**
+ * Carry over in words (owner, 22 Nov): 0 only on its own day, N up to day + N, null always until matched or closed. A
+ * one-way recon (`oneWayB`: its side B's label) with always: side B's not-required items never widen the window, so
+ * they stay candidates within side A's, at least CARRY_ALWAYS_MIN_DAYS (DEC-055).
+ */
+export const carryText = (c: number | null, oneWayB?: string) => (c === null
+  ? `Always, until matched or closed${oneWayB ? `; ${oneWayB}'s items stay candidates for at least ${CARRY_ALWAYS_MIN_DAYS} days` : ""}`
+  : c === 0 ? "Only on its own day" : `Up to day + ${c}`);
 /** The direction choices (owner, 24 Nov; DEC-055), as the Sources step offers them. */
 export const DIRECTION_OPTIONS = [
   { value: "two_way", label: "Two-way", description: "Both sides must find their counterpart", text: "Two-way: both sides must find their counterpart" },
