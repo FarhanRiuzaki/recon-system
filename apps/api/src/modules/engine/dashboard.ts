@@ -59,7 +59,7 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
   }
   const empty: ReconDashboardDto = {
     period: { from, to }, previous: { from: prevFrom, to: prevTo }, spaces: [], recons: [],
-    autoRate: { matched: 0, records: 0, prevMatched: 0, prevRecords: 0 }, open: { count: 0, amounts: [], pastCarryOver: 0, broke: 0, prevBroke: 0 },
+    autoRate: { rows: 0, matched: 0, records: 0, prevMatched: 0, prevRecords: 0 }, open: { count: 0, amounts: [], pastCarryOver: 0, broke: 0, prevBroke: 0 },
     resolved: { rows: 0, prevRows: 0, medianMinutes: null }, posting: { posted: 0, finished: 0, failed: 0, prevPosted: 0, prevFinished: 0 },
     approvals: { waiting: 0, oldestAt: null, requested: 0, prevRequested: 0, decided: 0, rejected: 0, medianMinutes: null },
     days: dates.map((date) => ({ date, auto: 0, manual: 0, broke: 0, matched: 0, records: 0 })),
@@ -134,7 +134,7 @@ export async function reconDashboard(ctx: Ctx, q: ReconDashboardQuery, now = new
     ...empty,
     spaces: spaceList,
     recons: recons.map((r) => ({ id: r.id, name: r.name, spaceId: r.spaceId })),
-    autoRate: { matched: sum(cur, (x) => recordsOf(R(x), MATCHED)), records: sum(cur, (x) => records(R(x))), prevMatched: sum(prev, (x) => recordsOf(R(x), MATCHED)), prevRecords: sum(prev, (x) => records(R(x))) },
+    autoRate: { rows: sum(cur, (x) => rowsOf(R(x), MATCHED)), matched: sum(cur, (x) => recordsOf(R(x), MATCHED)), records: sum(cur, (x) => records(R(x))), prevMatched: sum(prev, (x) => recordsOf(R(x), MATCHED)), prevRecords: sum(prev, (x) => records(R(x))) },
     open: {
       count: live.reduce((n, l) => n + l.summary.open, 0), amounts: addAmounts(...live.map((l) => l.summary.amounts)),
       pastCarryOver: live.reduce((n, l) => n + l.summary.pastCarryOver, 0), broke: sum(cur, (x) => x.broke), prevBroke: sum(prev, (x) => x.broke),

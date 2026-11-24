@@ -66,7 +66,8 @@ export const ReconDashboardDto = z.object({
   period: Dates, previous: Dates,
   spaces: z.array(z.object({ id: z.string(), name: z.string() })),
   recons: z.array(z.object({ id: z.string(), name: z.string(), spaceId: z.string() })),
-  autoRate: z.object({ matched: z.number().int(), records: z.number().int(), prevMatched: z.number().int(), prevRecords: z.number().int() }),
+  /** rows = Operation result rows of status matched (the list the tile opens); matched / records = the rate, by records. */
+  autoRate: z.object({ rows: z.number().int(), matched: z.number().int(), records: z.number().int(), prevMatched: z.number().int(), prevRecords: z.number().int() }),
   open: z.object({ count: z.number().int(), amounts: Amounts, pastCarryOver: z.number().int(), broke: z.number().int(), prevBroke: z.number().int() }),
   resolved: z.object({ rows: z.number().int(), prevRows: z.number().int(), medianMinutes: z.number().nullable() }),
   posting: z.object({ posted: z.number().int(), finished: z.number().int(), failed: z.number().int(), prevPosted: z.number().int(), prevFinished: z.number().int() }),

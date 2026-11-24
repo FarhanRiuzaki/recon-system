@@ -35,9 +35,12 @@ export function pendingNotice(p: ReconDashboardDto["pending"]): string | null {
 /** A share 0–1, null when there is nothing to divide. */
 export const rate = (part: number, whole: number): number | null => (whole > 0 ? part / whole : null);
 
-/** A count against the period before; `good` = the direction that is good news. */
-export function countDelta(now: number, before: number, good: "up" | "down"): Delta {
-  return { text: `${formatSignedNumber(now - before)} vs previous period`, direction: now > before ? "up" : now < before ? "down" : "flat", good };
+/**
+ * A count against the period before; `good` = the direction that is good news; `what` = what the change counts, when
+ * it isn't the tile's own number (Unmatch open's change counts new unmatch).
+ */
+export function countDelta(now: number, before: number, good: "up" | "down", what?: string): Delta {
+  return { text: `${formatSignedNumber(now - before)}${what ? ` ${what}` : ""} vs previous period`, direction: now > before ? "up" : now < before ? "down" : "flat", good };
 }
 /** A rate against the period before, in percentage points; none when either side has nothing. */
 export function rateDelta(now: number | null, before: number | null, good: "up" | "down"): Delta | undefined {

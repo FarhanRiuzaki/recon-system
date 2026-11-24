@@ -68,11 +68,12 @@ function Kpis({ d, space, recon }: { d: D; space: string | null; recon: string |
     <StatTiles>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, ["matched"]) : null} label="Open the auto-matched results">
         <StatTile icon={LineChartIcon} label="Auto-match rate" value={p.now ? "–" : pct(auto)} delta={p.compare ? rateDelta(auto, prevAuto, "up") : undefined}
-          caption={p.now ? STILL : `${formatNumber(d.autoRate.matched)} of ${formatNumber(d.autoRate.records)} records`} />
+          caption={p.now ? STILL : `${formatNumber(d.autoRate.rows)} auto-matched rows`} />
       </Linked>
       <Linked href={space ? unmatchHref(space, { recon }) : null} label="Open the unmatch list">
         <StatTile icon={WarningIcon} label="Unmatch open" value={h.value} unit="IDR" delta={p.compare ? countDelta(d.open.broke, d.open.prevBroke, "down") : undefined}
-          caption={`${formatNumber(d.open.count)} items · ${formatNumber(d.open.pastCarryOver)} past carry over${h.others.length ? ` · also ${h.others.join(", ")}` : ""}`} />
+          caption={[`${formatNumber(d.open.count)} items · ${formatNumber(d.open.pastCarryOver)} past carry over${h.others.length ? ` · also ${h.others.join(", ")}` : ""}`,
+            ...(p.compare ? [countDelta(d.open.broke, d.open.prevBroke, "down", "new unmatch").text] : [])].join(" · ")} />
       </Linked>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, RESOLVED_STATUSES) : null} label="Open the resolved results">
         <StatTile icon={SuccessIcon} label="Resolved · of this period's items" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}

@@ -88,6 +88,11 @@
     "autoRate": {
       "type": "object",
       "properties": {
+        "rows": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
         "matched": {
           "type": "integer",
           "minimum": -9007199254740991,
@@ -110,6 +115,7 @@
         }
       },
       "required": [
+        "rows",
         "matched",
         "records",
         "prevMatched",

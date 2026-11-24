@@ -70,7 +70,7 @@ describe("GET /v1/dashboard/recon: numbers", () => {
   it("across spaces: summed per space, currencies kept apart", async () => {
     await sweep();
     const d = await body(await signIn("google"));
-    expect(d.autoRate).toEqual({ matched: 4, records: 11, prevMatched: 0, prevRecords: 0 });
+    expect(d.autoRate).toEqual({ rows: 2, matched: 4, records: 11, prevMatched: 0, prevRecords: 0 });
     expect(d.open).toMatchObject({ count: 3, broke: 5, prevBroke: 0, amounts: [{ currency: "IDR", amountMinor: "1500", items: 2 }, { currency: "USD", amountMinor: "700", items: 1 }] });
     expect(d.resolved).toEqual({ rows: 2, prevRows: 0, medianMinutes: 1440 });
     expect(d.posting).toEqual({ posted: 1, finished: 3, failed: 2, prevPosted: 0, prevFinished: 0 });
@@ -116,6 +116,8 @@ describe("GET /v1/dashboard/recon: numbers", () => {
     const { counts } = await get<ResultCountsDto>(`/v1/spaces/${F.A}/recons/${F.R1.configId}/results/counts?dateFrom=${D}&dateTo=${D1}`);
     for (const p of CLOSED_PARTS) expect(d.closed.find((c) => c.key === p.key)!.rows).toBe(p.statuses.reduce((n, s) => n + (counts[s] ?? 0), 0));
     expect(d.resolved.rows).toBe(RESOLVED_STATUSES.reduce((n, s) => n + (counts[s] ?? 0), 0));
+    // the Auto-match tile's rows = the list it opens (result=matched)
+    expect(d.autoRate.rows).toBe(counts.matched ?? 0);
     expect(d.rows.map((r) => r.id)).toEqual([F.R1.configId]);
   });
 

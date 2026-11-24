@@ -37,6 +37,8 @@ describe("recon dashboard model", () => {
     expect(rateDelta(0.5, 0.25, "up")).toEqual({ text: "+25 pts vs previous period", direction: "up", good: "up" });
     expect(rateDelta(0.5, null, "up")).toBeUndefined();
     expect(countDelta(3, 5, "down")).toEqual({ text: "−2 vs previous period", direction: "down", good: "down" });
+    // what the change counts, when the tile shows something else (M2: Unmatch open shows the open amount)
+    expect(countDelta(5, 2, "down", "new unmatch").text).toBe("+3 new unmatch vs previous period");
   });
 
   it("each link opens its list with the same filters the number counted", () => {
