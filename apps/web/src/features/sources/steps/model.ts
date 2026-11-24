@@ -5,6 +5,7 @@ import {
   type AmountUnit, type ConnectionField, DATE_LOOKBACK_MIN_SECONDS, DEFAULT_CALENDAR, type DbEngine, LOOKBACK_IDS_DEFAULT, SOURCE_CODE, type SourceKind,
 } from "@starterkit/shared/sources";
 import { FILE_DATE, fieldTypeOf } from "../spec-draft";
+import { kindOfType, type WatermarkKind } from "../source-text";
 import { computeSteps } from "@starterkit/shared/compute";
 import { formatNumber } from "@starterkit/ui/lib/format";
 
@@ -183,8 +184,7 @@ export function watermarkProblems(d: Draft): { id: string; reason: string }[] {
 }
 
 export type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
-/** What a watermark holds, which decides its look back: a date only (a day at least), a date and time (seconds), a sequence (ids). */
-export type WatermarkKind = "date" | "time" | "int";
+export type { WatermarkKind };
 
 /**
  * The picked watermark's kind: from the source column's type when the columns were read, else from its field's type;
@@ -195,7 +195,7 @@ export function watermarkKind(d: Draft, columns: readonly Column[] | null): Wate
   if (i.kind !== "db_watermark" || !i.watermark.column) return null;
   const c = columns?.find((x) => x.name === i.watermark.column);
   const t = c ? fieldTypeOf(d.conn.engine, c.type).type : d.spec.fields.find((f) => f.name === i.watermark.column)?.type;
-  return t === "integer" ? "int" : t === "datetime" ? "time" : t === "date" ? (d.conn.engine === "oracle" ? "time" : "date") : null;
+  return kindOfType(t, d.conn.engine);
 }
 
 /**

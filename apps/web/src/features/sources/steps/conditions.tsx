@@ -6,32 +6,17 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
-import type { FieldSpec, SourceCondition, SourceSpec } from "@starterkit/shared/contracts/sources";
+import type { SourceCondition, SourceSpec } from "@starterkit/shared/contracts/sources";
+import { type CondKind as Kind, condKindOf as kindOf, opLabel } from "../spec-draft";
 import { ctl } from "./model";
 
 type Op = SourceCondition["op"];
-type Kind = "text" | "number" | "day";
-const kindOf = (t: FieldSpec["type"] | undefined): Kind => (t === "integer" || t === "decimal" ? "number" : t === "date" || t === "datetime" ? "day" : "text");
 
-/** What each comparison reads as, by the column's kind (a date is after or before, a number greater or less). */
-const OP_LABEL: Record<Op, string | Record<Kind, string>> = {
-  eq: "is", ne: "is not", in: "is one of", not_in: "is none of", is_null: "is empty", not_null: "is not empty",
-  gt: { number: "is greater than", day: "is after", text: "" }, gte: { number: "is at least", day: "is on or after", text: "" },
-  lt: { number: "is less than", day: "is before", text: "" }, lte: { number: "is at most", day: "is on or before", text: "" },
-};
-const opLabel = (op: Op, kind: Kind) => { const l = OP_LABEL[op]; return typeof l === "string" ? l : l[kind]; };
 const OPS: Record<Kind, Op[]> = {
   text: ["eq", "ne", "in", "not_in", "is_null", "not_null"],
   number: ["eq", "ne", "gt", "gte", "lt", "lte", "is_null", "not_null"],
   day: ["eq", "gt", "gte", "lt", "lte", "is_null", "not_null"],
 };
-
-/** A condition as a sentence: "status is one of Successful, Accepted", "value_date is on or after today-1". */
-export function conditionText(c: SourceCondition, s: SourceSpec): string {
-  const kind = kindOf(s.fields.find((f) => f.name === c.field)?.type);
-  const value = "values" in c ? c.values.join(", ") : "value" in c ? c.value : "";
-  return `${c.field} ${opLabel(c.op, kind)}${value ? ` ${value}` : ""}`;
-}
 
 /** The condition a new op starts as, keeping what was typed where it still fits. */
 function withOp(c: SourceCondition, op: Op): SourceCondition {

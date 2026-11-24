@@ -1,9 +1,8 @@
 // Words the source screens show for what the API answers (Figma page 02, Build notes 02 "Final copy"). Display only:
 // health, lag and completeness come judged from the API (sourceHealth); nothing here decides a state.
-import { readWhenText } from "@starterkit/shared/sources";
-import { APP_TIME_ZONE_LABEL, appDayStart, formatDate, formatDateTime, formatDuration } from "@starterkit/ui/lib/format";
-import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
-import type { SourceKind } from "@starterkit/shared/sources";
+import { DATE_LOOKBACK_MIN_SECONDS, type DbEngine, LOOKBACK_IDS_DEFAULT, type ReadWhen, readWhenText, type SourceKind } from "@starterkit/shared/sources";
+import { APP_TIME_ZONE_LABEL, appDayStart, formatDate, formatDateTime, formatDuration, formatNumber } from "@starterkit/ui/lib/format";
+import type { FieldSpec, SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 
 export const KIND_LABEL: Record<SourceKind, string> = {
   file_inbox: "File inbox", db_watermark: "Database · watermark", db_snapshot: "Database · snapshot per date",
@@ -109,3 +108,32 @@ export function sourceTabOf(v: string | null): SourceTab {
   if (v === "versions" || v === "activity") return "history";
   return SOURCE_TABS.find((t) => t === v) ?? "overview";
 }
+
+/** What a watermark holds, which decides its look back: a date only (a day at least), a date and time (seconds), a sequence (ids). */
+export type WatermarkKind = "date" | "time" | "int";
+/** A watermark field's type as its kind; null for another type. Oracle has no date-only type (its DATE holds a time). */
+export const kindOfType = (t: FieldSpec["type"] | undefined, engine: DbEngine | null): WatermarkKind | null =>
+  t === "integer" ? "int" : t === "datetime" ? "time" : t === "date" ? (engine === "oracle" ? "time" : "date") : null;
+/** A spec's watermark kind from its watermark field's declared type (for the screens that have no source columns). */
+export function specWatermarkKind(s: Pick<SourceSpec, "fields" | "input">, engine: DbEngine | null): WatermarkKind | null {
+  const i = s.input;
+  return i.kind === "db_watermark" ? kindOfType(s.fields.find((f) => f.name === i.watermark.column)?.type, engine) : null;
+}
+
+const secondsText = (n: number) => (n === 0 ? "None" : n % 86_400 === 0 ? `${n / 86_400} ${n === 86_400 ? "day" : "days"}` : `${formatNumber(n)} s`);
+/**
+ * A watermark source's look back as ingest uses it (the API's lookbackOf): what the spec sets, else the default of the
+ * watermark's kind, named as the default (a date only 1 day, a date and time none, a sequence 1,000 ids). The editor's
+ * summary, the review step, the Configuration tab and the version diff all say it so.
+ */
+export function lookbackText(i: Extract<SourceSpec["input"], { kind: "db_watermark" }>, kind: WatermarkKind | null): string {
+  if (i.lookback_ids !== undefined) return i.lookback_ids === 0 ? "None" : `${formatNumber(i.lookback_ids)} ids`;
+  if (i.lookback_seconds !== undefined) return secondsText(i.lookback_seconds);
+  if (kind === "int") return `${formatNumber(LOOKBACK_IDS_DEFAULT)} ids (default)`;
+  if (kind === "date") return `${secondsText(DATE_LOOKBACK_MIN_SECONDS)} (default)`;
+  if (kind === "time") return "None (default)";
+  return `The watermark's default: 1 day for a date, none for a date and time, ${formatNumber(LOOKBACK_IDS_DEFAULT)} ids for a sequence`;
+}
+
+/** When to read as a value of its own ("Every 15 minutes, 06:00–22:00"). */
+export const readWhenValue = (w: ReadWhen | undefined) => { const t = readWhenText(w); return t.charAt(0).toUpperCase() + t.slice(1); };

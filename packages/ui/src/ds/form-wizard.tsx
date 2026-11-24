@@ -115,20 +115,23 @@ export function FormWizard({ steps, check, onSubmit, submitLabel, error, label, 
 
 /**
  * The review step's summary list (GOV.UK check answers): label, the answer ("Not provided" when empty) and a Change
- * button that reopens the answer's step, its name saying what changes ("Change email") for screen readers.
+ * button that reopens the answer's step, its name saying what changes ("Change email") for screen readers. A row
+ * without a step (one the reviewer may not edit) is listed without Change.
  */
-export function ReviewList({ rows, onChange }: { rows: readonly { label: string; value: ReactNode; step: number }[]; onChange: (step: number) => void }) {
+export function ReviewList({ rows, onChange }: { rows: readonly { label: string; value: ReactNode; step?: number }[]; onChange: (step: number) => void }) {
   return (
     <dl className="grid rounded-lg border border-line bg-card">
       {rows.map((r) => (
         <div key={r.label} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-line px-4 py-3 last:border-b-0">
           <dt className="w-40 shrink-0 text-label text-fg-2">{r.label}</dt>
           <dd className="min-w-0 flex-1 text-body text-fg">{r.value === "" || r.value == null ? <span className="text-fg-3">Not provided</span> : r.value}</dd>
-          <dd>
-            <button type="button" onClick={() => onChange(r.step)} className="cursor-pointer rounded-xs text-body-sm text-primary-ink underline underline-offset-4 hover:decoration-2">
-              Change<span className="sr-only"> {r.label.toLowerCase()}</span>
-            </button>
-          </dd>
+          {r.step !== undefined && (
+            <dd>
+              <button type="button" onClick={() => onChange(r.step!)} className="cursor-pointer rounded-xs text-body-sm text-primary-ink underline underline-offset-4 hover:decoration-2">
+                Change<span className="sr-only"> {r.label.toLowerCase()}</span>
+              </button>
+            </dd>
+          )}
         </div>
       ))}
     </dl>

@@ -762,7 +762,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               gone={gone} suggested={suggested} coreHint={d.hint ?? {}}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
-          {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} onEdit={setStep}
+          {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} wmKind={watermarkKind(d, columns)} onEdit={setStep}
             publishedTable={publishedTableOf(source?.s ?? null)} />}
           {formError && <p role="alert" className="text-body-sm text-down-ink">{formError}</p>}
           <FormFooter

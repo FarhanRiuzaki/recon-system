@@ -2,12 +2,11 @@
 
 import { Panel, ReviewList, StatusChip } from "@starterkit/ui/ds";
 import { computeSteps, stepText } from "@starterkit/shared/compute";
-import { conditionText } from "./conditions";
 import type { ValueRef } from "@starterkit/shared/contracts/sources";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
-import { KIND_LABEL, scheduleText } from "../source-text";
-import { UNIT_LABEL } from "../spec-draft";
+import { KIND_LABEL, scheduleText, type WatermarkKind } from "../source-text";
+import { inputRows, keepText, UNIT_LABEL } from "../spec-draft";
 import type { Draft } from "./model";
 import { statusTone } from "@/lib/shared/categories";
 
@@ -49,14 +48,46 @@ export function readiness(s: SourceSpec, preview: SourcePreviewDto | null, publi
   ];
 }
 
-export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect, publishedTable = null }: {
+/** A watermark's own columns are picked in step 2; every other reading setting on step 1. */
+const STEP_OF_INPUT: Record<string, number> = { watermark: 1, id_columns: 1 };
+
+/**
+ * The summary rows (owner rule, maker-checker: every setting the checker approves is listed before submitting): how the
+ * source is read in the words of the Configuration tab and the version diff (inputRows), then columns, recon fields,
+ * rows to load and computed columns. Change opens the step that sets the answer; the connection step is a source
+ * admin's only, so for anyone else its rows have no Change.
+ */
+export function summaryRows(d: Draft, canConnect: boolean, wmKind: WatermarkKind | null): { label: string; value: string; step?: number }[] {
+  const s = d.spec;
+  const stored = Object.keys(s.mapping.attrs);
+  const conn = canConnect ? { step: 0 } : {};
+  return [
+    { label: "Comes from", value: KIND_LABEL[d.kind], ...conn },
+    ...inputRows(s.input, wmKind).map((r) => ({ label: r.label, value: r.value, ...(STEP_OF_INPUT[r.key] !== undefined ? { step: STEP_OF_INPUT[r.key] } : conn) })),
+    { label: "Columns", value: `${s.fields.length} · ${stored.length} stored${s.key_fields.length ? ` · match key ${s.key_fields.join(" + ")}` : ""}`, step: 1 },
+    { label: "Business date", value: "field" in s.mapping.business_date ? s.mapping.business_date.field : s.mapping.business_date.cel === "arrived_date" ? "The day it arrives" : "From the file name", step: 1 },
+    // every other recon field and computed column as set in step 2 (what was given, shown once more before submit)
+    ...MAPPED.flatMap(([k, label]) => {
+      const r = s.mapping[k];
+      if (k === "currency" && !r && s.currency) return [{ label, value: `${s.currency} for every row`, step: 1 }];
+      return r ? [{ label, value: refText(r), step: 1 }] : [];
+    }),
+    { label: "Rows to load", value: keepText(s), step: 1 },
+    ...Object.entries(s.derive).map(([name, expr]) => {
+      const b = computeSteps(expr);
+      return { label: `Computed: ${name}`, value: b ? `${b.source}${b.steps.length ? ` → ${b.steps.map(stepText).join(" → ")}` : ""}` : `Expression ${expr}`, step: 1 };
+    }),
+  ];
+}
+
+export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect, wmKind, publishedTable = null }: {
   d: Draft; version: number; spaceName: string; preview: SourcePreviewDto | null; onEdit: (step: number) => void; canConnect: boolean;
+  /** The watermark's kind (its look back's default). */
+  wmKind: WatermarkKind | null;
   /** The published version's table, to say a change of it. */
   publishedTable?: string | null;
 }) {
   const s = d.spec;
-  const i = s.input;
-  const stored = Object.keys(s.mapping.attrs);
   return (
     <div className="grid gap-section">
       <Panel flush title="Ready to submit?" footnote="Checks marked Check don't block submitting. The checker sees them.">
@@ -77,23 +108,7 @@ export function ReviewStep({ d, version, spaceName, preview, onEdit, canConnect,
       </Panel>
       <Panel title="Summary" description={`${d.name}${d.code.trim().toLowerCase() === d.name.trim().toLowerCase() ? "" : ` · ${d.code}`} · version ${version}`}
         footnote={`Any config checker in ${spaceName} who didn't work on this version approves it. Nothing is ingested until version ${version} is approved.`}>
-        {/* Change opens the step that sets the answer; the connection step is a source admin's only */}
-        <ReviewList onChange={onEdit} rows={[
-          ...(canConnect ? [{ label: "Comes from", value: i.kind === "file_inbox" ? `File inbox · ${i.path} · ${i.pattern}` : KIND_LABEL[d.kind], step: 0 }] : []),
-          { label: "Columns", value: `${s.fields.length} · ${stored.length} stored${s.key_fields.length ? ` · match key ${s.key_fields.join(" + ")}` : ""}`, step: 1 },
-          { label: "Business date", value: "field" in s.mapping.business_date ? s.mapping.business_date.field : s.mapping.business_date.cel === "arrived_date" ? "The day it arrives" : "From the file name", step: 1 },
-          // every other recon field and computed column as set in step 2 (what was given, shown once more before submit)
-          ...MAPPED.flatMap(([k, label]) => {
-            const r = s.mapping[k];
-            if (k === "currency" && !r && s.currency) return [{ label, value: `${s.currency} for every row`, step: 1 }];
-            return r ? [{ label, value: refText(r), step: 1 }] : [];
-          }),
-          { label: "Rows to load", value: s.keep?.length ? s.keep.map((c) => conditionText(c, s)).join("; ") : "Every row", step: 1 },
-          ...Object.entries(s.derive).map(([name, expr]) => {
-            const b = computeSteps(expr);
-            return { label: `Computed: ${name}`, value: b ? `${b.source}${b.steps.length ? ` → ${b.steps.map(stepText).join(" → ")}` : ""}` : `Expression ${expr}`, step: 1 };
-          }),
-        ]} />
+        <ReviewList onChange={onEdit} rows={summaryRows(d, canConnect, wmKind)} />
       </Panel>
     </div>
   );

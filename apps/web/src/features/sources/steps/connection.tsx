@@ -16,7 +16,7 @@ import {
   DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, FILE_ENCODINGS, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
 } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
-import { scheduleText } from "../source-text";
+import { lookbackText, scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, lookbackNote, type Tested, type WatermarkKind, withEngine, withName } from "./model";
@@ -489,7 +489,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
       <>
       <ReadWhenField label="Pull" when={w.when} onChange={(when) => setInput({ when } as Partial<WatermarkInput>)} />
       <Advanced open={!!err(ctl("input.lookback_seconds")) || !!err(ctl("input.lookback_ids"))}
-        summary={`Look back ${kind === "int" ? `${formatNumber(w.lookback_ids ?? LOOKBACK_IDS_DEFAULT)} ids` : `${formatNumber(seconds)} s`} · ${formatNumber(w.chunk)} rows per page`}>
+        summary={`Look back ${lookbackText(w, kind).toLowerCase()} · ${formatNumber(w.chunk)} rows per page`}>
         {kind === "int" ? (
           <Field id={ctl("input.lookback_ids")} label="Look back (ids)" error={err(ctl("input.lookback_ids"))}
             note={lookbackNote(kind)}>

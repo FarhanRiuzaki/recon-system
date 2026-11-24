@@ -102,6 +102,20 @@ describe("specDiff", () => {
     expect(rows.find((r) => r.key === "mapping:business_date")).toEqual({ key: "mapping:business_date", label: "Business date", before: null, after: "the file name's date" });
     expect(rows.find((r) => r.key === "input:completion")?.after).toBe("Size unchanged for 60 s");
   });
+  it("rows to load, when to read and the look back are rows in words, not raw values", () => {
+    const keep = spec({ keep: [{ field: "sid", op: "ne", value: "X" }] });
+    expect(specDiff(spec(), keep)).toEqual([{ key: "keep", label: "Rows to load", before: "Every row", after: "sid is not X" }]);
+    const file = spec().input as Extract<SourceSpec["input"], { kind: "file_inbox" }>;
+    expect(specDiff(spec(), spec({ input: { ...file, when: { every_minutes: 15, hours: { from: 6, to: 22 } } } }))).toEqual([
+      { key: "input:when", label: "When to read", before: "Every minute", after: "Every 15 minutes, 06:00–22:00" },
+    ]);
+    const wm = (o: object) => spec({ fields: [{ name: "u", type: "date", nullable: false, trim: false }], input: { kind: "db_watermark", table: "t", watermark: { column: "u", id_columns: ["u"] }, chunk: 100, ...o } });
+    expect(specDiff(wm({}), wm({ lookback_seconds: 172_800 })).filter((r) => r.key.startsWith("input:"))).toEqual([
+      { key: "input:lookback", label: "Look back", before: "1 day (default)", after: "2 days" },
+    ]);
+    // Oracle's DATE holds a time: no day by default
+    expect(specDiff(wm({}), wm({ lookback_seconds: 60 }), "oracle").find((r) => r.key === "input:lookback")?.before).toBe("None (default)");
+  });
 });
 
 describe("reviewReason", () => {

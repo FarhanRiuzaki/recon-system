@@ -83,7 +83,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const published = s.published;
   // a published or retired version shows its own settings: comparing a retired one with the newer published one reads backwards
   const isPublished = published?.id === v.id || v.status === "retired";
-  const rows = v.spec ? specDiff(isPublished ? null : (published?.spec ?? null), v.spec) : [];
+  const rows = v.spec ? specDiff(isPublished ? null : (published?.spec ?? null), v.spec, s.engine) : [];
   const sentBack = v.status === "draft" && !!v.reviewComment;
   const st = versionChip(v);
   const maker = roles.includes("source_admin") || roles.includes("config_maker");

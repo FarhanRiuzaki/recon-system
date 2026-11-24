@@ -9,10 +9,8 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@starterkit/ui/ui/table";
 import { computeSteps, stepText } from "@starterkit/shared/compute";
 import type { SourceDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { readWhenText } from "@starterkit/shared/sources";
-import { scheduleText } from "./source-text";
-import { ARRIVED_DATE, FILE_DATE, fieldText, storedName, UNIT_LABEL } from "./spec-draft";
-import { conditionText } from "./steps/conditions";
+import { specWatermarkKind } from "./source-text";
+import { ARRIVED_DATE, FILE_DATE, fieldText, inputRows, keepText, storedName, UNIT_LABEL } from "./spec-draft";
 import { newVersionHref } from "./use-sources";
 
 /** The recon fields as step 2 names them. */
@@ -71,19 +69,7 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
         </p>
       )}
       <Panel icon={NetworkIcon} title="How it is read" description={`Version ${s.publishedVersion}`}>
-        <Facts items={i.kind === "file_inbox" ? [
-          ["Folder", i.path], ["File name pattern", i.pattern],
-          ["Format", `${i.format.delimiter === "\t" ? "Tab" : `"${i.format.delimiter}"`} separated, ${i.format.header ? "first row is a header" : "no header row"}, ${i.format.encoding}`],
-          ["Checked", readWhenText(i.when)],
-          ["A file is complete", i.completion.kind === "marker_file" ? "once its marker file is there" : `once it hasn't changed for ${i.completion.seconds} s`],
-        ] : i.kind === "db_snapshot" ? [
-          ["Query", i.query], ["Schedule", scheduleText(i.schedule)],
-        ] : [
-          [i.table !== undefined ? "Table" : "Query", i.table ?? i.query], ["Watermark column", i.watermark.column], [i.watermark.id_columns.length > 1 ? "Id columns" : "Id column", i.watermark.id_columns.join(", ")],
-          ["Pulled", readWhenText(i.when)],
-          ["Looks back", i.lookback_ids !== undefined ? (i.lookback_ids ? `${formatNumber(i.lookback_ids)} ids` : "No") : i.lookback_seconds ? `${formatNumber(i.lookback_seconds)} s` : "No"],
-          ["Rows per page", formatNumber(i.chunk)],
-        ]} />
+        <Facts items={inputRows(i, specWatermarkKind(spec, s.engine)).map((r): [string, string] => [r.label, r.value])} />
       </Panel>
 
       <Panel flush icon={DiskIcon} title="Columns" description={`${formatNumber(spec.fields.length)} columns · what each is read as and what the recons use it as`}>
@@ -122,7 +108,7 @@ export function SourceConfig({ s, spaceId }: { s: SourceDto; spaceId: string }) 
             const b = computeSteps(expr);
             return [`Computed: ${name}`, b ? `${b.source}${b.steps.length ? ` → ${b.steps.map(stepText).join(" → ")}` : ""}` : `expression ${expr}`];
           }),
-          ["Rows to load", spec.keep?.length ? spec.keep.map((c) => conditionText(c, spec)).join("; ") : "Every row"],
+          ["Rows to load", keepText(spec)],
           ["When a row changes", spec.mutable ? `The newest row per ${spec.key_fields.join(" + ")} replaces the earlier one` : "Rows never change once they arrive"],
         ]} />
       </Panel>

@@ -89,3 +89,12 @@ describe("FormWizard step list", () => {
     expect(document.getElementById("w-name-error")!.textContent).toBe("Enter a name.");
   });
 });
+
+describe("ReviewList", () => {
+  it("a row without a step is shown but offers no Change (the reviewer may not edit that step)", async () => {
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root!.render(h(ReviewList, { onChange: () => {}, rows: [{ label: "Name", value: "Rina", step: 0 }, { label: "Server", value: "db1" }] })));
+    expect(document.body.textContent).toContain("db1");
+    expect([...document.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Change name"]);
+  });
+});

@@ -1,9 +1,10 @@
 // What the source wizard and the version page compute from a spec, without React: the columns of a text sample, the
 // field type a database column starts as, the field an API error names, and a version's changes against another.
 // The API checks every spec again (refines, CEL, kind, calendar); this only shapes what the user edits and reads.
-import type { FieldSpec, SourceColumnsDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+import type { FieldSpec, SourceColumnsDto, SourceCondition, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { amountUnit, type AmountUnit, ATTR_NAME, type DbEngine, type FIELD_TYPES } from "@starterkit/shared/sources";
-import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
+import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
+import { lookbackText, readWhenValue, scheduleText, specWatermarkKind, type WatermarkKind } from "./source-text";
 
 export type FieldType = (typeof FIELD_TYPES)[number];
 export const TYPE_LABEL: Record<FieldType, string> = {
@@ -146,9 +147,10 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 /**
  * What `after` changes against `before` (the published version; null = none yet), one row per field, mapping, derived
- * value or setting that differs; `before`/`after` null = not there. Unchanged parts make no row.
+ * value or setting that differs; `before`/`after` null = not there. Unchanged parts make no row. `engine` = the source's
+ * (Oracle's DATE holds a time, which changes a look back's default).
  */
-export function specDiff(before: SourceSpec | null, after: SourceSpec): DiffRow[] {
+export function specDiff(before: SourceSpec | null, after: SourceSpec, engine: DbEngine | null = null): DiffRow[] {
   const rows: DiffRow[] = [];
   const push = (key: string, label: string, b: string | null, a: string | null) => { if (b !== a) rows.push({ key, label, before: b, after: a }); };
   const bf = new Map((before?.fields ?? []).map((f) => [f.name, f]));
@@ -168,29 +170,63 @@ export function specDiff(before: SourceSpec | null, after: SourceSpec): DiffRow[
   push("key_fields", "Match key", before ? before.key_fields.join(", ") || "none" : null, after.key_fields.join(", ") || "none");
   push("mutable", "Rows change after arrival", before ? (before.mutable ? "yes" : "no") : null, after.mutable ? "yes" : "no");
   push("calendar", "Calendar", before?.calendar ?? null, after.calendar);
-  if (!before || !same(before.input, after.input)) {
-    const keys = new Set([...Object.keys(after.input), ...Object.keys(before?.input ?? {})].filter((k) => k !== "kind"));
-    for (const k of keys) {
-      const b = before ? (before.input as Record<string, unknown>)[k] : undefined, a = (after.input as Record<string, unknown>)[k];
-      if (!same(b, a)) push(`input:${k}`, INPUT_LABEL[k] ?? k, b === undefined ? null : inputText(b), a === undefined ? null : inputText(a));
-    }
-  }
+  push("keep", "Rows to load", before ? keepText(before) : null, keepText(after));
+  const bi = new Map((before ? inputRows(before.input, specWatermarkKind(before, engine)) : []).map((r) => [r.key, r]));
+  const ai = new Map(inputRows(after.input, specWatermarkKind(after, engine)).map((r) => [r.key, r]));
+  for (const k of new Set([...ai.keys(), ...bi.keys()])) push(`input:${k}`, (ai.get(k) ?? bi.get(k))!.label, bi.get(k)?.value ?? null, ai.get(k)?.value ?? null);
   if (!same(before?.health ?? null, after.health ?? null)) push("health", "Health", healthText(before?.health), healthText(after.health));
   return rows;
 }
-const INPUT_LABEL: Record<string, string> = {
-  path: "Folder", pattern: "File name pattern", completion: "File is complete when", format: "File format", table: "Table", query: "Query",
-  watermark: "Watermark", lookback_seconds: "Look back", lookback_ids: "Look back (ids)", chunk: "Rows per page", schedule: "Schedule",
-};
-function inputText(v: unknown): string {
-  if (typeof v !== "object" || v === null) return String(v);
-  const o = v as Record<string, unknown>;
-  if (o.kind === "stable_seconds") return `Size unchanged for ${String(o.seconds)} s`;
-  if (o.kind === "marker_file") return "A .done file with the same name arrives";
-  if (o.kind === "delimited") return `Delimited by ${o.delimiter === "\t" ? "tab" : String(o.delimiter)}, ${o.header ? "first row is a header" : "no header"}, ${String(o.encoding)}`;
-  if ("column" in o) return `${String(o.column)}, then ${(o.id_columns as string[] | undefined)?.join(", ") ?? String(o.id_column)}`;
-  return JSON.stringify(v);
+
+/** A setting of how a source is read: its key in the spec's input, its label and its value in words. */
+export type InputRow = { key: string; label: string; value: string };
+/**
+ * How a source is read, one row per setting, in the words every screen uses (the review step, the Configuration tab
+ * and the version diff): a file inbox's folder, pattern, format, completion and when to read; a snapshot's query and
+ * schedule; a watermark pull's table or query, watermark, id columns, when to read, look back and rows per page.
+ * `kind` = the watermark's kind (its look back's default).
+ */
+export function inputRows(i: SourceSpec["input"], kind: WatermarkKind | null): InputRow[] {
+  const when = { key: "when", label: "When to read", value: readWhenValue(i.kind === "db_snapshot" ? undefined : i.when) };
+  if (i.kind === "file_inbox") {
+    const f = i.format;
+    return [
+      { key: "path", label: "Folder", value: i.path }, { key: "pattern", label: "File name pattern", value: i.pattern },
+      { key: "format", label: "File format", value: `Delimited by ${f.delimiter === "\t" ? "tab" : f.delimiter}, ${f.header ? "first row is a header" : "no header"}, ${f.encoding}` },
+      { key: "completion", label: "File is complete when", value: i.completion.kind === "stable_seconds" ? `Size unchanged for ${i.completion.seconds} s` : "A .done file with the same name arrives" },
+      when,
+    ];
+  }
+  if (i.kind === "db_snapshot") return [{ key: "query", label: "Query", value: i.query }, { key: "schedule", label: "Schedule", value: scheduleText(i.schedule) }];
+  return [
+    i.table !== undefined ? { key: "table", label: "Table", value: i.table } : { key: "query", label: "Query", value: i.query ?? "" },
+    { key: "watermark", label: "Watermark column", value: i.watermark.column },
+    { key: "id_columns", label: i.watermark.id_columns.length > 1 ? "Id columns" : "Id column", value: i.watermark.id_columns.join(", ") },
+    when,
+    { key: "lookback", label: "Look back", value: lookbackText(i, kind) },
+    { key: "chunk", label: "Rows per page", value: formatNumber(i.chunk) },
+  ];
 }
+
+type Op = SourceCondition["op"];
+/** How a condition compares a column, by its type: as text, a number or a day. */
+export type CondKind = "text" | "number" | "day";
+export const condKindOf = (t: FieldSpec["type"] | undefined): CondKind => (t === "integer" || t === "decimal" ? "number" : t === "date" || t === "datetime" ? "day" : "text");
+/** What each comparison reads as, by the column's kind (a date is after or before, a number greater or less). */
+const OP_LABEL: Record<Op, string | Record<CondKind, string>> = {
+  eq: "is", ne: "is not", in: "is one of", not_in: "is none of", is_null: "is empty", not_null: "is not empty",
+  gt: { number: "is greater than", day: "is after", text: "" }, gte: { number: "is at least", day: "is on or after", text: "" },
+  lt: { number: "is less than", day: "is before", text: "" }, lte: { number: "is at most", day: "is on or before", text: "" },
+};
+export const opLabel = (op: Op, kind: CondKind) => { const l = OP_LABEL[op]; return typeof l === "string" ? l : l[kind]; };
+/** A condition as a sentence: "status is one of Successful, Accepted", "value_date is on or after today-1". */
+export function conditionText(c: SourceCondition, s: Pick<SourceSpec, "fields">): string {
+  const kind = condKindOf(s.fields.find((f) => f.name === c.field)?.type);
+  const value = "values" in c ? c.values.join(", ") : "value" in c ? c.value : "";
+  return `${c.field} ${opLabel(c.op, kind)}${value ? ` ${value}` : ""}`;
+}
+/** Rows to load: the conditions, or every row. */
+export const keepText = (s: Pick<SourceSpec, "fields" | "keep">) => (s.keep?.length ? s.keep.map((c) => conditionText(c, s)).join("; ") : "Every row");
 const healthText = (h: SourceSpec["health"]) => (!h ? null : [h.graceMinutes ? `grace ${h.graceMinutes} min` : null, h.deadline ? `deadline ${h.deadline} ${APP_TIME_ZONE_LABEL}` : null].filter(Boolean).join(", ") || null);
 
 /**

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceFileDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
-import { afterColon, completeText, errorSentence, fileResult, keptSnapshot, lagText, missingText, scheduleText, shortSha, withDays } from "./source-text";
+import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import { afterColon, completeText, errorSentence, fileResult, keptSnapshot, lagText, lookbackText, missingText, scheduleText, shortSha, specWatermarkKind, withDays } from "./source-text";
 
 const h = (o: Partial<{ state: "healthy" | "degraded" | "down"; reason: string | null; missingDate: string | null; completeThrough: string | null; lagSeconds: number | null; lastError: string | null }>) =>
   ({ state: "healthy" as const, businessDate: "2026-11-04", lagSeconds: null, completeThrough: null, reason: null, missingDate: null, lastError: null, lastReadAt: null, ...o });
@@ -65,5 +66,30 @@ describe("source text (display only: the API judged the health)", () => {
     expect(afterColon("ORA-01017 refused")).toBe("ORA-01017 refused");
     expect(errorSentence("Snapshot 2026-11-04: The connection was lost.")).toBe("The connection was lost.");
     expect(errorSentence("act20261104.txt: header changed on 2026-11-04")).toBe("act20261104.txt: header changed on 4 Nov");
+  });
+});
+
+describe("look back (lookbackText): the value ingest uses, the default named when the spec leaves it out", () => {
+  const wm = (o: Partial<Extract<SourceSpec["input"], { kind: "db_watermark" }>> = {}) => ({ kind: "db_watermark" as const, table: "t", watermark: { column: "u", id_columns: ["id"] }, chunk: 100, ...o });
+  it("left out: a day for a date, none for a date and time, 1,000 ids for a sequence (lookbackOf's defaults)", () => {
+    expect(lookbackText(wm(), "date")).toBe("1 day (default)");
+    expect(lookbackText(wm(), "time")).toBe("None (default)");
+    expect(lookbackText(wm(), "int")).toBe("1,000 ids (default)");
+    expect(lookbackText(wm(), null)).toBe("The watermark's default: 1 day for a date, none for a date and time, 1,000 ids for a sequence");
+  });
+  it("set: seconds (whole days as days), ids, zero as none", () => {
+    expect(lookbackText(wm({ lookback_seconds: 300 }), "time")).toBe("300 s");
+    expect(lookbackText(wm({ lookback_seconds: 172_800 }), "date")).toBe("2 days");
+    expect(lookbackText(wm({ lookback_seconds: 0 }), null)).toBe("None");
+    expect(lookbackText(wm({ lookback_ids: 5000 }), "int")).toBe("5,000 ids");
+    expect(lookbackText(wm({ lookback_ids: 0 }), "int")).toBe("None");
+  });
+  it("the watermark's kind from its field's type; Oracle's DATE holds a time", () => {
+    const s = (type: "date" | "datetime" | "integer" | "string") => ({ fields: [{ name: "u", type, nullable: false, trim: false }], input: wm() }) as unknown as SourceSpec;
+    expect(specWatermarkKind(s("date"), "postgres")).toBe("date");
+    expect(specWatermarkKind(s("date"), "oracle")).toBe("time");
+    expect(specWatermarkKind(s("datetime"), null)).toBe("time");
+    expect(specWatermarkKind(s("integer"), null)).toBe("int");
+    expect(specWatermarkKind(s("string"), null)).toBeNull();
   });
 });
