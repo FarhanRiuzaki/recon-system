@@ -25,10 +25,11 @@ const STALE_MS = 120_000;
 type Run = typeof actionRuns.$inferSelect;
 type Finish = Partial<Pick<Run, "status" | "payloadMasked" | "responseMasked" | "filled" | "externalId" | "bankReference" | "httpStatus" | "code" | "message">>;
 
+/** What a finished run's dashboard rollup needs (queuePostingStats): its space and what it posted for. */
+const ENDED = { spaceId: actionRuns.spaceId, itemId: actionRuns.itemId, requestId: actionRuns.requestId, groupId: actionRuns.groupId };
 /** Ends run `id` with `f`, only while it is still `from` (two workers never overwrite each other's outcome). */
 async function finish(tx: InTx, id: string, f: Finish, from: "queued" | "sending" = "queued") {
-  const [r] = await tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(and(eq(actionRuns.id, id), eq(actionRuns.status, from)))
-    .returning({ spaceId: actionRuns.spaceId, itemId: actionRuns.itemId, requestId: actionRuns.requestId, groupId: actionRuns.groupId });
+  const [r] = await tx.update(actionRuns).set({ ...f, payloadEnc: null, finishedAt: sql`now()` }).where(and(eq(actionRuns.id, id), eq(actionRuns.status, from))).returning(ENDED);
   // its items' Operation result status follows the outcome: the dashboard's rollup of their dates again
   if (r) await queuePostingStats(tx, r);
 }
@@ -93,8 +94,11 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
   }, on).catch((e: unknown) => ({ failed: e }) as const);
   if (typeof taken === "object" && "failed" in taken) {
     log.warn({ err: taken.failed instanceof Error ? taken.failed.name : "error" }, "action run failed before its call");
-    await withSpace(scope, (tx) => tx.update(actionRuns).set({ ...notPrepared(taken.failed), payloadEnc: null, finishedAt: sql`now()` })
-      .where(and(eq(actionRuns.id, runId), inArray(actionRuns.status, ["queued", "sending"]))), on);
+    await withSpace(scope, async (tx) => {
+      const ended = await tx.update(actionRuns).set({ ...notPrepared(taken.failed), payloadEnc: null, finishedAt: sql`now()` })
+        .where(and(eq(actionRuns.id, runId), inArray(actionRuns.status, ["queued", "sending"]))).returning(ENDED);
+      for (const r of ended) await queuePostingStats(tx, r);
+    }, on);
     return "skip";
   }
   if (typeof taken === "string") return taken;
@@ -149,11 +153,12 @@ export async function sweepStale(on: Tx): Promise<number> {
     const rows = await tx.update(actionRuns).set({
       status: "timeout", payloadEnc: null, finishedAt: sql`now()`,
       message: "No answer recorded: the worker stopped while the call was out. Check with the bank before acting.",
-    }).where(and(eq(actionRuns.status, "sending"), lt(actionRuns.sendingAt, new Date(Date.now() - STALE_MS)))).returning({ id: actionRuns.id });
+    }).where(and(eq(actionRuns.status, "sending"), lt(actionRuns.sendingAt, new Date(Date.now() - STALE_MS)))).returning(ENDED);
     const left = await tx.update(actionRuns).set({
       status: "not_sent", payloadEnc: null, finishedAt: sql`now()`,
       message: "Not sent: no worker took it within 15 minutes. Check the worker, then post it by hand if it is still needed.",
-    }).where(and(eq(actionRuns.status, "queued"), lt(actionRuns.createdAt, new Date(Date.now() - QUEUED_MAX_MS)))).returning({ id: actionRuns.id });
+    }).where(and(eq(actionRuns.status, "queued"), lt(actionRuns.createdAt, new Date(Date.now() - QUEUED_MAX_MS)))).returning(ENDED);
+    for (const r of [...rows, ...left]) await queuePostingStats(tx, r);
     return rows.length + left.length;
   }, on);
 }

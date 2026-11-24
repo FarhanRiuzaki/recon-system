@@ -11,6 +11,7 @@ import { withSpace } from "../../../spaces";
 import { matchGroups, reconDayStats, reconItems } from "../../schema";
 import { boss, QUEUES } from "../../../../kernel/jobs";
 import { reconConfigs } from "../../../recon";
+import { actionRuns, sendRun, sweepStale } from "../../../integrations";
 import { engineHandlers } from "../../jobs";
 import { BACKFILL_DAYS, queueBackfill, queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
@@ -171,5 +172,33 @@ describe("recon.stats jobs", () => {
     const done = await Promise.allSettled(jobs.map((j) => handle({ id: j.id, data: j.data })));
     expect(done.filter((x) => x.status === "rejected").length).toBe(7);
     expect((await all()).length).toBe(2 * 7);
+  });
+});
+
+describe("posting outcomes that end a run outside finish() queue their item's date (I1)", () => {
+  const jobsOf = async (key: string) => (await boss()).findJobs(QUEUES.reconStats, { key });
+  const post = async (over: Partial<typeof actionRuns.$inferInsert>) => {
+    const id = Bun.randomUUIDv7();
+    await db.insert(actionRuns).values({ id, spaceId: F.A, requestId: null, configVersionId: F.R1.versionId, actionIndex: 0, actionName: "Post", kind: "posting", event: "approved",
+      itemId: F.I.P3!, seq: 1, connectorId: Bun.randomUUIDv7(), connectorVersion: 1, operationKey: "post", status: "queued", ...over });
+    return id;
+  };
+  beforeEach(async () => { await (await boss()).deleteAllJobs(); });
+
+  it("a run that couldn't be prepared ends not sent and queues it", async () => {
+    const id = await post({ payloadEnc: "v1:not-a-sealed-payload" });
+    expect(await sendRun(db, F.A, id)).toBe("skip");
+    expect((await db.select({ s: actionRuns.status }).from(actionRuns).where(eq(actionRuns.id, id)))[0]!.s).toBe("not_sent");
+    expect((await jobsOf(`${F.R1.configId}:${D}`)).length).toBe(1);
+  });
+
+  it("the stale sweep's timeout and not sent queue it", async () => {
+    await post({ status: "sending", sendingAt: new Date(Date.now() - 10 * 60_000) });
+    expect(await sweepStale(db)).toBe(1);
+    expect((await jobsOf(`${F.R1.configId}:${D}`)).length).toBe(1);
+    await (await boss()).deleteAllJobs();
+    await post({ seq: 2, createdAt: new Date(Date.now() - 20 * 60_000) });
+    expect(await sweepStale(db)).toBe(1);
+    expect((await jobsOf(`${F.R1.configId}:${D}`)).length).toBe(1);
   });
 });

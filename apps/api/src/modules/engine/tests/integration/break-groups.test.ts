@@ -15,7 +15,7 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { workflows, workflowVersions } from "../../../approvals";
 import { records } from "../../../ingest";
 import { actionRuns, closeDueGroups, closeGroup, closeGroupsOfDay, connectors, connectorVersions, integrationsHandlers, joinGroup, postingGroupItems, postingGroups, sendRun } from "../../../integrations";
-import { QUEUES } from "../../../../kernel/jobs";
+import { boss, QUEUES } from "../../../../kernel/jobs";
 import { closeDay } from "../../breaks";
 import { closeMoment } from "../../rules";
 import { reconConfigVersions } from "../../../recon";
@@ -347,6 +347,23 @@ describe("review fixes (stage 5)", () => {
     expect(runs.map((r) => [r.groupId === g1!.id, r.status, r.code]).sort()).toEqual([[false, "queued", null], [true, "failed", "build_error"]]);
     expect((await groups()).map((g) => g.status)).toEqual(["closed", "closed"]);
     expect(await db.select({ d: reconDays.businessDate }).from(reconDays)).toEqual([{ d: today() }]);
+  });
+
+  it("a group run that ends as it is written (a failed build) queues its breaks' dashboard rollup (I1)", async () => {
+    const one = grouped({ key: ["side_a.ext_ref"] });
+    await setup(one);
+    await ask(I.a1); await approve(I.a1);
+    const [v] = await db.select().from(reconConfigVersions).where(and(eq(reconConfigVersions.configId, cfg), eq(reconConfigVersions.status, "published")));
+    const sp = structuredClone(v!.spec) as { approvals: { changes: { write_off: { actions: { variants: unknown[] }[] } } } };
+    sp.approvals.changes.write_off.actions[0]!.variants = [{ ...one, mapping: { Amount: { kind: "template", text: 5 }, Remark: { kind: "const", value: "x" } } }];
+    const old = Bun.randomUUIDv7();
+    await db.insert(reconConfigVersions).values({ ...v!, id: old, version: 99, status: "retired", spec: sp });
+    const [g] = await groups();
+    await db.update(postingGroups).set({ configVersionId: old }).where(eq(postingGroups.id, g!.id));
+    await (await boss()).deleteAllJobs();
+    expect(await withSpace({ spaceIds: [A], userId: null }, (tx) => closeGroup(tx, A, g!.id))).toBe("sent");
+    expect((await db.select({ s: actionRuns.status }).from(actionRuns)).map((r) => r.s)).toEqual(["failed"]);
+    expect((await (await boss()).findJobs(QUEUES.reconStats, { key: `${cfg}:${D}` })).length).toBe(1);
   });
 
   it("a grouped variant on a notify action sends one call per item, it joins no group", async () => {

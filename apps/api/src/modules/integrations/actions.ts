@@ -20,7 +20,7 @@ import { maskTree, maskValue } from "@starterkit/shared/integrations";
 import type { InTx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
 import type { Ctx } from "../auth";
-import { breakContextOf, itemsOf, reconItems } from "../engine";
+import { breakContextOf, itemsOf, queuePostingStats, reconItems } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { joinGroup, lateGroups } from "./groups";
 import { actionRuns, connectors, connectorVersions, postingGroupItems, postingGroups } from "./schema";
@@ -107,6 +107,8 @@ export async function enqueueActions(tx: InTx, ctx: Ctx, rq: Rq, events: readonl
         if (!ins) continue;
         seq++; written++;
         if (ins.status === "queued") await enqueue(QUEUES.integrationsAction, { spaceId: rq.spaceId, runId: ins.id }, { key: ins.id, tx });
+        // one that ended as it was written (no rule, failed, skipped): its items' dashboard rollup, as finish() does for a sent one
+        else await queuePostingStats(tx, { spaceId: rq.spaceId, itemId: base.itemId, requestId: rq.id, groupId: null });
       }
     }
   }

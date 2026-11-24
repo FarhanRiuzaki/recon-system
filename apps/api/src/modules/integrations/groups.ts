@@ -18,7 +18,7 @@ import { postingGroupsLock } from "../../kernel/locks";
 import { log } from "../../kernel/log";
 import { one, pageQuery, sortSql } from "../../kernel/pagination";
 import type { Ctx } from "../auth";
-import { closeMoment, reconDays } from "../engine";
+import { closeMoment, queuePostingStats, reconDays } from "../engine";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { actionRuns, connectorVersions, postingGroupItems, postingGroups } from "./schema";
@@ -94,7 +94,7 @@ export async function closeGroup(tx: InTx, spaceId: string, groupId: string): Pr
   if (!g) return "already";
   const ms = (await tx.select({ context: postingGroupItems.context, contextEnc: postingGroupItems.contextEnc }).from(postingGroupItems).where(eq(postingGroupItems.groupId, g.id))
     .orderBy(asc(postingGroupItems.joinedAt), asc(postingGroupItems.itemId))).map((m) => (m.contextEnc ? JSON.parse(decryptSecret(m.contextEnc)) : m.context ?? {}) as Context);
-  let runId: string | null = null;
+  let runId: string | null = null, ended = false;
   if (ms.length) {
     const [v] = await tx.select({ spec: reconConfigVersions.spec }).from(reconConfigVersions).where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.id, g.configVersionId)));
     const approvals = (v?.spec as { approvals?: ReconApprovalSpec } | undefined)?.approvals;
@@ -123,11 +123,15 @@ export async function closeGroup(tx: InTx, spaceId: string, groupId: string): Pr
         }
         await sp.insert(actionRuns).values(row);
         if (row.status === "queued") await enqueue(QUEUES.integrationsAction, { spaceId, runId: base.id }, { key: base.id, tx: sp });
+        ended = row.status !== "queued";
       });
     } catch (e) {
       log.warn({ err: e instanceof Error ? e.name : "error", groupId: g.id }, "posting group failed to build");
       await tx.insert(actionRuns).values(failed("This group's request couldn't be built. Check the variant's mapping in the recon's Approval step."));
+      ended = true;
     }
+    // a run that ended as it was written (failed, skipped): its breaks' dashboard rollup, as finish() does for a sent one
+    if (ended) await queuePostingStats(tx, { spaceId, itemId: null, requestId: null, groupId: g.id });
   }
   await tx.update(postingGroups).set({ status: "closed", runId, closedAt: sql`now()` }).where(eq(postingGroups.id, g.id));
   await tx.update(postingGroupItems).set({ context: null, contextEnc: null }).where(eq(postingGroupItems.groupId, g.id));

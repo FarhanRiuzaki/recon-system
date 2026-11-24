@@ -9,6 +9,7 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
 import { decryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
+import { boss, QUEUES } from "../../../../kernel/jobs";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { workflows, workflowVersions } from "../../../approvals";
 import { records } from "../../../ingest";
@@ -130,6 +131,17 @@ describe("actions written with the decision", () => {
       ["Only RTGS", "no_rule", null, "No posting rule fits this item.", null],
       ["Broken", "failed", "build_error", "Remark is required, and this item has no value for it.", null],
     ]);
+  });
+
+  it("a run that ends as it is written (a level's failed build) queues its item's dashboard rollup (I1)", async () => {
+    await setup("write_off", [
+      { name: "Broken", kind: "posting", on: { event: "level_approved", level: 1 }, variants: [variant({ mapping: { Amount: { kind: "field", key: "break.amount", transforms: [] } } })] },
+    ]);
+    await call("POST", `/v1/spaces/${A}/breaks/${I.a1}/request`, { token: t.op, body: { kind: "write_off", note: "Stale" } });
+    await (await boss()).deleteAllJobs();
+    await decide(I.a1, "approve", {}, t.rev);
+    expect((await runs()).map((x) => [x.actionName, x.status])).toEqual([["Broken", "failed"]]);
+    expect((await (await boss()).findJobs(QUEUES.reconStats, { key: `${cfg}:${D}` })).length).toBe(1);
   });
 
   it("a force match per item: one run per break, each from its own side; per request: one", async () => {
