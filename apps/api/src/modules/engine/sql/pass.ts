@@ -235,7 +235,15 @@ function pairEvidence(c: StepCtx, p: PassSpec, chosen: SQL): SQL {
  */
 const claim = (c: StepCtx, status: string, from: SQL): SQL => sql`update ${reconItems} i set status = ${status}, version = i.version + 1,
       resolution = case when x.st = 'break' then ${LATE_DATA} else i.resolution end
-      from (${from}) x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = x.st and i.version = x.v returning i.id`;
+      from (${from}) x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = x.st and i.version = x.v returning i.id, i.business_date as bd`;
+/**
+ * The business dates CTE `cte` (a column `bd`) changed, comma-joined (null for none), as column `dates`: a run queues
+ * their dashboard rollup (stats.ts), also for the carry-over dates before its own.
+ */
+export const datesOf = (cte: string): SQL => sql.raw(`(select string_agg(distinct ${cte}.bd::text, ',') from ${cte}) as dates`);
+/** Answers of a statement that names the dates it changed (datesOf). */
+export type Dated = { dates: string | null };
+
 /** The resolution of a break a late counterpart closed (spec §11, DEC-043). */
 export const LATE_DATA = "AUTO_MATCHED_LATE_DATA";
 
@@ -252,7 +260,7 @@ function writePairs(c: StepCtx, p: PassSpec, kind: "auto" | "suggested", chosen:
       select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.a_bd, r.b_bd), ${pairEvidence(c, p, chosen)} from ok r),
   m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)
       select gid, ${c.spaceId}::uuid, a_id, 'a', a_own from ok union all select gid, ${c.spaceId}::uuid, b_id, 'b', b_own from ok)
-  select (select count(*) from ok)::int as groups, (select count(*) from up)::int as items`;
+  select (select count(*) from ok)::int as groups, (select count(*) from up)::int as items, ${datesOf("up")}`;
 }
 const accepted = (p: PassSpec) => (p.accept === "auto" ? "auto" : "suggested");
 
@@ -314,8 +322,8 @@ export function proposeSql(c: StepCtx, p: PassSpec): SQL {
   up as (update ${reconItems} i set proposed_item_id = pr.other, proposed_pass = ${p.no}::smallint, version = i.version + 1
     from pr where i.space_id = ${c.spaceId} and i.id = pr.id and i.business_date = pr.bd and i.status = 'break' and i.version = pr.v
       and (i.proposed_pass is null or i.proposed_pass >= ${p.no}::smallint)
-      and (i.proposed_item_id is distinct from pr.other or i.proposed_pass is distinct from ${p.no}::smallint) returning 1)
-  select count(*)::int as n from up`;
+      and (i.proposed_item_id is distinct from pr.other or i.proposed_pass is distinct from ${p.no}::smallint) returning i.business_date as bd)
+  select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 
 /**
@@ -330,8 +338,8 @@ export function clearProposalsSql(c: StepCtx): SQL {
           and p.status in ('matched', 'suggested', 'closed'))
       for update of b skip locked),
   up as (update ${reconItems} i set proposed_item_id = null, proposed_pass = null, version = i.version + 1
-    from x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd returning 1)
-  select count(*)::int as n from up`;
+    from x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd returning i.business_date as bd)
+  select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 
 /** A group pass's candidates by one-side item: `one` = the side of single items (N:1: B, 1:N: A). */
@@ -368,5 +376,5 @@ export function groupAcceptSql(c: StepCtx, p: PassSpec): SQL {
       select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.o_bd, r.m_bd), ${evidence} from acc r),
   m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)
       select gid, ${c.spaceId}::uuid, o_id, ${one}::text, o_own from acc union all select gid, ${c.spaceId}::uuid, m_id, ${many}::text, m_own from ms)
-  select (select count(*) from acc)::int as groups, (select count(*) from up)::int as items, (select count(*) from acc)::int + (select count(*) from ms)::int as members`;
+  select (select count(*) from acc)::int as groups, (select count(*) from up)::int as items, (select count(*) from acc)::int + (select count(*) from ms)::int as members, ${datesOf("up")}`;
 }

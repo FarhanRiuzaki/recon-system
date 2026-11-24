@@ -42,7 +42,8 @@ import { groupBreakSql, nearMissSql, type NearMissReason, tieBreakSql } from "./
 import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
-import { acceptSql, clearProposalsSql, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
+import { queueDay } from "./stats";
+import { acceptSql, clearProposalsSql, type Dated, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
 /** What a pass did over the run: groups it accepted, groups it suggested, items it broke as ambiguous. */
@@ -141,12 +142,13 @@ export async function load(tx: InTx, spaceId: string, spec: ReconSpec): Promise<
 const one = async <T>(tx: InTx, q: SQL) => ((await tx.execute(q)) as unknown as T[])[0]!;
 
 /** One pass over the step's window: its choice repeated while it pairs, then its ties per on_ambiguous. */
-async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out: PassCounters): Promise<void> {
+async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out: PassCounters, touch: (r: Dated) => void): Promise<void> {
   const add = (x: PerSide, a: number, b: number) => { x.a += a; x.b += b; };
   // the side of single items of a group pass (pass.ts groupsSql): N:1 B, 1:N A; a 1:1 group has one of each
   const oneSide = p.cardinality === "N:1" ? "b" : "a";
   const write = async (q: SQL, kind: "auto" | "suggested", members: (g: number) => number = (g) => 2 * g) => {
-    const r = await one<{ groups: number; items: number; members?: number }>(tx, q);
+    const r = await one<{ groups: number; items: number; members?: number } & Dated>(tx, q);
+    touch(r);
     // every item written was locked by this statement, so each claim succeeds; anything else is a bug: roll the step back
     if (r.items !== (r.members ?? members(r.groups))) throw new Error(`engine: pass ${p.no} claimed ${r.items} items for ${r.groups} groups`);
     if (kind === "auto") out.matched += r.groups; else out.suggested += r.groups;
@@ -155,21 +157,21 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
     return r.groups;
   };
   // ponytail: refs are counted per step, so a key broken again on a later date of the same run counts twice
-  const broke = (r: { items: number; refs: number; a: number }) => { out.broken += r.items; out.brokenRefs += r.refs; add(out.brokenItems, r.a, r.items - r.a); };
+  const broke = (r: { items: number; refs: number; a: number } & Dated) => { touch(r); out.broken += r.items; out.brokenRefs += r.refs; add(out.brokenItems, r.a, r.items - r.a); };
   const accepted = p.accept === "auto" ? "auto" : "suggested";
   if (p.cardinality !== "1:1") {
     await write(groupAcceptSql(c, p), accepted);
-    if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number }>(tx, groupBreakSql(c, p)));
+    if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number } & Dated>(tx, groupBreakSql(c, p)));
     // ponytail: a group pass with on_ambiguous suggest leaves its ambiguous items open (no subset sum, spec §10)
     return;
   }
   // a pass of equalities only splits its candidates by key: taking one key's pairs changes no other key, one statement does
   if (equalitiesOnly(p)) await write(fifoSql(c, p), accepted);
   else for (let r = 0; r < ROUNDS_MAX && (await write(acceptSql(c, p), accepted)) > 0; r++);
-  if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number }>(tx, tieBreakSql(c, p)));
+  if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number } & Dated>(tx, tieBreakSql(c, p)));
   else for (let r = 0; r < ROUNDS_MAX && (await write(tieSuggestSql(c, p), "suggested")) > 0; r++);
   // a break of the carry-over window this pass would suggest a pair for stays a break, with the pair proposed (DEC-047)
-  if (c.late && (p.accept === "suggest" || p.on_ambiguous === "suggest")) await one(tx, proposeSql(c, p));
+  if (c.late && (p.accept === "suggest" || p.on_ambiguous === "suggest")) touch(await one<Dated>(tx, proposeSql(c, p)));
 }
 
 /** `from`..`to` checked (dates, forwards, at most RANGE_MAX_DAYS); one left out takes the other, both = `today`. */
@@ -258,14 +260,21 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     const months = (Number(to.slice(0, 4)) - Number(first.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(first.slice(5, 7)) + 1;
     await on.transaction((tx) => ensureMonthPartitions(tx, reconItems, new Date(`${first}T00:00:00Z`), months));
     const simRunId = run.mode === "simulation" ? runId : null;
-    /** `fn` with the config's lock and the run row locked, when the run is still running; "over" when it is not. */
-    const step = <T>(fn: (tx: InTx, r: RunRow, counters: RunCounters) => Promise<T>) => withSpace(scope, async (tx) => {
+    /**
+     * `fn` with the config's lock and the run row locked, when the run is still running; "over" when it is not. The
+     * business dates its statements changed (`touch`, a statement's Dated answer) get their dashboard rollup queued in
+     * the same transaction (a live run only), the carry-over dates before the run's own too (C1).
+     */
+    const step = <T>(fn: (tx: InTx, r: RunRow, counters: RunCounters, touch: (r: Dated) => void) => Promise<T>) => withSpace(scope, async (tx) => {
       await configLock(tx, configId);
       const [r] = await tx.select().from(reconRuns).where(mine).for("update");
       if (r?.status !== "running") return "over" as const;
       const had = r.counters as RunCounters;
       const counters = had.passes ? { ...had, passes: Object.fromEntries(Object.entries(had.passes).map(([k, v]) => [k, { ...zeroPass(), ...v }])) } : { ...emptyCounters(spec), ...(spec.carry_over_days === null ? { carry } : {}) };
-      return fn(tx, r, counters);
+      const touched = new Set<string>();
+      const out = await fn(tx, r, counters, (x) => { for (const d of x.dates?.split(",") ?? []) touched.add(d); });
+      if (!simRunId) for (const d of touched) await queueDay(spaceId, configId, d, tx);
+      return out;
     }, on);
     const analyze = (table: "records" | "recon_items", lo: string, hi: string, added: number) => on.transaction((tx) => one<{ n: number }>(tx, analyzeSql(table, lo, hi, added)));
     for (let d = run.doneThrough ? addDays(run.doneThrough, 1) : run.dateFrom; d <= to; d = addDays(d, 1)) {
@@ -289,7 +298,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
         let pending = 0, first = true, x = lo, after: number | null = null;
         let ct: string | null = null;
         for (;;) {
-          const got = await step(async (tx, r, counters) => {
+          const got = await step(async (tx, r, counters, touch) => {
             if ((r.doneThrough && r.doneThrough >= d) || (r.intakeDone && r.intakeDone >= tag)) return null;
             if (first) {
               // the source's complete_through before the intake reads (read committed: every chunk sees at least
@@ -298,8 +307,10 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
                 .where(and(eq(sourceCursors.spaceId, side.sourceSpaceId), eq(sourceCursors.sourceId, side.sourceId)));
               ct = cur?.ct?.toISOString() ?? null;
               // a group holding a replaced record is reversed first (REC-FUT-15), so its replaced member closes below
-              await one<{ n: number }>(tx, reverseReplacedSql(c(tx), s));
-              counters.replaced[side.key] += (await one<{ n: number }>(tx, closeReplacedSql(c(tx), s))).n;
+              touch(await one<Dated>(tx, reverseReplacedSql(c(tx), s)));
+              const closed = await one<{ n: number } & Dated>(tx, closeReplacedSql(c(tx), s));
+              touch(closed);
+              counters.replaced[side.key] += closed.n;
             }
             // the window's dates in order, as many records as one chunk holds
             let budget = chunk, n = 0;
@@ -311,6 +322,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
                 await tx.insert(reconIntakeMarks).values({ spaceId, configVersionId: run.configVersionId, side: side.key, businessDate: x, seq: last })
                   .onConflictDoUpdate({ target: [reconIntakeMarks.spaceId, reconIntakeMarks.configVersionId, reconIntakeMarks.side, reconIntakeMarks.businessDate], set: { seq: sql`greatest(${reconIntakeMarks.seq}, excluded.seq)` } });
               }
+              if (q.n) touch({ dates: x });
               n += q.n;
               if (q.scanned < budget) { x = addDays(x, 1); after = null; } else after = last;
               budget -= q.scanned;
@@ -329,14 +341,14 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
           if (got.sideDone) break;
         }
       }
-      const passed = await step(async (tx, r, counters) => {
+      const passed = await step(async (tx, r, counters, touch) => {
         if (r.doneThrough && r.doneThrough >= d) return;
         await tx.execute(sql`select set_config('statement_timeout', ${String(passTimeoutMs(r.mode))}, true)`);
-        for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!);
+        for (const p of spec.passes) await runPass(tx, c(tx), p, counters.passes[String(p.no)]!, touch);
         // a proposal whose proposed item a pass has paired since (this step's included) is cleared (DEC-047)
-        if (carry > 0) await one(tx, clearProposalsSql(c(tx)));
+        if (carry > 0) touch(await one<Dated>(tx, clearProposalsSql(c(tx))));
         // grace (spec §9 step 4): live runs only; a simulation replays dates, its breaks come from the classifier
-        if (!simRunId) await one(tx, graceSql(c(tx), spec.grace_minutes, carry));
+        if (!simRunId) touch(await one<Dated>(tx, graceSql(c(tx), spec.grace_minutes, carry)));
         await tx.update(reconRuns).set({ counters, doneThrough: d }).where(mine);
       });
       if (passed === "over") return null;

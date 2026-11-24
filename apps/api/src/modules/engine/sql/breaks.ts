@@ -22,7 +22,7 @@ export const breakReason = (p: PassSpec): string =>
 const breakItems = (c: StepCtx, p: PassSpec): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}, version = i.version + 1
     from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.record_id, i.business_date, i.side)
   select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
-    and r.id = up.record_id and r.business_date = up.business_date) as refs from up`;
+    and r.id = up.record_id and r.business_date = up.business_date) as refs, string_agg(distinct up.business_date::text, ',') as dates from up`;
 
 /**
  * 1:1, once no pair is taken: every item still with a candidate is in a tie; all of them break, but for the items two

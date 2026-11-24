@@ -20,6 +20,7 @@ import { closeMoment } from "./rules";
 import { reconDays, reconRuns } from "./schema";
 import { addDays, effectiveCarry, load, type Seen } from "./service";
 import { closeDaySql } from "./sql/days";
+import { queueDay } from "./stats";
 
 /**
  * What closeDay did: closed it now; it waits (closing: data not complete yet, or a run under way); its close moment
@@ -70,6 +71,8 @@ const total = (rows: readonly DayBroken[]) => rows.reduce((t, r) => ({ open: t.o
 async function addCounters(tx: InTx, k: { spaceId: string; configId: string }, rows: readonly DayBroken[]): Promise<void> {
   for (const r of rows) {
     if (!r.open && !r.suggested) continue;
+    // the dashboard's rollup of each date it broke items on (the carry-over dates before the closing one too, C1)
+    await queueDay(k.spaceId, k.configId, r.d, tx);
     await tx.update(reconDays).set({ counters: sql`jsonb_build_object('open', coalesce((${reconDays.counters} ->> 'open')::int, 0) + ${r.open}::int,
         'suggested', coalesce((${reconDays.counters} ->> 'suggested')::int, 0) + ${r.suggested}::int)` })
       .where(and(eq(reconDays.spaceId, k.spaceId), eq(reconDays.configId, k.configId), eq(reconDays.businessDate, r.d), eq(reconDays.status, "closed")));
@@ -107,6 +110,7 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
     await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, ...closed })
       .onConflictDoUpdate({ target: [reconDays.spaceId, reconDays.configId, reconDays.businessDate], set: closed });
     await addCounters(tx, k, rows.filter((r) => r.d !== d));
+    if (own.open || own.suggested) await queueDay(k.spaceId, k.configId, d, tx);
     return "closed";
   }, on);
 }

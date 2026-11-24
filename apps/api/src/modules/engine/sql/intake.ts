@@ -5,7 +5,7 @@ import type { Filter } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
 import { records } from "../../ingest";
 import { matchGroups, matchMembers, reconItems } from "../schema";
-import { fieldSql, type SideRef, type StepCtx } from "./pass";
+import { datesOf, fieldSql, type SideRef, type StepCtx } from "./pass";
 
 const CAST = { text: sql``, decimal: sql`::numeric`, date: sql`::date`, boolean: sql`::boolean` } as const;
 
@@ -78,8 +78,8 @@ export function reverseReplacedSql(c: StepCtx, s: 0 | 1): SQL {
       where g.space_id = ${c.spaceId} and g.id in (select gid from whole) and g.reversed_by is null returning g.id),
   up as (update ${reconItems} i set status = 'open', resolution = null, version = i.version + 1
       from lk where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v
-        and lk.gid in (select id from rg) returning 1)
-  select (select count(*) from rg)::int as n, (select count(*) from up)::int as items`;
+        and lk.gid in (select id from rg) returning i.business_date as bd)
+  select (select count(*) from rg)::int as n, (select count(*) from up)::int as items, ${datesOf("up")}`;
 }
 
 /**
@@ -98,8 +98,8 @@ export function closeReplacedSql(c: StepCtx, s: 0 | 1): SQL {
           and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current})
       for update of i skip locked),
   up as (update ${reconItems} i set status = 'closed', break_reason = ${REPLACED}, version = i.version + 1
-      from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.id)
-  select count(*)::int as n from up`;
+      from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.business_date as bd)
+  select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 /** The reason an item closes when its record no longer counts. */
 export const REPLACED = "Source row replaced";

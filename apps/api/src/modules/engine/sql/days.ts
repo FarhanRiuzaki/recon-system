@@ -5,7 +5,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { records, sourceCursors } from "../../ingest";
 import { matchGroups, matchMembers, reconItems } from "../schema";
 import { type ClassifyCtx, NEAR_MISS, nearMissSql } from "./breaks";
-import { CHOSEN, type StepCtx } from "./pass";
+import { CHOSEN, datesOf, type StepCtx } from "./pass";
 
 /**
  * The reasons of an unconfirmed suggestion at day close (DEC-046). A suggestion of a tie (CHOSEN.tie: the pass had more
@@ -48,7 +48,7 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
       and i.status = 'open' and i.id in (select id from due) for update skip locked),
   k as (${nearMissSql({ ...c, carry }, c.lo, c.hi, sql`i.id in (select id from lk)`)}),
   ${breakLocked(c, sql`lk join k on k.item_id = lk.id`, sql`k.reason`, sql`k.reason = ${NEAR_MISS.none}`)}
-  select count(*)::int as n from up`;
+  select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 
 /**

@@ -13,6 +13,11 @@ import { boss, QUEUES } from "../../../../kernel/jobs";
 import { engineHandlers } from "../../jobs";
 import { queueDay, recomputeDayStats, STATS_DELAY_MS, sweepStats } from "../../stats";
 import { D, D1, type DashboardFixture, noon, seedDashboard } from "../dashboard-fixture";
+import { ensureMonthPartitions } from "../../../../kernel/partitions";
+import { records } from "../../../ingest";
+import { closeDay } from "../../breaks";
+import { addDays, runRecon } from "../../service";
+import { ccyEq, makeSource, plainSource, put, recon, spec } from "../fixtures";
 
 let F: DashboardFixture;
 beforeEach(async () => { F = await seedDashboard(); });
@@ -95,6 +100,34 @@ describe("recon.stats jobs", () => {
     expect(await queueDay(F.A, F.R1.configId, D)).toBeNull();
     expect((await jobsOf(`${F.R1.configId}:${D}`)).length).toBe(1);
   });
+
+  it("a run that late-matches an unmatch of 4 days before queues that date: its row moves from unmatch to matched_late (C1)", async () => {
+    const D4 = addDays(D, -4);
+    await db.transaction(async (tx) => {
+      await ensureMonthPartitions(tx, records, new Date(`${D4}T00:00:00Z`), 1);
+      await ensureMonthPartitions(tx, reconItems, new Date(`${D4}T00:00:00Z`), 1);
+    });
+    const exact = { no: 1, name: "Exact", cardinality: "1:1", blocking: [], accept: "auto", on_ambiguous: "break", predicates: [{ op: "eq", field: "ext_ref" }, { op: "eq", field: "amount_minor" }, ccyEq] };
+    const [sa, sb] = [await makeSource(F.A, plainSource()), await makeSource(F.A, plainSource())];
+    const r = await recon(F.A, spec(sa.sourceId, sb.sourceId, [exact], 7));
+    await put(sa, [{ ref: "L1", amount: 100n, date: D4 }]);
+    await runRecon(db, { ...r, mode: "daily", from: D4 });
+    expect(await closeDay(db, r, D4, new Date("2026-12-31T00:00:00+07:00"))).toBe("closed");
+    await recompute(F.A, r.configId, D4);
+    expect(rowsOf((await rowOf(F.A, r.configId, D4)).results)).toEqual({ unmatch: 1 });
+
+    await (await boss()).deleteAllJobs();
+    await put(sb, [{ ref: "L1", amount: 100n, date: D }]);
+    await runRecon(db, { ...r, mode: "daily", from: D }); // the run's own dates: D alone
+    const handle = engineHandlers(db)[QUEUES.reconStats]!;
+    for (const d of [D4, D]) {
+      const jobs = await jobsOf(`${r.configId}:${d}`);
+      expect(jobs.length).toBe(1);
+      await handle({ id: "j", data: jobs[0]!.data });
+    }
+    expect(rowsOf((await rowOf(F.A, r.configId, D4)).results)).toEqual({});
+    expect(rowsOf((await rowOf(F.A, r.configId, D)).results)).toEqual({ matched_late: 1 });
+  }, 30_000);
 
   it("the job writes its row; the sweep writes every config's last 7 dates", async () => {
     const handle = engineHandlers(db)[QUEUES.reconStats]!;

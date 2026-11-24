@@ -7,7 +7,7 @@ import { date, integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { db, type Tx } from "../../src/kernel/db";
 
 /**
- * Switches `tx`, until it ends, to `recon_app_probe` (NOLOGIN, no BYPASSRLS, DML on every table of the current schema,
+ * Switches `tx`, until it ends, to `recon_app_probe` (NOLOGIN, no BYPASSRLS, DML on every table of the current schema and of pgboss,
  * EXECUTE on recon_ensure_month_partitions, recon_analyze_month_partitions, recon_analyze_table, recon_source_day_closed and
  * recon_connector_used_by as db:migrate grants APP_DB_ROLE), creating it when missing. Temp tables get no grant from here: a test grants on its own.
  */
@@ -26,6 +26,12 @@ begin
   execute format('grant execute on function %I.recon_analyze_table(regclass, int) to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_source_day_closed(uuid, uuid, date) to recon_app_probe', current_schema());
   execute format('grant execute on function %I.recon_connector_used_by(uuid[]) to recon_app_probe', current_schema());
+  -- pg-boss's tables, as db:migrate grants APP_DB_ROLE: a run queues its dashboard rollup in its own transaction
+  if exists (select 1 from pg_namespace where nspname = 'pgboss') then
+    grant usage on schema pgboss to recon_app_probe;
+    grant select, insert, update, delete on all tables in schema pgboss to recon_app_probe;
+    grant usage, select on all sequences in schema pgboss to recon_app_probe;
+  end if;
 end
 $$`));
   await tx.execute(sql`set local role recon_app_probe`);
