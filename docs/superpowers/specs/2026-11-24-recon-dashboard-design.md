@@ -38,6 +38,7 @@ Readers: operations team (priorities), management (value and trend), product own
 
 - Editable or custom dashboards, exports, scheduled email reports (later, if asked).
 - Replacing Today.
+- Sources on time vs late (the Goals' "Sources" line): deferred, ingest stores no "complete at" per source and business date, so lateness can't be counted yet.
 
 ## Anti-goals
 
