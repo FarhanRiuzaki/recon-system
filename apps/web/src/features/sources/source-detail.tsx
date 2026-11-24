@@ -27,7 +27,7 @@ import { ActivityTable, FilesTable, QuarantineTable, RecordsTable, SnapshotsTabl
 import { SourceStatusChip } from "./source-status-chip";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
 import { SOURCE_TABS, type SourceTab } from "./source-text";
-import { at, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
+import { at, CONNECT_TIMEOUT_LABEL, connectTimeoutText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
 import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
@@ -238,7 +238,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 ...(s.server ? [{ label: "Server", value: s.server }] : []),
                 { label: "TLS", value: s.connection.options.tls ? "On" : "Off" },
                 // a test waits 8 s at most (the API's interactive deadline); this is the scheduled pull's connect option
-                { label: "Connect timeout for scheduled pulls", value: `${s.connection.options.connectTimeoutSeconds} s` },
+                { label: CONNECT_TIMEOUT_LABEL, value: connectTimeoutText(s.connection.options.connectTimeoutSeconds) },
                 { label: "Changed", value: at(s.connection.updatedAt) },
               ]} />
             </Panel>

@@ -2,7 +2,7 @@
 // built from it, which control an API error belongs to, and which values a connection test ran with.
 import type { ConnectionTestDto, SourceColumnsDto, SourcePreviewDto, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import {
-  type AmountUnit, type ConnectionField, DATE_LOOKBACK_MIN_SECONDS, DEFAULT_CALENDAR, type DbEngine, LOOKBACK_IDS_DEFAULT, SOURCE_CODE, type SourceKind,
+  type AmountUnit, CONNECT_TIMEOUT_DEFAULT, type ConnectionField, DATE_LOOKBACK_MIN_SECONDS, DEFAULT_CALENDAR, type DbEngine, LOOKBACK_IDS_DEFAULT, SOURCE_CODE, type SourceKind,
 } from "@starterkit/shared/sources";
 import { FILE_DATE, fieldTypeOf } from "../spec-draft";
 import { kindOfType, type WatermarkKind } from "../source-text";
@@ -10,7 +10,11 @@ import { computeSteps } from "@starterkit/shared/compute";
 import { formatNumber } from "@starterkit/ui/lib/format";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
-export type Conn = { engine: DbEngine; host: string; port: string; database: string; user: string; password: string; tls: boolean };
+export type Conn = {
+  engine: DbEngine; host: string; port: string; database: string; user: string; password: string; tls: boolean;
+  /** How long a scheduled pull waits to connect (the stored option, carried through a replaced connection). */
+  connectTimeoutSeconds: number;
+};
 export type Column = SourceColumnsDto["columns"][number];
 export type Draft = {
   name: string; code: string; kind: SourceKind; conn: Conn;
@@ -32,7 +36,7 @@ export type Preview = { result: SourcePreviewDto | null; error: string | null; p
 
 export const DEFAULT_PORT: Record<DbEngine, string> = { postgres: "5432", mysql: "3306", mssql: "1433", oracle: "1521" };
 /** A new connection starts with TLS on (REC-F2b: secure default); typing a local host turns it off until the user chooses. */
-export const EMPTY_CONN: Conn = { engine: "postgres", host: "", port: DEFAULT_PORT.postgres, database: "", user: "", password: "", tls: true };
+export const EMPTY_CONN: Conn = { engine: "postgres", host: "", port: DEFAULT_PORT.postgres, database: "", user: "", password: "", tls: true, connectTimeoutSeconds: CONNECT_TIMEOUT_DEFAULT };
 /** The control a failed test's `field` points at (REC-F2b). */
 export const FIELD_CONTROL: Record<ConnectionField, string> = {
   host: "src-host", port: "src-port", username: "src-user", password: "src-password", database: "src-database", tls: "src-tls",
@@ -78,7 +82,7 @@ export const connKey = (d: Draft): string => {
  */
 export const connChanged = (c: Conn, from: Conn) => JSON.stringify(c) !== JSON.stringify(from);
 /** The typed connection as the API takes it (PUT …/connection, a typed test, the create body). */
-export const connBody = (c: Conn) => ({ engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls } });
+export const connBody = (c: Conn) => ({ engine: c.engine, host: c.host.trim(), port: Number(c.port), database: c.database.trim(), user: c.user.trim(), password: c.password, options: { tls: c.tls, connectTimeoutSeconds: c.connectTimeoutSeconds } });
 
 /**
  * The spec as sent: attrs only of fields that exist, a watermark source's table or query (not both), names trimmed,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_UNITS, ATTR_NAME, LOOKBACK_IDS_MAX, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  AMOUNT_UNITS, ATTR_NAME, CONNECT_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_MAX, LOOKBACK_IDS_MAX, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES, WATERMARK_ID_COLUMNS_MAX,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -208,7 +208,7 @@ export type SourceSpec = z.infer<typeof SourceSpec>;
 
 export const ConnectionOptions = z.strictObject({
   tls: z.boolean().default(false),
-  connectTimeoutSeconds: z.number().int().min(1).max(120).default(15),
+  connectTimeoutSeconds: z.number().int().min(1).max(CONNECT_TIMEOUT_MAX).default(CONNECT_TIMEOUT_DEFAULT),
 });
 
 /**

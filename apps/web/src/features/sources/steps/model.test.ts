@@ -1,9 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, lookbackNote, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connBody, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, lookbackNote, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
+
+describe("the connect timeout for scheduled pulls", () => {
+  it("is carried through a replaced connection, never reset to 15 s; a change of it is a change of the connection", () => {
+    expect(EMPTY_CONN.connectTimeoutSeconds).toBe(15);
+    expect(connBody({ ...EMPTY_CONN, connectTimeoutSeconds: 45 }).options).toEqual({ tls: true, connectTimeoutSeconds: 45 });
+    expect(connChanged({ ...EMPTY_CONN, connectTimeoutSeconds: 45 }, EMPTY_CONN)).toBe(true);
+  });
+});
 
 describe("the connection on screen against the stored one (fix round 1, I2)", () => {
   it("any difference replaces it: engine, port, TLS or a credential field", () => {

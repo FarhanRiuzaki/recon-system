@@ -109,6 +109,10 @@ export function sourceTabOf(v: string | null): SourceTab {
   return SOURCE_TABS.find((t) => t === v) ?? "overview";
 }
 
+/** The connection option a scheduled pull connects within, as the detail page and the connection step name it. */
+export const CONNECT_TIMEOUT_LABEL = "Connect timeout for scheduled pulls";
+export const connectTimeoutText = (seconds: number) => `${formatNumber(seconds)} s`;
+
 /** What a watermark holds, which decides its look back: a date only (a day at least), a date and time (seconds), a sequence (ids). */
 export type WatermarkKind = "date" | "time" | "int";
 /** A watermark field's type as its kind; null for another type. Oracle has no date-only type (its DATE holds a time). */

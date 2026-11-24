@@ -120,6 +120,10 @@ export const DATE_LOOKBACK_MIN_SECONDS = 86_400;
 export const LOOKBACK_IDS_DEFAULT = 1000;
 export const LOOKBACK_IDS_MAX = 1_000_000;
 
+/** How long a scheduled pull waits to connect, in seconds, when the connection doesn't say; and the longest it may wait. */
+export const CONNECT_TIMEOUT_DEFAULT = 15;
+export const CONNECT_TIMEOUT_MAX = 120;
+
 /** How often a watermark source is pulled, or a file inbox's folder checked (owner, 21 Nov: "When to read"). */
 export const READ_EVERY = [1, 5, 15, 30, 60] as const;
 export type ReadEvery = (typeof READ_EVERY)[number];

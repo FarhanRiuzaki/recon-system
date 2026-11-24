@@ -13,10 +13,10 @@ import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import {
-  DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, FILE_ENCODINGS, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
+  CONNECT_TIMEOUT_MAX, DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, FILE_ENCODINGS, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
 } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
-import { lookbackText, scheduleText } from "../source-text";
+import { CONNECT_TIMEOUT_LABEL, connectTimeoutText, lookbackText, scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, lookbackNote, type Tested, type WatermarkKind, withEngine, withName } from "./model";
@@ -317,7 +317,7 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
   if (folded) {
     // which server, port and database it reads (owner, 21 Nov), as user@host:port/database
     const who = c.host.trim() ? `${c.user.trim() ? `${c.user.trim()}@` : ""}${c.host.trim()}:${c.port}${c.database.trim() ? `/${c.database.trim()}` : ""}` : "Stored sign-in";
-    const summary = [`${ENGINE_LABEL[c.engine]}${p.connected?.version ? ` ${p.connected.version}` : ""}`, who, `TLS ${c.tls ? "on" : "off"}`].join(" · ");
+    const summary = [`${ENGINE_LABEL[c.engine]}${p.connected?.version ? ` ${p.connected.version}` : ""}`, who, `TLS ${c.tls ? "on" : "off"}`, `${CONNECT_TIMEOUT_LABEL.toLowerCase()} ${connectTimeoutText(c.connectTimeoutSeconds)}`].join(" · ");
     return (
       <Panel title="Server" bodyClassName="grid gap-4">
         <p role="status" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body text-fg">
@@ -394,6 +394,13 @@ function Server(p: ConnectionStepProps & { failed: string | null }) {
             <label htmlFor="src-tls" className="text-body text-fg">Encrypt the connection (TLS)</label>
           </span>
           {err("src-tls") && <p id="src-tls-error" className="text-body-sm text-down-ink">{err("src-tls")}</p>}
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* stored with the connection (a change replaces it, as any field here); a connection test waits 8 s at most */}
+          <Field id="src-connect-timeout" label={CONNECT_TIMEOUT_LABEL} note={`In seconds, 1 to ${CONNECT_TIMEOUT_MAX}. A connection test here waits 8 s at most.`}>
+            <Input id="src-connect-timeout" inputMode="numeric" value={String(c.connectTimeoutSeconds)}
+              onChange={(e) => setConn({ connectTimeoutSeconds: Math.max(1, Math.min(CONNECT_TIMEOUT_MAX, Number(e.target.value.replace(/\D/g, "")) || 1)) })} />
+          </Field>
         </div>
       </div>
       <div className="grid gap-2">

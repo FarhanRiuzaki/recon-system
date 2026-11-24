@@ -119,7 +119,7 @@ function draftOf(s: SourceDto, v: SourceVersionDto): Draft {
   const srv = s.connection?.server;
   return {
     name: s.name, code: s.code, kind: s.kind, from: spec.input.kind === "db_watermark" && spec.input.query !== undefined ? "query" : "table", spec,
-    conn: { ...EMPTY_CONN, engine, port: "", tls: s.connection?.options.tls ?? false, ...(srv ? { host: srv.host, port: String(srv.port), database: srv.database, user: srv.user } : {}) },
+    conn: { ...EMPTY_CONN, engine, port: "", tls: s.connection?.options.tls ?? false, connectTimeoutSeconds: s.connection?.options.connectTimeoutSeconds ?? EMPTY_CONN.connectTimeoutSeconds, ...(srv ? { host: srv.host, port: String(srv.port), database: srv.database, user: srv.user } : {}) },
   };
 }
 
@@ -623,7 +623,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       if (!k) return;
       // the browser's copy is only readable after mount (no localStorage in the server render): one restore, once
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraft((x) => ({ ...x, ...k, conn: { ...k.conn, password: "" }, restored: true }));
+      setDraft((x) => ({ ...x, ...k, conn: { ...EMPTY_CONN, ...k.conn, password: "" }, restored: true }));
       return;
     }
     const kept = readLocal(ids.versionId);
