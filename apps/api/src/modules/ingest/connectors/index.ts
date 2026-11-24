@@ -6,15 +6,16 @@
 //   columns) must be one `introspect` returned, else a spec error ("Column "x" is not in table core.txn.").
 // - Rows come back as text (dialect.ts): `Row` = column → string, SQL NULL → null (never ""), so row_hash and the
 //   natural key tell them apart.
-// - A watermark pull is keyset paging (S7): each page `chunk` rows ordered by (watermark, id), the next page after the
-//   last row's (watermark, id) as text. With a cursor and lookback, the first page starts `lookbackSeconds` before the
-//   cursor's watermark (`>=`); Task 5's dedup drops what comes again. A page is fully read before the next query, and
+// - A watermark pull is keyset paging (S7): each page `chunk` rows ordered by (watermark, ids…), the next page after the
+//   last row's (watermark, ids…) as text. With a cursor and lookback, the first page starts the look back before the
+//   cursor's watermark (`>=`: seconds for a date or time, ids for an integer, lookbackOf); Task 5's dedup drops what
+//   comes again. A page is fully read before the next query, and
 //   the caller consumes it before asking for more, so memory stays at one page.
 // - Every driver error becomes a ConnectorError with a fixed sentence (errors.ts); nothing here logs.
 import type { DbEngine } from "@starterkit/shared/sources";
 import type { Readable } from "node:stream";
 import {
-  CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, minusSeconds, pingSql,
+  CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, type Lookback, lookbackOf, minusIds, minusSeconds, pingSql,
   rowsSql, serverSql, tableCountSql, tablesSql,
 } from "./dialect";
 import { classify, type ConnectorError, connectTimeoutError, deadlineError, isConnectTimeout, specError } from "./errors";
@@ -23,7 +24,7 @@ import { mysqlDriver } from "./mysql";
 import { oracleDriver } from "./oracle";
 import { postgresDriver } from "./postgres";
 
-export { CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, DEFAULT_DATABASE, type From } from "./dialect";
+export { CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, DEFAULT_DATABASE, type From, type Lookback, lookbackOf } from "./dialect";
 export { ConnectorError, type ConnectorErrorKind, HOSTNAME_MISMATCH_CODES, NO_TLS_CODES } from "./errors";
 
 /** The stored credential (sources.source_connections.secret_enc, decrypted). */
@@ -43,10 +44,14 @@ export type WatermarkPull = {
   from: From;
   /** The spec's field names; the watermark and id columns are added. */
   columns: string[];
-  watermark: { column: string; id_column: string };
-  /** The last row pulled before (its watermark and id as this connector wrote them), or null for the start. */
-  after: { wm: string; id: string } | null;
-  lookbackSeconds: number;
+  watermark: { column: string; id_columns: string[] };
+  /**
+   * The last row pulled before (its watermark and ids, in id_columns order, as this connector wrote them), or null for
+   * the start; `ids` null = ids that no longer fit the id columns (another number of them): resumes at the watermark.
+   */
+  after: { wm: string; ids: string[] | null } | null;
+  /** The spec's look back (lookbackOf: seconds for a date or time watermark, ids for an integer one). */
+  lookback: Lookback;
   chunk: number;
 };
 
@@ -180,20 +185,28 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
 
   async function* pullWatermark(o: WatermarkPull): AsyncGenerator<Row[]> {
     const all = await introspect(o.from);
-    const [wm, id] = pick(all, [o.watermark.column, o.watermark.id_column], o.from) as [Column, Column];
-    const cols = pick(all, [...new Set([...o.columns, wm.name, id.name])], o.from);
-    let cursor: Cursor = o.after === null ? null : o.lookbackSeconds > 0 ? { from: minusSeconds(o.after.wm, o.lookbackSeconds) } : { after: o.after };
+    const [wm, ...ids] = pick(all, [o.watermark.column, ...o.watermark.id_columns], o.from) as [Column, ...Column[]];
+    const cols = pick(all, [...new Set([...o.columns, wm.name, ...ids.map((c) => c.name)])], o.from);
+    const lb = lookbackOf(d, wm, o.lookback);
+    if ("problem" in lb) throw specError(lb.problem);
+    let cursor: Cursor = null;
+    if (o.after) {
+      const back = lb.n === 0 ? null : lb.by === "ids" ? minusIds(o.after.wm, lb.n) : minusSeconds(o.after.wm, lb.n);
+      cursor = back !== null ? { from: back } : o.after.ids === null ? { from: o.after.wm } : { after: { wm: o.after.wm, ids: o.after.ids } };
+    }
     for (;;) {
-      const b = rowsSql(d, { from: o.from, columns: cols, keyset: { wm, id, cursor }, limit: o.chunk });
+      const b = rowsSql(d, { from: o.from, columns: cols, keyset: { wm, ids, cursor }, limit: o.chunk });
       const page = (await wrap(drv.rows(b.sql, b.params))).map((r) => text(r, cols));
       if (page.length) yield page;
       if (page.length < o.chunk) return;
       const last = page[page.length - 1]!;
-      const next = { wm: last[wm.name]!, id: last[id.name]! };
+      const next = { wm: last[wm.name]!, ids: ids.map((c) => last[c.name]!) };
       // a full page that ends where it started: the source compares the columns differently from their text (a SQL
       // Server datetime read back at another precision, a collation); asking again would return the same page forever
-      if (cursor && "after" in cursor && cursor.after.wm === next.wm && cursor.after.id === next.id) {
-        throw specError(`The pull did not move past watermark ${next.wm} and id ${next.id}: the source compares "${wm.name}" or "${id.name}" differently from its own text. Use another watermark or id column.`);
+      if (cursor && "after" in cursor && cursor.after.wm === next.wm && cursor.after.ids.every((v, j) => v === next.ids[j])) {
+        const one = ids.length === 1;
+        throw specError(`The pull did not move past watermark ${next.wm} and ${one ? "id" : "ids"} ${next.ids.join(", ")}: the source compares "${wm.name}" or `
+          + `${ids.map((c) => `"${c.name}"`).join(", ")} differently from its own text. Use another watermark or id column.`);
       }
       cursor = { after: next };
     }

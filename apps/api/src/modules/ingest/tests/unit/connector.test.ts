@@ -17,12 +17,25 @@ describe("pullWatermark over a driver whose cursor does not move", () => {
     };
     const c = connectorOver("postgres", drv, { connectS: 1, statementS: 1 });
     const got = await (async () => {
-      for await (const _ of c.pullWatermark({ from: { table: "t" }, columns: [], watermark: { column: "w", id_column: "id" }, after: null, lookbackSeconds: 0, chunk: 2 })) { /* consume */ }
+      for await (const _ of c.pullWatermark({ from: { table: "t" }, columns: [], watermark: { column: "w", id_columns: ["id"] }, after: null, lookback: { seconds: 0 }, chunk: 2 })) { /* consume */ }
     })().catch((e) => e);
     expect(got).toBeInstanceOf(ConnectorError);
     expect([(got as ConnectorError).kind, (got as ConnectorError).message]).toEqual(["spec",
       'The pull did not move past watermark 2026-11-19T00:00:00.003333 and id 1: the source compares "w" or "id" differently from its own text. Use another watermark or id column.']);
     expect(pages).toBe(2);
+  });
+
+  it("composite ids: stops when the watermark and every id end where the page started", async () => {
+    const drv: Driver = {
+      rows: async (sql) => (sql.includes("pg_attribute")
+        ? [{ name: "w", type: "date", nullable: "NO" }, { name: "b", type: "text", nullable: "NO" }, { name: "s", type: "int", nullable: "NO" }]
+        : [{ w: "2026-11-19", b: "B1", s: "7" }, { w: "2026-11-19", b: "B1", s: "7" }]),
+      describe: never, stream: async function* () {}, close: async () => {},
+    };
+    const got = await (async () => {
+      for await (const _ of connectorOver("postgres", drv, { connectS: 1, statementS: 1 }).pullWatermark({ from: { table: "t" }, columns: [], watermark: { column: "w", id_columns: ["b", "s"] }, after: null, lookback: {}, chunk: 2 })) { /* consume */ }
+    })().catch((e) => e);
+    expect((got as ConnectorError).message).toBe('The pull did not move past watermark 2026-11-19 and ids B1, 7: the source compares "w" or "b", "s" differently from its own text. Use another watermark or id column.');
   });
 });
 

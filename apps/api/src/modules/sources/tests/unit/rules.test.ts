@@ -60,7 +60,7 @@ describe("SourceSpec", () => {
   it("db_watermark takes a table or a query, not both; db_snapshot's query takes :business_date", () => {
     // split, so boundaries.test.ts's hand-written-SQL scan doesn't read the fixture as a statement of ours
     const query = (where: string) => `sel${"ect * from bal"}${where}`;
-    const db = { kind: "db_watermark", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 };
+    const db = { kind: "db_watermark", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 300, chunk: 5000 };
     expect(issues({ ...ksei(), input: { ...db, table: "trx" } })).toEqual([]);
     expect(issues({ ...ksei(), input: { ...db, table: "trx", query: "select 1" } })).toEqual(["Give either a table or a query"]);
     expect(issues({ ...ksei(), input: db })).toEqual(["Give either a table or a query"]);

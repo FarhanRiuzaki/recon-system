@@ -274,7 +274,7 @@ const bifastSpec = (o: { lookback?: number; chunk?: number } = {}): SourceSpec =
   ],
   mapping: { business_date: { field: "event_time" }, event_time: { field: "event_time" }, amount_minor: { field: "amount" }, ext_ref: { field: "ext_ref" }, account_ref: { field: "account_ref" }, attrs: {} },
   derive: {}, key_fields: [], mutable: false, calendar: "id-default",
-  input: { kind: "db_watermark", table: "public.bifast", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: o.lookback ?? 120, chunk: o.chunk ?? 7 },
+  input: { kind: "db_watermark", table: "public.bifast", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: o.lookback ?? 120, chunk: o.chunk ?? 7 },
 });
 
 describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, synth.ts)", () => {
@@ -342,6 +342,36 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     expect([await statusOf(s), (await cursorOf(s))?.lastError]).toEqual(["paused", stuck.message]);
   });
 
+  it("composite ids: the cursor keeps them as a JSON array; a stored single id (before composite ids) still resumes", async () => {
+    const cols = [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"], ["updated_at", "timestamp with time zone"], ["id", "bigint"]];
+    const seen: unknown[] = [];
+    ingestHooks.connect = () => ({
+      introspect: async () => cols.map(([name, type]) => ({ name: name!, type: type!, nullable: false })),
+      pullWatermark: async function* (o: { after: unknown; lookback: unknown }) {
+        seen.push([o.after, o.lookback]);
+        yield [1, 2].map((i) => ({ ext_ref: `R${i}`, account_ref: "ACC1", amount: "1.00", event_time: "2026-11-19T01:00:00Z", updated_at: "2026-11-19T01:00:00Z", id: "7" }));
+      },
+      close: async () => {},
+    }) as unknown as Connector;
+    const spec = bifastSpec();
+    const composite = { ...spec, input: { ...spec.input, watermark: { column: "updated_at", id_columns: ["ext_ref", "account_ref"] } } } as SourceSpec;
+    const s = await source(A, composite);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect((await cursorOf(s))!.watermarkId).toBe('["R2","ACC1"]');
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(seen[1]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: ["R2", "ACC1"] }, { seconds: 120, ids: undefined }]);
+    // a cursor written before composite ids holds one id as plain text: read as that id for one id column, and for two
+    // as ids that don't fit (the pull resumes at the watermark)
+    const one = await source(B, bifastSpec());
+    expect(await pullSource(scope(one), probe)).toBe("pulled");
+    expect((await cursorOf(one))!.watermarkId).toBe("7");
+    expect(await pullSource(scope(one), probe)).toBe("pulled");
+    expect(seen[3]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: ["7"] }, { seconds: 120, ids: undefined }]);
+    await db.update(sourceCursors).set({ watermarkId: "7" }).where(eq(sourceCursors.sourceId, s.sourceId));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(seen[4]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: null }, { seconds: 120, ids: undefined }]);
+  });
+
   it("a watermark or id column that may be NULL is refused before the first pull", async () => {
     await src`insert into nulls_wm (updated_at, ref) values (now(), 'R1'), (null, 'R2')`;
     const spec = { ...bifastSpec(), fields: [{ name: "ref", type: "string" as const, nullable: false, trim: true }], mapping: { business_date: { cel: "'2026-11-19'" }, ext_ref: { field: "ref" }, attrs: {} },
@@ -359,7 +389,7 @@ describe("Review Focus 4: the source's columns change", () => {
     fields: [{ name: "ref", type: "string", nullable: false, trim: true }, { name: "amt", type: "decimal", nullable: true, trim: true, format: { scale: 2 } }],
     mapping: { business_date: { cel: "'2026-11-19'" }, ext_ref: { field: "ref" }, amount_minor: { field: "amt" }, attrs: {} },
     derive: {}, key_fields: [], mutable: false, calendar: "id-default",
-    input: { kind: "db_watermark", table: "public.chg", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 100 },
+    input: { kind: "db_watermark", table: "public.chg", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 100 },
   });
 
   it("a column that changed type pauses the source with what changed, and nothing more is written", async () => {
@@ -559,7 +589,7 @@ describe("a mutable source", () => {
       fields: [{ name: "ref", type: "string", nullable: false, trim: true }, { name: "status", type: "string", nullable: false, trim: true }],
       mapping: { business_date: { cel: "'2026-11-19'" }, ext_ref: { field: "ref" }, attrs: { status: { field: "status" } } },
       derive: {}, key_fields: ["ref"], mutable: true, calendar: "id-default",
-      input: { kind: "db_watermark", table: "public.mut", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 60, chunk: 10 },
+      input: { kind: "db_watermark", table: "public.mut", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 60, chunk: 10 },
     };
     const s = await source(A, spec);
     const changed: string[][] = [];

@@ -109,6 +109,17 @@ export const DB_TABLE_NAME = /^[A-Za-z_][A-Za-z0-9_$#]{0,127}(\.[A-Za-z_][A-Za-z
 /** A stored attribute's name (`attrs.<name>` of a record): a-z, 0-9 and _, starting with a letter, at most 63 characters. */
 export const ATTR_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 
+/** At most this many id columns break a tie on the watermark (together they tell rows apart, owner 24 Nov). */
+export const WATERMARK_ID_COLUMNS_MAX = 4;
+/**
+ * A date-only watermark looks back at least a day: a row added later on the same date with a smaller id would else be
+ * skipped (rows read again are stored once).
+ */
+export const DATE_LOOKBACK_MIN_SECONDS = 86_400;
+/** An integer watermark (a sequence) looks back this many ids when the spec doesn't say, up to LOOKBACK_IDS_MAX. */
+export const LOOKBACK_IDS_DEFAULT = 1000;
+export const LOOKBACK_IDS_MAX = 1_000_000;
+
 /** How often a watermark source is pulled, or a file inbox's folder checked (owner, 21 Nov: "When to read"). */
 export const READ_EVERY = [1, 5, 15, 30, 60] as const;
 export type ReadEvery = (typeof READ_EVERY)[number];

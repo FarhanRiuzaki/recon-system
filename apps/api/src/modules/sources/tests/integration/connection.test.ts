@@ -275,7 +275,7 @@ describe("preview of a database source", () => {
     const s = await made("db_watermark");
     await connect(s.id);
     const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default", currency: "IDR",
-      input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 60, chunk: 1000 } });
+      input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 60, chunk: 1000 } });
     const p = await json<SourcePreviewDto>(preview(s.id, v.id));
     expect(p).toMatchObject({ lines: 3, ok: 2, quarantined: 1 });
     expect(p.records.map((r) => [r.extRef, r.amountMinor, r.eventTime, r.businessDate, r.attrs.note])).toEqual([
@@ -285,6 +285,25 @@ describe("preview of a database source", () => {
     expect(p.quarantine).toEqual([{ line: 3, cells: ["", "1.00", "2026-11-02T03:00:00.000000Z", "x"], reasons: { ref: "ref is required" } }]);
     // a sample in the body is for file sources
     expect((await preview(s.id, v.id, { sample: "x" })).status).toBe(400);
+  });
+
+  it("the look back is checked against the watermark column's type: a date one day at least, an integer in ids", async () => {
+    const s = await made("db_watermark");
+    await connect(s.id);
+    const query = "select id, updated_at, updated_at::date as d, ref, amount, note from conn_txn";
+    const spec = (input: Record<string, unknown>) => ({ fields, mapping, derive: {}, key_fields: ["ref"], mutable: false, calendar: "id-default", currency: "IDR",
+      input: { kind: "db_watermark", query, chunk: 1000, ...input } });
+    const v = await draftWith(s.id, spec({ watermark: { column: "d", id_columns: ["id"] }, lookback_seconds: 3600 }));
+    const r = await preview(s.id, v.id);
+    expect([r.status, (await errOf(r)).message]).toEqual([400,
+      'Check input.lookback_seconds: The watermark column "d" holds a date only, so the look back must be at least 1 day (86,400 seconds): a row added later on the same date with a smaller id would be skipped. Rows read again are stored once.']);
+    const set = async (input: Record<string, unknown>) => expect((await call("PATCH", `${base()}/${s.id}/versions/${v.id}`, { token: t.adm, body: { spec: spec(input) } })).status).toBe(200);
+    await set({ watermark: { column: "d", id_columns: ["id"] }, lookback_seconds: 86_400 });
+    expect((await preview(s.id, v.id)).status).toBe(200);
+    await set({ watermark: { column: "id", id_columns: ["id"] }, lookback_seconds: 60 });
+    expect((await errOf(await preview(s.id, v.id))).message).toBe('Check input.lookback_seconds: The watermark column "id" is an integer (a sequence), so it looks back a number of ids, not seconds.');
+    await set({ watermark: { column: "id", id_columns: ["id"] }, lookback_ids: 1000 });
+    expect((await preview(s.id, v.id)).status).toBe(200);
   });
 
   it("a snapshot source pulls the query for the business date in the body", async () => {
@@ -304,7 +323,7 @@ describe("preview of a database source", () => {
     const s = await made("db_watermark");
     await connect(s.id, { database: "recon_no_such_db" });
     const v = await draftWith(s.id, { fields, mapping, derive: {}, key_fields: [], mutable: false, calendar: "id-default", currency: "IDR",
-      input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } });
+      input: { kind: "db_watermark", table: "conn_txn", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 1000 } });
     const r = await preview(s.id, v.id);
     expect([r.status, (await errOf(r)).message]).toEqual([400, "The database was not found (3D000). Check the database name."]);
   });

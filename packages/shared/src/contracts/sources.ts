@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_UNITS, ATTR_NAME, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
-  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES,
+  AMOUNT_UNITS, ATTR_NAME, LOOKBACK_IDS_MAX, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES, WATERMARK_ID_COLUMNS_MAX,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
 
@@ -63,19 +63,38 @@ const Mapping = z.strictObject({
   attrs: z.record(z.string().regex(ATTR_NAME, "Use a-z, 0-9 and _, starting with a letter, up to 63 characters"), ValueRef).default({}),
 });
 
-/** A DB table or SELECT pulled by keyset `(column, id_column) > (watermark, id)`, `lookback_seconds` back, `chunk` rows at a time. */
 /** When a pulled or folder source is read (ReadWhen in ../sources): every N minutes, only between whole hours. */
 const ReadWhenSchema = z.strictObject({
   every_minutes: z.number().int().refine((n) => (READ_EVERY as readonly number[]).includes(n), { message: `Read every ${READ_EVERY.join(", ")} minutes` }).optional(),
   hours: z.strictObject({ from: z.number().int().min(0).max(23), to: z.number().int().min(1).max(24) })
     .refine((h) => h.from !== h.to % 24, { message: "The hours start and end at the same time; leave them out to read all day" }).optional(),
 });
+/**
+ * The watermark and its id columns. A spec stored before composite ids names one `id_column`: read as `id_columns: [it]`
+ * (migration 0066 rewrote the stored versions; this keeps any other stored copy readable).
+ */
+const Watermark = z.preprocess(
+  (v) => {
+    if (!v || typeof v !== "object" || !("id_column" in v) || "id_columns" in v) return v;
+    const { id_column, ...rest } = v as { id_column: unknown };
+    return { ...rest, id_columns: [id_column] };
+  },
+  z.strictObject({ column: name, id_columns: z.array(name).min(1).max(WATERMARK_ID_COLUMNS_MAX) }).superRefine((w, ctx) => {
+    w.id_columns.forEach((c, i) => { if (w.id_columns.indexOf(c) !== i) ctx.addIssue({ code: "custom", message: `Id column "${c}" is picked twice`, path: ["id_columns", i] }); });
+  }),
+);
+/**
+ * A DB table or SELECT pulled by keyset `(column, id_columns…) > (watermark, ids…)`, `chunk` rows at a time. The first
+ * page of a pull starts back from the last watermark: `lookback_seconds` for a date or time watermark (a date-only one
+ * at least a day, checked against the source's column type), `lookback_ids` for an integer one (left out: 1,000).
+ */
 const DbWatermarkInput = z.strictObject({
   kind: z.literal("db_watermark"),
   table: name.optional(),
   query: query.optional(),
-  watermark: z.strictObject({ column: name, id_column: name }),
-  lookback_seconds: z.number().int().min(0).max(7 * 86_400),
+  watermark: Watermark,
+  lookback_seconds: z.number().int().min(0).max(7 * 86_400).optional(),
+  lookback_ids: z.number().int().min(0).max(LOOKBACK_IDS_MAX).optional(),
   chunk: z.number().int().min(1).max(100_000),
   when: ReadWhenSchema.optional(),
 });
@@ -173,7 +192,15 @@ export const SourceSpec = z.strictObject({
   // a row that stops meeting a condition would stay as it was, since nothing replaces it
   if (s.mutable && s.keep?.length) issue("Rows that can change can't be left out by conditions: a row that stops meeting them would stay as it was. Filter in the recon instead.", ["keep"]);
   if (s.mutable && s.input.kind === "db_snapshot") issue("A snapshot source is replaced whole per business date, so it can't be mutable", ["mutable"]);
-  if (s.input.kind === "db_watermark" && (s.input.table === undefined) === (s.input.query === undefined)) issue("Give either a table or a query", ["input"]);
+  if (s.input.kind === "db_watermark") {
+    const i = s.input;
+    if ((i.table === undefined) === (i.query === undefined)) issue("Give either a table or a query", ["input"]);
+    if (i.lookback_seconds !== undefined && i.lookback_ids !== undefined) issue("Look back in seconds (a date or time watermark) or in ids (an integer watermark), not both", ["input", "lookback_ids"]);
+    // the declared type of the watermark field tells its kind here; the source's own column type is checked when read
+    const wmType = s.fields.find((f) => f.name === i.watermark.column)?.type;
+    if (wmType === "integer" && i.lookback_seconds !== undefined) issue("An integer watermark looks back a number of ids: set the look back in ids, not seconds", ["input", "lookback_seconds"]);
+    if ((wmType === "date" || wmType === "datetime") && i.lookback_ids !== undefined) issue("A date or time watermark looks back in seconds, not ids", ["input", "lookback_ids"]);
+  }
   if (s.input.kind === "db_snapshot" && !/:business_date\b/.test(s.input.query)) issue("The snapshot query needs the :business_date parameter", ["input", "query"]);
 });
 export type SourceSpec = z.infer<typeof SourceSpec>;

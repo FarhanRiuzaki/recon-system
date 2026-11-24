@@ -37,7 +37,7 @@ const fileSpec = (folder: string, pattern: string) => SourceSpec.parse({
 const pullSpec = (table: string) => SourceSpec.parse({
   ...base, fields: [...FIELDS, { name: "updated_at", type: "datetime", nullable: false, trim: true }, { name: "id", type: "string", nullable: false, trim: true }],
   mapping, health: { graceMinutes: 1440 },
-  input: { kind: "db_watermark", table, watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 },
+  input: { kind: "db_watermark", table, watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 300, chunk: 5000 },
 });
 const snapshotSpec = (table: string, deadline: string) => SourceSpec.parse({
   ...base, mapping, health: { deadline },

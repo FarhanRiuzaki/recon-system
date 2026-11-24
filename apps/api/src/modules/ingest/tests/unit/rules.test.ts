@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { familyOf } from "../../connectors/dialect";
 import { makeCalendar } from "../../map";
-import { completeThroughOf, deadlineOn, driftOf, endOfDay, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
+import { completeThroughOf, cursorIds, deadlineOn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
 
 const cal = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-02"] });
 
@@ -21,6 +21,20 @@ describe("ingest rules", () => {
     expect(completeThroughOf("2026-11-19T07:00:00", 0, { name: "u", type: "datetime", nullable: false, trim: true, format: { timezone: "UTC" } })?.toISOString())
       .toBe("2026-11-19T07:00:00.000Z");
     expect(completeThroughOf("12345", 0)).toBeNull();
+    expect(completeThroughOf("20261119", 0)).toBeNull(); // an integer watermark (a sequence) is no time, whatever its digits
+  });
+  it("idText and cursorIds: one id stays plain text (as stored before composite ids), several are a JSON array", () => {
+    expect(idText(["42"])).toBe("42");
+    expect(idText(["B01", "7"])).toBe('["B01","7"]');
+    expect(cursorIds("42", 1)).toEqual(["42"]);
+    expect(cursorIds('["x"]', 1)).toEqual(['["x"]']); // a text id that looks like JSON is still one id
+    expect(cursorIds('["B01","7"]', 2)).toEqual(["B01", "7"]);
+    expect(cursorIds(idText(["a,b", '"q"']), 2)).toEqual(["a,b", '"q"']);
+    // ids that don't fit the id columns (their number changed with a new version): none, so the pull resumes at the watermark
+    expect(cursorIds("42", 2)).toBeNull();
+    expect(cursorIds('["a","b","c"]', 2)).toBeNull();
+    expect(cursorIds('["a","b"]', 1)).toBeNull();
+    expect(cursorIds('["a",7]', 2)).toBeNull();
   });
   it("driftOf: a missing column, a nullable keyset column, a column that can't hold its field's type, a changed type; null when all fit", () => {
     const pg = (t: string) => familyOf("postgres", t);

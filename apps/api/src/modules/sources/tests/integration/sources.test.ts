@@ -400,7 +400,7 @@ describe("versions: draft, submit, approve, reject", () => {
     const s = await made();
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     expect((await step(t.mk, s.id, v.id, "submit")).status).toBe(400); // no spec yet
-    const db = { kind: "db_watermark", table: "trx", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 300, chunk: 5000 };
+    const db = { kind: "db_watermark", table: "trx", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 300, chunk: 5000 };
     expect((await patch(t.mk, s.id, v.id, { ...ksei(), input: db })).status).toBe(400);
     expect((await patch(t.mk, s.id, v.id, { ...ksei(), calendar: "nowhere" })).status).toBe(400);
   });
@@ -595,7 +595,7 @@ describe("CEL on save and the preview (Task 3)", () => {
     expect(await msg(await preview(t.mk, other.id, fresh.id, { sample: "x" }))).toContain("no fields and mapping");
     const db_ = await made({ code: "core-bifast", name: "BI-FAST", kind: "db_watermark" });
     const dv = await json<SourceVersionDto>(draft(t.mk, db_.id));
-    const spec = { ...ksei(), input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 } };
+    const spec = { ...ksei(), input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 1000 } };
     await adminSetsReading(dv.id, spec);
     expect((await patch(t.mk, db_.id, dv.id, spec)).status).toBe(200);
     expect(await msg(await preview(t.mk, db_.id, dv.id, { sample: "x" }))).toContain("A database source previews rows pulled through its connection");
@@ -622,7 +622,7 @@ describe("an unsaved spec in the preview (Task 7)", () => {
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, key_fields: ["nope"] } }))).toBe('Check key_fields.0: "nope" is not a column or computed column.');
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, derive: { x: "row.sid +" } } }))).toContain("Check the expression at derive.x: ");
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: { ...k, calendar: "nowhere" } }))).toContain("There is no calendar nowhere");
-    const db_ = { ...k, input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 10 } };
+    const db_ = { ...k, input: { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 10 } };
     expect(await msg(await preview(s.id, v.id, { sample: SAMPLE, spec: db_ }))).toContain("its spec's input must be of that kind");
     expect(await acts()).toHaveLength(before);
     // the saved spec is untouched
@@ -631,7 +631,7 @@ describe("an unsaved spec in the preview (Task 7)", () => {
 
   it("how the source is read is a source admin's: a maker's other table or query is 400, a checker sends no spec (403), a source admin changes it", async () => {
     const READ = "Only a source admin changes how the source is read.";
-    const wm = { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 1000 };
+    const wm = { kind: "db_watermark", table: "txn", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 1000 };
     const s = await made({ code: "core-bifast", name: "BI-FAST", kind: "db_watermark" });
     const v = await json<SourceVersionDto>(draft(t.mk, s.id));
     const spec = { ...ksei(), input: wm };

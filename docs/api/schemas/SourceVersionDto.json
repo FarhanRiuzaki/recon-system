@@ -578,15 +578,20 @@
                           "minLength": 1,
                           "maxLength": 128
                         },
-                        "id_column": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 128
+                        "id_columns": {
+                          "minItems": 1,
+                          "maxItems": 4,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          }
                         }
                       },
                       "required": [
                         "column",
-                        "id_column"
+                        "id_columns"
                       ],
                       "additionalProperties": false
                     },
@@ -594,6 +599,11 @@
                       "type": "integer",
                       "minimum": 0,
                       "maximum": 604800
+                    },
+                    "lookback_ids": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000
                     },
                     "chunk": {
                       "type": "integer",
@@ -635,7 +645,6 @@
                   "required": [
                     "kind",
                     "watermark",
-                    "lookback_seconds",
                     "chunk"
                   ],
                   "additionalProperties": false

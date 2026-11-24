@@ -26,7 +26,7 @@ import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
 import {
-  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, inboxProbe, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState,
+  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, type From, inboxProbe, lookbackOf, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState,
   lastPulls, listTrends, sourceStates, specCelError, todayIn, within,
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
@@ -755,10 +755,18 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   const day = b.businessDate ?? todayJakarta();
   // the same reading (connection, table or query, columns, day) answers from the sample of the last 2 minutes, so a
   // preview after each mapping change maps those rows again instead of querying the bank's database again
-  const key = JSON.stringify([sourceId, Bun.hash(conn.secretEnc).toString(), input.kind === "db_snapshot" ? [input.query, day] : [input.table ?? null, input.query ?? null], [...columns].sort()]);
-  const rows = await sampleOf(key, "fresh" in b && b.fresh === true, () => overConnection(conn, (c) => input.kind === "db_snapshot"
-    ? c.sample({ query: input.query, businessDate: day }, columns, PREVIEW_PULL_ROWS)
-    : c.sample(input.table !== undefined ? { table: input.table } : { query: input.query! }, columns, PREVIEW_PULL_ROWS)));
+  // a watermark source's look back is checked against its watermark column's type there (lookbackOf), so the watermark
+  // and look back are part of the reading
+  const key = JSON.stringify([sourceId, Bun.hash(conn.secretEnc).toString(), input.kind === "db_snapshot" ? [input.query, day]
+    : [input.table ?? null, input.query ?? null, input.watermark.column, input.lookback_seconds ?? null, input.lookback_ids ?? null], [...columns].sort()]);
+  const rows = await sampleOf(key, "fresh" in b && b.fresh === true, () => overConnection(conn, async (c) => {
+    if (input.kind === "db_snapshot") return c.sample({ query: input.query, businessDate: day }, columns, PREVIEW_PULL_ROWS);
+    const from: From = input.table !== undefined ? { table: input.table } : { query: input.query! };
+    const wm = (await c.introspect(from)).find((x) => x.name === input.watermark.column);
+    const lb = wm ? lookbackOf(conn.engine as DbEngine, wm, { seconds: input.lookback_seconds, ids: input.lookback_ids }) : null;
+    if (lb && "problem" in lb) throw new ApiError("bad_request", `Check input.${lb.field}: ${lb.problem}`);
+    return c.sample(from, columns, PREVIEW_PULL_ROWS);
+  }));
   return previewRows(spec, rows, cal, input.kind === "db_snapshot" ? b.businessDate ?? todayJakarta() : undefined);
 }
 

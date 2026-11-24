@@ -7,10 +7,10 @@
 // - Every column comes back as text (spec: values reach coerce as strings; SQL NULL stays null). Date-times are
 //   formatted by the database with all their digits (microseconds: S7), never through a JS Date; a time-zone-aware
 //   value in UTC with "Z". The watermark is sent back in the same text form and parsed by the database.
-// - Keyset (updated_at, id) > ($wm, $id): a row comparison on PostgreSQL, spelled out elsewhere (no row values in
+// - Keyset (updated_at, ids…) > ($wm, $ids…): a row comparison on PostgreSQL, spelled out elsewhere (no row values in
 //   SQL Server and Oracle); ordered by the source's own columns through the alias `t`, never by the text aliases (S7).
 // - A custom SELECT (IT's) is one SELECT or WITH, wrapped as a subquery; `:business_date` becomes a date parameter.
-import { DB_TABLE_NAME, type DbEngine } from "@starterkit/shared/sources";
+import { DATE_LOOKBACK_MIN_SECONDS, DB_TABLE_NAME, type DbEngine, LOOKBACK_IDS_DEFAULT } from "@starterkit/shared/sources";
 import { specError } from "./errors";
 
 export type Dialect = DbEngine;
@@ -24,8 +24,8 @@ export type Family = "tstz" | "ts" | "date" | "int" | "num" | "bool" | "text";
 export type Column = { name: string; type: string; nullable: boolean | null; unique?: boolean | null; indexed?: boolean | null };
 /** A table (`schema.table` or `table`) or a custom SELECT; a snapshot SELECT takes `businessDate` for `:business_date`. */
 export type From = { table: string } | { query: string; businessDate?: string };
-/** Where a keyset pull resumes: after (watermark, id), from a watermark on (`>=`, the lookback start), or the start. */
-export type Cursor = { after: { wm: string; id: string } } | { from: string } | null;
+/** Where a keyset pull resumes: after (watermark, ids…), from a watermark on (`>=`, the lookback start), or the start. */
+export type Cursor = { after: { wm: string; ids: readonly string[] } } | { from: string } | null;
 export type Built = { sql: string; params: (string | null)[] };
 
 const QUOTE: Record<Dialect, [string, string]> = { postgres: ['"', '"'], oracle: ['"', '"'], mysql: ["`", "`"], mssql: ["[", "]"] };
@@ -301,35 +301,98 @@ export function describeSql(d: Dialect, from: From): Built {
 /** The connection check. */
 export const pingSql = (d: Dialect) => (d === "oracle" ? "SELECT 1 FROM DUAL" : "SELECT 1");
 
-const WM_FAMILIES: Family[] = ["tstz", "ts", "date"];
+const WM_FAMILIES: Family[] = ["tstz", "ts", "date", "int"];
 const ID_FAMILIES: Family[] = ["int", "num", "text"];
 
+/** How a pull looks back from its last watermark: seconds for a date or time, ids for an integer (spec's values). */
+export type Lookback = { seconds?: number; ids?: number };
 /**
- * SELECT `columns` (as text) FROM `from` [WHERE keyset] [ORDER BY watermark, id] [first `limit` rows]. Without a
+ * The look back watermark column `wm` takes under the spec's `l` (left out: a timestamp none, a date-only column one day,
+ * an integer LOOKBACK_IDS_DEFAULT ids), or why `l` doesn't fit the column: seconds on an integer, ids on a date or time,
+ * or under a day on a date-only column (a row added later that day with a smaller id would be skipped).
+ */
+export function lookbackOf(d: Dialect, wm: Column, l: Lookback): { by: "seconds" | "ids"; n: number } | { problem: string; field: "lookback_seconds" | "lookback_ids" } {
+  const f = familyOf(d, wm.type);
+  if (f === "int") {
+    if (l.seconds !== undefined) return { problem: `The watermark column "${wm.name}" is an integer (a sequence), so it looks back a number of ids, not seconds.`, field: "lookback_seconds" };
+    return { by: "ids", n: l.ids ?? LOOKBACK_IDS_DEFAULT };
+  }
+  if (l.ids !== undefined) return { problem: `The watermark column "${wm.name}" is a date or time, so it looks back in seconds, not ids.`, field: "lookback_ids" };
+  if (f === "date" && l.seconds !== undefined && l.seconds < DATE_LOOKBACK_MIN_SECONDS) {
+    return {
+      problem: `The watermark column "${wm.name}" holds a date only, so the look back must be at least 1 day (86,400 seconds): a row added later on the same date with a smaller id would be skipped. Rows read again are stored once.`,
+      field: "lookback_seconds",
+    };
+  }
+  return { by: "seconds", n: l.seconds ?? (f === "date" ? DATE_LOOKBACK_MIN_SECONDS : 0) };
+}
+
+/** An integer watermark's text `n` ids earlier, exact at any size (BigInt, never a JS float). */
+export function minusIds(wm: string, n: number): string {
+  if (!/^-?\d+$/.test(wm.trim())) throw specError("The watermark is not an integer this connector wrote.");
+  return (BigInt(wm.trim()) - BigInt(n)).toString();
+}
+
+/** Binary types: their bytes sort in another order than any text kept of them; the hex text to read instead. */
+const BINARY: Record<Dialect, [RegExp, (n: string) => string]> = {
+  postgres: [/^bytea$/, (n) => `encode(${n}, 'hex') AS ${n}`],
+  mysql: [/^(binary|varbinary|tinyblob|blob|mediumblob|longblob)\b/, (n) => `HEX(${n}) AS ${n}`],
+  mssql: [/^(binary|varbinary|image|timestamp|rowversion)\b/, (n) => `CONVERT(char(32), ${n}, 2) AS ${n}`],
+  oracle: [/^(raw|long raw|blob)\b/, (n) => `RAWTOHEX(${n}) AS ${n}`],
+};
+
+/**
+ * An id column as the keyset orders and compares it. SQL Server orders a uniqueidentifier by its last bytes first, not
+ * as its text: ordered and compared as that text, binary collation, so the database's order is the order of the text
+ * a pull keeps (an index on it is not used).
+ */
+const idExpr = (d: Dialect, c: Column, ref: string) =>
+  (d === "mssql" && /^uniqueidentifier$/i.test(c.type.trim()) ? `CONVERT(char(36), ${ref}) COLLATE Latin1_General_BIN2` : ref);
+
+/**
+ * SELECT `columns` (as text) FROM `from` [WHERE keyset] [ORDER BY watermark, ids…] [first `limit` rows]. Without a
  * keyset (a sample, a snapshot) there is no predicate and no order. `columns` must come from the source's catalog.
  */
-export function rowsSql(d: Dialect, o: { from: From; columns: Column[]; keyset?: { wm: Column; id: Column; cursor: Cursor }; limit?: number }): Built {
+export function rowsSql(d: Dialect, o: { from: From; columns: Column[]; keyset?: { wm: Column; ids: Column[]; cursor: Cursor }; limit?: number }): Built {
   const { params, p } = binder(d);
   const ref = (c: Column) => `t.${quoteIdent(d, c.name)}`;
   const cols = o.columns.map((c) => `${asText(d, c, ref(c))} AS ${quoteIdent(d, c.name)}`).join(", ");
   let sql = `SELECT ${cols} FROM ${fromSql(d, o.from, p)} t`;
   let ordered = false;
   if (o.keyset) {
-    const { wm, id, cursor } = o.keyset;
-    const fw = familyOf(d, wm.type), fi = familyOf(d, id.type);
-    if (!WM_FAMILIES.includes(fw)) throw specError(`The watermark column "${wm.name}" is ${wm.type}; it must be a date or a timestamp.`);
-    if (!ID_FAMILIES.includes(fi)) throw specError(`The id column "${id.name}" is ${id.type}; it must be a number or text.`);
-    const w = ref(wm), i = ref(id);
+    const { wm, ids, cursor } = o.keyset;
+    if (!WM_FAMILIES.includes(familyOf(d, wm.type))) throw specError(`The watermark column "${wm.name}" is ${wm.type}; it must be a date, a timestamp or an integer.`);
+    if (!ids.length) throw new Error("a keyset needs an id column");
+    for (const id of ids) {
+      if (!ID_FAMILIES.includes(familyOf(d, id.type))) throw specError(`The id column "${id.name}" is ${id.type}; it must be a number or text.`);
+      const [binary, hex] = BINARY[d];
+      if (binary.test(id.type.trim().toLowerCase())) {
+        throw specError(`The id column "${id.name}" is ${id.type}: its bytes sort in another order than the text a pull keeps of them. Pick another id column, or read it as text in your own SELECT (${hex(id.name)}).`);
+      }
+    }
+    const w = ref(wm), is = ids.map((c) => idExpr(d, c, ref(c)));
     if (!cursor) sql += ` WHERE ${w} IS NOT NULL`; // keyset can't place a NULL watermark: such rows are never pulled
     else if ("from" in cursor) sql += ` WHERE ${w} >= ${fromText(d, wm, p(cursor.from))}`;
-    else if (d === "postgres") sql += ` WHERE (${w}, ${i}) > (${p(cursor.after.wm)}, ${p(cursor.after.id)})`;
     else {
-      // no row comparison here: spelled out as a range on the watermark (>=) that an index on (watermark, id) seeks, and
-      // the tie on it broken by id; the bare OR form (w > a OR (w = a AND id > b)) may scan in MySQL, SQL Server, Oracle
-      const { wm: v, id: k } = cursor.after;
-      sql += ` WHERE ${w} >= ${fromText(d, wm, p(v))} AND (${w} > ${fromText(d, wm, p(v))} OR ${i} > ${fromText(d, id, p(k))})`;
+      const { wm: v, ids: ks } = cursor.after;
+      if (ks.length !== ids.length) throw new Error("the cursor has another number of ids than the keyset");
+      // an id compared as text (idExpr) takes the parameter as text; else the parameter is read back as the column's type
+      const val = (j: number) => (is[j] === ref(ids[j]!) ? fromText(d, ids[j]!, p(ks[j]!)) : p(ks[j]!));
+      if (d === "postgres") sql += ` WHERE (${w}, ${is.join(", ")}) > (${p(v)}, ${ks.map((_, j) => val(j)).join(", ")})`;
+      else {
+        // no row comparison here: spelled out as a range on the watermark (>=) that an index on (watermark, ids) seeks,
+        // and the tie on it broken by the ids in order (the first greater, or equal and the next greater, …); the bare
+        // OR form (w > a OR (w = a AND id > b)) may scan in MySQL, SQL Server, Oracle
+        const ge = fromText(d, wm, p(v)), gt = fromText(d, wm, p(v)); // bound first: parameters go in the order they appear
+        const ties = is.map((e, j) => {
+          const eq = is.slice(0, j).map((x, m) => `${x} = ${val(m)}`);
+          const after = `${e} > ${val(j)}`;
+          return eq.length ? `(${[...eq, after].join(" AND ")})` : after;
+        });
+        sql += ` WHERE ${w} >= ${ge} AND (${w} > ${gt} OR ${ties.join(" OR ")})`;
+      }
     }
-    sql += ` ORDER BY ${w}, ${i}`;
+    sql += ` ORDER BY ${w}, ${is.join(", ")}`;
     ordered = true;
   }
   if (o.limit !== undefined) {

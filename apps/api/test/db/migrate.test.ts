@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { SQL } from "bun";
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { migrate } from "../../src/db/migrate";
@@ -41,6 +41,34 @@ describe("migrate", () => {
     const named = [];
     for (const f of (await readdir(dir)).filter((x) => x.endsWith(".sql"))) if ((await Bun.file(join(dir, f)).text()).includes('"public".')) named.push(f);
     expect(named).toEqual([]);
+  });
+
+  it("0066 rewrites a stored watermark id_column to id_columns, leaves the rest of the spec and new specs alone", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "migrations-"));
+    try {
+      const src = join(import.meta.dir, "../../drizzle");
+      for (const f of FILES.filter((x) => x < "0066")) await copyFile(join(src, f), join(dir, f));
+      await migrate(db, dir);
+      const [space, source] = [Bun.randomUUIDv7(), Bun.randomUUIDv7()];
+      await db`insert into spaces (id, code, name) values (${space}, 'mig', 'Mig')`;
+      await db`insert into sources (id, space_id, code, name, kind) values (${source}, ${space}, 'mig', 'Mig', 'db_watermark')`;
+      const input = { kind: "db_watermark", table: "t", watermark: { column: "u", id_column: "id" }, lookback_seconds: 60, chunk: 10 };
+      const fresh = { ...input, watermark: { column: "u", id_columns: ["a", "b"] } };
+      const [old, now, none] = [Bun.randomUUIDv7(), Bun.randomUUIDv7(), Bun.randomUUIDv7()];
+      await db`insert into source_versions (id, space_id, source_id, version, status, spec, spec_hash) values
+        (${old}, ${space}, ${source}, 1, 'published', ${{ calendar: "id-default", input }}, 'h1'),
+        (${now}, ${space}, ${source}, 2, 'draft', ${{ calendar: "id-default", input: fresh }}, 'h2'),
+        (${none}, ${space}, ${source}, 3, 'retired', ${null}, null)`;
+      await copyFile(join(src, FILES.find((x) => x.startsWith("0066"))!), join(dir, FILES.find((x) => x.startsWith("0066"))!));
+      expect(await migrate(db, dir)).toEqual([FILES.find((x) => x.startsWith("0066"))!]);
+      const got = Object.fromEntries((await db`select id, spec, spec_hash from source_versions`).map((r: { id: string; spec: unknown; spec_hash: string }) => [r.id, r]));
+      expect(got[old].spec).toEqual({ calendar: "id-default", input: { ...input, watermark: { column: "u", id_columns: ["id"] } } });
+      expect(got[old].spec_hash).toBe("h1");
+      expect(got[now].spec).toEqual({ calendar: "id-default", input: fresh });
+      expect(got[none].spec).toBeNull();
+    } finally {
+      await rm(dir, { recursive: true });
+    }
   });
 
   it("a changed applied file throws", async () => {

@@ -48,7 +48,7 @@ export const gateSource = (n: 1 | 2): SourceSpec => {
       ext_ref: { field: ref }, business_date: { field: date }, amount_minor: { field: amount, unit: "minor" }, currency: { field: ccy }, account_ref: { field: acct }, attrs: {},
     },
     derive: {}, key_fields: [], mutable: false, calendar: "id-default",
-    input: { kind: "db_watermark", table: `core.source${n}`, watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 500 },
+    input: { kind: "db_watermark", table: `core.source${n}`, watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 500 },
   } as SourceSpec;
 };
 export const ccyEq = { op: "eq", field: "currency" };

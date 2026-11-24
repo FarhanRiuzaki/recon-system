@@ -1,7 +1,7 @@
 // The per-dialect SQL of the source connectors (connectors/dialect.ts): quoting, the text form of each column family,
 // the keyset predicate, the paging clause, the catalog query, the custom-SELECT check and the :business_date binding.
 import { describe, expect, it } from "bun:test";
-import { checkSelect, type Column, familyOf, minusSeconds, quoteIdent, rowsSql, tableName } from "../../connectors/dialect";
+import { checkSelect, type Column, familyOf, lookbackOf, minusIds, minusSeconds, quoteIdent, rowsSql, tableName } from "../../connectors/dialect";
 import { ConnectorError } from "../../connectors/errors";
 
 const col = (name: string, type: string): Column => ({ name, type, nullable: false });
@@ -65,7 +65,7 @@ describe("minusSeconds", () => {
 
 describe("rowsSql", () => {
   const cols = [col("ref", "text"), col("amount", "numeric(18,2)"), col("updated_at", "timestamp with time zone"), col("id", "bigint")];
-  const keyset = (wm: Column, id: Column) => ({ wm, id, cursor: { after: { wm: "2026-11-19T00:00:00.000001Z", id: "42" } } as const });
+  const keyset = (wm: Column, id: Column) => ({ wm, ids: [id], cursor: { after: { wm: "2026-11-19T00:00:00.000001Z", ids: ["42"] } } as const });
 
   it("PostgreSQL: text forms, a row comparison on the real columns (not the text aliases), LIMIT", () => {
     const b = rowsSql("postgres", { from: { table: "core.txn" }, columns: cols, keyset: keyset(cols[2]!, cols[3]!), limit: 10_000 });
@@ -97,8 +97,8 @@ describe("rowsSql", () => {
     const c = [col("fee", "money"), col("rate", "float"), col("small", "smallmoney"), col("r", "real")];
     expect(rowsSql("mssql", { from: { table: "t" }, columns: c, limit: 1 }).sql).toStartWith(
       "SELECT CONVERT(nvarchar(max), t.[fee], 2) AS [fee], CONVERT(nvarchar(max), t.[rate], 3) AS [rate], CONVERT(nvarchar(max), t.[small], 2) AS [small], CONVERT(nvarchar(max), t.[r], 3) AS [r]");
-    const after = { after: { wm: "2026-11-19T00:00:00.0033333", id: "1" } } as const;
-    const where = (wmType: string) => rowsSql("mssql", { from: { table: "t" }, columns: [col("w", wmType), col("i", "int")], keyset: { wm: col("w", wmType), id: col("i", "int"), cursor: after }, limit: 5 }).sql;
+    const after = { after: { wm: "2026-11-19T00:00:00.0033333", ids: ["1"] } } as const;
+    const where = (wmType: string) => rowsSql("mssql", { from: { table: "t" }, columns: [col("w", wmType), col("i", "int")], keyset: { wm: col("w", wmType), ids: [col("i", "int")], cursor: after }, limit: 5 }).sql;
     // a string parses into datetime/smalldatetime with at most 3 fraction digits: the 7-digit text goes through datetime2(7)
     expect(where("datetime")).toContain("t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS datetime) AND (t.[w] > CAST(CAST(@p1 AS datetime2(7)) AS datetime) OR t.[i] > ");
     expect(where("smalldatetime")).toContain("t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS smalldatetime) AND (t.[w] > CAST(CAST(@p1 AS datetime2(7)) AS smalldatetime) OR t.[i] > ");
@@ -106,7 +106,7 @@ describe("rowsSql", () => {
     expect(where("datetime2")).toContain("t.[w] >= CAST(@p0 AS datetime2) AND (t.[w] > CAST(@p1 AS datetime2) OR t.[i] > ");
     expect(where("datetimeoffset(7)")).toContain("t.[w] >= CAST(@p0 AS datetimeoffset(7)) AND (t.[w] > CAST(@p1 AS datetimeoffset(7)) OR t.[i] > ");
     // a lookback start from a stored cursor takes the same path
-    expect(rowsSql("mssql", { from: { table: "t" }, columns: [col("w", "datetime"), col("i", "int")], keyset: { wm: col("w", "datetime"), id: col("i", "int"), cursor: { from: "2026-11-18T23:59:00.0033333" } }, limit: 5 }).sql)
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: [col("w", "datetime"), col("i", "int")], keyset: { wm: col("w", "datetime"), ids: [col("i", "int")], cursor: { from: "2026-11-18T23:59:00.0033333" } }, limit: 5 }).sql)
       .toContain("WHERE t.[w] >= CAST(CAST(@p0 AS datetime2(7)) AS datetime) ORDER BY");
   });
 
@@ -120,11 +120,11 @@ describe("rowsSql", () => {
   });
 
   it("a lookback start is `>=` on the watermark only; a sample has no predicate and no order", () => {
-    const from = rowsSql("postgres", { from: { table: "txn" }, columns: cols, keyset: { wm: cols[2]!, id: cols[3]!, cursor: { from: "2026-11-18T23:59:00Z" } }, limit: 5 });
+    const from = rowsSql("postgres", { from: { table: "txn" }, columns: cols, keyset: { wm: cols[2]!, ids: [cols[3]!], cursor: { from: "2026-11-18T23:59:00Z" } }, limit: 5 });
     expect(from.sql).toContain('WHERE t."updated_at" >= $1 ORDER BY t."updated_at", t."id" LIMIT 5');
     expect(rowsSql("postgres", { from: { table: "txn" }, columns: cols.slice(0, 1), limit: 200 }).sql).toBe('SELECT t."ref"::text AS "ref" FROM "txn" t LIMIT 200');
     expect(rowsSql("mssql", { from: { table: "txn" }, columns: [col("ref", "varchar")], limit: 200 }).sql).toEndWith("ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 200 ROWS ONLY");
-    expect(rowsSql("postgres", { from: { table: "txn" }, columns: cols, keyset: { wm: cols[2]!, id: cols[3]!, cursor: null }, limit: 5 }).sql)
+    expect(rowsSql("postgres", { from: { table: "txn" }, columns: cols, keyset: { wm: cols[2]!, ids: [cols[3]!], cursor: null }, limit: 5 }).sql)
       .toEndWith('FROM "txn" t WHERE t."updated_at" IS NOT NULL ORDER BY t."updated_at", t."id" LIMIT 5'); // a NULL watermark has no place in the keyset
   });
 
@@ -140,9 +140,109 @@ describe("rowsSql", () => {
     expect(err(() => rowsSql("postgres", { from: { query: "select 1; select 2" }, columns: [col("a", "int")] })).kind).toBe("spec");
   });
 
-  it("refuses a watermark that is not a date or time, and an id that is not a number or text", () => {
-    const e = err(() => rowsSql("postgres", { from: { table: "t" }, columns: cols, keyset: { wm: cols[0]!, id: cols[3]!, cursor: null }, limit: 5 }));
-    expect([e.kind, e.message]).toEqual(["spec", 'The watermark column "ref" is text; it must be a date or a timestamp.']);
-    expect(err(() => rowsSql("postgres", { from: { table: "t" }, columns: cols, keyset: { wm: cols[2]!, id: col("flag", "boolean"), cursor: null }, limit: 5 })).kind).toBe("spec");
+  it("refuses a watermark that is not a date, time or integer, and an id that is not a number or text", () => {
+    const e = err(() => rowsSql("postgres", { from: { table: "t" }, columns: cols, keyset: { wm: cols[0]!, ids: [cols[3]!], cursor: null }, limit: 5 }));
+    expect([e.kind, e.message]).toEqual(["spec", 'The watermark column "ref" is text; it must be a date, a timestamp or an integer.']);
+    expect(err(() => rowsSql("postgres", { from: { table: "t" }, columns: cols, keyset: { wm: cols[2]!, ids: [col("flag", "boolean")], cursor: null }, limit: 5 })).kind).toBe("spec");
+  });
+});
+
+type D = "postgres" | "mysql" | "mssql" | "oracle";
+
+describe("composite id columns (owner, 24 Nov: rows without one unique column)", () => {
+  const after = { after: { wm: "2026-11-19", ids: ["B01", "7"] } } as const;
+  const TYPES: Record<D, string[]> = { postgres: ["date", "text", "bigint"], mysql: ["date", "varchar(10)", "bigint"], mssql: ["date", "varchar(10)", "bigint"], oracle: ["TIMESTAMP(6)", "VARCHAR2(10)", "NUMBER(19,0)"] };
+  const sql = (d: D) => {
+    const k = [col("d", TYPES[d][0]!), col("branch", TYPES[d][1]!), col("seq", TYPES[d][2]!)];
+    return rowsSql(d, { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!, k[2]!], cursor: after }, limit: 5 });
+  };
+
+  it("PostgreSQL: one row comparison over the watermark and every id, ordered by all of them", () => {
+    const b = sql("postgres");
+    expect(b.sql).toEndWith('WHERE (t."d", t."branch", t."seq") > ($1, $2, $3) ORDER BY t."d", t."branch", t."seq" LIMIT 5');
+    expect(b.params).toEqual(["2026-11-19", "B01", "7"]);
+  });
+
+  it("MySQL, SQL Server, Oracle: a range on the watermark, then the ids spelled out in order (no row values), one parameter per use", () => {
+    const my = sql("mysql");
+    expect(my.sql).toEndWith("WHERE t.`d` >= STR_TO_DATE(?, '%Y-%m-%d') AND (t.`d` > STR_TO_DATE(?, '%Y-%m-%d') OR t.`branch` > ? OR (t.`branch` = ? AND t.`seq` > CAST(? AS DECIMAL(65,0)))) "
+      + "ORDER BY t.`d`, t.`branch`, t.`seq` LIMIT 5");
+    expect(my.params).toEqual(["2026-11-19", "2026-11-19", "B01", "B01", "7"]);
+    expect(sql("mssql").sql).toContain("WHERE t.[d] >= CAST(@p0 AS date) AND (t.[d] > CAST(@p1 AS date) OR t.[branch] > @p2 OR (t.[branch] = @p3 AND t.[seq] > CAST(@p4 AS bigint))) ORDER BY t.[d], t.[branch], t.[seq] OFFSET");
+    expect(sql("oracle").sql).toContain(`OR t."branch" > :p2 OR (t."branch" = :p3 AND t."seq" > TO_NUMBER(:p4))) ORDER BY t."d", t."branch", t."seq" FETCH`);
+  });
+
+  it("three ids: each later id breaks the tie of all before it", () => {
+    const k = [col("w", "datetime2"), col("a", "int"), col("b", "int"), col("c", "int")];
+    const b = rowsSql("mssql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: k.slice(1), cursor: { after: { wm: "2026-11-19T00:00:00.0000000", ids: ["1", "2", "3"] } } }, limit: 5 });
+    expect(b.sql).toContain("OR t.[a] > CAST(@p2 AS bigint) OR (t.[a] = CAST(@p3 AS bigint) AND t.[b] > CAST(@p4 AS bigint)) OR (t.[a] = CAST(@p5 AS bigint) AND t.[b] = CAST(@p6 AS bigint) AND t.[c] > CAST(@p7 AS bigint)))");
+    expect(b.sql).toContain("ORDER BY t.[w], t.[a], t.[b], t.[c] OFFSET");
+    expect(b.params).toEqual(["2026-11-19T00:00:00.0000000", "2026-11-19T00:00:00.0000000", "1", "1", "2", "1", "2", "3"]);
+  });
+
+  it("a cursor with another number of ids than the keyset is refused (never a predicate over the wrong columns)", () => {
+    const k = [col("d", "date"), col("branch", "text")];
+    expect(() => rowsSql("postgres", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: after }, limit: 5 })).toThrow();
+  });
+});
+
+describe("an integer watermark (a sequence)", () => {
+  it("orders and compares it as a number on every dialect", () => {
+    const k = [col("seq", "bigint"), col("id", "bigint")];
+    const cursor = { after: { wm: "9007199254740993", ids: ["1"] } } as const;
+    expect(rowsSql("postgres", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor }, limit: 5 }).sql).toEndWith('WHERE (t."seq", t."id") > ($1, $2) ORDER BY t."seq", t."id" LIMIT 5');
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor }, limit: 5 }).sql).toContain("WHERE t.[seq] >= CAST(@p0 AS bigint) AND (t.[seq] > CAST(@p1 AS bigint) OR t.[id] > CAST(@p2 AS bigint))");
+    const o = [col("SEQ", "NUMBER(19,0)"), col("ID", "NUMBER(19,0)")];
+    expect(rowsSql("oracle", { from: { table: "t" }, columns: o, keyset: { wm: o[0]!, ids: [o[1]!], cursor: { from: "9007199254739993" } }, limit: 5 }).sql).toContain(`WHERE t."SEQ" >= TO_NUMBER(:p0) ORDER BY t."SEQ", t."ID"`);
+  });
+
+  it("minusIds steps a sequence back exactly, past 2^53 (no JS float)", () => {
+    expect(minusIds("9007199254740993", 1000)).toBe("9007199254739993");
+    expect(minusIds("12345678901234567890123", 1)).toBe("12345678901234567890122");
+    expect(minusIds("5", 1000)).toBe("-995");
+    expect(minusIds("42", 0)).toBe("42");
+    expect(err(() => minusIds("1.5", 1)).kind).toBe("spec");
+  });
+});
+
+describe("lookbackOf: how far back a pull starts, by the watermark column's type", () => {
+  it("defaults: a timestamp none, a date one day, an integer 1,000 ids", () => {
+    expect(lookbackOf("postgres", col("w", "timestamp with time zone"), {})).toEqual({ by: "seconds", n: 0 });
+    expect(lookbackOf("postgres", col("w", "date"), {})).toEqual({ by: "seconds", n: 86_400 });
+    expect(lookbackOf("postgres", col("w", "bigint"), {})).toEqual({ by: "ids", n: 1000 });
+    expect(lookbackOf("oracle", col("w", "DATE"), {})).toEqual({ by: "seconds", n: 0 }); // Oracle's DATE holds a time of day
+  });
+  it("a date-only watermark looks back at least a day; seconds only for a date or time, ids only for an integer", () => {
+    expect(lookbackOf("postgres", col("w", "date"), { seconds: 86_400 })).toEqual({ by: "seconds", n: 86_400 });
+    expect(lookbackOf("postgres", col("w", "date"), { seconds: 3600 })).toEqual({
+      problem: 'The watermark column "w" holds a date only, so the look back must be at least 1 day (86,400 seconds): a row added later on the same date with a smaller id would be skipped. Rows read again are stored once.',
+      field: "lookback_seconds",
+    });
+    expect(lookbackOf("mssql", col("w", "int"), { seconds: 60 })).toEqual({ problem: 'The watermark column "w" is an integer (a sequence), so it looks back a number of ids, not seconds.', field: "lookback_seconds" });
+    expect(lookbackOf("mssql", col("w", "int"), { ids: 0 })).toEqual({ by: "ids", n: 0 });
+    expect(lookbackOf("postgres", col("w", "timestamp"), { ids: 10 })).toEqual({ problem: 'The watermark column "w" is a date or time, so it looks back in seconds, not ids.', field: "lookback_ids" });
+  });
+});
+
+describe("ids whose database order is not their text order", () => {
+  it("SQL Server uniqueidentifier: ordered and compared as its 36-character text, binary collation", () => {
+    const k = [col("w", "datetime2"), col("g", "uniqueidentifier")];
+    const b = rowsSql("mssql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19T00:00:00.0000000", ids: ["6F9619FF-8B86-D011-B42D-00C04FC964FF"] } } }, limit: 5 });
+    const g = "CONVERT(char(36), t.[g]) COLLATE Latin1_General_BIN2";
+    expect(b.sql).toContain(`OR ${g} > @p2) ORDER BY t.[w], ${g} OFFSET`);
+    const v = col("v", "varchar(36)"); // a plain text id is left as it is
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: [k[0]!, v], keyset: { wm: k[0]!, ids: [v], cursor: null }, limit: 5 }).sql).toContain("ORDER BY t.[w], t.[v] OFFSET");
+  });
+
+  it("a binary id (Oracle RAW, MySQL binary(16), SQL Server varbinary, PostgreSQL bytea) is refused with how to read it as text", () => {
+    const cases: [D, string, string][] = [
+      ["oracle", "RAW(16)", "RAWTOHEX(g) AS g"], ["mysql", "binary(16)", "HEX(g) AS g"], ["mssql", "varbinary(16)", "CONVERT(char(32), g, 2) AS g"], ["postgres", "bytea", "encode(g, 'hex') AS g"],
+    ];
+    for (const [d, type, hint] of cases) {
+      const w = col("w", d === "oracle" ? "TIMESTAMP(6)" : "date");
+      const e = err(() => rowsSql(d, { from: { table: "t" }, columns: [w, col("g", type)], keyset: { wm: w, ids: [col("g", type)], cursor: null }, limit: 5 }));
+      expect([d, e.kind, e.message]).toEqual([d, "spec",
+        `The id column "g" is ${type}: its bytes sort in another order than the text a pull keeps of them. Pick another id column, or read it as text in your own SELECT (${hint}).`]);
+    }
   });
 });

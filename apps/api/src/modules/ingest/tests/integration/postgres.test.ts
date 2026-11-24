@@ -40,8 +40,8 @@ afterAll(async () => {
   await src.close();
 });
 
-const tiesPull = (c: Connector, after: { wm: string; id: string } | null, chunk = 5, lookbackSeconds = 0) =>
-  c.pullWatermark({ from: { table: "public.ties" }, columns: ["ref", "amount", "note"], watermark: { column: "updated_at", id_column: "id" }, after, lookbackSeconds, chunk });
+const tiesPull = (c: Connector, after: { wm: string; ids: string[] } | null, chunk = 5, lookbackSeconds = 0) =>
+  c.pullWatermark({ from: { table: "public.ties" }, columns: ["ref", "amount", "note"], watermark: { column: "updated_at", id_columns: ["id"] }, after, lookback: { seconds: lookbackSeconds }, chunk });
 
 describe("test()", () => {
   it("passes on a reachable database", async () => {
@@ -138,36 +138,88 @@ describe("pullWatermark()", () => {
   it("resumes after a cursor in the middle of a tie: exactly the rows after it", async () => {
     const rows = (await all(tiesPull(pg(), null))).flat();
     const at = rows[32]!; // R33: the 5th of the 7 rows tied at its timestamp
-    const rest = (await all(tiesPull(pg(), { wm: at.updated_at!, id: at.id! }, 4))).flat();
+    const rest = (await all(tiesPull(pg(), { wm: at.updated_at!, ids: [at.id!] }, 4))).flat();
     expect(rest.map((r) => r.ref)).toEqual(Array.from({ length: 37 }, (_, i) => `R${i + 34}`));
   });
 
   it("a microsecond watermark: rows 1 µs later come, the cursor row does not; a millisecond one would pull its ties again", async () => {
     await src.unsafe(`drop table if exists micro; create table micro (id int primary key, updated_at timestamptz not null);
       insert into micro values (1, '2026-11-19 00:00:00.000001+00'), (2, '2026-11-19 00:00:00.000002+00')`);
-    const pull = (after: { wm: string; id: string } | null) =>
-      all(pg().pullWatermark({ from: { table: "micro" }, columns: ["id"], watermark: { column: "updated_at", id_column: "id" }, after, lookbackSeconds: 0, chunk: 10 }));
+    const pull = (after: { wm: string; ids: string[] } | null) =>
+      all(pg().pullWatermark({ from: { table: "micro" }, columns: ["id"], watermark: { column: "updated_at", id_columns: ["id"] }, after, lookback: { seconds: 0 }, chunk: 10 }));
     const first = (await pull(null)).flat();
     expect(first.map((r) => r.updated_at)).toEqual(["2026-11-19T00:00:00.000001Z", "2026-11-19T00:00:00.000002Z"]);
-    expect((await pull({ wm: first[0]!.updated_at!, id: "99" })).flat().map((r) => r.id)).toEqual(["2"]);
+    expect((await pull({ wm: first[0]!.updated_at!, ids: ["99"] })).flat().map((r) => r.id)).toEqual(["2"]);
     const truncated = new Date(first[0]!.updated_at!).toISOString(); // what toISOString() would carry: 00:00:00.000Z
-    expect((await pull({ wm: truncated, id: "99" })).flat().map((r) => r.id)).toEqual(["1", "2"]);
+    expect((await pull({ wm: truncated, ids: ["99"] })).flat().map((r) => r.id)).toEqual(["1", "2"]);
   });
 
   it("lookback: the first page starts `lookback_seconds` before the watermark, then keyset from there", async () => {
     await src.unsafe(`drop table if exists late; create table late (id int primary key, updated_at timestamptz not null);
       insert into late values (1, '2026-11-19 09:58:00+00'), (2, '2026-11-19 09:59:30+00'), (3, '2026-11-19 10:00:00+00'), (4, '2026-11-19 10:00:00+00'), (5, '2026-11-19 10:00:10+00')`);
     const pull = (lookbackSeconds: number) =>
-      all(pg().pullWatermark({ from: { table: "late" }, columns: ["id"], watermark: { column: "updated_at", id_column: "id" }, after: { wm: "2026-11-19T10:00:00.000000Z", id: "3" }, lookbackSeconds, chunk: 2 }));
+      all(pg().pullWatermark({ from: { table: "late" }, columns: ["id"], watermark: { column: "updated_at", id_columns: ["id"] }, after: { wm: "2026-11-19T10:00:00.000000Z", ids: ["3"] }, lookback: { seconds: lookbackSeconds }, chunk: 2 }));
     expect((await pull(0)).flat().map((r) => r.id)).toEqual(["4", "5"]);
     expect((await pull(60)).flat().map((r) => r.id)).toEqual(["2", "3", "4", "5"]);
   });
 
+  it("composite id: no column is unique alone, (branch, seq) together are; every row once across 3-row pages and a resume", async () => {
+    // 3 timestamps × 6 rows; branch alone and seq alone repeat, (branch, seq) is unique per timestamp
+    await src.unsafe(`drop table if exists host; create table host (at timestamp not null, branch text not null, seq int not null, amt int not null);
+      insert into host select timestamp '2026-11-19 08:00' + (g / 6) * interval '1 second', 'B' || (g % 2), (g / 2) % 3, g from generate_series(0, 17) g`);
+    const pull = (after: { wm: string; ids: string[] | null } | null) =>
+      all(pg().pullWatermark({ from: { table: "host" }, columns: ["amt"], watermark: { column: "at", id_columns: ["branch", "seq"] }, after, lookback: { seconds: 0 }, chunk: 4 }));
+    const rows = (await pull(null)).flat();
+    expect(rows.map((r) => Number(r.amt)).sort((a, b) => a - b)).toEqual(Array.from({ length: 18 }, (_, i) => i));
+    const key = (r: Row) => `${r.at}/${r.branch}/${r.seq}`;
+    expect(rows.map(key)).toEqual(rows.map(key).sort());
+    // resumed after the 8th row, in the middle of a tie: exactly the 10 after it
+    const at = rows[7]!;
+    expect((await pull({ wm: at.at!, ids: [at.branch!, at.seq!] })).flat().map((r) => r.amt)).toEqual(rows.slice(8).map((r) => r.amt));
+    // ids that no longer fit the id columns (another number of them) resume at the watermark itself
+    expect((await pull({ wm: at.at!, ids: null })).flat().map((r) => r.amt)).toEqual(rows.filter((r) => r.at === at.at || r.at! > at.at!).map((r) => r.amt));
+  });
+
+  it("a date-only watermark: a row added later on the cursor's date with a smaller id comes in the next pull", async () => {
+    await src.unsafe(`drop table if exists daily; create table daily (id int primary key, d date not null);
+      insert into daily values (1, '2026-11-19'), (5, '2026-11-20')`);
+    const pull = (after: { wm: string; ids: string[] } | null, seconds?: number) =>
+      all(pg().pullWatermark({ from: { table: "daily" }, columns: ["id"], watermark: { column: "d", id_columns: ["id"] }, after, lookback: seconds === undefined ? {} : { seconds }, chunk: 10 }));
+    const first = (await pull(null)).flat();
+    const last = first[first.length - 1]!;
+    await src.unsafe("insert into daily values (3, '2026-11-20')");
+    expect((await pull({ wm: last.d!, ids: [last.id!] })).flat().map((r) => r.id)).toEqual(["1", "3", "5"]); // default: one day back
+    const e = await fails(all(pg().pullWatermark({ from: { table: "daily" }, columns: ["id"], watermark: { column: "d", id_columns: ["id"] }, after: { wm: last.d!, ids: [last.id!] }, lookback: { seconds: 0 }, chunk: 10 })));
+    expect([e.kind, e.message]).toEqual(["spec", 'The watermark column "d" holds a date only, so the look back must be at least 1 day (86,400 seconds): a row added later on the same date with a smaller id would be skipped. Rows read again are stored once.']);
+  });
+
+  it("an integer watermark past 2^53: keyset exact, the look back a number of ids, never seconds", async () => {
+    await src.unsafe(`drop table if exists seqd; create table seqd (seq bigint primary key, ref text not null);
+      insert into seqd select 9007199254740990 + g, 'S' || g from generate_series(1, 6) g`);
+    const pull = (after: { wm: string; ids: string[] } | null, lookback: { seconds?: number; ids?: number }) =>
+      all(pg().pullWatermark({ from: { table: "seqd" }, columns: ["ref"], watermark: { column: "seq", id_columns: ["seq"] }, after, lookback, chunk: 2 }));
+    const rows = (await pull(null, {})).flat();
+    expect(rows.map((r) => r.seq)).toEqual(["9007199254740991", "9007199254740992", "9007199254740993", "9007199254740994", "9007199254740995", "9007199254740996"]);
+    expect((await pull({ wm: "9007199254740993", ids: ["9007199254740993"] }, { ids: 0 })).flat().map((r) => r.ref)).toEqual(["S4", "S5", "S6"]);
+    expect((await pull({ wm: "9007199254740993", ids: ["9007199254740993"] }, { ids: 2 })).flat().map((r) => r.ref)).toEqual(["S1", "S2", "S3", "S4", "S5", "S6"]);
+    expect((await fails(pull({ wm: "9007199254740993", ids: ["9007199254740993"] }, { seconds: 60 }))).message).toContain("looks back a number of ids");
+  });
+
+  it("a uuid id orders as its text on PostgreSQL; a bytea id is refused", async () => {
+    await src.unsafe(`drop table if exists uids; create table uids (d date not null, g uuid not null, b bytea not null);
+      insert into uids select '2026-11-19', md5(g::text)::uuid, decode(md5(g::text), 'hex') from generate_series(1, 9) g`);
+    const rows = (await all(pg().pullWatermark({ from: { table: "uids" }, columns: [], watermark: { column: "d", id_columns: ["g"] }, after: null, lookback: {}, chunk: 4 }))).flat();
+    expect(rows.map((r) => r.g)).toEqual(rows.map((r) => r.g!).sort());
+    expect(rows).toHaveLength(9);
+    const e = await fails(all(pg().pullWatermark({ from: { table: "uids" }, columns: [], watermark: { column: "d", id_columns: ["b"] }, after: null, lookback: {}, chunk: 4 })));
+    expect(e.message).toContain("encode(b, 'hex') AS b");
+  });
+
   it("a custom SELECT is pulled as a subquery; a column missing from the source is a spec error", async () => {
     const q = "select id, updated_at, ref from ties where id % 2 = 0";
-    const rows = (await all(pg().pullWatermark({ from: { query: q }, columns: ["ref"], watermark: { column: "updated_at", id_column: "id" }, after: null, lookbackSeconds: 0, chunk: 8 }))).flat();
+    const rows = (await all(pg().pullWatermark({ from: { query: q }, columns: ["ref"], watermark: { column: "updated_at", id_columns: ["id"] }, after: null, lookback: { seconds: 0 }, chunk: 8 }))).flat();
     expect(rows.map((r) => r.ref)).toEqual(Array.from({ length: 35 }, (_, i) => `R${(i + 1) * 2}`));
-    const e = await fails(all(pg().pullWatermark({ from: { table: "ties" }, columns: ["ref", "gone"], watermark: { column: "updated_at", id_column: "id" }, after: null, lookbackSeconds: 0, chunk: 8 })));
+    const e = await fails(all(pg().pullWatermark({ from: { table: "ties" }, columns: ["ref", "gone"], watermark: { column: "updated_at", id_columns: ["id"] }, after: null, lookback: { seconds: 0 }, chunk: 8 })));
     expect([e.kind, e.message]).toEqual(["spec", 'Column "gone" is not in table ties.']);
   });
 
@@ -185,7 +237,7 @@ describe("pullWatermark()", () => {
     let peak = rss0, count = 0, idSum = 0;
     const heap: number[] = []; // live heap after a full GC, every 100,000 rows: what the pull holds on to
     const t0 = performance.now();
-    for await (const page of c.pullWatermark({ from: { table: "big" }, columns: ["ref", "amount", "account"], watermark: { column: "updated_at", id_column: "id" }, after: null, lookbackSeconds: 0, chunk: 10_000 })) {
+    for await (const page of c.pullWatermark({ from: { table: "big" }, columns: ["ref", "amount", "account"], watermark: { column: "updated_at", id_columns: ["id"] }, after: null, lookback: { seconds: 0 }, chunk: 10_000 })) {
       count += page.length;
       for (const r of page) idSum += Number(r.id);
       peak = Math.max(peak, process.memoryUsage().rss);

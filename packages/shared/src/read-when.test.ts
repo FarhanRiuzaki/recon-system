@@ -23,7 +23,7 @@ describe("the spec takes When to read on a pulled or folder source", () => {
     const { SourceSpec } = await import("./contracts/sources");
     const spec = (when: unknown) => ({
       fields: [{ name: "d", type: "date", nullable: false, trim: true }], mapping: { business_date: { field: "d" }, attrs: {} }, key_fields: [], mutable: false, calendar: "id-default",
-      input: { kind: "db_watermark", table: "t", watermark: { column: "u", id_column: "id" }, lookback_seconds: 0, chunk: 100, when },
+      input: { kind: "db_watermark", table: "t", watermark: { column: "u", id_columns: ["id"] }, lookback_seconds: 0, chunk: 100, when },
     });
     expect(SourceSpec.safeParse(spec({ every_minutes: 15, hours: { from: 22, to: 6 } })).success).toBe(true);
     expect(SourceSpec.safeParse(spec({ every_minutes: 7 })).success).toBe(false);

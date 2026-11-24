@@ -22,7 +22,7 @@ const sp = `/v1/spaces/${SPACE}`;
 
 const connection = { engine: "postgres", host: "postgres", port: 5432, database: "recon_live", user: "recon_live_ro", password: env("LIVE_RO_PASSWORD"), options: { tls: false } };
 const f = (name: string, type: string, extra: object = {}) => ({ name, type, nullable: false, trim: true, ...extra });
-const pull = (table: string) => ({ kind: "db_watermark", table, watermark: { column: "updated_at", id_column: "id" }, lookback_seconds: 0, chunk: 500, when: { every_minutes: 1 } });
+const pull = (table: string) => ({ kind: "db_watermark", table, watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 0, chunk: 500, when: { every_minutes: 1 } });
 
 const SOURCES = [
   {

@@ -78,11 +78,11 @@ for (const [engine, env, port] of ENGINES) {
         const cols = await c.introspect({ table: t.table });
         expect(cols.map((x) => x.name.toLowerCase())).toEqual(["id", "updated_at", "ref", "note"]);
         const ref = engine === "oracle" ? "REF" : "ref", note = engine === "oracle" ? "NOTE" : "note";
-        const rows = await all(c.pullWatermark({ from: { table: t.table }, columns: [ref, note], watermark: { column: t.wm, id_column: t.id }, after: null, lookbackSeconds: 0, chunk: 5 }));
+        const rows = await all(c.pullWatermark({ from: { table: t.table }, columns: [ref, note], watermark: { column: t.wm, id_columns: [t.id] }, after: null, lookback: { seconds: 0 }, chunk: 5 }));
         expect(rows.map((r) => r[ref])).toEqual(Array.from({ length: 70 }, (_, i) => `R${i + 1}`));
         expect(rows[2]![note]).toBeNull();
         const at = rows[32]!;
-        const rest = await all(c.pullWatermark({ from: { table: t.table }, columns: [ref], watermark: { column: t.wm, id_column: t.id }, after: { wm: at[t.wm]!, id: at[t.id]! }, lookbackSeconds: 0, chunk: 4 }));
+        const rest = await all(c.pullWatermark({ from: { table: t.table }, columns: [ref], watermark: { column: t.wm, id_columns: [t.id] }, after: { wm: at[t.wm]!, ids: [at[t.id]!] }, lookback: { seconds: 0 }, chunk: 4 }));
         expect(rest.map((r) => r[ref])).toEqual(Array.from({ length: 37 }, (_, i) => `R${i + 34}`));
         const sample = await c.sample({ table: t.table }, [ref], 10);
         expect(sample).toHaveLength(10);

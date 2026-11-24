@@ -35,8 +35,28 @@ export function endOfDay(date: string, tz = DEFAULT_TIMEZONE): Date {
  * date-time (a sequence number): such a source has no time it is complete to.
  */
 export function completeThroughOf(watermark: string, lookbackSeconds: number, field?: FieldSpec): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}/.test(watermark)) return null; // the text form of a date or time (dialect.ts asText)
   const r = coerce(watermark, { name: "watermark", type: "datetime", nullable: false, trim: true, format: { timezone: field?.format?.timezone ?? DEFAULT_TIMEZONE } });
   return r.ok ? new Date(Date.parse(r.value as string) - lookbackSeconds * 1000) : null;
+}
+
+/**
+ * The last row's ids as source_cursors.watermark_id keeps them: one id as its plain text (as before composite ids),
+ * several as a JSON array of their texts.
+ */
+export const idText = (ids: string[]): string => (ids.length === 1 ? ids[0]! : JSON.stringify(ids));
+
+/**
+ * The stored ids for `n` id columns, or null when they don't fit (the number of id columns changed with a new version:
+ * the pull then resumes at the watermark, and dedup drops what comes again). One id column: the text as it is, unless
+ * it is a JSON array of several ids.
+ */
+export function cursorIds(text: string, n: number): string[] | null {
+  let parsed: unknown = null;
+  if (text.startsWith("[")) try { parsed = JSON.parse(text); } catch { /* a plain text id */ }
+  const list = Array.isArray(parsed) && parsed.every((x) => typeof x === "string") ? (parsed as string[]) : null;
+  if (n === 1) return list && list.length > 1 ? null : [text];
+  return list && list.length === n ? list : null;
 }
 
 export type Baseline = { name: string; type: string }[];

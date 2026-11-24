@@ -41,7 +41,7 @@ import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
-import { type Baseline, completeThroughOf, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, nextRunOf, previousBusinessDay, todayIn } from "./rules";
+import { type Baseline, completeThroughOf, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
 import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
@@ -135,7 +135,7 @@ type Origin = {
   /**
    * A file or snapshot (owner, 21 Nov: rows with no unique column): how often each row hash came so far, so the 2nd
    * equal row is stored as its own record (hash of hash + "#2") instead of dropped as already stored. A pull has none:
-   * its lookback reads rows again on purpose, and the watermark's id column tells its rows apart.
+   * its lookback reads rows again on purpose, and the watermark's id columns tell its rows apart.
    */
   seen?: Map<string, number>;
 };
@@ -277,24 +277,24 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
   let c: Connector | null = null;
   try {
     c = ingestHooks.connect(l.conn);
-    const drift = await checkColumns(s, on, l, c, from, [wm.column, wm.id_column]);
+    const drift = await checkColumns(s, on, l, c, from, [wm.column, ...wm.id_columns]);
     if (drift) {
       await inScope(s, on, (tx) => pause(tx, s, drift.message, drift.columns));
       outcome = { status: "paused", error: drift.message };
       return "paused";
     }
     const wmField = l.spec.fields.find((f) => f.name === wm.column);
-    const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, id: l.cursor.watermarkId } : null;
+    const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns.length) } : null;
     const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
     let n = 0;
-    for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookbackSeconds: input.lookback_seconds, chunk: input.chunk })) {
+    for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookback: { seconds: input.lookback_seconds, ids: input.lookback_ids }, chunk: input.chunk })) {
       const last = page[page.length - 1]!;
-      const mark = { watermark: last[wm.column]!, watermarkId: last[wm.id_column]! };
+      const mark = { watermark: last[wm.column]!, watermarkId: idText(wm.id_columns.map((c) => last[c]!)) };
       const lines = page.map((raw) => ({ line: ++n, ok: true as const, raw }));
       await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);
         await writeLines(tx, s, l, origin, lines, counts);
-        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, input.lookback_seconds, wmField));
+        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, input.lookback_seconds ?? 0, wmField));
       }));
       reached = mark.watermark;
     }
