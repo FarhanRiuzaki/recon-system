@@ -78,7 +78,7 @@ export const reconRuns = pgTable("recon_runs", {
 ]);
 
 /**
- * A record of a side as one config sees it (spec §8): open → matched | suggested | break, then closed. `version` grows
+ * A record of a side as one config sees it (spec §8): open → matched | suggested | break (a one-way recon's side B: not_required, DEC-055), then closed. `version` grows
  * with every change of status; a change is `… where status = 'open' and version = $v` (A1), so an item an operator
  * moved meanwhile is skipped. `sim_run_id` = the simulation it belongs to (null = live).
  */
@@ -127,6 +127,8 @@ export const reconItems = pgTable("recon_items", {
   index("recon_items_config_date").on(t.spaceId, t.configId, t.businessDate),
   // the breaks for want of a counterpart in the carry-over window, read by every pass beside the open items (DEC-047)
   index("recon_items_late").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'break' and ${t.lateMatch}`),
+  // a one-way recon's not-required side-B items, read by every pass with carry over beside the open items (DEC-055)
+  index("recon_items_not_required").on(t.spaceId, t.configId, t.simRunId, t.side, t.businessDate).where(sql`${t.status} = 'not_required'`),
   // the open breaks of a config (Today, Live day: a count per screen read, never a scan of its days)
   index("recon_items_breaks").on(t.spaceId, t.configId).where(sql`${t.status} = 'break' and ${t.simRunId} is null`),
   // the queue of a space's breaks (Plan 5): by assignee, Unassigned first-class
@@ -138,7 +140,7 @@ export const reconItems = pgTable("recon_items", {
   foreignKey({ name: "recon_items_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   foreignKey({ name: "recon_items_sim_run_fkey", columns: [t.spaceId, t.simRunId], foreignColumns: [reconRuns.spaceId, reconRuns.id] }).onDelete("cascade"),
   check("recon_items_side_check", sql`${t.side} in ('a', 'b')`),
-  check("recon_items_status_check", sql`${t.status} in ('open', 'matched', 'suggested', 'break', 'closed')`),
+  check("recon_items_status_check", sql`${t.status} in ('open', 'matched', 'suggested', 'break', 'closed', 'not_required')`),
 ]);
 
 /**

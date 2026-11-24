@@ -27,7 +27,7 @@ const side = (key: "a" | "b", negate = false): SideRef => ({
   ]),
 });
 const ctx: StepCtx = {
-  spaceId: "s", configId: "c", versionId: "v", runId: "r", simRunId: null, sides: [side("a"), side("b")], lo: "2026-11-01", hi: "2026-11-02", current: sql`true`, late: false,
+  spaceId: "s", configId: "c", versionId: "v", runId: "r", simRunId: null, sides: [side("a"), side("b")], lo: "2026-11-01", hi: "2026-11-02", current: sql`true`, late: false, oneWay: false,
 };
 const pass = (o: Partial<PassSpec> & { predicates: Predicate[] }): PassSpec => ({ no: 2, name: "P", cardinality: "1:1", blocking: [], accept: "suggest", on_ambiguous: "suggest", ...o });
 
@@ -129,7 +129,9 @@ describe("statements", () => {
     expect(text(acceptSql({ ...ctx, simRunId: "sim" }, p2))).toContain("and i.sim_run_id = $");
     // carry over > 0: the breaks a late counterpart may close join the pool (Task 6)
     const late = acceptSql({ ...ctx, late: true }, p2);
-    expect(text(late)).toContain("and (i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = $");
+    expect(text(late)).toContain("and (i.status = 'open' or (((i.status = 'break' and i.late_match and i.break_reason = $");
+    // and a one-way recon's not-required side-B items (DEC-055), under the same signed-off rule
+    expect(text(late)).toContain("is distinct from 'pending_approval') or i.status = 'not_required')");
     // only "No counterpart" breaks rejoin across days (DEC-047, Captain): the bound reason is the classifier's
     expect(dialect.sqlToQuery(late).params).toContain(NEAR_MISS.none);
   });
@@ -141,7 +143,7 @@ describe("statements", () => {
     expect(s).toContain("i.status = x.st and i.version = x.v returning i.id");
     expect(s).toContain("resolution = case when x.st = 'break' then $");
     // a suggestion takes open items only; an automatic match may close a break as late data
-    expect(s).toContain("ok as (select * from acc where a_st = 'open' and b_st = 'open')");
+    expect(s).toContain("ok as (select * from acc where a_st in ('open', 'not_required') and b_st in ('open', 'not_required'))");
     expect(text(acceptSql(ctx, { ...p2, accept: "auto" }))).toContain("ok as (select * from acc)");
     expect(s).toContain("greatest(r.a_bd, r.b_bd)");
     expect(s).toContain("array[abs(b.x1 - a.x1)]::numeric[] as dist");

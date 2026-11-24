@@ -87,8 +87,8 @@ async function published(tx: InTx, spaceId: string, configId: string) {
   if (!v) throw new ApiError("invalid_state", "This recon has no approved version running, so its items can't change.");
   return { id: v.id, spec: ReconSpec.parse(v.spec) };
 }
-/** An item free to match: live, open or a break nobody resolved and no request holds. */
-export const free = (i: { status: string; state: string | null }) => i.status === "open" || (i.status === "break" && i.state !== "resolved" && i.state !== "pending_approval");
+/** An item free to match: live, open, not required (one-way, DEC-055) or a break nobody resolved and no request holds. */
+export const free = (i: { status: string; state: string | null }) => i.status === "open" || i.status === "not_required" || (i.status === "break" && i.state !== "resolved" && i.state !== "pending_approval");
 
 /** GET …/breaks/{itemId}. */
 /** Whether a recon spec posts its unmatch: a posting action under its Posting change (owner, 22 Nov: by configuration). */
@@ -194,7 +194,7 @@ export function candidatePage(ctx: Ctx, id: string, q: BreakCandidateQuery): Pro
     const like = q.q?.trim() ? `%${likeEscape(q.q.trim())}%` : null;
     const record = and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate));
     const where = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, x.configId), isNull(reconItems.simRunId), ne(reconItems.side, x.side),
-      or(eq(reconItems.status, "open"), and(eq(reconItems.status, "break"), or(isNull(reconItems.breakState), notInArray(reconItems.breakState, ["resolved", "pending_approval"])))),
+      or(inArray(reconItems.status, ["open", "not_required"]), and(eq(reconItems.status, "break"), or(isNull(reconItems.breakState), notInArray(reconItems.breakState, ["resolved", "pending_approval"])))),
       like ? ilike(records.extRef, like) : undefined);
     const amount = mine?.amountMinor ?? null;
     const page = await pageQuery({

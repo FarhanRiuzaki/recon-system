@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS } from "../paging";
 import {
-  AMOUNT_SIGNS, BREAK_REASONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
+  AMOUNT_SIGNS, BREAK_REASONS, RECON_DIRECTIONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMinor, VERSION_STATUSES } from "../sources";
@@ -244,6 +244,8 @@ export const ReconSpec = z.strictObject({
    * = up to day + N, null = always, until it matches or someone closes it (owner, 22 Nov: match / unmatch).
    */
   carry_over_days: z.number().int().min(0).max(31).nullable(),
+  /** Which sides must find their counterpart (RECON_DIRECTIONS, DEC-055); absent = two-way (specs stored before it). */
+  direction: z.enum(RECON_DIRECTIONS).optional(),
   close_at: clock,
   schedule: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("interval"), every_minutes: z.number().int().min(1).max(1440) }),

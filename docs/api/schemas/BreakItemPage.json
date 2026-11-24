@@ -28,7 +28,8 @@
               "matched",
               "suggested",
               "break",
-              "closed"
+              "closed",
+              "not_required"
             ]
           },
           "reason": {

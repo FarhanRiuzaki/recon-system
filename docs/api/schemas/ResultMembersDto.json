@@ -21,7 +21,8 @@
               "matched",
               "suggested",
               "break",
-              "closed"
+              "closed",
+              "not_required"
             ]
           },
           "ref": {
@@ -98,7 +99,8 @@
               "matched",
               "suggested",
               "break",
-              "closed"
+              "closed",
+              "not_required"
             ]
           },
           "ref": {

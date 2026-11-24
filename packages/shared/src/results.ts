@@ -7,17 +7,17 @@ import type { GroupKind, ItemStatus, Resolution } from "./recon";
 /** Overall statuses in the spec table's order: a row takes the first that holds. */
 export const RESULT_STATUSES = [
   "posting_failed", "posting_in_progress", "posting_skipped", "waiting_approval", "posted", "written_off", "adjusted", "closed",
-  "force_matched", "matched_by_hand", "matched_late", "suggested", "matched", "unmatch", "waiting_counterpart",
+  "force_matched", "matched_by_hand", "matched_late", "suggested", "matched", "unmatch", "not_required", "waiting_counterpart",
 ] as const;
 export type ResultStatus = (typeof RESULT_STATUSES)[number];
 export const RESULT_STATUS_LABEL: Record<ResultStatus, string> = {
   posting_failed: "Posting failed", posting_in_progress: "Posting in progress", posting_skipped: "Posting skipped", waiting_approval: "Waiting approval",
   posted: "Posted", written_off: "Written off", adjusted: "Adjusted", closed: "Closed", force_matched: "Force matched", matched_by_hand: "Matched by hand",
-  matched_late: "Matched late", suggested: "Suggested", matched: "Matched", unmatch: "Unmatch", waiting_counterpart: "Waiting for counterpart",
+  matched_late: "Matched late", suggested: "Suggested", matched: "Matched", unmatch: "Unmatch", not_required: "Not required", waiting_counterpart: "Waiting for counterpart",
 };
 
-/** A side of a row: its records are in the group (or a suggested one), an unmatch item, open, closed, or none of that side. */
-export const SIDE_STATES = ["in_group", "suggested", "unmatch", "open", "closed", "none"] as const;
+/** A side of a row: its records are in the group (or a suggested one), an unmatch item, not required (one-way, DEC-055), open, closed, or none of that side. */
+export const SIDE_STATES = ["in_group", "suggested", "unmatch", "not_required", "open", "closed", "none"] as const;
 export type SideState = (typeof SIDE_STATES)[number];
 
 /** A posting run's status as a break's page reads it: `grouped` while it waits in an open posting group. */
@@ -52,6 +52,8 @@ export function resultStatus(x: ResultInput): ResultStatus {
   if (x.groupKind === "suggested" || x.itemStatus === "suggested" || (x.itemStatus === "break" && x.proposed)) return "suggested";
   if (x.groupKind === "auto" || x.itemStatus === "matched") return "matched";
   if (x.itemStatus === "break") return "unmatch";
+  // a one-way recon's side-B item without a counterpart (DEC-055)
+  if (x.itemStatus === "not_required") return "not_required";
   return "waiting_counterpart";
 }
 

@@ -54,6 +54,8 @@ export type StepCtx = {
    * With carry over 0 (KSEI) a break never meets later data.
    */
   late: boolean;
+  /** A one-way recon (direction a_to_b, DEC-055): grace and day close make a side-B item without a counterpart not_required. */
+  oneWay: boolean;
 };
 
 /** The record's own amount with its sign (ingest's signedAmount): negated when its direction is a debit code. */
@@ -138,14 +140,14 @@ export function predicateSql(p: Predicate, i: number): { join?: SQL; filter?: SQ
 
 /**
  * The statuses of the pool: open, and with `late` (carry over > 0) the window's "No counterpart" breaks (late_match
- * and that reason: DEC-047, Captain). A near miss (currency, amount or date
+ * and that reason: DEC-047, Captain) and a one-way recon's not_required items (DEC-055). A near miss (currency, amount or date
  * differs), a Duplicate or an unconfirmed suggestion's break keeps its own decision and stays out.
  */
 // a late-match break waiting for a decision (posting, write-off) or on a signed-off date stays out: a person is deciding
 // it, or the day is frozen (blind review I5; live only, a simulation's own items are never signed off)
 const poolStatus = (c: StepCtx): SQL => (c.late
-  ? sql`(i.status = 'open' or (i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}
-      and i.break_state is distinct from 'pending_approval'
+  ? sql`(i.status = 'open' or (((i.status = 'break' and i.late_match and i.break_reason = ${NO_COUNTERPART}
+      and i.break_state is distinct from 'pending_approval') or i.status = 'not_required')
       and (i.sim_run_id is not null or not exists (select 1 from recon_days rd where rd.space_id = i.space_id and rd.config_id = i.config_id
         and rd.business_date = i.business_date and rd.signed_at is not null))))`
   : sql`i.status = 'open'`);
@@ -253,11 +255,11 @@ export const LATE_DATA = "AUTO_MATCHED_LATE_DATA";
 /**
  * Writes the pairs of CTE `acc` (gid, a_*, b_*, d<j>; all locked) as groups of `kind`: both items claimed (at the
  * status and version read, A1), a group dated at the later member's date, two members with the records' own signed
- * amounts. A suggestion takes open items only (a break waits for an automatic match or a person). Answers { groups,
+ * amounts. A suggestion takes open and not_required items only (a break waits for an automatic match or a person). Answers { groups,
  * items }: items = 2 × groups, else the caller rolls the step back.
  */
 function writePairs(c: StepCtx, p: PassSpec, kind: "auto" | "suggested", chosen: SQL): SQL {
-  return sql`ok as (select * from acc${kind === "suggested" ? sql` where a_st = 'open' and b_st = 'open'` : sql``}),
+  return sql`ok as (select * from acc${kind === "suggested" ? sql` where a_st in ('open', 'not_required') and b_st in ('open', 'not_required')` : sql``}),
   up as (${claim(c, kind === "auto" ? "matched" : "suggested", sql`select a_id as id, a_v as v, a_st as st, a_bd as bd from ok union all select b_id, b_v, b_st, b_bd from ok`)}),
   g as (insert into ${matchGroups} ${GROUP_COLS}
       select r.gid, ${ids(c)}, ${p.no}::smallint, ${kind}::text, greatest(r.a_bd, r.b_bd), ${pairEvidence(c, p, chosen)} from ok r),

@@ -48,7 +48,8 @@ function addAmounts(...lists: { currency: string | null; amountMinor: string | n
     .sort((x, y) => y.items - x.items || (BigInt(y.amountMinor) > BigInt(x.amountMinor) ? 1 : BigInt(y.amountMinor) < BigInt(x.amountMinor) ? -1 : 0) || x.currency.localeCompare(y.currency));
 }
 const woAmounts = (w: unknown) => Object.entries((w ?? {}) as Record<string, [string, number]>).map(([currency, [amountMinor, items]]) => ({ currency, amountMinor, items }));
-const records = (r: Results) => Object.values(r).reduce((n, [, x]) => n + x, 0);
+// a match rate's records: not a one-way recon's not-required side-B records (DEC-055), which nothing has to settle
+const records = (r: Results) => Object.entries(r).reduce((n, [s, [, x]]) => (s === "not_required" ? n : n + x), 0);
 const rowsOf = (r: Results, statuses: readonly string[]) => statuses.reduce((n, s) => n + (r[s]?.[0] ?? 0), 0);
 const recordsOf = (r: Results, statuses: readonly string[]) => statuses.reduce((n, s) => n + (r[s]?.[1] ?? 0), 0);
 

@@ -20,7 +20,7 @@ export const breakReason = (p: PassSpec): string =>
  * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items").
  */
 const breakItems = (c: StepCtx, p: PassSpec): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}, version = i.version + 1
-    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.record_id, i.business_date, i.side)
+    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side)
   select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
     and r.id = up.record_id and r.business_date = up.business_date) as refs, string_agg(distinct up.business_date::text, ',') as dates from up`;
 
@@ -54,13 +54,18 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
 
 /** Why an item without a pair is a break (day close; the plan's "Alasan break saat tutup hari"). */
 export const NEAR_MISS = { currency: "Currency differs", amount: "Amount differs", date: "Date differs", none: "No counterpart" } as const;
-export type NearMissReason = (typeof NEAR_MISS)[keyof typeof NEAR_MISS];
+/**
+ * A one-way recon's side-B item with no near pair (DEC-055): no break, the item becomes `not_required`. Not a break
+ * reason (BREAK_REASONS): the classifier answers it in place of "No counterpart", for side B of a one-way recon only.
+ */
+export const NOT_REQUIRED = "Not required";
+export type NearMissReason = (typeof NEAR_MISS)[keyof typeof NEAR_MISS] | typeof NOT_REQUIRED;
 
 /**
  * What the classifier reads: the config's items (live or a simulation's), its sides, and carry over: an item's
  * counterparts are of its own date or up to `carry` days before it (what the pool of its own date's run held).
  */
-export type ClassifyCtx = Pick<StepCtx, "spaceId" | "configId" | "simRunId" | "sides" | "current"> & { carry: number };
+export type ClassifyCtx = Pick<StepCtx, "spaceId" | "configId" | "simRunId" | "sides" | "current" | "oneWay"> & { carry: number };
 
 /**
  * Side `s`'s items of `c` (live or the simulation's) with status in `statuses` and business date `from`..`to` (plus
@@ -81,16 +86,16 @@ const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: SQL, to: strin
 /**
  * The near-miss classifier (one rule for day close and simulation, Captain): every open item of business dates
  * `from`..`to` (and `only`, a condition on its `i`, for a few) with the reason it has no pair and, where there is one,
- * its near pair. Reads only. The near pair is the other side's unpaired item (open or break) with the same reference,
+ * its near pair. Reads only. The near pair is the other side's unpaired item (open, break or not required) with the same reference,
  * of the item's date or up to carry over days before it (so a simulation over several dates judges each item as its
  * own date's close does), the closest first: same currency, then the smallest amount difference, then the nearest
  * date, then record order. Its reason is the first field that differs: currency, amount (compared amounts, each side's
  * sign convention), business date. No item with that reference on the other side, or one that differs in none of the
  * three (it failed another predicate, or an operator holds it) = "No counterpart" without a pair. One hash join on the
- * reference, no scan per item. Rows: item_id, side, business_date, reason, pair_item_id.
+ * reference, no scan per item. A one-way recon's (`oneWay`) side-B item that way is NOT_REQUIRED instead. Rows: item_id, side, business_date, reason, pair_item_id.
  */
 export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL): SQL {
-  const open = sql`'open'`, unpaired = sql`'open', 'break'`;
+  const open = sql`'open'`, unpaired = sql`'open', 'break', 'not_required'`;
   const lo = sql`(${from}::date - ${c.carry}::int)`;
   return sql`with m as materialized (${sideItems(c, 0, open, sql`${from}::date`, to, only)} union all ${sideItems(c, 1, open, sql`${from}::date`, to, only)}),
   o as materialized (${sideItems(c, 0, unpaired, lo, to)} union all ${sideItems(c, 1, unpaired, lo, to)}),
@@ -102,6 +107,6 @@ export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL
       row_number() over (partition by m.id order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid) as rn
     from m left join o on o.ref = m.ref and o.side <> m.side and o.bd between m.bd - ${c.carry}::int and m.bd),
   k as (select * from p where rn = 1)
-  select id as item_id, side, bd::text as business_date, coalesce(reason, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
+  select id as item_id, side, bd::text as business_date, coalesce(reason, ${c.oneWay ? sql`case when side = 'b' then ${NOT_REQUIRED} end` : sql`null`}, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
   from k order by bd, side, id`;
 }

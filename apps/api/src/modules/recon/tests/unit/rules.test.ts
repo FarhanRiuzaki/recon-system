@@ -3,7 +3,8 @@
 import { describe, expect, it } from "bun:test";
 import { ReconSpec, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
 import { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { recordFields } from "@starterkit/shared/recon";
+import { isOneWay, recordFields } from "@starterkit/shared/recon";
+import { matchingHash } from "../../../../kernel/versions";
 import { checkActions, checkApprovals, checkReconSpec, firstItemReads, reconIssue, usedFields } from "../../rules";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import { gate, sourceSpec } from "../spec";
@@ -22,6 +23,16 @@ describe("ReconSpec", () => {
     expect(ReconSpec.safeParse({ ...g, sides: [g.sides[0]] }).success).toBe(false);
     expect(ReconSpec.safeParse({ ...g, sides: [...g.sides, { ...g.sides[1], key: "b" }] }).success).toBe(false);
     expect(issueOf({ spec: { ...g, sides: [g.sides[1], g.sides[0]] } })).toBe("Side A: List side A first, then side B.");
+  });
+
+  it("direction: two-way or one-way (A to B); a spec stored before it reads as two-way, and the matching hash covers it", () => {
+    const g = gate(A, B);
+    expect(isOneWay(parse(g))).toBe(false);
+    expect(parse(g)).not.toHaveProperty("direction");
+    expect(isOneWay(parse({ ...g, direction: "two_way" }))).toBe(false);
+    expect(isOneWay(parse({ ...g, direction: "a_to_b" }))).toBe(true);
+    expect(ReconSpec.safeParse({ ...g, direction: "b_to_a" }).success).toBe(false);
+    expect(matchingHash(parse({ ...g, direction: "a_to_b" }))).not.toBe(matchingHash(parse(g)));
   });
 
   it("a field is a core column or attrs.<name>; operators are the closed list", () => {

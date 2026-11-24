@@ -795,6 +795,13 @@
             }
           ]
         },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "two_way",
+            "a_to_b"
+          ]
+        },
         "close_at": {
           "type": "string",
           "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"

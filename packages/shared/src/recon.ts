@@ -9,6 +9,15 @@ export const PASS_ACCEPT = ["auto", "suggest"] as const;
 export const ON_AMBIGUOUS = ["break", "suggest"] as const;
 /** How a side's signed amount is read when amounts are compared: as it is, or negated (spec §8 measure). */
 export const AMOUNT_SIGNS = ["as_is", "negate"] as const;
+/**
+ * Which sides must find their counterpart (owner, 24 Nov): `two_way` both; `a_to_b` side A must settle in side B, so a
+ * side-B item without one is `not_required` at grace and day close, never an unmatch (DEC-055). A spec without the key
+ * (every spec stored before it) is two-way.
+ */
+export const RECON_DIRECTIONS = ["two_way", "a_to_b"] as const;
+export type ReconDirection = (typeof RECON_DIRECTIONS)[number];
+/** A one-way recon: side A must settle in side B. */
+export const isOneWay = (spec: { direction?: ReconDirection }) => spec.direction === "a_to_b";
 /** The match operators (spec §10, closed): each compiles to one SQL fragment in modules/engine/sql (Plan 3 Task 2). */
 export const OPERATORS = ["eq", "eq_normalized", "amount_abs_tol", "amount_pct_tol", "date_window", "bday_window", "contains", "similarity", "eq_sum"] as const;
 export type Operator = (typeof OPERATORS)[number];
@@ -55,7 +64,8 @@ export type RunMode = (typeof RUN_MODES)[number];
 /** `queued` = waiting for a worker; a run of one recon at a time (the API refuses a second while one is queued or running). */
 export const RUN_STATUSES = ["queued", "running", "succeeded", "failed"] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
-export const ITEM_STATUSES = ["open", "matched", "suggested", "break", "closed"] as const;
+/** `not_required`: a one-way recon's side-B item without a counterpart (RECON_DIRECTIONS): still a candidate within carry over, no work item. */
+export const ITEM_STATUSES = ["open", "matched", "suggested", "break", "closed", "not_required"] as const;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
 export const GROUP_KINDS = ["auto", "suggested", "manual", "force"] as const;
 export type GroupKind = (typeof GROUP_KINDS)[number];

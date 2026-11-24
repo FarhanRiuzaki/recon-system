@@ -9,6 +9,7 @@
 // once. What a close skipped (an item held elsewhere) or a later intake added to a closed date is swept by the next
 // scheduled run (sweepClosed). The engine never writes `records` or source_day_counts here either.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
+import { isOneWay } from "@starterkit/shared/recon";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { configLock } from "../../kernel/locks";
@@ -61,7 +62,7 @@ async function runUnderWay(tx: InTx, spaceId: string, configId: string): Promise
 }
 
 /** Items of one business date a close or a sweep made breaks: from open items, from unconfirmed suggestions. */
-export type DayBroken = { d: string; open: number; suggested: number };
+export type DayBroken = { d: string; open: number; suggested: number; nr: number };
 const total = (rows: readonly DayBroken[]) => rows.reduce((t, r) => ({ open: t.open + r.open, suggested: t.suggested + r.suggested }), { open: 0, suggested: 0 });
 
 /**
@@ -70,7 +71,7 @@ const total = (rows: readonly DayBroken[]) => rows.reduce((t, r) => ({ open: t.o
  */
 async function addCounters(tx: InTx, k: { spaceId: string; configId: string }, rows: readonly DayBroken[]): Promise<void> {
   for (const r of rows) {
-    if (!r.open && !r.suggested) continue;
+    if (!r.open && !r.suggested && !r.nr) continue;
     // the dashboard's rollup of each date it broke items on (the carry-over dates before the closing one too, C1)
     await queueDay(k.spaceId, k.configId, r.d, tx);
     await tx.update(reconDays).set({ counters: sql`jsonb_build_object('open', coalesce((${reconDays.counters} ->> 'open')::int, 0) + ${r.open}::int,
@@ -103,14 +104,14 @@ export async function closeDay(on: Tx, k: { spaceId: string; configId: string },
       return "closing";
     }
     const carry = await effectiveCarry(tx, k, v.spec.carry_over_days, d);
-    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as DayBroken[];
+    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, oneWay: isOneWay(v.spec), current: currentRecord(tx)!, carry }, addDays(d, -carry), d))) as unknown as DayBroken[];
     // the closing date's counters: its own items; carried-over items of dates closed before count on those dates
-    const own = rows.find((r) => r.d === d) ?? { open: 0, suggested: 0 };
+    const own = rows.find((r) => r.d === d) ?? { open: 0, suggested: 0, nr: 0 };
     const closed = { status: "closed", incomplete: incomplete.length ? incomplete : null, counters: { open: own.open, suggested: own.suggested }, closedAt: sql`now()` } as const;
     await tx.insert(reconDays).values({ spaceId: k.spaceId, configId: k.configId, businessDate: d, ...closed })
       .onConflictDoUpdate({ target: [reconDays.spaceId, reconDays.configId, reconDays.businessDate], set: closed });
     await addCounters(tx, k, rows.filter((r) => r.d !== d));
-    if (own.open || own.suggested) await queueDay(k.spaceId, k.configId, d, tx);
+    if (own.open || own.suggested || own.nr) await queueDay(k.spaceId, k.configId, d, tx);
     return "closed";
   }, on);
 }
@@ -133,8 +134,8 @@ export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string
     const v = r?.lo && r.hi ? await published(tx, k.spaceId, k.configId) : null;
     if (!v || !r?.lo || !r.hi) return none;
     // ponytail: a gap (a date never closed) between closed dates of the window would be swept too; closes run in order
-    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, current: currentRecord(tx)!, carry: await effectiveCarry(tx, k, v.spec.carry_over_days, r.hi) }, r.lo, r.hi))) as unknown as DayBroken[];
+    const rows = (await tx.execute(closeDaySql({ spaceId: k.spaceId, configId: k.configId, simRunId: null, sides: v.sides, oneWay: isOneWay(v.spec), current: currentRecord(tx)!, carry: await effectiveCarry(tx, k, v.spec.carry_over_days, r.hi) }, r.lo, r.hi))) as unknown as DayBroken[];
     await addCounters(tx, k, rows);
-    return { ...total(rows), dates: rows.filter((x) => x.open || x.suggested).map((x) => x.d) };
+    return { ...total(rows), dates: rows.filter((x) => x.open || x.suggested || x.nr).map((x) => x.d) };
   }, on);
 }

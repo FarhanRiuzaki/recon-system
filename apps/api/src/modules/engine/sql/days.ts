@@ -5,7 +5,7 @@ import { type SQL, sql } from "drizzle-orm";
 import { records, sourceCursors } from "../../ingest";
 import { reconConfigs } from "../../recon";
 import { matchGroups, matchMembers, reconDayStats, reconItems } from "../schema";
-import { type ClassifyCtx, NEAR_MISS, nearMissSql } from "./breaks";
+import { type ClassifyCtx, NEAR_MISS, nearMissSql, NOT_REQUIRED } from "./breaks";
 import { CHOSEN, datesOf, type StepCtx } from "./pass";
 
 /**
@@ -20,11 +20,15 @@ const live = (c: Pick<ClassifyCtx, "simRunId">, alias: string): SQL => (c.simRun
 
 /**
  * Breaks the items of CTE `lk` (id, v, st, bd), each with `reason`, late_match `late` and break_pass `pass` (SQL over
- * lk and k / sg; break_pass names the pass of a Duplicate, as a pass's own ambiguity breaks do).
+ * lk and k / sg; break_pass names the pass of a Duplicate, as a pass's own ambiguity breaks do). An item whose reason
+ * is NOT_REQUIRED (a one-way recon's side B, DEC-055) becomes not_required instead: no break reason, no work item; the
+ * pool reads it by its status. Returns lk.st, lk.bd and the new status (`ns`).
  */
-const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, late: SQL, pass: SQL = sql`i.break_pass`): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${reason}, late_match = ${late},
+const breakLocked = (c: Pick<ClassifyCtx, "spaceId">, from: SQL, reason: SQL, late: SQL, pass: SQL = sql`i.break_pass`): SQL => sql`up as (update ${reconItems} i
+      set status = case when ${reason} = ${NOT_REQUIRED} then 'not_required' else 'break' end,
+      break_reason = nullif(${reason}, ${NOT_REQUIRED}), late_match = ${late} and ${reason} <> ${NOT_REQUIRED},
       break_pass = ${pass}, version = i.version + 1
-    from ${from} where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v returning lk.st, lk.bd)`;
+    from ${from} where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v returning lk.st, lk.bd, i.status as ns)`;
 
 /**
  * Grace (spec §9 step 4): each open item of the window whose record's event time plus `graceMinutes` is at or before
@@ -58,7 +62,7 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
  * over > 0), and every item of an unconfirmed suggestion dated there breaks with its pass's reason, its suggested group
  * kept as the pair to accept in one click (not late_match: a person decides it); a tie suggestion breaks as Duplicate
  * with its pass in break_pass, like a pass's own ambiguity breaks. Answers per business date of the items broken
- * { d, open, suggested } (REC-FUT-17: each date's counters count its own items).
+ * { d, open, suggested } (REC-FUT-17: each date's counters count its own items), and `nr`: items made not required (no break).
  */
 export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   const has = (ops: string[]) => sql`exists (select 1 from jsonb_array_elements(g.evidence -> 'predicates') e
@@ -77,7 +81,8 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   k as (${nearMissSql(c, lo, hi, sql`i.id in (select id from lk)`)}),
   ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
     sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
-  select bd::text as d, count(*) filter (where st = 'open')::int as open, count(*) filter (where st = 'suggested')::int as suggested from up group by bd order by bd`;
+  select bd::text as d, count(*) filter (where st = 'open' and ns = 'break')::int as open, count(*) filter (where st = 'suggested')::int as suggested,
+    count(*) filter (where ns = 'not_required')::int as nr from up group by bd order by bd`;
 }
 
 /**

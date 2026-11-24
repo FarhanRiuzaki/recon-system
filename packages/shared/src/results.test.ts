@@ -41,6 +41,8 @@ describe("resultStatus (the spec's table, first that holds)", () => {
     expect(st({ itemStatus: "break" })).toBe("unmatch");
     expect(st({ itemStatus: "break", proposed: true })).toBe("suggested");
     expect(st({ itemStatus: "open" })).toBe("waiting_counterpart");
+    // a one-way recon's side B item without a counterpart: not required, never an unmatch
+    expect(st({ itemStatus: "not_required" })).toBe("not_required");
     expect(st({ resolution: "ADJUSTED" })).toBe("adjusted");
     expect(st({ itemStatus: "closed" })).toBe("closed");
     expect(st({ itemStatus: "closed", resolution: "DUPLICATE" })).toBe("closed");

@@ -19,7 +19,7 @@
 // the passes, a step closes the window's open items whose record no longer counts (intake.ts closeReplacedSql), so the
 // open counters count current records only.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
-import { recordFields } from "@starterkit/shared/recon";
+import { isOneWay, recordFields } from "@starterkit/shared/recon";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconRunDto, ReconRunItemDto, RunDay, RunGroupMember, RunProjection, ReconRunItemQuery, ReconRunListQuery, ReconSimChangeDto, ReconSimChangeQuery } from "@starterkit/shared/contracts/recon";
 import { GROUP_MEMBERS_MAX, type GroupKind, type ItemStatus, RUN_RANGE_MAX_DAYS, type RunMode, type RunStatus, type SimChange } from "@starterkit/shared/recon";
@@ -105,7 +105,9 @@ export const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00
  * The carry over a window uses (owner, 22 Nov: match / unmatch): the spec's days as they are, or with `null` (always)
  * the days from the recon's oldest unmatch still checked — open, or a "No counterpart" break with late_match — to
  * `from`, at least 1 (so day close keeps late_match on) and at most 3660. The run then reads from that date: only items
- * still unmatched, never the whole history of records (intake is per record, once).
+ * still unmatched, never the whole history of records (intake is per record, once). A not_required item (one-way,
+ * DEC-055) never widens it: side B of a one-way recon never settles by itself, so the window would grow without bound;
+ * it stays a candidate within the window side A's unmatch keeps (at least 31 days).
  */
 export async function effectiveCarry(tx: InTx, k: { spaceId: string; configId: string; simRunId?: string | null }, carry: number | null, from: string): Promise<number> {
   if (carry !== null) return carry;
@@ -280,7 +282,7 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     for (let d = run.doneThrough ? addDays(run.doneThrough, 1) : run.dateFrom; d <= to; d = addDays(d, 1)) {
       if (o.signal?.aborted) throw new RunAborted();
       const lo = addDays(d, -carry), hi = d;
-      const c = (tx: InTx): StepCtx => ({ spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo, hi, current: currentRecord(tx)!, late: carry > 0 });
+      const c = (tx: InTx): StepCtx => ({ spaceId, configId, versionId: run.configVersionId, runId, simRunId, sides, lo, hi, current: currentRecord(tx)!, late: carry > 0, oneWay: isOneWay(spec) });
       // planner statistics first (analyzeSql): records a source just took in, then each side's new items (side B's
       // intake checks side A's, and the passes read both)
       await analyze("records", lo, hi, 0);
@@ -447,7 +449,7 @@ export async function classifyUnmatched(tx: InTx, i: { spaceId: string; configId
   if (!v) throw new ApiError("not_found", "This recon version doesn't exist.");
   const { spec, sides } = await load(tx, i.spaceId, ReconSpec.parse(v.spec));
   const rows = (await tx.execute(nearMissSql({
-    spaceId: i.spaceId, configId: i.configId, simRunId: i.simRunId, sides, current: currentRecord(tx)!, carry: await effectiveCarry(tx, i, spec.carry_over_days, i.from),
+    spaceId: i.spaceId, configId: i.configId, simRunId: i.simRunId, sides, oneWay: isOneWay(spec), current: currentRecord(tx)!, carry: await effectiveCarry(tx, i, spec.carry_over_days, i.from),
   }, i.from, i.to))) as unknown as { item_id: string; side: "a" | "b"; business_date: string; reason: NearMissReason; pair_item_id: string | null }[];
   return rows.map((r) => ({ itemId: r.item_id, side: r.side, businessDate: r.business_date, reason: r.reason, pairItemId: r.pair_item_id }));
 }

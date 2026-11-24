@@ -38,6 +38,7 @@
               "suggested",
               "matched",
               "unmatch",
+              "not_required",
               "waiting_counterpart"
             ]
           },
@@ -50,6 +51,7 @@
                   "in_group",
                   "suggested",
                   "unmatch",
+                  "not_required",
                   "open",
                   "closed",
                   "none"
@@ -76,6 +78,7 @@
                   "in_group",
                   "suggested",
                   "unmatch",
+                  "not_required",
                   "open",
                   "closed",
                   "none"

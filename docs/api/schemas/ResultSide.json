@@ -9,6 +9,7 @@
         "in_group",
         "suggested",
         "unmatch",
+        "not_required",
         "open",
         "closed",
         "none"

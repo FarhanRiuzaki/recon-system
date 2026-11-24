@@ -194,8 +194,9 @@ function resultRows(tx: InTx, spaceId: string, configId: string, spaces: string[
     when ${u.gk} = 'suggested' or ${u.ist} = 'suggested' or (${u.ist} = 'break' and ${u.proposed}) then 'suggested'
     when ${u.gk} = 'auto' or ${u.ist} = 'matched' then 'matched'
     when ${u.ist} = 'break' then 'unmatch'
+    when ${u.ist} = 'not_required' then 'not_required'
     else 'waiting_counterpart' end`;
-  const itemState = sql`case ${u.ist} when 'break' then (case when ${u.proposed} then 'suggested' else 'unmatch' end) when 'open' then 'open' when 'closed' then 'closed' when 'suggested' then 'suggested' else 'in_group' end`;
+  const itemState = sql`case ${u.ist} when 'break' then (case when ${u.proposed} then 'suggested' else 'unmatch' end) when 'open' then 'open' when 'closed' then 'closed' when 'suggested' then 'suggested' when 'not_required' then 'not_required' else 'in_group' end`;
   const side = (s: "a" | "b") => sql`case when ${u.kind} = 'group' then (case when ${s === "a" ? u.nA : u.nB} > 0 then (case when ${u.gk} = 'suggested' then 'suggested' else 'in_group' end) else 'none' end)
     when ${u.itemSide} = ${s} then ${itemState} else 'none' end`;
   return tx.select({

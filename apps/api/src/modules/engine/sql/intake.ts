@@ -84,7 +84,7 @@ export function reverseReplacedSql(c: StepCtx, s: 0 | 1): SQL {
 }
 
 /**
- * Closes side `s`'s open items of the window whose record no longer counts (a mutable source replaced the row, or its
+ * Closes side `s`'s open (and not_required, DEC-055) items of the window whose record no longer counts (a mutable source replaced the row, or its
  * snapshot is no longer active): status closed, reason "Source row replaced", so they never wait or count as open.
  * Only items this statement locks (A1). A matched or suggested group with a replaced record was reversed just before
  * (reverseReplacedSql), so its replaced member is open here and closes too.
@@ -92,14 +92,14 @@ export function reverseReplacedSql(c: StepCtx, s: 0 | 1): SQL {
 export function closeReplacedSql(c: StepCtx, s: 0 | 1): SQL {
   const side = c.sides[s];
   return sql`with t as (select i.id, i.version as v, i.business_date as bd from ${reconItems} i
-      where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status = 'open'
+      where i.space_id = ${c.spaceId} and i.config_id = ${c.configId} and i.side = ${side.key} and i.status in ('open', 'not_required')
         and ${c.simRunId === null ? sql`i.sim_run_id is null` : sql`i.sim_run_id = ${c.simRunId}`}
         and i.business_date between ${c.lo}::date and ${c.hi}::date
         and not exists (select 1 from ${records} where ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
           and ${records.id} = i.record_id and ${records.businessDate} = i.business_date and ${c.current})
       for update of i skip locked),
   up as (update ${reconItems} i set status = 'closed', break_reason = ${REPLACED}, version = i.version + 1
-      from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = 'open' and i.version = x.v returning i.business_date as bd)
+      from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.business_date as bd)
   select (select count(*) from up)::int as n, ${datesOf("up")}`;
 }
 /** The reason an item closes when its record no longer counts. */
