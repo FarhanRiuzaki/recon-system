@@ -305,7 +305,7 @@ test("a space admin adds a member, changes their roles and removes them; the las
     const add = dialog.getByRole("button", { name: "Add member" });
     await expect(add).toBeEnabled(); // never disabled without a reason: submitting says what is missing
     await add.click();
-    await expect(dialog.getByText("Pick a person")).toBeVisible();
+    await expect(dialog.getByText("Pick a person.")).toBeVisible();
     await expect(dialog.getByRole("alert")).toHaveText("Pick at least one role.");
     await expect(dialog.getByRole("combobox", { name: "Person" })).toBeFocused();
     const sourceAdmin = dialog.getByRole("checkbox", { name: "Source admin" });
@@ -318,7 +318,7 @@ test("a space admin adds a member, changes their roles and removes them; the las
     await person.fill("Viewer User");
     await dialog.getByRole("option").filter({ hasText: "Viewer User" }).click();
     await add.click(); // no role yet
-    await expect(dialog.getByText("Pick a person")).toHaveCount(0);
+    await expect(dialog.getByText("Pick a person.")).toHaveCount(0);
     await expect(dialog.getByRole("alert")).toHaveText("Pick at least one role.");
     await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
     await dialog.getByRole("checkbox", { name: "Reviewer", exact: true }).click();
@@ -399,10 +399,12 @@ test("an app admin adds a user to a space from the user's page; the panel lists 
     await panel.getByRole("button", { name: "Add to space" }).click();
     const dialog = admin.getByRole("dialog", { name: "Add Google User to a space" });
     const add = dialog.getByRole("button", { name: "Add to space" });
-    await expect(add).toBeDisabled();
+    // as Add member: the button stays on and a press says what is missing
+    await add.click();
+    await expect(dialog.getByText("Pick a space.")).toBeVisible();
     await dialog.getByRole("combobox", { name: "Space" }).selectOption({ label: "Treasury" });
     await expect(dialog.getByRole("checkbox", { name: "Source admin" })).not.toHaveAttribute("aria-readonly", "true"); // space.manage
-    await expect(add).toBeDisabled(); // no role yet
+    await expect(dialog.getByText("Pick at least one role.")).toBeVisible(); // no role yet
     await dialog.getByRole("checkbox", { name: "Operator", exact: true }).click();
     await add.click();
     await expect(admin.getByText("Added Google User to Treasury.")).toBeVisible();

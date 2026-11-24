@@ -15,6 +15,7 @@ import { RoleChecklist } from "@/components/role-checklist";
 import { api, ApiError, errorText } from "@/lib/client/api";
 import { useAuth } from "@/lib/client/auth-context";
 import { spaceCandidates, spaceOptions } from "@/lib/shared/queries";
+import { membershipProblems } from "@/lib/shared/membership";
 import { SPACES_KEY } from "./use-spaces";
 
 type Space = { id: string; name: string };
@@ -36,8 +37,10 @@ function useSetRoles(space: Space) {
 }
 
 /** A role dialog: title, description, the fields, an inline failure beside the submit, Cancel and the submit button. */
-function RolesDialog({ title, description, phone, busy, error, submitLabel, canSubmit, onClose, onSubmit, returnFocus, focusRole, children }: {
+function RolesDialog({ title, description, phone, busy, error, submitLabel, canSubmit, create = false, onClose, onSubmit, returnFocus, focusRole, children }: {
   title: string; description: string; phone?: "top"; busy: boolean; error: string | null; submitLabel: string; canSubmit: boolean;
+  /** The submit adds something (create intent, green). */
+  create?: boolean;
   onClose: () => void; onSubmit: () => void; returnFocus: () => void; focusRole?: boolean; children: ReactNode;
 }) {
   return (
@@ -61,7 +64,7 @@ function RolesDialog({ title, description, phone, busy, error, submitLabel, canS
           </DialogBody>
           <DialogFooter className="shrink-0">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button type="submit" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{submitLabel}</Button>
+            <Button type="submit" variant={create ? "create-solid" : undefined} disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}{submitLabel}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -129,21 +132,22 @@ export function AddMemberDialog({ space, canSourceAdmin, onClose, returnFocus }:
     const page = await qc.fetchQuery({ queryKey: key, queryFn: () => api<Page<SpaceCandidateDto>>(url, { signal }) });
     return page.items.map((c) => ({ value: c.userId, label: c.name, description: c.member ? `${c.username} (already a member)` : c.username, disabled: c.member }));
   }, [qc, space.id]);
+  const problems = tried ? membershipProblems({ target: person, roles }, "person") : null;
   return (
-    <RolesDialog title={`Add a member to ${space.name}`} phone="top" busy={busy} error={error}
+    <RolesDialog title={`Add a member to ${space.name}`} phone="top" busy={busy} error={error} create
       description="People sign in with their bank directory account. Only people who have signed in once can be found."
       submitLabel="Add member" canSubmit onClose={onClose} returnFocus={returnFocus}
       onSubmit={() => {
-        if (!person || roles.length === 0) { setTried(true); if (!person) document.getElementById("add-member-person")?.focus(); return; }
+        if (!person || membershipProblems({ target: person, roles }, "person")) { setTried(true); if (!person) document.getElementById("add-member-person")?.focus(); return; }
         // A candidate that can be picked is not a member yet, so its description is the username.
         void run(async () => { await setMember(person.value, roles); toast(`Added ${person.label} (${person.description}) to ${space.name}.`); });
       }}>
-      <Field id="add-member-person" label="Person" error={tried && !person ? "Pick a person" : null}>
+      <Field id="add-member-person" label="Person" required error={problems?.target}>
         <Combobox id="add-member-person" label="Person" placeholder="Name or username" value={person} onChange={setPerson} loadOptions={loadOptions}
           emptyText="No one matches. Try another name or username." />
       </Field>
       <RoleChecklist legend={`Roles in ${space.name}`} value={roles} onChange={setRoles} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={false} />
-      {tried && roles.length === 0 && <p role="alert" className={ERROR}>Pick at least one role.</p>}
+      {problems?.roles && <p role="alert" className={ERROR}>{problems.roles}</p>}
     </RolesDialog>
   );
 }

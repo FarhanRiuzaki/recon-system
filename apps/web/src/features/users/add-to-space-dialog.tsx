@@ -14,6 +14,7 @@ import type { SpaceRole, SpaceRowDto } from "@starterkit/shared/contracts/spaces
 import { RoleChecklist } from "@/components/role-checklist";
 import { api, errorText } from "@/lib/client/api";
 import { spaceOptions, SPACES_KEY } from "@/lib/shared/queries";
+import { membershipProblems } from "@/lib/shared/membership";
 
 /**
  * Add a user to a space from their page (space.manage): a space they are not in yet (`joined` = the ones they are)
@@ -32,11 +33,14 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const space = open.find((s) => s.id === spaceId);
-  const canSubmit = !!space && roles.length > 0;
+  // the same rule and words as Add member on a space's page: the submit stays on, a press says what is missing
+  const [tried, setTried] = useState(false);
+  const problems = tried ? membershipProblems({ target: space, roles }, "space") : null;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!space || !canSubmit || busy) return;
+    if (busy) return;
+    if (!space || membershipProblems({ target: space, roles }, "space")) { setTried(true); if (!space) document.getElementById("add-to-space-space")?.focus(); return; }
     setBusy(true);
     setError(null);
     try {
@@ -62,7 +66,7 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
           </DialogHeader>
           <DialogBody>
             <fieldset disabled={busy} className="grid min-w-0 gap-4">
-            <Field id="add-to-space-space" label="Space" note={note}>
+            <Field id="add-to-space-space" label="Space" required note={note} error={problems?.target}>
               <Select id="add-to-space-space" value={spaceId} onChange={(e) => setSpaceId(e.target.value)} disabled={open.length === 0}>
                 <option value="" disabled>Pick a space</option>
                 {open.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -74,12 +78,13 @@ export function AddToSpaceDialog({ user, joined, onClose, returnFocus }: {
               </p>
             )}
             <RoleChecklist legend={space ? `Roles in ${space.name}` : "Roles"} value={roles} onChange={setRoles} canSourceAdmin lockedSpaceAdmin={false} />
+            {problems?.roles && <p role="alert" className="text-body-sm text-down-ink">{problems.roles}</p>}
             {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
           </fieldset>
           </DialogBody>
           <DialogFooter className="shrink-0">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-            <Button type="submit" variant="create-solid" disabled={busy || !canSubmit} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Add to space</Button>
+            <Button type="submit" variant="create-solid" disabled={busy} aria-busy={busy || undefined}>{busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Add to space</Button>
           </DialogFooter>
         </form>
       </DialogContent>
