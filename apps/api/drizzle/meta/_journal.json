@@ -428,6 +428,13 @@
       "when": 1795450134948,
       "tag": "0060_posting_group_sign",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1795499134343,
+      "tag": "0061_result_columns",
+      "breakpoints": true
     }
   ]
 }

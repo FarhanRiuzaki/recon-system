@@ -156,7 +156,7 @@ async function detailDto(tx: InTx, c: ConfigRow): Promise<ReconDto> {
 }
 
 /** The space's config `id`; 404 when it is not one. `lock` takes its row lock (every change does). */
-async function configOf(tx: InTx, spaceId: string, id: string, lock = false): Promise<ConfigRow> {
+export async function configOf(tx: InTx, spaceId: string, id: string, lock = false): Promise<ConfigRow> {
   const q = tx.select().from(reconConfigs).where(and(eq(reconConfigs.id, id), eq(reconConfigs.spaceId, spaceId)));
   const [c] = lock ? await q.for("update") : await q;
   if (!c) throw notFound("recon");

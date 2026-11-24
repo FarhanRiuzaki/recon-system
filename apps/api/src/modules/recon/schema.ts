@@ -82,3 +82,19 @@ export const reconSourceUses = pgTable("recon_source_uses", {
   foreignKey({ name: "recon_source_uses_source_fkey", columns: [t.sourceSpaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
   index("recon_source_uses_source").on(t.sourceSpaceId, t.sourceId, t.field),
 ]);
+
+/**
+ * A recon's Operation result columns (docs/superpowers/specs/2026-11-24-operation-result-design.md): outside the
+ * versioned spec, so a change needs no version and no approval; each save is an activity entry. No row = the default
+ * columns. `columns` = ResultColumn[] in order.
+ */
+export const reconResultColumns = pgTable("recon_result_columns", {
+  spaceId: uuid("space_id").notNull(),
+  configId: uuid("config_id").notNull(),
+  columns: jsonb("columns").notNull(),
+  updatedBy: uuid("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ name: "recon_result_columns_pkey", columns: [t.spaceId, t.configId] }),
+  foreignKey({ name: "recon_result_columns_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
+]);

@@ -5,6 +5,7 @@
 // rules → change → activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import { CreateReconBody, PreviewActionBody, PreviewApprovalBody, ReconActivityQuery, ReconListQuery, ReconVersionListQuery, RejectReconVersionBody, UpdateReconVersionBody } from "@starterkit/shared/contracts/recon";
+import { ResultColumnsBody } from "@starterkit/shared/contracts/results";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
@@ -14,6 +15,7 @@ import {
   approveVersion, createDraft, createRecon, discardRecon, reconActivity, reconDetail, reconPage, refusedRecon, rejectVersion, submitVersion, updateVersion,
   versionDetail, versionPage,
 } from "./service";
+import { resultColumns, setResultColumns } from "./result-columns";
 
 /** The routes of /v1/spaces/:spaceId/recons*. */
 export const reconController = () =>
@@ -34,6 +36,12 @@ export const reconController = () =>
     }, { guard: { space: ["config_maker", "space_admin"] } })
     .get("/v1/spaces/:spaceId/recons/:configId/activity", ({ ctx, params, query }) =>
       reconActivity(ctx, idParam(params.configId, "recon"), query), { query: ReconActivityQuery, guard: { space: SPACE_ROLES } })
+    // the Operation result columns: outside the versioned spec, no approval; any role reads, a config maker or space admin saves
+    .get("/v1/spaces/:spaceId/recons/:configId/result-columns", ({ ctx, params }) => resultColumns(ctx, idParam(params.configId, "recon")), { guard: { space: SPACE_ROLES } })
+    .put("/v1/spaces/:spaceId/recons/:configId/result-columns", async (c) => {
+      const b = await body(c, ResultColumnsBody);
+      return setResultColumns(c.ctx, idParam(c.params.configId, "recon"), b);
+    }, { guard: { space: ["config_maker", "space_admin"] } })
     .get("/v1/spaces/:spaceId/recons/:configId/versions", ({ ctx, params, query }) =>
       versionPage(ctx, idParam(params.configId, "recon"), query), { query: ReconVersionListQuery, guard: { space: SPACE_ROLES } })
     .get("/v1/spaces/:spaceId/recons/:configId/versions/:versionId", ({ ctx, params }) =>
