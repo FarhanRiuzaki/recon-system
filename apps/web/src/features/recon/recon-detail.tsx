@@ -20,6 +20,7 @@ import { PostingGroups } from "./posting-groups";
 import { ReconOverview } from "./recon-overview";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
+import { ResultColumnsPanel } from "./result-columns-panel";
 import { useDraftEndings } from "./draft-actions";
 import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
@@ -98,6 +99,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
             {shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
+            {r.published && <ResultColumnsPanel spaceId={spaceId} configId={id} spec={r.published.spec} canEdit={maker || roles.includes("space_admin")} />}
           </>
         )}
     </div>
