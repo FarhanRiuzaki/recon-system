@@ -53,7 +53,7 @@ export const SOURCE_CHANGED = "source_changed";
  * Reverses the engine's groups (auto, suggested; not a person's manual or forced match) in the window that hold an item
  * of side `s` whose record no longer counts (a mutable source replaced the row, or its snapshot is no longer active):
  * the group gets reversed_by = this run, reverse_reason source_changed and reversed_at, and every member item goes back
- * to open (version + 1), so the record's new version can pair again; the replaced member then closes
+ * to open (version + 1; a late-data break it had resolved is unresolved again), so the record's new version can pair again; the replaced member then closes
  * (closeReplacedSql). A group is reversed only when this statement locks all its items at the status and version read
  * (A1): one an operator holds waits for the next run. Answers { n } groups reversed.
  */
@@ -76,7 +76,8 @@ export function reverseReplacedSql(c: StepCtx, s: 0 | 1): SQL {
       having count(*) = (select count(*) from ${matchMembers} mm where mm.space_id = ${c.spaceId} and mm.group_id = lk.gid)),
   rg as (update ${matchGroups} g set reversed_by = ${c.runId}::uuid, reverse_reason = ${SOURCE_CHANGED}, reversed_at = now()
       where g.space_id = ${c.spaceId} and g.id in (select gid from whole) and g.reversed_by is null returning g.id),
-  up as (update ${reconItems} i set status = 'open', resolution = null, version = i.version + 1
+  up as (update ${reconItems} i set status = 'open', resolution = null, version = i.version + 1,
+      break_state = case when i.break_state = 'resolved' then null else i.break_state end
       from lk where i.space_id = ${c.spaceId} and i.id = lk.id and i.business_date = lk.bd and i.status = lk.st and i.version = lk.v
         and lk.gid in (select id from rg) returning i.business_date as bd)
   select (select count(*) from rg)::int as n, (select count(*) from up)::int as items, ${datesOf("up")}`;

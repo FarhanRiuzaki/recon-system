@@ -231,10 +231,13 @@ function pairEvidence(c: StepCtx, p: PassSpec, chosen: SQL): SQL {
 
 /**
  * Claims the items of `from` (id, v, st, bd, as `x`) for `status`: each at the status and version read (A1); a break it
- * pairs closes as late data.
+ * pairs closes as late data, resolved now (its queue state and time, as a person's resolution writes them: the
+ * dashboard's Resolved median counts it, I2).
  */
 const claim = (c: StepCtx, status: string, from: SQL): SQL => sql`update ${reconItems} i set status = ${status}, version = i.version + 1,
-      resolution = case when x.st = 'break' then ${LATE_DATA} else i.resolution end
+      resolution = case when x.st = 'break' then ${LATE_DATA} else i.resolution end,
+      break_state = case when x.st = 'break' then 'resolved' else i.break_state end,
+      state_at = case when x.st = 'break' then now() else i.state_at end
       from (${from}) x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status = x.st and i.version = x.v returning i.id, i.business_date as bd`;
 /**
  * The business dates CTE `cte` (a column `bd`) changed, comma-joined (null for none), as column `dates`: a run queues

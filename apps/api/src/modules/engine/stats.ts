@@ -3,6 +3,7 @@
 // converges on the same row. Queued per (config, date) by queueStats after a run and after a change of an item
 // (debounced: one job per key waits STATS_DELAY_MS, later changes merge into it), and swept nightly over the last
 // SWEEP_DAYS dates (jobs.ts).
+import { RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { enqueue, QUEUES } from "../../kernel/jobs";
@@ -13,7 +14,7 @@ import { postingGroupItems } from "../integrations";
 import { reconConfigs } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { recordSpaces } from "./break-resolve";
-import { statusTally } from "./results";
+import { resolvedRowMinutes, statusTally } from "./results";
 import { reconDayStats, reconItems, reconRuns } from "./schema";
 import { addDays } from "./service";
 import { missingDaysSql } from "./sql/days";
@@ -35,15 +36,14 @@ export async function recomputeDayStats(tx: InTx, spaceId: string, configId: str
     tx.select({ ccy: records.currency, sum: sql<string>`sum(abs(${records.amountMinor}))::text`, n: countN }).from(reconItems)
       .innerJoin(records, and(inArray(records.spaceId, spaces), eq(records.id, reconItems.recordId), eq(records.businessDate, reconItems.businessDate)))
       .where(and(live, eq(reconItems.resolution, "WRITTEN_OFF"))).groupBy(records.currency),
-    // from the business date's start in Asia/Jakarta, the Unmatch list's age base
-    tx.select({ m: sql<number>`floor(extract(epoch from ${reconItems.stateAt} - (${date}::date::timestamp at time zone 'Asia/Jakarta')) / 60)::int` })
-      .from(reconItems).where(and(live, eq(reconItems.breakState, "resolved"), isNotNull(reconItems.stateAt))),
+    // per resolved row the date counts (Resolved's own rows), from its item's business date start in Asia/Jakarta
+    resolvedRowMinutes(tx, spaceId, configId, date, RESOLVED_STATUSES),
   ]);
   const row = {
     results: Object.fromEntries(tally.map((t) => [t.status, [t.rows, t.records]])),
     broke: broke!.n,
     writtenOff: Object.fromEntries(written.flatMap((w) => (w.ccy && w.sum ? [[w.ccy, [w.sum, w.n]]] : []))),
-    resolveMinutes: resolved.map((r) => r.m),
+    resolveMinutes: resolved,
     computedAt: sql`now()`,
   };
   await tx.insert(reconDayStats).values({ spaceId, configId, businessDate: date, ...row })

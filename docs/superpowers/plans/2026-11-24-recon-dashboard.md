@@ -29,14 +29,14 @@ Rollup row `recon_day_stats(space_id, config_id, business_date)`, recomputed fro
 | `results` | Operation result rows of that business date per overall status: `{ status: [rows, records] }`, from the same SQL as `GET …/results/counts` (`resultRows` in `engine/results.ts`, dates `[d, d]`, no filter); records = side A + side B items of the row |
 | `broke` | live items of the date whose `break_reason` is set (they became unmatch, whatever happened after) |
 | `written_off` | per currency, the sum of absolute record amounts of live items of the date resolved `WRITTEN_OFF` |
-| `resolve_minutes` | per resolved live item of the date (`break_state = resolved`): minutes from the business date's start (Asia/Jakarta) to `state_at`, the Unmatch list's age base |
+| `resolve_minutes` | per Operation result row of the date with a Resolved status (the rows `Resolved` counts): minutes from its resolved items' business date start (Asia/Jakarta) to their `state_at` (`break_state = resolved`; a late-data match is resolved when its run claims it) |
 | `computed_at` | when it was written |
 
 | Number | Definition | Links to |
 | --- | --- | --- |
 | Auto-match rate | Σ records of `matched` rows ÷ Σ records of all rows over the period's rows; change vs previous period in points, `good` up | Operation result `?recon=&dateFrom=&dateTo=&result=matched` |
 | Unmatch open | live: `breakSummary` of each space (the Unmatch list's own function, `recon` filter): count; value IDR headline, other currencies in the tooltip; "N past carry over" = its `pastCarryOver`. Change: `broke` of the period vs previous, `good` down | Unmatch `/spaces/:id/breaks?recon=` |
-| Resolved | Σ rows of statuses `matched_late, matched_by_hand, force_matched, posted, written_off, adjusted, closed` over the period; median of `resolve_minutes`; change vs previous, `good` up | Operation result `?…&result=<those statuses>` |
+| Resolved · of this period's items | Σ rows of statuses `matched_late, matched_by_hand, force_matched, posted, written_off, adjusted, closed` over the period's business dates; median of `resolve_minutes` (the same rows), from the item's business date to its resolution; change vs previous, `good` up | Operation result `?…&result=<those statuses>` |
 | Posting success | live: `action_runs` kind posting of the scope, day of `coalesce(finished_at, created_at)` in the period: posted ÷ (posted + failed + timeout + not_sent); failed count = failed + timeout + not_sent; change in points, `good` up | Posting `/spaces/:id/posting?kind=posting&status=failed,timeout,not_sent&recon=&dateFrom=&dateTo=` |
 | Waiting approval | live: pending `approval_requests` of the space (break requests, every recon: the inbox has no recon filter), oldest `requested_at`; change = requests made in the period vs previous, `good` down | Approvals `/spaces/:id/approvals?mine=0&kind=<REQUEST_KINDS>` |
 | Results per day | per date: auto = records of `matched` rows; by hand + force = records of `matched_by_hand` + `force_matched` rows; new unmatch = `broke`; line = auto-match rate | — |

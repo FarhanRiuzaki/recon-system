@@ -251,6 +251,26 @@ export async function statusTally(tx: InTx, spaceId: string, configId: string, d
   return tx.select({ status: rows.status, rows: countN, records: sql<number>`sum(${rows.nA} + ${rows.nB})::int` }).from(rows).groupBy(rows.status);
 }
 
+/**
+ * The rows of business date `date` with an overall status in `statuses` (the dashboard's Resolved: the rows the rollup
+ * counts), each as the minutes from its resolved items' business date start (Asia/Jakarta) to their resolution
+ * (`state_at`): one value per row, so the Resolved count and its median come from the same rows (I2). A row whose
+ * resolved items carry no time is left out.
+ */
+export async function resolvedRowMinutes(tx: InTx, spaceId: string, configId: string, date: string, statuses: readonly ResultStatus[]): Promise<number[]> {
+  await roomToAggregate(tx);
+  const rows = resultRows(tx, spaceId, configId, await recordSpaces(tx, spaceId), [date, date], {});
+  const hit = await tx.select({ id: rows.rowId, kind: rows.kind }).from(rows).where(inArray(rows.status, [...statuses]));
+  const lone = hit.filter((r) => r.kind === "item").map((r) => r.id), grouped = hit.filter((r) => r.kind === "group").map((r) => r.id);
+  // a member is never dated after its group
+  const resolved = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), isNull(reconItems.simRunId), eq(reconItems.breakState, "resolved"), isNotNull(reconItems.stateAt), lte(reconItems.businessDate, date));
+  const m = sql<number>`floor(extract(epoch from max(${reconItems.stateAt}) - (min(${reconItems.businessDate})::timestamp at time zone 'Asia/Jakarta')) / 60)::int`;
+  const a = lone.length ? await tx.select({ m }).from(reconItems).where(and(resolved, inArray(reconItems.id, lone))).groupBy(reconItems.id) : [];
+  const b = grouped.length ? await tx.select({ m }).from(reconItems).innerJoin(matchMembers, and(eq(matchMembers.spaceId, reconItems.spaceId), eq(matchMembers.itemId, reconItems.id)))
+    .where(and(resolved, inArray(matchMembers.groupId, grouped))).groupBy(matchMembers.groupId) : [];
+  return [...a, ...b].map((r) => r.m);
+}
+
 type Item = {
   id: string; rowId: string; side: "a" | "b"; status: ItemStatus; bd: string; reason: string | null; assigneeId: string | null; stateAt: Date | null; breakState: string | null; resolution: Resolution | null; breakPass: number | null;
   ref: string | null; amount: bigint | null; ccy: string | null; dir: string | null; acct: string | null; eventTime: Date | null; recordBd: string | null; attrs: Record<string, unknown> | null;

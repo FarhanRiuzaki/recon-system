@@ -75,8 +75,8 @@ function Kpis({ d, space, recon }: { d: D; space: string | null; recon: string |
           caption={`${formatNumber(d.open.count)} items · ${formatNumber(d.open.pastCarryOver)} past carry over${h.others.length ? ` · also ${h.others.join(", ")}` : ""}`} />
       </Linked>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, RESOLVED_STATUSES) : null} label="Open the resolved results">
-        <StatTile icon={SuccessIcon} label="Resolved" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}
-          caption={p.now ? STILL : `Median ${minutes(d.resolved.medianMinutes)} from break to resolution`} />
+        <StatTile icon={SuccessIcon} label="Resolved · of this period's items" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}
+          caption={p.now ? STILL : `Median ${minutes(d.resolved.medianMinutes)} from the item's business date to its resolution`} />
       </Linked>
       <Linked href={space ? postingFailedHref(space, d.period, recon) : null} label="Open the failed postings">
         <StatTile icon={ReportsIcon} label="Posting success" value={pct(post)} delta={rateDelta(post, prevPost, "up")}

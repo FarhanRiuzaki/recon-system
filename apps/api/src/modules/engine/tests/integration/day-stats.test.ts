@@ -3,6 +3,7 @@
 // second recompute writes the same row; another space's scope neither reads nor writes it (RLS).
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { ResultCountsDto } from "@starterkit/shared/contracts/results";
+import { RESOLVED_STATUSES } from "@starterkit/shared/dashboard";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { call, signIn } from "../../../../../test/helpers/app";
 import { asAppRole } from "../../../../../test/helpers/app-role";
@@ -68,6 +69,17 @@ describe("recon_day_stats", () => {
     expect(row.resolveMinutes.length).toBe(3);
   });
 
+  it("resolve minutes come from the resolved rows the date counts, measured from the item's business date (I2)", async () => {
+    // P2's by-hand group dated D1 (its later member's date): D counts P5 alone, D1 counts P2's row
+    await db.update(matchGroups).set({ businessDate: D1 }).where(eq(matchGroups.id, F.G.manual!));
+    await recompute(F.A, F.R1.configId, D);
+    await recompute(F.A, F.R1.configId, D1);
+    const resolvedRows = (r: unknown) => RESOLVED_STATUSES.reduce((n, s) => n + (rowsOf(r)[s] ?? 0), 0);
+    const [d, d1] = [await rowOf(F.A, F.R1.configId, D), await rowOf(F.A, F.R1.configId, D1)];
+    expect([resolvedRows(d.results), [...d.resolveMinutes]]).toEqual([1, [12 * 60]]);
+    expect([resolvedRows(d1.results), [...d1.resolveMinutes]]).toEqual([1, [36 * 60]]);
+  });
+
   it("a second recompute writes the same row", async () => {
     await recompute(F.A, F.R1.configId);
     const a = await rowOf(F.A, F.R1.configId);
@@ -128,7 +140,12 @@ describe("recon.stats jobs", () => {
       await handle({ id: "j", data: jobs[0]!.data });
     }
     expect(rowsOf((await rowOf(F.A, r.configId, D4)).results)).toEqual({});
-    expect(rowsOf((await rowOf(F.A, r.configId, D)).results)).toEqual({ matched_late: 1 });
+    const onD = await rowOf(F.A, r.configId, D);
+    expect(rowsOf(onD.results)).toEqual({ matched_late: 1 });
+    // the late resolution counts in the median too (I2): resolved when the run claimed it, from D4's start
+    const [late] = await db.select({ state: reconItems.breakState, at: reconItems.stateAt }).from(reconItems).where(and(eq(reconItems.configId, r.configId), eq(reconItems.resolution, "AUTO_MATCHED_LATE_DATA")));
+    expect(late!.state).toBe("resolved");
+    expect([...onD.resolveMinutes]).toEqual([Math.floor((late!.at!.getTime() - Date.parse(`${D4}T00:00:00+07:00`)) / 60_000)]);
   }, 30_000);
 
   it("the backfill queues each date with results and no row, back BACKFILL_DAYS, once (C2)", async () => {
