@@ -113,5 +113,6 @@ export {
   PanelLeftOpenIcon as SidebarCollapseIcon, // Hugeicons names are the reverse of Lucide's: this glyph points left
   PanelLeftCloseIcon as SidebarExpandIcon, // …and this one points right
   Menu01Icon as MenuIcon, // Open the navigation drawer (phone top bar)
+  DragDropVerticalIcon as DragHandleIcon, // Drag a row to reorder it (SortableList's grip)
   CircleIcon as DotIcon, // Radio item indicator (filled with `fill-current`)
 } from "@hugeicons/core-free-icons";
