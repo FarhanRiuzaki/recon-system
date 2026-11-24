@@ -11,5 +11,9 @@ export { applyBreakChange, breakContextOf, revertBreakRequest } from "./break-re
 export { itemsOf } from "./break-resolve";
 export { reopenNotRequired } from "./breaks";
 export { closeMoment } from "./rules";
-export { queueBackfill, queuePostingStats } from "./stats";
+export { queueBackfill, queuePostingStats, statsJob } from "./stats";
+// the demo seed (db/seed/demo-recon.ts) runs a recon as the worker does and works its breaks as a request would
+export { runAndRefresh } from "./jobs";
+export { assignBreaks } from "./break-queue";
+export { requestChange } from "./break-requests";
 export { reconDashboard } from "./dashboard";

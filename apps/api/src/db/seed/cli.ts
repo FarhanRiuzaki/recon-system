@@ -2,9 +2,12 @@
 // Needs only MIGRATION_DATABASE_URL/DATABASE_URL (and SEED_SUPERADMIN_*), not the server's secrets: kernel/db.ts reads
 // just the pool keys when it loads (`loadDbConfig`).
 import { drizzle } from "drizzle-orm/bun-sql";
+import { client } from "../../kernel/db";
+import { closeJobs } from "../../kernel/jobs";
 import { log } from "../../kernel/log";
 import { migrateJobs, migrationSql, resetSchema } from "../migrate";
 import { seedDemo } from "./demo";
+import { seedDemoRecon } from "./demo-recon";
 import { seedLocal } from "./local";
 import { seedSystem } from "./system";
 
@@ -30,8 +33,14 @@ try {
   }
   if (cmd === "demo" || cmd === "reset") {
     await seedDemo(db);
+    // db:seed:demo only: the E2E's db:reset keeps the data its specs count
+    if (cmd === "demo") await seedDemoRecon(db);
     log.info("demo seed done");
   }
 } finally {
   await raw.close();
+  // the demo recons' runs queue the dashboard's rollup (pg-boss) and work breaks on the app pool: both closed, so the
+  // one-shot process exits
+  await closeJobs();
+  await client.close();
 }
