@@ -16,17 +16,21 @@ import { useAuth } from "@/lib/client/auth-context";
 import { isNotFound } from "@/lib/client/api";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
-import { ActivityTable, VersionsTable } from "./recon-tables";
 import { ReconOverview } from "./recon-overview";
 import { RECON_SHAPE } from "./shapes";
-import { SpecView } from "./spec-view";
-import { ResultColumnsPanel } from "./result-columns-panel";
 import { useDraftEndings } from "./draft-actions";
 
 // The Posting groups tab loads when opened (its table and dialog stay out of the page's first load: the route sat at
 // the 300 kB guard once the sidebar's live counts landed, 24 Nov); its own loading shape shows meanwhile.
 const PostingGroups = dynamic(() => import("./posting-groups").then((m) => m.PostingGroups), { ssr: false, loading: () => <LoadingShape sections={GROUPS_TAB_SHAPE} shown /> });
 const GROUPS_TAB_SHAPE = [{ kind: "table", chrome: 144, rows: 5, rowHeight: 56 }] as const;
+// Configuration and History load when opened too, like Posting groups (the route sat at the 300 kB guard, 24 Nov)
+const TAB_SHAPE = [{ kind: "panels", panels: [[12, 240]] }] as const;
+const tabLoading = () => <LoadingShape sections={TAB_SHAPE} shown />;
+const SpecView = dynamic(() => import("./spec-view").then((m) => m.SpecView), { ssr: false, loading: tabLoading });
+const ResultColumnsPanel = dynamic(() => import("./result-columns-panel").then((m) => m.ResultColumnsPanel), { ssr: false });
+const VersionsTable = dynamic(() => import("./recon-tables").then((m) => m.VersionsTable), { ssr: false, loading: () => <LoadingShape sections={GROUPS_TAB_SHAPE} shown /> });
+const ActivityTable = dynamic(() => import("./recon-tables").then((m) => m.ActivityTable), { ssr: false });
 import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
 const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", posting: "Posting groups", history: "History" };
