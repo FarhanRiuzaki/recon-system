@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { RESULT_STATUS_LABEL, RESULT_STATUSES, type ResultStatus } from "@starterkit/shared/results";
 import { statusTone } from "@/lib/shared/categories";
-import { cellText, columnKey, pickRecon, resultIcon, sideIcon } from "./result-model";
+import { CheckIcon, CloseIcon, NoneIcon } from "@starterkit/ui/ui/icons";
+import { SIDE_STATES } from "@starterkit/shared/results";
+import { cellText, columnKey, pickRecon, RESULT_LEGEND, resultIcon, sideIcon } from "./result-model";
 
 // the spec's table: green done, red failed or unmatch, amber needs a look, blue under way, grey nothing or off
 const GREEN = statusTone("matched"), RED = statusTone("failed"), AMBER = statusTone("check"), BLUE = statusTone("in_progress"), GREY = statusTone("nothing");
@@ -26,7 +28,11 @@ describe("result icons", () => {
     expect(sideIcon({ state: "in_group", count: 3 })).toMatchObject({ chip: { health: GREEN }, count: "3 records" });
     expect(sideIcon({ state: "in_group", count: 1 }).count).toBeNull();
     expect(sideIcon({ state: "unmatch", count: 1 }).chip.health).toBe(RED);
-    expect(sideIcon({ state: "none", count: 0 }).chip).toEqual({ health: GREY, label: "No record" });
+    expect(sideIcon({ state: "none", count: 0 }).chip).toEqual({ health: GREY, label: "No record on this side" });
+    // each side state draws its own icon: ✓ matched, ✕ unmatched, – none (owner 24 Nov)
+    expect(sideIcon({ state: "in_group", count: 1 }).icon).toBe(CheckIcon);
+    expect(sideIcon({ state: "unmatch", count: 1 }).icon).toBe(CloseIcon);
+    expect(sideIcon({ state: "none", count: 0 }).icon).toBe(NoneIcon);
     expect(sideIcon({ state: "suggested", count: 1 }).chip.health).toBe(AMBER);
   });
 });
@@ -62,5 +68,13 @@ describe("cells", () => {
   it("a column's table key is the same for the same field and fits the saved column choice", () => {
     expect(columnKey({ kind: "a", field: "attrs.merchant_id" })).toBe("a-attrs_merchant_id");
     expect(columnKey({ kind: "recon", field: "businessDate" })).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/);
+  });
+});
+
+describe("the card legend", () => {
+  it("names every overall status and every side state once, each with the icon the table draws", () => {
+    expect(RESULT_LEGEND).toHaveLength(RESULT_STATUSES.length + SIDE_STATES.length);
+    expect(new Set(RESULT_LEGEND.map((l) => l.label)).size).toBe(RESULT_LEGEND.length);
+    expect(RESULT_LEGEND.every((l) => !!l.icon)).toBe(true);
   });
 });

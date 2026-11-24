@@ -92,6 +92,7 @@ export {
   Tick02Icon as CheckIcon,
   Image01Icon as ImageIcon, // An image file before its preview loads
   Cancel01Icon as CloseIcon,
+  MinusSignIcon as NoneIcon, // Nothing on this side (a dash), e.g. a result row with no record on a side
   MoreHorizontalIcon as MoreIcon,
   CommandLineIcon as CommandsIcon,
   Key01Icon as KeyIcon,

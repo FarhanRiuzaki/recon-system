@@ -37,3 +37,17 @@ describe("Panel legend", () => {
     expect(wrap(h(Panel, { title: "Users", children: "rows" }))).not.toContain("Status legend");
   });
 });
+
+describe("StatusGlyph and a legend of icons (Operation result, owner 24 Nov)", () => {
+  it("a glyph is the icon in the status's mark colour, named for assistive tech; the legend draws the same icon", async () => {
+    const { StatusGlyph } = await import("./status-chip");
+    const { CheckIcon } = await import("../ui/icons");
+    const glyph = renderToStaticMarkup(h(TooltipProvider, null, h(StatusGlyph, { health: toStatusTone("healthy"), icon: CheckIcon, label: "Matched" })));
+    expect(glyph).toContain('role="img"');
+    expect(glyph).toContain('aria-label="Matched"');
+    expect(glyph).toContain("text-healthy-mark");
+    const list = renderToStaticMarkup(h(StatusLegendList, { items: [{ health: toStatusTone("down"), label: "Unmatch", icon: CheckIcon }] }));
+    expect(list).toContain("text-down-mark");
+    expect(list).toContain("<svg");
+  });
+});

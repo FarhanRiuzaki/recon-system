@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type Column, StatusChip, Truncate } from "@starterkit/ui/ds";
+import { type Column, StatusGlyph, Truncate } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -14,8 +14,9 @@ import { cellKey, cellText, columnKey, MISSING_TEXT, resultIcon, sideIcon } from
 const SORT_KEY: Record<string, string> = { "a:amount_minor": "amountA", "a:ext_ref": "ref", "recon:businessDate": "businessDate" };
 
 function Side({ s }: { s: ResultRowDto["a"] }) {
-  const { chip, count } = sideIcon(s);
-  return <span className="inline-flex items-center gap-1.5 whitespace-nowrap"><StatusChip health={chip.health} label={chip.label} />{count && <span className="text-caption text-fg-3">{count}</span>}</span>;
+  const { icon, chip, count } = sideIcon(s);
+  // the owner's picture (24 Nov): ✓ green, ✕ red, – grey, with how many records when more than one ("✓ 3")
+  return <span className="inline-flex items-center gap-0.5 whitespace-nowrap"><StatusGlyph health={chip.health} icon={icon} label={count ? `${chip.label}, ${count}` : chip.label} />{count && <span aria-hidden="true" className="text-caption tabular text-fg-2">{s.count}</span>}</span>;
 }
 
 /**
@@ -37,7 +38,7 @@ export function resultColumns(spaceId: string, columns: readonly ResultColumn[],
     };
   });
   return [
-    { key: "status", header: "Status", sortable: true, mobile: "title", hideable: false, className: "whitespace-nowrap", cell: (r) => { const c = resultIcon(r.status).chip; return <StatusChip health={c.health} label={c.label} />; } },
+    { key: "status", header: "Status", sortable: true, mobile: "title", hideable: false, className: "whitespace-nowrap", cell: (r) => { const x = resultIcon(r.status); return <StatusGlyph health={x.chip.health} icon={x.icon} label={x.chip.label} />; } },
     { key: "sideA", header: sides[0], mobile: "meta", cell: (r) => <Side s={r.a} /> },
     { key: "sideB", header: sides[1], mobile: "meta", cell: (r) => <Side s={r.b} /> },
     ...configured,

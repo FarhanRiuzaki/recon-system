@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import { useChangeKey } from "../motion";
-import { Icon } from "../ui/icon";
+import { Icon, type IconData } from "../ui/icon";
 import { SpinnerIcon } from "../ui/icons";
 import { cn } from "../lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -19,6 +19,24 @@ const SOFT: Record<Health, string> = {
   healthy: "bg-healthy-soft", degraded: "bg-degraded-soft", down: "bg-down-soft", stopped: "bg-stopped-soft", progress: "bg-progress-soft", unknown: "bg-unknown-soft",
 };
 const INTERACTIVE = "a[href],button,[role=button],[role=link],[role=menuitem],[role=tab],summary,label";
+
+/**
+ * A status as an icon alone (a dense table column whose card legend names every icon, e.g. Operation result): the
+ * picture in the status's mark colour (≥ 3:1), its label for assistive tech and as a tooltip. Only where the card's
+ * `Panel legend` lists the same icons with their words; elsewhere use StatusChip.
+ */
+export function StatusGlyph({ health, icon, label, className }: { health: StatusTone; icon: IconData; label: string; className?: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span role="img" aria-label={label} data-slot="status-glyph" className={cn("inline-grid size-6 shrink-0 place-items-center", TONE[health as Health], className)}>
+          <Icon icon={icon} className="size-4.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 /** A distinct shape per status (spec §4), so meaning never relies on color alone. */
 export function StatusIcon({ health: tone, className }: { health: StatusTone; className?: string }) {

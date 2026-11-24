@@ -1,4 +1,4 @@
-export { StatusChip, StatusIcon, type StatusChipProps } from "./status-chip";
+export { StatusChip, StatusGlyph, StatusIcon, type StatusChipProps } from "./status-chip";
 export type { LegendItem } from "./status-legend";
 export { Meter, MeterFill, meterTrack, TickMeter } from "./meter";
 export { CategoryChip, categoryColor, CountBadge, FilterChip, type CategoryHue, type CategorySlot } from "./badges";

@@ -3,7 +3,7 @@
 import { appDayStart, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
 import type { IconData } from "@starterkit/ui/ui/icon";
 import {
-  AlertsIcon, CalendarIcon, CheckIcon, CloseIcon, EditIcon, FailedIcon, ForceMatchIcon, SpinnerIcon, SuccessIcon, SuggestedIcon, TakeIcon, TimeIcon,
+  AlertsIcon, CalendarIcon, CheckIcon, CloseIcon, EditIcon, NoneIcon, FailedIcon, ForceMatchIcon, SpinnerIcon, SuccessIcon, SuggestedIcon, TakeIcon, TimeIcon,
   WaitIcon, WarningIcon, WriteOffIcon,
 } from "@starterkit/ui/ui/icons";
 import type { ResultCell, ResultColumn, ResultSide } from "@starterkit/shared/contracts/results";
@@ -21,16 +21,22 @@ const STATUS: Record<ResultStatus, readonly [StatusMeaning, IconData]> = {
 };
 export const resultIcon = (s: ResultStatus): { icon: IconData; chip: StatusChipData } => ({ icon: STATUS[s][1], chip: statusChip(STATUS[s][0], RESULT_STATUS_LABEL[s]) });
 
-const SIDE: Record<SideState, readonly [StatusMeaning, string]> = {
-  in_group: ["matched", "Matched"], suggested: ["check", "Suggested"], unmatch: ["missing", "Unmatch"],
-  open: ["open", "Waiting"], closed: ["off", "Closed"], none: ["nothing", "No record"],
+/** A side's state: its icon (✓ green in a group, ✕ red unmatch, … ) and words; the legend names each "Record …". */
+const SIDE: Record<SideState, readonly [StatusMeaning, string, IconData]> = {
+  in_group: ["matched", "Record matched", CheckIcon], suggested: ["check", "Record suggested", SuggestedIcon], unmatch: ["missing", "Record unmatched", CloseIcon],
+  open: ["open", "Record waiting for a counterpart", TimeIcon], closed: ["off", "Record closed", WriteOffIcon], none: ["nothing", "No record on this side", NoneIcon],
 };
 export const SIDE_LABEL = Object.fromEntries(Object.entries(SIDE).map(([k, v]) => [k, v[1]])) as Record<SideState, string>;
-/** A side's chip (its shape and tone tell the state); `count` = "3 records" when the side holds more than one. */
-export function sideIcon(s: ResultSide): { chip: StatusChipData; count: string | null } {
-  const [meaning, label] = SIDE[s.state];
-  return { chip: statusChip(meaning, label), count: s.count > 1 ? `${s.count} records` : null };
+/** A side's icon and chip (tone + words, for the legend and assistive tech); `count` = "3 records" when the side holds more than one. */
+export function sideIcon(s: ResultSide): { icon: IconData; chip: StatusChipData; count: string | null } {
+  const [meaning, label, icon] = SIDE[s.state];
+  return { icon, chip: statusChip(meaning, label), count: s.count > 1 ? `${s.count} records` : null };
 }
+/** The card legend: every overall status, then every side state, each with the icon the table draws. */
+export const RESULT_LEGEND = [
+  ...(Object.keys(STATUS) as ResultStatus[]).map((s) => ({ ...resultIcon(s).chip, icon: resultIcon(s).icon })),
+  ...(Object.keys(SIDE) as SideState[]).map((k) => ({ ...statusChip(SIDE[k][0], SIDE[k][1]), icon: SIDE[k][2] })),
+];
 
 /** The recon the page shows: `wanted` while it has a published version, else the first (by name) that has one; none = null. */
 export function pickRecon(recons: readonly { id: string; publishedVersion: number | null }[], wanted: string | null): string | null {

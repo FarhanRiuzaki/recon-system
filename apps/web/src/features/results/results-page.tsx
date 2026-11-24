@@ -25,7 +25,7 @@ import { ENGINE_KEY } from "@/lib/shared/queries";
 import { reconDetail, reconOptions, RESULTS, resultColumns as columnsQuery, resultCountsUrl, type ResultFilters } from "@/lib/shared/queries-recon";
 import { withCounts } from "@/lib/shared/table-state";
 import { resultColumns } from "./result-columns";
-import { pickRecon, resultIcon, SIDE_LABEL } from "./result-model";
+import { pickRecon, RESULT_LEGEND, resultIcon, SIDE_LABEL } from "./result-model";
 
 const ExplainDialog = dynamic(() => import("./explain-dialog"), { ssr: false });
 
@@ -34,7 +34,7 @@ const FILTER_DEFAULTS: Filters = { q: "", dateFrom: "", dateTo: "", result: "", 
 const day = (d: string) => formatDate(appDayStart(d));
 const STATUS_OPTIONS = RESULT_STATUSES.map((s) => ({ value: s, label: RESULT_STATUS_LABEL[s] }));
 const SIDE_OPTIONS = SIDE_STATES.map((s) => ({ value: s, label: SIDE_LABEL[s] }));
-const LEGEND = RESULT_STATUSES.map((s) => resultIcon(s).chip);
+
 const fieldsOf = (sides: readonly [string, string]) => [
   { key: "q", label: "Reference" },
   { key: "dateFrom", label: "Business date from", format: day },
@@ -102,7 +102,7 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
             <FilterChecks label={sides[1]} value={draft.sideB} options={SIDE_OPTIONS} onChange={(sideB) => patch({ sideB })} />
           </>}>
           {({ summary }) => (
-            <Panel flush icon={ReportsIcon} title="Results" count={t.count} legend={LEGEND}
+            <Panel flush icon={ReportsIcon} title="Results" count={t.count} legend={RESULT_LEGEND}
               description={f.dateFrom || f.dateTo ? `Business date ${[f.dateFrom || f.dateTo, f.dateTo || f.dateFrom].map(day).filter((x, i, a) => a.indexOf(x) === i).join(" – ")}` : "Business date today"}
               toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>
                 <Select aria-label="Recon" className="w-full md:w-64" value={configId ?? ""} onChange={(e) => t.set({ recon: e.target.value })} disabled={!recons.data}>
