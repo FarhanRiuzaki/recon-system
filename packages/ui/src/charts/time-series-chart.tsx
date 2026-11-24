@@ -32,6 +32,10 @@ type Props = {
   annotations?: Annotation[];
   /** The page shows ChartLegend in the Panel header instead (spec §6.1). */
   hideLegend?: boolean;
+  /** One point per day: a tick on each point's day, labelled with its date (never hours between days). */
+  daily?: boolean;
+  /** The y-axis labels' form (default: the round number); e.g. a rate as "%". */
+  axisFormat?: (v: number) => string;
 };
 
 /**
@@ -39,7 +43,7 @@ type Props = {
  * baseline, 2 px strokes, hollow markers on ≤ 14 points, active point + dashed crosshair, dark tooltip. Mount: lines
  * draw (400 ms), areas fade (280 ms); Recharts' own animation is off.
  */
-export function TimeSeriesChart({ label, series, format, kind = "line", height = CHART_HEIGHT.standard, curve = "monotone", thresholds = [], annotations = [], hideLegend }: Props) {
+export function TimeSeriesChart({ label, series, format, kind = "line", height = CHART_HEIGHT.standard, curve = "monotone", thresholds = [], annotations = [], hideLegend, daily, axisFormat }: Props) {
   const id = useChartId();
   const plot = useSettled();
   const s = foldSeries(series);
@@ -49,9 +53,9 @@ export function TimeSeriesChart({ label, series, format, kind = "line", height =
   if (rows.length === 0) return <EmptyState icon={LineChartIcon} title="No data in this time range" description="Data appears here when there's activity. Try a longer time range." />;
   const first = rows[0]!.t, last = rows[rows.length - 1]!.t;
   const axis = timeAxis(first, last);
-  const xTicks = axis.ticks;
+  const xTicks = daily ? rows.map((r) => r.t) : axis.ticks;
   // Labels follow the tick step: ≥ 1 day → date; otherwise time, and a WIB-midnight tick shows the date.
-  const dateLabels = xTicks.length > 0 ? axis.step >= 86_400 : timeTickKind(first, last) === "date";
+  const dateLabels = daily || (xTicks.length > 0 ? axis.step >= 86_400 : timeTickKind(first, last) === "date");
   const xTick = dateLabels
     ? (t: number) => formatDate(t * 1000)
     : (t: number) => ((t + APP_UTC_OFFSET_SEC) % 86_400 === 0 ? formatDate(t * 1000) : formatTime(t * 1000));
@@ -78,7 +82,7 @@ export function TimeSeriesChart({ label, series, format, kind = "line", height =
           <ComposedChart data={rows} margin={MARGIN} accessibilityLayer>
             <CartesianGrid vertical={false} stroke={GRID} strokeWidth={1} strokeDasharray={DASH} />
             <XAxis dataKey="t" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks.length > 0 ? xTicks : undefined} tickFormatter={xTick} height={X_AXIS_HEIGHT} tick={AXIS_TICK} tickLine={false} axisLine={false} minTickGap={24} />
-            <YAxis ticks={ticks} domain={[0, ticks[ticks.length - 1]!]} tickFormatter={tickLabel} tick={AXIS_TICK} tickLine={false} axisLine={false} tickSize={0} tickMargin={TICK_GAP} width={yTickWidth(ticks.map(tickLabel), TICK_GAP)} />
+            <YAxis ticks={ticks} domain={[0, ticks[ticks.length - 1]!]} tickFormatter={axisFormat ?? tickLabel} tick={AXIS_TICK} tickLine={false} axisLine={false} tickSize={0} tickMargin={TICK_GAP} width={yTickWidth(ticks.map(axisFormat ?? tickLabel), TICK_GAP)} />
             <ReferenceLine y={0} stroke={BASELINE} strokeWidth={1} />
             {thresholds.map((t) => (
               <ReferenceLine key={`${t.label}-${t.value}`} y={t.value} stroke={`var(--${t.tone}-mark)`} strokeWidth={1.5} strokeDasharray={DASH}

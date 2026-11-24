@@ -74,9 +74,10 @@ export function StatTile({ label, value, unit, delta, caption: captionProp, tren
       className={cn("flex min-h-26 min-w-0 flex-col gap-2.5 rounded-lg border bg-card p-4 text-left",
         selected ? "border-primary" : "border-line",
         onSelect && "card-lift cursor-pointer outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-primary")}>
-      <div className="flex min-w-0 items-center gap-2 text-body-sm text-fg-2">
-        {icon && <Icon icon={icon} className="size-4 shrink-0 text-fg-3" />}
-        <span className="min-w-0 truncate" title={label}>{label}</span>
+      <div className="flex min-w-0 items-start gap-2 text-body-sm text-fg-2">
+        {icon && <Icon icon={icon} className="mt-0.5 size-4 shrink-0 text-fg-3" />}
+        {/* a label beside a change pill in a narrow tile wraps to a second line rather than losing its words (24 Nov) */}
+        <span className="line-clamp-2 min-w-0 break-words" title={label}>{label}</span>
         {pill && (
           <span className={cn("-my-0.5 ml-auto inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full px-1.5 text-label", PILL[tone])}>
             {arrow && <Icon icon={arrow} className="size-3" />}{pill}

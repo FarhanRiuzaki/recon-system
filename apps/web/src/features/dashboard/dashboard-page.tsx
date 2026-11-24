@@ -76,8 +76,8 @@ function Kpis({ d, space, recon }: { d: D; space: string | null; recon: string |
             ...(p.compare ? [countDelta(d.open.broke, d.open.prevBroke, "down", "new unmatch").text] : [])].join(" · ")} />
       </Linked>
       <Linked href={space && recon ? resultsHref(space, recon, d.period, RESOLVED_STATUSES) : null} label="Open the resolved results">
-        <StatTile icon={SuccessIcon} label="Resolved · of this period's items" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}
-          caption={p.now ? STILL : `Median ${minutes(d.resolved.medianMinutes)} from the item's business date to its resolution`} />
+        <StatTile icon={SuccessIcon} label="Resolved" value={p.now ? "–" : formatNumber(d.resolved.rows)} delta={p.compare ? countDelta(d.resolved.rows, d.resolved.prevRows, "up") : undefined}
+          caption={p.now ? STILL : `Of this period's items · median ${minutes(d.resolved.medianMinutes)} from the item's business date to its resolution`} />
       </Linked>
       <Linked href={space ? postingFailedHref(space, d.period, recon) : null} label="Open the failed postings">
         <StatTile icon={ReportsIcon} label="Posting success" value={pct(post)} delta={rateDelta(post, prevPost, "up")}
@@ -106,7 +106,7 @@ function PerDay({ d, label }: { d: D; label: string }) {
                 ]} />
             </LazyMount>
             <LazyMount minHeight={CHART_HEIGHT.compact}>
-              <TimeSeriesChart label="Auto-match rate per day" height={CHART_HEIGHT.compact} curve="linear" format={(v) => formatPercent(v, 1)}
+              <TimeSeriesChart label="Auto-match rate per day" height={CHART_HEIGHT.compact} curve="linear" daily format={(v) => formatPercent(v, 1)} axisFormat={(v) => formatPercent(v, 0)}
                 series={[{ label: "Auto-match rate", slot: 0, points: d.days.flatMap((x) => (x.records ? [[appDayStart(x.date) / 1000, x.matched / x.records] as [number, number]] : [])) }]} />
             </LazyMount>
           </div>
