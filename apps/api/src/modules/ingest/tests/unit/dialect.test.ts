@@ -148,6 +148,10 @@ describe("rowsSql", () => {
 });
 
 type D = "postgres" | "mysql" | "mssql" | "oracle";
+// a text id as the keyset orders and compares it: one binary expression around the column and the parameter alike
+const MY = (x: string) => `CAST(CONVERT(${x} USING utf8mb4) AS BINARY)`;
+const MS = (x: string) => `CAST(CAST(${x} AS nvarchar(max)) AS varbinary(max))`;
+const ORA = (x: string) => `NLSSORT(TO_NCHAR(${x}), 'NLS_SORT=BINARY')`;
 
 describe("composite id columns (owner, 24 Nov: rows without one unique column)", () => {
   const after = { after: { wm: "2026-11-19", ids: ["B01", "7"] } } as const;
@@ -165,11 +169,11 @@ describe("composite id columns (owner, 24 Nov: rows without one unique column)",
 
   it("MySQL, SQL Server, Oracle: a range on the watermark, then the ids spelled out in order (no row values), one parameter per use", () => {
     const my = sql("mysql");
-    expect(my.sql).toEndWith("WHERE t.`d` >= STR_TO_DATE(?, '%Y-%m-%d') AND (t.`d` > STR_TO_DATE(?, '%Y-%m-%d') OR t.`branch` > ? OR (t.`branch` = ? AND t.`seq` > CAST(? AS DECIMAL(65,0)))) "
-      + "ORDER BY t.`d`, t.`branch`, t.`seq` LIMIT 5");
+    expect(my.sql).toEndWith(`WHERE t.\`d\` >= STR_TO_DATE(?, '%Y-%m-%d') AND (t.\`d\` > STR_TO_DATE(?, '%Y-%m-%d') OR ${MY("t.`branch`")} > ${MY("?")} OR (${MY("t.`branch`")} = ${MY("?")} AND t.\`seq\` > CAST(? AS DECIMAL(65,0)))) `
+      + `ORDER BY t.\`d\`, ${MY("t.`branch`")}, t.\`seq\` LIMIT 5`);
     expect(my.params).toEqual(["2026-11-19", "2026-11-19", "B01", "B01", "7"]);
-    expect(sql("mssql").sql).toContain("WHERE t.[d] >= CAST(@p0 AS date) AND (t.[d] > CAST(@p1 AS date) OR t.[branch] > @p2 OR (t.[branch] = @p3 AND t.[seq] > CAST(@p4 AS bigint))) ORDER BY t.[d], t.[branch], t.[seq] OFFSET");
-    expect(sql("oracle").sql).toContain(`OR t."branch" > :p2 OR (t."branch" = :p3 AND t."seq" > TO_NUMBER(:p4))) ORDER BY t."d", t."branch", t."seq" FETCH`);
+    expect(sql("mssql").sql).toContain(`WHERE t.[d] >= CAST(@p0 AS date) AND (t.[d] > CAST(@p1 AS date) OR ${MS("t.[branch]")} > ${MS("@p2")} OR (${MS("t.[branch]")} = ${MS("@p3")} AND t.[seq] > CAST(@p4 AS bigint))) ORDER BY t.[d], ${MS("t.[branch]")}, t.[seq] OFFSET`);
+    expect(sql("oracle").sql).toContain(`OR ${ORA('t."branch"')} > ${ORA(":p2")} OR (${ORA('t."branch"')} = ${ORA(":p3")} AND t."seq" > TO_NUMBER(:p4))) ORDER BY t."d", ${ORA('t."branch"')}, t."seq" FETCH`);
   });
 
   it("three ids: each later id breaks the tie of all before it", () => {
@@ -235,13 +239,40 @@ describe("nullProbeSql: the first row whose watermark or an id is NULL", () => {
 });
 
 describe("ids whose database order is not their text order", () => {
-  it("SQL Server uniqueidentifier: ordered and compared as its 36-character text, binary collation", () => {
-    const k = [col("w", "datetime2"), col("g", "uniqueidentifier")];
-    const b = rowsSql("mssql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19T00:00:00.0000000", ids: ["6F9619FF-8B86-D011-B42D-00C04FC964FF"] } } }, limit: 5 });
-    const g = "CONVERT(char(36), t.[g]) COLLATE Latin1_General_BIN2";
-    expect(b.sql).toContain(`OR ${g} > @p2) ORDER BY t.[w], ${g} OFFSET`);
-    const v = col("v", "varchar(36)"); // a plain text id is left as it is
-    expect(rowsSql("mssql", { from: { table: "t" }, columns: [k[0]!, v], keyset: { wm: k[0]!, ids: [v], cursor: null }, limit: 5 }).sql).toContain("ORDER BY t.[w], t.[v] OFFSET");
+  it("SQL Server text ids (a uniqueidentifier, a varchar under a SQL_* or _CI_ collation): ordered and compared as the bytes of their nvarchar text", () => {
+    // a varchar column compared with an nvarchar parameter takes Unicode rules while its ORDER BY takes the SQL_*
+    // collation's; a _CI_ collation makes 'a' = 'A', two texts the cursor tells apart; a uniqueidentifier orders by its
+    // last bytes first. One expression on both sides, binary, is the same order and the same comparison
+    for (const type of ["uniqueidentifier", "varchar(36)", "nvarchar(20)", "char(10)"]) {
+      const k = [col("w", "datetime2"), col("g", type)];
+      const b = rowsSql("mssql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19T00:00:00.0000000", ids: ["6F9619FF-8B86-D011-B42D-00C04FC964FF"] } } }, limit: 5 });
+      expect(b.sql).toContain(`OR ${MS("t.[g]")} > ${MS("@p2")}) ORDER BY t.[w], ${MS("t.[g]")} OFFSET`);
+      expect(b.sql).toStartWith("SELECT CONVERT(varchar(27), CAST(t.[w] AS datetime2(7)), 126) AS [w], CAST(t.[g] AS nvarchar(max)) AS [g]"); // the text kept is the text compared
+    }
+    // a number id is compared as its own type, index usable
+    const n = [col("w", "datetime2"), col("i", "bigint")];
+    expect(rowsSql("mssql", { from: { table: "t" }, columns: n, keyset: { wm: n[0]!, ids: [n[1]!], cursor: null }, limit: 5 }).sql).toContain("ORDER BY t.[w], t.[i] OFFSET");
+  });
+
+  it("MySQL text ids: the column's collation (often _ci, PAD SPACE) would make two texts equal; ordered and compared as their utf8mb4 bytes", () => {
+    const k = [col("w", "datetime(6)"), col("r", "varchar(20)")];
+    const b = rowsSql("mysql", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19T00:00:00.000000", ids: ["a"] } } }, limit: 5 });
+    expect(b.sql).toEndWith(`OR ${MY("t.`r`")} > ${MY("?")}) ORDER BY t.\`w\`, ${MY("t.`r`")} LIMIT 5`);
+    expect(b.params).toEqual(["2026-11-19T00:00:00.000000", "2026-11-19T00:00:00.000000", "a"]);
+  });
+
+  it("Oracle text ids: ORDER BY follows the session's NLS_SORT and = / > its NLS_COMP; both pinned to binary on national-character text", () => {
+    for (const type of ["VARCHAR2(20)", "NVARCHAR2(20)", "CHAR(10)"]) {
+      const k = [col("W", "TIMESTAMP(6)"), col("R", type)];
+      const b = rowsSql("oracle", { from: { table: "T" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19T00:00:00.000000", ids: ["a"] } } }, limit: 5 });
+      expect(b.sql).toEndWith(`OR ${ORA('t."R"')} > ${ORA(":p2")}) ORDER BY t."W", ${ORA('t."R"')} FETCH FIRST 5 ROWS ONLY`);
+    }
+  });
+
+  it("PostgreSQL text ids keep the column: ORDER BY and > use the same (deterministic) collation", () => {
+    const k = [col("w", "date"), col("r", "character varying(20)")];
+    expect(rowsSql("postgres", { from: { table: "t" }, columns: k, keyset: { wm: k[0]!, ids: [k[1]!], cursor: { after: { wm: "2026-11-19", ids: ["a"] } } }, limit: 5 }).sql)
+      .toEndWith('WHERE (t."w", t."r") > ($1, $2) ORDER BY t."w", t."r" LIMIT 5');
   });
 
   it("a binary id (Oracle RAW, MySQL binary(16), SQL Server varbinary, PostgreSQL bytea) is refused with how to read it as text", () => {

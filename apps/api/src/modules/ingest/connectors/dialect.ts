@@ -8,7 +8,8 @@
 //   formatted by the database with all their digits (microseconds: S7), never through a JS Date; a time-zone-aware
 //   value in UTC with "Z". The watermark is sent back in the same text form and parsed by the database.
 // - Keyset (updated_at, ids…) > ($wm, $ids…): a row comparison on PostgreSQL, spelled out elsewhere (no row values in
-//   SQL Server and Oracle); ordered by the source's own columns through the alias `t`, never by the text aliases (S7).
+//   SQL Server and Oracle); ordered by the source's own columns through the alias `t`, never by the text aliases (S7);
+//   a text id ordered and compared through one binary expression on both sides outside PostgreSQL (idExpr).
 // - A custom SELECT (IT's) is one SELECT or WITH, wrapped as a subquery; `:business_date` becomes a date parameter.
 import { DATE_LOOKBACK_MIN_SECONDS, DB_TABLE_NAME, type DbEngine, LOOKBACK_IDS_DEFAULT } from "@starterkit/shared/sources";
 import { specError } from "./errors";
@@ -350,12 +351,21 @@ const BINARY: Record<Dialect, [RegExp, (n: string) => string]> = {
 };
 
 /**
- * An id column as the keyset orders and compares it. SQL Server orders a uniqueidentifier by its last bytes first, not
- * as its text: ordered and compared as that text, binary collation, so the database's order is the order of the text
- * a pull keeps (an index on it is not used).
+ * A text id (the column, or the parameter holding its text) as the keyset orders and compares it: one binary expression
+ * on both sides, so ORDER BY and `>` / `=` agree and two texts the cursor tells apart are never equal. SQL Server: a
+ * varchar column against the driver's nvarchar parameter compares under Unicode rules but orders under its SQL_*
+ * collation, a _CI_ collation makes 'a' = 'A', a uniqueidentifier orders by its last bytes; compared as the bytes of the
+ * nvarchar text asText keeps. MySQL: the column's collation (often _ci, PAD SPACE) wins over the parameter's; compared
+ * as utf8mb4 bytes. Oracle: ORDER BY follows the session's NLS_SORT, comparison its NLS_COMP; NLSSORT … BINARY over
+ * national-character text (an NVARCHAR2 column and a VARCHAR2 parameter in one encoding). PostgreSQL orders and compares
+ * under the column's own collation, deterministic: left as it is.
  */
-const idExpr = (d: Dialect, c: Column, ref: string) =>
-  (d === "mssql" && /^uniqueidentifier$/i.test(c.type.trim()) ? `CONVERT(char(36), ${ref}) COLLATE Latin1_General_BIN2` : ref);
+const textKey = (d: Dialect, x: string) => ({
+  postgres: x, mysql: `CAST(CONVERT(${x} USING utf8mb4) AS BINARY)`, mssql: `CAST(CAST(${x} AS nvarchar(max)) AS varbinary(max))`, oracle: `NLSSORT(TO_NCHAR(${x}), 'NLS_SORT=BINARY')`,
+}[d]);
+/** An id column, or the parameter `x` read back for it (fromText), as the keyset orders and compares it. */
+// ponytail: an index on a text id no longer serves its ORDER BY outside PostgreSQL; the watermark range still seeks
+const idExpr = (d: Dialect, c: Column, x: string) => (familyOf(d, c.type) === "text" ? textKey(d, x) : x);
 
 /**
  * SELECT `columns` (as text) FROM `from` [WHERE keyset] [ORDER BY watermark, ids…] [first `limit` rows]. Without a
@@ -384,8 +394,8 @@ export function rowsSql(d: Dialect, o: { from: From; columns: Column[]; keyset?:
     else {
       const { wm: v, ids: ks } = cursor.after;
       if (ks.length !== ids.length) throw new Error("the cursor has another number of ids than the keyset");
-      // an id compared as text (idExpr) takes the parameter as text; else the parameter is read back as the column's type
-      const val = (j: number) => (is[j] === ref(ids[j]!) ? fromText(d, ids[j]!, p(ks[j]!)) : p(ks[j]!));
+      // the parameter read back as the column's type, in the same expression as its column (idExpr)
+      const val = (j: number) => idExpr(d, ids[j]!, fromText(d, ids[j]!, p(ks[j]!)));
       if (d === "postgres") sql += ` WHERE (${w}, ${is.join(", ")}) > (${p(v)}, ${ks.map((_, j) => val(j)).join(", ")})`;
       else {
         // no row comparison here: spelled out as a range on the watermark (>=) that an index on (watermark, ids) seeks,
