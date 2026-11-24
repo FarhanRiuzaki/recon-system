@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Field } from "@starterkit/ui/ds";
@@ -24,7 +25,7 @@ export default function AssignDialog({ spaceId, count, onAssign, onClose }: {
 }) {
   const url = `/api/spaces/${encodeURIComponent(spaceId)}/members?pageSize=100`;
   const q = useQuery({ queryKey: [...SPACES_KEY, "members-for-breaks", spaceId], queryFn: () => api<Page<SpaceMemberDto>>(url) });
-  const people = (q.data?.items ?? []).filter((m) => m.active && m.roles.some((r) => r === "operator" || r === "reviewer" || r === "space_admin"));
+  const people = (q.data?.items ?? []).filter((m) => m.active && mayDo(m.roles, "work"));
   const [who, setWho] = useState(NOBODY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

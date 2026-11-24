@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -68,7 +69,7 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
   const sideLabels = recon?.published?.spec.sides;
   // config makers and space admins set the columns on the recon page (Configuration, Operation result columns)
   const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
-  const setupHref = configId && (roles.includes("config_maker") || roles.includes("space_admin"))
+  const setupHref = configId && mayDo(roles, "resultColumns")
     ? `/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}?tab=configuration#result-columns` : null;
   const sides = useMemo<[string, string]>(() => [sideLabels?.[0].label ?? "Side A", sideLabels?.[1].label ?? "Side B"], [sideLabels]);
   const cq = columnsQuery(spaceId, configId ?? "");

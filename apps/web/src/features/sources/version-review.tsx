@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -77,7 +78,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const s = sq.data, v = vq.data;
   if (!s || !v || skeleton) return <LoadingShape sections={VERSION_SHAPE} shown={skeleton} />;
 
-  const checker = roles.includes("config_checker");
+  const checker = mayDo(roles, "approveVersion");
   const approveWhy = reviewReason(v, user.id, checker, "approve", isSuperadmin(user.roles));
   const rejectWhy = reviewReason(v, user.id, checker, "reject", isSuperadmin(user.roles));
   const published = s.published;
@@ -86,10 +87,10 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
   const rows = v.spec ? specDiff(isPublished ? null : (published?.spec ?? null), v.spec, s.engine) : [];
   const sentBack = v.status === "draft" && !!v.reviewComment;
   const st = versionChip(v);
-  const maker = roles.includes("source_admin") || roles.includes("config_maker");
+  const maker = mayDo(roles, "editSource");
   // the open draft opens in the wizard (a sent-back one included); a role that can't change sources gets the reason
   const edit = v.status === "draft" && s.draft?.id === v.id && (maker
-    ? <Button asChild variant="edit"><Link href={newVersionHref(spaceId, id, roles.includes("source_admin") ? 1 : 2)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
+    ? <Button asChild variant="edit"><Link href={newVersionHref(spaceId, id, mayDo(roles, "connectSource") ? 1 : 2)}><Icon icon={EditIcon} />Edit version {v.version}</Link></Button>
     : <BlockedButton variant="edit" reason={EDIT_REASON}><Icon icon={EditIcon} />Edit version {v.version}</BlockedButton>);
 
   async function decide(act: "approve" | "reject", comment: string) {
@@ -141,7 +142,7 @@ export function VersionReview({ spaceId, id, versionId }: { spaceId: string; id:
       )}
       changes={comparing && table}
       settings={!comparing && table}
-      preview={v.spec && <VersionPreview spaceId={spaceId} id={id} v={v} canPreview={roles.some((r) => r === "source_admin" || r === "config_maker" || r === "config_checker")} />} />
+      preview={v.spec && <VersionPreview spaceId={spaceId} id={id} v={v} canPreview={mayDo(roles, "previewSource")} />} />
   );
 }
 

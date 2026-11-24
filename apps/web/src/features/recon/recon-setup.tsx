@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -56,7 +57,7 @@ export function ReconSetup({ spaceId, id, step: urlStep }: { spaceId: string; id
   if (q.error && !r) return <div className="grid gap-section"><PageHeader title="Edit recon" /><Panel><Failure title="Couldn't load this recon" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} /></Panel></div>;
   if (!r || skeleton) return <LoadingShape sections={RECON_SETUP_SHAPE} shown={skeleton} />;
 
-  const maker = roles.includes("config_maker");
+  const maker = mayDo(roles, "editRecon");
   const title = r.published ? "Edit recon" : "New recon";
   const trail = [{ label: r.name, href: reconHref(spaceId, id) }];
   const back = <Button asChild variant="secondary"><Link href={reconHref(spaceId, id)}>Go to {r.name}</Link></Button>;

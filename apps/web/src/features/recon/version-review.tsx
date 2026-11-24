@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -68,8 +69,8 @@ export function ReconVersionReview({ spaceId, id, versionId }: { spaceId: string
   const r = rq.data, v = vq.data;
   if (!r || !v || skeleton) return <LoadingShape sections={RECON_VERSION_SHAPE} shown={skeleton} />;
 
-  const checker = roles.includes("config_checker");
-  const maker = roles.includes("config_maker");
+  const checker = mayDo(roles, "approveVersion");
+  const maker = mayDo(roles, "editRecon");
   const approveWhy = reviewReason(v, user.id, checker, "approve", isSuperadmin(user.roles));
   const rejectWhy = reviewReason(v, user.id, checker, "reject", isSuperadmin(user.roles));
   const published = r.published && r.published.id !== v.id && v.status !== "retired" ? r.published.version : null;

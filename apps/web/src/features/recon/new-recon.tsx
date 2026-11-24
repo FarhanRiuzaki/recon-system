@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -53,7 +54,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
   const router = useRouter();
   const qc = useQueryClient();
   const roles = useSpaceRoles(spaceId);
-  const maker = roles.includes("config_maker");
+  const maker = mayDo(roles, "editRecon");
   const sources = useSourceOptions(spaceId);
   const f = useForm<Values>({ initial: { name: "", code: "", a: "", b: "" }, schema: SCHEMA, idPrefix: "rc" });
   const [spec, setSpec] = useState<ReconSpec>(blankSpec);
@@ -162,7 +163,7 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
         <Panel>
           <div className="grid justify-items-center gap-3 py-8 text-center">
             <p className="text-body text-fg">No published source in {spaceName} yet.</p>
-            {roles.includes("source_admin")
+            {mayDo(roles, "connectSource")
               ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}><Icon icon={AddIcon} />Create source</Link></Button>
               : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}><Icon icon={AddIcon} />Create source</BlockedButton>}
           </div>

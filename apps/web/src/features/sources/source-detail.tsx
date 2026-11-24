@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,13 +40,13 @@ const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "R
  */
 /** A source nobody submitted or shared (DELETE …/sources/{id} takes it), for a source admin (designer review 03). */
 export const discardable = (s: SourceDto, roles: readonly string[]) =>
-  roles.includes("source_admin") && !s.owner && s.publishedVersion === null && !s.draft?.submitterId && !s.draft?.reviewComment && !s.shares.length;
+  mayDo(roles, "connectSource") && !s.owner && s.publishedVersion === null && !s.draft?.submitterId && !s.draft?.reviewComment && !s.shares.length;
 
 export function editAction(s: SourceDto, spaceId: string, roles: readonly string[], start: { busy: boolean; run: () => void }): PlainAction {
-  const may = roles.includes("source_admin") || roles.includes("config_maker");
+  const may = mayDo(roles, "editSource");
   if (!may) return { label: "Edit source", reason: EDIT_REASON };
   if (s.draft?.status === "in_review") return { label: `Open version ${s.draft.version}`, href: versionHref(spaceId, s.id, s.draft.id) };
-  if (s.draft) return { label: "Edit source", href: newVersionHref(spaceId, s.id, roles.includes("source_admin") ? 1 : 2) };
+  if (s.draft) return { label: "Edit source", href: newVersionHref(spaceId, s.id, mayDo(roles, "connectSource") ? 1 : 2) };
   return { label: "Edit source", onSelect: start.run, busy: start.busy };
 }
 const PAUSED_REASON = "This source is paused. Pulls start again once a new source version is approved.";
@@ -157,7 +158,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const own = !s.owner;
   const h = s.health;
   /** Why the viewer can't pull now, or null. */
-  const blocked = !roles.includes("source_admin") ? RUN_REASON : s.status === "paused" ? PAUSED_REASON : null;
+  const blocked = !mayDo(roles, "connectSource") ? RUN_REASON : s.status === "paused" ? PAUSED_REASON : null;
   const date = s.kind === "db_snapshot" ? h?.businessDate : undefined;
   // Never published: nothing can be pulled (the API answers 400), so the page offers no Pull now at all.
   const pull = own && !!s.publishedVersion && (

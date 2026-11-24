@@ -18,7 +18,7 @@ import { spaceMore } from "./space-settings";
 import { useAuth } from "@/lib/client/auth-context";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { SpaceMemberDto } from "@starterkit/shared/contracts/spaces";
-import { LAST_SPACE_ADMIN, SOURCE_ADMIN_REASON } from "@starterkit/shared/spaces";
+import { mayDo, LAST_SPACE_ADMIN, SOURCE_ADMIN_REASON } from "@starterkit/shared/spaces";
 import { activityInvestigationHref } from "@/lib/shared/activity-links";
 import { SPACE_MEMBERS } from "@/lib/shared/queries";
 import { MEMBER_COLUMNS } from "./member-columns";
@@ -50,7 +50,7 @@ export function MembersPage({ id }: { id: string }) {
   const t = useTableQuery<SpaceMemberDto, { q: string }>(SPACE_MEMBERS(id));
   const name = space?.name ?? "";
   const canSourceAdmin = can("space.manage");
-  const manage = canSourceAdmin || !!space?.roles.includes("space_admin");
+  const manage = canSourceAdmin || mayDo(space?.roles ?? [], "manageMembers");
   type Open = { kind: "add" } | { kind: "roles" | "remove"; member: SpaceMemberDto };
   const [dialog, setDialog] = useState<Open | null>(null);
   const [settings, setSettings] = useState(false);

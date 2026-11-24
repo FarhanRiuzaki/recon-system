@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useMemo } from "react";
 import Link from "next/link";
 import { BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
@@ -30,7 +31,7 @@ export function ReconsPage({ spaceId }: { spaceId: string }) {
   const live = useMemo((): LiveIndex | null => today ? { recons: new Map(today.recons.map((r) => [r.id, r])), sources: new Map(today.sources.map((s) => [s.id, s])) } : null, [today]);
   const columns = useMemo(() => reconColumns(spaceId, live), [spaceId, live]);
   const t = useTableQuery<ReconRowDto, { q: string }>(def);
-  const maker = useSpaceRoles(spaceId).includes("config_maker");
+  const maker = mayDo(useSpaceRoles(spaceId), "editRecon");
   const add = maker
     ? <Button variant="create-solid" asChild><Link href={newReconHref(spaceId)}><Icon icon={AddIcon} />Create recon</Link></Button>
     : <BlockedButton variant="create-solid" reason={NEW_RECON_REASON}><Icon icon={AddIcon} />Create recon</BlockedButton>;

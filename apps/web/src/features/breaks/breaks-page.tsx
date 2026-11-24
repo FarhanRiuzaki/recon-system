@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
@@ -66,8 +67,8 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
   const reconOptions = useMemo(() => (recons ?? []).map((r) => ({ value: r.id, label: r.name })), [recons]);
   const fields = useMemo(() => filterFields((id) => recons?.find((r) => r.id === id)?.name ?? "A recon"), [recons]);
   const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
-  const canAssign = roles.some((r) => r === "space_admin" || r === "reviewer");
-  const canWork = canAssign || roles.includes("operator");
+  const canAssign = mayDo(roles, "assign");
+  const canWork = mayDo(roles, "work");
   // selection belongs to the rows on screen: another page, size, sort or filter starts empty
   const shown = `${f.page}|${f.pageSize}|${f.sort}|${t.filterQuery}`;
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());

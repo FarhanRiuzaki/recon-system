@@ -368,6 +368,25 @@ const NAME = new RegExp(`\\b${BRAND.name}\\b`);
 const brandViolations = (fs: F[]) => fs.filter(({ r, src }) => r !== BRAND_HOME && NAME.test(src)).map(({ r }) => `${r}: write BRAND.name, not the product name`);
 
 /** Each signed-in page.tsx guards with the permission pagePerm gives its path (the layout's 404 check uses pagePerm). */
+/**
+ * A space permission decision reads SPACE_ACTION through `mayDo` (`packages/shared/src/spaces.ts`), the lists the API's
+ * space guards name, never a role literal in feature, component or page code: the web can offer an action only to the
+ * roles the API accepts (owner, 24 Nov). A label goes through ROLE_LABEL; the design system's sample data and tests
+ * are outside. A member rule about one role itself (not who may act) is allowlisted per file and role, with its reason.
+ */
+const SPACE_ROLE_LITERAL = /["'`](space_admin|source_admin|config_maker|config_checker|operator|reviewer|viewer)["'`]/g;
+const SPACE_ROLE_LITERAL_ALLOWED: Record<string, string> = {
+  [`${WEB}features/spaces/members-page.tsx space_admin`]: "the last active space admin can't be removed (LAST_SPACE_ADMIN), the API's 409",
+  [`${WEB}features/spaces/members-page.tsx source_admin`]: "only an app admin removes a source admin (SOURCE_ADMIN_REASON), the API's 403",
+  [`${WEB}components/role-checklist.tsx space_admin`]: "the last space admin's role is locked (LAST_SPACE_ADMIN)",
+  [`${WEB}components/role-checklist.tsx source_admin`]: "only an app admin grants or removes source admin (SOURCE_ADMIN_REASON)",
+  [`${WEB}features/approvals/levels-editor.tsx reviewer`]: "a new approval group's default approvers: data the user edits, not a permission check",
+};
+const spaceRoleLiteralHits = (fs: F[]) => fs
+  .filter(({ r }) => /\.tsx?$/.test(r) && !/\.test\.tsx?$/.test(r) && [`${WEB}features/`, `${WEB}components/`, `${WEB}app/`].some((p) => r.startsWith(p)) && !r.startsWith(`${WEB}features/ds/`))
+  .flatMap(({ r, src }) => strip(src).split("\n").flatMap((l, i) => [...l.matchAll(SPACE_ROLE_LITERAL)].map((m) => ({ key: `${r} ${m[1]}`, at: `${r}:${i + 1} "${m[1]}"` }))));
+const spaceRoleLiteralViolations = (fs: F[]) => spaceRoleLiteralHits(fs).filter((h) => !(h.key in SPACE_ROLE_LITERAL_ALLOWED)).map((h) => `${h.at}: use mayDo(roles, <SpaceAction>)`);
+
 function pageGuardViolations(fs: F[]): string[] {
   return fs.filter(({ r }) => r.startsWith(`${WEB}app/(main)/`) && r.endsWith("/page.tsx")).flatMap(({ r, src }) => {
     const route = r.slice(`${WEB}app/(main)`.length, -"/page.tsx".length).replace(/\[\w+\]/g, "x") || "/";
@@ -443,6 +462,12 @@ describe("architecture", () => {
 
   it("apps/web writes no UTC offset or zone label (APP_UTC_OFFSET_SEC, APP_TIME_ZONE_LABEL, formatDate…)", () => {
     expect(zoneViolations(files)).toEqual([]);
+  });
+
+  it("a space permission decision reads SPACE_ACTION (mayDo), never a role literal; the allowlist has no stale entry", () => {
+    expect(spaceRoleLiteralViolations(files)).toEqual([]);
+    const hit = new Set(spaceRoleLiteralHits(files).map((h) => h.key));
+    expect(Object.keys(SPACE_ROLE_LITERAL_ALLOWED).filter((k) => !hit.has(k))).toEqual([]);
   });
 
   it("each signed-in page guards with the permission pagePerm gives its path", () => {
@@ -905,6 +930,22 @@ import { INTENTS } from "@starterkit/ui/ds";\nimport x from "bunyan";`),
       f(`${WEB}features/c/page.tsx`, `import { cols } from "./c-columns"; <ColumnsMenu columns={cols} /> <DataTable columns={cols} />`),
       f(`${WEB}features/d/list.tsx`, `const c = [{ key: "at", defaultHidden: false }]; <DataTable columns={c} />`),
     ])).toEqual([`${WEB}features/b/list.tsx: a defaultHidden column without ColumnsMenu`, `${WEB}features/c/list.tsx: a defaultHidden column (${WEB}features/c/c-columns.tsx) without ColumnsMenu`]);
+  });
+
+  it("fixture: a role literal deciding a space permission is caught in features, components and pages; mayDo, labels, ds samples, tests and allowlisted rules pass", () => {
+    expect(spaceRoleLiteralViolations([
+      f(`${WEB}features/x/a.tsx`, `const canAssign = roles.some((r) => r === "space_admin" || r === 'reviewer');`),
+      f(`${WEB}components/x/b.ts`, "const op = roles.includes(`operator`);"),
+      f(`${WEB}app/(main)/x/page.tsx`, `const canManage = space.roles.includes("space_admin");`),
+      f(`${WEB}features/x/c.tsx`, `const ok = mayDo(roles, "assign"); const l = ROLE_LABEL[r]; // "reviewer" in a comment`),
+      f(`${WEB}features/ds/d.tsx`, `const [role] = useState("viewer");`),
+      f(`${WEB}features/x/e.test.ts`, `expect(mayDo(["operator"], "work")).toBe(true);`),
+      f(`${WEB}features/spaces/members-page.tsx`, `const activeAdmin = (m) => m.active && m.roles.includes("space_admin"); const x = m.roles.includes("operator");`),
+    ])).toEqual([
+      `${WEB}features/x/a.tsx:1 "space_admin": use mayDo(roles, <SpaceAction>)`, `${WEB}features/x/a.tsx:1 "reviewer": use mayDo(roles, <SpaceAction>)`,
+      `${WEB}components/x/b.ts:1 "operator": use mayDo(roles, <SpaceAction>)`, `${WEB}app/(main)/x/page.tsx:1 "space_admin": use mayDo(roles, <SpaceAction>)`,
+      `${WEB}features/spaces/members-page.tsx:1 "operator": use mayDo(roles, <SpaceAction>)`,
+    ]);
   });
 
   it("fixture: a shared file outside contracts/ importing zod", () => {

@@ -2,6 +2,7 @@
 
 // The open draft's two endings, asked with their impact (the recon's page and its setup share them): discard a live
 // recon's draft (its version keeps running), or delete a draft recon nobody submitted.
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
@@ -15,14 +16,14 @@ import { reconApi, reconHref, reconsHref } from "./use-recons";
 
 /** A recon nobody submitted (DELETE …/recons/{id} takes it), for a config maker or a space admin. */
 export const discardable = (r: ReconDto, roles: readonly string[]) =>
-  (roles.includes("config_maker") || roles.includes("space_admin")) && r.publishedVersion === null && !!r.draft && !r.draft.submitterId && !r.draft.reviewComment;
+  mayDo(roles, "deleteRecon") && r.publishedVersion === null && !!r.draft && !r.draft.submitterId && !r.draft.reviewComment;
 
 /** The ⋯ items that end an open draft: "Discard draft vN" (a live recon's) and "Delete draft recon" (one never submitted). */
 export function useDraftEndings(spaceId: string, r: ReconDto | undefined, roles: readonly string[]): HeaderAction[] {
   const qc = useQueryClient();
   const router = useRouter();
   if (!r) return [];
-  const maker = roles.includes("config_maker");
+  const maker = mayDo(roles, "editRecon");
   const out: HeaderAction[] = [];
   if (maker && r.draft?.status === "draft" && r.published) {
     const v = r.draft.version, live = r.published.version;

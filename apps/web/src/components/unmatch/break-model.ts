@@ -1,6 +1,7 @@
 // An unmatch item's words and choices, pure (no React), for its page and Operation result's Explain (DEC-056): the
 // comparison with its counterpart, how long it is checked again, where a request goes, and the ways to settle it in the
 // page's order with one primary (audit B1–B6).
+import { mayDo } from "@starterkit/shared/spaces";
 import { appDayStart, formatDate, formatMinor } from "@starterkit/ui/lib/format";
 import type { RequestKind } from "@starterkit/shared/approvals";
 import type { BreakDetailDto, BreakItemDto } from "@starterkit/shared/contracts/breaks";
@@ -218,10 +219,10 @@ export function settleActions(o: { recon: BreakDetailDto["recon"]; access: Acces
  */
 export function workView(b: BreakDetailDto, o: { user: { id: string; roles: readonly string[] }; roles: readonly string[]; picked: ReadonlyMap<string, BreakItemDto> }) {
   const open = b.state !== "resolved";
-  const lead = isSuperadmin(o.user.roles) || o.roles.some((r) => r === "space_admin" || r === "reviewer");
+  const lead = isSuperadmin(o.user.roles) || mayDo(o.roles, "assign");
   const mine = b.assignee?.id === o.user.id;
   const pending = b.state === "pending_approval";
-  const access = workAccess({ lead, operator: o.roles.includes("operator"), mine, assignee: b.assignee ? b.assignee.name ?? "A removed user" : null, open, pending });
+  const access = workAccess({ lead, operator: mayDo(o.roles, "work"), mine, assignee: b.assignee ? b.assignee.name ?? "A removed user" : null, open, pending });
   const asks = b.request?.status !== "pending" && (lead || mine);
   const proposedFree = open && b.proposed?.available ? b.proposed : null;
   const target = o.picked.size ? [...o.picked.keys()] : proposedFree ? [proposedFree.item.id] : [];

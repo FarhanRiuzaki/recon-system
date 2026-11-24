@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@starterkit/ui/ui/button";
@@ -77,9 +78,9 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
   const r = q.data;
   if (!r || skeleton) return <LoadingShape sections={RECON_SHAPE} shown={skeleton} />;
 
-  const maker = roles.includes("config_maker");
+  const maker = mayDo(roles, "editRecon");
   // who may start a run of the published version (POST …/runs)
-  const runner = roles.some((x) => x === "config_maker" || x === "space_admin" || x === "operator");
+  const runner = mayDo(roles, "runRecon");
   const st = reconStatus(r);
   const edit = editAction(r, spaceId, maker, { busy: start.isPending, run: () => start.mutate() });
   const more: HeaderAction[] = [...(edit ? [edit] : []), ...endings];
@@ -108,7 +109,7 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
             {r.draft?.status === "draft" && r.draft.reviewComment && <Notice tone="warn">Sent back: {r.draft.reviewComment}</Notice>}
             {r.draft?.status === "in_review" && <Notice>Version {r.draft.version} is waiting for a config checker; it can&apos;t be edited meanwhile.</Notice>}
             {shown && <SpecView spaceId={spaceId} spec={shown.spec} />}
-            {r.published && <ResultColumnsPanel spaceId={spaceId} configId={id} spec={r.published.spec} canEdit={maker || roles.includes("space_admin")} />}
+            {r.published && <ResultColumnsPanel spaceId={spaceId} configId={id} spec={r.published.spec} canEdit={mayDo(roles, "resultColumns")} />}
           </>
         )}
     </div>

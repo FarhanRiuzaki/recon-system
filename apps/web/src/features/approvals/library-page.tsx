@@ -66,7 +66,7 @@ export const libraryColumns = (spaceId: string): Column<LibraryRowDto>[] => {
  * A space's workflows (DEC-052 rev 2 §4.1): named chains of levels that the space's recons pin for a change.
  * New workflow saves a draft at once and opens it, so nothing typed is lost.
  */
-export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string; spaceName: string; canManage: boolean }) {
+export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string; spaceName: string | null; canManage: boolean }) {
   const router = useRouter();
   const def = useMemo(() => WORKFLOWS(spaceId), [spaceId]);
   const COLUMNS = useMemo(() => libraryColumns(spaceId), [spaceId]);
@@ -87,7 +87,7 @@ export function LibraryPage({ spaceId, spaceName, canManage }: { spaceId: string
   }
   return (
     <div className="grid gap-section">
-      <PageHeader title="Workflows" description={`Approval chains, level by level, that the recons of ${spaceName} use for changes that need approval.`}
+      <PageHeader title="Workflows" description={`Approval chains, level by level, that the recons of ${spaceName ?? "this space"} use for changes that need approval.`}
         actions={canManage ? <Button type="button" variant="create-solid" onClick={() => void create()} disabled={busy} aria-busy={busy || undefined}><Icon icon={busy ? SpinnerIcon : AddIcon} className={busy ? "motion-safe:animate-spin" : undefined} />New workflow</Button> : undefined} />
       <FilterSurface>
         {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the workflows; showing the ones loaded before. {errorText(t.staleError)}</Notice>}

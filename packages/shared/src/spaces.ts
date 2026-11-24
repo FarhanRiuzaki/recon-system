@@ -35,6 +35,12 @@ export const SPACE_ACTION = {
   editWorkflows: ["space_admin"],
 } as const satisfies Record<string, readonly SpaceRole[]>;
 export type SpaceAction = keyof typeof SPACE_ACTION;
+/**
+ * Whether one of `roles` (the caller's in a space) may do `action`: the web offers an action to exactly the roles its
+ * API guard lets in, never a role list of its own (`apps/web/src/test/architecture.test.ts` "a space permission decision …").
+ */
+export const mayDo = (roles: readonly string[], action: SpaceAction): boolean =>
+  roles.some((r) => (SPACE_ACTION[action] as readonly string[]).includes(r));
 
 export const SPACE_STATUSES = ["active", "archived"] as const;
 export type SpaceStatus = (typeof SPACE_STATUSES)[number];

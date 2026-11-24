@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useMemo } from "react";
 import Link from "next/link";
 import { BlockedButton, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, StatTile, StatTiles, StatTileSkeletons, Toolbar } from "@starterkit/ui/ds";
@@ -40,7 +41,7 @@ export function SourcesPage({ spaceId }: { spaceId: string }) {
   const columns = useMemo(() => sourceColumns(spaceId), [spaceId]);
   const t = useTableQuery<SourceRowDto, SourceFilters>(def);
   const summary = useSourceSummary(spaceId).data;
-  const admin = useSpaceRoles(spaceId).includes("source_admin");
+  const admin = mayDo(useSpaceRoles(spaceId), "connectSource");
   const add = admin
     ? <Button variant="create-solid" asChild><Link href={newSourceHref(spaceId)}><Icon icon={AddIcon} />Create source</Link></Button>
     : <BlockedButton variant="create-solid" reason={NEW_SOURCE_REASON}><Icon icon={AddIcon} />Create source</BlockedButton>;

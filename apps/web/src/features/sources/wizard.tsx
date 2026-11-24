@@ -1,5 +1,6 @@
 "use client";
 
+import { mayDo } from "@starterkit/shared/spaces";
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -64,7 +65,7 @@ const step0 = (n: number | null, admin: boolean) => Math.min(2, Math.max(admin ?
 export function NewSourceWizard({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const roles = useSpaceRoles(spaceId);
   const initial = useMemo<Draft>(() => ({ name: "", code: "", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark") }), []);
-  if (!roles.includes("source_admin")) return <Refused title="New source" reason={NEW_SOURCE_REASON} back={{ href: sourcesHref(spaceId), label: "Go to sources" }} />;
+  if (!mayDo(roles, "connectSource")) return <Refused title="New source" reason={NEW_SOURCE_REASON} back={{ href: sourcesHref(spaceId), label: "Go to sources" }} />;
   // a new source always starts at step 1: nothing typed in a later step survives a reload
   return <SourceWizard spaceId={spaceId} spaceName={spaceName} initial={initial} start={0} admin source={null} />;
 }
@@ -85,9 +86,9 @@ export function EditSourceWizard({ spaceId, spaceName, id, step }: { spaceId: st
   if (!s || skeleton) return <LoadingShape sections={WIZARD_SHAPE} shown={skeleton} />;
   const back = { href: sourceHref(spaceId, id), label: `Go to ${s.name}` };
   const trail = [{ label: s.name, href: sourceHref(spaceId, id) }];
-  const admin = roles.includes("source_admin");
+  const admin = mayDo(roles, "connectSource");
   if (s.owner) return <Refused title="Edit source" trail={trail} reason={`${s.owner.name} owns this source; only its source admins and config makers change it.`} back={back} />;
-  if (!admin && !roles.includes("config_maker")) return <Refused title="Edit source" trail={trail} reason={EDIT_REASON} back={back} />;
+  if (!mayDo(roles, "editSource")) return <Refused title="Edit source" trail={trail} reason={EDIT_REASON} back={back} />;
   const v = s.draft;
   if (!v) {
     return (
