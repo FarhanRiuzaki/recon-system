@@ -145,7 +145,8 @@ export default function ExplainDialog({ spaceId, configId, reconName, row, sides
                   <SideColumn i={1} name={sides[1]} members={d.b} more={d.more.b} fields={fields} differs={differs} total={totals![1]} totalDiffers={totalDiffers} />
                 </div>
               )}
-            {d && workId && (wq.error && !wq.data ? <Failure title="Couldn't load what you can do with it" error={wq.error} source={BRAND.name} onRetry={() => void wq.refetch()} />
+            {/* a 404 after an action keeps the old data in the cache: no stale buttons under "this result has changed" */}
+            {d && !q.error && workId && (wq.error && !wq.data ? <Failure title="Couldn't load what you can do with it" error={wq.error} source={BRAND.name} onRetry={() => void wq.refetch()} />
               : rolesQ.error && !rolesQ.data ? (
                 <Notice tone="warn">
                   <span className="grid justify-items-start gap-2">
@@ -154,6 +155,7 @@ export default function ExplainDialog({ spaceId, configId, reconName, row, sides
                   </span>
                 </Notice>
               )
+              : wq.error ? null
               : !b || !v ? <div role="status" aria-label="Loading what you can do" className="grid gap-4 md:grid-cols-2"><Skeleton className="h-36" /><Skeleton className="h-36" /></div>
               : (
                 <>

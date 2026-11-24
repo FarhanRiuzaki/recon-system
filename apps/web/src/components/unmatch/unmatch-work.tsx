@@ -62,9 +62,12 @@ export function useUnmatchWork(spaceId: string, id: string, b: BreakDetailDto | 
   const d = breakDetail(spaceId, id);
   const [busy, setBusy] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialogue | null>(null);
+  // another item (a row's work item changed after a refetch): nothing picked or open for the previous one carries over
+  const [forId, setForId] = useState(id);
   const [picked, setPicked] = useState<ReadonlyMap<string, BreakItemDto>>(new Map());
   const [finding, setFinding] = useState(false);
   const [closing, setClosing] = useState(false);
+  if (forId !== id) { setForId(id); setPicked(new Map()); setDialog(null); setClosing(false); }
   const focusTo = useRef<readonly string[] | null>(null);
   const [focusTick, setFocusTick] = useState(0);
   const focusNext = (sel: string | readonly string[]) => { focusTo.current = typeof sel === "string" ? [sel] : sel; setFocusTick((n) => n + 1); };
