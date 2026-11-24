@@ -267,6 +267,9 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
   );
 }
 
+/** Why a side's source is read only (the API refuses the change too: recon updateVersion). */
+export const SOURCE_LOCK = "Fixed once the recon exists: its results are tied to this source";
+
 /** A side (BUILDER-SPEC "Side cards"): its label, the amount's sign and the filters that pick its records. */
 export function SideEditor({ spec, i, fields, sourceName, picker, glance, place, onChange, onRemoved }: {
   spec: ReconSpec; i: 0 | 1; fields: Fields; sourceName: string; place: Place | null; onChange: (s: SideSpec) => void; onRemoved: OnRemoved<[]>;
@@ -287,7 +290,8 @@ export function SideEditor({ spec, i, fields, sourceName, picker, glance, place,
         <Input id={id("label")} value={s.label} aria-required maxLength={64} onChange={(e) => onChange({ ...s, label: e.target.value })} autoComplete="off" />
       </Field>
       <div className="grid gap-2">
-        <Field id={picker?.id ?? id("source")} label="Source" required error={picker?.error}>
+        {/* before the recon exists the source is picked here; after, it is fixed and says why */}
+        <Field id={picker?.id ?? id("source")} label="Source" required error={picker?.error} note={picker ? undefined : SOURCE_LOCK}>
           {picker?.control ?? <Input id={id("source")} value={sourceName} readOnly />}
         </Field>
         {glance}

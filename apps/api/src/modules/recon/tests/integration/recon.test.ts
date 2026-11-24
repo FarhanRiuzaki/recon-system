@@ -189,6 +189,21 @@ describe("POST and GET recons", () => {
 });
 
 describe("versions: edit, simulate, submit, approve, reject", () => {
+  it("a side's source is fixed once the recon exists, on its first draft and on a later one (the builder's lock)", async () => {
+    const S4 = await publishedSource(A, "source4", 2);
+    const r = await made();
+    const moved = gate(S1, S4);
+    const first = await patch(t.mk, r.id, r.draft!.id, moved);
+    expect([first.status, await message(first)]).toEqual([400, "Side B: Fixed once the recon exists: its results are tied to this source."]);
+    const { r: live } = await published(body({ code: "other" }));
+    const draft = await json<ReconVersionDto>(call("POST", `${base(A)}/${live.id}/versions`, { token: t.mk }));
+    const later = await patch(t.mk, live.id, draft.id, moved);
+    expect([later.status, await message(later)]).toEqual([400, "Side B: Fixed once the recon exists: its results are tied to this source."]);
+    // the rest of a side still changes
+    const relabelled = gate(S1, S2);
+    relabelled.sides[1].label = "Switching";
+    expect((await patch(t.mk, r.id, r.draft!.id, relabelled)).status).toBe(200);
+  });
   it("the list says whether a recon's open version is a draft or in review (one join, every row)", async () => {
     const r = await made();
     const v = r.draft!.id;

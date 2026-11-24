@@ -247,6 +247,9 @@ export function updateVersion(ctx: Ctx, id: string, versionId: string, b: Update
     const c = await configOf(tx, spaceId, id, true);
     const v = await versionOf(tx, c, versionId);
     if (!canStep("edit", v.status as VersionStatus)) throw wrongState("Only a draft can be edited. Make a new draft from the published version.");
+    // a side's source is set when the recon is made: its runs, items and results are of that source (the builder locks it too)
+    const moved = (v.spec as ReconSpec).sides.findIndex((s, i) => s.source_id !== b.spec.sides[i]!.source_id);
+    if (moved >= 0) throw new ApiError("bad_request", `${placeOf(["sides", moved])}: Fixed once the recon exists: its results are tied to this source.`);
     const { warnings } = await checked(tx, spaceId, b.spec);
     const hash = specHash(b.spec);
     if (hash === v.specHash) return versionDto(v, warnings);
