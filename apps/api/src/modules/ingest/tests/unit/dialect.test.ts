@@ -1,7 +1,7 @@
 // The per-dialect SQL of the source connectors (connectors/dialect.ts): quoting, the text form of each column family,
 // the keyset predicate, the paging clause, the catalog query, the custom-SELECT check and the :business_date binding.
 import { describe, expect, it } from "bun:test";
-import { checkSelect, type Column, familyOf, lookbackOf, minusIds, minusSeconds, quoteIdent, rowsSql, tableName } from "../../connectors/dialect";
+import { checkSelect, type Column, familyOf, lookbackOf, minusIds, minusSeconds, nullProbeSql, quoteIdent, rowsSql, tableName } from "../../connectors/dialect";
 import { ConnectorError } from "../../connectors/errors";
 
 const col = (name: string, type: string): Column => ({ name, type, nullable: false });
@@ -221,6 +221,16 @@ describe("lookbackOf: how far back a pull starts, by the watermark column's type
     expect(lookbackOf("mssql", col("w", "int"), { seconds: 60 })).toEqual({ problem: 'The watermark column "w" is an integer (a sequence), so it looks back a number of ids, not seconds.', field: "lookback_seconds" });
     expect(lookbackOf("mssql", col("w", "int"), { ids: 0 })).toEqual({ by: "ids", n: 0 });
     expect(lookbackOf("postgres", col("w", "timestamp"), { ids: 10 })).toEqual({ problem: 'The watermark column "w" is a date or time, so it looks back in seconds, not ids.', field: "lookback_ids" });
+  });
+});
+
+describe("nullProbeSql: the first row whose watermark or an id is NULL", () => {
+  it("answers which column, one row at most, per dialect", () => {
+    const k = [col("at", "datetime2"), col("ref", "varchar(10)")];
+    expect(nullProbeSql("mssql", { query: "SELECT a.at, b.ref FROM a LEFT JOIN b ON b.k = a.k" }, k).sql).toBe(
+      "SELECT CASE WHEN t.[at] IS NULL THEN 0 WHEN t.[ref] IS NULL THEN 1 END AS [i] FROM (SELECT a.at, b.ref FROM a LEFT JOIN b ON b.k = a.k) t "
+      + "WHERE t.[at] IS NULL OR t.[ref] IS NULL ORDER BY (SELECT NULL) OFFSET 0 ROWS FETCH NEXT 1 ROWS ONLY");
+    expect(nullProbeSql("oracle", { table: "T" }, [col("AT", "DATE")]).sql).toBe(`SELECT CASE WHEN t."AT" IS NULL THEN 0 END AS "i" FROM "T" t WHERE t."AT" IS NULL FETCH FIRST 1 ROWS ONLY`);
   });
 });
 

@@ -191,6 +191,21 @@ describe("pullWatermark()", () => {
     expect((await pull(3)).flat().map((r) => r.n).sort()).toEqual(["1", "2", "3", "4"]);
   });
 
+  it("a custom SELECT whose watermark or id is NULL in a row (LEFT JOIN) pauses the pull, naming the column, from the start and after a cursor", async () => {
+    await src.unsafe(`drop table if exists lj_a, lj_b; create table lj_a (k int primary key, at timestamptz not null); create table lj_b (k int primary key, ref text not null);
+      insert into lj_a values (1, '2026-11-19 01:00+00'), (2, '2026-11-19 01:01+00'), (3, '2026-11-19 01:02+00'); insert into lj_b values (1, 'R1'), (3, 'R3')`);
+    const pull = (q: string, idCol: string, after: { wm: string; ids: string[] } | null) =>
+      all(pg().pullWatermark({ from: { query: q }, columns: [], watermark: { column: "at", id_columns: [idCol] }, after, lookback: { seconds: 0 }, chunk: 10 }));
+    const byRef = "select a.at, b.ref from lj_a a left join lj_b b on b.k = a.k";
+    const e = await fails(pull(byRef, "ref", null));
+    expect([e.kind, e.message]).toEqual(["spec",
+      'Column "ref" is empty (NULL) in a row of the query: a pull can\'t place that row after the last one it read, so it would be skipped. Fill "ref" in every row, or pick a watermark and id columns that are never empty.']);
+    // a NULL watermark is never past any cursor: still found, also after one
+    const byAt = "select case when a.k = 2 then null else a.at end as at, a.k from lj_a a";
+    expect((await fails(pull(byAt, "k", { wm: "2026-11-19T01:02:00.000000Z", ids: ["3"] }))).message).toStartWith('Column "at" is empty (NULL) in a row of the query');
+    expect((await pull("select a.at, a.k from lj_a a", "k", null)).flat()).toHaveLength(3);
+  });
+
   it("a date-only watermark: a row added later on the cursor's date with a smaller id comes in the next pull", async () => {
     await src.unsafe(`drop table if exists daily; create table daily (id int primary key, d date not null);
       insert into daily values (1, '2026-11-19'), (5, '2026-11-20')`);

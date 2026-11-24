@@ -39,6 +39,24 @@ describe("pullWatermark over a driver whose cursor does not move", () => {
   });
 });
 
+describe("pullWatermark over a driver that answers a NULL id", () => {
+  it("raises a spec error naming the column before the page is given out, so no cursor holds a null", async () => {
+    const drv: Driver = {
+      rows: async (sql) => (sql.includes("pg_attribute")
+        ? [{ name: "w", type: "date", nullable: "NO" }, { name: "id", type: "text", nullable: "NO" }]
+        : [{ w: "2026-11-19", id: "a" }, { w: "2026-11-19", id: null }]),
+      describe: never, stream: async function* () {}, close: async () => {},
+    };
+    const given: unknown[] = [];
+    const got = await (async () => {
+      for await (const page of connectorOver("postgres", drv, { connectS: 1, statementS: 1 }).pullWatermark({ from: { table: "t" }, columns: [], watermark: { column: "w", id_columns: ["id"] }, after: null, lookback: {}, chunk: 5 })) given.push(page);
+    })().catch((e) => e);
+    expect([(got as ConnectorError).kind, (got as ConnectorError).message]).toEqual(["spec",
+      'Column "id" is empty (NULL) in a row of table t: a pull can\'t place that row after the last one it read, so it would be skipped. Fill "id" in every row, or pick a watermark and id columns that are never empty.']);
+    expect(given).toEqual([]);
+  });
+});
+
 describe("within", () => {
   const fake = (close: () => Promise<void>): Connector => ({ test: never, introspect: never, pullWatermark: never, pullSnapshot: never, sample: never, close } as unknown as Connector);
 

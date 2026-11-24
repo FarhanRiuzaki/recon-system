@@ -10,14 +10,15 @@
 //   last row's (watermark, ids…) as text. With a cursor and lookback, the first page starts the look back before the
 //   cursor's watermark (`>=`: seconds for a date or time, ids for an integer, lookbackOf); Task 5's dedup drops what
 //   comes again. Each page reads one row more than it keeps: when that row repeats the page's last (watermark, ids…),
-//   the next page would skip it, so the pull stops with a spec error (the source pauses) instead. A page is fully read
-//   before the next query, and
-//   the caller consumes it before asking for more, so memory stays at one page.
+//   the next page would skip it, so the pull stops with a spec error (the source pauses) instead. A NULL watermark or
+//   id (in a page, or found first in a column that may hold one) is a spec error too: keyset paging can't place such a
+//   row, so it would be skipped. A page is fully read before the next query, and the caller consumes it before asking
+//   for more, so memory stays at one page.
 // - Every driver error becomes a ConnectorError with a fixed sentence (errors.ts); nothing here logs.
 import type { DbEngine } from "@starterkit/shared/sources";
 import type { Readable } from "node:stream";
 import {
-  CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, type Lookback, lookbackOf, minusIds, minusSeconds, pingSql,
+  CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogFilter, type CatalogTable, catalogSql, type Column, type Cursor, databasesSql, describeSql, type From, type Lookback, lookbackOf, minusIds, minusSeconds, nullProbeSql, pingSql,
   rowsSql, serverSql, tableCountSql, tablesSql,
 } from "./dialect";
 import { classify, type ConnectorError, connectTimeoutError, deadlineError, isConnectTimeout, specError } from "./errors";
@@ -196,6 +197,17 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
       const back = lb.n === 0 ? null : lb.by === "ids" ? minusIds(o.after.wm, lb.n) : minusSeconds(o.after.wm, lb.n);
       cursor = back !== null ? { from: back } : o.after.ids === null ? { from: o.after.wm } : { after: { wm: o.after.wm, ids: o.after.ids } };
     }
+    const empty = (c: Column) => specError(`Column "${c.name}" is empty (NULL) in a row of ${where(o.from)}: a pull can't place that row after the last one it read, `
+      + `so it would be skipped. Fill "${c.name}" in every row, or pick a watermark and id columns that are never empty.`);
+    // a NULL watermark is past no cursor and a NULL id tied at the cursor's watermark is past none either: such rows are
+    // never pulled, so a keyset column that may hold NULL (a SELECT's, say a LEFT JOIN) is looked for one first
+    const maybeNull = [wm, ...ids].filter((c) => c.nullable !== false);
+    if (maybeNull.length) {
+      // ponytail: runs the whole SELECT once per pull when it has no NULL; a NOT NULL table column is never probed
+      const probe = nullProbeSql(d, o.from, maybeNull);
+      const [hit] = await wrap(drv.rows(probe.sql, probe.params));
+      if (hit) throw empty(maybeNull[Number(hit.i)] ?? maybeNull[0]!);
+    }
     const keyOf = (r: Row) => [wm, ...ids].map((c) => r[c.name]);
     const same = (a: Row, b: Row) => keyOf(a).every((v, j) => v === keyOf(b)[j]);
     for (;;) {
@@ -203,6 +215,7 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
       const b = rowsSql(d, { from: o.from, columns: cols, keyset: { wm, ids, cursor }, limit: o.chunk + 1 });
       const read = (await wrap(drv.rows(b.sql, b.params))).map((r) => text(r, cols));
       const page = read.slice(0, o.chunk);
+      for (const r of page) { const c = [wm, ...ids].find((x) => r[x.name] === null); if (c) throw empty(c); }
       const last = page[page.length - 1];
       if (last && read.length > o.chunk && same(last, read[o.chunk]!)) {
         const one = ids.length === 1;

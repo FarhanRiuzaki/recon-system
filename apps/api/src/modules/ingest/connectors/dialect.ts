@@ -298,6 +298,14 @@ export function describeSql(d: Dialect, from: From): Built {
   return { sql: `SELECT * FROM ${fromSql(d, from, p)} t WHERE 1 = 0`, params };
 }
 
+/** The first row of `from` where one of `cols` is NULL, as `i` = that column's index in `cols`; no row when none is. */
+export function nullProbeSql(d: Dialect, from: From, cols: Column[]): Built {
+  const { params, p } = binder(d);
+  const ref = (c: Column) => `t.${quoteIdent(d, c.name)}`;
+  const which = `CASE ${cols.map((c, i) => `WHEN ${ref(c)} IS NULL THEN ${i}`).join(" ")} END`;
+  return { sql: `SELECT ${which} AS ${quoteIdent(d, "i")} FROM ${fromSql(d, from, p)} t WHERE ${cols.map((c) => `${ref(c)} IS NULL`).join(" OR ")}${firstRows(d, 1, false)}`, params };
+}
+
 /** The connection check. */
 export const pingSql = (d: Dialect) => (d === "oracle" ? "SELECT 1 FROM DUAL" : "SELECT 1");
 
