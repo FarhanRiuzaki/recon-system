@@ -47,6 +47,11 @@ describe("Dialog below 768 px is a bottom sheet (one responsive variant in the p
     for (const c of ["top-1/2", "left-1/2", "max-w-120", "-translate-x-1/2", "-translate-y-1/2", "data-[state=open]:zoom-in-98"]) expect(content, c).toContain(c);
   });
 
+  it("on a desktop it never grows past the window: at most the viewport less 4 rem, header and footer kept, the body scrolls (owner 24 Nov: a tall Explain overflowed)", async () => {
+    const { content } = await render();
+    for (const c of ["md:max-h-[calc(100dvh-4rem)]", "md:grid-rows-[auto_minmax(0,1fr)_auto]"]) expect(content, c).toContain(c);
+  });
+
   it("a caller's desktop classes don't undo the sheet (the max-md: ones win below 768 px)", async () => {
     const { content } = await render("top-24 translate-y-0 max-h-[calc(100dvh-2rem)]");
     for (const c of SHEET) expect(content, c).toContain(c);

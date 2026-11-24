@@ -73,7 +73,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-120 -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden rounded-xl border border-line bg-raised text-fg shadow-overlay outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-98 data-[state=closed]:duration-(--dur-exit) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98 data-[state=open]:duration-(--dur-slow)",
+          "fixed top-1/2 left-1/2 z-50 grid w-[calc(100%-2rem)] max-w-120 -translate-x-1/2 -translate-y-1/2 gap-0 overflow-hidden md:max-h-[calc(100dvh-4rem)] md:grid-rows-[auto_minmax(0,1fr)_auto] rounded-xl border border-line bg-raised text-fg shadow-overlay outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-98 data-[state=closed]:duration-(--dur-exit) data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-98 data-[state=open]:duration-(--dur-slow)",
           className,
           "max-md:left-0 max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:border-x-0 max-md:data-[state=open]:zoom-in-100 max-md:data-[state=closed]:zoom-out-100",
           phone === "top"
