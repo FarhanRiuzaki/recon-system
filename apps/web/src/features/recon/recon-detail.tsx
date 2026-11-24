@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -16,12 +17,16 @@ import { isNotFound } from "@/lib/client/api";
 import { reconStatus } from "@/lib/shared/recon-status";
 import { RECON_TABS, type ReconTab, at } from "./recon-text";
 import { ActivityTable, VersionsTable } from "./recon-tables";
-import { PostingGroups } from "./posting-groups";
 import { ReconOverview } from "./recon-overview";
 import { RECON_SHAPE } from "./shapes";
 import { SpecView } from "./spec-view";
 import { ResultColumnsPanel } from "./result-columns-panel";
 import { useDraftEndings } from "./draft-actions";
+
+// The Posting groups tab loads when opened (its table and dialog stay out of the page's first load: the route sat at
+// the 300 kB guard once the sidebar's live counts landed, 24 Nov); its own loading shape shows meanwhile.
+const PostingGroups = dynamic(() => import("./posting-groups").then((m) => m.PostingGroups), { ssr: false, loading: () => <LoadingShape sections={GROUPS_TAB_SHAPE} shown /> });
+const GROUPS_TAB_SHAPE = [{ kind: "table", chrome: 144, rows: 5, rowHeight: 56 }] as const;
 import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
 const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", posting: "Posting groups", history: "History" };
