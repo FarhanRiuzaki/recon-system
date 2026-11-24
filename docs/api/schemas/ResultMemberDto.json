@@ -48,6 +48,18 @@
           "null"
         ]
       }
+    },
+    "values": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
     }
   },
   "required": [
@@ -57,7 +69,8 @@
     "ref",
     "amountMinor",
     "currency",
-    "fields"
+    "fields",
+    "values"
   ],
   "additionalProperties": false
 }

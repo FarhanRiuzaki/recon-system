@@ -53,6 +53,18 @@
                 "null"
               ]
             }
+          },
+          "values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         },
         "required": [
@@ -62,7 +74,8 @@
           "ref",
           "amountMinor",
           "currency",
-          "fields"
+          "fields",
+          "values"
         ],
         "additionalProperties": false
       }
@@ -117,6 +130,18 @@
                 "null"
               ]
             }
+          },
+          "values": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         },
         "required": [
@@ -126,7 +151,8 @@
           "ref",
           "amountMinor",
           "currency",
-          "fields"
+          "fields",
+          "values"
         ],
         "additionalProperties": false
       }
@@ -150,12 +176,289 @@
         "b"
       ],
       "additionalProperties": false
+    },
+    "labels": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "b": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "label"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ],
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "groupKind": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "auto",
+                "suggested",
+                "manual",
+                "force"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pass": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "MATCHED_MANUAL",
+                "FORCE_MATCHED",
+                "WRITTEN_OFF",
+                "POSTED",
+                "ADJUSTED",
+                "AUTO_MATCHED_LATE_DATA",
+                "DUPLICATE",
+                "NO_ACTION"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "many": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "value",
+            "many"
+          ],
+          "additionalProperties": false
+        },
+        "assignee": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "many": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "value",
+            "many"
+          ],
+          "additionalProperties": false
+        },
+        "request": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "posting",
+                    "force_match",
+                    "unmatch",
+                    "write_off"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "cancelled"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "status"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "posting": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "many": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "many"
+                  ],
+                  "additionalProperties": false
+                },
+                "bankReference": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "many": {
+                      "anyOf": [
+                        {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "many"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "status",
+                "bankReference"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "groupKind",
+        "pass",
+        "resolution",
+        "reason",
+        "assignee",
+        "request",
+        "posting"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
     "a",
     "b",
-    "more"
+    "more",
+    "labels",
+    "summary"
   ],
   "additionalProperties": false
 }

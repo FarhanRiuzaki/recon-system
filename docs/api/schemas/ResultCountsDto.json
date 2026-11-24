@@ -31,12 +31,52 @@
         "maximum": 9007199254740991
       }
     },
+    "sideA": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "in_group",
+          "suggested",
+          "unmatch",
+          "open",
+          "closed",
+          "none"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
+    },
+    "sideB": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "enum": [
+          "in_group",
+          "suggested",
+          "unmatch",
+          "open",
+          "closed",
+          "none"
+        ]
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
+    },
     "capped": {
       "type": "boolean"
     }
   },
   "required": [
     "counts",
+    "sideA",
+    "sideB",
     "capped"
   ],
   "additionalProperties": false

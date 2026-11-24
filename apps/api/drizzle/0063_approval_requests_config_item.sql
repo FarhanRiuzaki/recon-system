@@ -1,0 +1,1 @@
+CREATE INDEX "approval_requests_config_item" ON "approval_requests" USING btree ("space_id","config_id","item_id","requested_at");

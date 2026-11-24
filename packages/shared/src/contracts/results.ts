@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { RESULT_SORTS } from "../paging";
-import { FIELD_REF, ITEM_STATUSES } from "../recon";
+import { REQUEST_KINDS } from "../approvals";
+import { FIELD_REF, GROUP_KINDS, ITEM_STATUSES, RESOLUTIONS } from "../recon";
 import { RECON_INFO_FIELDS, RESULT_COLUMNS_MAX, RESULT_LABEL_MAX, RESULT_RANGE_MAX_DAYS, RESULT_STATUSES, SIDE_STATES } from "../results";
 import { ListQuery, sortParam } from "./common";
 import { filterSelection } from "./filter-selection";
@@ -89,19 +90,50 @@ export const ResultRowDto = z.object({
 });
 export type ResultRowDto = z.infer<typeof ResultRowDto>;
 
-/** GET …/results/counts: rows per overall status under every filter but `result`; `capped` = a count stopped at 100,000. */
-export const ResultCountsDto = z.object({ counts: z.partialRecord(z.enum(RESULT_STATUSES), z.number().int()), capped: z.boolean() });
+/**
+ * GET …/results/counts: rows per overall status under every filter but `result`; `sideA`/`sideB` rows per side state
+ * under every filter but that side's; `capped` = a count stopped at 100,000.
+ */
+export const ResultCountsDto = z.object({
+  counts: z.partialRecord(z.enum(RESULT_STATUSES), z.number().int()),
+  sideA: z.partialRecord(z.enum(SIDE_STATES), z.number().int()),
+  sideB: z.partialRecord(z.enum(SIDE_STATES), z.number().int()),
+  capped: z.boolean(),
+});
 export type ResultCountsDto = z.infer<typeof ResultCountsDto>;
 
 /** GET …/results/{rowId}/members: `kind` says whether `rowId` is a group or a lone item. */
 export const ResultMembersQuery = z.object({ kind: z.enum(["group", "item"]) });
 export type ResultMembersQuery = z.infer<typeof ResultMembersQuery>;
-/** A record of a row, as Explain lists it: its item, record and the recon's configured source fields (`a:…`/`b:…` keys of its side). */
+/**
+ * A record of a row, as Explain lists it: its item, record (`amountMinor` signed, as the row's amount sums it), the
+ * recon's configured source fields (`a:…`/`b:…` keys of its side) and `values`, every field of the record by its key
+ * (`ext_ref`, `amount_minor` signed, `attrs.<name>` …; the keys of its side's `labels`).
+ */
 export const ResultMemberDto = z.object({
   id: z.string(), businessDate: z.string(), status: z.enum(ITEM_STATUSES), ref: z.string().nullable(),
   amountMinor: z.string().nullable(), currency: z.string().nullable(), fields: z.record(z.string(), z.string().nullable()),
+  values: z.record(z.string(), z.string().nullable()),
 });
 export type ResultMemberDto = z.infer<typeof ResultMemberDto>;
-/** Each side's records of the row, at most 100 per side (`more` = how many past that). */
-export const ResultMembersDto = z.object({ a: z.array(ResultMemberDto), b: z.array(ResultMemberDto), more: z.object({ a: z.number().int(), b: z.number().int() }) });
+/** A field of a side's records: its key in `values` and its label. */
+export const ResultFieldDto = z.object({ key: z.string(), label: z.string() });
+export type ResultFieldDto = z.infer<typeof ResultFieldDto>;
+/** A value over the row's items that have one: the value when they agree, else how many differ (as a cell). */
+const Agreed = z.object({ value: z.string().nullable(), many: z.number().int().nullable() });
+/**
+ * Each side's records of the row, at most 100 per side (`more` = how many past that); `labels` = the fields each side's
+ * source writes, in order (core fields, then its attributes); `summary` = the row's recon data: its group's kind and
+ * pass (or the item's break pass), resolution, unmatch reason, assignee, its items' latest request and posting run.
+ */
+export const ResultMembersDto = z.object({
+  a: z.array(ResultMemberDto), b: z.array(ResultMemberDto), more: z.object({ a: z.number().int(), b: z.number().int() }),
+  labels: z.object({ a: z.array(ResultFieldDto), b: z.array(ResultFieldDto) }),
+  summary: z.object({
+    groupKind: z.enum(GROUP_KINDS).nullable(), pass: z.number().int().nullable(), resolution: z.enum(RESOLUTIONS).nullable(),
+    reason: Agreed, assignee: Agreed,
+    request: z.object({ kind: z.enum(REQUEST_KINDS), status: z.enum(["pending", "approved", "rejected", "cancelled"]) }).nullable(),
+    posting: z.object({ status: Agreed, bankReference: Agreed }).nullable(),
+  }),
+});
 export type ResultMembersDto = z.infer<typeof ResultMembersDto>;

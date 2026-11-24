@@ -83,6 +83,8 @@ export const approvalRequests = pgTable("approval_requests", {
 }, (t) => [
   uniqueIndex("approval_requests_one_pending").on(t.spaceId, t.itemId).where(sql`${t.status} = 'pending'`),
   index("approval_requests_inbox").on(t.spaceId, t.status, t.requestedAt),
+  // a recon's requests per item, latest first (Operation result's posting status, the Unmatch item page's latest request)
+  index("approval_requests_config_item").on(t.spaceId, t.configId, t.itemId, t.requestedAt),
   foreignKey({ name: "approval_requests_config_fkey", columns: [t.spaceId, t.configId], foreignColumns: [reconConfigs.spaceId, reconConfigs.id] }).onDelete("cascade"),
   check("approval_requests_kind_check", sql`kind in ('force_match', 'unmatch', 'write_off', 'posting')`),
   check("approval_requests_status_check", sql`status in ('pending', 'approved', 'rejected', 'cancelled')`),

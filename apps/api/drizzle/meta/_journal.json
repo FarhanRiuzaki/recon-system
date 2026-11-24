@@ -442,6 +442,13 @@
       "when": 1795502385121,
       "tag": "0062_connector_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1795505227224,
+      "tag": "0063_approval_requests_config_item",
+      "breakpoints": true
     }
   ]
 }

@@ -120,7 +120,9 @@ describe("PUT result-columns", () => {
   });
 
   it("a field the source no longer has stays a column and is listed missing", async () => {
-    await put(t.mk, [...MINE, { kind: "a", field: "attrs.gone", label: "Gone" }]);
+    // a PUT refuses a field the source lacks now (results.test.ts); one saved when the source had it stays
+    await put(t.mk, MINE);
+    await db.update(reconResultColumns).set({ columns: [...MINE, { kind: "a", field: "attrs.gone", label: "Gone" }] });
     const d = await json<ResultColumnsDto>(get(t.mk));
     expect(d.columns).toHaveLength(4);
     expect(d.missing).toEqual([{ kind: "a", field: "attrs.gone" }]);

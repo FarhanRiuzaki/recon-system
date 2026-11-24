@@ -1,8 +1,8 @@
 // A recon's Operation result columns (docs/superpowers/specs/2026-11-24-operation-result-design.md "Column setup"):
 // outside the versioned spec, so a save needs no version and no approval; each change is one `recon.result_columns`
 // activity entry on the recon (its History). No row = the default columns. A side column names a field of the records
-// that side's source writes (recordFields of the source's published version); one the source no longer has stays,
-// listed in `missing`.
+// that side's source writes (recordFields of the source's published version): a save refuses one it lacks; one the
+// source dropped after it was saved stays, listed in `missing`.
 import type { ResultColumn, ResultColumnsBody, ResultColumnsDto } from "@starterkit/shared/contracts/results";
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { FIELD_LABEL, recordFields } from "@starterkit/shared/recon";
@@ -30,8 +30,11 @@ const defaults = (labels: [string, string]): ResultColumn[] => [
 
 export type ResultColumnsOf = {
   columns: ResultColumn[]; isDefault: boolean; updatedAt: Date | null;
-  /** The published version's spec (null: none, so the recon has no results), and the fields each side's source writes. */
-  spec: ReconSpec | null; fields: { a: Set<string>; b: Set<string> } | null;
+  /**
+   * The published version's spec (null: none, so the recon has no results), and the fields each side's source writes
+   * (a side null: its source can't be read now, a share withdrawn, so nothing of that side is judged missing).
+   */
+  spec: ReconSpec | null; fields: { a: Set<string> | null; b: Set<string> | null } | null;
 };
 
 /** The columns of recon `configId` (the default when unset) and what its published version's sides read; 404 for another space's. */
@@ -46,7 +49,7 @@ export async function resultColumnsOf(tx: InTx, spaceId: string, configId: strin
   let fields: ResultColumnsOf["fields"] = null;
   if (spec) {
     const found = await readableSources(tx, spaceId, [...new Set(spec.sides.map((s) => s.source_id))]);
-    const of = (i: 0 | 1) => { const s = found.get(spec.sides[i].source_id)?.spec; return new Set(s ? recordFields(s).keys() : []); };
+    const of = (i: 0 | 1) => { const s = found.get(spec.sides[i].source_id)?.spec; return s ? new Set(recordFields(s).keys()) : null; };
     fields = { a: of(0), b: of(1) };
   }
   const labels: [string, string] = spec ? [spec.sides[0].label, spec.sides[1].label] : ["Side A", "Side B"];
@@ -55,9 +58,11 @@ export async function resultColumnsOf(tx: InTx, spaceId: string, configId: strin
     : { columns: defaults(labels), isDefault: true, updatedAt: null, spec, fields };
 }
 
+/** Whether side column `c` names a field its side's source no longer writes (unknown while the source can't be read). */
+const lacks = (r: ResultColumnsOf, c: ResultColumn) => c.kind !== "recon" && !!r.fields?.[c.kind] && !r.fields[c.kind]!.has(c.field);
 const dto = (r: ResultColumnsOf): ResultColumnsDto => ({
   columns: r.columns, isDefault: r.isDefault, updatedAt: r.updatedAt?.toISOString() ?? null,
-  missing: r.fields ? r.columns.flatMap((c) => (c.kind !== "recon" && !r.fields![c.kind].has(c.field) ? [{ kind: c.kind, field: c.field }] : [])) : [],
+  missing: r.columns.flatMap((c) => (c.kind !== "recon" && lacks(r, c) ? [{ kind: c.kind, field: c.field }] : [])),
 });
 
 /** GET …/recons/{configId}/result-columns. */
@@ -74,6 +79,10 @@ export function setResultColumns(ctx: Ctx, configId: string, b: ResultColumnsBod
     const c = await configOf(tx, spaceId, configId, true);
     const now = await resultColumnsOf(tx, spaceId, configId);
     if (!now.spec) throw new ApiError("invalid_state", "Publish a version first: the columns come from the sources it reads.");
+    // a new side column names a field its source writes; one saved before that the source dropped since may stay (marked missing)
+    const kept = new Set(now.columns.map((x) => `${x.kind}:${x.field}`));
+    const wrong = b.columns.find((x) => lacks(now, x) && !kept.has(`${x.kind}:${x.field}`));
+    if (wrong) throw new ApiError("bad_request", `The column "${wrong.label}" names a field the source of ${now.spec.sides[wrong.kind === "a" ? 0 : 1].label} does not write. Pick one of its fields.`);
     const before = now.isDefault ? null : now.columns, after = b.columns.length ? b.columns : null;
     if (JSON.stringify(before) === JSON.stringify(after)) return dto(now);
     const key = and(eq(reconResultColumns.spaceId, spaceId), eq(reconResultColumns.configId, configId));
