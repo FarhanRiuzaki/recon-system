@@ -12,6 +12,7 @@ import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, ChevronDownIcon, EditIcon, FailedIcon, SpinnerIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@starterkit/ui/ui/dropdown-menu";
+import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { DateRange } from "@starterkit/ui/lib/date-range";
 import type { ReconDto, ReconRunItemDto, ReconSpec, ReconVersionDto } from "@starterkit/shared/contracts/recon";
@@ -24,10 +25,10 @@ import { api, errorText } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
-import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
+import { PassEditor, PlaceError, SettingsEditor, SideEditor } from "./inspector";
 import {
   addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
-  insertAt, type Place, placeOf, removePass, restorePass, submitReason,
+  insertAt, measureOptions, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
 import { SidesStep } from "./sides-step";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
@@ -520,6 +521,19 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
                 </div>
               </Panel>
             )}
+            {/* the spec's measure (spec §8): the amount per currency, or a numeric field both sources share; checked by the API */}
+            <Panel title="Compare amounts by" description="What the passes' amount conditions compare">
+              <div className="grid gap-2 md:max-w-md">
+                <Select id="rs-measure" aria-label="Compare amounts by" value={spec.measure?.field ?? ""} disabled={!editable}
+                  onChange={(e) => { const { measure: _, ...rest } = spec; change(e.target.value ? { ...rest, measure: { field: e.target.value } } : rest); }}>
+                  {measureOptions(fields, spec.measure?.field).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+                {fields[0] && fields[1] && measureOptions(fields, spec.measure?.field).length === 1 && (
+                  <span className="text-caption text-fg-3">The two sources share no other numeric field, so amounts are compared.</span>
+                )}
+                <PlaceError text={placed?.setting === "Measure" ? placed.text : null} />
+              </div>
+            </Panel>
           </>
         )}
 

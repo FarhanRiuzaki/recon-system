@@ -392,7 +392,7 @@ describe("the settings as the review and the overview both write them", () => {
     const spec = { ...base(), grace_minutes: 60, carry_over_days: 0 };
     expect(settingsFacts(spec, fields).map((f) => [f.label, f.text])).toEqual([
       ["Schedule", "Daily at 06:00 WIB, for the business date before"], ["Grace", "1 hour"], ["Carry over", "Only on its own day"],
-      ["Day closes", "23:00 WIB"], ["Measure", "Amount, per currency"],
+      ["Day closes", "23:00 WIB"], ["Compare amounts by", "Amount, per currency"],
     ]);
   });
 });

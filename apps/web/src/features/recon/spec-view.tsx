@@ -166,7 +166,7 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
           </details>
         )}
         <dl className="mt-3 grid gap-0.5">
-          <dt className="text-caption text-fg-3">Compare amounts by</dt>
+          <dt className="text-caption text-fg-3">{measure.label}</dt>
           <dd className="flex flex-wrap items-center gap-2 text-body-sm text-fg">
             {measure.text}
             {diff && "measure" in diff.settings && <><StatusChip {...CHANGED} />{was(diff.settings.measure)}</>}

@@ -613,7 +613,7 @@ export function settingsFacts(spec: ReconSpec, fields: Fields): { key: SettingKe
     { key: "grace", label: "Grace", text: graceText(spec.grace_minutes) },
     { key: "carry", label: "Carry over", text: carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined) },
     { key: "close", label: "Day closes", text: `${spec.close_at} ${APP_TIME_ZONE_LABEL}` },
-    { key: "measure", label: "Measure", text: measureText(spec, fields) },
+    { key: "measure", label: "Compare amounts by", text: measureText(spec, fields) },
   ];
 }
 
