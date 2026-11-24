@@ -4,6 +4,7 @@ import { config } from "./kernel/config";
 import { client } from "./kernel/db";
 import { unexpected } from "./kernel/errors";
 import { log } from "./kernel/log";
+import { callsLogged } from "./modules/integrations";
 
 const { API_HOST, API_PORT } = config();
 const app = createApp();
@@ -20,6 +21,7 @@ async function shutdown(signal: string) {
   log.info({ signal }, "shutting down");
   // The janitor's run in flight and the requests in flight both end before the pool closes.
   await Promise.all([stopJanitor(), Promise.race([server.stop(), Bun.sleep(10_000).then(() => server.stop(true))])]);
+  await callsLogged(); // the call rows of the last requests are written before the pool closes
   await client.close();
   process.exit(0);
 }

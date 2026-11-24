@@ -6,7 +6,7 @@ import { log } from "./kernel/log";
 import { workerClient, workerDb } from "./kernel/worker-db";
 import { engineHandlers } from "./modules/engine";
 import { ingestHandlers } from "./modules/ingest";
-import { integrationsHandlers } from "./modules/integrations";
+import { callsLogged, integrationsHandlers } from "./modules/integrations";
 
 const { API_HOST, WORKER_HEALTH_PORT } = loadWorkerConfig(process.env);
 
@@ -40,6 +40,7 @@ async function shutdown(signal: string) {
   stopping = true;
   log.info({ signal }, "shutting down");
   await stopWorker();
+  await callsLogged(); // the call rows of the last sends are written before the pools close
   await server.stop(true);
   await closeJobs();
   await workerClient.close();
