@@ -12,7 +12,8 @@ import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { SpaceDto } from "@starterkit/shared/contracts/spaces";
-import { SPACE_CODE, SPACE_NAME_MAX } from "@starterkit/shared/spaces";
+import { SPACE_CODE } from "@starterkit/shared/spaces";
+import { SPACE_NAME_RULES } from "./space-settings";
 import { api, errorText } from "@/lib/client/api";
 import { usePrefs } from "@/lib/client/prefs-context";
 import { spaceHref, SPACES_KEY } from "./use-spaces";
@@ -21,7 +22,7 @@ type Values = { code: string; name: string };
 // CreateSpaceBody's rules, as the API applies them (trimmed; the code in any case, stored lower case).
 export const CREATE_SPACE_SCHEMA: Schema<Values> = {
   code: [rules.required("Enter a code."), (v) => (SPACE_CODE.test(String(v).trim().toLowerCase()) ? null : "Use 2 to 32 letters, digits or hyphens.")],
-  name: [rules.required("Enter a name."), (v) => (String(v).trim().length > SPACE_NAME_MAX ? `Use ${SPACE_NAME_MAX} characters or fewer.` : null)],
+  name: SPACE_NAME_RULES,
 };
 /** The POST body: what CreateSpaceBody would make of the form's values. */
 export const createSpaceBody = (v: Values) => ({ code: v.code.trim().toLowerCase(), name: v.name.trim() });

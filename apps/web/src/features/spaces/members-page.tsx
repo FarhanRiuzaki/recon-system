@@ -3,14 +3,18 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { ActionMenu, activeElement, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, focusBack, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
+import { ActionMenu, activeElement, ColumnsMenu, DataTable, FilterLayout, FilterSearch, FilterSurface, focusBack, Notice, Panel, StatusChip, Toolbar } from "@starterkit/ui/ds";
 import { HEALTH } from "@starterkit/ui/lib/status";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, UsersIcon } from "@starterkit/ui/ui/icons";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
-import { errorText } from "@/lib/client/api";
+import { api, errorText } from "@/lib/client/api";
+import { toast } from "@starterkit/ui/ui/toast";
+import { useQueryClient } from "@tanstack/react-query";
+import type { SpaceDto } from "@starterkit/shared/contracts/spaces";
+import { spaceMore } from "./space-settings";
 import { useAuth } from "@/lib/client/auth-context";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import type { SpaceMemberDto } from "@starterkit/shared/contracts/spaces";
@@ -19,7 +23,7 @@ import { activityInvestigationHref } from "@/lib/shared/activity-links";
 import { SPACE_MEMBERS } from "@/lib/shared/queries";
 import { MEMBER_COLUMNS } from "./member-columns";
 import { RoleMatrix } from "./role-matrix";
-import { useSpace } from "./use-spaces";
+import { SPACES_KEY, useSpace } from "./use-spaces";
 import { statusTone } from "@/lib/shared/categories";
 
 /** The member dialogs load on click, outside the page's first load (route budget, AGENTS.md §9); the import starts on the first press or focus in the page. */
@@ -27,6 +31,7 @@ const loadDialogs = () => import("./member-dialogs");
 const AddMemberDialog = dynamic(() => loadDialogs().then((m) => m.AddMemberDialog), { ssr: false });
 const ChangeRolesDialog = dynamic(() => loadDialogs().then((m) => m.ChangeRolesDialog), { ssr: false });
 const RemoveMemberDialog = dynamic(() => loadDialogs().then((m) => m.RemoveMemberDialog), { ssr: false });
+const SpaceSettingsDialog = dynamic(() => import("./space-settings-dialog").then((m) => m.SpaceSettingsDialog), { ssr: false });
 const preloadDialogs = () => void loadDialogs();
 
 const FILTER_DEFAULTS = { q: "" };
@@ -48,6 +53,8 @@ export function MembersPage({ id }: { id: string }) {
   const manage = canSourceAdmin || !!space?.roles.includes("space_admin");
   type Open = { kind: "add" } | { kind: "roles" | "remove"; member: SpaceMemberDto };
   const [dialog, setDialog] = useState<Open | null>(null);
+  const [settings, setSettings] = useState(false);
+  const qc = useQueryClient();
   // Focus goes back to what opened the dialog: the row's menu button (its item is gone by then) or Add member; the
   // next row's actions (or the list) when that row was removed (AGENTS.md §7: focus in a row that goes away moves to the next row).
   const origin = useRef<HTMLElement | null>(null);
@@ -77,9 +84,21 @@ export function MembersPage({ id }: { id: string }) {
   /** Why "Remove from space" is off for `m`, or null. */
   const removeBlocked = (m: SpaceMemberDto) => (lastAdmin(m) ? LAST_SPACE_ADMIN : !canSourceAdmin && m.roles.includes("source_admin") ? SOURCE_ADMIN_REASON : null);
 
+  const setStatus = async (status: SpaceDto["status"]) => {
+    await api<SpaceDto>(`/api/spaces/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ status }) });
+    toast(status === "archived" ? `Archived ${name}.` : `Unarchived ${name}.`);
+    await qc.invalidateQueries({ queryKey: SPACES_KEY });
+  };
+  const more = space ? spaceMore(space, manage, {
+    settings: () => setSettings(true),
+    archive: () => setStatus("archived"),
+    unarchive: () => { setStatus("active").catch((e: unknown) => toast.error(errorText(e))); },
+  }) : [];
+
   return (
     <div className="grid gap-section" onPointerDown={manage ? preloadDialogs : undefined} onFocus={manage ? preloadDialogs : undefined}>
-      <PageHeader title="Members"
+      <PageHeader title="Members" more={more.length ? more : undefined}
+        status={space?.status === "archived" ? <StatusChip health={statusTone("archived")} label="Archived" /> : undefined}
         description={`People in the ${name} space and their roles.`}
         actions={manage ? <Button variant="create-solid" onClick={() => open({ kind: "add" })}><Icon icon={AddIcon} />Add member</Button> : undefined} />
       <FilterSurface>
@@ -118,6 +137,7 @@ export function MembersPage({ id }: { id: string }) {
         <ChangeRolesDialog space={space} member={dialog.member} canSourceAdmin={canSourceAdmin} lockedSpaceAdmin={lastAdmin(dialog.member)} onClose={close} returnFocus={returnFocus} />
       )}
       {space && dialog?.kind === "remove" && <RemoveMemberDialog space={space} member={dialog.member} onClose={close} returnFocus={returnFocus} />}
+      {space && settings && <SpaceSettingsDialog space={space} onClose={() => setSettings(false)} />}
     </div>
   );
 }
