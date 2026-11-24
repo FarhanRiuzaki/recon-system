@@ -33,7 +33,7 @@ import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { calendars, pauseSource, sourceConnections, sources, sourceShares, sourceVersions } from "../sources";
 import { isSpaceArchived, withSpace } from "../spaces";
-import { type Connector, ConnectorError, connectorFor, type From, type Row, type Secret } from "./connectors";
+import { type Column, type Connector, ConnectorError, connectorFor, type From, lookbackOf, type Row, type Secret } from "./connectors";
 import { familyOf } from "./connectors/dialect";
 import { insertBatch, makePartitions, MissingPartition, rawHashOf, supersede } from "./copy";
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
@@ -246,16 +246,16 @@ const baselineOf = (cols: { name: string; type: string }[], names: string[]): Ba
 
 /**
  * The columns of `from` checked against the spec (driftOf); a misfit pauses the source. Saves the baseline on the first
- * pull of a version. Answers why it no longer fits, or null.
+ * pull of a version. Answers why it no longer fits, or null, and the columns read.
  */
-async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: From, keyset: string[]): Promise<Drift | null> {
+async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: From, keyset: string[]): Promise<{ drift: Drift | null; cols: Column[] }> {
   const names = [...l.spec.fields.map((f) => f.name), ...keyset];
   const cols = await c.introspect(from);
   const baseline = l.cursor?.columnsVersionId === l.versionId ? (l.cursor.columns as Baseline) : null;
   const drift = driftOf(cols, l.spec.fields, keyset, baseline, "table" in from ? `table ${from.table}` : "the query", (t) => familyOf(l.conn!.engine as DbEngine, t));
-  if (drift) return drift;
+  if (drift) return { drift, cols };
   if (!baseline) await inScope(s, on, (tx) => setCursor(tx, s, { columns: baselineOf(cols, names), columnsVersionId: l.versionId }));
-  return null;
+  return { drift: null, cols };
 }
 
 /**
@@ -277,13 +277,17 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
   let c: Connector | null = null;
   try {
     c = ingestHooks.connect(l.conn);
-    const drift = await checkColumns(s, on, l, c, from, [wm.column, ...wm.id_columns]);
+    const { drift, cols } = await checkColumns(s, on, l, c, from, [wm.column, ...wm.id_columns]);
     if (drift) {
       await inScope(s, on, (tx) => pause(tx, s, drift.message, drift.columns));
       outcome = { status: "paused", error: drift.message };
       return "paused";
     }
     const wmField = l.spec.fields.find((f) => f.name === wm.column);
+    // the look back the pull uses (a date-only watermark: a day when none is set), so completeness never runs ahead of it;
+    // one that doesn't fit is the connector's spec error below
+    const lb = lookbackOf(l.conn.engine as DbEngine, cols.find((x) => x.name === wm.column)!, { seconds: input.lookback_seconds, ids: input.lookback_ids });
+    const lookbackSeconds = "by" in lb && lb.by === "seconds" ? lb.n : 0;
     const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns.length) } : null;
     const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
     let n = 0;
@@ -294,7 +298,7 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
       await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);
         await writeLines(tx, s, l, origin, lines, counts);
-        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, input.lookback_seconds ?? 0, wmField));
+        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, lookbackSeconds, wmField));
       }));
       reached = mark.watermark;
     }
@@ -349,7 +353,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
   const c = ingestHooks.connect(l.conn);
   let drift: Drift | null = null;
   try {
-    drift = await checkColumns(s, on, l, c, { query, businessDate }, []);
+    drift = (await checkColumns(s, on, l, c, { query, businessDate }, [])).drift;
     if (drift) throw new ConnectorError("spec", null, drift.message);
     const origin: Origin = { origin: "snapshot", originId: id, snapshotId: id, businessDate, text: (cells) => JSON.stringify(cells), seen: new Map() };
     let n = 0;

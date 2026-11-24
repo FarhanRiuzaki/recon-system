@@ -372,6 +372,21 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     expect(seen[4]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: null }, { seconds: 120, ids: undefined }]);
   });
 
+  it("a date-only watermark with the default look back (1 day) is complete through the day before its date, not its date", async () => {
+    const cols = [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"], ["booked", "date"], ["id", "bigint"]];
+    ingestHooks.connect = () => ({
+      introspect: async () => cols.map(([name, type]) => ({ name: name!, type: type!, nullable: false })),
+      pullWatermark: async function* () { yield [{ ext_ref: "R1", account_ref: "ACC1", amount: "1.00", event_time: "2026-11-20T01:00:00Z", booked: "2026-11-20", id: "7" }]; },
+      close: async () => {},
+    }) as unknown as Connector;
+    const spec = bifastSpec();
+    const { lookback_seconds: _, ...input } = spec.input as Extract<SourceSpec["input"], { kind: "db_watermark" }>;
+    const s = await source(A, { ...spec, input: { ...input, watermark: { column: "booked", id_columns: ["id"] } } } as SourceSpec);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    // 20 Nov 00:00 in Asia/Jakarta less the day a later row of 19 Nov may still come in
+    expect((await cursorOf(s))!.completeThrough!.toISOString()).toBe("2026-11-18T17:00:00.000Z");
+  });
+
   it("a watermark or id column that may be NULL is refused before the first pull", async () => {
     await src`insert into nulls_wm (updated_at, ref) values (now(), 'R1'), (null, 'R2')`;
     const spec = { ...bifastSpec(), fields: [{ name: "ref", type: "string" as const, nullable: false, trim: true }], mapping: { business_date: { cel: "'2026-11-19'" }, ext_ref: { field: "ref" }, attrs: {} },

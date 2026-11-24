@@ -20,6 +20,8 @@ describe("ingest rules", () => {
     expect(completeThroughOf("2026-11-19T07:00:00", 0)?.toISOString()).toBe("2026-11-19T00:00:00.000Z");
     expect(completeThroughOf("2026-11-19T07:00:00", 0, { name: "u", type: "datetime", nullable: false, trim: true, format: { timezone: "UTC" } })?.toISOString())
       .toBe("2026-11-19T07:00:00.000Z");
+    // a date-only watermark: its date's start in the zone, less the look back (a day by default)
+    expect(completeThroughOf("2026-11-20", 86_400)?.toISOString()).toBe("2026-11-18T17:00:00.000Z");
     expect(completeThroughOf("12345", 0)).toBeNull();
     expect(completeThroughOf("20261119", 0)).toBeNull(); // an integer watermark (a sequence) is no time, whatever its digits
   });

@@ -32,11 +32,12 @@ export function endOfDay(date: string, tz = DEFAULT_TIMEZONE): Date {
 /**
  * complete_through of a watermark pull: the watermark − lookback, the watermark read as a date-time in the watermark
  * field's time zone when the spec declares one (else Asia/Jakarta, as coerce does). Null when the watermark is no
- * date-time (a sequence number): such a source has no time it is complete to.
+ * date-time (a sequence number): such a source has no time it is complete to. A date-only watermark reads as its
+ * date's start. `lookbackSeconds` = the look back the pull used (connectors lookbackOf: a date-only one a day by default).
  */
 export function completeThroughOf(watermark: string, lookbackSeconds: number, field?: FieldSpec): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}/.test(watermark)) return null; // the text form of a date or time (dialect.ts asText)
-  const r = coerce(watermark, { name: "watermark", type: "datetime", nullable: false, trim: true, format: { timezone: field?.format?.timezone ?? DEFAULT_TIMEZONE } });
+  const r = coerce(/^\d{4}-\d{2}-\d{2}$/.test(watermark) ? `${watermark}T00:00:00` : watermark, { name: "watermark", type: "datetime", nullable: false, trim: true, format: { timezone: field?.format?.timezone ?? DEFAULT_TIMEZONE } });
   return r.ok ? new Date(Date.parse(r.value as string) - lookbackSeconds * 1000) : null;
 }
 
