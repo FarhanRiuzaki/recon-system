@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReconWarning } from "@starterkit/shared/contracts/recon";
-import { approvalChanges, approvalNotice, approvalRow, keptCopy, savable, stepWarnings } from "./approval-model";
+import { approvalChanges, approvalNotice, approvalRow, changeIsSet, keptCopy, savable, stepWarnings } from "./approval-model";
 import { stepReasons } from "./spec-model";
 
 const W = { id: "0190f5a0-0000-7000-8000-00000000000a", version: 1 };
@@ -63,6 +63,17 @@ describe("the Approval step's table row", () => {
   it("says what is sent to the bank: the actions by name, or Nothing", () => {
     const post = { name: "Post to GL", kind: "posting" as const, on: { event: "approved" as const }, variants: [] };
     expect(approvalRow({ workflow: { default: null, rules: [] }, actions: [post, { ...post, name: " " }] }, names).bank).toBe("Post to GL, An action without a name");
+  });
+});
+
+describe("changeIsSet: the review marks a change Set once it picks a workflow, a rule or an action", () => {
+  it("is set by any of the three, not by an empty setup", () => {
+    const post = { name: "Post to GL", kind: "posting" as const, on: { event: "approved" as const }, variants: [] };
+    expect(changeIsSet(undefined)).toBe(false);
+    expect(changeIsSet({ workflow: { default: null, rules: [] } })).toBe(false);
+    expect(changeIsSet({ workflow: { default: W, rules: [] } })).toBe(true);
+    expect(changeIsSet({ workflow: { default: null, rules: [done] } })).toBe(true);
+    expect(changeIsSet({ workflow: { default: null, rules: [] }, actions: [post] })).toBe(true);
   });
 });
 

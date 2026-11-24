@@ -51,6 +51,9 @@ export function approvalRow(s: ChangeSetup | undefined, nameOf: (id: string) => 
   };
 }
 
+/** A change the setup decides (a workflow, a rule or an action is picked), not left to the default chain: the review's Set mark. */
+export const changeIsSet = (s: ChangeSetup | undefined): boolean => !!(s?.workflow.default || s?.workflow.rules.length || s?.actions?.length);
+
 /** The kept copy (`{ base, approvals }`), when the saved draft still holds what it was based on; else null. */
 export function keptCopy(stored: string | null, saved: ReconApprovalInput | undefined): ReconApprovalInput | null {
   if (!stored) return null;

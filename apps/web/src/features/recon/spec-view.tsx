@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { CategoryChip, Panel } from "@starterkit/ui/ds";
+import { CategoryChip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { cn } from "@starterkit/ui/lib/cn";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
@@ -16,7 +16,8 @@ import { buildCatalog, type CatalogField, type Condition, conditionText } from "
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
 import { carryText, conditionParts, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
-import { approvalChanges } from "./approval-model";
+import { approvalChanges, approvalRow, changeIsSet } from "./approval-model";
+import { statusChip } from "@/lib/shared/categories";
 import { useSideSource } from "./use-recons";
 import { api } from "@/lib/client/api";
 import { workflowOptions } from "@/lib/shared/queries-recon";
@@ -155,6 +156,8 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
   );
 }
 
+const SET = statusChip("set", "Set"), NOT_SET = statusChip("nothing", "Default chain"), CHANGED = statusChip("check", "Changed from the live version");
+
 /** The approval setup as sentences: per change, its rules in order and who approves every other request. */
 function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[]; live?: ReconSpec }) {
   const q = workflowOptions(spaceId);
@@ -175,9 +178,14 @@ function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: strin
         return (
           <li key={k} className="grid gap-1 text-body-sm">
             <span className="flex flex-wrap items-center gap-2 text-label text-fg">
-              {TRIGGER_LABEL[k]}{diff && <span className="rounded-sm bg-degraded-soft px-1.5 py-0.5 text-caption text-degraded-ink">Changed from the live version</span>}
+              {TRIGGER_LABEL[k]}
+              <StatusChip {...(changeIsSet(approvals?.changes[k]) ? SET : NOT_SET)} />
+              {diff && <StatusChip {...CHANGED} />}
             </span>
-            <span className="grid gap-1 text-fg-2">{lines(approvals?.changes[k])}</span>
+            <span className="grid gap-1 text-fg-2">
+              {lines(approvals?.changes[k])}
+              {!!approvals?.changes[k]?.actions?.length && <span>Sends to the bank: {approvalRow(approvals.changes[k], () => null).bank}</span>}
+            </span>
             {diff && (
               <span className="grid gap-1 border-l-2 border-line pl-3 text-caption text-fg-3">
                 <span>Live version:</span>{lines(live?.approvals?.changes[k])}
