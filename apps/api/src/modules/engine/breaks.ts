@@ -10,7 +10,7 @@
 // scheduled run (sweepClosed). The engine never writes `records` or source_day_counts here either.
 import { ReconSpec } from "@starterkit/shared/contracts/recon";
 import { isOneWay } from "@starterkit/shared/recon";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, isNull, ne, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
 import { configLock } from "../../kernel/locks";
 import { currentRecord, endOfDay } from "../ingest";
@@ -147,8 +147,8 @@ export async function sweepClosed(on: Tx, k: { spaceId: string; configId: string
  */
 export async function reopenNotRequired(tx: InTx, spaceId: string, configId: string): Promise<number> {
   const mine = and(eq(reconItems.spaceId, spaceId), eq(reconItems.configId, configId), eq(reconItems.status, "not_required"), isNull(reconItems.simRunId));
-  const closed = sql`exists (select 1 from ${reconDays} d where d.space_id = ${reconItems.spaceId} and d.config_id = ${reconItems.configId}
-    and d.business_date = ${reconItems.businessDate} and d.status = 'closed')`;
+  const closed = exists(tx.select({ one: sql`1` }).from(reconDays).where(and(eq(reconDays.spaceId, reconItems.spaceId), eq(reconDays.configId, reconItems.configId),
+    eq(reconDays.businessDate, reconItems.businessDate), eq(reconDays.status, "closed"))));
   // on a closed date no close or sweep may come back to them: they are unmatch now ("No counterpart", still a candidate
   // within carry over as such breaks are), counted into that date's stored open counter; never left hidden as open
   const broken = await tx.update(reconItems).set({ status: "break", breakReason: "No counterpart", lateMatch: true, version: sql`${reconItems.version} + 1` })
