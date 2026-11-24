@@ -414,6 +414,8 @@ export const RunDay = z.object({
   items: PerSide.optional(),
   /** Break items on that date per reason and side (a pass's Duplicate included); optional as `items`. */
   breakReasons: z.record(z.string(), PerSide).optional(),
+  /** Items not required on that date per side (a one-way recon's side B, DEC-055); sent when there are any. */
+  notRequired: PerSide.optional(),
   /** The day closed (a live run's; a simulation closes nothing). */
   closed: z.boolean(),
 });

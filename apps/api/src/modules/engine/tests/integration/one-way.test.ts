@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { ReconDashboardDto } from "@starterkit/shared/contracts/dashboard";
-import type { NavCountsDto, SignoffRowDto } from "@starterkit/shared/contracts/recon";
+import type { NavCountsDto, RunDay, SignoffRowDto } from "@starterkit/shared/contracts/recon";
 import type { ResultCountsDto, ResultRowDto } from "@starterkit/shared/contracts/results";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -19,8 +19,8 @@ import { reconConfigVersions } from "../../../recon";
 import { calendars } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { closeDay, sweepClosed } from "../../breaks";
-import { reconDays, reconItems } from "../../schema";
-import { classifyUnmatched, runRecon } from "../../service";
+import { reconDays, reconItems, reconRuns } from "../../schema";
+import { classifyUnmatched, finalizeRun, runRecon } from "../../service";
 import { recomputeDayStats } from "../../stats";
 import { ccyEq, D, D1, makeSource, plainSource, put, recon, spec, type Src, U } from "../fixtures";
 
@@ -87,6 +87,15 @@ describe("one-way recon (a_to_b)", () => {
     ]);
     // the day's counters count the unmatch its close made: A2 and the AD pair, never B9
     expect((await db.select({ c: reconDays.counters }).from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!.c).toEqual({ open: 3, suggested: 0 });
+  }, 60_000);
+
+  it("a run's day counts its not-required items, so items add up to matched, waiting, unmatch and not required", async () => {
+    const { r } = await dayD("a_to_b");
+    const [run] = await db.select({ id: reconRuns.id }).from(reconRuns).where(eq(reconRuns.configId, r.configId));
+    await finalizeRun(probe, A, run!.id);
+    const [row] = await db.select({ days: reconRuns.days }).from(reconRuns).where(eq(reconRuns.id, run!.id));
+    const day = (row!.days as RunDay[]).find((d) => d.date === D)!;
+    expect([day.items, day.notRequired]).toEqual([{ a: 5, b: 4 }, { a: 0, b: 1 }]);
   }, 60_000);
 
   it("two-way is unchanged: the same side-B item breaks as No counterpart", async () => {

@@ -159,6 +159,8 @@ function Trend({ spaceId, id }: { spaceId: string; id: string }) {
             { label: "Matched", values: totals.map((t) => (t ? t.matched : 0)), slot: 0 },
             { label: "Waiting", values: totals.map((t) => (t ? t.waiting + t.suggested : 0)), tone: "neutral" as const, striped: true },
             { label: "Unmatch", values: totals.map((t) => (t ? t.breaks : 0)), slot: 1 },
+            // a one-way recon's side B with no counterpart (DEC-055): no one's work, grey like its status
+            ...(totals.some((t) => t?.notRequired) ? [{ label: "Not required", values: totals.map((t) => (t ? t.notRequired : 0)), tone: "neutral" as const }] : []),
           ]} />
       </LazyMount>
     </Panel>

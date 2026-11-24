@@ -66,8 +66,11 @@ export function reasonParts(facets: Readonly<Record<string, Readonly<Record<stri
   return rest > 0 ? [...parts, { label: "No reason", value: rest, color: categoryColor("neutral") }] : parts;
 }
 
-/** A day's totals: items in, groups matched and suggested, waiting and broken items (both sides), side A's match rate. */
-export function totalsOfDay(d: RunDay): { inItems: number | null; matched: number; suggested: number; waiting: number; breaks: number; rate: number | null } {
+/**
+ * A day's totals: items in, groups matched and suggested, waiting, broken and not-required items (both sides; a one-way
+ * recon's side B, DEC-055), side A's match rate.
+ */
+export function totalsOfDay(d: RunDay): { inItems: number | null; matched: number; suggested: number; waiting: number; breaks: number; notRequired: number; rate: number | null } {
   const passes = Object.values(d.passes);
   const matched = passes.reduce((n, p) => n + p.matched, 0);
   return {
@@ -75,6 +78,7 @@ export function totalsOfDay(d: RunDay): { inItems: number | null; matched: numbe
     suggested: passes.reduce((n, p) => n + p.suggested, 0),
     waiting: d.open.a + d.open.b,
     breaks: d.breaks.a + d.breaks.b + passes.reduce((n, p) => n + p.broken, 0),
+    notRequired: d.notRequired ? d.notRequired.a + d.notRequired.b : 0,
     // one side A item per matched group, as the run summary counts it (an N:1 pass overcounts: ponytail in run-model)
     rate: d.items?.a ? Math.min(1, matched / d.items.a) : null,
   };

@@ -80,7 +80,7 @@ export function LiveDay({ spaceId, id, spec, run: runCard, act, history }: { spa
           description={[scheduleLine(r.schedule), run ?? (r.runAt ? `last run finished ${formatDateTime(Date.parse(r.runAt))}` : "no run has covered this date yet")].join(" · ")}>
           {/* the tiles fill the card: its body is the tray (no second frame) */}
           <StatTiles className="rounded-none border-0">
-            <StatTile label="Items in" value={tot?.inItems != null ? fmt(tot.inItems) : "—"} tween={tot?.inItems != null ? { value: tot.inItems, format: fmt } : undefined} caption="Both sides, this date" />
+            <StatTile label="Items in" value={tot?.inItems != null ? fmt(tot.inItems) : "—"} tween={tot?.inItems != null ? { value: tot.inItems, format: fmt } : undefined} caption={tot?.notRequired ? `Both sides, this date; ${formatNumber(tot.notRequired)} not required` : "Both sides, this date"} />
             <StatTile label="Matched" value={tot ? fmt(tot.matched) : "—"} tween={tot ? { value: tot.matched, format: fmt } : undefined} caption="Pairs and groups" />
             <StatTile label="Waiting" value={tot ? fmt(tot.waiting) : "—"} tween={tot ? { value: tot.waiting, format: fmt } : undefined}
               caption={tot ? `${formatNumber(tot.suggested)} suggested, open until accepted` : "Open items of this date"} />

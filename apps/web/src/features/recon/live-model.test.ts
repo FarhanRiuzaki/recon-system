@@ -42,7 +42,9 @@ describe("Today and Live day model (REC-F4)", () => {
   });
   it("the day's totals and its counters for the pipeline; nothing before a run", () => {
     const r = recon("x", "s1", "s2");
-    expect(dayTotals(r)).toEqual({ inItems: 1990, matched: 937, suggested: 14, waiting: 44, breaks: 33, rate: 0.937 });
+    expect(dayTotals(r)).toEqual({ inItems: 1990, matched: 937, suggested: 14, waiting: 44, breaks: 33, notRequired: 0, rate: 0.937 });
+    // a one-way recon's side-B items not required: their own bucket, never waiting or unmatch
+    expect(dayTotals({ ...r, day: { ...r.day!, notRequired: { a: 0, b: 6 } } })).toMatchObject({ waiting: 44, breaks: 33, notRequired: 6 });
     expect(dayCounters(r)!.intake).toEqual({ a: 1000, b: 990 });
     expect(dayTotals({ ...r, day: null })).toBeNull();
     expect(dayCounters({ ...r, day: null })).toBeUndefined();

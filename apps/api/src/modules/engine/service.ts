@@ -591,13 +591,14 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
     current: sql<number>`count(*) filter (where ${reconItems.status} <> 'closed')`.mapWith(Number),
     timed: sql<number>`count(*) filter (where ${reconItems.status} = 'break' and ${reconItems.breakPass} is null)`.mapWith(Number),
     breaks: sql<number>`count(*) filter (where ${reconItems.status} = 'break')`.mapWith(Number),
+    nr: sql<number>`count(*) filter (where ${reconItems.status} = 'not_required')`.mapWith(Number),
   }).from(reconItems).where(itemsIn).groupBy(reconItems.businessDate, reconItems.side, reconItems.breakReason);
   const closed = w.simRunId ? [] : await tx.select({ d: reconDays.businessDate }).from(reconDays).where(and(eq(reconDays.spaceId, w.spaceId), eq(reconDays.configId, w.configId),
     eq(reconDays.status, "closed"), sql`${reconDays.businessDate} between ${w.first}::date and ${w.to}::date`));
   const dates = new Set<string>();
   for (let d = w.from; d <= w.to; d = addDays(d, 1)) dates.add(d);
   for (const r of [...matched, ...suggested, ...broken, ...states.filter((x) => x.current > 0 || x.open > 0)]) dates.add(r.d);
-  const perSide = (date: string, f: "open" | "current" | "timed") => {
+  const perSide = (date: string, f: "open" | "current" | "timed" | "nr") => {
     const n = (side: string) => states.filter((x) => x.d === date && x.side === side).reduce((t, x) => t + x[f], 0);
     return { a: n("a"), b: n("b") };
   };
@@ -617,6 +618,7 @@ async function daysOf(tx: InTx, w: { spaceId: string; configId: string; simRunId
       a: reasonsOn(date).find((r) => (r.reason ?? "") === reason && r.side === "a")?.breaks ?? 0,
       b: reasonsOn(date).find((r) => (r.reason ?? "") === reason && r.side === "b")?.breaks ?? 0,
     }])),
+    ...(states.some((x) => x.d === date && x.nr > 0) ? { notRequired: perSide(date, "nr") } : {}),
     closed: closed.some((c) => c.d === date),
   }));
   return { days, refs: new Map(refs.map((r) => [r.pass!, r.refs])) };
