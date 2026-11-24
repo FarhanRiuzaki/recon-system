@@ -32,6 +32,9 @@ const Fields = z.object({
   SMTP_URL: z.string().optional(),
   MAIL_FROM: z.string().optional(),
   AUDIT_RETENTION_DAYS: int(30, 3650, 365),
+  /** The connector call log (integrations): rows kept this many days, their full request and response this many. */
+  CALL_LOG_RETENTION_DAYS: int(1, 3650, 90),
+  CALL_LOG_FULL_RETENTION_DAYS: int(1, 3650, 30),
   /** Folders a file inbox source may read from (and below): absolute paths, comma-separated; none = no file inbox. */
   INBOX_ROOTS: z.string().default("").transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
     .refine((roots) => roots.every((r) => isAbsolute(r)), { message: "must be absolute paths, comma-separated" }),

@@ -119,6 +119,43 @@ export const actionRuns = pgTable("action_runs", {
   check("action_runs_status_check", sql`status in ('queued', 'sending', 'posted', 'failed', 'not_sent', 'timeout', 'no_rule', 'skipped')`),
 ]);
 
+/**
+ * The call log (spec 2026-11-24-connector-call-log-design): one row per outbound call the transport made or tried (a
+ * token request has no `operation_key`). Generic: the caller names where it came from (`origin` = { module, kind,
+ * refId, label, href }) and on whose behalf (`actor_id`, null = the system; `on_behalf_of`). `request_masked` /
+ * `response_masked` = the connector's masking; `full_enc` = encryptSecret(JSON of the full call: headers as sent, plain
+ * and sealed body, the answer's headers, raw and decrypted), never a secret, a private key or a whole token; cleared
+ * after CALL_LOG_FULL_RETENTION_DAYS, the row deleted after CALL_LOG_RETENTION_DAYS. Global like connectors.
+ */
+export const connectorCalls = pgTable("connector_calls", {
+  id: uuid("id").primaryKey(),
+  connectorId: uuid("connector_id").notNull().references(() => connectors.id, { onDelete: "cascade" }),
+  connectorVersion: integer("connector_version"),
+  environment: text("environment").notNull(),
+  operationKey: text("operation_key"),
+  method: text("method").notNull(),
+  host: text("host").notNull(),
+  path: text("path").notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+  durationMs: integer("duration_ms").notNull(),
+  attempt: smallint("attempt").notNull().default(1),
+  outcome: text("outcome").notNull(),
+  httpStatus: smallint("http_status"),
+  code: text("code"),
+  message: text("message"),
+  externalId: text("external_id"),
+  requestMasked: jsonb("request_masked"),
+  responseMasked: jsonb("response_masked"),
+  fullEnc: text("full_enc"),
+  origin: jsonb("origin").notNull(),
+  actorId: uuid("actor_id"),
+  onBehalfOf: uuid("on_behalf_of"),
+}, (t) => [
+  index("connector_calls_started").on(t.startedAt.desc(), t.id),
+  index("connector_calls_connector").on(t.connectorId, t.startedAt),
+  check("connector_calls_outcome_check", sql`${t.outcome} in ('ok', 'rejected', 'timeout', 'not_sent')`),
+]);
+
 /** Transport failures in a row per connector and environment; 5 open the circuit until `open_until` (calls not sent). */
 export const connectorCircuits = pgTable("connector_circuits", {
   connectorId: uuid("connector_id").notNull().references(() => connectors.id, { onDelete: "cascade" }),

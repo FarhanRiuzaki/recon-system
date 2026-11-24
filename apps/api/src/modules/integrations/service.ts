@@ -269,12 +269,15 @@ export async function liveOperation(tx: InTx, connectorId: string, key: string) 
   return op ? { connector: spec, version: v.version, op, disabled: !!c.disabledAt } : null;
 }
 
+/** The connector's page, where a Try or a token check is made (the call log's origin link). */
+const connectorHref = (id: string) => `/integrations/${id}`;
 const tries = new RateLimiter("integration-try", 20, 60_000);
 /** The version being worked on (open, else live): what Try it and Get token use. */
-async function workingSpec(tx: InTx, id: string): Promise<{ name: string; spec: ConnectorSpec; disabled: string | null }> {
+async function workingSpec(tx: InTx, id: string): Promise<{ name: string; spec: ConnectorSpec; version: number; disabled: string | null }> {
   const c = await connectorOf(tx, id);
   const { published, open } = await versionsOf(tx, id);
-  return { name: c.name, spec: (open ?? published)!.spec as ConnectorSpec, disabled: c.disabledAt ? c.disabledReason ?? "" : null };
+  const v = (open ?? published)!;
+  return { name: c.name, spec: v.spec as ConnectorSpec, version: v.version, disabled: c.disabledAt ? c.disabledReason ?? "" : null };
 }
 
 /**
@@ -289,13 +292,14 @@ export async function tokenCheck(ctx: Ctx, id: string, b: TokenCheckBody): Promi
     const c = await connectorOf(tx, id);
     const { published, open } = await versionsOf(tx, id);
     const v = b.environment === "prod" ? published : open ?? published;
-    return { name: c.name, spec: (v?.spec as ConnectorSpec | undefined) ?? null, secrets: await secretsOf(tx, id, b.environment) };
+    return { name: c.name, spec: (v?.spec as ConnectorSpec | undefined) ?? null, version: v?.version ?? null, secrets: await secretsOf(tx, id, b.environment) };
   });
   let r: TokenCheckDto;
   if (!w.spec) r = { ok: false, expiresIn: null, message: "Publish the connector first: production uses only its published settings." };
   else {
     try {
-      const t = await accessToken(id, b.environment, w.spec.environments[b.environment], w.secrets ?? {}, true);
+      const call = { origin: { module: "integrations", kind: "token_check", refId: id, label: "Check token", href: connectorHref(id) }, actorId: ctx.user.id, connectorVersion: w.version };
+      const t = await accessToken(id, b.environment, w.spec.environments[b.environment], w.secrets ?? {}, call, true);
       r = { ok: true, expiresIn: t.expiresIn, message: `The bank gave a token that lasts ${t.expiresIn} s.` };
     } catch (e) {
       if (!(e instanceof NotSent)) throw e;
@@ -318,7 +322,10 @@ export async function tryOperation(ctx: Ctx, id: string, b: TryBody): Promise<Tr
   if (!op) throw new ApiError("bad_request", "This connector has no such operation. Pick one of its operations.");
   const r = w.disabled !== null
     ? { outcome: "not_sent" as const, status: null, externalId: null, ms: 0, json: null, raw: null, message: `This connector is turned off: ${w.disabled}`, filled: {} }
-    : await sendOperation({ connectorId: id, env: "dev", op, settings: w.spec.environments.dev, secrets: w.secrets, body: b.body });
+    : await sendOperation({
+      connectorId: id, env: "dev", op, settings: w.spec.environments.dev, secrets: w.secrets, body: b.body,
+      call: { origin: { module: "integrations", kind: "try", refId: id, label: op.name, href: connectorHref(id) }, actorId: ctx.user.id, connectorVersion: w.version },
+    });
   const success = r.json !== null && op.success ? String(readPath(r.json, op.success.field) ?? "") === op.success.equals : r.json !== null ? true : null;
   const ref = r.json !== null && op.reference ? readPath(r.json, op.reference) : null;
   await db.transaction((tx) => recordActivity(tx, ctx, {

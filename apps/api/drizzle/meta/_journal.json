@@ -435,6 +435,13 @@
       "when": 1795499134343,
       "tag": "0061_result_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1795502385121,
+      "tag": "0062_connector_calls",
+      "breakpoints": true
     }
   ]
 }

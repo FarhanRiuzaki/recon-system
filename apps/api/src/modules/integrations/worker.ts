@@ -5,12 +5,14 @@
 // readable answer). Never sent twice: no retry, and a run left `sending` by a dead worker becomes timeout (sweepStale).
 import type { ConnectorSpec } from "@starterkit/shared/contracts/integrations";
 import { maskTree, readPath } from "@starterkit/shared/integrations";
-import { and, eq, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, lte, notInArray, or, sql } from "drizzle-orm";
 import { decryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
 import { enqueue, type JobHandler, QUEUES } from "../../kernel/jobs";
 import { log } from "../../kernel/log";
+import { approvalDecisions } from "../approvals";
 import { spaces, withSpace } from "../spaces";
+import type { CallMeta } from "./call-log";
 import { actionRuns, connectorCircuits, connectors, connectorVersions } from "./schema";
 import { closeDueGroups } from "./groups";
 import { secretsOf } from "./service";
@@ -30,6 +32,28 @@ const notPrepared = (e: unknown) => ({ status: "not_sent", message: `Not sent: R
 const QUEUED_MAX_MS = 15 * 60_000;
 /** A failure before any answer that says the bank (or the way to it) is down, as opposed to a refusal. */
 const transport = (r: SendResult) => (r.outcome === "not_sent" && /couldn't be reached|certificate|No token from the bank/.test(r.message)) || (r.outcome === "timeout" && r.status === null);
+
+/** Runs that sent nothing (no rule matched, or skipped): never an attempt (as the Posting list counts them). */
+const NOT_SENT_AT_ALL = ["no_rule", "skipped"];
+/**
+ * What the call log keeps of run `r`'s call: origin approvals/action (the run, its action and item, the Posting list
+ * filtered by the item), the system as actor on behalf of the last person who decided its request, and which attempt
+ * it is: the sends of the same action, event and level for the same item up to it (ActionRunRowDto.attempts).
+ */
+async function callMeta(tx: InTx, spaceId: string, r: Run): Promise<CallMeta> {
+  const [who] = r.requestId ? await tx.select({ id: approvalDecisions.userId }).from(approvalDecisions)
+    .where(and(eq(approvalDecisions.spaceId, spaceId), eq(approvalDecisions.requestId, r.requestId))).orderBy(desc(approvalDecisions.at)).limit(1) : [];
+  const [n] = r.itemId ? await tx.select({ n: sql<number>`count(*)::int` }).from(actionRuns).where(and(
+    eq(actionRuns.spaceId, spaceId), eq(actionRuns.itemId, r.itemId), eq(actionRuns.actionName, r.actionName), eq(actionRuns.event, r.event),
+    r.level === null ? isNull(actionRuns.level) : eq(actionRuns.level, r.level), notInArray(actionRuns.status, NOT_SENT_AT_ALL),
+    or(lt(actionRuns.createdAt, r.createdAt), and(eq(actionRuns.createdAt, r.createdAt), lte(actionRuns.id, r.id))),
+  )) : [];
+  const q = new URLSearchParams({ ...(r.subjectRef ? { q: r.subjectRef } : {}), show: "all" });
+  return {
+    origin: { module: "approvals", kind: "action", refId: r.id, label: [r.actionName, r.subjectRef].filter(Boolean).join(" · "), href: `/spaces/${spaceId}/posting?${q}` },
+    actorId: null, onBehalfOf: who?.id ?? null, attempt: Math.max(1, n?.n ?? 1), connectorVersion: r.connectorVersion,
+  };
+}
 
 /** Sends run `runId`: "sent", "waiting" (an earlier run of its request isn't finished) or "skip" (not queued, or taken by another). */
 export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"sent" | "waiting" | "skip"> {
@@ -55,7 +79,7 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
     if (circuit?.openUntil && circuit.openUntil > new Date()) { await finish(tx, r.id, { status: "not_sent", message: "The bank is unreachable: calls paused for 60 s.", payloadMasked: masked }); return "skip" as const; }
     const [claimed] = await tx.update(actionRuns).set({ status: "sending", sendingAt: sql`now()` }).where(and(eq(actionRuns.id, r.id), eq(actionRuns.status, "queued"))).returning({ id: actionRuns.id });
     if (!claimed) return "skip" as const;
-    return { r, op, env, settings: spec.environments[env], secrets: await secretsOf(tx, c.id, env), payload, masked };
+    return { r, op, env, settings: spec.environments[env], secrets: await secretsOf(tx, c.id, env), payload, masked, call: await callMeta(tx, spaceId, r) };
   }, on).catch((e: unknown) => ({ failed: e }) as const);
   if (typeof taken === "object" && "failed" in taken) {
     log.warn({ err: taken.failed instanceof Error ? taken.failed.name : "error" }, "action run failed before its call");
@@ -64,11 +88,11 @@ export async function sendRun(on: Tx, spaceId: string, runId: string): Promise<"
     return "skip";
   }
   if (typeof taken === "string") return taken;
-  const { r, op, env, settings, secrets, payload, masked } = taken;
+  const { r, op, env, settings, secrets, payload, masked, call } = taken;
   let res: Awaited<ReturnType<typeof sendOperation>>;
   try {
     // sendOperation throws only before its fetch (token, external id, sealing): the call never left
-    res = await sendOperation({ connectorId: r.connectorId!, env, op, settings, secrets, body: payload });
+    res = await sendOperation({ connectorId: r.connectorId!, env, op, settings, secrets, body: payload, call });
   } catch (e) {
     log.warn({ err: e instanceof Error ? e.name : "error" }, "action run failed before its call");
     await withSpace(scope, (tx) => finish(tx, r.id, { ...notPrepared(e), payloadMasked: masked }, "sending"), on);
