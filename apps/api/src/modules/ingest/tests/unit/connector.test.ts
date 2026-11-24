@@ -12,7 +12,7 @@ describe("pullWatermark over a driver whose cursor does not move", () => {
     const drv: Driver = {
       rows: async (sql) => (sql.includes("pg_attribute")
         ? [{ name: "w", type: "timestamp without time zone", nullable: "NO" }, { name: "id", type: "bigint", nullable: "NO" }]
-        : (pages++, [{ w: "2026-11-19T00:00:00.003333", id: "1" }, { w: "2026-11-19T00:00:00.003333", id: "1" }])),
+        : (pages++, ["0", "1", "2"].map((id) => ({ w: "2026-11-19T00:00:00.003333", id })))),
       describe: never, stream: async function* () {}, close: async () => {},
     };
     const c = connectorOver("postgres", drv, { connectS: 1, statementS: 1 });
@@ -29,7 +29,7 @@ describe("pullWatermark over a driver whose cursor does not move", () => {
     const drv: Driver = {
       rows: async (sql) => (sql.includes("pg_attribute")
         ? [{ name: "w", type: "date", nullable: "NO" }, { name: "b", type: "text", nullable: "NO" }, { name: "s", type: "int", nullable: "NO" }]
-        : [{ w: "2026-11-19", b: "B1", s: "7" }, { w: "2026-11-19", b: "B1", s: "7" }]),
+        : ["6", "7", "8"].map((s) => ({ w: "2026-11-19", b: "B1", s }))),
       describe: never, stream: async function* () {}, close: async () => {},
     };
     const got = await (async () => {

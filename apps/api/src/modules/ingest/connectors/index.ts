@@ -9,7 +9,9 @@
 // - A watermark pull is keyset paging (S7): each page `chunk` rows ordered by (watermark, ids…), the next page after the
 //   last row's (watermark, ids…) as text. With a cursor and lookback, the first page starts the look back before the
 //   cursor's watermark (`>=`: seconds for a date or time, ids for an integer, lookbackOf); Task 5's dedup drops what
-//   comes again. A page is fully read before the next query, and
+//   comes again. Each page reads one row more than it keeps: when that row repeats the page's last (watermark, ids…),
+//   the next page would skip it, so the pull stops with a spec error (the source pauses) instead. A page is fully read
+//   before the next query, and
 //   the caller consumes it before asking for more, so memory stays at one page.
 // - Every driver error becomes a ConnectorError with a fixed sentence (errors.ts); nothing here logs.
 import type { DbEngine } from "@starterkit/shared/sources";
@@ -194,13 +196,22 @@ export function connectorOver(d: DbEngine, drv: Driver, t: { connectS: number; s
       const back = lb.n === 0 ? null : lb.by === "ids" ? minusIds(o.after.wm, lb.n) : minusSeconds(o.after.wm, lb.n);
       cursor = back !== null ? { from: back } : o.after.ids === null ? { from: o.after.wm } : { after: { wm: o.after.wm, ids: o.after.ids } };
     }
+    const keyOf = (r: Row) => [wm, ...ids].map((c) => r[c.name]);
+    const same = (a: Row, b: Row) => keyOf(a).every((v, j) => v === keyOf(b)[j]);
     for (;;) {
-      const b = rowsSql(d, { from: o.from, columns: cols, keyset: { wm, ids, cursor }, limit: o.chunk });
-      const page = (await wrap(drv.rows(b.sql, b.params))).map((r) => text(r, cols));
+      // one row past the page: when it repeats the page's last (watermark, ids…), the next page (`>` that key) would skip it
+      const b = rowsSql(d, { from: o.from, columns: cols, keyset: { wm, ids, cursor }, limit: o.chunk + 1 });
+      const read = (await wrap(drv.rows(b.sql, b.params))).map((r) => text(r, cols));
+      const page = read.slice(0, o.chunk);
+      const last = page[page.length - 1];
+      if (last && read.length > o.chunk && same(last, read[o.chunk]!)) {
+        const one = ids.length === 1;
+        throw specError(`More than one row has watermark ${last[wm.name]} and ${one ? "id" : "ids"} ${ids.map((c) => last[c.name]).join(", ")} in `
+          + `${[wm, ...ids].map((c) => `"${c.name}"`).join(", ")}: a pull that stops between them would skip the rest. Pick id columns that are unique together with the watermark.`);
+      }
       if (page.length) yield page;
-      if (page.length < o.chunk) return;
-      const last = page[page.length - 1]!;
-      const next = { wm: last[wm.name]!, ids: ids.map((c) => last[c.name]!) };
+      if (read.length <= o.chunk) return;
+      const next = { wm: last![wm.name]!, ids: ids.map((c) => last![c.name]!) };
       // a full page that ends where it started: the source compares the columns differently from their text (a SQL
       // Server datetime read back at another precision, a collation); asking again would return the same page forever
       if (cursor && "after" in cursor && cursor.after.wm === next.wm && cursor.after.ids.every((v, j) => v === next.ids[j])) {

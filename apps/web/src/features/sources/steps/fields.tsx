@@ -16,7 +16,7 @@ import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_
 import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, type WatermarkInput, watermarkKind } from "./model";
+import { type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
 import { toast } from "@starterkit/ui/ui/toast";
 
 /**
@@ -457,7 +457,7 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, pre
     );
   };
   const full = ids.length >= WATERMARK_ID_COLUMNS_MAX;
-  // the watermark with its ids must name one row; rows of the preview that repeat them all are read once by a pull
+  // the watermark with its ids must name one row; rows that repeat them all can be skipped (a pull pauses on them)
   const keys = [i.watermark.column, ...ids].map((n) => storedName(d.spec, n));
   const recs = preview.result?.records ?? [];
   const tied = ids.length && keys.every((k) => k !== null)
@@ -486,7 +486,7 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, pre
           {i.watermark.column} has no index in the source database, so every pull reads the whole table to find new rows. Ask the database owner for an index on it, or pick an indexed column.
         </Notice>
       )}
-      {tied > 0 && <Notice tone="warn">These columns repeat in {formatNumber(tied)} preview rows: rows that repeat them are read once.</Notice>}
+      {tied > 0 && <Notice tone="warn">{tiedNotice(tied)}</Notice>}
       {dateOnly && (
         <Notice>
           <span className="grid gap-2">

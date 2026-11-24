@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, pullProblems, repeatedRows, snapshotOf, watermarkKind, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -108,6 +108,9 @@ describe("repeatedRows (a key that repeats in the preview)", () => {
   it("counts every row whose key another row has; no value is not counted", () => {
     expect(repeatedRows(["a", "b", "a", "c", "a", null, null], (x) => x)).toBe(3);
     expect(repeatedRows(["a", "b"], (x) => x)).toBe(0);
+  });
+  it("tiedNotice: repeats can be skipped by a pull, never read once", () => {
+    expect(tiedNotice(1200)).toBe("These columns repeat in 1,200 preview rows. Rows that repeat the watermark and these columns can be skipped: pick columns that are unique together.");
   });
 });
 

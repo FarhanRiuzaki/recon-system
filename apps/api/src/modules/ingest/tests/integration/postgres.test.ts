@@ -180,6 +180,17 @@ describe("pullWatermark()", () => {
     expect((await pull({ wm: at.at!, ids: null })).flat().map((r) => r.amt)).toEqual(rows.filter((r) => r.at === at.at || r.at! > at.at!).map((r) => r.amt));
   });
 
+  it("rows that repeat the watermark and every id across a page boundary pause the pull (never skipped); repeats inside one page are read", async () => {
+    await src.unsafe(`drop table if exists dupk; create table dupk (id int not null, at timestamptz not null, n int not null);
+      insert into dupk values (1, '2026-11-19 01:00+00', 1), (2, '2026-11-19 01:00+00', 2), (2, '2026-11-19 01:00+00', 3), (3, '2026-11-19 01:00+00', 4)`);
+    const pull = (chunk: number) => all(pg().pullWatermark({ from: { table: "dupk" }, columns: ["n"], watermark: { column: "at", id_columns: ["id"] }, after: null, lookback: { seconds: 0 }, chunk }));
+    // 2-row pages: the first ends on one of the two (01:00, 2) rows; `>` after it would skip the other
+    const e = await fails(pull(2));
+    expect([e.kind, e.message]).toEqual(["spec",
+      'More than one row has watermark 2026-11-19T01:00:00.000000Z and id 2 in "at", "id": a pull that stops between them would skip the rest. Pick id columns that are unique together with the watermark.']);
+    expect((await pull(3)).flat().map((r) => r.n).sort()).toEqual(["1", "2", "3", "4"]);
+  });
+
   it("a date-only watermark: a row added later on the cursor's date with a smaller id comes in the next pull", async () => {
     await src.unsafe(`drop table if exists daily; create table daily (id int primary key, d date not null);
       insert into daily values (1, '2026-11-19'), (5, '2026-11-20')`);

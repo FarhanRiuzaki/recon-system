@@ -6,6 +6,7 @@ import {
 } from "@starterkit/shared/sources";
 import { FILE_DATE, fieldTypeOf } from "../spec-draft";
 import { computeSteps } from "@starterkit/shared/compute";
+import { formatNumber } from "@starterkit/ui/lib/format";
 
 /** A database connection as typed: never filled from the server (the credential is never answered). */
 export type Conn = { engine: DbEngine; host: string; port: string; database: string; user: string; password: string; tls: boolean };
@@ -247,6 +248,10 @@ export function amountProblems(s: SourceSpec): { id: string; reason: string }[] 
 
 /** The nullable reason of a watermark or id column option (ruling 4): rows with no value would never be pulled. */
 export const NULLABLE_REASON = "can be empty";
+
+/** Preview rows that repeat the watermark with every id: a pull pauses when a page ends between such rows (connectors pullWatermark). */
+export const tiedNotice = (n: number) =>
+  `These columns repeat in ${formatNumber(n)} preview rows. Rows that repeat the watermark and these columns can be skipped: pick columns that are unique together.`;
 
 /**
  * How many rows share their value with another row (`keyOf` null = no value, not counted): a key that should tell rows
