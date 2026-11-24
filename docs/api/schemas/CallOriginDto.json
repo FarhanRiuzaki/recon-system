@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CallOriginDto",
+  "type": "object",
+  "properties": {
+    "module": {
+      "type": "string"
+    },
+    "kind": {
+      "type": "string"
+    },
+    "refId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "label": {
+      "type": "string"
+    },
+    "href": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "module",
+    "kind",
+    "refId",
+    "label",
+    "href"
+  ],
+  "additionalProperties": false
+}

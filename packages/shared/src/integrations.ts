@@ -4,6 +4,12 @@
 export const ENVIRONMENTS = ["dev", "prod"] as const;
 export type Environment = (typeof ENVIRONMENTS)[number];
 export const ENVIRONMENT_LABEL: Record<Environment, string> = { dev: "Development", prod: "Production" };
+/** A logged call's outcome (the connector call log): answered, refused, no answer in time, never left. */
+export const CALL_OUTCOMES = ["ok", "rejected", "timeout", "not_sent"] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+export const CALL_OUTCOME_LABEL: Record<CallOutcome, string> = { ok: "OK", rejected: "Rejected", timeout: "Timeout", not_sent: "Not sent" };
+/** A call log filter's origin value: the caller's module and kind, `module.kind`. */
+export const CALL_ORIGIN = /^[a-z][a-z0-9_]{0,39}\.[a-z][a-z0-9_]{0,39}$/;
 export const PROFILES = ["bank_mega_openapi_2_1"] as const;
 export const PROFILE_LABEL: Record<(typeof PROFILES)[number], string> = { bank_mega_openapi_2_1: "Bank Mega Open API · security 2.1" };
 export const FIELD_TYPES = ["string", "numeric", "boolean", "object", "array"] as const;

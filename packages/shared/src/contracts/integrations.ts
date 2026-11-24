@@ -1,8 +1,10 @@
 import { z } from "zod";
-import { CONNECTOR_SORTS, POSTING_GROUP_SORTS } from "../paging";
+import { isTimeExpression, timeRangeProblem } from "@starterkit/ui/lib/time-range";
+import { MAX_RANGE_DAYS, rangeProblem } from "../audit";
+import { CALL_SORTS, CONNECTOR_SORTS, POSTING_GROUP_SORTS } from "../paging";
 import { ACTION_STATUSES } from "./breaks";
 import { filterSelection } from "./filter-selection";
-import { DESCRIPTION_MAX, ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
+import { CALL_ORIGIN, CALL_OUTCOMES, DESCRIPTION_MAX, ENVIRONMENTS, FIELD_TYPES, FIELDS_MAX, fieldPaths, type OpField as OpFieldT, OPERATIONS_MAX, PROFILES, RESERVED_NAMES, TIMEOUT_MAX_MS, TIMEOUT_MIN_MS } from "../integrations";
 import { ListQuery, sortParam } from "./common";
 import { Person, reviewFields, versionFields } from "./workflows";
 
@@ -183,3 +185,51 @@ export const PostingGroupDto = PostingGroupRowDto.extend({
   members: z.array(z.object({ itemId: z.string(), ref: z.string().nullable(), amountMinor: z.string().nullable(), joinedAt: z.string() })),
 });
 export type PostingGroupDto = z.infer<typeof PostingGroupDto>;
+
+/**
+ * GET /api/integrations/calls (the connector call log), newest first: the range as the logs read it (start–end or
+ * from–to calendar days in the app time zone; none = every call kept), one connector, environments, outcomes, origins
+ * (`module.kind`) and `q` (external id, path or the origin's label).
+ */
+export const CallListQuery = ListQuery.extend({
+  sort: sortParam(CALL_SORTS),
+  start: z.string().max(100).refine(isTimeExpression).optional(),
+  end: z.string().max(100).refine(isTimeExpression).optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
+  connector: z.uuid().optional(),
+  environment: filterSelection(z.enum(ENVIRONMENTS)).optional(),
+  outcome: filterSelection(z.enum(CALL_OUTCOMES)).optional(),
+  origin: filterSelection(z.string().regex(CALL_ORIGIN)).optional(),
+}).refine((q) => rangeProblem(q.from, q.to) === null && timeRangeProblem(q, Date.now()) === null, { message: `Choose a valid calendar range (up to ${MAX_RANGE_DAYS} days) or a time range (up to 366 days).` });
+export type CallListQuery = z.infer<typeof CallListQuery>;
+/** Where a call came from, as its caller named it (`href`: the page of what it was for; null = none). */
+export const CallOriginDto = z.object({ module: z.string(), kind: z.string(), refId: z.string().nullable(), label: z.string(), href: z.string().nullable() });
+/**
+ * One logged call: the connector and the version it used, the operation (null = an access token request), where it
+ * went (host and path, no query), when and how long, the outcome with the bank's status, code and our message, which
+ * attempt, the origin, and who (null actor = the system; `onBehalfOf` the person whose decision fired it). `full`: its
+ * full request and response are still kept (integration.debug reads them).
+ */
+export const ConnectorCallRowDto = z.object({
+  id: z.string(), startedAt: z.string(), durationMs: z.number().int(),
+  connector: z.object({ id: z.string(), name: z.string() }), version: z.number().int().nullable(), environment: z.enum(ENVIRONMENTS),
+  operation: z.object({ key: z.string(), name: z.string() }).nullable(), method: z.string(), host: z.string(), path: z.string(),
+  outcome: z.enum(CALL_OUTCOMES), httpStatus: z.number().int().nullable(), code: z.string().nullable(), message: z.string().nullable(), externalId: z.string().nullable(),
+  attempt: z.number().int(), origin: CallOriginDto, actor: Person.nullable(), onBehalfOf: Person.nullable(), full: z.boolean(),
+});
+export type ConnectorCallRowDto = z.infer<typeof ConnectorCallRowDto>;
+/** GET /api/integrations/calls/{id}: the row and its request and response as the connector masks them. */
+export const ConnectorCallDto = ConnectorCallRowDto.extend({ request: z.unknown(), response: z.unknown() });
+export type ConnectorCallDto = z.infer<typeof ConnectorCallDto>;
+/**
+ * POST /api/integrations/calls/{id}/reveal (integration.debug): the full call as sent and answered: every request
+ * header (the Authorization bearer as its last 8 characters), the plain JSON body and the sealed body, the answer's
+ * status, headers, raw text and decrypted JSON (null response: no answer). Never the client secret or a whole token.
+ */
+export const ConnectorCallFullDto = z.object({
+  id: z.string(),
+  request: z.object({ method: z.string(), url: z.string(), headers: z.record(z.string(), z.string()), json: z.string().nullable(), body: z.string().nullable() }),
+  response: z.object({ status: z.number().int(), headers: z.record(z.string(), z.string()), raw: z.string().nullable(), json: z.unknown() }).nullable(),
+});
+export type ConnectorCallFullDto = z.infer<typeof ConnectorCallFullDto>;

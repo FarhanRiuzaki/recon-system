@@ -7,6 +7,7 @@ import { xactLock } from "../../src/kernel/locks";
 import { log } from "../../src/kernel/log";
 import { activity, authLog } from "../../src/modules/audit";
 import { authChallenges, loginBackoff, rateLimits, sessions, userTokens } from "../../src/modules/auth";
+import { connectorCalls, connectors } from "../../src/modules/integrations";
 import { oauthStates } from "../../src/modules/oauth";
 import { users } from "../../src/modules/users";
 import { holdTx, lockWaiters, truncateAll } from "../helpers/db";
@@ -46,6 +47,12 @@ async function seedRows() {
   await db.insert(activity).values([a("live", keep), a("old", old)]);
   const l = (login: string, at: ReturnType<typeof sql>) => ({ id: Bun.randomUUIDv7(), at, event: "login_failed", login, method: "password", ip: "1.1.1.1", device: "d" });
   await db.insert(authLog).values([l("live", keep), l("old", old)]);
+  // the connector call log: kept, full call past CALL_LOG_FULL_RETENTION_DAYS (cleared), row past CALL_LOG_RETENTION_DAYS (deleted)
+  const cid = Bun.randomUUIDv7();
+  await db.insert(connectors).values({ id: cid, name: "Bank" });
+  const call = (path: string, days: number) => ({ id: Bun.randomUUIDv7(), connectorId: cid, environment: "dev", method: "POST", host: "h", path, startedAt: ago(days * DAY), durationMs: 1,
+    outcome: "ok", fullEnc: "v1:x", origin: { module: "m", kind: "k", refId: null, label: "l", href: null } });
+  await db.insert(connectorCalls).values([call("live", config().CALL_LOG_FULL_RETENTION_DAYS - 1), call("cleared", config().CALL_LOG_FULL_RETENTION_DAYS + 1), call("old", config().CALL_LOG_RETENTION_DAYS + 1)]);
   return { live };
 }
 
@@ -59,6 +66,7 @@ const left = async () => ({
   states: (await db.select({ h: oauthStates.stateHash }).from(oauthStates)).map((r) => r.h.toString()),
   activity: (await db.select({ t: activity.targetId }).from(activity).orderBy(asc(activity.targetId))).map((r) => r.t),
   authLog: (await db.select({ l: authLog.login }).from(authLog)).map((r) => r.l),
+  calls: (await db.select({ p: connectorCalls.path, full: connectorCalls.fullEnc }).from(connectorCalls).orderBy(asc(connectorCalls.path))).map((r) => [r.p, r.full !== null]),
 });
 
 beforeEach(truncateAll);
@@ -67,14 +75,14 @@ describe("runJanitor", () => {
   it("deletes only the rows that ended and returns how many per table", async () => {
     const { live } = await seedRows();
     expect(await runJanitor()).toEqual({
-      sessions: 2, auth_challenges: 1, user_tokens: 1, rate_limits: 1, login_backoff: 1, oauth_states: 1, activity: 1, auth_log: 1,
+      sessions: 2, auth_challenges: 1, user_tokens: 1, rate_limits: 1, login_backoff: 1, oauth_states: 1, activity: 1, auth_log: 1, connector_calls: 1, connector_calls_full: 1,
     });
     expect(await left()).toEqual({
       sessions: [live], challenges: ["00000000-0000-7000-8000-000000000001"], tokens: ["t-live"], limits: ["live"], backoff: ["live"],
-      states: ["live"], activity: ["live"], authLog: ["live"],
+      states: ["live"], activity: ["live"], authLog: ["live"], calls: [["cleared", false], ["live", true]],
     });
     // Nothing left to clean: every count is 0.
-    expect(Object.values((await runJanitor())!)).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(Object.values((await runJanitor())!)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("skips while another instance holds the janitor lock, and runs once it is free", async () => {

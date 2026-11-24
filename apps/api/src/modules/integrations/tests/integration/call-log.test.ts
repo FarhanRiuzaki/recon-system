@@ -10,6 +10,7 @@ import { decryptSecret, encryptSecret } from "../../../../kernel/crypto";
 import { db } from "../../../../kernel/db";
 import { activity } from "../../../audit";
 import { approvalDecisions, approvalRequests } from "../../../approvals";
+import { rolePermissions, roles, userRoles } from "../../../rbac";
 import { reconConfigs } from "../../../recon";
 import { spaces } from "../../../spaces";
 import { users } from "../../../users";
@@ -147,5 +148,105 @@ describe("the worker's sends", () => {
       expect(r).toMatchObject({ actorId: null, onBehalfOf: adminId, attempt: 2, connectorVersion: 3, environment: "dev" });
       expect(r.origin).toEqual({ module: "approvals", kind: "action", refId: second.id, label: "Post to GL · P1-2", href: `/spaces/${A}/posting?q=P1-2&show=all` });
     }
+  });
+});
+
+describe("GET /v1/integrations/calls, its facets and one call; POST …/reveal", () => {
+  const L = "/v1/integrations/calls";
+  type Row = typeof connectorCalls.$inferInsert;
+  let A: string, B: string, viewer: string;
+  const origin = (kind: string, label: string) => ({ module: kind === "action" ? "approvals" : "integrations", kind, refId: null, label, href: null });
+  const row = (o: Partial<Row> = {}): Row => ({
+    id: Bun.randomUUIDv7(), connectorId: A, connectorVersion: 1, environment: "dev", operationKey: "post", method: "POST", host: "bank.local", path: "/ok", startedAt: new Date(), durationMs: 120,
+    outcome: "ok", httpStatus: 200, code: "00", message: "The bank answered.", externalId: null, requestMasked: { Account: "12******90" }, responseMasked: { ResponseCode: "00" },
+    fullEnc: encryptSecret(JSON.stringify({ request: { method: "POST", url: "https://bank.local/ok", headers: { Authorization: "Bearer …a1b2c3d4" }, json: "{\"Account\":\"1234567890\"}", body: "c2VhbGVk" }, response: null })),
+    origin: origin("try", "Post to GL"), actorId: adminId, ...o,
+  });
+  const page = <T>(q = "", token = t) => json<{ items: T[]; total: number; page: number; pageSize: number }>(call("GET", `${L}${q}`, { token }));
+  const ids = async (q: string) => (await page<{ id: string }>(q)).items.map((r) => r.id).sort();
+
+  beforeEach(async () => {
+    [A, B] = [Bun.randomUUIDv7(), Bun.randomUUIDv7()];
+    await db.insert(connectors).values([{ id: A, name: "Bank A" }, { id: B, name: "Bank B" }]);
+    const spec = (name: string) => ({ name, profile: "bank_mega_openapi_2_1", active: "dev", environments: {}, operations: [op] });
+    await db.insert(connectorVersions).values([{ id: Bun.randomUUIDv7(), connectorId: A, version: 1, status: "published", spec: spec("Bank A") }, { id: Bun.randomUUIDv7(), connectorId: B, version: 1, status: "published", spec: spec("Bank B") }]);
+    // a role with integration.view only, for "google"
+    const rid = Bun.randomUUIDv7();
+    await db.insert(roles).values({ id: rid, name: "Open API reader" });
+    await db.insert(rolePermissions).values({ roleId: rid, permission: "integration.view" });
+    const [g] = await db.select({ id: users.id }).from(users).where(eq(users.username, "google"));
+    await db.insert(userRoles).values({ userId: g!.id, roleId: rid });
+    viewer = await signIn("google");
+  });
+
+  it("pages newest first, 15 by default; the row names the connector, the operation, the origin and who", async () => {
+    await db.insert(connectorCalls).values(Array.from({ length: 20 }, (_, i) => row({ startedAt: new Date(Date.now() - i * 1000) })));
+    const p1 = await page<{ id: string; startedAt: string }>("", viewer);
+    expect([p1.items.length, p1.total, p1.pageSize]).toEqual([15, 20, 15]);
+    expect(p1.items[0]!.startedAt > p1.items[1]!.startedAt).toBe(true);
+    expect(p1.items[0]).toMatchObject({ connector: { name: "Bank A" }, operation: { key: "post", name: "Post to GL" }, actor: { id: adminId }, onBehalfOf: null, full: true, origin: origin("try", "Post to GL") });
+    expect((await page("?page=2", viewer)).items).toHaveLength(5);
+    expect(JSON.stringify(p1)).not.toContain("fullEnc");
+  });
+
+  it("filters: range, connector, environment, outcome, origin and search; facets count the other filters", async () => {
+    const old = row({ startedAt: new Date(Date.now() - 3 * 86_400_000) });
+    const b = row({ connectorId: B, environment: "prod", outcome: "rejected", httpStatus: 401, operationKey: null, path: "/realms/x/token" });
+    const sent = row({ origin: origin("action", "Write off · P1-2"), outcome: "timeout", externalId: "20261124000000000042", actorId: null });
+    await db.insert(connectorCalls).values([old, b, sent, row()]);
+    const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Jakarta" });
+    expect((await ids(`?from=${today}&to=${today}`)).length).toBe(3);
+    expect(await ids(`?connector=${B}`)).toEqual([b.id]);
+    expect(await ids("?environment=prod")).toEqual([b.id]);
+    expect(await ids("?outcome=rejected&outcome=timeout")).toEqual([b.id, sent.id].sort());
+    expect(await ids("?origin=approvals.action")).toEqual([sent.id]);
+    expect(await ids("?q=000042")).toEqual([sent.id]);
+    expect(await ids("?q=realms")).toEqual([b.id]);
+    expect(await ids("?q=P1-2")).toEqual([sent.id]);
+    const f = await json<Record<string, Record<string, number>>>(call("GET", `${L}/facets?outcome=ok`, { token: viewer }));
+    expect(f.outcome).toEqual({ ok: 2, rejected: 1, timeout: 1 });
+    expect(f.environment).toEqual({ dev: 2 });
+    expect(f.origin).toEqual({ "integrations.try": 2 });
+    // a token row names no operation
+    expect((await page<{ operation: unknown }>(`?connector=${B}`)).items[0]!.operation).toBeNull();
+  });
+
+  it("a bad filter is 400 before the session is read; a reader without integration.view is 403", async () => {
+    expect((await call("GET", `${L}?outcome=bogus`)).status).toBe(400);
+    expect((await call("GET", `${L}?origin=Not%20a%20key`)).status).toBe(400);
+    expect((await call("GET", L, { token: await signIn("viewer") })).status).toBe(403);
+  });
+
+  it("one call answers its masked request and response, never the full call; an unknown or bad id is 404", async () => {
+    const r = row();
+    await db.insert(connectorCalls).values(r);
+    const d = await json<{ request: unknown; response: unknown }>(call("GET", `${L}/${r.id}`, { token: viewer }));
+    expect(d).toMatchObject({ id: r.id, request: { Account: "12******90" }, response: { ResponseCode: "00" } });
+    expect(JSON.stringify(d)).not.toContain("1234567890");
+    expect((await call("GET", `${L}/${Bun.randomUUIDv7()}`, { token: viewer })).status).toBe(404);
+    expect((await call("GET", `${L}/nope`, { token: viewer })).status).toBe(404);
+  });
+
+  it("reveal needs integration.debug, answers the full call and writes one activity entry without its content", async () => {
+    const r = row();
+    await db.insert(connectorCalls).values(r);
+    const before = (await db.select().from(activity)).length;
+    expect((await call("POST", `${L}/${r.id}/reveal`, { token: viewer })).status).toBe(403);
+    expect((await db.select().from(activity)).length).toBe(before);
+    const yes = await call("POST", `${L}/${r.id}/reveal`, { token: t });
+    expect(yes.status).toBe(200);
+    expect(await yes.json()).toMatchObject({ id: r.id, request: { json: "{\"Account\":\"1234567890\"}", headers: { Authorization: "Bearer …a1b2c3d4" } }, response: null });
+    const entries = await db.select().from(activity).where(eq(activity.action, "integration.call_reveal"));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ actorId: adminId, targetType: "connector_call", targetId: r.id });
+    expect(JSON.stringify(entries[0])).not.toContain("1234567890");
+    expect((await call("POST", `${L}/${Bun.randomUUIDv7()}/reveal`, { token: t })).status).toBe(404);
+  });
+
+  it("a call whose full request and response were cleared can't be revealed (409) and writes no entry", async () => {
+    const r = row({ fullEnc: null });
+    await db.insert(connectorCalls).values(r);
+    expect((await call("POST", `${L}/${r.id}/reveal`, { token: t })).status).toBe(409);
+    expect(await db.select().from(activity).where(eq(activity.action, "integration.call_reveal"))).toHaveLength(0);
   });
 });

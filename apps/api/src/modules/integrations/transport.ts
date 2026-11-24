@@ -159,6 +159,7 @@ export async function sendOperation(i: { connectorId: string; env: Environment; 
   const body = i.op.method === "GET" ? null : sealed.body;
   full = { request: { method: i.op.method, url, headers: { ...headers, Authorization: `Bearer ${tokenTail(token)}` }, json: json || null, body }, response: null };
   let res: Response;
+  logged.send();
   try {
     res = await fetch(url, { method: i.op.method, ...(body === null ? {} : { body }), signal: AbortSignal.timeout(i.op.timeoutMs), ...tlsOf(i.settings, s), headers });
   } catch (e) {

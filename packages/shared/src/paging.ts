@@ -35,6 +35,8 @@ export const BREAK_SORTS = ["businessDate", "amount", "state"] as const;
 export const WORKFLOW_SORTS = ["name", "createdAt"] as const;
 export const CONNECTOR_SORTS = ["name", "createdAt"] as const;
 export const ACTION_RUN_SORTS = ["createdAt"] as const;
+/** GET /api/integrations/calls (the connector call log, newest first by default). */
+export const CALL_SORTS = ["startedAt", "durationMs"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/posting-groups (newest period first by default). */
 export const POSTING_GROUP_SORTS = ["period"] as const;
 /** GET /api/spaces/{spaceId}/approvals (waiting longest first by default). */

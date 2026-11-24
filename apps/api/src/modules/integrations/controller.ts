@@ -1,12 +1,13 @@
 // /v1/integrations/connectors (DEC-053): integration.view reads; integration.manage edits, publishes another's
-// version and replaces credentials.
+// version and replaces credentials. /v1/integrations/calls: the connector call log.
 import { Elysia } from "elysia";
-import { ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, PostingGroupListQuery, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
+import { CallListQuery, ConnectorListQuery, CreateConnectorBody, DisableConnectorBody, PostingGroupListQuery, ReplaceSecretsBody, SaveConnectorBody, TokenCheckBody, TryBody } from "@starterkit/shared/contracts/integrations";
 import { ReviewWorkflowBody } from "@starterkit/shared/contracts/workflows";
 import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
 import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { csvFileName } from "@starterkit/ui/lib/csv";
 import { actionRunCsv, actionRunPage } from "./actions";
+import { callDetail, callFacets, callPage, revealCall } from "./call-log";
 import { groupOf, groupPage } from "./groups";
 
 /** A CSV attachment `<prefix>-<date in the app time zone>.csv`, never cached. */
@@ -35,6 +36,11 @@ export const integrationsController = () => new Elysia().use(guard)
   .get("/v1/spaces/:spaceId/recons/:configId/posting-groups", ({ ctx, params, query }) => groupPage(ctx, idParam(params.configId, "recon"), query), { query: PostingGroupListQuery, guard: { space: SPACE_ROLES } })
   .get("/v1/spaces/:spaceId/recons/:configId/posting-groups/:groupId", ({ ctx, params }) => groupOf(ctx, idParam(params.configId, "recon"), idParam(params.groupId, "posting group")), { guard: { space: SPACE_ROLES } })
   .get("/v1/spaces/:spaceId/action-runs", async ({ ctx, query }) => (query.format === "csv" ? csvResponse("posting", await actionRunCsv(ctx, query)) : actionRunPage(ctx, query)), { query: ActionRunListQuery, guard: { space: SPACE_ROLES } })
+  // the call log: integration.view reads it masked; integration.debug reads one call in full (an activity entry each time)
+  .get("/v1/integrations/calls", ({ query }) => callPage(query), { query: CallListQuery, guard: "integration.view" })
+  .get("/v1/integrations/calls/facets", ({ query }) => callFacets(query), { query: CallListQuery, guard: "integration.view" })
+  .get("/v1/integrations/calls/:id", ({ params }) => callDetail(idParam(params.id, "call")), { guard: "integration.view" })
+  .post("/v1/integrations/calls/:id/reveal", ({ ctx, params }) => revealCall(ctx, idParam(params.id, "call")), { guard: "integration.debug" })
   .get("/v1/integrations/connectors", ({ query }) => connectorPage(query), { query: ConnectorListQuery, guard: "integration.view" })
   .post("/v1/integrations/connectors", async (c) => {
     const b = await body(c, CreateConnectorBody);
