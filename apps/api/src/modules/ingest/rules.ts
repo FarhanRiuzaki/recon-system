@@ -1,6 +1,7 @@
 // Pure rules of the ingest pipeline (unit-tested): which business date a scheduled snapshot pulls, where completeness
 // stands after a pull, a file or a snapshot, and whether a source's columns still are what its spec was approved on.
-import type { FieldSpec } from "@starterkit/shared/contracts/sources";
+import type { FieldSpec, SourceSpec } from "@starterkit/shared/contracts/sources";
+import type { SourceKind } from "@starterkit/shared/sources";
 import { CronExpressionParser } from "cron-parser";
 import { coerce, DEFAULT_TIMEZONE } from "./coerce";
 import type { Column } from "./connectors";
@@ -127,6 +128,78 @@ export function driftOf(cols: Column[], fields: Pick<FieldSpec, "name" | "type">
 
 /** The instant `hhmm` (HH:MM) falls on `date` in Asia/Jakarta, which keeps UTC+7 all year (no daylight saving). */
 export const deadlineOn = (date: string, hhmm: string): Date => new Date(`${date}T${hhmm}:00+07:00`);
+
+// ------------------------------------------------------------------------------------------------ deliveries
+// A source's business date D is complete when its data for D is all in: a file of D ingested, D's snapshot active, or
+// (a pulled source) complete_through past the end of D. It is due at the source's own rule (deliveryDue), and counts
+// on time when it first became complete by then (source_deliveries), late after, missing when still not complete past
+// it, unknown when complete with no completion kept (before the table existed, or a pull's first baseline). Only the
+// business dates of the source's calendar count, and only those due after the source was made.
+
+/** Dates a watermark pull may complete at once; a watermark that leaps further keeps the latest. */
+const COMPLETED_MAX = 400;
+/**
+ * The dates D whose end (Asia/Jakarta) complete_through just passed, moving from `prev` to `next`: prev < end of D ≤
+ * next, oldest first. None without `prev`: a source's first pull is its baseline, its dates stay unknown.
+ */
+export function completedDates(prev: Date | null, next: Date | null): string[] {
+  if (!prev || !next || next <= prev) return [];
+  const out: string[] = [];
+  let d = todayIn(new Date(next.getTime() - 1)); // the date next falls in (its own end is after next, or equal at midnight)
+  for (let i = 0; i < COMPLETED_MAX + 2 && out.length < COMPLETED_MAX; i++, d = iso(Date.parse(`${d}T00:00:00Z`) - DAY)) {
+    const end = endOfDay(d);
+    if (end <= prev) break;
+    if (end <= next) out.push(d);
+  }
+  return out.reverse();
+}
+
+/**
+ * When business date `date` of a source is due: its own rule (a pulled source's `graceMinutes` after the date's end,
+ * the health's Down; a per-date source's `deadline` on the day after, when its file or snapshot of D arrives), else
+ * `recon` (the earliest close + grace of the recons reading it, when they close D anyway), else the end of the next day.
+ */
+export function deliveryDue(kind: SourceKind, health: SourceSpec["health"], date: string, recon: Date | null): Date {
+  const next = iso(Date.parse(`${date}T00:00:00Z`) + DAY);
+  if (kind === "db_watermark" && health?.graceMinutes) return new Date(endOfDay(date).getTime() + health.graceMinutes * 60_000);
+  if (kind !== "db_watermark" && health?.deadline) return deadlineOn(next, health.deadline);
+  return recon ?? endOfDay(next);
+}
+
+export type Delivery = "on_time" | "late" | "missing" | "unknown";
+/** One date: by its first completion `completedAt` against `due`; null = not complete and not due yet (not counted). */
+export function deliveryOf(completedAt: Date | null, completeNow: boolean, due: Date, now: Date): Delivery | null {
+  if (completedAt) return completedAt <= due ? "on_time" : "late";
+  if (completeNow) return "unknown";
+  return now >= due ? "missing" : null;
+}
+
+/**
+ * What a source's deliveries rest on: its first completions by date, the dates with an ingested file or active
+ * snapshot (`delivered`), its complete_through, and `untimed` = pulled with no complete_through (a watermark that is
+ * no time: completeness unknown).
+ */
+export type DeliveryFacts = {
+  kind: SourceKind; calendar: Calendar; createdAt: Date; health: SourceSpec["health"];
+  completedAt: Map<string, Date>; delivered: Set<string>; completeThrough: Date | null; untimed: boolean;
+  reconDue: (date: string) => Date | null;
+};
+export type DeliveryTally = { onTime: number; late: number; missing: number; unknown: number };
+const TALLY_KEY = { on_time: "onTime", late: "late", missing: "missing", unknown: "unknown" } as const;
+
+/** The deliveries of `dates` (yyyy-mm-dd) at `now`. */
+export function deliveryTally(f: DeliveryFacts, dates: string[], now: Date): DeliveryTally {
+  const out: DeliveryTally = { onTime: 0, late: 0, missing: 0, unknown: 0 };
+  for (const d of dates) {
+    if (f.calendar.bdayIndex(d) <= f.calendar.bdayIndex(iso(Date.parse(`${d}T00:00:00Z`) - DAY))) continue; // not a business day
+    const due = deliveryDue(f.kind, f.health, d, f.reconDue(d));
+    if (due <= f.createdAt) continue;
+    const complete = f.kind === "db_watermark" ? (f.completeThrough ? f.completeThrough >= endOfDay(d) : f.untimed) : f.delivered.has(d);
+    const r = deliveryOf(f.completedAt.get(d) ?? null, complete, due, now);
+    if (r) out[TALLY_KEY[r]]++;
+  }
+  return out;
+}
 
 /** The next occurrence of `cron` after `now`, evaluated in Asia/Jakarta as pg-boss does (kernel/jobs.ts JOB_TZ). */
 export const nextRunOf = (cron: string, now: Date): Date => CronExpressionParser.parse(cron, { currentDate: now, tz: DEFAULT_TIMEZONE }).next().toDate();

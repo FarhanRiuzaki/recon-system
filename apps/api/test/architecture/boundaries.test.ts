@@ -211,6 +211,7 @@ const EXTRA_READ_POLICIES: Record<string, string> = {
   "source_files.source_files_shared": "which files of a shared source are ingested for a date: its health in the space it is shared to",
   "recon_source_uses.recon_source_uses_source_owner": "the space that owns a source reads which published recons (any space it shares to) use which of its fields, to refuse a source version that drops one (Plan 3 A4)",
   "source_day_counts.source_day_counts_shared": "a shared source's records today (kind 'records' only; its quarantined count stays the owner's), shown in the shared space's sources list",
+  "source_deliveries.source_deliveries_shared": "when a shared source's business dates became complete: the dashboard's sources on time vs late for a recon reading it there",
 };
 
 /**

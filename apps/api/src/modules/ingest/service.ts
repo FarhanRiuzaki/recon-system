@@ -20,7 +20,7 @@ import type {
   IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, readCron, type SourceKind, type SourceStatus } from "@starterkit/shared/sources";
-import { and, count, desc, eq, exists, inArray, isNull, max, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, exists, gte, inArray, isNull, lte, max, or, sql } from "drizzle-orm";
 import { loadWorkerConfig } from "../../kernel/config";
 import { decryptSecret } from "../../kernel/crypto";
 import type { InTx, Tx } from "../../kernel/db";
@@ -41,8 +41,8 @@ import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
-import { type Baseline, completeThroughOf, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
-import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
+import { type Baseline, completedDates, type DeliveryTally, deliveryTally, completeThroughOf, cursorIds, deadlineOn, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
+import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
 export type Scope = { spaceId: string; sourceId: string };
@@ -117,6 +117,11 @@ async function setCursor(tx: InTx, s: Scope, set: Partial<typeof sourceCursors.$
   const ct = completeThrough ? { completeThrough: sql`greatest(${sourceCursors.completeThrough}, ${completeThrough.toISOString()}::timestamptz)` } : {};
   await tx.insert(sourceCursors).values({ ...s, ...set, ...(completeThrough ? { completeThrough } : {}) })
     .onConflictDoUpdate({ target: [sourceCursors.spaceId, sourceCursors.sourceId], set: { ...set, ...ct, updatedAt: NOW } });
+}
+
+/** Business dates `dates` of `s` became complete now; the first completion of a date wins (source_deliveries). */
+async function delivered(tx: InTx, s: Scope, dates: string[]): Promise<void> {
+  if (dates.length) await tx.insert(sourceDeliveries).values(dates.map((businessDate) => ({ ...s, businessDate }))).onConflictDoNothing();
 }
 
 /** Pauses the source with `reason` as its last error and, when its columns changed, `drift` per column. */
@@ -298,7 +303,10 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
       await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);
         await writeLines(tx, s, l, origin, lines, counts);
-        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, completeThroughOf(mark.watermark, lookbackSeconds, wmField));
+        const [was] = await tx.select({ ct: sourceCursors.completeThrough }).from(sourceCursors).where(and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.sourceId)));
+        const ct = completeThroughOf(mark.watermark, lookbackSeconds, wmField);
+        await setCursor(tx, s, { ...mark, lastSuccessAt: new Date(), lastError: null }, ct);
+        await delivered(tx, s, completedDates(was?.ct ?? null, ct));
       }));
       reached = mark.watermark;
     }
@@ -379,6 +387,7 @@ export async function snapshotSource(s: Scope, businessDate: string, on: Tx): Pr
       // the date's records are this snapshot's alone now (a snapshot source has no others): set, not add
       await tally(tx, s, "records", new Map([[businessDate, counts.added]]), true);
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, endOfDay(businessDate));
+      await delivered(tx, s, [businessDate]);
       return false;
     });
     return kept ? "failed" : "active";
@@ -476,6 +485,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
         rowsTotal: counts.total, rowsOk: counts.ok, rowsNew: counts.added, rowsQuarantined: counts.quarantined,
       });
       await setCursor(tx, s, { lastSuccessAt: new Date(), lastError: null }, row.businessDate ? endOfDay(row.businessDate) : null);
+      await delivered(tx, s, row.businessDate ? [row.businessDate] : []);
       return "ingested" as const;
     }));
   } catch (e) {
@@ -598,6 +608,45 @@ export async function sourceStates(tx: InTx, list: ReadSource[], viewer: string,
       nextRunAt: x.status === "active" ? nextRunOf(cron, now).toISOString() : null,
       drift: x.status === "paused" && c?.drift ? { checkedAt: c.updatedAt.toISOString(), columns: c.drift as DriftColumn[] } : null,
     });
+  }
+  return out;
+}
+
+/** A source whose deliveries are counted: its published spec and when it was made. */
+export type DeliverySource = { id: string; spaceId: string; kind: SourceKind; spec: SourceSpec; createdAt: Date };
+
+/**
+ * On time, late, missing and unknown business dates `from`..`to` of each of `list` at `now`, by source id (rules.ts
+ * deliveryTally). `reconDue(sourceId, date)` = when the recons reading it close that date anyway, for a source with
+ * no rule of its own. A fixed number of queries for the whole list.
+ */
+export async function deliveryCounts(tx: InTx, list: DeliverySource[], from: string, to: string, now: Date, reconDue: (sourceId: string, date: string) => Date | null): Promise<Map<string, DeliveryTally>> {
+  if (!list.length) return new Map();
+  const ids = list.map((x) => x.id);
+  const dates: string[] = [];
+  for (let d = from; d <= to; d = new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10)) dates.push(d);
+  const cals = await tx.select({ code: calendars.code, weekend: calendars.weekend, holidays: calendars.holidays }).from(calendars)
+    .where(inArray(calendars.code, [...new Set(list.map((x) => x.spec.calendar))]));
+  const calOf = new Map(cals.map((c) => [c.code, makeCalendar(c)]));
+  const done = await tx.select({ id: sourceDeliveries.sourceId, date: sourceDeliveries.businessDate, at: sourceDeliveries.completedAt }).from(sourceDeliveries)
+    .where(and(inArray(sourceDeliveries.sourceId, ids), gte(sourceDeliveries.businessDate, from), lte(sourceDeliveries.businessDate, to)));
+  const snaps = await tx.selectDistinct({ id: sourceSnapshots.sourceId, date: sourceSnapshots.businessDate }).from(sourceSnapshots)
+    .where(and(inArray(sourceSnapshots.sourceId, ids), eq(sourceSnapshots.status, "active"), gte(sourceSnapshots.businessDate, from), lte(sourceSnapshots.businessDate, to)));
+  const files = await tx.selectDistinct({ id: sourceFiles.sourceId, date: sourceFiles.businessDate }).from(sourceFiles)
+    .where(and(inArray(sourceFiles.sourceId, ids), eq(sourceFiles.status, "ingested"), gte(sourceFiles.businessDate, from), lte(sourceFiles.businessDate, to)));
+  const cursors = new Map((await tx.select({ id: sourceCursors.sourceId, ct: sourceCursors.completeThrough, ok: sourceCursors.lastSuccessAt }).from(sourceCursors)
+    .where(inArray(sourceCursors.sourceId, ids))).map((c) => [c.id, c]));
+  const out = new Map<string, DeliveryTally>();
+  for (const x of list) {
+    const calendar = calOf.get(x.spec.calendar);
+    if (!calendar) continue;
+    const c = cursors.get(x.id);
+    out.set(x.id, deliveryTally({
+      kind: x.kind, calendar, createdAt: x.createdAt, health: x.spec.health,
+      completedAt: new Map(done.filter((r) => r.id === x.id).map((r) => [r.date, r.at])),
+      delivered: new Set([...snaps, ...files].filter((r) => r.id === x.id && r.date).map((r) => r.date!)),
+      completeThrough: c?.ct ?? null, untimed: !!c?.ok && !c.ct, reconDue: (d) => reconDue(x.id, d),
+    }, dates, now));
   }
   return out;
 }

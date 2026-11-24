@@ -208,6 +208,24 @@ export const quarantineRows = pgTable("quarantine_rows", {
 ]);
 
 /**
+ * When each business date of a source became complete (the dashboard's Sources on time vs late): written by the
+ * ingest transaction that decides it (service.ts `delivered`): a file of the date ingested, the date's snapshot made
+ * active, or a watermark pull whose complete_through passed the date's end (rules.ts completedDates). The first
+ * completion wins (insert, on conflict nothing): a later file version or snapshot never moves it. Dates completed
+ * before this table existed have no row and count as unknown, never as on time. A space a source is shared to reads
+ * them (drizzle/0067).
+ */
+export const sourceDeliveries = pgTable("source_deliveries", {
+  spaceId: uuid("space_id").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  businessDate: date("business_date").notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ name: "source_deliveries_pkey", columns: [t.spaceId, t.sourceId, t.businessDate] }),
+  foreignKey({ name: "source_deliveries_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),
+]);
+
+/**
  * Records today and quarantined today as counters (the sources list read a count(*) over the day's records: 4.7 s for
  * a page of 15 sources of 1M records each, past the 5 s statement timeout): per source, business date and `kind`
  * (`records` = its current records, `quarantined` = its quarantined lines, a pulled line on the Asia/Jakarta date it

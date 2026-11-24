@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { familyOf } from "../../connectors/dialect";
 import { makeCalendar } from "../../map";
-import { completeThroughOf, cursorIds, deadlineOn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
+import { completedDates, completeThroughOf, cursorIds, deadlineOn, deliveryDue, type DeliveryFacts, deliveryOf, deliveryTally, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
 
 const cal = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-02"] });
 
@@ -85,5 +85,58 @@ describe("ingest rules", () => {
     expect(nextRunOf("0 6 * * *", new Date("2026-11-04T23:01:00Z")).toISOString()).toBe("2026-11-05T23:00:00.000Z");
     expect(nextRunOf("0 6 * * *", new Date("2026-11-04T22:00:00Z")).toISOString()).toBe("2026-11-04T23:00:00.000Z");
     expect(nextRunOf("* * * * *", new Date("2026-11-04T22:00:30Z")).toISOString()).toBe("2026-11-04T22:01:00.000Z");
+  });
+});
+
+describe("source deliveries: on time, late, missing, unknown", () => {
+  const jkt = (s: string) => new Date(`${s}+07:00`);
+  it("completedDates: the dates whose end (Asia/Jakarta) a watermark pull just passed; none on the first pull or when it doesn't move", () => {
+    expect(completedDates(new Date("2026-11-19T10:00:00Z"), new Date("2026-11-21T01:00:00Z"))).toEqual(["2026-11-19", "2026-11-20"]);
+    expect(completedDates(jkt("2026-11-20T00:00:00"), jkt("2026-11-20T00:00:00"))).toEqual([]);
+    expect(completedDates(jkt("2026-11-19T23:59:59"), jkt("2026-11-20T00:00:00"))).toEqual(["2026-11-19"]); // its end exactly
+    expect(completedDates(null, new Date("2026-11-21T01:00:00Z"))).toEqual([]); // the first pull: those dates stay unknown
+    expect(completedDates(new Date("2026-11-21T01:00:00Z"), new Date("2026-11-19T01:00:00Z"))).toEqual([]);
+    const far = completedDates(new Date("2000-01-01T00:00:00Z"), new Date("2026-11-21T01:00:00Z"));
+    expect([far.length, far.at(-1)]).toEqual([400, "2026-11-20"]); // bounded, the latest kept
+  });
+  it("deliveryDue: the source's own grace (pulled) or deadline (per date, on the day after), else the recon's, else the end of the next day", () => {
+    const at = (kind: Parameters<typeof deliveryDue>[0], h: Parameters<typeof deliveryDue>[1], d: string, r: Date | null) => deliveryDue(kind, h, d, r).toISOString();
+    expect(at("db_watermark", { graceMinutes: 30 }, "2026-11-02", null)).toBe(jkt("2026-11-03T00:30:00").toISOString());
+    expect(at("file_inbox", { deadline: "09:00" }, "2026-11-02", jkt("2026-11-02T23:00:00"))).toBe(jkt("2026-11-03T09:00:00").toISOString());
+    expect(at("db_snapshot", { deadline: "09:00" }, "2026-11-06", null)).toBe(jkt("2026-11-07T09:00:00").toISOString());
+    // a pulled source's deadline and a per-date source's grace are not their rule: the recon's then, else the end of the next day
+    expect(at("db_watermark", { deadline: "09:00" }, "2026-11-02", jkt("2026-11-03T06:30:00"))).toBe(jkt("2026-11-03T06:30:00").toISOString());
+    expect(at("file_inbox", { graceMinutes: 30 }, "2026-11-02", null)).toBe(jkt("2026-11-04T00:00:00").toISOString());
+    expect(at("file_inbox", undefined, "2026-11-02", null)).toBe(jkt("2026-11-04T00:00:00").toISOString());
+  });
+  it("deliveryOf: its first completion against the due time; complete with no completion kept = unknown; not complete past due = missing, before it not counted", () => {
+    const due = jkt("2026-11-03T09:00:00"), now = jkt("2026-11-10T00:00:00");
+    expect(deliveryOf(jkt("2026-11-03T09:00:00"), true, due, now)).toBe("on_time");
+    expect(deliveryOf(jkt("2026-11-03T09:00:01"), true, due, now)).toBe("late");
+    expect(deliveryOf(null, true, due, now)).toBe("unknown");
+    expect(deliveryOf(null, false, due, now)).toBe("missing");
+    expect(deliveryOf(null, false, due, jkt("2026-11-03T08:59:59"))).toBeNull();
+    expect(deliveryOf(jkt("2026-11-03T08:00:00"), true, due, jkt("2026-11-03T08:30:00"))).toBe("on_time");
+  });
+  it("deliveryTally: the business dates of the source's calendar, due after the source was made; completeness per kind", () => {
+    const cal = makeCalendar({ weekend: [6, 7], holidays: [] });
+    const dates = ["2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10"]; // Fri, Sat, Sun, Mon, Tue
+    const now = jkt("2026-11-20T00:00:00");
+    const base: DeliveryFacts = {
+      kind: "file_inbox", calendar: cal, createdAt: jkt("2026-11-01T00:00:00"), health: { deadline: "09:00" },
+      completedAt: new Map([["2026-11-06", jkt("2026-11-07T08:00:00")], ["2026-11-09", jkt("2026-11-10T11:00:00")]]),
+      delivered: new Set(["2026-11-06", "2026-11-09", "2026-11-10"]), completeThrough: null, untimed: false, reconDue: () => null,
+    };
+    expect(deliveryTally(base, dates, now)).toEqual({ onTime: 1, late: 1, missing: 0, unknown: 1 });
+    expect(deliveryTally({ ...base, delivered: new Set(["2026-11-06", "2026-11-09"]) }, dates, now)).toEqual({ onTime: 1, late: 1, missing: 1, unknown: 0 });
+    // made on Mon 9 Nov at noon: Friday's file was due before the source existed; Monday's (due Tue 09:00) counts
+    expect(deliveryTally({ ...base, createdAt: jkt("2026-11-09T12:00:00") }, dates, now)).toEqual({ onTime: 0, late: 1, missing: 0, unknown: 1 });
+    // a pulled source: complete once complete_through passed the date's end; a watermark that is no time gives no completeness
+    const pulled: DeliveryFacts = { ...base, kind: "db_watermark", health: { graceMinutes: 60 }, completedAt: new Map([["2026-11-06", jkt("2026-11-07T00:30:00")]]), delivered: new Set(), completeThrough: jkt("2026-11-10T00:00:00") };
+    expect(deliveryTally(pulled, dates, now)).toEqual({ onTime: 1, late: 0, missing: 1, unknown: 1 });
+    expect(deliveryTally({ ...pulled, completedAt: new Map(), completeThrough: null, untimed: true }, dates, now)).toEqual({ onTime: 0, late: 0, missing: 0, unknown: 3 });
+    expect(deliveryTally({ ...pulled, completedAt: new Map(), completeThrough: null }, dates, now)).toEqual({ onTime: 0, late: 0, missing: 3, unknown: 0 });
+    // no own rule: the recon's due time
+    expect(deliveryTally({ ...base, health: undefined, reconDue: (d) => jkt(`${d}T23:59:00`) }, dates, now)).toEqual({ onTime: 0, late: 2, missing: 0, unknown: 1 });
   });
 });

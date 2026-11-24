@@ -19,7 +19,7 @@ import { db } from "../../../../kernel/db";
 import { calendars, sourceConnections, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { type Connector, ConnectorError, type Row, type Secret } from "../../connectors";
-import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
+import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
 import { currentRecord, ensureIngestPartitions, ingestFile, ingestHooks, type InboxFile, pullSource, scanSource, snapshotSource } from "../../service";
 import { KSEI_FILE, ksei } from "../unit/fixtures";
 
@@ -624,6 +624,57 @@ describe("a mutable source", () => {
     expect(changed).toEqual([[old!.id]]);
     expect(await current(s)).toBe(2);
     expect(await expectCounters(s)).toEqual(["records 2026-11-19 2"]); // R1's replaced record no longer counts
+  });
+});
+
+describe("deliveries: when each business date became complete (source_deliveries)", () => {
+  const deliveriesOf = async (s: Src) => (await db.select().from(sourceDeliveries).where(eq(sourceDeliveries.sourceId, s.sourceId)).orderBy(asc(sourceDeliveries.businessDate)))
+    .map((r) => ({ date: r.businessDate, at: r.completedAt.toISOString() }));
+
+  it("a file: its date is complete when it is ingested; a later version or a resend keeps the first time", async () => {
+    const k = await source(A, kseiSpec());
+    await put("act20261102.txt", KSEI_FILE, new Date(Date.now() - 3_600_000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    const first = await deliveriesOf(k);
+    expect(first.map((d) => d.date)).toEqual([D]);
+    await put("act20261102.txt", KSEI_FILE);
+    expect(await deliver(k)).toEqual(["rejected"]);
+    await put("act20261102.txt", [1, 2, 3].map(kseiLine).join("\n") + "\n", new Date(Date.now() + 1000));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect(await deliveriesOf(k)).toEqual(first);
+  });
+
+  it("a snapshot: its date is complete when it becomes active; a failed one records nothing, a later one keeps the first time", async () => {
+    const m = await source(A, medallionSpec());
+    await src`insert into medallion (business_date, sid, fail) values (${D}::date, ${sid(1)}, true)`;
+    expect(await snapshotSource(scope(m), D, probe)).toBe("failed");
+    expect(await deliveriesOf(m)).toEqual([]);
+    await src`truncate medallion`;
+    await medallion(D, [1, 2]);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    const first = await deliveriesOf(m);
+    expect(first.map((d) => d.date)).toEqual([D]);
+    expect(await snapshotSource(scope(m), D, probe)).toBe("active");
+    expect(await deliveriesOf(m)).toEqual(first);
+  });
+
+  it("a watermark pull: the dates whose end complete_through just passed; the first pull is the baseline (its earlier dates stay unknown)", async () => {
+    let wm = "2026-11-19T10:00:00Z", id = 1;
+    const cols = [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"], ["updated_at", "timestamp with time zone"], ["id", "bigint"]];
+    ingestHooks.connect = () => ({
+      introspect: async () => cols.map(([name, type]) => ({ name: name!, type: type!, nullable: false })),
+      pullWatermark: async function* () { yield [{ ext_ref: `R${id}`, account_ref: "ACC1", amount: "1.00", event_time: "2026-11-19T01:00:00Z", updated_at: wm, id: String(id++) }]; },
+      close: async () => {},
+    }) as unknown as Connector;
+    const s = await source(A, bifastSpec({ lookback: 0 }));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await deliveriesOf(s)).toEqual([]);
+    wm = "2026-11-21T01:00:00Z";
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    const done = await deliveriesOf(s);
+    expect(done.map((d) => d.date)).toEqual(["2026-11-19", "2026-11-20"]);
+    expect(await pullSource(scope(s), probe)).toBe("pulled"); // the same watermark again: nothing more
+    expect(await deliveriesOf(s)).toEqual(done);
   });
 });
 
