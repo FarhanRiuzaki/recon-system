@@ -7,7 +7,7 @@ import { seedUsers } from "./users";
 
 /**
  * The data every install needs, idempotent, in one transaction: the permission seeder (permissions.ts), the role
- * seeder (roles.ts: Superadmin, Admin, Viewer, Maker, Approver), the business-day calendar `id-default`, then the user
+ * seeder (roles.ts: Superadmin, Maker, Approver, Open API operator, Open API admin), the business-day calendar `id-default`, then the user
  * seeder (users.ts: the first Superadmin from SEED_SUPERADMIN_*, the default maker and approver from
  * SEED_MAKER_PASSWORD / SEED_APPROVER_PASSWORD).
  */

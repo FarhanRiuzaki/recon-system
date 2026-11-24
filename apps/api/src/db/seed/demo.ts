@@ -65,6 +65,22 @@ export const DEMO_ROLES: SeedRole[] = [
 ];
 
 /**
+ * the space roles ([space, username, roles]; Treasury holds all seven) and the global roles granted on top of
+ * the space roles ([space, username, roles]; Treasury has one account per single role) and the global roles granted on top of
+ * an account's own (Viewer). The generated usernames are fixed by the seeded generator.
+ */
+export const DEMO_ACCESS: { space: [code: "treasury" | "ctop" | "fico", username: string, roles: SpaceRole[]][]; global: Record<string, string[]> } = {
+  space: [
+    ["treasury", "hana.9", ["space_admin", "reviewer"]], ["treasury", "viewer", ["operator", "config_maker"]], ["treasury", "juli.13", ["config_checker"]],
+    ["treasury", "tegar.15", ["source_admin"]], ["treasury", "superadmin", ["source_admin"]],
+    ["treasury", "raka.18", ["operator"]], ["treasury", "putri.21", ["reviewer"]], ["treasury", "dewa.22", ["viewer"]],
+    ["ctop", "hana.11", ["space_admin"]], ["ctop", "viewer", ["viewer"]], ["ctop", "juli.13", ["operator", "reviewer"]],
+    ["fico", "sinta.12", ["space_admin", "config_checker"]], ["fico", "citra.17", ["operator", "viewer"]],
+  ],
+  global: { "gilang.33": ["Open API operator"], "laksmi.24": ["Open API admin"] },
+};
+
+/**
  * Demo data on top of seedSystem: the 8 sign-in accounts of the mock (password Password123!, `ldap` signs in through
  * the directory, `twofa` has TOTP and recovery codes, `google`/`apple` are linked), 42 generated users, 200 activity
  * and 300 sign-in log entries, and three spaces (Treasury, CTOP, FICO): `viewer` is a member of Treasury and CTOP,
@@ -162,20 +178,12 @@ export async function seedDemo(db: Tx, env: Record<string, string | undefined> =
       const createdAt = at(now - (60 - i * 2) * DAY);
       return { id: Bun.randomUUIDv7(), name, description: i % 3 ? `Demo project ${name}.` : null, status: i % 4 === 3 ? "archived" : "active", createdAt, updatedAt: createdAt };
     }));
-    // Members: [space index, user, roles]; g(n) = the n-th generated active user with the Viewer role.
-    const pool = users.slice(FIXED.length).filter((u) => u.isActive && u.role === "Viewer");
-    const g = (n: number) => pool[n]!.id;
     const fixed = (key: string) => users.find((u) => u.username === key)!.id;
-    const spaceIds = [Bun.randomUUIDv7(), Bun.randomUUIDv7(), Bun.randomUUIDv7()] as const;
-    await tx.insert(spacesTable).values([["treasury", "Treasury"], ["ctop", "CTOP"], ["fico", "FICO"]].map(([code, name], i) => ({ id: spaceIds[i]!, code: code!, name: name! })));
-    const members: [number, string, SpaceRole[]][] = [
-      [0, g(0), ["space_admin", "reviewer"]], [0, fixed("viewer"), ["operator", "config_maker"]], [0, g(3), ["config_checker"]], [0, g(4), ["source_admin"]],
-      [0, fixed("superadmin"), ["source_admin"]],
-      [1, g(1), ["space_admin"]], [1, fixed("viewer"), ["viewer"]], [1, g(3), ["operator", "reviewer"]],
-      [2, g(2), ["space_admin", "config_checker"]], [2, g(5), ["operator", "viewer"]],
-    ];
-    await tx.insert(spaceMembers).values(members.flatMap(([s, userId, rs]) => rs.map((role) => ({ spaceId: spaceIds[s]!, userId, role }))));
-    await seedDemoSources(tx, { treasury: spaceIds[0], ctop: spaceIds[1], maker: fixed("viewer"), checker: g(3), now });
+    const spaceIds = { treasury: Bun.randomUUIDv7(), ctop: Bun.randomUUIDv7(), fico: Bun.randomUUIDv7() };
+    await tx.insert(spacesTable).values([["treasury", "Treasury"], ["ctop", "CTOP"], ["fico", "FICO"]].map(([code, name]) => ({ id: spaceIds[code as keyof typeof spaceIds], code: code!, name: name! })));
+    await tx.insert(spaceMembers).values(DEMO_ACCESS.space.flatMap(([s, username, rs]) => rs.map((role) => ({ spaceId: spaceIds[s], userId: fixed(username), role }))));
+    await tx.insert(userRoles).values(Object.entries(DEMO_ACCESS.global).flatMap(([username, rs]) => rs.map((r) => ({ userId: fixed(username), roleId: roleIds.get(r)! }))));
+    await seedDemoSources(tx, { treasury: spaceIds.treasury, ctop: spaceIds.ctop, maker: fixed("viewer"), checker: fixed("juli.13"), now });
     await tx.insert(activityTable).values(activity);
     await tx.insert(authLogTable).values(authLog);
   });

@@ -52,9 +52,28 @@ Both off by default; without them production refuses log mail and demo data as b
 | `MAIL_TRANSPORT=log` + `ALLOW_MAIL_LOG=true` | runs without SMTP; `SMTP_URL`/`MAIL_FROM` may stay empty. The API warns at boot. | No mail leaves the server: password reset and invitations reach nobody (the log has the subject only). An admin sets passwords on the user's page instead. |
 | `SEED_DEMO=true` + `ALLOW_DEMO_SEED=true` | `migrate` runs `db:seed:demo` after `db:seed`, once (skipped when its accounts exist): 50 users, three spaces, Treasury's sources, two BI-FAST demo recons run over the last five business days, unmatch items, a pending write-off | The demo accounts share one known password (`SEED_PASSWORD` in `apps/api/src/db/seed/demo.ts`). All data is generated, none is real. |
 
-Demo accounts (username): `superadmin` (Superadmin), `admin`, `twofa` (Admin; `twofa` has TOTP), `viewer` (Viewer; in
-Treasury operator and config maker), `inactive`, `ldap`, `google`, `apple`, and 42 generated users; Treasury's reviewer
-(who approves the demo write-off) is a generated user, shown in Treasury's members.
+Demo accounts (username): `superadmin` (Superadmin), `admin`, `twofa` (Admin; `twofa` has TOTP), `viewer` (Viewer),
+`inactive`, `ldap`, `google`, `apple`, and 42 generated users. The system seed's roles Maker, Approver, Open API
+operator and Open API admin hold no demo account but these:
+
+| Username | Global role | Space roles |
+| --- | --- | --- |
+| `hana.9` | Viewer | Treasury: space admin, reviewer |
+| `viewer` | Viewer | Treasury: operator, config maker; CTOP: viewer |
+| `juli.13` | Viewer | Treasury: config checker; CTOP: operator, reviewer |
+| `tegar.15` | Viewer | Treasury: source admin |
+| `superadmin` | Superadmin | Treasury: source admin (and every role in every space as Superadmin) |
+| `raka.18` | Viewer | Treasury: operator |
+| `putri.21` | Viewer | Treasury: reviewer |
+| `dewa.22` | Viewer | Treasury: viewer |
+| `hana.11` | Viewer | CTOP: space admin |
+| `sinta.12` | Viewer | FICO: space admin, config checker |
+| `citra.17` | Viewer | FICO: operator, viewer |
+| `gilang.33` | Viewer, Open API operator | none |
+| `laksmi.24` | Viewer, Open API admin | none |
+
+`admin` and `twofa` (Admin: every permission but roles and permissions) manage spaces and workflows without a space role.
+The list is `DEMO_ACCESS` in `apps/api/src/db/seed/demo.ts` (`apps/api/test/db/seed.test.ts` "demo access" checks it).
 
 Before any real use: deactivate or delete the demo accounts (or start over on a new volume without `SEED_DEMO`), set
 SMTP and remove `ALLOW_MAIL_LOG`, `SEED_DEMO`, `ALLOW_DEMO_SEED` and the `SEED_SUPERADMIN_PASSWORD` from `.env.compose`.

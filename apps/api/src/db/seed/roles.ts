@@ -6,15 +6,19 @@ import { permissions, rolePermissions, roles } from "../../modules/rbac";
 export type SeedRole = { name: string; locked: boolean; perms: readonly PermissionName[] };
 
 /**
- * The built-in global roles (owner, 22 Nov: Superadmin, Maker, Approver only). Superadmin holds every permission and
- * opens every space (isSuperadmin). Maker and Approver are the default people of the maker-checker flow: what they may
- * do in a space comes from their space roles (the local seed gives maker source_admin + config_maker, approver
- * config_checker); globally they read users and the activity log.
+ * The built-in global roles (owner, 22 Nov: Superadmin, Maker, Approver; 24 Nov: Open API operator and admin).
+ * Superadmin holds every permission and opens every space (isSuperadmin). Maker and Approver are the default people of
+ * the maker-checker flow: what they may do in a space comes from their space roles (the local seed gives maker
+ * source_admin + config_maker, approver config_checker); globally they read users and the activity log. None is
+ * locked but Superadmin, so a later edit on the roles screen stays (ensureRoles).
  */
 export const ROLES: SeedRole[] = [
   { name: SUPERADMIN_ROLE, locked: true, perms: PERMISSIONS },
   { name: "Maker", locked: false, perms: ["user.view", "audit.view"] },
   { name: "Approver", locked: false, perms: ["user.view", "audit.view"] },
+  // Open API (DEC-053): an operator reads connectors and their call log, a call in full too; an admin also edits connectors
+  { name: "Open API operator", locked: false, perms: ["integration.view", "integration.debug"] },
+  { name: "Open API admin", locked: false, perms: ["integration.view", "integration.manage", "integration.debug"] },
 ];
 
 /** Each of `list` made when missing, with its permissions only then (later edits stay). */

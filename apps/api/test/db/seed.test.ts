@@ -3,7 +3,8 @@ import path from "node:path";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { SourceDto, SourceFileDto, SourceRowDto, SourceSnapshotDto } from "@starterkit/shared/contracts/sources";
 import { PERMISSIONS } from "@starterkit/shared/permissions";
-import { seedDemo } from "../../src/db/seed/demo";
+import { DEMO_ACCESS, seedDemo } from "../../src/db/seed/demo";
+import { SPACE_ROLES } from "@starterkit/shared/spaces";
 import { LOCAL_ROLES, PEOPLE_ROLES, seedLocal } from "../../src/db/seed/local";
 import { seedSystem } from "../../src/db/seed/system";
 import { decryptSecret } from "../../src/kernel/crypto";
@@ -40,7 +41,7 @@ beforeEach(truncateAll);
 describe("seedSystem", () => {
   it("the role seeder adds Maker and Approver; the user seeder adds the default maker and approver only with their password keys, once", async () => {
     await seedSystem(db, {});
-    expect((await db.select({ name: roles.name }).from(roles).orderBy(roles.name)).map((r) => r.name)).toEqual(["Approver", "Maker", "Superadmin"]);
+    expect((await db.select({ name: roles.name }).from(roles).orderBy(roles.name)).map((r) => r.name)).toEqual(["Approver", "Maker", "Open API admin", "Open API operator", "Superadmin"]);
     expect(await userCount()).toBe(0);
     const env = { SEED_MAKER_PASSWORD: "Maker-Password-1!", SEED_APPROVER_PASSWORD: "Approver-Password-1!" };
     await seedSystem(db, env);
@@ -61,6 +62,8 @@ describe("seedSystem", () => {
       // owner, 22 Nov: only these three; Admin and Viewer are the demo seed's (DEMO_ROLES)
       ["Approver", false, ["audit.view", "user.view"]],
       ["Maker", false, ["audit.view", "user.view"]],
+      ["Open API admin", false, ["integration.debug", "integration.manage", "integration.view"]],
+      ["Open API operator", false, ["integration.debug", "integration.view"]],
       ["Superadmin", true, [...PERMISSIONS].sort()],
     ]);
     expect(first.users).toHaveLength(1);
@@ -68,6 +71,14 @@ describe("seedSystem", () => {
     expect(await verifyPassword("Owner-Password-1!", first.users[0]!.passwordHash)).toBe(true);
     await seedSystem(db, OWNER);
     expect(await snapshot()).toEqual(first);
+  });
+
+  it("a seeded role edited later keeps its permissions on the next seed", async () => {
+    await seedSystem(db, {});
+    const [op] = await db.select({ id: roles.id }).from(roles).where(eq(roles.name, "Open API operator"));
+    await db.delete(rolePermissions).where(and(eq(rolePermissions.roleId, op!.id), eq(rolePermissions.permission, "integration.debug")));
+    await seedSystem(db, {});
+    expect((await db.select({ p: rolePermissions.permission }).from(rolePermissions).where(eq(rolePermissions.roleId, op!.id))).map((r) => r.p)).toEqual(["integration.view"]);
   });
 
   it("bootstrap only: an active Superadmin there and a changed SEED_SUPERADMIN_EMAIL creates nobody and doesn't fail", async () => {
@@ -240,6 +251,24 @@ describe("seedDemo", () => {
     }
     expect([...new Set(rows.filter((r) => r.username === "viewer").map((r) => r.code))].sort()).toEqual(["ctop", "treasury"]);
     expect(rows.filter((r) => r.username === "google")).toEqual([]);
+  });
+
+  it("demo access: each space role and each Open API role is held by a named account (docs/deploy.md lists them)", async () => {
+    await seedSystem(db, {});
+    await seedDemo(db);
+    const rows = await db.select({ code: spaces.code, username: users.username, role: spaceMembers.role }).from(spaceMembers)
+      .innerJoin(spaces, eq(spaces.id, spaceMembers.spaceId)).innerJoin(users, eq(users.id, spaceMembers.userId)).orderBy(spaces.code, users.username, spaceMembers.role);
+    const spaceRoles: Record<string, string[]> = {};
+    for (const r of rows) (spaceRoles[`${r.code} ${r.username}`] ??= []).push(r.role);
+    for (const k in spaceRoles) spaceRoles[k]!.sort();
+    expect(spaceRoles).toEqual(Object.fromEntries(DEMO_ACCESS.space.map(([c, u, rs]) => [`${c} ${u}`, [...rs].sort()])));
+    const all = await usersWithRoles();
+    for (const [username, held] of Object.entries(DEMO_ACCESS.global)) expect(all.find((u) => u.username === username)?.roles.sort(), username).toEqual(["Viewer", ...held].sort());
+    // every space role has a holder; each Open API role too
+    expect(new Set(rows.map((r) => r.role))).toEqual(new Set(SPACE_ROLES));
+    const globals = Object.values(DEMO_ACCESS.global).flat();
+    expect(globals).toContain("Open API operator");
+    expect(globals).toContain("Open API admin");
   });
 
   it("demo sources: Treasury's nine (page 04 names) in every state the sources screens show; CTOP reads one through a share", async () => {
