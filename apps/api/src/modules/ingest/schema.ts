@@ -44,8 +44,8 @@ export const sourceFiles = pgTable("source_files", {
 ]);
 
 /**
- * Where a source's ingest stands: the pull watermark (last row's watermark and ids as the connector wrote them: one id
- * as its text, several as a JSON array of their texts, rules.ts idText),
+ * Where a source's ingest stands: the pull watermark (last row's watermark and ids as the connector wrote them; the ids
+ * as JSON `{ columns, ids }` with their column names, rules.ts idText; older rows: one id as text, several a JSON array),
  * `complete_through` (data up to here is complete: watermark − lookback, or the end of the last business date with an
  * active snapshot or ingested file), the last success and the last error. `columns` = the source's columns (name and
  * native type) as first pulled under `columns_version_id`; a later pull that finds them changed pauses the source, with

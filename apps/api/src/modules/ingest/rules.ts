@@ -41,23 +41,27 @@ export function completeThroughOf(watermark: string, lookbackSeconds: number, fi
   return r.ok ? new Date(Date.parse(r.value as string) - lookbackSeconds * 1000) : null;
 }
 
-/**
- * The last row's ids as source_cursors.watermark_id keeps them: one id as its plain text (as before composite ids),
- * several as a JSON array of their texts.
- */
-export const idText = (ids: string[]): string => (ids.length === 1 ? ids[0]! : JSON.stringify(ids));
+/** The last row's ids as source_cursors.watermark_id keeps them: JSON `{ columns, ids }`, the id columns' names with their texts. */
+export const idText = (columns: string[], ids: string[]): string => JSON.stringify({ columns, ids });
+
+const strings = (x: unknown): x is string[] => Array.isArray(x) && x.every((v) => typeof v === "string");
 
 /**
- * The stored ids for `n` id columns, or null when they don't fit (the number of id columns changed with a new version:
- * the pull then resumes at the watermark, and dedup drops what comes again). One id column: the text as it is, unless
- * it is a JSON array of several ids.
+ * The stored ids for id columns `columns`, or null when they don't fit (a new version picked other id columns: renamed,
+ * reordered or another number of them): the pull then resumes at the watermark (`>=`), and dedup drops what comes
+ * again. Older forms carry no names and are read by their number: one id as its plain text (before composite ids), several
+ * as a JSON array of their texts.
  */
-export function cursorIds(text: string, n: number): string[] | null {
+export function cursorIds(text: string, columns: string[]): string[] | null {
   let parsed: unknown = null;
-  if (text.startsWith("[")) try { parsed = JSON.parse(text); } catch { /* a plain text id */ }
-  const list = Array.isArray(parsed) && parsed.every((x) => typeof x === "string") ? (parsed as string[]) : null;
-  if (n === 1) return list && list.length > 1 ? null : [text];
-  return list && list.length === n ? list : null;
+  if (text.startsWith("[") || text.startsWith("{")) try { parsed = JSON.parse(text); } catch { /* a plain text id */ }
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "columns" in parsed && "ids" in parsed) {
+    const { columns: was, ids } = parsed as { columns: unknown; ids: unknown };
+    return strings(was) && strings(ids) && ids.length === was.length && was.length === columns.length && was.every((c, j) => c === columns[j]) ? ids : null;
+  }
+  const list = strings(parsed) ? parsed : null;
+  if (columns.length === 1) return list && list.length > 1 ? null : [text];
+  return list && list.length === columns.length ? list : null;
 }
 
 export type Baseline = { name: string; type: string }[];

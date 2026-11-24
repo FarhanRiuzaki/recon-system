@@ -50,7 +50,7 @@ export type WatermarkPull = {
   watermark: { column: string; id_columns: string[] };
   /**
    * The last row pulled before (its watermark and ids, in id_columns order, as this connector wrote them), or null for
-   * the start; `ids` null = ids that no longer fit the id columns (another number of them): resumes at the watermark.
+   * the start; `ids` null = ids that no longer fit the id columns (other names, order or number): resumes at the watermark.
    */
   after: { wm: string; ids: string[] | null } | null;
   /** The spec's look back (lookbackOf: seconds for a date or time watermark, ids for an integer one). */

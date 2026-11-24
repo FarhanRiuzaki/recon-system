@@ -288,12 +288,12 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
     // one that doesn't fit is the connector's spec error below
     const lb = lookbackOf(l.conn.engine as DbEngine, cols.find((x) => x.name === wm.column)!, { seconds: input.lookback_seconds, ids: input.lookback_ids });
     const lookbackSeconds = "by" in lb && lb.by === "seconds" ? lb.n : 0;
-    const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns.length) } : null;
+    const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns) } : null;
     const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
     let n = 0;
     for await (const page of c.pullWatermark({ from, columns: l.spec.fields.map((f) => f.name), watermark: wm, after, lookback: { seconds: input.lookback_seconds, ids: input.lookback_ids }, chunk: input.chunk })) {
       const last = page[page.length - 1]!;
-      const mark = { watermark: last[wm.column]!, watermarkId: idText(wm.id_columns.map((c) => last[c]!)) };
+      const mark = { watermark: last[wm.column]!, watermarkId: idText(wm.id_columns, wm.id_columns.map((c) => last[c]!)) };
       const lines = page.map((raw) => ({ line: ++n, ok: true as const, raw }));
       await withPartitions(on, () => inScope(s, on, async (tx) => {
         await sourceLock(tx, s.sourceId);

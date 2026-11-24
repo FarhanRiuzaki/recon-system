@@ -25,18 +25,24 @@ describe("ingest rules", () => {
     expect(completeThroughOf("12345", 0)).toBeNull();
     expect(completeThroughOf("20261119", 0)).toBeNull(); // an integer watermark (a sequence) is no time, whatever its digits
   });
-  it("idText and cursorIds: one id stays plain text (as stored before composite ids), several are a JSON array", () => {
-    expect(idText(["42"])).toBe("42");
-    expect(idText(["B01", "7"])).toBe('["B01","7"]');
-    expect(cursorIds("42", 1)).toEqual(["42"]);
-    expect(cursorIds('["x"]', 1)).toEqual(['["x"]']); // a text id that looks like JSON is still one id
-    expect(cursorIds('["B01","7"]', 2)).toEqual(["B01", "7"]);
-    expect(cursorIds(idText(["a,b", '"q"']), 2)).toEqual(["a,b", '"q"']);
-    // ids that don't fit the id columns (their number changed with a new version): none, so the pull resumes at the watermark
-    expect(cursorIds("42", 2)).toBeNull();
-    expect(cursorIds('["a","b","c"]', 2)).toBeNull();
-    expect(cursorIds('["a","b"]', 1)).toBeNull();
-    expect(cursorIds('["a",7]', 2)).toBeNull();
+  it("idText and cursorIds: the ids kept with their column names; ids of other columns (renamed, reordered, another number) don't fit", () => {
+    expect(idText(["id"], ["42"])).toBe('{"columns":["id"],"ids":["42"]}');
+    expect(idText(["branch", "seq"], ["B01", "7"])).toBe('{"columns":["branch","seq"],"ids":["B01","7"]}');
+    expect(cursorIds(idText(["id"], ["42"]), ["id"])).toEqual(["42"]);
+    expect(cursorIds(idText(["branch", "seq"], ["a,b", '"q"']), ["branch", "seq"])).toEqual(["a,b", '"q"']);
+    // the same number of id columns, other names or another order: none, so the pull resumes at the watermark (>=)
+    expect(cursorIds(idText(["id"], ["42"]), ["ref"])).toBeNull();
+    expect(cursorIds(idText(["branch", "seq"], ["B01", "7"]), ["seq", "branch"])).toBeNull();
+    expect(cursorIds(idText(["branch", "seq"], ["B01", "7"]), ["branch"])).toBeNull();
+    expect(cursorIds('{"columns":["id"],"ids":[42]}', ["id"])).toBeNull();
+    // the older forms (no column names) are still read by their number: one id as plain text, several as a JSON array
+    expect(cursorIds("42", ["id"])).toEqual(["42"]);
+    expect(cursorIds('["x"]', ["id"])).toEqual(['["x"]']); // a text id that looks like JSON is still one id
+    expect(cursorIds('["B01","7"]', ["branch", "seq"])).toEqual(["B01", "7"]);
+    expect(cursorIds("42", ["a", "b"])).toBeNull();
+    expect(cursorIds('["a","b","c"]', ["a", "b"])).toBeNull();
+    expect(cursorIds('["a","b"]', ["a"])).toBeNull();
+    expect(cursorIds('["a",7]', ["a", "b"])).toBeNull();
   });
   it("driftOf: a missing column, a nullable keyset column, a column that can't hold its field's type, a changed type; null when all fit", () => {
     const pg = (t: string) => familyOf("postgres", t);

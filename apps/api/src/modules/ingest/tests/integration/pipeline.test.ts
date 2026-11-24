@@ -342,7 +342,7 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     expect([await statusOf(s), (await cursorOf(s))?.lastError]).toEqual(["paused", stuck.message]);
   });
 
-  it("composite ids: the cursor keeps them as a JSON array; a stored single id (before composite ids) still resumes", async () => {
+  it("composite ids: the cursor keeps them with their column names; a stored single id (before composite ids) still resumes, other id columns resume at the watermark", async () => {
     const cols = [["ext_ref", "text"], ["account_ref", "text"], ["amount", "numeric(18,2)"], ["event_time", "timestamp with time zone"], ["updated_at", "timestamp with time zone"], ["id", "bigint"]];
     const seen: unknown[] = [];
     ingestHooks.connect = () => ({
@@ -357,19 +357,23 @@ describe("Review Focus 3: tied timestamps and late commits (BI-FAST synthetic, s
     const composite = { ...spec, input: { ...spec.input, watermark: { column: "updated_at", id_columns: ["ext_ref", "account_ref"] } } } as SourceSpec;
     const s = await source(A, composite);
     expect(await pullSource(scope(s), probe)).toBe("pulled");
-    expect((await cursorOf(s))!.watermarkId).toBe('["R2","ACC1"]');
+    expect((await cursorOf(s))!.watermarkId).toBe('{"columns":["ext_ref","account_ref"],"ids":["R2","ACC1"]}');
     expect(await pullSource(scope(s), probe)).toBe("pulled");
     expect(seen[1]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: ["R2", "ACC1"] }, { seconds: 120, ids: undefined }]);
     // a cursor written before composite ids holds one id as plain text: read as that id for one id column, and for two
     // as ids that don't fit (the pull resumes at the watermark)
     const one = await source(B, bifastSpec());
     expect(await pullSource(scope(one), probe)).toBe("pulled");
-    expect((await cursorOf(one))!.watermarkId).toBe("7");
+    expect((await cursorOf(one))!.watermarkId).toBe('{"columns":["id"],"ids":["7"]}');
     expect(await pullSource(scope(one), probe)).toBe("pulled");
     expect(seen[3]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: ["7"] }, { seconds: 120, ids: undefined }]);
     await db.update(sourceCursors).set({ watermarkId: "7" }).where(eq(sourceCursors.sourceId, s.sourceId));
     expect(await pullSource(scope(s), probe)).toBe("pulled");
     expect(seen[4]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: null }, { seconds: 120, ids: undefined }]);
+    // as many id columns as before but another one (a new version renamed it): its ids don't fit either
+    await db.update(sourceCursors).set({ watermarkId: '{"columns":["old_id"],"ids":["7"]}' }).where(eq(sourceCursors.sourceId, one.sourceId));
+    expect(await pullSource(scope(one), probe)).toBe("pulled");
+    expect(seen[5]).toEqual([{ wm: "2026-11-19T01:00:00Z", ids: null }, { seconds: 120, ids: undefined }]);
   });
 
   it("a date-only watermark with the default look back (1 day) is complete through the day before its date, not its date", async () => {
