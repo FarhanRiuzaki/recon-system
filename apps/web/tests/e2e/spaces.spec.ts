@@ -226,12 +226,13 @@ test("a member sees who is in the space and what each role may do; a viewer only
 
   const matrix = page.getByRole("table", { name: "What each role can do" });
   await expect(matrix.getByRole("columnheader")).toHaveText(["Action", "Space admin", "Source admin", "Config maker", "Config checker", "Operator", "Reviewer", "Viewer"]);
-  await expect(matrix.getByRole("row", { name: /^Force match outside tolerance/ }).getByRole("cell")).toHaveText(
-    ["—Not allowed", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Approves", "—Not allowed"]);
+  // cells from SPACE_ACTION.work (space admin, operator, reviewer), as the API's guard
+  await expect(matrix.getByRole("row").filter({ has: page.getByRole("rowheader", { name: "Force match", exact: true }) }).getByRole("cell")).toHaveText(
+    ["Does", "—Not allowed", "—Not allowed", "—Not allowed", "Does", "Does", "—Not allowed"]);
   await expect(page.locator("#content").getByText("Source admin is granted and removed only by an app admin, not by a space admin.")).toBeVisible();
 
   // Action column: 340 px, one line from 1280; 160 px, wrapping, below (CSS breakpoints only); sticky at every width.
-  const actionCell = matrix.getByRole("rowheader", { name: "Assign, comment and set a reason on breaks" });
+  const actionCell = matrix.getByRole("rowheader", { name: "View a source's files, pulls and records" });
   const cellInfo = () => actionCell.evaluate((el) => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height, pos: getComputedStyle(el).position }));
   await page.setViewportSize({ width: 1440, height: 900 });
   expect(await cellInfo()).toEqual({ w: 340, h: 40, pos: "sticky" });
