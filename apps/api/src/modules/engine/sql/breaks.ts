@@ -92,21 +92,26 @@ const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: SQL, to: strin
  * date, then record order. Its reason is the first field that differs: currency, amount (compared amounts, each side's
  * sign convention), business date. No item with that reference on the other side, or one that differs in none of the
  * three (it failed another predicate, or an operator holds it) = "No counterpart" without a pair. One hash join on the
- * reference, no scan per item. A one-way recon's (`oneWay`) side-B item that way is NOT_REQUIRED instead. Rows: item_id, side, business_date, reason, pair_item_id.
+ * reference, no scan per item. A one-way recon's (`oneWay`) side-B item that way is NOT_REQUIRED instead, but only when no
+ * side-A item of its reference is in the window in any status but closed (one matched, suggested or broken with another
+ * side-B item makes this one a double settlement: it stays "No counterpart"). Rows: item_id, side, business_date, reason, pair_item_id.
  */
 export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL): SQL {
   const open = sql`'open'`, unpaired = sql`'open', 'break', 'not_required'`;
   const lo = sql`(${from}::date - ${c.carry}::int)`;
   return sql`with m as materialized (${sideItems(c, 0, open, sql`${from}::date`, to, only)} union all ${sideItems(c, 1, open, sql`${from}::date`, to, only)}),
   o as materialized (${sideItems(c, 0, unpaired, lo, to)} union all ${sideItems(c, 1, unpaired, lo, to)}),
-  p as (select m.id, m.side, m.bd, o.id as pid, case
+  p as (select m.id, m.side, m.bd, m.ref, o.id as pid, case
       when o.id is null then null
       when o.ccy is distinct from m.ccy then ${NEAR_MISS.currency}
       when o.amt is distinct from m.amt then ${NEAR_MISS.amount}
       when o.bd <> m.bd then ${NEAR_MISS.date} end as reason,
       row_number() over (partition by m.id order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid) as rn
     from m left join o on o.ref = m.ref and o.side <> m.side and o.bd between m.bd - ${c.carry}::int and m.bd),
-  k as (select * from p where rn = 1)
-  select id as item_id, side, bd::text as business_date, coalesce(reason, ${c.oneWay ? sql`case when side = 'b' then ${NOT_REQUIRED} end` : sql`null`}, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
+  k as (select * from p where rn = 1)${c.oneWay ? sql`,
+  ax as materialized (select ref, bd from (${sideItems(c, 0, sql`'open', 'matched', 'suggested', 'break', 'not_required'`, lo, to)}) s)` : sql``}
+  select id as item_id, side, bd::text as business_date, coalesce(reason, ${c.oneWay
+    ? sql`case when side = 'b' and not exists (select 1 from ax where ax.ref = k.ref and ax.bd >= k.bd - ${c.carry}::int) then ${NOT_REQUIRED} end`
+    : sql`null`}, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
   from k order by bd, side, id`;
 }

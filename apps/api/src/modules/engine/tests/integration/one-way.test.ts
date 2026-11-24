@@ -170,6 +170,28 @@ describe("one-way recon (a_to_b)", () => {
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status, i.reason])).toEqual([["G1", "break", "No counterpart"], ["G2", "not_required", null]]);
   }, 60_000);
 
+  it("a tie a suggesting pass settles with one side-B item: the other side-B item of that reference stays an unmatch", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, oneWay(sa.sourceId, sb.sourceId, [{ ...exact, on_ambiguous: "suggest" }]));
+    await put(sa, [{ ref: "T1", amount: 10n }]);
+    await put(sb, [{ ref: "T1", amount: 10n }, { ref: "T1", amount: 10n }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await closeDay(probe, r, D, after)).toBe("closed");
+    expect((await itemsOf(r.configId)).filter((i) => i.side === "b").map((i) => i.status)).toEqual(["break", "break"]);
+  }, 60_000);
+
+  it("a second side-B item of a reference side A already matched is an unmatch (a double settlement), not not required", async () => {
+    const [sa, sb] = await sides();
+    const r = await recon(A, oneWay(sa.sourceId, sb.sourceId));
+    await put(sa, [{ ref: "W1", amount: 10n }]);
+    await put(sb, [{ ref: "W1", amount: 10n }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    await put(sb, [{ ref: "W1", amount: 10n }]);
+    await runRecon(probe, { ...r, mode: "daily", from: D });
+    expect(await closeDay(probe, r, D, after)).toBe("closed");
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status]).sort()).toEqual([["a", "matched"], ["b", "break"], ["b", "matched"]]);
+  }, 60_000);
+
   it("a draft's simulation projects side B's items without a counterpart as Not required", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, spec(sa.sourceId, sb.sourceId, [exact], 1));

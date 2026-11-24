@@ -30,7 +30,9 @@ answers `Not required` instead of `No counterpart`. Grace and day close (`sql/da
    filters `status = 'break'` or `break_reason is not null`, so they leave the item out without a change each.
 2. Only the plain no-counterpart case is not required. A near miss with a side-B item (currency, amount, date differs),
    a pass's Duplicate or Ambiguous that holds one, and an unconfirmed suggestion stay unmatch: a real discrepancy. A
-   tie break of a pass breaks a not-required item too (`breakItems`).
+   tie break of a pass breaks a not-required item too (`breakItems`). A side-B item is not required only when no side-A
+   item of its reference is in the window in any status but closed: a second side-B item for a side-A item already
+   matched or suggested with another (a double settlement) stays "No counterpart".
 3. Late match: with carry over > 0 the pool of every pass holds not-required items of the window (on dates not signed
    off), like "No counterpart" breaks. An automatic pass that pairs one makes both items matched with no resolution (it
    was never a break, so Operation result says Matched, not Matched late). A suggesting pass may suggest one (it is not
