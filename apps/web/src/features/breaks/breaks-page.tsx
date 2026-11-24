@@ -11,7 +11,8 @@ import { AlertsIcon, AssignIcon, CheckIcon, InvestigateIcon, TakeIcon, WaitIcon 
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { BreakRowDto } from "@starterkit/shared/contracts/breaks";
-import type { BulkResult } from "@starterkit/shared/contracts/common";
+import type { BulkResult, Page } from "@starterkit/shared/contracts/common";
+import type { ReconRowDto } from "@starterkit/shared/contracts/recon";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { AGE_BUCKETS, BREAK_REASONS, BREAK_STATES, type BreakState } from "@starterkit/shared/recon";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
@@ -19,7 +20,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { majorAmount } from "@/lib/shared/amount";
-import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
+import { ENGINE_KEY, RECON_KEY, spaceDetail } from "@/lib/shared/queries";
 import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
 import { breakColumns } from "./break-columns";
 import { AGE_LABEL, STATE_LABEL } from "./break-model";
@@ -34,8 +35,9 @@ const ASSIGNEE_LABEL: Record<string, string> = { me: "Mine", none: "Unassigned" 
 const CHECKED_LABEL: Record<string, string> = { yes: "Yes", no: "No" };
 /** The quick filter "Mine or unassigned" (the queue's default stays every open item: a ruling of Batch 8). */
 const MINE_OR_NONE = selectionState(["me", "none"]);
-const FILTER_FIELDS = [
+const filterFields = (reconName: (id: string) => string) => [
   { key: "q", label: "Search" },
+  { key: "recon", label: "Recon", multiple: true, format: reconName },
   { key: "assignee", label: "Assignee", multiple: true, format: (v: string) => ASSIGNEE_LABEL[v] ?? v },
   { key: "state", label: "State", multiple: true, format: (v: string) => STATE_LABEL[v as BreakState] ?? v },
   { key: "reason", label: "Reason", multiple: true },
@@ -58,6 +60,10 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
   const t = useTableQuery<BreakRowDto, BreakFilters>(def);
   const f = t.state;
   const qc = useQueryClient();
+  // the space's recons by name, for the Recon filter (a space keeps far fewer than 100 recons)
+  const recons = useQuery({ queryKey: [...RECON_KEY, "options", spaceId], queryFn: () => api<Page<ReconRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/recons?pageSize=100&sort=name`) }).data?.items;
+  const reconOptions = useMemo(() => (recons ?? []).map((r) => ({ value: r.id, label: r.name })), [recons]);
+  const fields = useMemo(() => filterFields((id) => recons?.find((r) => r.id === id)?.name ?? "A recon"), [recons]);
   const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
   const canAssign = roles.some((r) => r === "space_admin" || r === "reviewer");
   const canWork = canAssign || roles.includes("operator");
@@ -102,9 +108,10 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the unmatch items; showing the ones loaded before. {errorText(t.staleError)}</Notice>}
       {t.viewNotRemembered && <Notice>This filter selection works at this URL, but is too long to remember in navigation. Save a named view to reopen it.</Notice>}
       <FilterLayout busy={t.paging.busy} values={{ q: f.q, recon: f.recon, assignee: f.assignee, state: f.state, reason: f.reason, age: f.age, amountMin: f.amountMin, amountMax: f.amountMax, checked: f.checked }}
-        defaults={FILTER_DEFAULTS} fields={FILTER_FIELDS}
+        defaults={FILTER_DEFAULTS} fields={fields}
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) => <>
           <FilterSearch label="Search unmatch" value={draft.q} onChange={(q) => patch({ q })} placeholder="Reference" />
+          <FilterChecks label="Recon" value={draft.recon} options={withCounts(reconOptions, t.facets?.recon)} onChange={(recon) => patch({ recon })} />
           <FilterChecks label="Assignee" value={draft.assignee} options={withCounts([{ value: "me", label: "Mine" }, { value: "none", label: "Unassigned" }], t.facets?.assignee)} onChange={(assignee) => patch({ assignee })} />
           <FilterChecks label="State" value={draft.state} options={withCounts(OPEN_STATES.map((s) => ({ value: s, label: STATE_LABEL[s] })), t.facets?.state)} onChange={(state) => patch({ state })} />
           <FilterChecks label="Reason" value={draft.reason} options={withCounts(BREAK_REASONS.map((r) => ({ value: r, label: r })), t.facets?.reason)} onChange={(reason) => patch({ reason })} />

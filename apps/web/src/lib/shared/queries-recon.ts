@@ -37,7 +37,7 @@ export type BreakFilters = { q: string; recon: string; reason: string; state: st
 const major: FilterParser<string> = (raw) => majorAmount(raw ?? "");
 const BREAKS_SPEC: TableSpec<BreakFilters> = {
   sorts: BREAK_SORTS, defaultSort: "-amount", search: ["q", "amountMin", "amountMax"],
-  filters: { q: text(200), recon: text(36), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice(), amountMin: major, amountMax: major, checked: multiChoice() },
+  filters: { q: text(200), recon: multiChoice(), reason: multiChoice(), state: multiChoice(), age: multiChoice(), assignee: multiChoice(), amountMin: major, amountMax: major, checked: multiChoice() },
 };
 /**
  * A space's breaks queue (the engine's, Plan 5), largest amount first, its open states only (the API's queue; no

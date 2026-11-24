@@ -93,7 +93,7 @@ function breakWhere(tx: InTx, ctx: Ctx, spaceId: string, today: string, q: Break
 }
 
 /**
- * GET …/breaks/facets: the queue's counts per state, reason, age and assignee (Mine, Unassigned), each with the other
+ * GET …/breaks/facets: the queue's counts per recon (config id), state, reason, age and assignee (Mine, Unassigned), each with the other
  * filters applied (the standard of every list's check filters).
  */
 export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Promise<FacetsDto> {
@@ -108,14 +108,15 @@ export function breakFacets(ctx: Ctx, q: BreakListQuery, now = new Date()): Prom
     const state = sql<string>`coalesce(${reconItems.breakState}, 'new')`;
     const age = sql<string>`case ${sql.join(AGE_BUCKETS.map((b) => sql`when ${inBucket(today, b)} then ${b}`), sql` `)} end`;
     const checked = sql<string>`case when ${checkedAgain(tx, today)} then 'yes' else 'no' end`;
-    const [byState, byReason, byAge, [who], byChecked] = await Promise.all([
+    const [byState, byReason, byAge, [who], byChecked, byRecon] = await Promise.all([
       from({ v: state, n: countN }, "state").groupBy(state) as Promise<{ v: string; n: number }[]>,
       from({ v: reconItems.breakReason, n: countN }, "reason").groupBy(reconItems.breakReason) as Promise<{ v: string | null; n: number }[]>,
       from({ v: age, n: countN }, "age").groupBy(sql`1`) as Promise<{ v: string | null; n: number }[]>,
       from({ me: sql<number>`count(*) filter (where ${reconItems.assigneeId} = ${ctx.user.id})::int`, none: sql<number>`count(*) filter (where ${reconItems.assigneeId} is null)::int` }, "assignee") as Promise<{ me: number; none: number }[]>,
       from({ v: checked, n: countN }, "checked").groupBy(sql`1`) as Promise<{ v: string; n: number }[]>,
+      from({ v: reconItems.configId, n: countN }, "recon").groupBy(reconItems.configId) as Promise<{ v: string; n: number }[]>,
     ]);
-    return { state: facetOf(byState), reason: facetOf(byReason), age: facetOf(byAge), assignee: { me: who?.me ?? 0, none: who?.none ?? 0 }, checked: facetOf(byChecked) };
+    return { state: facetOf(byState), reason: facetOf(byReason), age: facetOf(byAge), assignee: { me: who?.me ?? 0, none: who?.none ?? 0 }, checked: facetOf(byChecked), recon: facetOf(byRecon) };
   });
 }
 

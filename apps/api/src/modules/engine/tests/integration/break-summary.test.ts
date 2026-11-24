@@ -99,6 +99,11 @@ describe("GET breaks: amount range and checked again", () => {
     expect((await list("?checked=no")).every((x) => x.recheck.kind === "no")).toBe(true);
     expect((await facets()).checked).toEqual({ yes: 1, no: 2 });
     expect((await facets("?checked=yes")).checked).toEqual({ yes: 1, no: 2 }); // its own filter left out
+    // per recon (config id): its own filter left out, the others applied
+    const byRecon = async (qs: string) => json<{ recon: Record<string, number> }>(call("GET", `/v1/spaces/${A}/breaks/facets${qs}`, { token: t.op }));
+    expect((await byRecon(`?recon=${CFG}`)).recon).toEqual({ [CFG]: 3 });
+    expect((await byRecon("?checked=yes")).recon).toEqual({ [CFG]: 1 });
+    expect(await list(`?recon=${CFG}&checked=yes`)).toHaveLength(1);
     // both ticked (repeated in the query, as the filter and a saved view send them): no filter
     expect((await list("?checked=yes&checked=no")).length).toBe(3);
     expect(await json<BreakSummaryDto>(summary(A, t.op, "?checked=yes"))).toMatchObject({ open: 1 });
