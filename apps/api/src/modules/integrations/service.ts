@@ -368,7 +368,7 @@ export function connectorOperations(): Promise<ConnectorOperationsDto> {
         id: c.id, name: c.name, disabled: !!c.disabledAt,
         versions: vs.filter((v) => v.connectorId === c.id).sort((a, b) => b.version - a.version).map((v) => ({
           version: v.version, live: v.status === "published",
-          operations: (v.spec as ConnectorSpec).operations.map((o) => ({ key: o.key, name: o.name, method: o.method, path: o.path, request: o.request, fixed: Object.keys(o.presets), auto: Object.keys(o.auto ?? {}) })),
+          operations: (v.spec as ConnectorSpec).operations.map((o) => ({ key: o.key, name: o.name, method: o.method, path: o.path, request: o.request, fixed: Object.keys(o.presets), auto: Object.keys(o.auto ?? {}), masked: o.masked })),
         })),
       })),
     };

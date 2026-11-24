@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionSentence, groupable, mappingGaps, parseTransforms, previewBody, requestLeaves, unfinishedReason } from "./actions-model";
+import { actionSentence, changedVariants, groupable, mappingGaps, parseTransforms, previewBody, requestLeaves, unfinishedReason, variantFacts, ZERO_OR_NEGATIVE } from "./actions-model";
 
 const op = { request: [{ name: "Amount", type: "numeric" as const, required: true }, { name: "DE48", type: "object" as const, required: true, children: [{ name: "Remark", type: "string" as const, required: true }, { name: "Cur", type: "string" as const, required: true }, { name: "Note", type: "string" as const, required: false }] }], fixed: ["DE48.Cur"], auto: [] as string[] };
 
@@ -61,5 +61,38 @@ describe("what the live preview asks (final review m4, m9)", () => {
   });
   it("an unfinished one doesn't (the contract would refuse it): the saved action answers, the break's values still come", () => {
     expect(previewBody("write_off", 2, "b1", { ...(done as object), name: "" } as never, accounts)).toEqual({ change: "write_off", action: 2, itemId: "b1", accounts });
+  });
+});
+
+describe("an action as the checker reads it (ActionSummary)", () => {
+  const catalog = [{ key: "break.amount", label: "Amount", group: "break" as const, kind: "money" as const }, { key: "side_a.ext_ref", label: "Core · txn_ref", group: "side_a" as const, kind: "text" as const }];
+  const setup = { accounts: [{ key: "susp", label: "Suspense", number: "1001", currency: "IDR" }], lookups: [{ name: "branch" }] };
+  const ops = [{ id: "c1", name: "Bank Mega", disabled: false, versions: [{ version: 2, live: true, operations: [{ key: "post", name: "Post GL", method: "POST", path: "/gl", fixed: ["DE48.Cur"], auto: [], masked: ["Account"],
+    request: [{ name: "Amount", type: "numeric" as const, required: true }, { name: "Account", type: "string" as const, required: true }, { name: "Ref", type: "string" as const, required: false }, { name: "Branch", type: "string" as const, required: false }] }] }] }];
+  const v = { name: "Big", when: { all: [{ field: "break.amount", op: "gte" as const, value: "1000" }] }, operation: { connectorId: "c1", version: 2, key: "post" }, per: "item" as const, zeroOrNegative: "absolute_swap" as const,
+    mapping: { Ref: { kind: "template" as const, text: "R-{side_a.ext_ref}" }, Amount: { kind: "field" as const, key: "break.amount", transforms: ["abs"] }, Account: { kind: "account" as const, account: "susp", part: "number" as const },
+      Branch: { kind: "lookup" as const, table: "branch", key: { kind: "field" as const, key: "side_a.ext_ref", transforms: [] }, fallback: "000" } } };
+  it("says each variant's condition, where it sends, its mapping in words (masked fields marked), how it sends, what 0 or below does", () => {
+    expect(variantFacts(v, ops, catalog, setup)).toEqual({
+      name: "Big", when: "Amount is at least 1000", sends: "Bank Mega · version 2 · Post GL",
+      mapping: [
+        { field: "Amount", from: "Amount · Without sign", masked: false }, { field: "Account", from: "Suspense's number", masked: true },
+        { field: "Ref", from: "Template “R-{side_a.ext_ref}”", masked: false }, { field: "Branch", from: "Core · txn_ref looked up in branch, else “000”", masked: false },
+      ],
+      per: "One call per item", zero: "Post it without the sign, sides swapped",
+    });
+    expect(variantFacts({ ...v, when: null, operation: { connectorId: "gone", version: 1, key: "x" }, mapping: {}, per: "group", zeroOrNegative: "skip", group: { key: ["side_a.ext_ref"], at: "cutoff", cutoff: "16:00" } }, ops, catalog, setup))
+      .toEqual(expect.objectContaining({ when: "Every item", sends: "An operation no longer available", per: "Grouped: items with the same Core · txn_ref and currency, sent at 16:00 WIB", zero: "Skip it" }));
+  });
+  it("words 0 or below as the contract means it", () => {
+    expect(ZERO_OR_NEGATIVE.label).toBe("An amount of 0 or below");
+    expect(ZERO_OR_NEGATIVE.options).toEqual({ skip: "Skip it", absolute_swap: "Post it without the sign, sides swapped" });
+  });
+  it("marks the variants that differ from the live version's action of the same name", () => {
+    const a = { name: "Post", kind: "posting" as const, on: { event: "approved" as const }, variants: [v, { ...v, name: "Small" }] } as never as Parameters<typeof changedVariants>[1];
+    const live = [{ ...(a as object), variants: [{ ...v, zeroOrNegative: "skip" }, { ...v, name: "Small" }] }] as never;
+    expect([...changedVariants(live, a, true)]).toEqual([0]);
+    expect([...changedVariants([], a, true)]).toEqual([0, 1]); // a new action: every variant is new
+    expect([...changedVariants(undefined, a, false)]).toEqual([]);
   });
 });

@@ -9,12 +9,13 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, EditIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
 import type { ConnectorOperationsDto } from "@starterkit/shared/contracts/integrations";
 import type { ActionSpec } from "@starterkit/shared/contracts/recon";
-import { type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
+import type { CatalogField } from "@starterkit/shared/conditions";
 import type { Trigger } from "@starterkit/shared/workflows";
 import { api } from "@/lib/client/api";
 import { connectorOperationsQuery } from "@/lib/shared/queries-recon";
 import { opOf } from "./action-parts";
-import { actionSentence, mappingGaps } from "./actions-model";
+import { mappingGaps } from "./actions-model";
+import { ActionSummary } from "./action-summary";
 import { statusTone } from "@/lib/shared/categories";
 
 // A change's actions in the Approval step (stage 4, design §4.4–4.5): a card per action ("When the change is approved,
@@ -52,14 +53,9 @@ export function ActionsEditor({ kind, changeLabel, actions, onChange, spaceId, c
         {actions.map((a, i) => {
           const gaps = opsQ.data ? gapsOf(a) : [];
           return (
-            <li key={i} className="flex flex-wrap items-center gap-3 rounded-lg border border-line-strong bg-card px-4 py-3 shadow-xs">
+            <li key={i} className="flex flex-wrap items-start gap-3 rounded-lg border border-line-strong bg-card px-4 py-3 shadow-xs">
               <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-label text-primary-foreground tabular">{i + 1}</span>
-              <span className="grid min-w-0 flex-1 gap-0.5">
-                <span className="text-body text-fg">{actionSentence(a)}</span>
-                <span className="truncate text-caption text-fg-3">
-                  {a.variants.map((v) => `${v.name}: ${v.when ? conditionText(v.when as Condition, catalog) : "every item"} → ${opOf(ops, v.operation).op?.name ?? (v.operation.key || "nowhere yet")}`).join(" · ")}
-                </span>
-              </span>
+              <div className="min-w-0 flex-1"><ActionSummary action={a} ops={opsQ.data ? ops : undefined} catalog={catalog} setup={setup} /></div>
               {opsQ.data && (gaps.length
                 ? <StatusChip health={statusTone("missing")} label={`${gaps.length} required ${gaps.length === 1 ? "field" : "fields"} empty`} />
                 : <StatusChip health={statusTone("ready")} label="Every field mapped" />)}

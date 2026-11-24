@@ -1,6 +1,7 @@
 import { type Clause, type Condition, NO_VALUE_OPS } from "@starterkit/shared/conditions";
 import type { ReconApprovalInput, ReconApprovalSpec, ReconWarning } from "@starterkit/shared/contracts/recon";
 import { DEFAULT_CHAIN_TEXT, TRIGGERS } from "@starterkit/shared/workflows";
+import { statusChip } from "@/lib/shared/categories";
 
 // The Approval step's draft (DEC-052 rev 2): what of it the recon draft can hold now, and the copy of an unfinished
 // rule this browser keeps meanwhile. Pure.
@@ -61,10 +62,21 @@ export function keptCopy(stored: string | null, saved: ReconApprovalInput | unde
   } catch { return null; }
 }
 
-/** The changes whose approval setup differs between the live version and this one (none without a live version). */
-export function approvalChanges(live: ReconApprovalInput | undefined, next: ReconApprovalInput | undefined, hasLive: boolean): (typeof TRIGGERS)[number][] {
+/** The mark of a part of a version that differs from the live version (the review). */
+export const CHANGED = statusChip("check", "Changed from the live version");
+
+/**
+ * The parts of the approval setup that differ between the live version and this one (none without a live version):
+ * each change kind, then the accounts and the lookup tables the actions read.
+ */
+export function approvalChanges(live: ReconApprovalInput | undefined, next: ReconApprovalInput | undefined, hasLive: boolean): ((typeof TRIGGERS)[number] | "accounts" | "lookups")[] {
   if (!hasLive) return [];
-  return TRIGGERS.filter((k) => JSON.stringify(live?.changes[k] ?? null) !== JSON.stringify(next?.changes[k] ?? null));
+  const differs = (a: unknown, b: unknown) => JSON.stringify(a) !== JSON.stringify(b);
+  return [
+    ...TRIGGERS.filter((k) => differs(live?.changes[k] ?? null, next?.changes[k] ?? null)),
+    ...(differs(live?.accounts ?? [], next?.accounts ?? []) ? ["accounts" as const] : []),
+    ...(differs(live?.lookups ?? [], next?.lookups ?? []) ? ["lookups" as const] : []),
+  ];
 }
 
 /**

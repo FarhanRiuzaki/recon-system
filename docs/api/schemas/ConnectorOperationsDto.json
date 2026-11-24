@@ -64,6 +64,12 @@
                         "items": {
                           "type": "string"
                         }
+                      },
+                      "masked": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
                       }
                     },
                     "required": [
@@ -73,7 +79,8 @@
                       "path",
                       "request",
                       "fixed",
-                      "auto"
+                      "auto",
+                      "masked"
                     ],
                     "additionalProperties": false
                   }

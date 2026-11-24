@@ -153,7 +153,7 @@ export const ConnectorOperationsDto = z.object({
     id: z.string(), name: z.string(), disabled: z.boolean(),
     versions: z.array(z.object({
       version: z.number().int(), live: z.boolean(),
-      operations: z.array(z.object({ key: z.string(), name: z.string(), method: z.string(), path: z.string(), request: z.array(OpField), fixed: z.array(z.string()), auto: z.array(z.string()) })),
+      operations: z.array(z.object({ key: z.string(), name: z.string(), method: z.string(), path: z.string(), request: z.array(OpField), fixed: z.array(z.string()), auto: z.array(z.string()), masked: z.array(z.string()) })),
     })),
   })),
 });

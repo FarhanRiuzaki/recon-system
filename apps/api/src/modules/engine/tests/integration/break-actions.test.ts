@@ -376,7 +376,7 @@ describe("operations a recon may pick", () => {
     const r = await call("GET", `/v1/spaces/${A}/connector-operations`, { token: t.op });
     const text = await r.text();
     const body = JSON.parse(text) as { items: { id: string; name: string; versions: { version: number; live: boolean; operations: { key: string; name: string; request: unknown[]; fixed: string[]; auto: string[] }[] }[] }[] };
-    expect(body.items as unknown[]).toEqual([{ id: cid, name: "Bank Mega", disabled: false, versions: [{ version: 1, live: true, operations: [{ key: "post", name: "Post", method: "POST", path: "/post", request: OP.request, fixed: [], auto: [] }] }] }]);
+    expect(body.items as unknown[]).toEqual([{ id: cid, name: "Bank Mega", disabled: false, versions: [{ version: 1, live: true, operations: [{ key: "post", name: "Post", method: "POST", path: "/post", request: OP.request, fixed: [], auto: [], masked: [] }] }] }]);
     expect(text).not.toContain("baseUrl");
   });
 });

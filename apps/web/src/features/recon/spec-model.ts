@@ -403,7 +403,8 @@ export const directionOf = (spec: ReconSpec): ReconDirection => (isOneWay(spec) 
 /** The direction in words: "One-way: Side A must settle in Side B". */
 export const directionText = (spec: ReconSpec): string => DIRECTION_OPTIONS.find((x) => x.value === directionOf(spec))!.text;
 /** The measure: the amount by default, compared per currency. */
-export const measureText = (spec: ReconSpec, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : "Amount, per currency");
+const MEASURE_DEFAULT = "Amount, per currency";
+export const measureText = (spec: Pick<ReconSpec, "measure">, fields: Fields) => (spec.measure ? pairText(spec.measure.field, fields) : MEASURE_DEFAULT);
 
 /**
  * Why Submit for approval is off (BUILDER-SPEC order and copy), or null: changes not saved yet (autosave pending,
@@ -591,5 +592,45 @@ export function stepReasons(d: {
     5: d.running ? "Wait for the simulation to finish." : d.simulation === "current" ? null
       : d.simulation === "stale" ? "The draft changed since the last simulation. Run it again." : "Run a simulation of this draft first.",
     6: d.approval ?? d.submit,
+  };
+}
+/**
+ * Compare amounts by (the spec's measure, Matching step): the amount per currency (no measure), or a numeric field both
+ * sides' sources have under the same name (the API's check: a decimal field of both sides). A measure the spec holds
+ * stays listed, so a field its source dropped still shows.
+ */
+export function measureOptions(fields: Fields, current: string | undefined): { value: string; label: string }[] {
+  const shared = fieldRefs(fields[0]).filter((r) => r !== AMOUNT && fields[0]?.get(r)?.kind === "decimal" && fields[1]?.get(r)?.kind === "decimal");
+  const refs = current && !shared.includes(current) ? [...shared, current] : shared;
+  return [{ value: "", label: MEASURE_DEFAULT }, ...refs.map((r) => ({ value: r, label: pairText(r, fields) }))];
+}
+
+export type SettingKey = "schedule" | "grace" | "carry" | "close" | "measure";
+/** The day's settings in words, one text each: the version review and the recon's Overview both show these. */
+export function settingsFacts(spec: ReconSpec, fields: Fields): { key: SettingKey; label: string; text: string }[] {
+  return [
+    { key: "schedule", label: "Schedule", text: scheduleText(spec.schedule) },
+    { key: "grace", label: "Grace", text: graceText(spec.grace_minutes) },
+    { key: "carry", label: "Carry over", text: carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined) },
+    { key: "close", label: "Day closes", text: `${spec.close_at} ${APP_TIME_ZONE_LABEL}` },
+    { key: "measure", label: "Measure", text: measureText(spec, fields) },
+  ];
+}
+
+/**
+ * What a version changes against the live one, per section of the review (maker-checker: every setting): each side,
+ * the direction, the passes (by number; `passesChanged` also when one was removed or moved) and each setting with its
+ * live text. null without a live version.
+ */
+export function specChanges(live: ReconSpec | undefined, spec: ReconSpec, fields: Fields) {
+  if (!live) return null;
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+  const was = new Map(settingsFacts(live, fields).map((f) => [f.key, f.text]));
+  return {
+    sides: [0, 1].map((i) => !same(live.sides[i], spec.sides[i])) as [boolean, boolean],
+    direction: directionOf(live) !== directionOf(spec),
+    passes: new Set(spec.passes.filter((p) => !same(live.passes.find((x) => x.no === p.no), p)).map((p) => p.no)),
+    passesChanged: !same(live.passes, spec.passes),
+    settings: Object.fromEntries(settingsFacts(spec, fields).filter((f) => was.get(f.key) !== f.text).map((f) => [f.key, was.get(f.key)!])) as Partial<Record<SettingKey, string>>,
   };
 }

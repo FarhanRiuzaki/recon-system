@@ -5,7 +5,7 @@ import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
   addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, conditionText, currencyGaps, currencyGapText, defaultSpec, DIRECTION_OPTIONS, directionOf, directionText, fieldFor, fieldName, fieldReason, type Fields, kindOf,
   movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
-  incompleteField, toleranceProblem, blankSpec, createdSpec, withSource,
+  incompleteField, toleranceProblem, blankSpec, createdSpec, withSource, measureOptions, settingsFacts, specChanges,
 } from "./spec-model";
 
 // the Plan 3 gate config's sources: source1 (txn_ref, amount_minor, business_date, ccy) and source2 (reference, amount, value_date, currency)
@@ -373,5 +373,47 @@ describe("clockOf: a typed time as HH:MM", () => {
     expect(clockProblem("Close time", "25:00")).toBe("Close time: Enter a time as HH:MM, such as 23:00.");
     expect(clockProblem("Runs at", "")).toBe("Runs at: Enter a time as HH:MM, such as 23:00.");
     expect(clockProblem("Close time", "230")).toBeNull();
+  });
+});
+
+describe("Compare amounts by (the spec's measure)", () => {
+  const withFee = (s: SourceSpecLike): SourceSpecLike => ({ ...s, fields: [...s.fields, { name: "fee", type: "decimal" }, { name: "note", type: "string" }], mapping: { ...s.mapping, attrs: { ...s.mapping.attrs, fee: { field: "fee" }, note: { field: "note" } } } });
+  it("offers the amount first, then the numeric fields both sources share, in the review's words", () => {
+    const both: Fields = [recordFields(withFee(s1)), recordFields(withFee(s2))];
+    expect(measureOptions(both, undefined)).toEqual([{ value: "", label: "Amount, per currency" }, { value: "attrs.fee", label: "fee" }]);
+    // a field only one side has is not offered; one the spec already holds stays listed
+    expect(measureOptions([recordFields(withFee(s1)), recordFields(s2)], undefined)).toEqual([{ value: "", label: "Amount, per currency" }]);
+    expect(measureOptions(fields, "attrs.fee").map((o) => o.value)).toEqual(["", "attrs.fee"]);
+  });
+});
+
+describe("the settings as the review and the overview both write them", () => {
+  it("schedule, grace, carry over, day close and measure, one text each", () => {
+    const spec = { ...base(), grace_minutes: 60, carry_over_days: 0 };
+    expect(settingsFacts(spec, fields).map((f) => [f.label, f.text])).toEqual([
+      ["Schedule", "Daily at 06:00 WIB, for the business date before"], ["Grace", "1 hour"], ["Carry over", "Only on its own day"],
+      ["Day closes", "23:00 WIB"], ["Measure", "Amount, per currency"],
+    ]);
+  });
+});
+
+describe("what a version changes against the live one (the checker sees every section)", () => {
+  it("marks sides, direction, passes and each setting that differ, with the live text", () => {
+    const live = base();
+    const next: ReconSpec = { ...live, sides: [{ ...live.sides[0], label: "Core" }, live.sides[1]], direction: "a_to_b",
+      passes: [live.passes[0]!, { ...live.passes[1]!, name: "Renamed" }, live.passes[2]!], grace_minutes: 0, measure: { field: "attrs.channel" } };
+    const c = specChanges(live, next, fields)!;
+    expect(c.sides).toEqual([true, false]);
+    expect(c.direction).toBe(true);
+    expect([...c.passes]).toEqual([2]);
+    expect(c.settings).toEqual({ grace: "30 min", measure: "Amount, per currency" });
+    expect(specChanges(live, live, fields)).toEqual({ sides: [false, false], direction: false, passes: new Set(), passesChanged: false, settings: {} });
+    expect(specChanges(undefined, next, fields)).toBeNull();
+  });
+  it("a pass removed from the live version counts as a change of the passes", () => {
+    const live = base();
+    const c = specChanges(live, { ...live, passes: live.passes.slice(0, 2) }, fields)!;
+    expect(c.passesChanged).toBe(true);
+    expect([...c.passes]).toEqual([]);
   });
 });

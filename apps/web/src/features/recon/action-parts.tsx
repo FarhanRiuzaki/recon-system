@@ -2,17 +2,12 @@
 
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
-import type { ConnectorOperationsDto } from "@starterkit/shared/contracts/integrations";
+import type { Ops } from "./actions-model";
 import type { ActionSpec, VariantSpec } from "@starterkit/shared/contracts/recon";
 
 // The pickers an action is set up with, shared by the Approval step's cards and the full-screen action editor.
 
-export type Ops = ConnectorOperationsDto["items"];
-export const opOf = (ops: Ops, ref: VariantSpec["operation"]) => {
-  const c = ops.find((x) => x.id === ref.connectorId);
-  const v = c?.versions.find((x) => x.version === ref.version);
-  return { connector: c, version: v, op: v?.operations.find((o) => o.key === ref.key) };
-};
+export { type Ops, opOf } from "./actions-model";
 
 /** Connector, version (published once) and operation, as one select each. */
 export function OperationPicker({ value, onChange, ops, label, stacked }: { value: VariantSpec["operation"] | null; onChange: (v: VariantSpec["operation"]) => void; ops: Ops; label: string; stacked?: boolean }) {

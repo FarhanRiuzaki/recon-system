@@ -26,7 +26,7 @@ import { movedIndex } from "@/components/sortable-model";
 import { api, errorText } from "@/lib/client/api";
 import { reconBreaksQuery } from "@/lib/shared/queries-recon";
 import { EventPicker, type Ops, opOf, OperationPicker } from "./action-parts";
-import { groupable, previewBody, unfinishedReason } from "./actions-model";
+import { groupable, previewBody, unfinishedReason, ZERO_OR_NEGATIVE } from "./actions-model";
 import { ChangeChips } from "./change-chips";
 import { ConditionEditor } from "./condition-editor";
 import { connect, keepMapping, mapGraph } from "./field-map";
@@ -282,8 +282,10 @@ export function ActionScreen({ open, initial, changeLabel, ops, catalog, setup, 
             </div>
           </>
         )}
-        <Field id="var-zero" label="An amount of 0">
-          <Select id="var-zero" value={v.zeroOrNegative} onChange={(e) => setV({ ...v, zeroOrNegative: e.target.value as VariantSpec["zeroOrNegative"] })}><option value="skip">Skip it, nothing to post</option><option value="absolute_swap">Post it anyway</option></Select>
+        <Field id="var-zero" label={ZERO_OR_NEGATIVE.label}>
+          <Select id="var-zero" value={v.zeroOrNegative} onChange={(e) => setV({ ...v, zeroOrNegative: e.target.value as VariantSpec["zeroOrNegative"] })}>
+            {Object.entries(ZERO_OR_NEGATIVE.options).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </Select>
         </Field>
       </section>
     </div>

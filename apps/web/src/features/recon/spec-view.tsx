@@ -1,27 +1,23 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { CategoryChip, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { cn } from "@starterkit/ui/lib/cn";
-import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Icon } from "@starterkit/ui/ui/icon";
 import type { PassSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto } from "@starterkit/shared/contracts/sources";
-import type { Page } from "@starterkit/shared/contracts/common";
-import type { LibraryRowDto } from "@starterkit/shared/contracts/workflows";
 import { recordFields } from "@starterkit/shared/recon";
-import { buildCatalog, type CatalogField, type Condition, conditionText } from "@starterkit/shared/conditions";
-import { DEFAULT_CHAIN_NAME, DEFAULT_CHAIN_TEXT, TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
+import { buildCatalog } from "@starterkit/shared/conditions";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { carryText, conditionParts, directionOf, directionText, type Fields, filterText, graceText, keysText, measureText, scheduleText } from "./spec-model";
-import { approvalChanges, approvalRow, changeIsSet } from "./approval-model";
-import { statusChip } from "@/lib/shared/categories";
+import { conditionParts, directionText, type Fields, filterText, keysText, settingsFacts, specChanges } from "./spec-model";
+import { CHANGED } from "./approval-model";
 import { useSideSource } from "./use-recons";
-import { api } from "@/lib/client/api";
-import { workflowOptions } from "@/lib/shared/queries-recon";
 import { EditIcon } from "@starterkit/ui/ui/icons";
+
+// the approval part (its actions' summaries too) loads after the page: the recon's routes sit near the bundle budget (DEC-040)
+const ApprovalSummary = dynamic(() => import("./approval-summary").then((m) => m.ApprovalSummary), { ssr: false, loading: () => <div aria-hidden="true" className="h-40" /> });
 
 
 /** A small word chip in a pass's head. */
@@ -38,7 +34,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 /** A pass as a step a reader follows (owner, 22 Nov: clear, tidy): what it does, where it looks, when it pairs, a tie. */
-function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; last: boolean; fields: Fields }) {
+function PassStep({ pass, step, last, fields, changed }: { pass: PassSpec; step: number; last: boolean; fields: Fields; changed?: boolean }) {
   return (
     <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3">
       {/* the run order as a rail: the step's number, a line down to the next */}
@@ -50,6 +46,7 @@ function PassStep({ pass, step, last, fields }: { pass: PassSpec; step: number; 
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="min-w-0 truncate text-label text-fg"><span className="sr-only">Pass {step}: </span>{pass.name || "Untitled pass"}</h3>
           <CategoryChip slot="neutral" label={pass.accept === "auto" ? "Matches" : "Suggests"} />
+          {changed && <StatusChip {...CHANGED} />}
         </div>
         <dl className="grid gap-3">
           <Row label="Pairs when">
@@ -111,7 +108,7 @@ export function SideSummary({ i, side, source, fields }: { i: 0 | 1; side: Recon
  */
 export function SpecView({ spaceId, spec, onEdit, live }: {
   spaceId: string; spec: ReconSpec;
-  /** On a version's review: the live version's spec, to show what this one changes in the approval setup. */
+  /** On a version's review: the live version's spec; each section this one changes is marked and shows the live one's. */
   live?: ReconSpec;
   /** In the setup's Review: each part has Edit back to its step (1 Sources, 2 Matching, 3 Schedule, 4 Approval). */
   onEdit?: (step: 1 | 2 | 3 | 4) => void;
@@ -124,12 +121,26 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
   const catalog = useMemo(() => buildCatalog([
     { label: spec.sides[0].label, fields: fields[0] ?? new Map() }, { label: spec.sides[1].label, fields: fields[1] ?? new Map() },
   ]), [fields, spec.sides]);
+  const diff = useMemo(() => specChanges(live, spec, fields), [live, spec, fields]);
+  const facts = settingsFacts(spec, fields);
+  const measure = facts.find((f) => f.key === "measure")!;
+  /** A section's title with the review's mark when the version changes it. */
+  const titled = (text: string, changed: boolean | null | undefined) => (changed ? <span className="flex flex-wrap items-center gap-2">{text}<StatusChip {...CHANGED} /></span> : text);
+  const was = (text: string | undefined) => (text !== undefined ? <span className="text-caption text-fg-3">Live version: {text}</span> : null);
   return (
     <>
-      <Panel title="Sides" description="What each side reads" actions={edit(1)}>
+      <Panel title={titled("Sides", diff && (diff.sides.some(Boolean) || diff.direction))} description="What each side reads" actions={edit(1)}>
         <div className="grid gap-3 md:grid-cols-2">
           {([0, 1] as const).map((i) => (
-            <div key={i} className="min-w-0 rounded-lg border border-line bg-card p-4"><SideSummary i={i} side={spec.sides[i]} source={sources[i]} fields={fields} /></div>
+            <div key={i} className="grid min-w-0 gap-3 rounded-lg border border-line bg-card p-4">
+              <SideSummary i={i} side={spec.sides[i]} source={sources[i]} fields={fields} />
+              {diff?.sides[i] && live && (
+                <div className="grid gap-1 border-l-2 border-line pl-3">
+                  <span className="flex flex-wrap items-center gap-2 text-caption text-fg-3"><StatusChip {...CHANGED} />Live version:</span>
+                  <SideSummary i={i} side={live.sides[i]} source={sources[i]} fields={fields} />
+                </div>
+              )}
+            </div>
           ))}
         </div>
         {/* which sides must find their counterpart (DEC-055); on a review, whether it differs from the live version */}
@@ -137,71 +148,47 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
           <dt className="text-caption text-fg-3">Direction</dt>
           <dd className="flex flex-wrap items-center gap-2 text-body-sm text-fg">
             {directionText(spec)}
-            {live && directionOf(live) !== directionOf(spec) && <><StatusChip {...CHANGED} /><span className="text-caption text-fg-3">Live version: {directionText(live)}</span></>}
+            {diff?.direction && live && <><StatusChip {...CHANGED} />{was(directionText(live))}</>}
           </dd>
         </dl>
       </Panel>
 
-      <Panel title="Passes in run order" description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart" actions={edit(2)}>
+      <Panel title={titled("Passes in run order", diff && (diff.passesChanged || "measure" in diff.settings))} description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart" actions={edit(2)}>
         <ol aria-label="Passes in run order" className="grid">
-          {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} />)}
+          {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} changed={diff?.passes.has(p.no)} />)}
         </ol>
+        {diff?.passesChanged && live && (
+          <details className="mt-3 rounded-lg border border-line p-3">
+            <summary className="cursor-pointer text-body-sm text-fg">The live version&apos;s passes ({live.passes.length})</summary>
+            <ol aria-label="The live version's passes" className="mt-3 grid">
+              {live.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === live.passes.length - 1} fields={fields} />)}
+            </ol>
+          </details>
+        )}
+        <dl className="mt-3 grid gap-0.5">
+          <dt className="text-caption text-fg-3">Compare amounts by</dt>
+          <dd className="flex flex-wrap items-center gap-2 text-body-sm text-fg">
+            {measure.text}
+            {diff && "measure" in diff.settings && <><StatusChip {...CHANGED} />{was(diff.settings.measure)}</>}
+          </dd>
+        </dl>
       </Panel>
 
-      <Panel title="Schedule and day close" actions={edit(3)}>
+      <Panel title={titled("Schedule and day close", diff && facts.some((f) => f.key !== "measure" && f.key in diff.settings))} actions={edit(3)}>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
-          {[["Schedule", scheduleText(spec.schedule)], ["Grace", graceText(spec.grace_minutes)], ["Carry over", carryText(spec.carry_over_days, spec.direction === "a_to_b" ? spec.sides[1].label : undefined)],
-            ["Day closes", `${spec.close_at} ${APP_TIME_ZONE_LABEL}`], ["Measure", measureText(spec, fields)]].map(([k, v]) => (
-            <div key={k} className="grid gap-0.5"><dt className="text-caption text-fg-3">{k}</dt><dd className="text-body-sm text-fg">{v}</dd></div>
+          {facts.filter((f) => f.key !== "measure").map((f) => (
+            <div key={f.key} className="grid gap-0.5">
+              <dt className="text-caption text-fg-3">{f.label}</dt>
+              <dd className="text-body-sm text-fg">{f.text}</dd>
+              {diff && f.key in diff.settings && <dd className="flex flex-wrap items-center gap-2"><StatusChip {...CHANGED} />{was(diff.settings[f.key])}</dd>}
+            </div>
           ))}
         </dl>
       </Panel>
 
-      <Panel title="Approval" description="Who approves each change; the first rule that holds picks its workflow" actions={edit(4)}>
+      <Panel title="Approval" description="Who approves each change, what is sent to the bank, and the accounts and lookup tables it reads" actions={edit(4)}>
         <ApprovalSummary spaceId={spaceId} approvals={spec.approvals} catalog={catalog} live={live} />
       </Panel>
     </>
-  );
-}
-
-const SET = statusChip("set", "Set"), NOT_SET = statusChip("nothing", DEFAULT_CHAIN_NAME), CHANGED = statusChip("check", "Changed from the live version");
-
-/** The approval setup as sentences: per change, its rules in order and who approves every other request. */
-function ApprovalSummary({ spaceId, approvals, catalog, live }: { spaceId: string; approvals: ReconSpec["approvals"]; catalog: readonly CatalogField[]; live?: ReconSpec }) {
-  const q = workflowOptions(spaceId);
-  const wf = useQuery({ queryKey: q.key, queryFn: () => api<Page<LibraryRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/workflows?pageSize=100&sort=name`), enabled: !!approvals || !!live?.approvals });
-  const changed = approvalChanges(live?.approvals, approvals, !!live);
-  const name = (id: string) => wf.data?.items.find((r) => r.id === id)?.name ?? "a workflow";
-  const pin = (w: { id: string; version: number } | null) => (w ? `${name(w.id)} (version ${w.version})` : DEFAULT_CHAIN_TEXT);
-  return (
-    <ul className="grid gap-3">
-      {TRIGGERS.map((k) => {
-        const lines = (w: NonNullable<ReconSpec["approvals"]>["changes"][typeof k] | undefined) => (
-          <>
-            {w?.workflow.rules.map((r, i) => <span key={i}>{r.name}: when {conditionText(r.when as Condition, catalog)} → {pin(r.workflow)}</span>)}
-            <span>{w?.workflow.rules.length ? "Every other request" : "Every request"} → {pin(w?.workflow.default ?? null)}</span>
-          </>
-        );
-        const diff = changed.includes(k);
-        return (
-          <li key={k} className="grid gap-1 text-body-sm">
-            <span className="flex flex-wrap items-center gap-2 text-label text-fg">
-              {TRIGGER_LABEL[k]}
-              <StatusChip {...(changeIsSet(approvals?.changes[k]) ? SET : NOT_SET)} />
-              {diff && <StatusChip {...CHANGED} />}
-            </span>
-            <span className="grid gap-1 text-fg-2">
-              {lines(approvals?.changes[k])}
-              {!!approvals?.changes[k]?.actions?.length && <span>Sends to the bank: {approvalRow(approvals.changes[k], () => null).bank}</span>}
-            </span>
-            {diff && (
-              <span className="grid gap-1 border-l-2 border-line pl-3 text-caption text-fg-3">
-                <span>Live version:</span>{lines(live?.approvals?.changes[k])}
-              </span>
-            )}
-          </li>
-        );
-      })}
-    </ul>
   );
 }

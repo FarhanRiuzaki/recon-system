@@ -39,6 +39,13 @@ describe("what a version changes in the approval setup", () => {
     expect(approvalChanges(live, live, true)).toEqual([]);
     expect(approvalChanges(undefined, next, false)).toEqual([]);
   });
+  it("a changed account or lookup table counts too (maker-checker: every setting)", () => {
+    const acc = { key: "susp", label: "Suspense", number: "1001", currency: "IDR" };
+    const live = { accounts: [acc], lookups: [{ name: "m", rows: [{ key: "a", value: "1" }] }], changes: {} };
+    expect(approvalChanges(live, { ...live, accounts: [{ ...acc, number: "1002" }] }, true)).toEqual(["accounts"]);
+    expect(approvalChanges(live, { ...live, lookups: [{ name: "m", rows: [{ key: "a", value: "2" }] }] }, true)).toEqual(["lookups"]);
+    expect(approvalChanges({ changes: {} }, { accounts: [], lookups: [], changes: {} }, true)).toEqual([]);
+  });
 });
 
 describe("the workflow part never drops the rest of the setup (stage 4)", () => {
