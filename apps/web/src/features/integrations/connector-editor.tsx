@@ -3,8 +3,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { Failure, Field, Notice, Panel, RouteTabs, Segmented, StatusChip } from "@starterkit/ui/ds";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { Facts, Failure, Field, Notice, Panel, RouteTabs, Segmented, StatusChip } from "@starterkit/ui/ds";
 import { useDelayedFlag } from "@starterkit/ui/motion";
 import { cn } from "@starterkit/ui/lib/cn";
 import { formatDateTime } from "@starterkit/ui/lib/format";
@@ -26,7 +26,7 @@ import { type HeaderAction, PageHeader, returnToMore } from "@/components/shell/
 import { api, errorText, isNotFound, retryUnlessNotFound } from "@/lib/client/api";
 import { unsaved } from "@/lib/shared/autosave";
 import { connectorDetail, INTEGRATIONS_KEY } from "@/lib/shared/queries";
-import { prune, replaceAt, turnOffSentence } from "./connector-model";
+import { CALLS_GO_TO, CHANGED, prune, replaceAt, specChanges, turnOffSentence } from "./connector-model";
 import { EnvironmentCard } from "./environment-card";
 import { SpecPasteDialog } from "./spec-paste-dialog";
 import { OperationEditor } from "./operation-editor";
@@ -169,10 +169,12 @@ export function ConnectorEditor({ id }: { id: string }) {
   const at = Number.isInteger(opAt) && opAt >= 0 && opAt < spec.operations.length ? opAt : 0;
   const op = spec.operations[at] ?? null;
   const setOp = (o: OperationSpec) => set({ ...spec, operations: replaceAt(spec.operations, at, o) });
+  // the open version against the live one, part by part (owner rule, maker-checker: what changed before approving)
+  const changes = view === "open" && c.open ? specChanges(c.published?.spec ?? null, spec) : null;
 
   return (
     <div className="grid gap-section">
-      <PageHeader title={(!readOnly && spec.name.trim()) || c.name} description={`${PROFILE_LABEL[spec.profile]} · ${spec.operations.length} ${spec.operations.length === 1 ? "operation" : "operations"}`}
+      <PageHeader title={spec.name.trim() || c.name} description={`${PROFILE_LABEL[spec.profile]} · ${spec.operations.length} ${spec.operations.length === 1 ? "operation" : "operations"}`}
         status={<StatusChip health={status.health} label={status.label} />} more={more.length ? more : undefined}
         actions={!c.open && c.canEdit
           ? <Button type="button" variant="edit" onClick={() => void run("start", "/draft", undefined, "Draft started from the live version.")} disabled={!!busy} aria-busy={busy === "start" || undefined}>
@@ -214,14 +216,22 @@ export function ConnectorEditor({ id }: { id: string }) {
 
       {tab === "environments" && (
         <div className="grid gap-section">
-          {/* read: the name is the page title and the active environment's card says "… active", so no disabled
-              inputs that cut their values (audit 2 B12) */}
+          {/* read: the name is the shown version's, the page title, and the active environment's card says where calls
+              go, so no disabled inputs that cut their values (audit 2 B12); under review, what differs from live is named */}
+          {readOnly && changes && (changes.name || changes.active) && (
+            <Panel title="Changed from the live version">
+              <Facts items={[
+                ...(changes.name ? [["Name", <span key="n" className="flex flex-wrap items-center gap-2">{spec.name}<StatusChip {...CHANGED} /></span>] as [string, ReactNode]] : []),
+                ...(changes.active ? [[CALLS_GO_TO, <span key="a" className="flex flex-wrap items-center gap-2">{ENVIRONMENT_LABEL[spec.active]}<StatusChip {...CHANGED} /></span>] as [string, ReactNode]] : []),
+              ]} />
+            </Panel>
+          )}
           {!readOnly && (
           <div className="grid gap-4 md:grid-cols-2">
-              <Field id="cn-name" label="Name" required>
+              <Field id="cn-name" label="Name" required note={changes?.name ? CHANGED.label : undefined}>
                 <Input id="cn-name" value={spec.name} maxLength={80} onChange={(e) => set({ ...spec, name: e.target.value })} />
               </Field>
-              <Field id="cn-active" label="Calls go to">
+              <Field id="cn-active" label={CALLS_GO_TO} note={changes?.active ? CHANGED.label : undefined}>
                 <Select id="cn-active" value={spec.active} onChange={(e) => set({ ...spec, active: e.target.value as ConnectorSpec["active"] })}>
                   {ENVIRONMENTS.map((e) => <option key={e} value={e}>{ENVIRONMENT_LABEL[e]}</option>)}
                 </Select>
@@ -230,7 +240,7 @@ export function ConnectorEditor({ id }: { id: string }) {
           )}
           <div className="grid items-start gap-section xl:grid-cols-2">
             {ENVIRONMENTS.map((e) => (
-              <EnvironmentCard key={e} c={c} env={e} settings={spec.environments[e]} editing={!readOnly} canEdit={c.canEdit} active={spec.active === e}
+              <EnvironmentCard key={e} c={c} env={e} settings={spec.environments[e]} editing={!readOnly} canEdit={c.canEdit} active={spec.active === e} changed={!!changes?.environments[e]}
                 onSettings={(s) => set({ ...spec, environments: { ...spec.environments, [e]: s } })} onDetail={(next) => took(next, "Credential replaced.")} />
             ))}
           </div>
@@ -248,10 +258,12 @@ export function ConnectorEditor({ id }: { id: string }) {
                       className={cn("grid w-full rounded-md px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-tray focus-visible:outline-2 focus-visible:outline-primary", i === at && "bg-tray")}>
                       <span className="truncate text-body-sm text-fg">{o.name}</span>
                       <span className="truncate font-mono text-caption text-fg-3">{o.method} {o.path}</span>
+                      {changes?.operations[i] && <span className="pt-1"><StatusChip {...CHANGED} /></span>}
                     </button>
                   </li>
                 ))}
               </ul>
+              {!!changes?.removed.length && <p className="text-body-sm text-fg-2">Removed from the live version: {changes.removed.join(", ")}.</p>}
               {!readOnly && (
                 <Button type="button" variant="secondary" size="sm" className="justify-self-start" onClick={() => setPasting(true)}>Paste a whole spec</Button>
               )}
@@ -265,7 +277,7 @@ export function ConnectorEditor({ id }: { id: string }) {
             </div>
           </Panel>
           {op ? (
-            <Panel title={op.name || "Operation"} actions={!readOnly ? <Button type="button" variant="remove" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((_, j) => j !== at) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
+            <Panel title={op.name || "Operation"} description={changes?.operations[at] ? CHANGED.label : undefined} actions={!readOnly ? <Button type="button" variant="remove" size="icon" aria-label={`Remove ${op.name || "this operation"} from the draft`} onClick={() => { set({ ...spec, operations: spec.operations.filter((_, j) => j !== at) }); go({ op: null }); }}><Icon icon={RemoveIcon} /></Button> : undefined}>
               <OperationEditor key={at} op={op} onChange={setOp} disabled={readOnly} />
             </Panel>
           ) : (

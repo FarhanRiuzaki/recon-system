@@ -1,6 +1,7 @@
 import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { fieldPaths, OPERATIONS_MAX, type SpecOperation, TIMEOUT_DEFAULT_MS } from "@starterkit/shared/integrations";
+import { type Environment, ENVIRONMENT_LABEL, fieldPaths, OPERATIONS_MAX, type SpecOperation, TIMEOUT_DEFAULT_MS } from "@starterkit/shared/integrations";
 import { formatNumber } from "@starterkit/ui/lib/format";
+import { statusChip } from "@/lib/shared/categories";
 
 // A connector draft's operations as the editor changes them (DEC-053), pure: a field renamed carries what points to it,
 // what points to a field that is gone is dropped before saving, and an operation is changed by its place in the list.
@@ -37,6 +38,33 @@ export function prune(op: OperationSpec): OperationSpec {
 export const turnOffSentence = (usedBy: number) => (usedBy
   ? `Used by ${formatNumber(usedBy)} ${usedBy === 1 ? "recon: what it" : "recons: what they"} would send through it is marked not sent until it is on again.`
   : "No recon uses it: nothing is sent through it until it is on again.");
+
+/** Where a connector's calls go: the editor's field and the active environment's card say it the same way. */
+export const CALLS_GO_TO = "Calls go to";
+export const callsGoTo = (env: Environment) => `${CALLS_GO_TO} ${ENVIRONMENT_LABEL[env]}`;
+
+/** The mark on a part of a version under review that differs from the live one (as a recon's review marks it). */
+export const CHANGED = statusChip("check", "Changed from the live version");
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** What a version changes against the live one, per part the review shows: null when nothing is live to compare with. */
+export type SpecChanges = { name: boolean; active: boolean; environments: Record<Environment, boolean>; operations: boolean[]; removed: string[] };
+/**
+ * `spec` against the `live` version's (owner rule, maker-checker: the checker sees what changed before approving): the
+ * name, where calls go, each environment's settings, each operation (by its key; a new one is a change) and the live
+ * operations it no longer has, by name.
+ */
+export function specChanges(live: ConnectorSpec | null, spec: ConnectorSpec): SpecChanges | null {
+  if (!live) return null;
+  const byKey = new Map(live.operations.map((o) => [o.key, o]));
+  const keys = new Set(spec.operations.map((o) => o.key));
+  return {
+    name: live.name.trim() !== spec.name.trim(), active: live.active !== spec.active,
+    environments: { dev: !same(live.environments.dev, spec.environments.dev), prod: !same(live.environments.prod, spec.environments.prod) },
+    operations: spec.operations.map((o) => !same(byKey.get(o.key) ?? null, o)),
+    removed: live.operations.filter((o) => !keys.has(o.key)).map((o) => o.name),
+  };
+}
 
 /** `list` with the item at `i` replaced. */
 export const replaceAt = <T>(list: readonly T[], i: number, v: T): T[] => list.map((x, j) => (j === i ? v : x));

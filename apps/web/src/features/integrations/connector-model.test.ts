@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectorSpec, OperationSpec } from "@starterkit/shared/contracts/integrations";
-import { mergeSpecOperations, prune, renamePath, replaceAt, turnOffSentence } from "./connector-model";
+import { CALLS_GO_TO, callsGoTo, mergeSpecOperations, prune, renamePath, replaceAt, specChanges, turnOffSentence } from "./connector-model";
 
 const op: OperationSpec = {
   key: "post", name: "Post", method: "POST", path: "/", timeoutMs: 30000,
@@ -85,5 +85,20 @@ describe("Turn off connector (audit C2): says how many recons use it", () => {
     expect(turnOffSentence(1)).toBe("Used by 1 recon: what it would send through it is marked not sent until it is on again.");
     expect(turnOffSentence(3)).toBe("Used by 3 recons: what they would send through it is marked not sent until it is on again.");
     expect(turnOffSentence(0)).toBe("No recon uses it: nothing is sent through it until it is on again.");
+  });
+});
+
+describe("a version under review against the live one (maker-checker)", () => {
+  const env = { baseUrl: "https://a.local", host: "", partnerId: "P1", channelId: "C1", verifyTls: false };
+  const live: ConnectorSpec = { name: "Bank", profile: "bank_mega_openapi_2_1", active: "dev", environments: { dev: env, prod: env }, operations: [op, { ...op, key: "other" }] };
+  it("marks the name, where calls go, each environment and each operation that differs; nothing against no live version", () => {
+    expect(specChanges(live, live)).toEqual({ name: false, active: false, environments: { dev: false, prod: false }, operations: [false, false], removed: [] });
+    const next: ConnectorSpec = { ...live, name: "Bank 2", active: "prod", environments: { ...live.environments, prod: { ...env, partnerId: "P2" } }, operations: [{ ...op, path: "/v2" }, { ...op, key: "new" }] };
+    expect(specChanges(live, next)).toEqual({ name: true, active: true, environments: { dev: false, prod: true }, operations: [true, true], removed: ["Post"] });
+    expect(specChanges(null, next)).toBeNull();
+  });
+  it("where calls go reads the same on the field and on the environment's card", () => {
+    expect(CALLS_GO_TO).toBe("Calls go to");
+    expect(callsGoTo("dev")).toBe("Calls go to Development");
   });
 });

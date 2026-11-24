@@ -13,6 +13,7 @@ import type { ConnectorDetailDto, EnvironmentSettings, TokenCheckDto } from "@st
 import { type Environment, ENVIRONMENT_LABEL } from "@starterkit/shared/integrations";
 import { api, errorText } from "@/lib/client/api";
 import { statusTone } from "@/lib/shared/categories";
+import { CHANGED, callsGoTo } from "./connector-model";
 
 // One environment of a connector (DEC-053): its address and ids (in the version), its credentials (apart, encrypted:
 // Set / Not set, Replace) and Get token, which asks the bank for a token with them.
@@ -62,8 +63,10 @@ function ReplaceDialog({ id, env, what, onDone, onClose }: { id: string; env: En
 /** A setting as read: in mono (an address, an id), or "Not set". */
 const machine = (v: string) => (v ? <span className="font-mono">{v}</span> : <span className="text-fg-3">Not set</span>);
 
-export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit, active, onDetail }: {
+export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit, active, changed = false, onDetail }: {
   c: ConnectorDetailDto; env: Environment; settings: EnvironmentSettings; onSettings: (s: EnvironmentSettings) => void; editing: boolean; canEdit: boolean; active: boolean;
+  /** Its settings differ from the live version's (a version under review). */
+  changed?: boolean;
   onDetail: (d: ConnectorDetailDto) => void;
 }) {
   const [replace, setReplace] = useState<SecretKey | null>(null);
@@ -77,7 +80,7 @@ export function EnvironmentCard({ c, env, settings, onSettings, editing, canEdit
   }
   const set = (k: keyof EnvironmentSettings, v: string) => onSettings({ ...settings, [k]: v });
   return (
-    <Panel title={ENVIRONMENT_LABEL[env]} actions={active ? <CategoryChip label={`${ENVIRONMENT_LABEL[env]} active`} slot="neutral" /> : undefined}>
+    <Panel title={ENVIRONMENT_LABEL[env]} actions={active || changed ? <span className="flex flex-wrap items-center gap-2">{changed && <StatusChip {...CHANGED} />}{active && <CategoryChip label={callsGoTo(env)} slot="neutral" />}</span> : undefined}>
       <div className="grid gap-section">
         {/* read: the values in full (audit 2 B12), never in disabled inputs that cut them */}
         {!editing ? (
