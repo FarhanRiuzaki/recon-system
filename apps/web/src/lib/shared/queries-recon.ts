@@ -2,7 +2,7 @@
 // (the users, audit and source screens, every route's shell) don't carry them in their first load (bundle budget,
 // DEC-040). Keys still start with the owning module (queries.test.ts reads both files); the module keys themselves
 // (RECON_KEY, ENGINE_KEY, APPROVALS_KEY) stay in queries.ts, so any screen invalidates them.
-import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS, WORKFLOW_SORTS } from "@starterkit/shared/paging";
+import { APPROVAL_SORTS, BREAK_SORTS, RECON_RUN_ITEM_SORTS, RECON_SORTS, RESULT_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS, WORKFLOW_SORTS } from "@starterkit/shared/paging";
 import { BREAK_REASONS, ITEM_STATUSES, PASSES_MAX, SIM_CHANGES } from "@starterkit/shared/recon";
 import { APPROVALS_KEY, ENGINE_KEY, type NoFilters, RECON_KEY, type TableDef, trailTable, type TrailFilters } from "./queries";
 import { majorAmount } from "./amount";
@@ -63,7 +63,36 @@ export const reconReasons = (spaceId: string, configId: string) => {
   return { key: [ENGINE_KEY[0], url] as const, url };
 };
 
-const breakPath = (spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
+/** A space's recons by name (first 100; a space keeps far fewer): the pickers of Unmatch and Operation result. */
+export const reconOptions = (spaceId: string) =>
+  ({ key: [...RECON_KEY, "options", spaceId] as const, url: `${reconsPath(spaceId)}?pageSize=100&sort=name` as const });
+/** A recon's Operation result columns (the setup, or the default): the results page and the recon's Configuration. */
+export const resultColumns = (spaceId: string, configId: string) =>
+  ({ key: [...RECON_KEY, "result-columns", spaceId, configId] as const, url: `${reconsPath(spaceId)}/${encodeURIComponent(configId)}/result-columns` as const });
+/** `recon` = the recon the page shows (it picks the path, never an API parameter); `dateFrom`/`dateTo` business dates (none = today). */
+export type ResultFilters = { recon: string; q: string; dateFrom: string; dateTo: string; result: string; sideA: string; sideB: string };
+const RESULTS_SPEC: TableSpec<ResultFilters> = {
+  sorts: RESULT_SORTS, defaultSort: "businessDate", search: ["q"],
+  filters: { recon: text(64), q: text(200), dateFrom: isoDate, dateTo: isoDate, result: multiChoice(), sideA: multiChoice(), sideB: multiChoice() },
+};
+const resultsPath = (spaceId: string, configId: string) => `${reconsPath(spaceId)}/${encodeURIComponent(configId)}/results` as const;
+/**
+ * One recon's Operation result (the engine's): one row per group or lone item of the business dates, by date; `result`
+ * the overall statuses, `sideA`/`sideB` the side states, `q` a reference on either side.
+ */
+export const RESULTS = (spaceId: string, configId: string): TableDef<ResultFilters> => ({
+  key: ENGINE_KEY[0], path: resultsPath(spaceId, configId), spec: RESULTS_SPEC, params: (f) => ({ ...f, recon: "" }),
+});
+/** The rows per overall status under the list's filters (`filterQuery` of useTableQuery), keyed beside its rows. */
+export const resultCountsUrl = (spaceId: string, configId: string, filterQuery: string) =>
+  `${resultsPath(spaceId, configId)}/counts${filterQuery ? `?${filterQuery}` : ""}`;
+/** Each side's records of one result (Explain). */
+export const resultMembers = (spaceId: string, configId: string, rowId: string, kind: "group" | "item") => ({
+  key: [...ENGINE_KEY, "result-members", spaceId, configId, rowId] as const,
+  url: `${resultsPath(spaceId, configId)}/${encodeURIComponent(rowId)}/members?kind=${kind}` as const,
+});
+
+const breakPath =(spaceId: string, id: string) => `/api/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(id)}` as const;
 /** One break: its item, recon, state, resolution, proposed pair. */
 export const breakDetail = (spaceId: string, id: string) => ({ key: [...ENGINE_KEY, "break", spaceId, id] as const, url: breakPath(spaceId, id) });
 const CANDIDATES_SPEC: TableSpec<{ q: string }> = { sorts: [], defaultSort: "", search: ["q"], filters: { q: text(200) }, ns: "c" };

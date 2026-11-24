@@ -9,6 +9,7 @@ import { ApprovalListQuery } from "@starterkit/shared/contracts/approvals";
 import { ConnectorListQuery, PostingGroupListQuery } from "@starterkit/shared/contracts/integrations";
 import { ActionRunListQuery } from "@starterkit/shared/contracts/breaks";
 import { WorkflowListQuery } from "@starterkit/shared/contracts/workflows";
+import { ResultListQuery } from "@starterkit/shared/contracts/results";
 import { ActivityQuery, AuthLogQuery, TargetActivityQuery } from "@starterkit/shared/contracts/audit";
 import { BreakCandidateQuery, BreakListQuery } from "@starterkit/shared/contracts/breaks";
 import { SessionListQuery } from "@starterkit/shared/contracts/me";
@@ -19,7 +20,7 @@ import { SpaceMemberListQuery } from "@starterkit/shared/contracts/spaces";
 import { PermissionListQuery, RoleListQuery } from "@starterkit/shared/contracts/rbac";
 import { UserListQuery } from "@starterkit/shared/contracts/users";
 import { ACTION_RUNS, ACTIVITY, AUTH_LOG, activityEntry, connectorDetail, CONNECTORS, dashboardRead, ME_KEY, MY_SESSIONS, PERMISSIONS_TABLE, POSTING_GROUPS, postingGroup, projectDetail, PROJECTS, SPACE_MEMBERS, spaceDetail, spaceOptions, roleKey, roleOptions, roleUrl, ROLES, SUPERADMINS, sideSourceOptions, sourceActivity, sourceDetail, sourceFiles, sourcePullsFirst, sourceQuarantine, sourceRecords, SOURCES, sourceSnapshots, sourceSummary, sourceVersion, sourceVersions, type TableDef, userDetail as userDetailQuery, USERS, userSessions as userSessionsTable, userSpaces as userSpacesQuery } from "@/lib/shared/queries";
-import { APPROVALS, BREAKS, breakActivity, breakSummaryUrl, myApprovals, reconOpenSummary, reconReasons, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLastTick, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday } from "@/lib/shared/queries-recon";
+import { APPROVALS, BREAKS, breakActivity, breakSummaryUrl, myApprovals, reconOpenSummary, reconReasons, breakCandidates, breakDetail, draftSimulations, reconActivity, reconDetail, reconRun, reconLastTick, reconLive, reconRunItems, reconRunsFirst, reconSignoffs, reconTrend, RECONS, spaceWorkflow, WORKFLOWS, reconVersion, reconVersions, spaceToday, RESULTS, resultColumns, resultCountsUrl, reconOptions } from "@/lib/shared/queries-recon";
 import { facetsRequest, readTable, tableRequest } from "@/lib/shared/table-state";
 import { backendJson, v1Path } from "./backend";
 import { getSession } from "./session";
@@ -115,6 +116,9 @@ export const reads = {
   reconRunsFirst: (spaceId: string, id: string): Read => ({ key: reconRunsFirst(spaceId, id).key, path: reconRunsFirst(spaceId, id).url }),
   reconLastTick: (spaceId: string, id: string): Read => ({ key: reconLastTick(spaceId, id).key, path: reconLastTick(spaceId, id).url }),
   sideSourceOptions: (spaceId: string): Read => ({ key: sideSourceOptions(spaceId).key, path: sideSourceOptions(spaceId).url }),
+  reconOptions: (spaceId: string): Read => ({ key: reconOptions(spaceId).key, path: reconOptions(spaceId).url }),
+  resultColumns: (spaceId: string, configId: string): Read => ({ key: resultColumns(spaceId, configId).key, path: resultColumns(spaceId, configId).url }),
+  results: (spaceId: string, configId: string, sp: URLSearchParams) => table(RESULTS(spaceId, configId), sp, ResultListQuery, [(fq) => resultCountsUrl(spaceId, configId, fq)]),
 };
 
 type SpecHolder = { id?: string; spec?: { sides?: { source_id: string }[] }; draft?: SpecHolder | null; published?: SpecHolder | null };

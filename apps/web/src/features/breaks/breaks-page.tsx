@@ -20,8 +20,8 @@ import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { majorAmount } from "@/lib/shared/amount";
-import { ENGINE_KEY, RECON_KEY, spaceDetail } from "@/lib/shared/queries";
-import { BREAKS, type BreakFilters } from "@/lib/shared/queries-recon";
+import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
+import { BREAKS, type BreakFilters, reconOptions as reconOptionsQuery } from "@/lib/shared/queries-recon";
 import { breakColumns } from "./break-columns";
 import { AGE_LABEL, STATE_LABEL } from "./break-model";
 import { BreakSummary } from "./break-summary";
@@ -61,7 +61,8 @@ export function BreaksPage({ spaceId }: { spaceId: string }) {
   const f = t.state;
   const qc = useQueryClient();
   // the space's recons by name, for the Recon filter (a space keeps far fewer than 100 recons)
-  const recons = useQuery({ queryKey: [...RECON_KEY, "options", spaceId], queryFn: () => api<Page<ReconRowDto>>(`/api/spaces/${encodeURIComponent(spaceId)}/recons?pageSize=100&sort=name`) }).data?.items;
+  const ro = reconOptionsQuery(spaceId);
+  const recons = useQuery({ queryKey: ro.key, queryFn: () => api<Page<ReconRowDto>>(ro.url) }).data?.items;
   const reconOptions = useMemo(() => (recons ?? []).map((r) => ({ value: r.id, label: r.name })), [recons]);
   const fields = useMemo(() => filterFields((id) => recons?.find((r) => r.id === id)?.name ?? "A recon"), [recons]);
   const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];

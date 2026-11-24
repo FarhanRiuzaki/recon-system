@@ -4,6 +4,7 @@ import { MEMBERS_SHAPE } from "@/features/spaces/shapes";
 import { APPROVALS_SHAPE, LIBRARY_EDITOR_SHAPE, LIBRARY_SHAPE } from "@/features/approvals/shapes";
 import { CONNECTOR_SHAPE, CONNECTORS_SHAPE, POSTING_SHAPE } from "@/features/integrations/shapes";
 import { BREAK_SHAPE, BREAKS_SHAPE } from "@/features/breaks/shapes";
+import { RESULTS_SHAPE } from "@/features/results/shapes";
 import type { Section } from "./route-skeleton";
 
 /**
@@ -33,6 +34,7 @@ export const ROUTE_SHAPES: Record<string, readonly Section[]> = {
   "/spaces/[spaceId]/workflows/[id]": LIBRARY_EDITOR_SHAPE,
   "/integrations": CONNECTORS_SHAPE,
   "/spaces/[spaceId]/posting": POSTING_SHAPE,
+  "/spaces/[spaceId]/results": RESULTS_SHAPE,
   "/integrations/[id]": CONNECTOR_SHAPE,
   "/spaces/[spaceId]/breaks": BREAKS_SHAPE,
   "/spaces/[spaceId]/breaks/[itemId]": BREAK_SHAPE,
