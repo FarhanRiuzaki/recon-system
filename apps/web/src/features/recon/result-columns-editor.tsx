@@ -2,12 +2,11 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Field } from "@starterkit/ui/ds";
+import { Combobox, Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, ArrowDownIcon, ArrowUpIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
-import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { ResultColumn, ResultColumnsDto } from "@starterkit/shared/contracts/results";
@@ -35,7 +34,8 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
     { label: spec.sides[0].label, fields: pa ? recordFields(pa) : null }, { label: spec.sides[1].label, fields: pb ? recordFields(pb) : null },
   ], [spec.sides, pa, pb]);
   const choices = useMemo(() => columnChoices(sides), [sides]);
-  const groups = [...new Set(choices.map((c) => c.group))];
+  // each choice says which side (or the recon) it comes from, and the search matches that too
+  const choiceOptions = useMemo(() => choices.map((c) => ({ value: c.value, label: c.label, description: c.group })), [choices]);
   const [cols, setCols] = useState<ResultColumn[]>(value.columns);
   const [pick, setPick] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
@@ -96,12 +96,10 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
 
       <div className="grid items-end gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
         <Field id="result-col-add" label="Field to add" optional note={`${cols.length} of ${RESULT_COLUMNS_MAX} columns`} error={addError}>
-          <Select id="result-col-add" className="w-full" value={pick} onChange={(e) => { setPick(e.target.value); setAddError(null); }}>
-            <option value="">{sa.isPending || sb.isPending ? "Loading the sources' fields…" : "Pick a field"}</option>
-            {groups.map((g) => (
-              <optgroup key={g} label={g}>{choices.filter((c) => c.group === g).map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</optgroup>
-            ))}
-          </Select>
+          {/* searchable and scrollable, like the app's other column pickers (owner 24 Nov: the native select didn't scroll) */}
+          <Combobox id="result-col-add" className="w-full min-w-0" label="Field to add" placeholder={sa.isPending || sb.isPending ? "Loading the sources' fields…" : "Pick a field"}
+            options={choiceOptions} value={choiceOptions.find((o) => o.value === pick) ?? null}
+            onChange={(o) => { setPick(o?.value ?? ""); setAddError(null); }} />
         </Field>
         <Button type="button" variant="create" disabled={!pick} onClick={add}><Icon icon={AddIcon} />Add column</Button>
       </div>

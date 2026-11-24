@@ -32,7 +32,7 @@ export function ResultColumnsPanel({ spaceId, configId, spec, canEdit }: { space
   const sides = [spec.sides[0].label, spec.sides[1].label] as const;
   const missing = new Set((q.data?.missing ?? []).map(columnValue));
   return (
-    <Panel title="Operation result columns" description="What the Operation result table shows for this recon; changes apply now, no approval"
+    <div id="result-columns" className="scroll-mt-20"><Panel title="Operation result columns" description="What the Operation result table shows for this recon; changes apply now, no approval"
       actions={canEdit && q.data && !editing ? <Button variant="edit" size="sm" onClick={() => setEditing(true)}><Icon icon={EditIcon} />Edit columns</Button> : undefined}>
       {q.error && !q.data ? <Failure title="Couldn't load the columns" error={q.error} source={BRAND.name} onRetry={() => void q.refetch()} />
         : !q.data ? <Skeleton className="h-24" />
@@ -50,6 +50,6 @@ export function ResultColumnsPanel({ spaceId, configId, spec, canEdit }: { space
             {q.data.isDefault && <li className="text-caption text-fg-3">The default columns: no one has changed them yet.</li>}
           </ol>
         )}
-    </Panel>
+    </Panel></div>
   );
 }

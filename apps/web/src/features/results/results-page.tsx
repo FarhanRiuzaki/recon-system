@@ -2,17 +2,19 @@
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ColumnsMenu, DataTable, EmptyState, ErrorState, Field, FilterChecks, FilterGroup, FilterLayout, FilterSearch, FilterSurface, Notice, Panel, Toolbar } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { appDayStart, formatDate, formatNumber } from "@starterkit/ui/lib/format";
-import { Button } from "@starterkit/ui/ui/button";
+import { Button, buttonVariants } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { ReportsIcon } from "@starterkit/ui/ui/icons";
+import { EditIcon, ReportsIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { Page } from "@starterkit/shared/contracts/common";
+import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import type { ReconDto, ReconRowDto } from "@starterkit/shared/contracts/recon";
 import type { ResultColumnsDto, ResultCountsDto, ResultRowDto } from "@starterkit/shared/contracts/results";
 import { selectionState, selectionValues } from "@starterkit/shared/filter-selection";
@@ -21,7 +23,7 @@ import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
 import { api, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
-import { ENGINE_KEY } from "@/lib/shared/queries";
+import { ENGINE_KEY, spaceDetail } from "@/lib/shared/queries";
 import { reconDetail, reconOptions, RESULTS, resultColumns as columnsQuery, resultCountsUrl, type ResultFilters } from "@/lib/shared/queries-recon";
 import { withCounts } from "@/lib/shared/table-state";
 import { resultColumns } from "./result-columns";
@@ -64,6 +66,10 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
   const rq = reconDetail(spaceId, configId ?? "");
   const recon = useQuery({ queryKey: rq.key, queryFn: () => api<ReconDto>(rq.url), enabled: !!configId }).data;
   const sideLabels = recon?.published?.spec.sides;
+  // config makers and space admins set the columns on the recon page (Configuration, Operation result columns)
+  const roles = useQuery({ queryKey: spaceDetail(spaceId).key, queryFn: () => api<SpaceRowDto>(spaceDetail(spaceId).url) }).data?.roles ?? [];
+  const setupHref = configId && (roles.includes("config_maker") || roles.includes("space_admin"))
+    ? `/spaces/${encodeURIComponent(spaceId)}/recons/${encodeURIComponent(configId)}?tab=configuration#result-columns` : null;
   const sides = useMemo<[string, string]>(() => [sideLabels?.[0].label ?? "Side A", sideLabels?.[1].label ?? "Side B"], [sideLabels]);
   const cq = columnsQuery(spaceId, configId ?? "");
   const cols = useQuery({ queryKey: cq.key, queryFn: () => api<ResultColumnsDto>(cq.url), enabled: !!configId });
@@ -80,7 +86,8 @@ export function ResultsPage({ spaceId }: { spaceId: string }) {
 
   return (
     <div className="grid gap-section">
-      <PageHeader title="Operation result" description="Every result of one recon for the business dates you pick: matched, unmatch, posted, written off or closed. Work on an item from its Unmatch page." />
+      <PageHeader title="Operation result" description="Every result of one recon for the business dates you pick: matched, unmatch, posted, written off or closed. Work on an item from its Unmatch page."
+        actions={setupHref ? <Link href={setupHref} className={buttonVariants({ variant: "edit", size: "sm" })}><Icon icon={EditIcon} />Set up columns</Link> : undefined} />
       {state === "none" ? (
         <Panel><EmptyState icon={ReportsIcon} title="No recon has results yet" description="Results show here once a recon's first version is approved and runs." /></Panel>
       ) : state === "error" ? (
