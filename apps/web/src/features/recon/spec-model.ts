@@ -23,6 +23,21 @@ export function defaultSpec(a: { id: string; name: string }, b: { id: string; na
   };
 }
 
+/** A new recon's step 1 before a source is picked: both sides without source or label, the defaults of defaultSpec. */
+export const blankSpec = (): ReconSpec => defaultSpec({ id: "", name: "" }, { id: "", name: "" });
+/**
+ * Side `i` reads `source` now (null: none picked) after `was`: its label follows the source as defaultSpec names it,
+ * unless the maker typed their own (one that is neither empty nor the last source's name).
+ */
+export function withSource(spec: ReconSpec, i: 0 | 1, source: { id: string; name: string } | null, was: { name: string } | null): ReconSpec {
+  const s = spec.sides[i];
+  const own = s.label !== "" && s.label !== was?.name.slice(0, 64);
+  const next: SideSpec = { ...s, source_id: source?.id ?? "", label: own ? s.label : (source?.name.slice(0, 64) ?? "") };
+  return { ...spec, sides: i === 0 ? [next, spec.sides[1]] : [spec.sides[0], next] };
+}
+/** The spec a new recon is created with: step 1 as the maker set it (labels, signs, filters, direction) and pass 1. */
+export const createdSpec = (spec: ReconSpec, fields: Fields): ReconSpec => addPass(spec, fields);
+
 /** A field as a side names it: the source field it is read from, a stored attribute's name, or the core label. */
 export function fieldName(ref: string, fields: SideFields): string {
   if (ref.startsWith("attrs.")) return ref.slice(6);

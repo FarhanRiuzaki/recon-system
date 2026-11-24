@@ -5,7 +5,7 @@ import { recordFields, type SourceSpecLike } from "@starterkit/shared/recon";
 import {
   addCurrency, addCurrencyCondition, addPass, carryOverFix, carryOverGates, conditionText, currencyGaps, currencyGapText, defaultSpec, DIRECTION_OPTIONS, directionOf, directionText, fieldFor, fieldName, fieldReason, type Fields, kindOf,
   movePass, moveReason, pairText, passesText, placeOf, predicateOf, removeCurrency, renameCurrency, splitValues, submitReason, withCardinality, withFilterOp, withSide,
-  incompleteField, toleranceProblem,
+  incompleteField, toleranceProblem, blankSpec, createdSpec, withSource,
 } from "./spec-model";
 
 // the Plan 3 gate config's sources: source1 (txn_ref, amount_minor, business_date, ccy) and source2 (reference, amount, value_date, currency)
@@ -54,6 +54,39 @@ describe("direction (DEC-055)", () => {
     expect(directionOf({ ...base(), direction: "a_to_b" })).toBe("a_to_b");
     expect(directionText({ ...base(), direction: "a_to_b" })).toBe("One-way: Side A must settle in Side B");
     expect(DIRECTION_OPTIONS.map((o) => o.value)).toEqual(["two_way", "a_to_b"]);
+  });
+});
+
+describe("a new recon's step 1 (owner 24 Nov: the same as an existing recon's, what is typed is kept)", () => {
+  const A = { id: "a", name: "source1" }, B = { id: "b", name: "source2" };
+  it("starts with no source and no label, two-way", () => {
+    const s = blankSpec();
+    expect(s.sides.map((x) => [x.source_id, x.label, x.amount_sign, x.filter])).toEqual([["", "", "as_is", []], ["", "", "as_is", []]]);
+    expect(directionOf(s)).toBe("two_way");
+  });
+  it("a picked source names its side, as defaultSpec does, until the maker types their own label", () => {
+    const picked = withSource(blankSpec(), 0, A, null);
+    expect(picked.sides[0]).toMatchObject({ source_id: "a", label: "source1" });
+    // another source: the label still follows it (it was the last source's name)
+    expect(withSource(picked, 0, B, A).sides[0]).toMatchObject({ source_id: "b", label: "source2" });
+    // a typed label stays
+    const typed: ReconSpec = { ...picked, sides: [{ ...picked.sides[0], label: "Core" }, picked.sides[1]] };
+    expect(withSource(typed, 0, B, A).sides[0]).toMatchObject({ source_id: "b", label: "Core" });
+    // no source again: its own name goes, a typed one stays
+    expect(withSource(picked, 0, null, A).sides[0]).toMatchObject({ source_id: "", label: "" });
+    expect(withSource(typed, 0, null, A).sides[0]).toMatchObject({ source_id: "", label: "Core" });
+    // the other side is untouched; a long name is cut to the label's 64
+    expect(withSource(picked, 1, { id: "b", name: "x".repeat(80) }, null).sides).toEqual([picked.sides[0], { ...picked.sides[1], source_id: "b", label: "x".repeat(64) }]);
+  });
+  it("the created spec keeps the labels, signs, filters and direction set on step 1, with pass 1 ready", () => {
+    let s = withSource(withSource(blankSpec(), 0, A, null), 1, B, null);
+    s = { ...s, direction: "a_to_b", sides: [{ ...s.sides[0], label: "Core", filter: [{ field: "attrs.channel", op: "eq", value: "BIFAST" }] }, { ...s.sides[1], amount_sign: "negate" }] };
+    const c = createdSpec(s, fields);
+    expect(c.sides).toEqual(s.sides);
+    expect(directionOf(c)).toBe("a_to_b");
+    expect(c.passes).toEqual(addPass(defaultSpec(A, B), fields).passes);
+    const ids = ["0b9e3a52-6f1d-4c5e-9a1b-2c3d4e5f6a7b", "1c0f4b63-7a2e-4d6f-8b2c-3d4e5f6a7b8c"];
+    expect(ReconSpec.safeParse({ ...c, sides: c.sides.map((x, i) => ({ ...x, source_id: ids[i] })) }).success).toBe(true);
   });
 });
 
