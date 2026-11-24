@@ -1,3 +1,4 @@
+import { mayDo } from "@starterkit/shared/spaces";
 // The breaks queue (Plan 5 Task 1, spec §11): a space's open breaks with who works them, how old they are and where
 // they stand; assigning (space admin, reviewer), taking one for oneself (operator) and the working states. A break is a
 // live recon item in status `break` (this module owns recon_items); its queue state is break_state (null = new) and
@@ -306,7 +307,8 @@ export function takeBreaks(ctx: Ctx, b: TakeBreaksBody): Promise<BulkResult> {
  * Superadmin) may move anyone's. A break nobody has is taken first (skipped invalid_state).
  */
 export function setBreakState(ctx: Ctx, b: BreakStateBody): Promise<BulkResult> {
-  const lead = isSuperadmin(ctx.user.roles) || ctx.space!.roles.some((r) => r === "space_admin" || r === "reviewer");
+  // who may move anyone's break: the roles that assign (SPACE_ACTION.assign), as the screen offers it
+  const lead = isSuperadmin(ctx.user.roles) || mayDo(ctx.space!.roles, "assign");
   return change(ctx, b.ids, "break.state", (x) => {
     if (!x.assigneeId || (x.state && !WORKING.has(x.state))) return "invalid_state";
     if (x.assigneeId !== ctx.user.id && !lead) return "forbidden";
