@@ -16,6 +16,7 @@ describe("activitySentence", () => {
     expect(activitySentence(e("recon.discard", null, { code: "x", name: "X" }))).toBe("Dimas Arya deleted the draft recon.");
     expect(activitySentence(e("recon.run", { runId: "r", version: 1, from: "2026-11-02", to: "2026-11-05" }))).toBe("Dimas Arya ran version 1 for 2–5 Nov 2026.");
     expect(activitySentence(e("recon.simulate", { runId: "r", version: 2, specHash: "h", from: "2026-11-02", to: "2026-11-02" }))).toBe("Dimas Arya simulated draft v2 for 2 Nov 2026.");
+    expect(activitySentence(e("recon.result_columns", { columns: [] }, { columns: [] }))).toBe("Dimas Arya changed the Operation result columns.");
   });
 });
 
