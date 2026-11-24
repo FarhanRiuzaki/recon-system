@@ -72,9 +72,10 @@ test("two-factor: password, then the one-time code from the seed secret", async 
   await expect(page.getByRole("button", { name: account("Two Factor") })).toBeVisible();
 });
 
-test("OAuth: Continue with Google signs in as the connected seed user", async ({ page }) => {
+test("OAuth: Google sign-in signs in as the connected seed user (recon shows no Google or Apple button: OAUTH_SIGN_IN)", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("link", { name: "Continue with Google" }).click();
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveCount(0);
+  await page.goto("/api/auth/oauth/google");
   await expect(page).toHaveURL("/");
   await expect(page.getByRole("button", { name: account("Google User") })).toBeVisible();
 });

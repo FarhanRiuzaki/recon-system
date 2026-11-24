@@ -1,5 +1,6 @@
 "use client";
 
+import { OAUTH_SIGN_IN } from "@starterkit/shared/brand";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -60,7 +61,7 @@ export function SecurityPage({ providers }: { providers: Record<ConnectionProvid
         <div className="grid items-start gap-section md:grid-cols-2">
           <PasswordCard user={u} />
           <TwoFactorCard user={u} />
-          <ConnectionsCard user={u} providers={providers} />
+          {(OAUTH_SIGN_IN || u.connected.length > 0) && <ConnectionsCard user={u} providers={providers} />}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { OAUTH_SIGN_IN } from "@starterkit/shared/brand";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
@@ -69,7 +70,8 @@ export function LoginForm({ next, providers, error: initialError = null }: { nex
           {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Sign in
         </Button>
       </form>
-      <div className="grid gap-2">
+      {/* sign-in with a provider only where the product offers it (OAUTH_SIGN_IN; recon doesn't) */}
+      {OAUTH_SIGN_IN && <div className="grid gap-2">
         <p className="flex items-center gap-3 text-caption text-fg-3 before:h-px before:flex-1 before:bg-line after:h-px after:flex-1 after:bg-line">or</p>
         {PROVIDERS.map((p) => (providers[p.id]
           ? <a key={p.id} href={`/api/auth/oauth/${p.id}${back}`} className={buttonVariants({ variant: "secondary", size: "lg", className: "h-10 w-full" })}>
@@ -78,7 +80,7 @@ export function LoginForm({ next, providers, error: initialError = null }: { nex
           : <BlockedButton key={p.id} variant="secondary" size="lg" className="h-10 w-full" wrapClassName="w-full" reason={`${p.label} sign-in isn't set up on this server. Sign in another way.`}>
               Continue with {p.label}
             </BlockedButton>))}
-      </div>
+      </div>}
       <p className="flex items-center gap-1.5 border-t border-line pt-4 text-caption text-fg-3">
         <Icon icon={SecureIcon} className="size-3.5 shrink-0" />Every sign-in is logged.
       </p>

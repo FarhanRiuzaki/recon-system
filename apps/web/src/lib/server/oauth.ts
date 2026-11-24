@@ -1,4 +1,5 @@
 import "server-only";
+import { OAUTH_SIGN_IN } from "@starterkit/shared/brand";
 import { headers } from "next/headers";
 import { ConnectionProvider } from "@starterkit/shared/contracts/me";
 import { backendJson } from "./backend";
@@ -39,6 +40,7 @@ export function landingPage(url: string): Response {
 
 /** Which providers can sign in (`GET /v1/auth/providers`); none when the API doesn't say. */
 export async function oauthProviders(): Promise<Record<ConnectionProvider, boolean>> {
+  if (!OAUTH_SIGN_IN) return { google: false, apple: false };
   const { data } = await backendJson<Record<ConnectionProvider, boolean>>("/v1/auth/providers", { req: { headers: await headers() } });
   return data ?? { google: false, apple: false };
 }
