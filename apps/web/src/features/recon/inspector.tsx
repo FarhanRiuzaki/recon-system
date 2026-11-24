@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { ActionMenu, BlockedButton, Field, InputAffix, NumberInput, Segmented } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -268,8 +268,12 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
 }
 
 /** A side (BUILDER-SPEC "Side cards"): its label, the amount's sign and the filters that pick its records. */
-export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRemoved }: {
+export function SideEditor({ spec, i, fields, sourceName, picker, glance, place, onChange, onRemoved }: {
   spec: ReconSpec; i: 0 | 1; fields: Fields; sourceName: string; place: Place | null; onChange: (s: SideSpec) => void; onRemoved: OnRemoved<[]>;
+  /** Before the recon exists: the source's picker in the Source field (its id and error); after, the source reads only. */
+  picker?: { id: string; error?: string; control: ReactElement };
+  /** Under the source: what it is at a glance. */
+  glance?: ReactNode;
 }) {
   const s = spec.sides[i];
   const own = fields[i];
@@ -282,9 +286,12 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
       <Field id={id("label")} label="Label" required>
         <Input id={id("label")} value={s.label} aria-required maxLength={64} onChange={(e) => onChange({ ...s, label: e.target.value })} autoComplete="off" />
       </Field>
-      <Field id={id("source")} label="Source">
-        <Input id={id("source")} value={sourceName} readOnly />
-      </Field>
+      <div className="grid gap-2">
+        <Field id={picker?.id ?? id("source")} label="Source" required error={picker?.error}>
+          {picker?.control ?? <Input id={id("source")} value={sourceName} readOnly />}
+        </Field>
+        {glance}
+      </div>
       <div className="grid gap-2">
         <span className="text-label text-fg">Amount sign<span aria-hidden="true" className="ml-0.5 text-destructive">*</span></span>
         <Segmented label="Amount sign" value={s.amount_sign} onChange={(amount_sign) => onChange({ ...s, amount_sign })}
@@ -309,7 +316,7 @@ export function SideEditor({ spec, i, fields, sourceName, place, onChange, onRem
               onBlur={(e) => setFilter(j, { ...f, values: splitValues(e.target.value) })} />}
           </PairRow>
         ))}
-        <span><BlockedButton type="button" variant="create" size="sm" reason={!refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
+        <span><BlockedButton type="button" variant="create" size="sm" reason={!s.source_id ? "Pick this side's source first." : !refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
           onClick={() => onChange({ ...s, filter: [...s.filter, { field: refs[0]!, op: "eq", value: "" }] })}><Icon icon={AddIcon} />Add filter</BlockedButton></span>
       </fieldset>
     </div>

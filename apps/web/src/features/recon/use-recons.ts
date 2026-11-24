@@ -57,7 +57,8 @@ export function useReconVersion(spaceId: string, id: string, versionId: string, 
 /** A side's source as this space sees it (its published version gives the fields a recon may name). */
 export function useSideSource(spaceId: string, sourceId: string) {
   const { key, url } = sourceDetail(spaceId, sourceId);
-  return useQuery({ queryKey: key, queryFn: () => api<SourceDto>(url), retry: retryUnlessNotFound });
+  // a new recon's side has no source until one is picked
+  return useQuery({ queryKey: key, queryFn: () => api<SourceDto>(url), retry: retryUnlessNotFound, enabled: sourceId !== "" });
 }
 
 /** The sources a side may read: this space's and those shared to it (first 100, name A–Z). */

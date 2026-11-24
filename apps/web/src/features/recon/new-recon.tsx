@@ -3,9 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, StatusChip, useForm, Wizard } from "@starterkit/ui/ds";
-import { formatNumber } from "@starterkit/ui/lib/format";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { BlockedButton, ErrorSummary, Field, FormFooter, Panel, RequiredNote, useForm, Wizard } from "@starterkit/ui/ds";
 import { rules, type Schema } from "@starterkit/ui/lib/validate";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -13,18 +12,15 @@ import { AddIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { toast } from "@starterkit/ui/ui/toast";
-import type { ReconDto } from "@starterkit/shared/contracts/recon";
+import type { ReconDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { SourceDto, SourceRowDto } from "@starterkit/shared/contracts/sources";
 import { RECON_CODE, RECON_NAME_MAX, recordFields } from "@starterkit/shared/recon";
 import { PageHeader } from "@/components/shell/page-header";
 import { ApiError, api, errorText } from "@/lib/client/api";
 import { RECON_KEY, sourceDetail } from "@/lib/shared/queries";
-import { sourceStatus } from "@/lib/shared/source-status";
-import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { addPass, defaultSpec, type Fields, placeOf, SETUP_STEPS } from "./spec-model";
-import { DirectionPicker } from "./direction-picker";
-import type { ReconDirection } from "@starterkit/shared/recon";
-import { NEW_RECON_REASON, reconApi, reconEditHref, reconsHref, useSourceOptions, useSpaceRoles } from "./use-recons";
+import { blankSpec, createdSpec, type Fields, type Place, placeOf, SETUP_STEPS, withSource } from "./spec-model";
+import { SidesStep } from "./sides-step";
+import { NEW_RECON_REASON, reconApi, reconEditHref, reconsHref, useSideSource, useSourceOptions, useSpaceRoles } from "./use-recons";
 
 type Values = { name: string; code: string; a: string; b: string };
 const SCHEMA: Schema<Values> = {
@@ -42,30 +38,16 @@ const newSourceHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId
 const NEW_SOURCE_REASON = "Only a source admin of this space adds sources.";
 
 /** A source as a side picker lists it; a source without an approved version can't be a side yet. */
-/** The chosen source at a glance: how its data arrives and what it reads, its health and its records today. */
-function SourceGlance({ s }: { s: SourceRowDto }) {
-  const st = sourceStatus(s);
-  return (
-    <div className="flex items-start gap-3 rounded-md border border-line bg-tray px-3 py-2.5">
-      <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-md bg-card text-fg-2"><Icon icon={sourceKindIcon(s.kind)} size={16} /></span>
-      <span className="grid min-w-0 flex-1 gap-0.5">
-        <span className="flex min-w-0 items-center justify-between gap-2">
-          <span className="truncate text-body-sm text-fg">{SOURCE_KIND_WORD[s.kind]}{s.reads ? ` · ${s.reads}` : ""}</span>
-          <StatusChip health={st.health} label={st.label} />
-        </span>
-        <span className="text-caption text-fg-3">{s.rowsToday === null ? "Not ingesting yet" : `${formatNumber(s.rowsToday)} records today`}{s.usedByCount ? ` · read by ${formatNumber(s.usedByCount)} ${s.usedByCount === 1 ? "recon" : "recons"}` : ""}</span>
-      </span>
-    </div>
-  );
-}
-
 const optionText = (s: SourceRowDto) =>
   `${s.name}${s.owner ? ` · shared from ${s.owner.name}` : ""}${s.publishedVersion === null ? " · no approved version yet" : ""}`;
+const BLANK = JSON.stringify(blankSpec());
 
 /**
- * /spaces/[spaceId]/recons/new (README row Plan 3): a name, a code and the two sides' sources; the API makes the recon
- * and its Draft v1 (with pass 1 ready to edit) together on Next, then its setup goes on at step 2 (Matching). A role other than config maker gets
- * the reason. With no published source in the space there is nothing to pick: one sentence and Create source instead.
+ * /spaces/[spaceId]/recons/new (README row Plan 3): a name and a code over the setup's step 1, the same SidesStep as an
+ * existing recon's (owner 24 Nov: both paths the same), with each side's source picked in its Source field. The API
+ * makes the recon and its Draft v1 (step 1 as set, pass 1 ready to edit) together on Next, then its setup goes on at
+ * step 2 (Matching). A role other than config maker gets the reason. With no published source in the space there is
+ * nothing to pick: one sentence and Create source instead.
  */
 export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: string }) {
   const router = useRouter();
@@ -74,37 +56,48 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
   const maker = roles.includes("config_maker");
   const sources = useSourceOptions(spaceId);
   const f = useForm<Values>({ initial: { name: "", code: "", a: "", b: "" }, schema: SCHEMA, idPrefix: "rc" });
+  const [spec, setSpec] = useState<ReconSpec>(blankSpec);
   const [codeTyped, setCodeTyped] = useState(false);
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiErr, setApiErr] = useState<Partial<Record<keyof Values, string>>>({});
-  const [direction, setDirection] = useState<ReconDirection>("two_way");
-  const items = sources.data?.items ?? [];
-  const dirty = Object.values(f.values).some(Boolean);
-  const shown = { ...f.shown, ...apiErr };
-  // Never lose what was typed (owner rule): until the recon exists, the browser keeps step 1 per space and puts it
-  // back on the next open; creating it drops the copy (the draft on the server holds it from then on)
+  const [codeErr, setCodeErr] = useState<string | undefined>();
+  const [problem, setProblem] = useState<Place | null>(null);
+  const items = useMemo(() => sources.data?.items ?? [], [sources.data]);
+  // the picked sources' fields, for the filters (as the builder reads them)
+  const sa = useSideSource(spaceId, f.values.a), sb = useSideSource(spaceId, f.values.b);
+  const specA = sa.data?.published?.spec ?? null, specB = sb.data?.published?.spec ?? null;
+  const fields: Fields = useMemo(() => [specA ? recordFields(specA) : null, specB ? recordFields(specB) : null], [specA, specB]);
+  const json = JSON.stringify(spec);
+  const dirty = Object.values(f.values).some(Boolean) || json !== BLANK;
+  const shown = { ...f.shown, code: f.shown.code ?? codeErr };
+  // Never lose what was typed (owner rule): until the recon exists, the browser keeps step 1 per space (name, code,
+  // the sources and the sides as set) and puts it back on the next open; creating it drops the copy (the draft on the
+  // server holds it from then on)
   const keptKey = `recon:recon-new:${spaceId}`;
   useEffect(() => {
     try {
-      const k = JSON.parse(localStorage.getItem(keptKey) ?? "null") as (Values & { codeTyped?: boolean; direction?: ReconDirection }) | null;
+      const k = JSON.parse(localStorage.getItem(keptKey) ?? "null") as (Values & { codeTyped?: boolean; spec?: ReconSpec; direction?: ReconSpec["direction"] }) | null;
       if (!k) return;
       (["name", "code", "a", "b"] as const).forEach((key) => { if (typeof k[key] === "string") f.set(key, k[key]); });
       // the browser's copy is only readable after mount: one restore, once
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (k.codeTyped) setCodeTyped(true);
-      if (k.direction === "a_to_b" || k.direction === "two_way") setDirection(k.direction);
+      if (Array.isArray(k.spec?.sides) && k.spec.sides.length === 2) setSpec(k.spec);
+      else if (k.direction === "a_to_b") setSpec((s) => ({ ...s, direction: "a_to_b" })); // a copy from before the sides were kept
     } catch { /* nothing kept */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     try {
-      if (dirty && !busy) localStorage.setItem(keptKey, JSON.stringify({ ...f.values, codeTyped, direction }));
+      if (dirty && !busy) localStorage.setItem(keptKey, JSON.stringify({ ...f.values, codeTyped, spec }));
       else if (!dirty) localStorage.removeItem(keptKey);
     } catch { /* not kept */ }
-  }, [f.values, codeTyped, direction, dirty, busy, keptKey]);
+    // the spec is compared by its JSON
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.values, codeTyped, json, dirty, busy, keptKey]);
 
+  const change = (next: ReconSpec) => { setSpec(next); setProblem(null); setError(null); };
   const create = (event: FormEvent<HTMLFormElement>) => f.submit(async (v) => {
     if (saving.current) return;
     const a = items.find((s) => s.id === v.a), b = items.find((s) => s.id === v.b);
@@ -112,17 +105,18 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
     saving.current = true;
     setBusy(true);
     setError(null);
-    setApiErr({});
+    setCodeErr(undefined);
+    setProblem(null);
     try {
-      // pass 1 starts with an "equals" for every core field both sources map (addPass): read their published fields first
+      // pass 1 starts with an "equals" for every core field both sources map (addPass): their published fields (cached)
       const [fa, fb] = await Promise.all([a, b].map(async (s) => {
         const { key, url } = sourceDetail(spaceId, s.id);
-        const spec = (await qc.fetchQuery({ queryKey: key, queryFn: () => api<SourceDto>(url) })).published?.spec;
-        return spec ? recordFields(spec) : null;
+        const published = (await qc.fetchQuery({ queryKey: key, queryFn: () => api<SourceDto>(url) })).published?.spec;
+        return published ? recordFields(published) : null;
       }));
-      const fields: Fields = [fa ?? null, fb ?? null];
-      const spec = { ...addPass(defaultSpec(a, b), fields), direction };
-      const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec }) });
+      // step 1 as set (its sources are a and b: picking one writes both), then pass 1
+      const body = createdSpec(spec, [fa ?? null, fb ?? null]);
+      const r = await api<ReconDto>(reconApi(spaceId), { method: "POST", body: JSON.stringify({ name: v.name.trim(), code: v.code.trim(), spec: body }) });
       try { localStorage.removeItem(keptKey); } catch { /* nothing kept */ }
       toast(`Created ${r.name} as Draft v1.`);
       await qc.invalidateQueries({ queryKey: RECON_KEY });
@@ -130,31 +124,36 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
     } catch (err) {
       const text = errorText(err);
       const place = placeOf(text);
-      const at: keyof Values | null = err instanceof ApiError && err.code === "duplicate" ? "code" : place.side === 0 ? "a" : place.side === 1 ? "b" : null;
-      if (at) {
-        setApiErr({ [at]: at === "code" ? text : place.text });
-        requestAnimationFrame(() => document.getElementById(f.id(at))?.focus());
+      if (err instanceof ApiError && err.code === "duplicate") {
+        setCodeErr(text);
+        requestAnimationFrame(() => document.getElementById(f.id("code"))?.focus());
+      } else if (place.side !== undefined) {
+        // on its side's panel, as the builder shows it
+        setProblem(place);
+        requestAnimationFrame(() => document.getElementById(`rs-${place.side}-label`)?.focus());
       } else setError(text);
       saving.current = false;
       setBusy(false);
     }
   })(event);
 
-  const pick = (k: "a" | "b") => {
-    const chosen = items.find((s) => s.id === f.values[k]);
-    return (
-      <div className="grid content-start gap-2">
-        <Field id={f.id(k)} label={k === "a" ? "Side A" : "Side B"} required error={f.error(k) ?? apiErr[k]}>
-          <Select id={f.id(k)} value={f.values[k]} className="w-full" onChange={(e) => { f.set(k, e.target.value); setApiErr((x) => ({ ...x, [k]: undefined })); }}>
-            <option value="">{sources.isPending ? "Loading sources…" : "Choose a source"}</option>
-            {items.map((s) => <option key={s.id} value={s.id} disabled={s.publishedVersion === null}>{optionText(s)}</option>)}
-          </Select>
-        </Field>
-        {/* what the chosen source is, in place (owner, 22 Nov: recognition over recall): kind, what it reads, health, today */}
-        {chosen && <SourceGlance s={chosen} />}
-      </div>
-    );
+  const picker = (i: 0 | 1) => {
+    const k = i === 0 ? "a" : "b";
+    return {
+      id: f.id(k), error: f.error(k),
+      control: (
+        <Select id={f.id(k)} value={f.values[k]} className="w-full" onChange={(e) => {
+          const was = items.find((s) => s.id === f.values[k]) ?? null;
+          f.set(k, e.target.value);
+          change(withSource(spec, i, items.find((s) => s.id === e.target.value) ?? null, was));
+        }}>
+          <option value="">{sources.isPending ? "Loading sources…" : "Choose a source"}</option>
+          {items.map((s) => <option key={s.id} value={s.id} disabled={s.publishedVersion === null}>{optionText(s)}</option>)}
+        </Select>
+      ),
+    };
   };
+  const editable = maker && !busy;
 
   return (
     <div className="grid gap-section">
@@ -171,34 +170,35 @@ export function NewRecon({ spaceId, spaceName }: { spaceId: string; spaceName: s
       ) : (
       // the setup's first step (owner, 22 Nov: one flow): the same rail as the steps after it
       <Wizard title="Setup progress" steps={([1, 2, 3, 4, 5, 6] as const).map((n) => ({ id: String(n), label: SETUP_STEPS[n], status: n === 1 ? "current" : "todo" }))}>
-      <Panel bodyClassName="md:p-6">
-        <form noValidate onSubmit={create} aria-label="New recon" className="grid gap-4">
-          {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}
-          <fieldset disabled={busy || !maker} className="contents">
-            <RequiredNote />
-            {/* two equal columns, as the sides under them (symmetric: labels and controls share a row) */}
-            <div className="grid items-start gap-4 md:grid-cols-2">
-            <Field id={f.id("name")} label="Name" required error={f.error("name")}>
-              <Input {...f.text("name")} autoComplete="off" onChange={(e) => { f.set("name", e.target.value); if (!codeTyped) f.set("code", codeOf(e.target.value)); }} />
-            </Field>
-            <Field id={f.id("code")} label="Code" required note="Can't be changed later." error={f.error("code") ?? apiErr.code}>
-              <Input {...f.text("code")} className="font-mono" autoComplete="off" spellCheck={false}
-                onChange={(e) => { setCodeTyped(true); f.set("code", e.target.value); setApiErr((x) => ({ ...x, code: undefined })); }} />
-            </Field>
-            </div>
-            <div className="grid items-start gap-4 md:grid-cols-2">{pick("a")}{pick("b")}</div>
-            {/* the same control as the setup's step 1 of an existing recon (owner 24 Nov: both paths the same) */}
-            <DirectionPicker value={direction} onChange={setDirection} />
-            {sources.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load this space&apos;s sources. {errorText(sources.error)}</p>}
-            {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
-          </fieldset>
-          <FormFooter className="md:-mx-6 md:-mb-6 md:px-6"
+        <form noValidate onSubmit={create} aria-label="New recon" className="grid gap-section">
+          <Panel bodyClassName="md:p-6">
+            <fieldset disabled={!editable} className="grid gap-4">
+              {f.submitted && <ErrorSummary errors={shown} idPrefix="rc" labels={LABELS} />}
+              <RequiredNote />
+              {/* two equal columns, as the sides under them (symmetric: labels and controls share a row) */}
+              <div className="grid items-start gap-4 md:grid-cols-2">
+                <Field id={f.id("name")} label="Name" required error={f.error("name")}>
+                  <Input {...f.text("name")} autoComplete="off" onChange={(e) => { f.set("name", e.target.value); if (!codeTyped) f.set("code", codeOf(e.target.value)); }} />
+                </Field>
+                <Field id={f.id("code")} label="Code" required note="Can't be changed later." error={f.error("code") ?? codeErr}>
+                  <Input {...f.text("code")} className="font-mono" autoComplete="off" spellCheck={false}
+                    onChange={(e) => { setCodeTyped(true); f.set("code", e.target.value); setCodeErr(undefined); }} />
+                </Field>
+              </div>
+            </fieldset>
+          </Panel>
+          {/* the same step 1 as an existing recon's setup (sides-step.tsx) */}
+          <SidesStep spec={spec} fields={fields} sources={[items.find((s) => s.id === f.values.a), items.find((s) => s.id === f.values.b)]}
+            editable={editable} place={problem} picker={picker} onChange={change}
+            onRemoved={(message, restore) => toast.undo(message, () => setSpec((cur) => restore(cur) ?? cur))} />
+          {sources.error && <p role="alert" className="text-body-sm text-down-ink">Couldn&apos;t load this space&apos;s sources. {errorText(sources.error)}</p>}
+          {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}
+          <FormFooter
             primary={<BlockedButton type="submit" reason={maker ? null : NEW_RECON_REASON} disabled={busy} aria-busy={busy || undefined}>
               {busy && <Icon icon={SpinnerIcon} className="motion-safe:animate-spin" />}Next: {SETUP_STEPS[2]}
             </BlockedButton>}
             cancel={<Button asChild variant="ghost"><Link href={reconsHref(spaceId)}>Cancel</Link></Button>} />
         </form>
-      </Panel>
       </Wizard>
       )}
     </div>

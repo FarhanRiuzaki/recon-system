@@ -26,10 +26,10 @@ import { APPROVALS_KEY, ENGINE_KEY, RECON_KEY } from "@/lib/shared/queries";
 import { reconDetail } from "@/lib/shared/queries-recon";
 import { PassEditor, SettingsEditor, SideEditor } from "./inspector";
 import {
-  addCurrencyCondition, addTemplatePass, carryText, directionOf, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
+  addCurrencyCondition, addTemplatePass, carryText, PASS_TEMPLATES, SETUP_STEPS, type SetupStep, stepReasons, passNeeds, type PassTemplate, templateReason, incompleteField, carryOverFix, carryOverGates, currencyGaps, currencyGapText, daysText, type Fields, graceText, moved, movePass,
   insertAt, type Place, placeOf, removePass, restorePass, submitReason,
 } from "./spec-model";
-import { DirectionPicker } from "./direction-picker";
+import { SidesStep } from "./sides-step";
 import { DASH, PassRow, type PassRowProps } from "./pass-row";
 import { ReplayRange } from "./replay-range";
 import { CanvasLoader } from "./canvas-loader";
@@ -472,22 +472,9 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         )}
 
         {step === 1 && (
-          // both sides side by side, in equal columns (symmetric); each its source, label, sign and filters
-          <div className="grid items-start gap-section md:grid-cols-2">
-            {([0, 1] as const).map((i) => (
-              <Panel key={i} title={`Side ${i === 0 ? "A" : "B"}`}>
-                <fieldset disabled={!editable} className="contents">
-                  <SideEditor spec={spec} i={i} fields={fields} sourceName={sourceOf(i)?.name ?? "Loading…"} place={placed?.side === i ? placed : null}
-                    onChange={(x) => change({ ...spec, sides: i === 0 ? [x, spec.sides[1]] : [spec.sides[0], x] })}
-                    onRemoved={(message, restore) => offerUndo(message, null, (cur) => restore(cur))} />
-                </fieldset>
-              </Panel>
-            ))}
-            {/* which sides must find their counterpart (DEC-055): versioned like every setting */}
-            <Panel className="md:col-span-2">
-              <DirectionPicker disabled={!editable} value={directionOf(spec)} onChange={(direction) => change({ ...spec, direction })} />
-            </Panel>
-          </div>
+          // the same step as a new recon's first (sides-step.tsx)
+          <SidesStep spec={spec} fields={fields} sources={[sa.data, sb.data]} editable={editable} place={placed} onChange={change}
+            onRemoved={(message, restore) => offerUndo(message, null, (cur) => restore(cur))} />
         )}
 
         {step === 2 && (
