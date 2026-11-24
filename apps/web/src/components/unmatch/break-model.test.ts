@@ -229,3 +229,10 @@ describe("workView: the Unmatch item page and Operation result's Explain offer t
     expect(workView(detail({ state: "pending_approval" }), lead).settle).toEqual([]);
   });
 });
+
+describe("settle buttons take the colour of what they do (owner 24 Nov)", () => {
+  it("posting sends (blue), match settles (green), force match bends the rule and write-off loses money (red), close is neutral", async () => {
+    const { SETTLE_VARIANT } = await import("./break-model");
+    expect(SETTLE_VARIANT).toEqual({ posting: "edit", match: "create", force: "caution", writeOff: "remove", close: "secondary" });
+  });
+});

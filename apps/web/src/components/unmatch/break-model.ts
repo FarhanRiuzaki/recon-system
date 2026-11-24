@@ -174,6 +174,11 @@ export const findToggled = <T>(picked: ReadonlyMap<string, T>, open: boolean): R
 export const picksAfter = <T>(picked: ReadonlyMap<string, T>, before: string | null, now: string | null): ReadonlyMap<string, T> => (before === now ? picked : new Map());
 
 export type SettleKey = "posting" | "match" | "force" | "writeOff" | "close";
+/**
+ * Each way to settle in the colour of what it does (owner 24 Nov): posting sends (blue), a match settles (green), a force
+ * match bends the rule (red outline, as a caution), a write-off loses the amount (red), closing is neutral.
+ */
+export const SETTLE_VARIANT = { posting: "edit", match: "create", force: "caution", writeOff: "remove", close: "secondary" } as const satisfies Record<SettleKey, string>;
 export type Settle = { key: SettleKey; title: string; consequence: string; meta?: string; warning?: string; label: string; blocked: string | null; primary: boolean };
 export type Target = { kind: "proposed" } | { kind: "picked"; count: number } | { kind: "none" };
 

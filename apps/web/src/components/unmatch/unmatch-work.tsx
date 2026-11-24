@@ -24,7 +24,7 @@ import { useTableQuery } from "@/lib/client/use-table-query";
 import { categoryChip } from "@/lib/shared/categories";
 import { APPROVALS_KEY, DASHBOARD_KEY, ENGINE_KEY } from "@/lib/shared/queries";
 import { breakCandidates, breakDetail } from "@/lib/shared/queries-recon";
-import { amountDelta, approverText, candidateState, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, picksAfter, type Settle, takeText, type WorkView } from "./break-model";
+import { amountDelta, approverText, candidateState, dateText, DIRECTION_LABEL, findToggled, money, oppositeWays, picksAfter, type Settle, takeText, type WorkView, SETTLE_VARIANT } from "./break-model";
 
 type Dialogue = { title: string; description: string; action: string; optional?: boolean; placeholder: string; onSubmit: (note: string) => Promise<void> };
 const NoteDialog = dynamic(() => import("./note-dialog"), { ssr: false });
@@ -140,7 +140,7 @@ export function WorkDialog({ u }: { u: UnmatchWork }) {
 
 /** Request undo match: rare, a quiet button under the comparison; only for whoever may ask (WorkView `undo`). */
 export function UndoMatchButton({ u, v }: { u: UnmatchWork; v: WorkView }) {
-  return v.undo ? <Button type="button" variant="ghost" size="sm" disabled={!!u.busy} onClick={() => u.ask("unmatch")}>Request undo match</Button> : null;
+  return v.undo ? <Button type="button" variant="caution" size="sm" disabled={!!u.busy} onClick={() => u.ask("unmatch")}>Request undo match</Button> : null;
 }
 
 /** The request that waits for a decision: its chain, and Approve, Reject, Override, Cancel request for whoever may. */
@@ -211,7 +211,7 @@ export function SettleZone({ u, v, b, other }: { u: UnmatchWork; v: WorkView; b:
             action={s.key === "close" && closing
               ? <CloseForm busy={busy} onCancel={() => { u.setClosing(false); u.focusNext(CLOSE_BUTTON); }} onClose={(resolution, note) => u.act("close", "/close", { resolution, note }, "Item closed.")} />
               : (
-                <BlockedButton type="button" variant={s.primary ? "default" : "secondary"} reason={s.blocked} disabled={!!busy} data-next={s.primary || undefined} data-settle={s.key}
+                <BlockedButton type="button" variant={SETTLE_VARIANT[s.key]} reason={s.blocked} disabled={!!busy} data-next={s.primary || undefined} data-settle={s.key}
                   aria-busy={(s.key === "match" && busy === "match") || undefined} onClick={run[s.key]}>
                   {s.key === "match" && busy === "match" ? spin : SETTLE_ICON[s.key] && <Icon icon={SETTLE_ICON[s.key]!} />}{s.label}
                 </BlockedButton>
