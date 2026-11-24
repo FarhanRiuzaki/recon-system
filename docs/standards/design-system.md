@@ -1365,6 +1365,27 @@ This folder is a second visual language beside §3-§7, not part of it:
   fictional ones (as the demo files do where the item allows it) before showing them to users.
 - Text Reveal is the one item ported onto the tokens instead (R10 in §7.8).
 
+### 7.11 Sign-in backdrop (2026-11-24)
+
+The sign-in pages (`app/(auth)/layout.tsx`) stand on a full-bleed Three.js scene, "Two ledgers, matched"
+(`features/auth/ledger-field.ts`, its plan in `ledger-plan.ts`): a halftone dot floor; record dots enter from the left
+and the right, meet at the middle with a short arc and glow (`--healthy-mark`), and settle into a lattice that grows
+outward; a few wait at the edge with a slow pulse (`--degraded-mark`) until a pass, a soft wave in `--brand-sun`,
+pairs most of them. Floor and records are `--brand-ink`. Decoration only: `aria-hidden`, no data, no text.
+
+- **First paint is static.** The server HTML shows `.auth-landscape`; `auth-backdrop.tsx` loads the scene with
+  `import()` after idle and crossfades it in (`--dur-tween` out, `--dur-flash` in). No WebGL: the landscape stays.
+  `three` is imported by `ledger-field.ts` only, and that file only through `import()` (`architecture.test.ts`
+  "three stays out of first loads"), so the scene is never in a route's first load.
+- **Timing.** The load build-up is `DUR.flash + DUR.tween + DUR.tween`; the loop's own clock (`LEDGER` and the
+  shader constants) is the scene's timing, not UI motion: named constants in the scene's own files, never a
+  `duration:` key or a `200ms` string, so the motion-literal rule holds.
+- **Reduced motion** draws one still frame (lattice nearly grown, a few records waiting). A hidden tab stops the loop;
+  the clock resumes where it stopped. Pixel ratio is capped (1.5 under 768 px, else 2); `dispose()` frees every
+  geometry, material and the context on unmount. A theme switch recolours in place from the tokens.
+- **Readable text.** The headline and the footer note sit on `.auth-scrim` (the page's `--sheet` at 94 % behind
+  them); the form sits on its own card.
+
 
 ---
 

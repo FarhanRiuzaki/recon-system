@@ -16,3 +16,7 @@ body:has(> [data-frozen-holder]) [data-page-swap]:has(> [inert]) { visibility: h
 /* Decorative auth artwork is loaded only for the active theme, using the existing full-bleed composition. */
 .auth-landscape { background: url("/illustrations/auth-landscape.svg") bottom / cover no-repeat; opacity: .85; }
 .dark .auth-landscape { background-image: url("/illustrations/auth-landscape-dark.svg"); opacity: .64; }
+/* The sign-in field covers the whole page: the headline sits on a soft scrim in the page's own surface colour, so it
+   stays readable over any frame of it, in either theme. */
+.auth-scrim { position: relative; isolation: isolate; }
+.auth-scrim::before { content: ""; position: absolute; inset: -2.5rem -3rem; z-index: -1; pointer-events: none; background: radial-gradient(closest-side, color-mix(in oklab, var(--sheet) 94%, transparent) 60%, transparent); }
