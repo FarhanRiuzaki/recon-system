@@ -5,13 +5,15 @@
   </picture>
 </p>
 
-<h1 align="center">Starterkit</h1>
+<h1 align="center">Recon Enterprise System</h1>
 
 <p align="center">
-  A template for internal web apps and admin products: sign-in, users, roles, audit logs, a responsive UI and an API on Bun and PostgreSQL.
+  Bank reconciliation end to end: sources in, matching by passes, unmatch work with maker-checker approval, posting to
+  the bank's Open API, and the results and performance for operations and management.
 </p>
 
 <p align="center">
+  <a href="docs/deploy.md">Deploy</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#architecture">Architecture</a> ·
   <a href="#commands">Commands</a> ·
@@ -19,25 +21,60 @@
   <a href="AGENTS.md">Rules</a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/dashboard-dark.png">
-  <img src="docs/assets/screenshots/dashboard.png" alt="The dashboard: active users, new users, failed sign-ins and active sessions, sign-ins per day, recent activity">
-</picture>
+Recon Enterprise System reconciles two sides of a bank's transactions (for example a BI-FAST switch settlement file
+against core banking's outgoing transfers) every business day, per space (a team), and follows every difference until it
+is closed. It is built on the SunnyGo starterkit (sign-in, users, roles, audit, design system, Bun + PostgreSQL API);
+those platform parts are listed under **Platform** below.
 
-The SunnyGo starterkit ships sign-in (password, two-factor, Google/Apple, LDAP), users, roles and permissions, an
-activity log and a sign-in log, a sample projects CRUD module, a responsive design system (phone, tablet, desktop) in the SunnyGo brand, and an API
-on Bun and PostgreSQL. A new project copies this repository and changes it; nothing here is published as a library.
+## Recon
+
+**Sources**
+
+- Read from a database (new rows by watermark: a date, timestamp or integer column, one to four id columns, look back),
+  a whole position per business date (snapshot query), or files dropped in a folder (CSV, completion by quiet time or
+  marker file). PostgreSQL, MySQL, SQL Server and Oracle connectors.
+- Field mapping and types, business-day calendars, quarantine, version history with maker-checker, source health
+  (grace, deadline) and when each business date was delivered (on time, late, missing).
+
+**Matching**
+
+- A recon pairs side A with side B through ordered passes (exact keys, tolerances, 1:1, 1:N, groups, suggestions),
+  two-way or one-way (side A must settle in side B; side B's leftovers are "Not required"), with grace, carry over and
+  day close; simulation of a draft before it is approved; sign-off per business date.
+
+**Unmatch and approvals**
+
+- The Unmatch queue: assign, take, investigate, match by hand, force match, write off, close, request posting; every
+  change that needs it goes through a workflow (levels, rules picking the workflow, Superadmin override), never approved
+  by whoever asked.
+
+**Open API posting**
+
+- Connectors registered without code (token, AES/RSA request encryption, signature), operations with request/response
+  field schemas and a test call; posting actions per approval event, one per item or grouped (by merchant id, cut-off or
+  day close); a call log of every outbound call with the full request and response behind a debug permission.
+
+**Seeing the work**
+
+- Today (the current business dates), Operation result (every result of a recon for a date range, with columns each
+  recon chooses and a side-by-side explain), the Dashboard (auto-match rate, unmatch by age and reason, how items closed,
+  posting success, approvals, sources on time, per space and per recon), live counts in the navigation.
+
+Decisions are in [docs/decisions.md](docs/decisions.md) (DEC-0xx); designs and plans in
+[docs/superpowers/](docs/superpowers/).
 
 ## Project context and team
 
 Start with [product context](docs/product.md), [backlog](docs/backlog.md), [design](docs/design.md), [architecture](docs/architecture.md), [decisions](docs/decisions.md), [QA](docs/qa.md) and [team rules / handoff](docs/team.md). Detailed implementation rules remain in AGENTS.md and docs/standards.
 
-## What's inside
+## Platform
+
+From the SunnyGo starterkit, kept and extended.
 
 **Sign-in and security**
 
-- Password, two-factor (TOTP, with single-use recovery codes), Google and Apple (only an identity the user connected
-  first), and LDAP.
+- Password, two-factor (TOTP, with single-use recovery codes) and LDAP. Google and Apple sign-in exist in the code but
+  recon turns them off (`OAUTH_SIGN_IN` in `packages/shared/src/brand.ts`).
 - "Forgot password?" and invitation links by email; production sends over SMTP with TLS only.
 - Sessions end 12 hours after sign-in or after 120 idle minutes (both configurable); users see and end their own on
   `/me/sessions`.
@@ -70,8 +107,9 @@ Start with [product context](docs/product.md), [backlog](docs/backlog.md), [desi
 
 **Backend**
 
-- A modular monolith on Bun and Elysia: modules health, auth, oauth, me, rbac, users, audit, dashboard and projects, each
-  controller → service → Drizzle. Architecture tests check the module boundaries.
+- A modular monolith on Bun and Elysia: modules health, auth, oauth, me, rbac, users, audit, dashboard, projects, spaces,
+  sources, ingest, recon, engine, approvals and integrations, each controller → service → Drizzle; a worker process for
+  runs, pulls and postings (pg-boss on PostgreSQL). Architecture tests check the module boundaries.
 - All shared state (sessions, rate limits, OAuth states) lives in PostgreSQL; no Redis.
 - zod contracts shared with the web (`packages/shared`). The endpoint table and JSON Schemas in
   [`docs/api/`](docs/api/README.md) are checked against the routes by a conformance test.
@@ -86,49 +124,8 @@ Start with [product context](docs/product.md), [backlog](docs/backlog.md), [desi
 
 ## Screens
 
-Taken from the E2E stack with the demo seed (`@example.com` accounts only).
-
-<table>
-  <tr>
-    <td width="50%"><img src="docs/assets/screenshots/signin.png" alt="Sign-in page with password and LDAP tabs, Google and Apple buttons"></td>
-    <td width="50%"><img src="docs/assets/screenshots/users.png" alt="Users table with roles, status, sign-in method and last sign-in"></td>
-  </tr>
-  <tr>
-    <td>Sign-in: password or LDAP, Google, Apple</td>
-    <td>Users: search, role and status filters, bulk actions</td>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/screenshots/user-detail.png" alt="User detail with account facts, roles, effective permissions and active sessions"></td>
-    <td><img src="docs/assets/screenshots/role-matrix.png" alt="Admin role with its permission matrix"></td>
-  </tr>
-  <tr>
-    <td>User detail: roles, effective permissions, sessions</td>
-    <td>Role: the module × action permission matrix</td>
-  </tr>
-  <tr>
-    <td><img src="docs/assets/screenshots/activity-log.png" alt="Activity log with time, user, action and target"></td>
-    <td><img src="docs/assets/screenshots/design-system.png" alt="Design system, data display: KPI cards and charts with sample data"></td>
-  </tr>
-  <tr>
-    <td>Activity log: filters, date range, CSV export</td>
-    <td>Design system, data display at <code>/ds/data</code>, with sample data</td>
-  </tr>
-</table>
-
-Phone, 390 px wide:
-
-<table>
-  <tr>
-    <td width="33%"><img src="docs/assets/screenshots/phone-users.png" alt="Users on a phone as stacked cards"></td>
-    <td width="33%"><img src="docs/assets/screenshots/phone-drawer.png" alt="Navigation drawer open on a phone"></td>
-    <td width="33%"><img src="docs/assets/screenshots/phone-filters.png" alt="Filters sheet open on a phone"></td>
-  </tr>
-  <tr>
-    <td>Tables become cards</td>
-    <td>Navigation drawer</td>
-    <td>Filters sheet</td>
-  </tr>
-</table>
+The starterkit's screenshots were removed: they showed the old admin dashboard and Google/Apple sign-in, which recon
+doesn't offer. Recon screenshots are owed.
 
 ## Stack
 
@@ -372,6 +369,8 @@ Random values: `openssl rand -hex 32` (hex needs no URL-encoding inside the data
 would read as a variable); `DATA_ENCRYPTION_KEY` is `openssl rand -base64 32`.
 
 ## Deploy with compose
+
+For a server (trial switches, demo recon data, upgrade, backup, proxy), follow [docs/deploy.md](docs/deploy.md).
 
 `docker-compose.yml` runs the stack as it runs in production: PostgreSQL 18, a one-shot `migrate` service, the API
 (reachable only inside the compose network, no published port) and the web on http://localhost:3001.

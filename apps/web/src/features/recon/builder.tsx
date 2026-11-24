@@ -611,7 +611,7 @@ export function Builder({ spaceId, recon, version, editable, canEdit, step, reac
         {step === 6 && (
           <>
             {/* the whole draft as the Configuration will show it, each part with Edit back to its step */}
-            <SpecView spaceId={spaceId} spec={spec} onEdit={editable ? (n) => go(n) : undefined} />
+            <SpecView spaceId={spaceId} spec={spec} live={recon.published && recon.published.id !== version.id ? recon.published.spec : undefined} onEdit={editable ? (n) => go(n) : undefined} />
             <Panel title="Test" actions={editable ? <Button type="button" variant="edit" size="sm" onClick={() => go(5)}><Icon icon={EditIcon} />Edit</Button> : undefined}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <SimChip chip={sim.chip} />
