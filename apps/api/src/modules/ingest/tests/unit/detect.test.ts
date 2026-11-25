@@ -1,7 +1,7 @@
 // Detection (detect.ts): how a sample is read, one fixture per shape of file.
 import { describe, expect, it } from "bun:test";
 import * as XLSX from "xlsx";
-import { detect, sniffKind } from "../../detect";
+import { detect, sampleOfFile, sniffKind } from "../../detect";
 import { KSEI_FILE } from "./fixtures";
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -80,5 +80,43 @@ describe("detect: Excel and the rest", () => {
 
   it("a PDF is not supported, by name", () => {
     expect(detect(sample(enc("%PDF-1.7 ..."), "laporan.pdf"))).toEqual({ supported: false, fileName: "laporan.pdf", type: "PDF", reason: "PDF files aren't supported yet. Ask the sender for CSV, TXT or Excel." });
+  });
+});
+
+describe("review 25 Nov", () => {
+  it("a debit/credit first column is data, not record types", () => {
+    const text = Array.from({ length: 12 }, (_, i) => `${i % 3 ? "D" : "C"},2026112${i % 9},${1000 + i},ACC${i}`).join("\n") + "\n";
+    const r = ok(detect(sample(text)));
+    expect(r.format).toMatchObject({ kind: "delimited", delimiter: "," });
+    expect((r.format as { records?: unknown }).records).toBeUndefined();
+  });
+  it("a compressed workbook over 1 MB is detected from a file, not cut as text", async () => {
+    const { utils, write } = await import("xlsx");
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const rows = [["ref", "name", "amount"], ...Array.from({ length: 30000 }, (_, i) => [`R${i}`, Math.random().toString(36).repeat(3), i])];
+    const wb = utils.book_new(); utils.book_append_sheet(wb, utils.aoa_to_sheet(rows), "ACT");
+    const bytes = new Uint8Array(write(wb, { type: "array", bookType: "xlsx", compression: true }) as ArrayBuffer);
+    expect(bytes.length).toBeGreaterThan(1024 * 1024);
+    const d = mkdtempSync(path.join(tmpdir(), "det-"));
+    try {
+      writeFileSync(path.join(d, "big.xlsx"), bytes);
+      const r = ok(detect(await sampleOfFile(path.join(d, "big.xlsx"), "big.xlsx", 50)));
+      expect(r.format).toMatchObject({ kind: "excel", header: true });
+    } finally { rmSync(d, { recursive: true, force: true }); }
+  });
+  it("a workbook over the limit, or one that can't be opened, is an outcome, not an error", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = await import("node:path");
+    const d = mkdtempSync(path.join(tmpdir(), "det-"));
+    try {
+      const fake = new Uint8Array([0x50, 0x4b, 0x03, 0x04, ...new TextEncoder().encode("xxxxxxxxxxxxxxxxxxxxxxxxxx xl/workbook.xml broken")]);
+      writeFileSync(path.join(d, "bad.xlsx"), fake);
+      expect(detect(await sampleOfFile(path.join(d, "bad.xlsx"), "bad.xlsx", 50))).toMatchObject({ supported: false, type: "Excel" });
+      writeFileSync(path.join(d, "huge.xlsx"), new Uint8Array([...fake, ...new Uint8Array(2 * 1024 * 1024)]));
+      expect(detect(await sampleOfFile(path.join(d, "huge.xlsx"), "huge.xlsx", 1))).toMatchObject({ supported: false, reason: "The workbook is over 1 MB. Ask the sender for a smaller file or CSV." });
+    } finally { rmSync(d, { recursive: true, force: true }); }
   });
 });

@@ -147,6 +147,17 @@ describe("only supported files upload (owner 25 Nov)", () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
+  it("a renamed file is caught: a workbook named .csv, text named .xlsx; nothing is kept", async () => {
+    const { utils, write } = await import("xlsx");
+    const wb = utils.book_new(); utils.book_append_sheet(wb, utils.aoa_to_sheet([["a", 1]]), "S");
+    const bytes = Buffer.from(write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer);
+    const asCsv = await request(app, files(), { method: "POST", headers: { "X-Internal-Token": process.env.INTERNAL_API_TOKEN!, Authorization: `Bearer ${t.op}`, "x-file-name": "act.csv", "content-length": String(bytes.length) }, body: bytes });
+    expect([asCsv.status, (await errOf(asCsv)).message]).toEqual([400, "This file is an Excel workbook but is named .csv. Rename it .xlsx and upload it again."]);
+    const asXlsx = await upload(t.op, "act.xlsx", "a|b\n");
+    expect([asXlsx.status, (await errOf(asXlsx)).message]).toEqual([400, "This file is text, not an Excel workbook, but is named .xlsx. Rename it .csv or .txt and upload it again."]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
   it("text in any case, a real workbook and an empty .done marker upload; a .done with content doesn't", async () => {
     const { utils, write } = await import("xlsx");
     const wb = utils.book_new(); utils.book_append_sheet(wb, utils.aoa_to_sheet([["a", 1]]), "S");

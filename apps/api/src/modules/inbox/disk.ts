@@ -9,6 +9,8 @@ import { ApiError } from "../../kernel/errors";
 
 import { ensureInboxDir, INBOX_DIR_MODE as DIR_MODE } from "../../kernel/inbox-root";
 const FILE_MODE = 0o664;
+/** How much of an upload the content check sees before anything is written. */
+const SNIFF_BYTES = 64 * 1024;
 
 export type DiskFile = { name: string; size: number; modifiedAt: number };
 export type DiskFolder = { name: string; files: DiskFile[] };
@@ -94,12 +96,12 @@ export async function writeUpload(dir: string, name: string, body: ReadableStrea
   const fh = await open(temp, "wx", FILE_MODE);
   try {
     try {
-      // the first bytes (up to 4 KB) go to `check` before any is written: a type it refuses leaves nothing behind
+      // the first bytes (up to 64 KB: a workbook's part names can sit past 4 KB) go to `check` before any is written
       let head: Uint8Array | null = check ? new Uint8Array(0) : null;
       for await (const chunk of body) {
         if (head) {
           head = Buffer.concat([head, chunk]);
-          if (head.length < 4096) continue;
+          if (head.length < SNIFF_BYTES) continue;
           check!(head);
           size += head.byteLength;
           if (size > maxBytes) throw new ApiError("too_large", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);

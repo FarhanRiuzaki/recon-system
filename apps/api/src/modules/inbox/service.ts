@@ -21,7 +21,7 @@ import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
 import { type DiskFile, dropHidden, ensureRoot, hideFile, listFiles, listFolders, makeFolder, removeFolder, sweepLeftovers, sweepOld, unhideFile, writeUpload } from "./disk";
 import { inboxUploads } from "./schema";
-import { spaceRoot, worstState } from "./rules";
+import { nameMismatch, spaceRoot, worstState } from "./rules";
 
 const NOT_SET_UP = () => new ApiError("invalid_state", "File inbox isn't set up on this server.");
 
@@ -196,6 +196,8 @@ export async function uploadFile(ctx: Ctx, folder: string, rawName: string | nul
   const check = kind === "data" ? (head: Uint8Array) => {
     const k = sniffKind(head);
     if (typeof k === "object") throw new ApiError("bad_request", `${k.unsupported} files can't be uploaded. Upload CSV, TXT or Excel.`);
+    const wrong = nameMismatch(name, k);
+    if (wrong) throw new ApiError("bad_request", wrong);
   } : undefined;
   const got = await writeUpload(dir, name, body ?? new Blob([]).stream(), max, Number(length), check);
   try {

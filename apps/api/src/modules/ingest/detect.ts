@@ -6,11 +6,13 @@
 // most rows, read like text rows. PDF, ZIP, images, XML, JSON and binary files are named and refused. Stores nothing.
 import type { DetectDto, FileFormat, RecordTypes } from "@starterkit/shared/contracts/sources";
 import { parse as parseCsv } from "csv-parse/sync";
-import { read as readXlsx, utils } from "xlsx";
 import { bomOf } from "./decode";
-import { cellText } from "./excel";
+import { readBook, sheetRowsOf } from "./excel";
 
-export type Sample = { head: Uint8Array; tail: Uint8Array | null; size: number; name: string };
+/** Rows of each sheet detection reads (a sheet's declared range can be far larger than its data). */
+const DETECT_ROWS = 2000;
+
+export type Sample = { head: Uint8Array; tail: Uint8Array | null; size: number; name: string; /** a workbook past this many MB: not read */ tooBigMb?: number };
 export type DetectOutcome = Extract<DetectDto, { supported: true }> extends infer T ? Omit<Extract<T, { supported: true }>, "sampleId"> | Extract<DetectDto, { supported: false }> : never;
 type Row = { line: number; cells: string[] };
 type Role = DetectDto extends infer D ? D extends { rows: (infer R)[] } ? R extends { role: infer X } ? X : never : never : never;
@@ -103,6 +105,13 @@ function recordTypes(rows: Row[], code: (r: Row) => string, count: (r: Row) => n
   const last = lastCode;
   const before = rows.findIndex((r, i) => i > 0 && code(r) === detail && code(rows[i - 1]!) !== detail);
   const header = before > 0 ? code(rows[before - 1]!) : null;
+  // every type with one cell count (a debit/credit first column looks like codes): record types only with their
+  // structure in place: a trailer on the last line alone, and each header line followed by a detail line
+  if (new Set(order.map(([, cs]) => cs[0])).size === 1) {
+    const trailer = (by.get(last)?.length ?? 0) === 1 && last !== detail;
+    const ordered = !!header && rows.every((r, i) => code(r) !== header || (rows[i + 1] && code(rows[i + 1]!) === detail));
+    if (!trailer || !ordered) return null;
+  }
   const roles = new Map<string, Role>();
   const types = order.map(([c, cs]): RecordTypes["types"][number] => {
     const role = c === detail ? "detail" : c === header && c !== last ? "header" : "skip";
@@ -117,7 +126,8 @@ type Grid = { rt: { types: RecordTypes["types"]; roles: Map<string, Role> } | nu
 function shapeGrid(rows: Row[], tail: Row[]): Grid {
   const counts = rows.map((r) => r.cells.length);
   const rt = recordTypes(rows, (r) => (r.cells[0] ?? "").trim(), (r) => r.cells.length);
-  if (rt) return { rt, top: 0, bottom: 0, header: false, close: false, body: 0, share: 1 };
+  // one cell count for every type is a weaker call: the settings open for a look
+  if (rt) return { rt, top: 0, bottom: 0, header: false, close: new Set(rt.types.map((x) => x.count)).size === 1, body: 0, share: 1 };
   const body = mode(counts.filter((c) => c > 1));
   const top = titleRows(counts, body);
   const rest = rows.slice(top);
@@ -205,21 +215,10 @@ function detectText(s: Sample) {
 }
 
 function detectExcel(s: Sample) {
-  const wb = readXlsx(s.head, { type: "array", cellNF: true });
-  const sheets = wb.SheetNames.map((name) => {
-    const ws = wb.Sheets[name]!;
-    const rows: Row[] = [];
-    if (ws["!ref"]) {
-      const range = utils.decode_range(ws["!ref"]);
-      for (let r = range.s.r; r <= range.e.r; r++) {
-        const cells: string[] = [];
-        for (let c = range.s.c; c <= range.e.c; c++) cells.push(cellText(ws[utils.encode_cell({ r, c })]));
-        while (cells.length && cells.at(-1) === "") cells.pop();
-        if (cells.length) rows.push({ line: r + 1, cells });
-      }
-    }
-    return { name, rows };
-  }).sort((a, b) => b.rows.length - a.rows.length);
+  if (s.tooBigMb) return { supported: false as const, fileName: s.name, type: "Excel", reason: `The workbook is over ${s.tooBigMb} MB. Ask the sender for a smaller file or CSV.` };
+  let wb: ReturnType<typeof readBook>;
+  try { wb = readBook(s.head, DETECT_ROWS); } catch { return { supported: false as const, fileName: s.name, type: "Excel", reason: "This workbook can't be opened. Save it again as .xlsx and pick it again." }; }
+  const sheets = wb.SheetNames.map((name) => ({ name, rows: sheetRowsOf(wb, name) as Row[] })).sort((a, b) => b.rows.length - a.rows.length);
   const pick = sheets[0];
   if (!pick?.rows.length) return { supported: true as const, fileName: s.name, format: { kind: "excel", sheet: { kind: "first" }, header: false } as FileFormat, columns: ["col_01"], confidence: "none" as const, notes: ["The workbook has no rows to read."], rows: [] };
   const g = shapeGrid(pick.rows, []);
@@ -242,15 +241,15 @@ const HEAD_BYTES = 4 * 1024 * 1024, HEAD_LINES = 2000, TAIL_BYTES = 512 * 1024;
 export async function sampleOfFile(file: string, name: string, excelMaxMb: number): Promise<Sample> {
   const f = Bun.file(file);
   const size = f.size;
-  const first = new Uint8Array(await f.slice(0, Math.min(size, 8)).arrayBuffer());
+  const first = new Uint8Array(await f.slice(0, Math.min(size, 64 * 1024)).arrayBuffer());
   const kind = sniffKind(first);
   if (kind === "xlsx" || kind === "xls") {
-    if (size > excelMaxMb * 1024 * 1024) return { head: first, tail: null, size, name };
+    if (size > excelMaxMb * 1024 * 1024) return { head: first, tail: null, size, name, tooBigMb: excelMaxMb };
     return { head: new Uint8Array(await f.arrayBuffer()), tail: null, size, name };
   }
   let head = new Uint8Array(await f.slice(0, Math.min(size, HEAD_BYTES)).arrayBuffer());
   let nl = 0;
   for (let i = 0; i < head.length; i++) if (head[i] === 10 && ++nl === HEAD_LINES) { head = head.subarray(0, i + 1); break; }
   const tail = size > head.length ? new Uint8Array(await f.slice(Math.max(head.length, size - TAIL_BYTES), size).arrayBuffer()) : null;
-  return { head, tail, size: head.length === size ? size : size, name };
+  return { head, tail, size, name };
 }

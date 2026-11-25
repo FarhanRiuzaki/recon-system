@@ -69,6 +69,13 @@ describe("writeUpload", () => {
     expect(readdirSync(dir)).toEqual([long]);
   });
 
+  it("the content check sees the first 64 KB (a workbook's part names can sit past 4 KB), and nothing is written before it", async () => {
+    const seen: number[] = [];
+    await writeUpload(dir, "w.txt", streamOf(["a".repeat(30_000), "b".repeat(30_000), "c".repeat(30_000)]), 1 << 20, 90_000, (head) => { seen.push(head.length); });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!).toBeGreaterThanOrEqual(65_536);
+  });
+
   it("a name with a folder or a leading dot is refused before anything is written", async () => {
     expect(await codeOf(writeUpload(dir, "../x.txt", streamOf(["x"]), 1024))).toBe("bad_request");
     expect(await codeOf(writeUpload(dir, ".x", streamOf(["x"]), 1024))).toBe("bad_request");

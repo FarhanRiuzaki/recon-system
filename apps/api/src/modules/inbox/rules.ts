@@ -23,3 +23,18 @@ export function folderOfPath(roots: readonly string[], codes: readonly string[],
   const [code, folder] = rel.split(path.sep);
   return code && codes.includes(code) ? { code, folder: folder ?? null } : null;
 }
+
+/**
+ * Why an upload's name doesn't fit what its bytes are (owner 25 Nov: a renamed file is caught): text must be named as
+ * text (.csv .txt .dat .tsv), a workbook .xlsx or .xls as it really is; null when they fit. `kind` = the sniffed content.
+ */
+export function nameMismatch(name: string, kind: "text" | "xlsx" | "xls"): string | null {
+  const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  const excelName = ext === ".xlsx" || ext === ".xls";
+  if (kind === "text") return excelName ? `This file is text, not an Excel workbook, but is named ${ext}. Rename it .csv or .txt and upload it again.` : null;
+  if (!excelName) return `This file is an Excel workbook but is named ${ext}. Rename it .${kind} and upload it again.`;
+  if (ext === `.${kind}`) return null;
+  return kind === "xls"
+    ? `This file is an older Excel workbook (.xls) but is named ${ext}. Rename it .xls and upload it again.`
+    : `This file is an Excel workbook (.xlsx) but is named ${ext}. Rename it .xlsx and upload it again.`;
+}

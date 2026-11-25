@@ -69,3 +69,17 @@ describe("encodings", () => {
     expect(okRows(await all(readRows(bytes(b), DELIM, ["x", "y"])))).toEqual([{ x: "a", y: "b" }]);
   });
 });
+
+describe("review 25 Nov", () => {
+  it("skip_bottom never hides a fault of the whole file: an unclosed quote still fails it", async () => {
+    const ls = await readText('a|b\nc|"open\nd|e\n', { ...DELIM, skip_bottom: 1 }, ["x", "y"]);
+    expect(ls.some((l) => !l.ok && l.fatal === "file")).toBe(true);
+  });
+  it("a fixed-length file without line feeds stops at the line limit as a fault of the whole file", async () => {
+    const F: FileFormat = { kind: "fixed_width", encoding: "utf-8", header: false, columns: [{ start: 1, length: 3 }] };
+    const big = "ABC\r".repeat(400_000);
+    const ls = await all(readRows(bytes(big), F, ["a"]));
+    expect(ls).toHaveLength(1);
+    expect(ls[0]).toMatchObject({ ok: false, fatal: "file" });
+  });
+});

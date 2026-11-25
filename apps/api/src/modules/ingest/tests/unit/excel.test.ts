@@ -40,3 +40,21 @@ describe("readWorkbook", () => {
     expect(reasons(ls)).toEqual(["The workbook is over 1 MB."]);
   });
 });
+
+describe("review 25 Nov", () => {
+  it("skip_bottom never hides a missing sheet", async () => {
+    const ls = await readWorkbook(book(), { kind: "excel", sheet: { kind: "name", name: "NOPE" }, header: false, skip_bottom: 1 }, ["a"], 50);
+    expect(ls[0]).toMatchObject({ ok: false, fatal: "file" });
+  });
+  it("a workbook saved with the 1904 date system keeps its dates", async () => {
+    const { utils, write } = await import("xlsx");
+    const wb = utils.book_new();
+    const ws = utils.aoa_to_sheet([["d"], [1]]);
+    ws.A2 = { t: "n", v: 45620, z: "yyyy-mm-dd" };
+    utils.book_append_sheet(wb, ws, "S");
+    wb.Workbook = { WBProps: { date1904: true } };
+    const bytes = new Uint8Array(write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer);
+    const ls = await readWorkbook(bytes, { kind: "excel", sheet: { kind: "first" }, header: true }, ["d"], 50);
+    expect((ls[0] as unknown as { raw: { d: string } }).raw.d).toBe("2028-11-25");
+  });
+});

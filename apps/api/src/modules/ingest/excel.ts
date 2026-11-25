@@ -3,7 +3,7 @@
 // text as is (0012 keeps its zeros), a date cell yyyy-MM-dd (or yyyy-MM-ddTHH:mm:ss with a time), a number in plain
 // decimal (no grouping, no exponent, float noise rounded to 15 digits), a boolean true/false. Blank rows are skipped.
 import type { FileFormat } from "@starterkit/shared/contracts/sources";
-import { type CellObject, read as readXlsx, SSF, utils, type WorkBook } from "xlsx";
+import { type CellObject, read as readXlsx, SSF, type WorkBook } from "xlsx";
 import type { CellRecord, ParsedLine } from "./parse";
 import { WHOLE_ROW } from "./parse";
 
@@ -17,10 +17,10 @@ function plain(v: number): string {
 }
 
 /** A cell's text. */
-export function cellText(c: CellObject | undefined): string {
+export function cellText(c: CellObject | undefined, date1904 = false): string {
   if (!c || c.v === undefined || c.v === null) return "";
   if (c.t === "n" && typeof c.v === "number" && c.z && SSF.is_date(c.z)) {
-    const d = SSF.parse_date_code(c.v);
+    const d = SSF.parse_date_code(c.v, { date1904 });
     const day = `${pad(d.y, 4)}-${pad(d.m)}-${pad(d.d)}`;
     return d.H || d.M || d.S ? `${day}T${pad(d.H)}:${pad(d.M)}:${pad(Math.floor(d.S))}` : day;
   }
@@ -30,7 +30,24 @@ export function cellText(c: CellObject | undefined): string {
   return String(c.v);
 }
 
-const read = (bytes: Uint8Array) => readXlsx(bytes, { type: "array", cellNF: true, cellDates: false, dense: false });
+/** A workbook in dense mode (only the cells that exist are walked); `sheetRows` caps the rows read (detection). */
+export const readBook = (bytes: Uint8Array, sheetRows?: number) => readXlsx(bytes, { type: "array", cellNF: true, cellDates: false, dense: true, ...(sheetRows ? { sheetRows } : {}) });
+
+/** The rows of a sheet as text cells (blank rows and trailing blank cells dropped), its line = the sheet's row number. */
+export function sheetRowsOf(wb: WorkBook, name: string): { line: number; cells: string[] }[] {
+  const ws = wb.Sheets[name] as (WorkBook["Sheets"][string] & { "!data"?: (CellObject | undefined)[][] }) | undefined;
+  const date1904 = !!wb.Workbook?.WBProps?.date1904;
+  const out: { line: number; cells: string[] }[] = [];
+  (ws?.["!data"] ?? []).forEach((row, r) => {
+    if (!row) return;
+    const cells: string[] = [];
+    for (let c = 0; c < row.length; c++) cells.push(cellText(row[c], date1904));
+    while (cells.length && cells.at(-1) === "") cells.pop();
+    if (cells.length) out.push({ line: r + 1, cells });
+  });
+  return out;
+}
+const read = (bytes: Uint8Array) => readBook(bytes);
 
 /** The workbook's sheet names, in order. */
 export const sheetNames = (bytes: Uint8Array): string[] => read(bytes).SheetNames;
@@ -58,15 +75,5 @@ export function workbookRecords(bytes: Uint8Array, format: Excel, maxMb: number)
     const want = format.sheet.kind === "name" ? `named ${format.sheet.name}` : format.sheet.kind === "pattern" ? `matching ${format.sheet.pattern}` : "at all";
     return [{ line: 1, bad: fault(`No sheet ${want} (sheets: ${wb.SheetNames.join(", ")}).`) }];
   }
-  const ws = wb.Sheets[name]!;
-  if (!ws["!ref"]) return [];
-  const range = utils.decode_range(ws["!ref"]);
-  const out: CellRecord[] = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    const cells: string[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) cells.push(cellText(ws[utils.encode_cell({ r, c })]));
-    while (cells.length && cells.at(-1) === "") cells.pop();
-    if (cells.length) out.push({ line: r + 1, cells });
-  }
-  return out;
+  return sheetRowsOf(wb, name);
 }
