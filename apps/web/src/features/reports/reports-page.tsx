@@ -15,7 +15,7 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { REPORT_FILES, type ReportFileFilters } from "@/lib/shared/queries";
 import { withCounts } from "@/lib/shared/table-state";
-import { FILE_LEGEND, fileColumns } from "./report-columns";
+import { FILE_LEGEND, fileColumns, MAKE_REASON as GENERATE_REASON } from "./report-columns";
 import { STATUS_LABEL } from "./report-text";
 import { ReportsTabs } from "./reports-tabs";
 import { useReportActions, useSpaceRoles } from "./use-reports";
@@ -25,14 +25,15 @@ const FILTER_DEFAULTS: ReportFileFilters = { final: "", status: "", madeBy: "", 
 const FIELDS = [{ key: "final", label: "Final" }, { key: "status", label: "Status" }, { key: "madeBy", label: "Made by" }] as const;
 /** While a file is queued or being made, the list asks again every 3 s. */
 const pollWhileMaking = (rows: readonly ReportFileDto[]) => (rows.some((f) => f.status === "queued" || f.status === "making") ? 3000 : false);
-export const GENERATE_REASON = "Only a space admin, config maker, operator or reviewer makes a report.";
+
 
 /** Reports · Files: every file made in the space (after runs and on request), newest first, each download logged. */
 export function ReportsPage({ spaceId }: { spaceId: string }) {
   const t = useTableQuery<ReportFileDto, ReportFileFilters>(useMemo(() => REPORT_FILES(spaceId), [spaceId]), true, pollWhileMaking);
   const { retry } = useReportActions(spaceId);
-  const columns = useMemo(() => fileColumns(spaceId, (id) => void retry(id).then(() => toast("Making the report again.")).catch((e) => toast.error(errorText(e)))), [spaceId, retry]);
-  const can = mayDo(useSpaceRoles(spaceId), "generateReports");
+  const roles = useSpaceRoles(spaceId);
+  const can = mayDo(roles, "generateReports"), full = mayDo(roles, "downloadFullReports");
+  const columns = useMemo(() => fileColumns(spaceId, (id) => void retry(id).then(() => toast("Making the report again.")).catch((e) => toast.error(errorText(e))), { full, generate: can }), [spaceId, retry, full, can]);
   const [open, setOpen] = useState(false);
   const filtered = !!(t.state.final || t.state.status || t.state.madeBy || t.state.recon || t.state.template || t.state.run);
   return (

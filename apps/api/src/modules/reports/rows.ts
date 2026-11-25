@@ -26,13 +26,15 @@ const keep = (spec: ReportSpec, r: ResultRowDto) =>
 
 /** The engine's row as the report reads it, masked per `customer` (the recon's customer-data columns) unless full. */
 export function toReportRow(r: ResultRowDto, keys: string[], customer: Set<string>, masking: "masked" | "full"): ReportRow {
+  const masked = masking === "masked" ? keys.filter((k) => customer.has(k)) : [];
   const values = Object.fromEntries(keys.map((k) => {
     const v = r.cells[k]?.value ?? null;
-    return [k, v !== null && masking === "masked" && customer.has(k) ? maskValue(v) : v];
+    return [k, v !== null && masked.includes(k) ? maskValue(v) : v];
   }));
+  const raw = masked.length ? Object.fromEntries(masked.map((k) => [k, r.cells[k]?.value ?? null])) : undefined;
   const amount = r.cells[AMOUNT]?.value;
   return {
-    date: r.businessDate, status: r.status, values,
+    date: r.businessDate, status: r.status, values, ...(raw ? { raw } : {}),
     amount: amount && /^-?\d+$/.test(amount) ? BigInt(amount) : null, currency: r.cells[AMOUNT]?.currency ?? null, reason: r.cells["recon:reason"]?.value ?? null,
   };
 }
@@ -45,10 +47,19 @@ export async function* reportRows(on: Tx, spaceId: string, configId: string, spe
   const keys = [...new Set([...spec.columns.map((c) => c.key), ...spec.groups, ...spec.totals.flatMap((t) => (t.column ? [t.column] : [])), ...SUMMARY_KEYS])];
   const columns = keys.map(columnOf);
   let after: { bd: string; rowId: string } | null = null;
+  // items already written: a lone item matched into a new group between two pages (or a group undone into its items)
+  // comes back under another row id; such a row is dropped, so each item is in the file once
+  const seen = new Set<string>();
+  const fresh = (r: ResultRowDto, ids: string[] | undefined) => {
+    if (!ids?.length) return true;
+    if (ids.some((i) => seen.has(i))) return false;
+    for (const i of ids) seen.add(i);
+    return true;
+  };
   for (;;) {
     const page = await withSpace({ spaceIds: [spaceId], userId: null }, (tx) => reportResultRows(tx, spaceId, configId, [from, to], { statuses: spec.rows.statuses, columns }, after, pageSize), on);
     if (!page.rows.length) return;
-    yield page.rows.filter((r) => keep(spec, r)).map((r) => toReportRow(r, keys, page.customer, spec.output.masking));
+    yield page.rows.filter((r) => fresh(r, page.items.get(r.id)) && keep(spec, r)).map((r) => toReportRow(r, keys, page.customer, spec.output.masking));
     if (page.rows.length < pageSize) return;
     after = page.last;
   }

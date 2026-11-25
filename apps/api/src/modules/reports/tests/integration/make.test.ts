@@ -17,6 +17,7 @@ import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { purgeReports, queueAfterRun, reportFiles, reportsHandlers } from "../../index";
+import { makeFile } from "../../make";
 
 const ROOT = process.env.INBOX_ROOTS!.split(",")[0]!;
 let A: string, code: string, CFG: string, VER: string, mk: string, op: string, T: ReportTemplateDto, V: ReportVersionDto;
@@ -138,4 +139,29 @@ describe("report files", () => {
     const [s] = await files();
     expect([s!.status, s!.masking, s!.sample]).toEqual(["ready", "masked", true]);
   });
+
+  it("a file another worker is making now is left to it; one abandoned for hours is failed by the janitor and can be made again", async () => {
+    await activate();
+    const r = await run();
+    await queueAfterRun(db, A, CFG, r, D, D1);
+    const [f] = await files();
+    await db.update(reportFiles).set({ status: "making", updatedAt: new Date() }).where(eq(reportFiles.id, f!.id));
+    await makeFile(db, A, f!.id);
+    expect((await files())[0]!.status).toBe("making");
+    await db.update(reportFiles).set({ updatedAt: new Date(Date.now() - 5 * 3600_000) }).where(eq(reportFiles.id, f!.id));
+    await purgeReports(db);
+    expect((await files())[0]!.status).toBe("failed");
+  }, 30_000);
+
+  it("a grouped PDF holds at most 5,000 rows too", async () => {
+    await activate({ kind: "grouped", groups: ["recon:reason"], totals: [{ fn: "count" }], output: { ...V.spec.output, format: "pdf" } });
+    const [sa] = [await makeSource(A, plainSource())];
+    for (const part of [2500, 2501]) {
+      const recs = await put(sa!, Array.from({ length: part }, (_, i) => ({ ref: `G${part}-${i}`, amount: 1n, date: D })));
+      await db.insert(reconItems).values(recs.map((recordId) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: CFG, recordId, side: "a", status: "break", businessDate: D })));
+    }
+    await call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } });
+    await drain();
+    expect((await files()).map((f) => f.error)).toEqual(["A PDF holds at most 5,000 rows. Use CSV or Excel for more."]);
+  }, 60_000);
 });

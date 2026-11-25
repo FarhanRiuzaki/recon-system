@@ -30,6 +30,9 @@ import { writePdf } from "./write-pdf";
 import { writeXlsx } from "./write-xlsx";
 
 const DAY = 86400_000;
+/** The Test's bounds (it answers inside the request): a summary of at most 7 dates, rows from at most 10 pages of 500. */
+export const TEST_SUMMARY_DAYS = 7;
+const TEST_PAGES = 10;
 const EXT = { csv: "csv", xlsx: "xlsx", pdf: "pdf" } as const;
 type FileRow = typeof reportFiles.$inferSelect;
 const PDF_TOO_MANY = `A PDF holds at most ${PDF_ROWS_MAX.toLocaleString("en-US")} rows. Use CSV or Excel for more.`;
@@ -142,7 +145,8 @@ async function write(on: Tx, f: FileRow, spec: ReportSpec, part: string, chromiu
   const pages = reportRows(on, f.spaceId, f.configId, { ...spec, output: { ...spec.output, masking: f.masking as "masked" | "full" } }, f.fromDate, f.toDate);
   const { columns } = shapeFor(spec);
   if (spec.output.format === "pdf") {
-    const rows = await gather(pages, spec.kind === "transactions" ? PDF_ROWS_MAX : null, pct);
+    // the limit holds for every PDF but the daily summary (a page per date): a grouped one prints each row too
+    const rows = await gather(pages, spec.kind === "daily_summary" ? null : PDF_ROWS_MAX, pct);
     const n = await withSpace({ spaceIds: [f.spaceId], userId: null }, (tx) => names(tx, f.spaceId, f.configId, f.templateId), on);
     const html = reportHtml(pdfData(spec, rows), {
       title: spec.output.title || n.template, subtitle: spec.output.subtitle, recon: n.recon, from: f.fromDate, to: f.toDate,
@@ -173,12 +177,20 @@ async function finalDates(on: Tx, f: FileRow): Promise<{ date: string; final: bo
   return datesOf(f.fromDate, f.toDate).map((date) => ({ date, final: set.has(date) }));
 }
 
-/** The worker's handler: makes file `fileId` once (a file already ready or failed is left as it is). */
+/** A file being made whose row hasn't moved for this long is taken as abandoned (its worker died): progress is written every page. */
+export const STALE_MS = 15 * 60_000;
+
+/**
+ * The worker's handler: makes file `fileId`. A ready or removed file is left as it is; one another worker is making
+ * now (its row moved in the last STALE_MS) is too, so two attempts never write one file. Each attempt writes its own
+ * part file.
+ */
 export async function makeFile(on: Tx, spaceId: string, fileId: string, env = loadWorkerConfig(process.env)): Promise<void> {
   const scope = { spaceIds: [spaceId], userId: null };
   const got = await withSpace(scope, async (tx) => {
     const [f] = await tx.select().from(reportFiles).where(and(eq(reportFiles.spaceId, spaceId), eq(reportFiles.id, fileId))).for("update");
     if (!f || f.status === "ready" || f.status === "removed") return null;
+    if (f.status === "making" && f.updatedAt.getTime() > Date.now() - STALE_MS) return null;
     const [v] = await tx.select().from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.id, f.versionId)));
     const [s] = await tx.select({ code: spaces.code }).from(spaces).where(eq(spaces.id, spaceId));
     await tx.update(reportFiles).set({ status: "making", progress: 0, error: null, readAt: sql`now()`, updatedAt: sql`now()` }).where(eq(reportFiles.id, f.id));
@@ -187,7 +199,7 @@ export async function makeFile(on: Tx, spaceId: string, fileId: string, env = lo
   if (!got) return;
   const { f, spec, code } = got;
   const dir = await reportsDirOf(env.INBOX_ROOTS, code, f.sample);
-  const part = path.join(dir, `.${f.id}.part`);
+  const part = path.join(dir, `.${f.id}.${Bun.randomUUIDv7()}.part`);
   const set = (patch: Partial<FileRow>) => withSpace(scope, (tx) => tx.update(reportFiles).set({ ...patch, updatedAt: new Date() }).where(eq(reportFiles.id, f.id)), on);
   try {
     const w = await write(on, f, spec, part, env.REPORT_CHROMIUM_PATH, (p) => set({ progress: p }).then(() => {}));
@@ -222,7 +234,13 @@ export function testFile(ctx: Ctx, templateId: string, versionId: string, b: Tes
     if (!v) throw notFound("report version");
     const spec = { ...(v.spec as ReportSpec), output: { ...(v.spec as ReportSpec).output, masking: "masked" as const } };
     const rows: ReportRow[] = [];
-    for await (const p of reportRows(tx, spaceId, t.configId, spec, b.from, b.to, 500)) { rows.push(...p); if (spec.kind !== "daily_summary" && rows.length >= 50) break; }
+    // bounded, inside the request: a summary of the first TEST_SUMMARY_DAYS dates; rows from at most TEST_PAGES pages
+    const to = spec.kind === "daily_summary" ? datesOf(b.from, b.to).slice(0, TEST_SUMMARY_DAYS).at(-1)! : b.to;
+    let pages = 0;
+    for await (const p of reportRows(tx, spaceId, t.configId, spec, b.from, to, 500)) {
+      rows.push(...p);
+      if (++pages >= TEST_PAGES || (spec.kind !== "daily_summary" && rows.length >= 50)) break;
+    }
     const sample = (await insertFile(tx, { spaceId, templateId: t.id, versionId: v.id, configId: t.configId, spec, from: b.from, to: b.to, askedBy: ctx.user.id, runId: null, sample: true }))!;
     await recordActivity(tx, ctx, { action: "report.make", target: { type: "report", id: t.id, label: t.name }, after: { fileId: sample.id, version: v.version, from: b.from, to: b.to, format: sample.format, masking: "masked", runId: null, sample: true } });
     const plain = rows.map((r) => ({ ...r, amount: null }));
@@ -240,7 +258,10 @@ export async function purgeReports(on: Tx, now = Date.now()): Promise<{ report_f
     const scope = { spaceIds: [s.id], userId: null };
     const old = await withSpace(scope, (tx) => tx.select().from(reportFiles).where(and(eq(reportFiles.spaceId, s.id), inArray(reportFiles.status, ["ready", "failed"]), sql`(
       (${reportFiles.sample} and ${reportFiles.createdAt} < ${new Date(now - DAY)}) or (not ${reportFiles.sample} and ${reportFiles.createdAt} < ${new Date(now - days * DAY)}))`)).limit(1000), on);
-    if (!old.length && !spaceRoot(roots, s.code)) continue;
+    // a file whose worker died on every attempt (its row unmoved past STALE_MS) is failed, so it can be made again
+    await withSpace(scope, (tx) => tx.update(reportFiles).set({ status: "failed", error: FAILED, updatedAt: new Date(now) })
+      .where(and(eq(reportFiles.spaceId, s.id), inArray(reportFiles.status, ["queued", "making"]), sql`${reportFiles.updatedAt} < ${new Date(now - 4 * 3600_000)}`)), on);
+    if (!spaceRoot(roots, s.code)) continue;
     for (const f of old) {
       const dir = await reportsDirOf(roots, s.code, f.sample);
       await rm(fileOnDisk(dir, f), { force: true });

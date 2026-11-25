@@ -2,7 +2,8 @@
 import type { ResultStatus } from "@starterkit/shared/results";
 
 /** One result row as a report reads it: its business date, overall status, cells by column key, amount and reason. */
-export type ReportRow = { date: string; status: ResultStatus; values: Record<string, string | null>; amount: bigint | null; currency: string | null; reason: string | null };
+/** `raw`: a masked column's real value, kept to group by (spec: group by the real value, show the masked one). */
+export type ReportRow = { date: string; status: ResultStatus; values: Record<string, string | null>; raw?: Record<string, string | null>; amount: bigint | null; currency: string | null; reason: string | null };
 export type Total = { fn: "count" | "sum" | "min" | "max"; column?: string };
 export type ShapedRow = { kind: "group" | "row" | "total"; level: number; label: string | null; totals: (number | null)[] | null; row: ReportRow | null };
 
@@ -29,9 +30,11 @@ export function groupRows(rows: ReportRow[], groups: string[], totals: Total[]):
   const walk = (part: ReportRow[], level: number) => {
     const key = groups[level];
     if (key === undefined) { for (const r of part) out.push({ kind: "row", level, label: null, totals: null, row: r }); return; }
-    const by = Map.groupBy(part, (r) => r.values[key] ?? "(empty)");
-    for (const label of [...by.keys()].sort((a, b) => a.localeCompare(b))) {
-      const g = by.get(label)!;
+    const by = Map.groupBy(part, (r) => (r.raw && key in r.raw ? r.raw[key] : r.values[key]) ?? "(empty)");
+    for (const k of [...by.keys()].sort((a, b) => a.localeCompare(b))) {
+      const g = by.get(k)!;
+      // the group is the real value; its line shows the value as the file may (masked)
+      const label = g[0]!.values[key] ?? "(empty)";
       out.push({ kind: "group", level, label, totals: totalsOf(g, totals), row: null });
       walk(g, level + 1);
     }

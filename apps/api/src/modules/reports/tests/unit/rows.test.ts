@@ -38,3 +38,12 @@ describe("dailySummary", () => {
     expect(s[0]!.breaksByReason).toEqual([{ reason: "No counterpart", count: 2 }]);
   });
 });
+
+describe("groupRows with masked values", () => {
+  it("groups by the real value and shows the masked one: two accounts ending alike stay two groups", () => {
+    const a = row({ values: { "a:account_ref": "····1234" }, raw: { "a:account_ref": "1111111234" } });
+    const b = row({ values: { "a:account_ref": "····1234" }, raw: { "a:account_ref": "2222221234" } });
+    const out = groupRows([a, b], ["a:account_ref"], [{ fn: "count" }]);
+    expect(out.filter((r) => r.kind === "group").map((r) => [r.label, r.totals])).toEqual([["····1234", [1]], ["····1234", [1]]]);
+  });
+});

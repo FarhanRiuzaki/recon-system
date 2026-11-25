@@ -342,7 +342,7 @@ export function resultPage(ctx: Ctx, configId: string, q: ResultListQuery, now =
 export async function reportResultRows(
   tx: InTx, spaceId: string, configId: string, [from, to]: [string, string], o: { statuses: readonly ResultStatus[]; columns: ResultColumn[] },
   after: { bd: string; rowId: string } | null, limit: number,
-): Promise<{ rows: ResultRowDto[]; last: { bd: string; rowId: string } | null; customer: Set<string> }> {
+): Promise<{ rows: ResultRowDto[]; items: Map<string, string[]>; last: { bd: string; rowId: string } | null; customer: Set<string> }> {
   const base = await resultColumnsOf(tx, spaceId, configId);
   const spaces = await recordSpaces(tx, spaceId);
   await roomToAggregate(tx);
@@ -354,8 +354,14 @@ export async function reportResultRows(
   const page = await tx.select().from(rows).where(where).orderBy(asc(rows.bd), asc(rows.rowId)).limit(limit);
   const filled = await fill(tx, spaceId, configId, spaces, { ...base, columns: o.columns }, page);
   const lastRow = page.at(-1);
-  const customer = new Set(base.columns.filter((c) => c.kind !== "recon" && c.customer).map((c) => `${c.kind}:${c.field}`));
-  return { rows: filled, last: lastRow ? { bd: lastRow.bd, rowId: lastRow.rowId } : null, customer };
+  // the account is customer data on every recon (spec "Masking"), besides the columns the recon marks so
+  const customer = new Set(["a:account_ref", "b:account_ref", ...base.columns.filter((c) => c.kind !== "recon" && c.customer).map((c) => `${c.kind}:${c.field}`)]);
+  // each row's items, so a report reading page after page can drop a row whose item it already wrote (a lone item
+  // matched into a new group between two pages comes back under the group's id)
+  const its = page.length ? await itemsOfRows(tx, spaceId, configId, spaces, page.filter((r) => r.kind === "group").map((r) => r.rowId), page.filter((r) => r.kind === "item").map((r) => r.rowId)) : [];
+  const items = new Map<string, string[]>();
+  for (const i of its) items.set(i.rowId, [...(items.get(i.rowId) ?? []), i.id]);
+  return { rows: filled, items, last: lastRow ? { bd: lastRow.bd, rowId: lastRow.rowId } : null, customer };
 }
 
 type RowOf = { rowId: string; kind: "group" | "item"; bd: string; gk: string | null; gpass: number | null; runId: string | null; nA: number; nB: number;

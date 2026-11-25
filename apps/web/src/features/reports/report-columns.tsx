@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { type Column, RelativeTime, StatusChip } from "@starterkit/ui/ds";
+import { BlockedButton, type Column, RelativeTime, StatusChip } from "@starterkit/ui/ds";
 import { formatBytes, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -19,7 +19,10 @@ export const FILE_LEGEND = (Object.keys(STATUS_LABEL) as ReportFileStatus[]).map
 const dates = (f: { from: string; to: string }) => (f.from === f.to ? f.from : `${f.from} – ${f.to}`);
 
 /** A space's report files: report (template, version, format), recon, dates, status, Final, made by, size, download. */
-export const fileColumns = (spaceId: string, retry: (id: string) => void): Column<ReportFileDto>[] => [
+export const FULL_REASON = "Only a space admin, a reviewer or a config checker downloads full customer data.";
+export const MAKE_REASON = "Only a space admin, config maker, operator or reviewer makes a report.";
+/** `can`: whether the viewer may download full customer data and make a report again (SPACE_ACTION, through mayDo). */
+export const fileColumns = (spaceId: string, retry: (id: string) => void, can: { full: boolean; generate: boolean }): Column<ReportFileDto>[] => [
   { key: "report", header: "Report", mobile: "title", className: "min-w-56", cell: (f) => (
     <span className="grid">
       <Link href={reportsHref(spaceId, `/templates/${encodeURIComponent(f.templateId)}`)} className="font-medium text-fg hover:underline">{f.template}</Link>
@@ -33,8 +36,12 @@ export const fileColumns = (spaceId: string, retry: (id: string) => void): Colum
     <span className="grid"><RelativeTime at={Date.parse(f.madeAt)} /><span className="text-caption text-fg-3">{f.madeBy.kind === "run" ? "After a run" : f.madeBy.name}</span></span>) },
   { key: "size", header: "Size", align: "right", mobile: "hidden", className: "md:max-xl:hidden", cell: (f) => (f.size === null ? <span className="text-fg-3">—</span> : <span className="tabular-nums">{formatBytes(f.size)}{f.rows !== null ? ` · ${formatNumber(f.rows)} rows` : ""}</span>) },
   { key: "get", header: "", hideable: false, mobile: "lead", cell: (f) => (f.status === "ready"
-    ? <Button variant="secondary" size="sm" asChild><a href={downloadHref(spaceId, f)} download><Icon icon={ExportIcon} />Download</a></Button>
-    : f.status === "failed" ? <span className="grid justify-items-start"><Button variant="secondary" size="sm" onClick={() => retry(f.id)}>Make again</Button><span className="text-caption text-down-ink">{f.error}</span></span> : null) },
+    ? (f.masking === "full" && !can.full
+      ? <BlockedButton variant="secondary" size="sm" reason={FULL_REASON}><Icon icon={ExportIcon} />Download</BlockedButton>
+      : <Button variant="secondary" size="sm" asChild><a href={downloadHref(spaceId, f)} download><Icon icon={ExportIcon} />Download</a></Button>)
+    : f.status === "failed" ? <span className="grid justify-items-start">
+      {can.generate ? <Button variant="secondary" size="sm" onClick={() => retry(f.id)}>Make again</Button> : <BlockedButton variant="secondary" size="sm" reason={MAKE_REASON}>Make again</BlockedButton>}
+      <span className="text-caption text-down-ink">{f.error}</span></span> : null) },
 ];
 
 /** A space's report templates: name (opens it), recon, holds, format, official, status, last file. */

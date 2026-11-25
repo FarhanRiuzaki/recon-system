@@ -6,14 +6,14 @@ import { eq } from "drizzle-orm";
 import { resetData } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
-import { reconItems } from "../../../engine";
+import { matchGroups, matchMembers, reconItems } from "../../../engine";
 import { D, D1, makeSource, plainSource, put, recon, spec as reconSpec } from "../fixtures";
 import { records } from "../../../ingest";
 import { reconResultColumns } from "../../../recon";
 import { spaces } from "../../../spaces";
 import { reportRows } from "../../rows";
 
-let A: string, CFG: string, ids: string[];
+let A: string, CFG: string, VER: string, ids: string[];
 const N = 2500;
 
 beforeEach(async () => {
@@ -26,7 +26,7 @@ beforeEach(async () => {
     await ensureMonthPartitions(tx, reconItems, new Date(`${D}T00:00:00Z`), 1);
   });
   const [sa, sb] = [await makeSource(A, plainSource()), await makeSource(A, plainSource())];
-  CFG = (await recon(A, reconSpec(sa.sourceId, sb.sourceId, []))).configId;
+  ({ configId: CFG, versionId: VER } = await recon(A, reconSpec(sa.sourceId, sb.sourceId, [])));
   const recs = await put(sa, Array.from({ length: N }, (_, i) => ({ ref: `R${i}`, amount: 100n, acct: `ACCT${String(i).padStart(8, "0")}`, date: i % 2 ? D1 : D })));
   ids = recs.map(() => Bun.randomUUIDv7());
   await db.insert(reconItems).values(recs.map((recordId, i) => ({
@@ -60,5 +60,28 @@ describe("reportRows", () => {
     const full: string[] = [];
     for await (const page of reportRows(db, A, CFG, spec({ official: true, output: { format: "csv", fileName: "x", masking: "full" } }), D, D, 2000)) full.push(...page.map((r) => r.values["a:account_ref"]!));
     expect(full[0]).toMatch(/^ACCT\d{8}$/);
+  });
+
+  it("the account is masked with no column marked as customer data", async () => {
+    await db.delete(reconResultColumns);
+    const rows: (string | null)[] = [];
+    for await (const page of reportRows(db, A, CFG, spec(), D, D, 2000)) rows.push(...page.map((r) => r.values["a:account_ref"]!));
+    expect(rows[0]).toMatch(/^·+\d{4}$/);
+  });
+
+  it("an item matched into a new group between two pages is written once", async () => {
+    let n = 0, out = 0;
+    for await (const page of reportRows(db, A, CFG, spec(), D, D1, 1000)) {
+      out += page.length;
+      if (n++ === 0) {
+        // the first item read becomes a group's member: the group's id sorts after every item's
+        const G = Bun.randomUUIDv7();
+        const [first] = await db.select().from(reconItems).where(eq(reconItems.id, ids.find((_, i) => i % 2 === 0)!));
+        await db.insert(matchGroups).values({ id: G, spaceId: A, configId: CFG, configVersionId: VER, runId: null, passNo: 0, kind: "force", businessDate: first!.businessDate, evidence: {} });
+        await db.insert(matchMembers).values({ groupId: G, spaceId: A, itemId: first!.id, side: "a" });
+        await db.update(reconItems).set({ status: "matched" }).where(eq(reconItems.id, first!.id));
+      }
+    }
+    expect(out).toBe(N);
   });
 });

@@ -5,7 +5,7 @@
 // each step, Next and Back walk them; Test makes a sample from real dates; Review and submit sends it (an official one
 // to a config checker).
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReportSpec, ReportVersionDto } from "@starterkit/shared/contracts/reports";
 import { FIELD_LABEL } from "@starterkit/shared/recon";
 import { RECON_INFO_FIELDS, RECON_INFO_LABEL, RESULT_STATUS_LABEL, RESULT_STATUSES } from "@starterkit/shared/results";
@@ -25,6 +25,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
 import { FORMAT_LABEL, KIND_LABEL } from "./report-text";
 import { firstProblem, REPORT_STEPS, type ReportStep, stepProblem, toggleStatus, withFormat, withKind } from "./spec-model";
+import { serialSaver } from "./saver";
 import { reportsApi, reportsHref, type TestResult, useTemplate, useTemplateActions } from "./use-reports";
 
 /** The columns a report can hold: either side's core fields and the recon's info (keys as the API takes them). */
@@ -49,16 +50,19 @@ export function DraftWizard({ spaceId, templateId, versionId: asked }: { spaceId
   const [reached, setReached] = useState<ReportStep>(1);
   const [save, setSave] = useState<"saved" | "saving" | "failed">("saved");
   const [busy, setBusy] = useState(false);
-  const saved = useRef<string>("");
+  // the spec the API holds, as JSON ("" = as loaded)
+  const [savedJson, setSavedJson] = useState("");
+  const saver = useMemo(() => serialSaver<ReportSpec>(async (s) => {
+    setSave("saving");
+    try { await act.save(versionId, { spec: s }); setSavedJson(JSON.stringify(s)); setSave("saved"); } catch { setSave("failed"); }
+  }), [act, versionId]);
   // autosave a moment after the last change (the recon builder's rule)
   useEffect(() => {
-    if (!edited || JSON.stringify(edited) === (saved.current || JSON.stringify(v?.spec)) || v?.status !== "draft") return;
-    const t = setTimeout(() => {
-      setSave("saving");
-      act.save(versionId, { spec: edited }).then(() => { saved.current = JSON.stringify(edited); setSave("saved"); }, () => setSave("failed"));
-    }, SAVE_DELAY_MS);
+    if (!edited || JSON.stringify(edited) === (savedJson || JSON.stringify(v?.spec)) || v?.status !== "draft") return;
+    // one save at a time, the latest last (serialSaver): an older save never lands after a newer one
+    const t = setTimeout(() => saver.push(edited), SAVE_DELAY_MS);
     return () => clearTimeout(t);
-  }, [edited, versionId, v?.status, v?.spec, act]);
+  }, [edited, v?.status, v?.spec, saver, savedJson]);
   if (!spec || !v || !template.data) return <PageHeader title="Edit draft" trail={[{ label: "Reports", href: reportsHref(spaceId, "/templates") }]} />;
   const readOnly = v.status !== "draft";
   const change = (fn: (s: ReportSpec) => ReportSpec) => { if (!readOnly) setSpec((s) => fn(s ?? spec)); };
@@ -71,7 +75,8 @@ export function DraftWizard({ spaceId, templateId, versionId: asked }: { spaceId
   const submit = async () => {
     setBusy(true);
     try {
-      if (edited && JSON.stringify(edited) !== (saved.current || JSON.stringify(v.spec))) await act.save(versionId, { spec: edited });
+      await saver.flush();
+      if (edited && JSON.stringify(edited) !== (savedJson || JSON.stringify(v.spec))) await act.save(versionId, { spec: edited });
       const r: ReportVersionDto = await act.submit(versionId);
       toast(r.status === "active" ? "Sent: the version is active." : "Sent to a config checker for approval.");
       router.push(reportsHref(spaceId, `/templates/${encodeURIComponent(templateId)}`));
@@ -90,7 +95,12 @@ export function DraftWizard({ spaceId, templateId, versionId: asked }: { spaceId
             {step === 1 && <ContentStep spec={spec} change={change} />}
             {step === 2 && <ColumnsStep spec={spec} change={change} />}
             {step === 3 && <OutputStep spec={spec} change={change} />}
-            {step === 4 && <TestStep spaceId={spaceId} versionId={versionId} spec={spec} run={(b) => act.test(versionId, b)} />}
+            {/* the Test reads the stored draft: the edits are saved first */}
+            {step === 4 && <TestStep spaceId={spaceId} versionId={versionId} spec={spec} run={async (b) => {
+              await saver.flush();
+              if (edited && JSON.stringify(edited) !== (savedJson || JSON.stringify(v.spec))) { await act.save(versionId, { spec: edited }); setSavedJson(JSON.stringify(edited)); }
+              return act.test(versionId, b);
+            }} />}
             {step === 5 && <ReviewStep spec={spec} change={change} />}
           </fieldset>
           {stepProblem(spec, step) && <p role="alert" className="text-body-sm text-down-ink">{stepProblem(spec, step)}</p>}
