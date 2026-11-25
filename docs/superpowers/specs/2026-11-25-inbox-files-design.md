@@ -142,3 +142,14 @@ Temporary `.uploading` names do not match a source's pattern if it starts with a
 - Tests: unit for name validation and path containment; integration for upload (temp + rename, 409, 413, sha256,
   activity), folder create/delete rules, permission matrix; web unit for the upload flow. E2E only what is affected
   (owner rule).
+
+## Addendum, 25 Nov (owner)
+
+- **Storage stays on disk now; MinIO or another open-source S3 comes next.** Every file operation of the `inbox`
+  module goes through `disk.ts` (one seam), so an S3 backend can replace it without changing routes or screens. FTP
+  from other systems still lands in the same folders. Out of scope now: any S3/MinIO code or service.
+- **The screen looks like the S3 console:** breadcrumb `Space / folder /`, folders and files in one table (folder rows
+  first, with file count and status summary), checkboxes for bulk delete, a detail panel per file (size, modified,
+  sha256, uploaded by and when, state per source), drag and drop onto the table. Still one folder level.
+- **Download** a file: `GET /v1/spaces/:spaceId/inbox/folders/:folder/files/download?name=` (`viewInbox`), streamed with
+  `Content-Disposition: attachment`; it is a read and writes no activity entry.
