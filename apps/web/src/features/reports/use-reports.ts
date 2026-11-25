@@ -3,11 +3,12 @@
 // The reports feature's one data hook file (AGENTS.md §7): the caller's roles in the space, the active templates the
 // Generate dialog offers, and the actions (generate, retry, download links) with their result toasts.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReportFileDto, ReportTemplateDto } from "@starterkit/shared/contracts/reports";
-import { api } from "@/lib/client/api";
-import { REPORTS_KEY, spaceDetail } from "@/lib/shared/queries";
+import type { ReportFileDto, ReportSpec, ReportTemplateDto, ReportVersionDto } from "@starterkit/shared/contracts/reports";
+import { api, retryUnlessNotFound } from "@/lib/client/api";
+import { REPORTS_KEY, reportTemplate, reportVersions, spaceDetail } from "@/lib/shared/queries";
 
 export const reportsApi = (spaceId: string, rest = "") => `/api/spaces/${encodeURIComponent(spaceId)}/reports${rest}`;
 export const reportsHref = (spaceId: string, rest = "") => `/spaces/${encodeURIComponent(spaceId)}/reports${rest}`;
@@ -35,3 +36,39 @@ export function useReportActions(spaceId: string) {
     refresh,
   };
 }
+
+/** One template and its versions (newest first). */
+export function useTemplate(spaceId: string, id: string) {
+  const t = reportTemplate(spaceId, id), v = reportVersions(spaceId, id);
+  return {
+    template: useQuery({ queryKey: t.key, queryFn: () => api<ReportTemplateDto>(t.url), retry: retryUnlessNotFound }),
+    versions: useQuery({ queryKey: v.key, queryFn: () => api<Page<ReportVersionDto>>(v.url) }),
+  };
+}
+
+export type TestResult = { rows: { date: string; status: string; values: Record<string, string | null> }[]; summary: DaySummaryDto[] | null; sampleId: string };
+export type DaySummaryDto = { date: string; total: number; byStatus: Record<string, number>; matched: number; breaks: number; matchRate: number | null; breaksByReason: { reason: string; count: number }[] };
+
+/** The template's actions (each refreshes the reports queries). */
+export function useTemplateActions(spaceId: string, id: string) {
+  const qc = useQueryClient();
+  const refresh = () => qc.invalidateQueries({ queryKey: REPORTS_KEY });
+  const v = (vid: string, rest = "") => reportsApi(spaceId, `/templates/${encodeURIComponent(id)}/versions/${encodeURIComponent(vid)}${rest}`);
+  const post = <T,>(url: string, body?: object) => api<T>(url, { method: "POST", ...(body ? { body: JSON.stringify(body) } : {}) }).then(async (r) => { await refresh(); return r; });
+  // one object per template (the draft's autosave effect depends on it); its helpers are rebuilt from the same two ids
+  return useMemo(() => ({
+    save: (vid: string, b: { name?: string; spec: ReportSpec }) => api<ReportVersionDto>(v(vid), { method: "PATCH", body: JSON.stringify(b) }),
+    submit: (vid: string) => post<ReportVersionDto>(v(vid, "/submit")),
+    approve: (vid: string, note?: string) => post<ReportVersionDto>(v(vid, "/approve"), { ...(note ? { note } : {}) }),
+    reject: (vid: string, note: string) => post<ReportVersionDto>(v(vid, "/reject"), { note }),
+    newDraft: () => post<ReportVersionDto>(reportsApi(spaceId, `/templates/${encodeURIComponent(id)}/versions`)),
+    retire: () => post<ReportTemplateDto>(reportsApi(spaceId, `/templates/${encodeURIComponent(id)}/retire`)),
+    test: (vid: string, b: { from: string; to: string }) => api<TestResult>(v(vid, "/test"), { method: "POST", body: JSON.stringify(b) }),
+    refresh,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [spaceId, id]);
+}
+
+/** POST …/templates (New report template). */
+export const createTemplate = (spaceId: string, b: { configId: string; name: string; start: string }) =>
+  api<ReportTemplateDto>(reportsApi(spaceId, "/templates"), { method: "POST", body: JSON.stringify(b) });

@@ -14,12 +14,12 @@ import { errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { REPORT_TEMPLATES, type ReportTemplateFilters } from "@/lib/shared/queries";
 import { templateColumns } from "./report-columns";
+import { NEW_TEMPLATE_REASON } from "./report-text";
 import { ReportsTabs } from "./reports-tabs";
 import { reportsHref, useSpaceRoles } from "./use-reports";
 
 const DEFAULTS: ReportTemplateFilters = { q: "", recon: "" };
 const FIELDS = [{ key: "q", label: "Search" }] as const;
-export const NEW_TEMPLATE_REASON = "Only a config maker of this space creates report templates.";
 
 /** Reports · Templates: the space's report templates, one per kind of file a recon gives. */
 export function TemplatesPage({ spaceId }: { spaceId: string }) {

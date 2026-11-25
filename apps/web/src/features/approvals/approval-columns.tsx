@@ -16,7 +16,7 @@ const LINK = "font-medium text-fg hover:underline focus-visible:outline-2 focus-
 /** The page a request is decided on: the version's own review (its diff, simulation and Approve / Reject), back here after. */
 export const approvalHref = (spaceId: string, r: ApprovalRowDto) => isRequestKind(r.kind)
   ? `/spaces/${encodeURIComponent(spaceId)}/breaks/${encodeURIComponent(r.target.id)}`
-  : `/spaces/${encodeURIComponent(spaceId)}/${r.kind === "source_version" ? "sources" : "recons"}/${encodeURIComponent(r.target.id)}/versions/${encodeURIComponent(r.id)}?from=${APPROVALS_FROM}`;
+  : `/spaces/${encodeURIComponent(spaceId)}/${r.kind === "source_version" ? "sources" : r.kind === "report_version" ? "reports/templates" : "recons"}/${encodeURIComponent(r.target.id)}/versions/${encodeURIComponent(r.id)}?from=${APPROVALS_FROM}`;
 
 const money = (m: ApprovalRowDto["amount"]) => (m
   ? <span className="tabular">{amountText(m.minor, m.currency)}{m.currency ? <span className="ml-1 text-caption text-fg-3">{m.currency}</span> : null}</span>

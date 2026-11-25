@@ -2,7 +2,7 @@ import { createElement as h, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { ApprovalRowDto } from "@starterkit/shared/contracts/approvals";
-import { approvalColumns, chainText } from "./approval-columns";
+import { approvalColumns, approvalHref, chainText } from "./approval-columns";
 import { noMatchText } from "./approvals-page";
 
 const COLS = approvalColumns("sp-1");
@@ -33,5 +33,11 @@ describe("approvals inbox empty state", () => {
   it("no match under Waiting for me says how to show all requests (clearing the filters keeps Waiting for me)", () => {
     expect(noMatchText(true)).toBe("Change the search or kinds, or untick Waiting for me to show all requests.");
     expect(noMatchText(false)).toBe("Change the search or kinds.");
+  });
+});
+
+describe("approvalHref for a report version", () => {
+  it("opens the report template's version page", () => {
+    expect(approvalHref("S", { ...R, kind: "report_version", id: "V", target: { id: "T", code: "x", name: "x" } } as never)).toBe("/spaces/S/reports/templates/T/versions/V?from=approvals");
   });
 });
