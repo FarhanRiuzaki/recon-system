@@ -50,12 +50,13 @@ describe("test()", () => {
 
   it("each failure is one class with the driver's code, never its text (host, user)", async () => {
     const login = await fails(pg({ user: "recon_nobody_x" }).test());
-    expect([login.kind, login.code]).toEqual(["login", "28000"]);
-    expect(login.message).toBe("The server refused the login (28000). Check the user and password.");
+    // 28000 (no rule for that user) or 28P01 (password failed): which one depends on the server's pg_hba.conf
+    expect([login.kind, login.code]).toEqual(["login", expect.stringMatching(/^28(000|P01)$/)]);
+    expect(login.message).toBe(`The server refused the login (${login.code}). Check the user and password.`);
     expect(login.message).not.toContain("recon_nobody_x");
     const db = await fails(pg({ database: "recon_no_such_db" }).test());
     expect([db.kind, db.code]).toEqual(["database", "3D000"]);
-    expect((await fails(pg({ port: 1 }).test())).kind).toBe("host");
+    expect((await fails(pg({ host: "127.0.0.1", port: 1 }).test())).kind).toBe("host"); // refused at once on this machine; a remote host may drop instead
     expect((await fails(pg({ host: "no-such-host.invalid" }).test())).kind).toBe("host");
   });
 
@@ -233,7 +234,7 @@ describe("pullWatermark()", () => {
 
   it("a uuid id orders as its text on PostgreSQL; a bytea id is refused", async () => {
     await src.unsafe(`drop table if exists uids; create table uids (d date not null, g uuid not null, b bytea not null);
-      insert into uids select '2026-11-19', md5(g::text)::uuid, decode(md5(g::text), 'hex') from generate_series(1, 9) g`);
+      insert into uids select '2026-11-19', left(encode(sha256(convert_to(g::text, 'UTF8')), 'hex'), 32)::uuid, decode(left(encode(sha256(convert_to(g::text, 'UTF8')), 'hex'), 32), 'hex') from generate_series(1, 9) g`);
     const rows = (await all(pg().pullWatermark({ from: { table: "uids" }, columns: [], watermark: { column: "d", id_columns: ["g"] }, after: null, lookback: {}, chunk: 4 }))).flat();
     expect(rows.map((r) => r.g)).toEqual(rows.map((r) => r.g!).sort());
     expect(rows).toHaveLength(9);

@@ -11,6 +11,7 @@ import { calendars, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { type DeliverySource, deliveryCounts } from "../../service";
 import { ksei } from "../unit/fixtures";
+import { budget } from "../../../../../test/helpers/perf";
 
 const A = Bun.randomUUIDv7();
 const SOURCES = 2000, FROM = "2026-08-01", TO = "2026-10-31"; // 92 days
@@ -40,7 +41,7 @@ describe("deliveryCounts: many sources × 92 days", () => {
       await tx.execute(sql`insert into source_deliveries (space_id, source_id, business_date, completed_at)
         select ${A}::uuid, s, d::date, d + interval '1 day 8 hours' from unnest(${`{${list.map((x) => x.id).join(",")}}`}::uuid[]) s, ${days}`);
       await tx.execute(sql`insert into source_files (id, space_id, source_id, name, sha256, size, modified_at, status, business_date, rows_ok)
-        select gen_random_uuid(), ${A}::uuid, s, 'f' || to_char(d, 'YYYYMMDD'), md5(s::text || d::text), 1, d, 'ingested', d::date, 1 from unnest(${`{${files.join(",")}}`}::uuid[]) s, ${days}`);
+        select gen_random_uuid(), ${A}::uuid, s, 'f' || to_char(d, 'YYYYMMDD'), left(encode(sha256(convert_to(s::text || d::text, 'UTF8')), 'hex'), 32), 1, d, 'ingested', d::date, 1 from unnest(${`{${files.join(",")}}`}::uuid[]) s, ${days}`);
       await tx.execute(sql`insert into source_snapshots (id, space_id, source_id, business_date, status, rows)
         select gen_random_uuid(), ${A}::uuid, s, d::date, 'active', 1 from unnest(${`{${snaps.join(",")}}`}::uuid[]) s, ${days}`);
       await tx.execute(sql`analyze source_deliveries, source_files, source_snapshots`);
@@ -55,6 +56,6 @@ describe("deliveryCounts: many sources × 92 days", () => {
     const ms = performance.now() - t;
     expect(out.size).toBe(SOURCES);
     expect(out.get(list[0]!.id)).toEqual({ onTime: 65, late: 0, missing: 0, unknown: 0 }); // the 65 weekdays of Aug–Oct 2026
-    expect(ms).toBeLessThan(2000);
+    expect(ms).toBeLessThan(budget(2000));
   }, 60_000);
 });

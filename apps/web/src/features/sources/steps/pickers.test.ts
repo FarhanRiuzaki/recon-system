@@ -14,12 +14,17 @@ afterEach(async () => { await act(async () => root?.unmount()); root = null; doc
 async function mount(el: ReturnType<typeof h>) {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root!.render(el));
-  await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); // the dynamic picker resolves
+  await until(() => document.querySelector('button[aria-label^="Table:"], button[aria-label^="Database:"]')); // the dynamic picker resolves
 }
 async function open() {
   const t = document.querySelector<HTMLButtonElement>('button[aria-label^="Table:"], button[aria-label^="Database:"]')!;
   await act(async () => { t.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); t.click(); });
-  await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+  await until(() => document.querySelector("[cmdk-root]")); // the list loads after the first open
+}
+
+/** Waits (in act) until `ready` finds something, up to 3 s: a loaded part arrives later on a busy machine. */
+async function until(ready: () => unknown) {
+  for (let i = 0; i < 300 && !ready(); i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
 }
 const note = () => document.querySelector('[id$="-note"]')?.textContent;
 

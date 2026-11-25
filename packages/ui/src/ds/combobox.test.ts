@@ -156,7 +156,8 @@ describe("CommandCombobox (server query mode, REC-F2a)", () => {
     await mount(h(CommandCombobox, { label: "Table", options: [], value: [], onValueChange: () => {}, query: "", onQuery: () => {}, phone: "sheet", ...props }));
     const trigger = document.querySelector<HTMLButtonElement>('button[aria-label^="Table:"]')!;
     await act(async () => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })); trigger.click(); });
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    // the command list loads on the first open: wait for it (up to 3 s), not a fixed moment a busy machine can miss
+    for (let i = 0; i < 300 && !document.querySelector("[cmdk-root]"); i++) await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
     return trigger;
   }
 

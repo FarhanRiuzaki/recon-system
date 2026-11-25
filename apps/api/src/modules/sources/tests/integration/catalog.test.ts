@@ -117,7 +117,7 @@ describe("POST …/sources/catalog (a new source's typed values)", () => {
   it("a refused login or database is 400 with the class sentence, never the credential", async () => {
     const r = await fresh({ list: "databases", connection: { ...pg(), user: "recon_nobody_z", password: "Pa55-nobody-z" } });
     const text = await r.text();
-    expect([r.status, JSON.parse(text).error.message]).toEqual([400, "The server refused the login (28000). Check the user and password."]);
+    expect([r.status, JSON.parse(text).error.message]).toEqual([400, expect.stringMatching(/^The server refused the login \(28(000|P01)\)\. Check the user and password\.$/)]);
     for (const bit of ["recon_nobody_z", "Pa55-nobody-z", secret.host]) expect(text).not.toContain(bit);
   });
 

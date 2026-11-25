@@ -139,3 +139,12 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   `docker compose --env-file .env.compose up -d --build` (port from `WEB_PORT`, project from `COMPOSE_PROJECT_NAME`).
 - Both stacks publish port 3000 when `WEB_PORT=3000`: run one at a time (`down` the other first; `down` keeps the data,
   `down -v` drops it).
+
+### Tests on tibsdev
+
+- Run them with Bun 1.4.3, the version the images use (`packageManager`): the host's own `bun` is older there, and
+  Bun 1.4.0 reads a TLS certificate whose name doesn't match differently. A copy taken from the API image sits in
+  `/root/.local/bun-1.4.3/bun`: `PATH=/root/.local/bun-1.4.3:$PATH bun run check`.
+- The test database is on tibsdbdev, another host: set `TEST_PERF_FACTOR=1.5` in `apps/api/.env` so the timing tests
+  allow for the network round trips (CI keeps the budgets as written, `test/helpers/perf.ts`).
+- tibsdbdev runs PostgreSQL in FIPS mode: `md5()` is refused there, so test data uses `sha256` (no product code uses `md5`).

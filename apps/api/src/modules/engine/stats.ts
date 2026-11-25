@@ -63,7 +63,8 @@ export async function queueStats(tx: InTx, spaceId: string, itemIds: readonly st
 
 /** Queues the recompute of (`configId`, `date`), `delayMs` (STATS_DELAY_MS) from now; one already queued takes it. */
 export function queueDay(spaceId: string, configId: string, date: string, tx?: InTx, delayMs = STATS_DELAY_MS): Promise<string | null> {
-  return enqueue(QUEUES.reconStats, { spaceId, configId, date }, { key: `${configId}:${date}`, startAfter: new Date(Date.now() + delayMs), tx });
+  // due now: no startAfter, so pg-boss takes the database's clock (one a little behind this one would hold the job back)
+  return enqueue(QUEUES.reconStats, { spaceId, configId, date }, { key: `${configId}:${date}`, ...(delayMs > 0 ? { startAfter: new Date(Date.now() + delayMs) } : {}), tx });
 }
 
 /**

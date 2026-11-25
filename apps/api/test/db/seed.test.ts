@@ -24,7 +24,7 @@ import { truncateAll } from "../helpers/db";
 const OWNER = { SEED_SUPERADMIN_NAME: "Seed Owner", SEED_SUPERADMIN_EMAIL: "Owner@Example.test", SEED_SUPERADMIN_USERNAME: "owner", SEED_SUPERADMIN_PASSWORD: "Owner-Password-1!" };
 
 /** Every user with its role names. */
-const usersWithRoles = () => db.select({ u: users, roles: rolesOf(users.id) }).from(users).orderBy(users.email).then((rs) => rs.map((r) => ({ ...r.u, roles: r.roles })));
+const usersWithRoles = () => db.select({ u: users, roles: rolesOf(users.id) }).from(users).orderBy(users.username).then((rs) => rs.map((r) => ({ ...r.u, roles: r.roles })));
 const userCount = async () => (await db.select({ n: count() }).from(users))[0]!.n;
 
 const snapshot = async () => ({

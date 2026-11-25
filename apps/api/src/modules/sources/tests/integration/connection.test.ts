@@ -81,7 +81,7 @@ describe("POST …/connection/test (database)", () => {
     expect((await connect(s.id, { user: "recon_nobody_x", password: "Pa55-word-nobody-guesses" })).status).toBe(200);
     const bad = await test_(t.adm, s.id);
     const text = await bad.text();
-    expect([bad.status, JSON.parse(text)]).toEqual([200, { ok: false, message: "The server rejected the stored sign-in. Enter the username and password again.", code: "28000", field: "password", version: null }]);
+    expect([bad.status, JSON.parse(text)]).toEqual([200, { ok: false, message: "The server rejected the stored sign-in. Enter the username and password again.", code: expect.stringMatching(/^28(000|P01)$/), field: "password", version: null }]);
     const logged = JSON.stringify(spies.flatMap((x) => x.mock.calls));
     for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses", secret.host]) expect(text).not.toContain(secretBit);
     for (const secretBit of ["recon_nobody_x", "Pa55-word-nobody-guesses"]) expect(logged).not.toContain(secretBit); // the host is logged (the probe's target)
@@ -91,10 +91,11 @@ describe("POST …/connection/test (database)", () => {
 
   it("an unreachable host points at Host; a typed one is named, a stored one isn't (REC-F2b)", async () => {
     const s = await made("db_watermark");
-    await connect(s.id, { port: 1 });
+    // port 1 on this machine refuses at once; the test database's own host may be remote, where a firewall drops instead
+    await connect(s.id, { host: "127.0.0.1", port: 1 });
     expect(await json(test_(t.adm, s.id))).toEqual({ ok: false, message: "Can't reach the server. Check the host and port.", code: "ERR_POSTGRES_CONNECTION_REFUSED", field: "host", version: null });
-    expect(await json(test_(t.adm, s.id, { connection: { engine: "postgres", ...secret, port: 1 } })))
-      .toEqual({ ok: false, message: `Can't reach ${secret.host}:1. Check the host and port.`, code: "ERR_POSTGRES_CONNECTION_REFUSED", field: "host", version: null });
+    expect(await json(test_(t.adm, s.id, { connection: { engine: "postgres", ...secret, host: "127.0.0.1", port: 1 } })))
+      .toEqual({ ok: false, message: "Can't reach 127.0.0.1:1. Check the host and port.", code: "ERR_POSTGRES_CONNECTION_REFUSED", field: "host", version: null });
   });
 
   it("source_admin only; no connection yet is 400", async () => {
@@ -199,7 +200,7 @@ describe("connection tests are logged and limited per user", () => {
   it("one log line per database test: who, which space, engine, host, port and the result kind; never the login or password", async () => {
     const info = spyOn(log, "info");
     const typed = { engine: "postgres", ...secret, user: "recon_nobody_y", password: "Pa55-word-nobody-guesses-y" };
-    expect(await json(call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "db_watermark", connection: typed } }))).toEqual({ ok: false, message: "Password rejected for recon_nobody_y.", code: "28000", field: "password", version: null });
+    expect(await json(call("POST", `${base()}/connection-test`, { token: t.adm, body: { kind: "db_watermark", connection: typed } }))).toEqual({ ok: false, message: "Password rejected for recon_nobody_y.", code: expect.stringMatching(/^28(000|P01)$/), field: "password", version: null });
     const s = await made("db_watermark");
     await connect(s.id);
     expect(await json(test_(t.adm, s.id))).toMatchObject({ ok: true });
@@ -209,7 +210,8 @@ describe("connection tests are logged and limited per user", () => {
       { userId: adm!.id, spaceId: A, engine: "postgres", host: secret.host, port: secret.port, result: "login" },
       { userId: adm!.id, spaceId: A, engine: "postgres", host: secret.host, port: secret.port, result: "ok" },
     ]);
-    const logged = JSON.stringify(info.mock.calls);
+    // the engine's own name is no secret, and a test database's login may be "postgres" too
+    const logged = JSON.stringify(info.mock.calls).replaceAll('"engine":"postgres"', '"engine":"-"');
     for (const bit of ["recon_nobody_y", "Pa55-word-nobody-guesses-y", secret.user, secret.password, "secretEnc"]) expect(logged).not.toContain(bit);
   });
 

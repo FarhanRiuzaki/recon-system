@@ -15,7 +15,7 @@
     "build": "bun run --filter @starterkit/web build",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "eslint --max-warnings 0 .",
-    "test": "bun run --filter '*' test",
+    "test": "bun run --filter '!@starterkit/api' --filter '*' test && bun run --filter @starterkit/api test",
     "test:changed": "bun run --filter '*' test:changed",
     "audit:dependencies": "bun audit",
     "audit:production": "bun audit --production",

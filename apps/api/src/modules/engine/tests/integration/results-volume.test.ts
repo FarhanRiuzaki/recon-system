@@ -17,6 +17,7 @@ import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { reconItems } from "../../schema";
 import { makeSource, plainSource, recon, spec } from "../fixtures";
+import { budget } from "../../../../../test/helpers/perf";
 
 const A = Bun.randomUUIDv7();
 const dateOf = (first: string, i: number) => new Date(Date.parse(`${first}T00:00:00Z`) + i * 86_400_000).toISOString().slice(0, 10);
@@ -27,10 +28,10 @@ async function seed(src: { a: { sourceId: string; versionId: string }; b: { sour
   for (let from = 1; from <= n; from += 100_000) {
     const to = Math.min(n, from + 99_999), pairTo = Math.min(pairs, to);
     const rec = (s: "a" | "b", source: { sourceId: string; versionId: string }, upTo: number) => db.execute(sql`insert into records (id, space_id, source_id, source_version_id, business_date, bday_index, ext_ref, amount_minor, currency, attrs, row_hash, origin_id)
-      select md5('r' || ${s} || ${d} || g)::uuid, ${A}::uuid, ${source.sourceId}::uuid, ${source.versionId}::uuid, ${d}::date, 1, ${s === "a" ? "P" : "Q"} || g, 1000 + g, 'IDR', '{}'::jsonb, md5(${s} || g), ${source.versionId}::uuid
+      select left(encode(sha256(convert_to('r' || ${s} || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, ${source.sourceId}::uuid, ${source.versionId}::uuid, ${d}::date, 1, ${s === "a" ? "P" : "Q"} || g, 1000 + g, 'IDR', '{}'::jsonb, left(encode(sha256(convert_to(${s} || g, 'UTF8')), 'hex'), 32), ${source.versionId}::uuid
       from generate_series(${from}::int, ${upTo}::int) g`);
     const item = (s: "a" | "b", upTo: number) => db.execute(sql`insert into recon_items (id, space_id, config_id, record_id, side, status, business_date, break_reason)
-      select md5('i' || ${s} || ${d} || g)::uuid, ${A}::uuid, ${cfg.configId}::uuid, md5('r' || ${s} || ${d} || g)::uuid, ${s}, case when g <= ${pairs} then 'matched' else 'break' end, ${d}::date,
+      select left(encode(sha256(convert_to('i' || ${s} || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, ${cfg.configId}::uuid, left(encode(sha256(convert_to('r' || ${s} || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${s}, case when g <= ${pairs} then 'matched' else 'break' end, ${d}::date,
         case when g <= ${pairs} then null else 'No counterpart' end
       from generate_series(${from}::int, ${upTo}::int) g`);
     await rec("a", src.a, to);
@@ -39,10 +40,10 @@ async function seed(src: { a: { sourceId: string; versionId: string }; b: { sour
     await rec("b", src.b, pairTo);
     await item("b", pairTo);
     await db.execute(sql`insert into match_groups (id, space_id, config_id, config_version_id, pass_no, kind, business_date, evidence)
-      select md5('g' || ${d} || g)::uuid, ${A}::uuid, ${cfg.configId}::uuid, ${cfg.versionId}::uuid, 1, 'auto', ${d}::date, '{}'::jsonb from generate_series(${from}::int, ${pairTo}::int) g`);
+      select left(encode(sha256(convert_to('g' || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, ${cfg.configId}::uuid, ${cfg.versionId}::uuid, 1, 'auto', ${d}::date, '{}'::jsonb from generate_series(${from}::int, ${pairTo}::int) g`);
     for (const s of ["a", "b"]) {
       await db.execute(sql`insert into match_members (group_id, space_id, item_id, side, signed_amount)
-        select md5('g' || ${d} || g)::uuid, ${A}::uuid, md5('i' || ${s} || ${d} || g)::uuid, ${s}, 1000 + g from generate_series(${from}::int, ${pairTo}::int) g`);
+        select left(encode(sha256(convert_to('g' || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, left(encode(sha256(convert_to('i' || ${s} || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${s}, 1000 + g from generate_series(${from}::int, ${pairTo}::int) g`);
     }
   }
   await requests(cfg, d, pairs + 1, n);
@@ -54,7 +55,7 @@ async function seed(src: { a: { sourceId: string; versionId: string }; b: { sour
  * (failed, queued or posted), every 7th one more run for the whole request, every 5th a grouped posting (one group a date).
  */
 async function requests(cfg: { configId: string; versionId: string }, d: string, from: number, to: number) {
-  const rq = (tag: string) => sql`md5(${tag} || ${d} || g)::uuid`, item = sql`md5('ia' || ${d} || g)::uuid`, next = sql`md5('ia' || ${d} || (g + 1))::uuid`;
+  const rq = (tag: string) => sql`left(encode(sha256(convert_to(${tag} || ${d} || g, 'UTF8')), 'hex'), 32)::uuid`, item = sql`left(encode(sha256(convert_to('ia' || ${d} || g, 'UTF8')), 'hex'), 32)::uuid`, next = sql`left(encode(sha256(convert_to('ia' || ${d} || (g + 1), 'UTF8')), 'hex'), 32)::uuid`;
   const each = sql`from generate_series(${from}::int, ${to}::int) g where g % 4 = 0`;
   await db.execute(sql`insert into approval_requests (id, space_id, config_id, kind, item_id, item_ids, label, note, status, config_version_id, requested_at)
     select ${rq("q")}, ${A}::uuid, ${cfg.configId}::uuid, case when g % 32 = 0 then 'force_match' else 'posting' end, ${item}, case when g % 32 = 0 then array[${next}] else '{}'::uuid[] end,
@@ -62,10 +63,10 @@ async function requests(cfg: { configId: string; versionId: string }, d: string,
   await db.execute(sql`insert into approval_requests (id, space_id, config_id, kind, item_id, label, note, status, config_version_id, requested_at)
     select ${rq("o")}, ${A}::uuid, ${cfg.configId}::uuid, 'posting', ${item}, 'Post', 'n', 'rejected', ${cfg.versionId}::uuid, now() - interval '1 day' ${each} and g % 48 = 0`);
   await db.execute(sql`insert into action_runs (id, space_id, request_id, config_version_id, action_index, action_name, kind, event, item_id, seq, status, bank_reference)
-    select md5('r' || ${d} || g)::uuid, ${A}::uuid, ${rq("q")}, ${cfg.versionId}::uuid, 0, 'Post', 'posting', 'approved', ${item}, 1,
+    select left(encode(sha256(convert_to('r' || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, ${rq("q")}, ${cfg.versionId}::uuid, 0, 'Post', 'posting', 'approved', ${item}, 1,
       case g % 3 when 0 then 'failed' when 1 then 'queued' else 'posted' end, 'BR' || g ${each}`);
   await db.execute(sql`insert into action_runs (id, space_id, request_id, config_version_id, action_index, action_name, kind, event, item_id, seq, status)
-    select md5('w' || ${d} || g)::uuid, ${A}::uuid, ${rq("q")}, ${cfg.versionId}::uuid, 1, 'Post once', 'posting', 'approved', null, 2, 'posted' ${each} and g % 28 = 8`);
+    select left(encode(sha256(convert_to('w' || ${d} || g, 'UTF8')), 'hex'), 32)::uuid, ${A}::uuid, ${rq("q")}, ${cfg.versionId}::uuid, 1, 'Post once', 'posting', 'approved', null, 2, 'posted' ${each} and g % 28 = 8`);
   const pg = Bun.randomUUIDv7();
   await db.execute(sql`insert into posting_groups (id, space_id, config_id, config_version_id, change, action_index, variant_index, action_name, variant_name, keys, key_text, currency, period, at)
     values (${pg}::uuid, ${A}::uuid, ${cfg.configId}::uuid, ${cfg.versionId}::uuid, 'posting', 2, 0, 'Post daily', 'Daily', '[]'::jsonb, ${d}, 'IDR', ${d}::date, 'day_close')`);
@@ -100,7 +101,7 @@ async function timed<T>(label: string, path: string, token: string): Promise<T> 
   const ms = Math.round(performance.now() - t);
   console.log(`${label}: ${ms} ms (${r.status})`);
   expect(r.status).toBe(200);
-  expect(ms).toBeLessThan(5000);
+  expect(ms).toBeLessThan(budget(5000));
   return (await r.json()) as T;
 }
 

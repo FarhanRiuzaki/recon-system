@@ -35,7 +35,7 @@ async function mk(kind: "file_inbox" | "db_snapshot", rows: number) {
   }
   if (rows) {
     await db.transaction(async (tx) => { await tx.execute(sql`set local statement_timeout = 0`); await tx.execute(sql`insert into records (id, space_id, source_id, source_version_id, business_date, bday_index, attrs, row_hash, origin_id, snapshot_id)
-      select gen_random_uuid(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${D}::date, 1, '{}'::jsonb, md5(g::text), ${v}::uuid, ${snap}::uuid from generate_series(1, ${rows}) g`); });
+      select gen_random_uuid(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${D}::date, 1, '{}'::jsonb, left(encode(sha256(convert_to(g::text, 'UTF8')), 'hex'), 32), ${v}::uuid, ${snap}::uuid from generate_series(1, ${rows}) g`); });
   }
   list.push({ id, spaceId: A, kind, status: "active", spec });
 }

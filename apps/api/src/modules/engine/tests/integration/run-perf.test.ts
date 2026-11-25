@@ -20,6 +20,7 @@ import { spaces, withSpace } from "../../../spaces";
 import type { Ctx } from "../../../auth";
 import { reconRuns } from "../../schema";
 import { classifyUnmatched, refreshRunDays, runDetail, runItemPage, runRecon } from "../../service";
+import { budget } from "../../../../../test/helpers/perf";
 
 const A = Bun.randomUUIDv7();
 const D = "2026-11-02";
@@ -46,7 +47,7 @@ async function side(n: number, off: boolean) {
 /** Records `from`..`to` of source `id` (references R<g>; with `off`, every 33rd amount 500 minor off). */
 const more = (id: string, v: string, from: number, to: number, off: boolean) =>
   db.execute(sql`insert into records (id, space_id, source_id, source_version_id, business_date, bday_index, ext_ref, amount_minor, currency, attrs, row_hash, origin_id)
-    select uuidv7(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${D}::date, 1, 'R' || g, 100000 + g + case when ${off} and g % 33 = 0 then 500 else 0 end, 'IDR', '{}'::jsonb, md5(g::text), ${v}::uuid
+    select uuidv7(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${D}::date, 1, 'R' || g, 100000 + g + case when ${off} and g % 33 = 0 then 500 else 0 end, 'IDR', '{}'::jsonb, left(encode(sha256(convert_to(g::text, 'UTF8')), 'hex'), 32), ${v}::uuid
     from generate_series(${from}::int, ${to}::int) g`);
 
 /** A published config of sides `a`, `b`: pass 1 exact (reference, amount, currency), pass 2 amount within 10.00 IDR, suggest. */
@@ -161,7 +162,7 @@ describe.if(!!process.env.PERF_TICK)("tick on a full day", () => {
       console.log(`tick ${k + 1}: ${took.at(-1)} ms`, JSON.stringify(run.counters.intake), JSON.stringify(run.counters.passes["1"]?.matched));
       expect(run.counters.intake).toEqual({ a: TICK, b: TICK });
     }
-    expect(Math.max(...took)).toBeLessThan(30_000);
+    expect(Math.max(...took)).toBeLessThan(budget(30_000));
   }, 3_600_000);
 });
 
@@ -181,7 +182,7 @@ describe.if(!!process.env.PERF_READ)("results screen reads over history", () => 
     for (let d = 0; d < DAYS; d++) {
       for (let g = 1; g <= ROWS; g += 100_000) {
         await db.execute(sql`insert into records (id, space_id, source_id, source_version_id, business_date, bday_index, ext_ref, amount_minor, currency, attrs, row_hash, origin_id)
-          select uuidv7(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${dateOf(d)}::date, ${d + 1}, 'R' || ${d} || '-' || g, 100000 + g + case when ${off} and g % 33 = 0 then 500 else 0 end, 'IDR', '{}'::jsonb, md5(${d} || '-' || g), ${v}::uuid
+          select uuidv7(), ${A}::uuid, ${id}::uuid, ${v}::uuid, ${dateOf(d)}::date, ${d + 1}, 'R' || ${d} || '-' || g, 100000 + g + case when ${off} and g % 33 = 0 then 500 else 0 end, 'IDR', '{}'::jsonb, left(encode(sha256(convert_to(${d} || '-' || g, 'UTF8')), 'hex'), 32), ${v}::uuid
           from generate_series(${g}::int, ${Math.min(ROWS, g + 99_999)}::int) g`);
       }
     }

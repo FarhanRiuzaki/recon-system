@@ -492,7 +492,8 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     const q = await json<ReconRunDto>(startRun(t.op, gate.configId, { from: "2026-11-02", to: "2026-11-05" }));
     await drain();
     const done = await getRun(gate.configId, q.id);
-    expect([done.status, done.doneThrough]).toEqual(["succeeded", "2026-11-05"]);
+    // the run's error is in the comparison, so a failed run says why
+    expect([done.status, done.doneThrough, done.error]).toEqual(["succeeded", "2026-11-05", null]);
     const side = (a: number, b = a) => ({ a, b });
     const pass = (matched: number, suggested: number, broken: number, brokenRefs: number) => ({
       matched, suggested, broken, brokenRefs, matchedItems: side(matched), suggestedItems: side(suggested), brokenItems: side(broken / 2),
