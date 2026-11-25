@@ -7,7 +7,8 @@ import type { Written } from "./write-csv";
 export async function writePdf(html: string, out: string, chromiumPath: string): Promise<Omit<Written, "rows">> {
   const browser = await chromium.launch({ executablePath: chromiumPath, headless: true, args: ["--disable-gpu", "--no-first-run", "--disable-extensions"] });
   try {
-    const page = await browser.newPage();
+    // the page is markup only: no script runs in it
+    const page = await browser.newPage({ javaScriptEnabled: false });
     await page.route("**/*", (r) => (r.request().url().startsWith("data:") ? r.continue() : r.abort()));
     await page.setContent(html, { waitUntil: "load" });
     const bytes = await page.pdf({

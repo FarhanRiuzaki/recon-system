@@ -14,7 +14,7 @@ const TONE: Record<ReportFileStatus, Parameters<typeof statusTone>[0]> = { queue
 /** The Files card's legend: each state's words (never colour alone). */
 export const FILE_LEGEND = (Object.keys(STATUS_LABEL) as ReportFileStatus[]).map((s) => ({
   health: statusTone(TONE[s]), label: STATUS_LABEL[s],
-  description: { queued: "Waiting for the worker.", making: "Being made; the share read so far.", ready: "Ready to download. Every download is logged.", failed: "The report stopped; its row says why. Make it again.", removed: "Removed after its retention; its record stays." }[s],
+  description: { queued: "Waiting for the worker.", making: "Being made; the bar shows how far it is.", ready: "Ready to download. Every download is logged.", failed: "The report stopped; its row says why. Make it again.", removed: "Removed after its retention; its record stays." }[s],
 }));
 const dates = (f: { from: string; to: string }) => (f.from === f.to ? f.from : `${f.from} – ${f.to}`);
 

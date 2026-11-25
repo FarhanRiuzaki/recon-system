@@ -16,7 +16,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { statusTone } from "@/lib/shared/categories";
-import { NEW_TEMPLATE_REASON, TEMPLATE_STATUS_LABEL } from "./report-text";
+import { EDIT_DRAFT_REASON, TEMPLATE_STATUS_LABEL } from "./report-text";
 import { SpecRows } from "./spec-rows";
 import { reportsHref, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
@@ -49,7 +49,7 @@ export function TemplatePage({ spaceId, templateId }: { spaceId: string; templat
         description={`${t.recon.name}${open ? ` · draft v${vs.find((v) => v.id === open.id)?.version} ${open.status === "waiting" ? "waiting for approval" : "open"}` : ""}`}
         actions={<>
           {mayDo(roles, "generateReports") && t.status === "active" && <Button variant="secondary" onClick={() => setGenerate(true)}>Generate report</Button>}
-          {t.status === "retired" ? null : editor ? <Button variant="edit" onClick={() => void edit()}><Icon icon={EditIcon} />{open?.status === "waiting" ? "View draft" : "Edit draft"}</Button> : <BlockedButton variant="edit" reason={NEW_TEMPLATE_REASON}><Icon icon={EditIcon} />Edit draft</BlockedButton>}
+          {t.status === "retired" ? null : editor ? <Button variant="edit" onClick={() => void edit()}><Icon icon={EditIcon} />{open?.status === "waiting" ? "View draft" : "Edit draft"}</Button> : <BlockedButton variant="edit" reason={EDIT_DRAFT_REASON}><Icon icon={EditIcon} />Edit draft</BlockedButton>}
         </>}
         more={editor && t.status !== "retired" ? [{ label: "Retire report template", destructive: true, confirm: {
           title: "Retire this report template?", description: "No more files are made from it, after runs or on request. Its files stay and can still be downloaded.",

@@ -79,11 +79,12 @@ export async function downloadReport(ctx: Ctx, id: string, full: boolean): Promi
     const [s] = await tx.select({ code: spaces.code }).from(spaces).where(eq(spaces.id, spaceId));
     const [t] = await tx.select({ name: reportTemplates.name }).from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, f.templateId)));
     const [v] = await tx.select({ version: reportVersions.version }).from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.id, f.versionId)));
+    const dir = await reportsDirOf(config().INBOX_ROOTS, s!.code, false);
+    if (!(await stat(fileOnDisk(dir, f)).catch(() => null))?.isFile()) throw new ApiError("invalid_state", "The report's file is missing on the server. Make it again.");
     await recordActivity(tx, ctx, { action: "report.download", target: { type: "report", id: f.templateId, label: t?.name ?? "" }, after: { fileId: f.id, version: v?.version ?? null, from: f.fromDate, to: f.toDate, format: f.format, masking: f.masking, sha256: f.sha256 } });
-    return { f, dir: await reportsDirOf(config().INBOX_ROOTS, s!.code, false) };
+    return { f, dir };
   });
   const p = fileOnDisk(dir, f);
-  if (!(await stat(p).catch(() => null))?.isFile()) throw new ApiError("invalid_state", "The report's file is missing on the server. Make it again.");
   const type = f.format === "csv" ? "text/csv; charset=utf-8" : f.format === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
   return new Response(Bun.file(p).stream(), { headers: { "Content-Type": type, "Content-Disposition": `attachment; filename="${f.fileName}"`, "Cache-Control": "no-store" } });
 }
@@ -111,4 +112,14 @@ export async function downloadSample(ctx: Ctx, id: string): Promise<Response> {
     return { f, dir: await reportsDirOf(config().INBOX_ROOTS, s!.code, true) };
   });
   return new Response(Bun.file(fileOnDisk(dir, f)).stream(), { headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="sample-${f.fileName}"`, "Cache-Control": "no-store" } });
+}
+
+/** GET …/reports/samples/:id/state: a Test's sample as it is made (its maker only), so the Test shows the link once ready. */
+export function sampleState(ctx: Ctx, id: string): Promise<{ status: string; error: string | null }> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const [f] = await tx.select({ status: reportFiles.status, error: reportFiles.error }).from(reportFiles)
+      .where(and(eq(reportFiles.spaceId, spaceId), eq(reportFiles.id, id), eq(reportFiles.sample, true), eq(reportFiles.askedBy, ctx.user.id)));
+    if (!f) throw notFound("sample");
+    return f;
+  });
 }

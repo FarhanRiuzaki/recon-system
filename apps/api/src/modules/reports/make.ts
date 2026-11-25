@@ -15,7 +15,7 @@ import { enqueue, type JobHandler, QUEUES } from "../../kernel/jobs";
 import { log } from "../../kernel/log";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
-import { reconDays } from "../engine";
+import { reconDays, reconRuns } from "../engine";
 import { reconConfigs } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
@@ -62,6 +62,8 @@ export async function reportsDirOf(roots: readonly string[], spaceCode: string, 
 
 /** The next file version of a template over the same dates. */
 async function nextFileVersion(tx: InTx, spaceId: string, templateId: string, from: string, to: string): Promise<number> {
+  // the template's row locked first: two requests at once for the same dates count one after the other
+  await tx.select({ id: reportTemplates.id }).from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, templateId))).for("update");
   const [r] = await tx.select({ n: count() }).from(reportFiles).where(and(eq(reportFiles.spaceId, spaceId), eq(reportFiles.templateId, templateId),
     eq(reportFiles.fromDate, from), eq(reportFiles.toDate, to), eq(reportFiles.sample, false)));
   return (r?.n ?? 0) + 1;
@@ -92,6 +94,9 @@ async function insertFile(tx: InTx, f: NewFile): Promise<FileRow | null> {
 export function requestFile(ctx: Ctx, b: GenerateReportBody): Promise<ReportFileDto> {
   checkRange(b.from, b.to);
   return inSpace(ctx, async (tx, spaceId) => {
+    const [own] = await tx.select({ retiredAt: reportTemplates.retiredAt }).from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, b.templateId)));
+    if (!own) throw notFound("report template");
+    if (own.retiredAt) throw new ApiError("invalid_state", "This report template is retired, so it makes no more files.");
     const v = await activeVersion(tx, spaceId, b.templateId);
     if (!v) throw new ApiError("invalid_state", "This report has no active version yet. Send its draft first.");
     const spec = v.spec as ReportSpec;
@@ -211,6 +216,8 @@ export async function makeFile(on: Tx, spaceId: string, fileId: string, env = lo
     const said = e instanceof ApiError ? e.message : FAILED;
     if (!(e instanceof ApiError)) log.error({ err: e instanceof Error ? { name: e.name } : { type: typeof e }, fileId: f.id }, "report file failed");
     await set({ status: "failed", error: said });
+    // the file's own reasons are final; anything else is thrown so the queue tries again (retryLimit)
+    if (!(e instanceof ApiError)) throw e;
   }
 }
 
@@ -258,6 +265,10 @@ export async function purgeReports(on: Tx, now = Date.now()): Promise<{ report_f
     const scope = { spaceIds: [s.id], userId: null };
     const old = await withSpace(scope, (tx) => tx.select().from(reportFiles).where(and(eq(reportFiles.spaceId, s.id), inArray(reportFiles.status, ["ready", "failed"]), sql`(
       (${reportFiles.sample} and ${reportFiles.createdAt} < ${new Date(now - DAY)}) or (not ${reportFiles.sample} and ${reportFiles.createdAt} < ${new Date(now - days * DAY)}))`)).limit(1000), on);
+    // the report files of the last day's real runs that lack them (the run's hook failed): queued now, once
+    const runs = await withSpace(scope, (tx) => tx.select({ id: reconRuns.id, configId: reconRuns.configId, from: reconRuns.dateFrom, to: reconRuns.dateTo }).from(reconRuns)
+      .where(and(eq(reconRuns.spaceId, s.id), eq(reconRuns.status, "succeeded"), sql`${reconRuns.mode} <> 'simulation'`, sql`${reconRuns.finishedAt} > ${new Date(now - DAY)}`)), on);
+    for (const r of runs) await queueAfterRun(on, s.id, r.configId, r.id, r.from, r.to);
     // a file whose worker died on every attempt (its row unmoved past STALE_MS) is failed, so it can be made again
     await withSpace(scope, (tx) => tx.update(reportFiles).set({ status: "failed", error: FAILED, updatedAt: new Date(now) })
       .where(and(eq(reportFiles.spaceId, s.id), inArray(reportFiles.status, ["queued", "making"]), sql`${reportFiles.updatedAt} < ${new Date(now - 4 * 3600_000)}`)), on);

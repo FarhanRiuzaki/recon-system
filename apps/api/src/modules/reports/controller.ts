@@ -11,7 +11,7 @@ import {
   approveReportVersion, createTemplate, discardDraft, listTemplates, listVersions, newDraft, rejectReportVersion, retireTemplate, saveDraft, submitVersion, templateDetail,
 } from "./service";
 import { requestFile, testFile } from "./make";
-import { downloadReport, downloadSample, fileDetail, fileFacets, filePage, retryFile } from "./files";
+import { downloadReport, downloadSample, fileDetail, fileFacets, filePage, retryFile, sampleState } from "./files";
 
 
 export const reportsController = () =>
@@ -58,6 +58,7 @@ export const reportsController = () =>
     .get("/v1/spaces/:spaceId/reports/files/:fileId/download", ({ ctx, params }) => downloadReport(ctx, idParam(params.fileId, "report file"), false), { guard: { space: SPACE_ACTION.viewReports } })
     .get("/v1/spaces/:spaceId/reports/files/:fileId/download-full", ({ ctx, params }) => downloadReport(ctx, idParam(params.fileId, "report file"), true), { guard: { space: SPACE_ACTION.downloadFullReports } })
     .post("/v1/spaces/:spaceId/reports/files/:fileId/retry", ({ ctx, params }) => retryFile(ctx, idParam(params.fileId, "report file")), { guard: { space: SPACE_ACTION.generateReports } })
+    .get("/v1/spaces/:spaceId/reports/samples/:fileId/state", ({ ctx, params }) => sampleState(ctx, idParam(params.fileId, "sample")), { guard: { space: SPACE_ACTION.editReports } })
     .get("/v1/spaces/:spaceId/reports/samples/:fileId", ({ ctx, params }) => downloadSample(ctx, idParam(params.fileId, "sample")), { guard: { space: SPACE_ACTION.editReports } })
     .post("/v1/spaces/:spaceId/reports/files", async (c) => {
       const f = await requestFile(c.ctx, await body(c, GenerateReportBody));

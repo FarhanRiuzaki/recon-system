@@ -1,3 +1,5 @@
+import { EDIT_DRAFT_REASON, sampleLine } from "./report-text";
+import { FILE_LEGEND } from "./report-columns";
 import { describe, expect, it } from "vitest";
 import { finalText, generateProblem, openDatesNotice, statusText } from "./report-text";
 
@@ -18,5 +20,18 @@ describe("report text", () => {
     expect(openDatesNotice(3)).toBe("3 of these dates aren't signed off yet: the report is marked Not final.");
     expect(openDatesNotice(1)).toBe("1 of these dates isn't signed off yet: the report is marked Not final.");
     expect(openDatesNotice(0)).toBeNull();
+  });
+});
+
+describe("the Test's sample line", () => {
+  it("says it's being made until ready, then offers it; a failed one says why", () => {
+    expect(sampleLine(undefined)).toEqual({ link: false, text: "Making the sample file…" });
+    expect(sampleLine({ status: "making", error: null })).toEqual({ link: false, text: "Making the sample file…" });
+    expect(sampleLine({ status: "ready", error: null })).toEqual({ link: true, text: "Download sample file" });
+    expect(sampleLine({ status: "failed", error: "A PDF holds at most 5,000 rows." })).toEqual({ link: false, text: "The sample file failed: A PDF holds at most 5,000 rows." });
+  });
+  it("the Edit draft and progress copy say what they mean", () => {
+    expect(EDIT_DRAFT_REASON).toBe("Only a config maker of this space edits a report template's draft.");
+    expect(JSON.stringify(FILE_LEGEND)).toContain("Being made; the bar shows how far it is.");
   });
 });

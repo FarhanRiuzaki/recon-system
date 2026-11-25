@@ -95,4 +95,30 @@ describe("report files", () => {
     expect(facets.final.not_final).toBe(1);
     expect((await json<{ items: unknown[] }>(call("GET", `${base()}/files?final=final`, { token: mk }))).items).toEqual([]);
   });
+
+  it("a file missing on disk is refused before any download is logged", async () => {
+    const f = await file();
+    const { rmSync } = await import("node:fs");
+    const [s] = await db.select({ code: spaces.code }).from(spaces).where(eq(spaces.id, A));
+    rmSync(`${process.env.INBOX_ROOTS!.split(",")[0]}/${s!.code}/.reports/${f.id}.csv`, { force: true });
+    expect((await call("GET", `${base()}/files/${f.id}/download`, { token: vw })).status).toBe(409);
+    expect(await downloads()).toEqual([]);
+  });
+
+  it("two requests at once for the same dates get versions 1 and 2; a retired template says so", async () => {
+    await file();
+    const both = await Promise.all([1, 2].map(() => json<ReportFileDto>(call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } }))));
+    expect(both.map((f) => f.fileVersion).sort()).toEqual([2, 3]);
+    await call("POST", `${base()}/templates/${T.id}/retire`, { token: mk });
+    const r = await call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } });
+    expect(((await r.json()) as { error: { message: string } }).error.message).toBe("This report template is retired, so it makes no more files.");
+  });
+
+  it("a sample's state, for its maker only", async () => {
+    const v = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${T.id}/versions`, { token: mk }))).items[0]!;
+    const t = await json<{ sampleId: string }>(call("POST", `${base()}/templates/${T.id}/versions/${v.id}/test`, { token: mk, body: { from: D, to: D } }));
+    expect(await json(call("GET", `${base()}/samples/${t.sampleId}/state`, { token: mk }))).toMatchObject({ status: "queued" });
+    await drain();
+    expect(await json(call("GET", `${base()}/samples/${t.sampleId}/state`, { token: mk }))).toMatchObject({ status: "ready" });
+  });
 });

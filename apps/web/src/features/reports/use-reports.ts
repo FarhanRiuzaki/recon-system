@@ -72,3 +72,12 @@ export function useTemplateActions(spaceId: string, id: string) {
 /** POST …/templates (New report template). */
 export const createTemplate = (spaceId: string, b: { configId: string; name: string; start: string }) =>
   api<ReportTemplateDto>(reportsApi(spaceId, "/templates"), { method: "POST", body: JSON.stringify(b) });
+
+/** A Test's sample file as the worker makes it: asked every 2 s until ready or failed. */
+export function useSampleState(spaceId: string, sampleId: string | undefined) {
+  return useQuery({
+    queryKey: [...REPORTS_KEY, "sample", spaceId, sampleId ?? ""], enabled: !!sampleId,
+    queryFn: () => api<{ status: string; error: string | null }>(reportsApi(spaceId, `/samples/${encodeURIComponent(sampleId!)}/state`)),
+    refetchInterval: (q) => (q.state.data && ["ready", "failed", "removed"].includes(q.state.data.status) ? false : 2000),
+  }).data;
+}

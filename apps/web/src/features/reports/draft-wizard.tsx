@@ -23,10 +23,10 @@ import { toast } from "@starterkit/ui/ui/toast";
 import { SortableList } from "@/components/sortable-list";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
-import { FORMAT_LABEL, KIND_LABEL } from "./report-text";
+import { FORMAT_LABEL, KIND_LABEL, sampleLine } from "./report-text";
 import { firstProblem, REPORT_STEPS, type ReportStep, stepProblem, toggleStatus, withFormat, withKind } from "./spec-model";
 import { serialSaver } from "./saver";
-import { reportsApi, reportsHref, type TestResult, useTemplate, useTemplateActions } from "./use-reports";
+import { reportsApi, reportsHref, type TestResult, useSampleState, useTemplate, useTemplateActions } from "./use-reports";
 
 /** The columns a report can hold: either side's core fields and the recon's info (keys as the API takes them). */
 const COLUMN_OPTIONS = [
@@ -201,6 +201,8 @@ function TestStep({ spaceId, spec, run }: { spaceId: string; versionId: string; 
   const [from, setFrom] = useState(""), [to, setTo] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<TestResult | null>(null);
+  const sample = useSampleState(spaceId, result?.sampleId);
+  const line = sampleLine(sample);
   const [error, setError] = useState<string | null>(null);
   const go = async () => {
     setBusy(true); setError(null);
@@ -231,7 +233,9 @@ function TestStep({ spaceId, spec, run }: { spaceId: string; versionId: string; 
           <table className="w-full text-body-sm"><thead><tr>{spec.columns.map((c) => <th key={c.key} className="px-2 py-1 text-left font-normal text-fg-3">{c.header}</th>)}</tr></thead>
             <tbody>{result.rows.map((r, i) => <tr key={i} className="border-t border-line">{spec.columns.map((c) => <td key={c.key} className="px-2 py-1">{r.values[c.key] ?? ""}</td>)}</tr>)}</tbody></table>
         </div>) : <p className="text-body-sm text-fg-3">No results on these dates match the rows of step 1.</p>)}
-      {result && <p className="text-body-sm"><a className="text-primary hover:underline" href={reportsApi(spaceId, `/samples/${encodeURIComponent(result.sampleId)}`)} download>Download sample file</a> <span className="text-fg-3">(ready a moment after the test; kept 24 hours)</span></p>}
+      {result && <p className="text-body-sm">{line.link
+        ? <a className="text-primary hover:underline" href={reportsApi(spaceId, `/samples/${encodeURIComponent(result.sampleId)}`)} download>{line.text}</a>
+        : <span className={sample?.status === "failed" ? "text-down-ink" : "text-fg-3"}>{line.text}</span>} <span className="text-fg-3">(kept 24 hours)</span></p>}
     </Panel>
   );
 }

@@ -3,14 +3,15 @@
 // writes no cell styles, so group lines are told by their place and name, not bold.
 import { utils, write } from "xlsx";
 import { XLSX_ROWS_MAX } from "@starterkit/shared/reports";
+import { ApiError } from "../../kernel/errors";
 import { groupRows, type ReportRow, type Total } from "./summary";
 import type { Column, Written } from "./write-csv";
 
-export async function writeXlsx(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string, shape: { groups: string[]; totals: Total[] } = { groups: [], totals: [] }): Promise<Written> {
+export async function writeXlsx(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string, shape: { groups: string[]; totals: Total[] } = { groups: [], totals: [] }, max = XLSX_ROWS_MAX - 1): Promise<Written> {
   const rows: ReportRow[] = [];
   for await (const page of pages) {
     rows.push(...page);
-    if (rows.length > XLSX_ROWS_MAX - 1) throw new Error("Excel holds at most 1,048,576 rows: use CSV.");
+    if (rows.length > max) throw new ApiError("bad_request", "Excel holds at most 1,048,576 rows. Use CSV for more.");
   }
   const cells = (r: ReportRow) => columns.map((c) => r.values[c.key] ?? null);
   const aoa: (string | number | null)[][] = [columns.map((c) => c.header)];

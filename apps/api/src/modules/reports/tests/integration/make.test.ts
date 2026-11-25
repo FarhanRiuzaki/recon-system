@@ -18,6 +18,7 @@ import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { purgeReports, queueAfterRun, reportFiles, reportsHandlers } from "../../index";
 import { makeFile } from "../../make";
+import { loadWorkerConfig } from "../../../../kernel/config";
 
 const ROOT = process.env.INBOX_ROOTS!.split(",")[0]!;
 let A: string, code: string, CFG: string, VER: string, mk: string, op: string, T: ReportTemplateDto, V: ReportVersionDto;
@@ -164,4 +165,20 @@ describe("report files", () => {
     await drain();
     expect((await files()).map((f) => f.error)).toEqual(["A PDF holds at most 5,000 rows. Use CSV or Excel for more."]);
   }, 60_000);
+
+  it("an unexpected failure marks the file failed and is thrown, so the queue tries it again", async () => {
+    await activate({ kind: "daily_summary", columns: [], output: { ...V.spec.output, format: "pdf" } });
+    const f = await json<ReportFileDto>(call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } }));
+    const e = await makeFile(db, A, f.id, { ...loadWorkerConfig(process.env), REPORT_CHROMIUM_PATH: "/nowhere/chromium" }).catch((x) => x);
+    expect(e).toBeInstanceOf(Error);
+    expect((await files())[0]!.status).toBe("failed");
+  }, 30_000);
+
+  it("a run whose report files weren't queued (the hook failed) gets them from the janitor", async () => {
+    await activate();
+    const r = await run();
+    await db.update(reconRuns).set({ finishedAt: new Date() }).where(eq(reconRuns.id, r));
+    await purgeReports(db);
+    expect((await files()).map((f) => f.runId)).toEqual([r]);
+  }, 30_000);
 });

@@ -8,6 +8,7 @@ import { read } from "xlsx";
 import type { ReportRow } from "../../summary";
 import { writeCsvFile } from "../../write-csv";
 import { writeXlsx } from "../../write-xlsx";
+import { ApiError } from "../../../../kernel/errors";
 import { reportHtml } from "../../pdf-html";
 
 const dir = mkdtempSync(path.join(tmpdir(), "reports-"));
@@ -47,4 +48,17 @@ describe("reportHtml", () => {
     expect(html).toContain("Masked customer data");
     expect(html).toContain("KSEI daily recap");
   });
+
+describe("writer edge cases", () => {
+  it("a plain negative number stays a number in CSV; a formula is still neutralized", async () => {
+    const out = path.join(dir, "n.csv");
+    await writeCsvFile(pages([{ ...row("R1"), values: { "a:ext_ref": "-1+2", "a:amount_minor": "-1500" } }]), columns, out);
+    expect(readFileSync(out, "utf8").split("\r\n")[1]).toBe("'-1+2,-1500");
+  });
+  it("past Excel's rows the writer says to use CSV", async () => {
+    const e = await writeXlsx(pages([row("R1"), row("R2"), row("R3")]), columns, path.join(dir, "big.xlsx"), { groups: [], totals: [] }, 2).catch((x) => x);
+    expect(e).toBeInstanceOf(ApiError);
+    expect((e as Error).message).toBe("Excel holds at most 1,048,576 rows. Use CSV for more.");
+  });
+});
 });

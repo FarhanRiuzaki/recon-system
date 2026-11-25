@@ -23,3 +23,12 @@ export const NEW_TEMPLATE_REASON = "Only a config maker of this space creates re
 export const KIND_LABEL = { transactions: "Transactions", grouped: "Grouped", daily_summary: "Daily summary" } as const;
 export const FORMAT_LABEL = { csv: "CSV", xlsx: "Excel", pdf: "PDF" } as const;
 export const TEMPLATE_STATUS_LABEL = { draft: "Draft", waiting: "Waiting approval", active: "Active", retired: "Retired" } as const;
+
+export const EDIT_DRAFT_REASON = "Only a config maker of this space edits a report template's draft.";
+
+/** The Test's sample file line: a link once the worker made it, else what it is doing. */
+export function sampleLine(s: { status: string; error: string | null } | undefined): { link: boolean; text: string } {
+  if (s?.status === "ready") return { link: true, text: "Download sample file" };
+  if (s?.status === "failed") return { link: false, text: `The sample file failed: ${s.error ?? "it stopped."}` };
+  return { link: false, text: "Making the sample file…" };
+}

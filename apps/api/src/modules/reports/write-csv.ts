@@ -6,6 +6,9 @@ import type { ReportRow } from "./summary";
 export type Written = { rows: number; size: number; sha256: string };
 export type Column = { key: string; header: string };
 
+/** A cell that is only a number (`-1500`, `12.5`) goes as a number, so a negative one isn't prefixed like a formula. */
+const plainNumber = (v: string | null): string | number | null => (v !== null && /^-?\d{1,15}(\.\d{1,15})?$/.test(v) && Number.isFinite(Number(v)) && String(Number(v)) === v ? Number(v) : v);
+
 /** Streams `pages` to `out`; answers how many rows, the size and the SHA-256 of what was written. */
 export async function writeCsvFile(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string): Promise<Written> {
   const file = Bun.file(out).writer();
@@ -15,7 +18,7 @@ export async function writeCsvFile(pages: AsyncIterable<ReportRow[]>, columns: C
   put(CSV_BOM + toCsv([columns.map((c) => c.header)]));
   for await (const page of pages) {
     if (!page.length) continue;
-    put(toCsv(page.map((r) => columns.map((c) => r.values[c.key] ?? null))));
+    put(toCsv(page.map((r) => columns.map((c) => plainNumber(r.values[c.key] ?? null)))));
     rows += page.length;
     await file.flush();
   }
