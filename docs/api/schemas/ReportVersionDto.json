@@ -53,7 +53,7 @@
                 "properties": {
                   "ref": {
                     "type": "string",
-                    "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                    "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
                   },
                   "op": {
                     "type": "string",
@@ -116,11 +116,11 @@
                       },
                       "ref": {
                         "type": "string",
-                        "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                        "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
                       },
                       "fallback": {
                         "type": "string",
-                        "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                        "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
                       }
                     },
                     "required": [
@@ -370,8 +370,12 @@
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+            "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
           }
+        },
+        "summaryOnly": {
+          "default": false,
+          "type": "boolean"
         },
         "totals": {
           "type": "object",
@@ -468,7 +472,7 @@
                               },
                               "ref": {
                                 "type": "string",
-                                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                                "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
                               }
                             },
                             "required": [
@@ -499,7 +503,7 @@
                               },
                               "ref": {
                                 "type": "string",
-                                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                                "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
                               }
                             },
                             "required": [
@@ -667,6 +671,7 @@
         "rows",
         "columns",
         "groups",
+        "summaryOnly",
         "totals",
         "sections",
         "output",

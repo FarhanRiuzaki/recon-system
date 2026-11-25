@@ -11,11 +11,11 @@
         },
         "ref": {
           "type": "string",
-          "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+          "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
         },
         "fallback": {
           "type": "string",
-          "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+          "pattern": "^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
         }
       },
       "required": [
