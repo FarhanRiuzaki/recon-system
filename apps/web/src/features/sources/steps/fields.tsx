@@ -15,9 +15,10 @@ import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contrac
 import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES, WATERMARK_ID_COLUMNS_MAX } from "@starterkit/shared/sources";
 import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
 import { FormatCell } from "./format-cell";
+import { focusControl } from "./reveal";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { amountProblems, type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
+import { amountProblems, type Column, ctl, type Draft, fitLookback, mappingProblem, mappingProblems, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
 import { toast } from "@starterkit/ui/ui/toast";
 import { addComputed as newComputed, problemTarget, summaryLine } from "../mapper-model";
 
@@ -131,8 +132,9 @@ export function FieldsStep(p: FieldsStepProps) {
   /** The mapper, open at a place (a field, a column) or at none; false when closed. */
   const [mapperAt, setMapperAt] = useState<string | null | false>(false);
   const mapperOpen = mapperAt !== false;
-  // what still stops Next, each opening the mapper where it is (the list below stays as the way without a canvas)
-  const mapProblems = [mappingProblem(s), ...amountProblems(s)].filter((x): x is { id: string; reason: string } => !!x && x.id !== "src-columns");
+  // the mapping's problems (every one, not only the first), each opening the mapper where it is; Next also checks the
+  // reading (watermark) and the stored names, shown on their own controls
+  const mapProblems = [...mappingProblems(s), ...amountProblems(s)].filter((x): x is { id: string; reason: string } => !!x && x.id !== "src-columns");
   // one object per preview, so the open mapper's canvas isn't rebuilt on every render of this step
   const firstExamples = useMemo(() => Object.fromEntries((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples[0] ?? ""])), [p.preview.result]);
   // "View as list": closed on a desktop (the mapper is the way in), open on a phone (no mapper there)
@@ -160,8 +162,8 @@ export function FieldsStep(p: FieldsStepProps) {
   const addComputed = () => {
     computedUsed();
     // it starts from the first text column (a remark, a reference), the usual source of a computed key
-    const { name } = newComputed(s);
-    setSpec((x) => newComputed(x).spec);
+    const { name, spec: next } = newComputed(s);
+    setSpec(() => next);
     focusNew(`${ctl(`derive.${name}`)}-name`);
   };
 
@@ -246,6 +248,8 @@ export function FieldsStep(p: FieldsStepProps) {
               <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-down-ink">
                 <span>{x.reason}</span>
                 <Button type="button" variant="link" size="sm" className="hidden md:inline-flex" onClick={() => setMapperAt(problemTarget(s, x.id))}>Fix in mapper</Button>
+                {/* a phone has no mapper: the list below is open there, so this goes to the control */}
+                <Button type="button" variant="link" size="sm" className="md:hidden" onClick={() => focusControl(x.id)}>Show in list</Button>
               </li>
             ))}
           </ul>

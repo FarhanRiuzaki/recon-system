@@ -1,6 +1,6 @@
 "use client";
 
-// The source mapper (DEC-059): the file's columns and the core record on one full-screen canvas, the field map the
+// The source mapper (DEC-059): the source's columns and the core record on one full-screen canvas, the field map the
 // recon posting mapper draws. A line is a column feeding a core field; the inspector sets a preset, a formula or a fixed
 // currency; the rail keeps columns as extra attributes. Edits stay in the mapper until Done; Cancel drops them.
 import { useMemo, useState } from "react";
@@ -24,6 +24,8 @@ import { ComputedColumns } from "./computed";
 import { FormatCell } from "./format-cell";
 import { AddIcon } from "@starterkit/ui/ui/icons";
 
+/** A computed card's ids in the mapper (the list's own stay ctl("derive.<name>")). */
+const deriveId = (n: string) => `mapper-derive-${n.replace(/[^A-Za-z0-9_-]/g, "-")}`;
 /** A JSON path the reader takes: keys joined by dots (code.rc). */
 const JSON_PATH = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 /** Past this many columns the rail offers a search. */
@@ -228,9 +230,13 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
       {/* computed columns are made here too (the list's own editor), and join the canvas's Computed table to be drawn */}
       <div className="grid gap-3">
         {spec.fields.length > 0 && (
-          <span><Button type="button" variant="create" size="sm" onClick={() => { const r = addComputed(spec); edit(r.spec); }}><Icon icon={AddIcon} />Add computed column</Button></span>
+          <span><Button type="button" variant="create" size="sm" onClick={() => {
+            const r = addComputed(spec); edit(r.spec);
+            // the new card takes the focus, so it is in view in the dock
+            requestAnimationFrame(() => document.getElementById(`${deriveId(r.name)}-name`)?.focus());
+          }}><Icon icon={AddIcon} />Add computed column</Button></span>
         )}
-        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={() => undefined} examples={exampleMap} renderUseAs={() => null} />
+        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={() => undefined} examples={exampleMap} idOf={deriveId} />
       </div>
     </div>
   );
@@ -245,7 +251,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
       </>}
       rail={rail} inspector={inspector} dock={dock}>
       <FieldMapCanvas graph={graph} title="Core record" caption="What every row becomes" selected={selected} examples={null}
-        label="Source map: the file's columns on the left, the core record on the right"
+        label="Source map: the source's columns on the left, the core record on the right"
         onSelect={choose}
         onConnect={(col, target) => { if (isCore(target)) edit(connect(spec, col, target)); }}
         onRemove={remove} />

@@ -184,4 +184,14 @@ describe("SourceMapper", () => {
       expect(text()).not.toContain("Date and number formats are set in View as list.");
     });
   });
+
+  it("a computed column in the mapper has its own ids, and a name a column has is refused", async () => {
+    await mount(spec());
+    await click("Add computed column");
+    const name = document.getElementById("mapper-derive-computed_1-name") as HTMLInputElement;
+    expect(name).not.toBeNull();
+    expect(document.activeElement).toBe(name);
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "sid"); name.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(text()).toContain("A column is already named sid. Use a different name.");
+  });
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { computeCel } from "@starterkit/shared/compute";
-import { addComputed, columnInfo, connect, problemTarget, removeAttr, setFormat, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
+import { addComputed, renameComputed, columnInfo, connect, problemTarget, removeAttr, setFormat, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
 
 const f = (name: string, type: "string" | "decimal" | "date" = "string") => ({ name, type, nullable: true, trim: true });
 const spec = (o: Partial<SourceSpec> = {}): SourceSpec => ({
@@ -153,5 +153,22 @@ describe("one place to map", () => {
     expect(problemTarget(spec(), "src-fields-2-format-scale")).toBe("col:amt");
     expect(problemTarget(spec(), "src-fields-1")).toBe("col:sre");
     expect(problemTarget(spec(), "src-key_fields")).toBeNull();
+  });
+});
+
+describe("renaming a computed column", () => {
+  const s = () => spec({ derive: { amt2: computeCel("amt", []) }, mapping: { business_date: { cel: "file_date" }, account_ref: { field: "amt2" }, ext_ref: { cel: computeCel("amt2", [{ type: "json", args: ["a"] }]) }, attrs: { amt2: { field: "amt2" }, sid: { field: "sid" } } } });
+  it("moves every use: core fields, attributes and formulas built on it", () => {
+    const r = renameComputed(s(), "amt2", "amt_x");
+    if ("refused" in r) throw new Error(r.refused);
+    expect(Object.keys(r.derive)).toEqual(["amt_x"]);
+    expect(r.mapping.account_ref).toEqual({ field: "amt_x" });
+    expect(r.mapping.attrs.amt2).toEqual({ field: "amt_x" });
+    expect(r.mapping.ext_ref).toEqual({ cel: computeCel("amt_x", [{ type: "json", args: ["a"] }]) });
+  });
+  it("refuses an empty name or one a column or computed column has", () => {
+    expect(renameComputed(s(), "amt2", " ")).toEqual({ refused: "Give the computed column a name." });
+    expect(renameComputed(s(), "amt2", "sid")).toEqual({ refused: "A column is already named sid. Use a different name." });
+    expect(renameComputed({ ...s(), derive: { ...s().derive, other: "1" } }, "amt2", "other")).toEqual({ refused: "A column is already named other. Use a different name." });
   });
 });

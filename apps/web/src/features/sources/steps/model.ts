@@ -246,18 +246,24 @@ export function snapshotOf(d: Draft): Draft {
 
 /** Why step 2 can't be previewed or saved yet (no field, no business date). */
 export function mappingProblem(s: SourceSpec): { id: string; reason: string } | null {
-  if (!s.fields.length) return { id: "src-columns", reason: "Read the columns first: a sample of the file, or the source's table." };
+  return mappingProblems(s)[0] ?? null;
+}
+
+/** Every mapping problem, in mappingProblem's order (step 2's Still to map lists them all at once). */
+export function mappingProblems(s: SourceSpec): { id: string; reason: string }[] {
+  const out: { id: string; reason: string }[] = [];
+  if (!s.fields.length) return [{ id: "src-columns", reason: "Read the columns first: a sample of the file, or the source's table." }];
   const b = s.mapping.business_date;
-  if ("field" in b && !b.field) return { id: ctl("mapping.business_date"), reason: "Pick where the business date comes from." };
+  if ("field" in b && !b.field) out.push({ id: ctl("mapping.business_date"), reason: "Pick where the business date comes from." });
   // a recon field still reading a column that is gone (the sample or the table was read again without it)
   const names = new Set([...s.fields.map((f) => f.name), ...Object.keys(s.derive)]);
   for (const [k, r] of Object.entries(s.mapping)) {
     if (k === "attrs" || !r || typeof r !== "object" || !("field" in r || "cel" in r)) continue;
     const ref = r as ValueRef;
     const col = "field" in ref ? ref.field : computeSteps(ref.cel)?.source;
-    if (col && !names.has(col)) return { id: ctl(`mapping.${k}`), reason: `${col} is no longer a column. Pick another column in Use as, or stop using this field.` };
+    if (col && !names.has(col)) out.push({ id: ctl(`mapping.${k}`), reason: `${col} is no longer a column. Pick another column in Use as, or stop using this field.` });
   }
-  return null;
+  return out;
 }
 
 /** Why the amount can't be saved yet (step 2's Next): its unit not chosen, or no currency for its rows. */

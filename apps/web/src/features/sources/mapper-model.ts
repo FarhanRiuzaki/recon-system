@@ -1,4 +1,4 @@
-// The source mapper (DEC-059), pure: a draft spec as the field map's graph (the file's columns and computed values on
+// The source mapper (DEC-059), pure: a draft spec as the field map's graph (the source's columns and computed values on
 // the left, the core record and its folded extra attributes on the right, a line per column mapping), and the edits
 // the mapper makes to the draft. The wizard applies the spec these answer.
 import type { MapGraph, MapTargetRow } from "@/components/field-map/graph";
@@ -184,4 +184,22 @@ export function problemTarget(spec: SourceSpec, id: string): string | null {
   const col = /^src-fields-(\d+)(?:-|$)/.exec(id);
   const f = col ? spec.fields[Number(col[1])] : undefined;
   return f ? `col:${f.name}` : null;
+}
+
+/** Computed column `from` renamed to `to`, with every use moved (core fields, attributes, formulas built on it), or why not. */
+export function renameComputed(spec: SourceSpec, from: string, to: string): SourceSpec | { refused: string } {
+  const name = to.trim();
+  if (!name) return { refused: "Give the computed column a name." };
+  if (name === from) return spec;
+  if (spec.fields.some((f) => f.name === name) || Object.hasOwn(spec.derive ?? {}, name)) return { refused: `A column is already named ${name}. Use a different name.` };
+  const move = (r: ValueRef): ValueRef => {
+    if ("field" in r) return r.field === from ? { ...r, field: name } : r;
+    const b = computeSteps(r.cel);
+    return b && b.source === from ? { ...r, cel: computeCel(name, b.steps) } : r;
+  };
+  const mapping = Object.fromEntries(Object.entries(spec.mapping).map(([k, r]) => {
+    if (k === "attrs") return [k, Object.fromEntries(Object.entries(r as Record<string, ValueRef>).map(([n, v]) => [n, move(v)]))];
+    return [k, r && typeof r === "object" ? move(r as ValueRef) : r];
+  })) as Mapping;
+  return { ...spec, mapping, derive: Object.fromEntries(Object.entries(spec.derive).map(([k, v]) => [k === from ? name : k, v])) };
 }

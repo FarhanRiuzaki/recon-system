@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import {
-  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, connBody, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, lookbackNote, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
+  amountProblems, buildSpec, closeConnection, codeOf, saveAndClose, mappingProblem, mappingProblems, connBody, connChanged, connectionProblems, connKey, type Draft, EMPTY_CONN, emptySpec, fitLookback, lookbackNote, pullProblems, repeatedRows, snapshotOf, tiedNotice, watermarkKind, watermarkProblems, withEngine, withName,
 } from "./model";
 
 const db = (over: Partial<Draft> = {}): Draft => ({ name: "Core", code: "core", kind: "db_watermark", conn: EMPTY_CONN, from: "table", spec: emptySpec("db_watermark"), ...over });
@@ -190,5 +191,13 @@ describe("Save and close keeps what was entered (owner rule: a wizard never lose
     expect(calls.splice(0)).toEqual(["flush"]);
     expect(await saveAndClose({ kind: "blocked", problems: [], reason: "x" }, run(true, true))).toBe(false);
     expect(calls.splice(0)).toEqual(["blocked"]);
+  });
+});
+
+describe("mappingProblems", () => {
+  it("names every field still reading a column that is gone, not only the first", () => {
+    const s = { ...emptySpec("file_inbox"), fields: [{ name: "a", type: "string", nullable: true, trim: true }], mapping: { business_date: { cel: "file_date" }, account_ref: { field: "x" }, ext_ref: { field: "y" }, attrs: {} } } as SourceSpec;
+    expect(mappingProblems(s).map((p) => p.id)).toEqual(["src-mapping-account_ref", "src-mapping-ext_ref"]);
+    expect(mappingProblem(s)?.id).toBe("src-mapping-account_ref");
   });
 });
