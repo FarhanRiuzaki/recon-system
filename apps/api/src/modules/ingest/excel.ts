@@ -3,7 +3,7 @@
 // text as is (0012 keeps its zeros), a date cell yyyy-MM-dd (or yyyy-MM-ddTHH:mm:ss with a time), a number in plain
 // decimal (no grouping, no exponent, float noise rounded to 15 digits), a boolean true/false. Blank rows are skipped.
 import type { FileFormat } from "@starterkit/shared/contracts/sources";
-import * as XLSX from "xlsx";
+import { type CellObject, read as readXlsx, SSF, utils, type WorkBook } from "xlsx";
 import type { CellRecord, ParsedLine } from "./parse";
 import { WHOLE_ROW } from "./parse";
 
@@ -17,10 +17,10 @@ function plain(v: number): string {
 }
 
 /** A cell's text. */
-export function cellText(c: XLSX.CellObject | undefined): string {
+export function cellText(c: CellObject | undefined): string {
   if (!c || c.v === undefined || c.v === null) return "";
-  if (c.t === "n" && typeof c.v === "number" && c.z && XLSX.SSF.is_date(c.z)) {
-    const d = XLSX.SSF.parse_date_code(c.v);
+  if (c.t === "n" && typeof c.v === "number" && c.z && SSF.is_date(c.z)) {
+    const d = SSF.parse_date_code(c.v);
     const day = `${pad(d.y, 4)}-${pad(d.m)}-${pad(d.d)}`;
     return d.H || d.M || d.S ? `${day}T${pad(d.H)}:${pad(d.M)}:${pad(Math.floor(d.S))}` : day;
   }
@@ -30,7 +30,7 @@ export function cellText(c: XLSX.CellObject | undefined): string {
   return String(c.v);
 }
 
-const read = (bytes: Uint8Array) => XLSX.read(bytes, { type: "array", cellNF: true, cellDates: false, dense: false });
+const read = (bytes: Uint8Array) => readXlsx(bytes, { type: "array", cellNF: true, cellDates: false, dense: false });
 
 /** The workbook's sheet names, in order. */
 export const sheetNames = (bytes: Uint8Array): string[] => read(bytes).SheetNames;
@@ -51,7 +51,7 @@ const fault = (reason: string): ParsedLine => ({ line: 1, ok: false, cells: [], 
  */
 export function workbookRecords(bytes: Uint8Array, format: Excel, maxMb: number): CellRecord[] {
   if (bytes.length > maxMb * 1024 * 1024) return [{ line: 1, bad: fault(`The workbook is over ${maxMb} MB.`) }];
-  let wb: XLSX.WorkBook;
+  let wb: WorkBook;
   try { wb = read(bytes); } catch { return [{ line: 1, bad: fault("The file can't be opened as an Excel workbook.") }]; }
   const name = pickSheet(wb.SheetNames, format.sheet);
   if (!name) {
@@ -60,11 +60,11 @@ export function workbookRecords(bytes: Uint8Array, format: Excel, maxMb: number)
   }
   const ws = wb.Sheets[name]!;
   if (!ws["!ref"]) return [];
-  const range = XLSX.utils.decode_range(ws["!ref"]);
+  const range = utils.decode_range(ws["!ref"]);
   const out: CellRecord[] = [];
   for (let r = range.s.r; r <= range.e.r; r++) {
     const cells: string[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) cells.push(cellText(ws[XLSX.utils.encode_cell({ r, c })]));
+    for (let c = range.s.c; c <= range.e.c; c++) cells.push(cellText(ws[utils.encode_cell({ r, c })]));
     while (cells.length && cells.at(-1) === "") cells.pop();
     if (cells.length) out.push({ line: r + 1, cells });
   }

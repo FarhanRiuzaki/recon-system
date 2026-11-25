@@ -454,7 +454,8 @@
           "type": "string",
           "enum": [
             "high",
-            "low"
+            "low",
+            "none"
           ]
         },
         "notes": {

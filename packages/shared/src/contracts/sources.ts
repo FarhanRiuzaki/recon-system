@@ -163,7 +163,8 @@ export const DETECT_ROW_ROLES = ["skipped", "header", "detail", "record_header",
 export const DetectDto = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true), sampleId: z.string(), fileName: z.string(), format: FileFormat, columns: z.array(z.string()),
-    confidence: z.enum(["high", "low"]), notes: z.array(z.string()),
+    /** none: no rule fits (the manual form opens with a starting guess); low: a close call (settings open for review). */
+    confidence: z.enum(["high", "low", "none"]), notes: z.array(z.string()),
     rows: z.array(z.object({ line: z.number().int(), role: z.enum(DETECT_ROW_ROLES), cells: z.array(z.string()) })),
   }),
   z.object({ supported: z.literal(false), fileName: z.string(), type: z.string(), reason: z.string() }),
