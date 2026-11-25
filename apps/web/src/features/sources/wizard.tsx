@@ -29,6 +29,7 @@ import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import { previewBody } from "./use-spec-preview";
 import { focusControl } from "./steps/reveal";
+import { storedSampleRead } from "./steps/file-read-model";
 import {
   amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, fitLookback, mappingProblem, type Preview, pullProblems,
   saveAndClose, type Tested, watermarkKind, watermarkProblems,
@@ -189,6 +190,16 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   // the file reader (DEC-058): what detection proposed for the sample, and the sample the preview reads by its id
   const [read, setRead] = useState<{ result: DetectDto | null; busy: boolean; error: string | null }>({ result: null, busy: false, error: null });
   const [sampleId, setSampleId] = useState<string | null>(null);
+  const sampleRead = useRef(false);
+  // an existing file source shows its saved folder's newest file as the sample, as picking the folder does for a new one
+  useEffect(() => {
+    const inbox = storedSampleRead(d.spec.input, { created: !!ids, admin, already: sampleRead.current });
+    if (!inbox) return;
+    sampleRead.current = true;
+    void detectInbox(inbox, true);
+    // once per visit: the folder the source was opened with
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids?.sourceId, admin]);
   const [fileName, setFileName] = useState("");
   const [businessDate, setBusinessDate] = useState("");
   const [preview, setPreview] = useState<Preview>({ result: null, error: null, pending: false });
@@ -513,12 +524,16 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       return withCore({ ...x, spec: { ...x.spec, fields, input: { ...x.spec.input, format: r.format }, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [attrNameOf(n), { field: n }])) } } } });
     });
   }
-  /** Detection over an Inbox files folder's newest file (a source admin's: how a file is read is theirs). */
-  async function detectInbox(inbox: { path: string; pattern: string }) {
+  /**
+   * Detection over an Inbox files folder's newest file (a source admin's: how a file is read is theirs). `stored`: the
+   * saved source's own folder, read for its sample only, so the format and columns already saved stay as they are.
+   */
+  async function detectInbox(inbox: { path: string; pattern: string }, stored = false) {
     if (!admin) return;
     setRead((x) => ({ ...x, busy: true, error: null }));
-    try { applyRead(await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: JSON.stringify({ inbox }) })); }
-    catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
+    try { const r = await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: JSON.stringify({ inbox }) });
+      if (stored) { setRead({ result: r, busy: false, error: null }); if (r.supported) setSampleId(r.sampleId); } else applyRead(r);
+    } catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
   }
   /** Detection over a file picked on the computer (kept by the API 24 h as the preview's sample). */
   async function detectPicked(f: File) {

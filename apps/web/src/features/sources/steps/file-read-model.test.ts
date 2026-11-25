@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ROLE_LABEL, summaryOf, toggleBoundary } from "./file-read-model";
+import { ROLE_LABEL, storedSampleRead, summaryOf, toggleBoundary } from "./file-read-model";
 
 describe("summaryOf", () => {
   it("says how the file is read in one line", () => {
@@ -28,5 +28,20 @@ describe("toggleBoundary", () => {
 describe("ROLE_LABEL", () => {
   it("names each row role", () => {
     expect(ROLE_LABEL).toEqual({ skipped: "Skipped", header: "Header", detail: "Row", record_header: "Record header", trailer: "Trailer", quarantined: "Can't be read" });
+  });
+});
+
+describe("storedSampleRead", () => {
+  const input = { kind: "file_inbox", path: "/inbox/ops/act", pattern: "ACT_*.txt" } as const;
+  it("an existing file source, opened by a source admin, reads its saved folder's newest file once", () => {
+    expect(storedSampleRead(input, { created: true, admin: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "ACT_*.txt" });
+  });
+  it("not for a new source, a maker, a source already read, a database source or no folder", () => {
+    expect(storedSampleRead(input, { created: false, admin: true, already: false })).toBeNull();
+    expect(storedSampleRead(input, { created: true, admin: false, already: false })).toBeNull();
+    expect(storedSampleRead(input, { created: true, admin: true, already: true })).toBeNull();
+    expect(storedSampleRead({ kind: "db_watermark" }, { created: true, admin: true, already: false })).toBeNull();
+    expect(storedSampleRead({ ...input, path: " " }, { created: true, admin: true, already: false })).toBeNull();
+    expect(storedSampleRead({ ...input, pattern: "" }, { created: true, admin: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "*" });
   });
 });

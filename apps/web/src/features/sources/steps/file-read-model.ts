@@ -38,3 +38,12 @@ export function toggleBoundary(cols: readonly Pos[], at: number): Pos[] {
 export const ROLE_LABEL: Record<Role, string> = {
   skipped: "Skipped", header: "Header", detail: "Row", record_header: "Record header", trailer: "Trailer", quarantined: "Can't be read",
 };
+
+/**
+ * The saved folder whose newest file an existing file source reads as its sample when it is opened (a source admin's,
+ * since detection is theirs; once per visit): without it, editing showed no sample and step 2 had no examples.
+ */
+export function storedSampleRead(input: { kind: string; path?: string; pattern?: string }, o: { created: boolean; admin: boolean; already: boolean }): { path: string; pattern: string } | null {
+  if (input.kind !== "file_inbox" || !o.created || !o.admin || o.already || !input.path?.trim()) return null;
+  return { path: input.path.trim(), pattern: input.pattern?.trim() || "*" };
+}
