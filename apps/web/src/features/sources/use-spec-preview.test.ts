@@ -6,18 +6,27 @@ import { previewBody, useSpecPreview } from "./use-spec-preview";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const calls: { url: string; body: unknown }[] = [];
-vi.mock("@/lib/client/api", () => ({
-  api: vi.fn(async (url: string, init: RequestInit) => { calls.push({ url, body: JSON.parse(String(init.body)) }); return { lines: 0, ok: 0, skipped: 0, quarantined: 0, columns: [], records: [], quarantine: [] }; }),
-  errorText: (e: unknown) => String(e),
-}));
+let refuse: string | null = null;
+vi.mock("@/lib/client/api", () => {
+  class ApiError extends Error { constructor(readonly status: number, readonly code: string, message: string) { super(message); } }
+  return {
+    ApiError,
+    api: vi.fn(async (url: string, init: RequestInit) => {
+      calls.push({ url, body: JSON.parse(String(init.body)) });
+      if (refuse) throw new ApiError(400, "bad_request", refuse);
+      return { lines: 0, ok: 0, skipped: 0, quarantined: 0, columns: [], records: [], quarantine: [] };
+    }),
+    errorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
+  };
+});
 
 let root: Root | null = null;
-beforeEach(() => { calls.length = 0; vi.useFakeTimers(); });
+beforeEach(() => { calls.length = 0; refuse = null; vi.useFakeTimers(); });
 afterEach(async () => { await act(async () => root?.unmount()); root = null; vi.useRealTimers(); });
 const ids = { sourceId: "s1", versionId: "v1" };
 function Probe(p: { spec: object; enabled?: boolean; sampleId?: string | null }) {
-  useSpecPreview({ spaceId: "sp", ids, spec: p.spec as never, file: true, sampleId: p.sampleId ?? "smp", sample: "", fileName: "", businessDate: "", enabled: p.enabled ?? true });
-  return null;
+  const state = useSpecPreview({ spaceId: "sp", ids, spec: p.spec as never, file: true, sampleId: p.sampleId ?? "smp", sample: "", fileName: "", businessDate: "", enabled: p.enabled ?? true });
+  return h("output", null, JSON.stringify(state.field));
 }
 
 describe("previewBody", () => {
@@ -42,5 +51,13 @@ describe("useSpecPreview", () => {
     await act(async () => root!.render(h(Probe, { spec: { a: 1 }, enabled: false })));
     await act(async () => { vi.advanceTimersByTime(1000); });
     expect(calls).toEqual([]);
+  });
+
+  it("a refusal that names a field is kept with its path, for the mapper to show where it is", async () => {
+    refuse = "Check the expression at derive.net: unknown function";
+    const host = document.createElement("div"); root = createRoot(host);
+    await act(async () => root!.render(h(Probe, { spec: { a: 1 } })));
+    await act(async () => { vi.advanceTimersByTime(450); await Promise.resolve(); await Promise.resolve(); });
+    expect(JSON.parse(host.textContent ?? "null")).toEqual({ path: "derive.net", reason: "unknown function" });
   });
 });

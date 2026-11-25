@@ -13,9 +13,12 @@ import { ScrollFade } from "./scroll-fade";
  * background; below, it fills the screen and the parts stack in one scroll. Escape asks `onOpenChange(false)`: the
  * caller decides (unsaved changes may keep it open). Load it on demand (next/dynamic) with what it holds.
  */
-export function FullScreenEditor({ open, onOpenChange, title, description, actions, rail, inspector, dock, children }: {
+export function FullScreenEditor({ open, onOpenChange, title, description, actions, rail, inspector, dock, dockLabel = "Preview", children }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; description?: string; actions: ReactNode;
-  rail?: ReactNode; inspector?: ReactNode; dock?: ReactNode; children: ReactNode;
+  rail?: ReactNode; inspector?: ReactNode; dock?: ReactNode;
+  /** The dock region's name, when it holds more than a preview. */
+  dockLabel?: string;
+  children: ReactNode;
 }) {
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
@@ -40,7 +43,7 @@ export function FullScreenEditor({ open, onOpenChange, title, description, actio
             )}
             <div className="flex min-h-0 flex-col max-md:min-h-[60dvh]">
               <div className="relative min-h-0 flex-1">{children}</div>
-              {dock && <section aria-label="Preview" className="shrink-0 border-t border-line-strong bg-sheet"><ScrollFade className="max-h-[36dvh] max-md:max-h-none">{dock}</ScrollFade></section>}
+              {dock && <section aria-label={dockLabel} className="shrink-0 border-t border-line-strong bg-sheet"><ScrollFade className="max-h-[36dvh] max-md:max-h-none">{dock}</ScrollFade></section>}
             </div>
             {inspector && (
               <aside aria-label="Inspector" className={cn("min-h-0 border-line-strong bg-sheet max-md:border-t xl:border-l",

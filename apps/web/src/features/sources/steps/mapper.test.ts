@@ -9,7 +9,8 @@ vi.mock("@/components/field-map/canvas", () => ({
   FieldMapCanvas: (p: { graph: { request: { path: string; name: string }[] }; onSelect: (x: string) => void }) =>
     h("div", { "data-testid": "canvas" }, p.graph.request.map((r) => h("button", { key: r.path, type: "button", onClick: () => p.onSelect(r.path) }, `row ${r.name}`))),
 }));
-vi.mock("../use-spec-preview", () => ({ useSpecPreview: () => ({ result: null, error: null, pending: false }), previewBody: () => ({}) }));
+const live = { field: null as { path: string; reason: string } | null };
+vi.mock("../use-spec-preview", () => ({ useSpecPreview: () => ({ result: null, error: live.field ? "refused" : null, pending: false, field: live.field }), previewBody: () => ({}) }));
 const { SourceMapper } = await import("./mapper");
 
 const f = (name: string) => ({ name, type: "string" as const, nullable: true, trim: true });
@@ -18,7 +19,7 @@ const spec = (fields = [f("sid"), f("sre")]): SourceSpec => ({
   input: { kind: "file_inbox", path: "/x", pattern: "*", completion: { kind: "stable_seconds", seconds: 60 }, format: { kind: "delimited", delimiter: "|", quote: '"', header: false, encoding: "utf-8" } },
 } as SourceSpec);
 let root: Root | null = null;
-afterEach(async () => { await act(async () => root?.unmount()); root = null; document.body.innerHTML = ""; });
+afterEach(async () => { await act(async () => root?.unmount()); root = null; document.body.innerHTML = ""; live.field = null; });
 async function mount(s: SourceSpec, onDone = vi.fn(), onCancel = vi.fn()) {
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root!.render(h(SourceMapper, { open: true, name: "KOFIS ACT", spec: s, examples: {}, preview: { spaceId: "sp", ids: null, file: true, sampleId: null, sample: "", fileName: "", businessDate: "" }, onDone, onCancel })));
@@ -193,5 +194,12 @@ describe("SourceMapper", () => {
     expect(document.activeElement).toBe(name);
     await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "sid"); name.dispatchEvent(new Event("input", { bubbles: true })); });
     expect(text()).toContain("A column is already named sid. Use a different name.");
+  });
+
+  it("the preview's refusal of a computed column shows on its card", async () => {
+    live.field = { path: "derive.net", reason: "unknown function" };
+    await mount({ ...spec(), derive: { net: "nope(sid)" } } as SourceSpec);
+    expect(text()).toContain("unknown function");
+    expect(document.querySelector('[aria-label="Preview and computed columns"]')).not.toBeNull();
   });
 });

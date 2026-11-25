@@ -30,4 +30,9 @@ describe("FullScreenEditor (a full-screen editor)", () => {
     await act(async () => { document.querySelector('[role="dialog"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
+  it("the dock names what it holds when it holds more than a preview", async () => {
+    const el = document.createElement("div"); document.body.append(el); root = createRoot(el);
+    await act(async () => root!.render(h(FullScreenEditor, { open: true, onOpenChange: () => {}, title: "T", actions: null, dock: h("p", null, "x"), dockLabel: "Preview and computed columns", children: null })));
+    expect(document.querySelector('[aria-label="Preview and computed columns"]')).not.toBeNull();
+  });
 });

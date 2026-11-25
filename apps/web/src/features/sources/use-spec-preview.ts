@@ -5,7 +5,8 @@
 // (types guessed from the first rows, the plain-mapping fallback for examples).
 import { useEffect, useRef, useState } from "react";
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
-import { api, errorText } from "@/lib/client/api";
+import { ApiError, api, errorText } from "@/lib/client/api";
+import { fieldError } from "./spec-draft";
 import { sourceApi } from "./use-sources";
 
 /** A moment after the last change before a preview is asked for. */
@@ -18,11 +19,14 @@ export function previewBody(o: { file: boolean; sampleId: string | null; sample:
   return { spec: o.spec, ...(o.businessDate ? { businessDate: o.businessDate } : {}) };
 }
 
+/** The latest preview; `field`: the field a refusal names (its path, as "derive.net"), for the mapper to show there. */
+export type PreviewState = { result: SourcePreviewDto | null; error: string | null; pending: boolean; field: { path: string; reason: string } | null };
+
 export function useSpecPreview(o: {
   spaceId: string; ids: { sourceId: string; versionId: string } | null; spec: SourceSpec; file: boolean; sampleId: string | null;
   sample: string; fileName: string; businessDate: string; enabled: boolean;
-}): { result: SourcePreviewDto | null; error: string | null; pending: boolean } {
-  const [state, setState] = useState<{ result: SourcePreviewDto | null; error: string | null; pending: boolean }>({ result: null, error: null, pending: false });
+}): PreviewState {
+  const [state, setState] = useState<PreviewState>({ result: null, error: null, pending: false, field: null });
   const seq = useRef(0);
   const key = JSON.stringify(previewBody(o));
   useEffect(() => {
@@ -32,8 +36,8 @@ export function useSpecPreview(o: {
       const n = ++seq.current;
       setState((s) => ({ ...s, pending: true }));
       api<SourcePreviewDto>(sourceApi(o.spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: key })
-        .then((result) => { if (n === seq.current) setState({ result, error: null, pending: false }); })
-        .catch((e: unknown) => { if (n === seq.current) setState((s) => ({ ...s, error: errorText(e), pending: false })); });
+        .then((result) => { if (n === seq.current) setState({ result, error: null, pending: false, field: null }); })
+        .catch((e: unknown) => { if (n === seq.current) setState((s) => ({ ...s, error: errorText(e), pending: false, field: e instanceof ApiError ? fieldError(e.message) : null })); });
     }, DEBOUNCE_MS);
     return () => clearTimeout(t);
     // the request is compared by its body (key)

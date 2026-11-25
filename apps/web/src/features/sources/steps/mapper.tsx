@@ -221,10 +221,13 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
     <p className="p-4 text-body-sm text-fg-3">Select a core field to set where its value comes from, or drag a column onto it.</p>
   );
 
+  // the live preview's refusal of a computed column, shown on its card as the list shows it after Next
+  const deriveErr = (id: string) => (live.field?.path.startsWith("derive.") && deriveId(live.field.path.slice(7)) === id ? live.field.reason : undefined);
   const exampleMap = useMemo(() => new Map(Object.entries(examples).map(([k, v]) => [k, v ? [v] : []])), [examples]);
   const dock = (
     <div className="grid gap-3 px-4 py-2">
-      <p role="status" className="text-body-sm text-fg-2">
+      {/* the preview's line stays in view while the computed cards scroll under it */}
+      <p role="status" className="sticky top-0 z-10 -mx-4 bg-sheet px-4 py-1 text-body-sm text-fg-2">
         {live.pending ? "Previewing…" : live.error ? `The preview stopped: ${live.error}` : live.result ? `${live.result.ok} of ${live.result.lines} rows read · ${live.result.quarantined} quarantined` : "The preview shows here once the sample is read."}
       </p>
       {/* computed columns are made here too (the list's own editor), and join the canvas's Computed table to be drawn */}
@@ -236,7 +239,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
             requestAnimationFrame(() => document.getElementById(`${deriveId(r.name)}-name`)?.focus());
           }}><Icon icon={AddIcon} />Add computed column</Button></span>
         )}
-        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={() => undefined} examples={exampleMap} idOf={deriveId} />
+        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={deriveErr} examples={exampleMap} idOf={deriveId} />
       </div>
     </div>
   );
@@ -249,7 +252,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button type="button" onClick={() => onDone(spec)}>Done</Button>
       </>}
-      rail={rail} inspector={inspector} dock={dock}>
+      rail={rail} inspector={inspector} dock={dock} dockLabel="Preview and computed columns">
       <FieldMapCanvas graph={graph} title="Core record" caption="What every row becomes" selected={selected} examples={null}
         label="Source map: the source's columns on the left, the core record on the right"
         onSelect={choose}
