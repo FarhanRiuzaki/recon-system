@@ -486,7 +486,10 @@ describe("the Plan 3 gate through POST …/runs and the worker's handler", () =>
     const pull = ingestHandlers(probe)[QUEUES.ingestPull]!;
     for (const s of [s1, s2]) await pull({ id: "t", data: { spaceId: s.spaceId, sourceId: s.sourceId } });
     gate = await recon(A, gateSpec(s1.sourceId, s2.sourceId));
-  }, 60_000);
+    // fresh planner statistics before the gate's run: after hundreds of tests filled and truncated the tables, stale
+    // ones gave a plan whose statement outran the timeout (seen on a remote test database); about half a second
+    await db.execute(sql`analyze`);
+  }, 120_000);
 
   it("matches the answer key (docs/recon/source-test-db.md) per pass, per outcome and per side", async () => {
     const q = await json<ReconRunDto>(startRun(t.op, gate.configId, { from: "2026-11-02", to: "2026-11-05" }));
