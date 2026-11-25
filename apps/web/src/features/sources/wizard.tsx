@@ -745,7 +745,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             <Notice live>What you entered before the page closed is back. Enter the password again: it is never kept in this browser.</Notice>
           )}
           {step === 0 && (
-            <ConnectionStep d={d} set={set} created={!!ids} wmKind={watermarkKind(d, columns)} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
+            <ConnectionStep spaceId={spaceId} d={d} set={set} created={!!ids} wmKind={watermarkKind(d, columns)} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={() => void test()}
               connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}
               nextVersion={source?.s.publishedVersion != null && ids ? ids.version : null}
               catalog={{

@@ -20,6 +20,8 @@ import { CONNECT_TIMEOUT_LABEL, connectTimeoutText, lookbackText, scheduleText }
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, lookbackNote, type Tested, type WatermarkKind, withEngine, withName } from "./model";
+import { SpaceFolders } from "./space-folders";
+import { useInboxFolderOptions } from "../use-sources";
 
 // The database, schema and table pickers show only for a database source: they load after the page (preloaded when
 // the connection step mounts) and hold a field's height meanwhile, as their own combobox does (bundle budget, DEC-040).
@@ -68,6 +70,8 @@ export type CatalogProps = {
 };
 
 export type ConnectionStepProps = {
+  /** The source's space: its inbox folders are offered for a file inbox's Folder. */
+  spaceId: string;
   d: Draft;
   set: (fn: (d: Draft) => Draft) => void;
   /** The source exists already: name, code and kind are fixed (no route changes them). */
@@ -179,6 +183,7 @@ const enterRuns = (run: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
 function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void }) {
   const { d, err, setInput } = p;
   const i = d.spec.input;
+  const folders = useInboxFolderOptions(p.spaceId);
   const passed = !!p.tested?.result.ok && p.tested.key === connKey(d);
   const want = p.created || !!p.tested?.result.ok;
   const [seen, setSeen] = useState(want);
@@ -189,6 +194,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
   return (
     <Panel title="Folder" bodyClassName="grid gap-4">
       <div className="grid gap-4" onKeyDown={enterRuns(check)}>
+        <SpaceFolders list={folders} path={i.path} onPick={(path) => setInput({ path })} />
         <Field id={ctl("input.path")} label="Folder" required error={err(ctl("input.path"))}>
           <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
         </Field>

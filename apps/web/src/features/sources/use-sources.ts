@@ -5,7 +5,8 @@ import type { RunSourceDto, SourceDto, SourceSummaryDto, SourceVersionDetailDto,
 import type { SourceKind } from "@starterkit/shared/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
-import { INGEST_KEY, sourceDetail, SOURCES_KEY, sourceSummary, sourceVersion, spaceDetail } from "@/lib/shared/queries";
+import { inboxFolders, INGEST_KEY, sourceDetail, SOURCES_KEY, sourceSummary, sourceVersion, spaceDetail } from "@/lib/shared/queries";
+import type { InboxFolderListDto } from "@starterkit/shared/contracts/inbox";
 
 export const sourcesHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/sources`;
 export const sourceHref = (spaceId: string, id: string) => `${sourcesHref(spaceId)}/${encodeURIComponent(id)}`;
@@ -37,6 +38,12 @@ export function useSourceSummary(spaceId: string) {
 }
 
 /** The viewer's roles in the space (the space's own read, prefetched by the page under the spaces key). */
+/** The space's inbox folders (Inbox files), for the File inbox step's Space folder; undefined while loading or on a failure. */
+export function useInboxFolderOptions(spaceId: string) {
+  const { key, url } = inboxFolders(spaceId);
+  return useQuery({ queryKey: key, queryFn: () => api<InboxFolderListDto>(url), retry: false }).data;
+}
+
 export function useSpaceRoles(spaceId: string) {
   const { key, url } = spaceDetail(spaceId);
   return useQuery({ queryKey: key, queryFn: () => api<SpaceRowDto>(url) }).data?.roles ?? [];
