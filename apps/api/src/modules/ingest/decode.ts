@@ -13,7 +13,7 @@ export function bomOf(head: Uint8Array): { encoding: string; length: number } | 
 /** The text of a byte stream, decoded by its byte order mark (dropped) or else `encoding`. */
 export async function* decodeStream(bytes: AsyncIterable<Uint8Array>, encoding: (typeof FILE_ENCODINGS)[number]): AsyncGenerator<string> {
   let decoder: TextDecoder | null = null;
-  let pending = new Uint8Array(0);
+  let pending: Uint8Array = new Uint8Array(0);
   for await (const b of bytes) {
     if (!decoder) {
       const head = pending.length ? new Uint8Array([...pending, ...b]) : b;
