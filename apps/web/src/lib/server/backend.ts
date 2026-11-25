@@ -11,6 +11,10 @@ export type BackendInit = {
   method?: string; body?: BodyInit | null; contentType?: string; token?: string | null; challenge?: string | null;
   /** The browser's request (or a server component's headers): client IP and user agent for the API. */
   req?: { headers: Headers };
+  /** An inbox upload: the file's name (as the browser sent it, URL-encoded) and its byte length. */
+  file?: { name: string; length: string };
+  /** The whole call's deadline in ms (default 10 000; an inbox upload takes longer). */
+  timeoutMs?: number;
 };
 
 /** No answer at all (refused, reset): safe to send a GET again. A timeout is a DOMException and is not retried. */
@@ -34,9 +38,11 @@ export async function backend(path: string, init: BackendInit = {}): Promise<Res
   if (init.token) headers.set("Authorization", `Bearer ${init.token}`);
   if (init.challenge) headers.set("X-Auth-Challenge", init.challenge);
   if (init.contentType) headers.set("Content-Type", init.contentType);
+  if (init.file) { headers.set("x-file-name", init.file.name); headers.set("Content-Length", init.file.length); }
   // ponytail: the 10 s also covers streaming the answer body, so a CSV export slower than that is cut off; give CSV a separate, longer timeout if exports grow.
-  const signal = AbortSignal.timeout(10_000);
-  const send = () => fetch(c.API_BASE_URL + path, { method, headers, body: init.body ?? null, signal, cache: "no-store", redirect: "manual" });
+  const signal = AbortSignal.timeout(init.timeoutMs ?? 10_000);
+  // a stream body (an inbox upload) needs duplex "half" in Node's fetch
+  const send = () => fetch(c.API_BASE_URL + path, { method, headers, body: init.body ?? null, signal, cache: "no-store", redirect: "manual", ...(init.body instanceof ReadableStream && { duplex: "half" }) } as RequestInit);
   try {
     try {
       return await send();

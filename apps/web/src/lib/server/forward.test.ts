@@ -127,6 +127,31 @@ describe("forward (app/api/[...path])", () => {
     expect((await at("/api/roles", { method: "POST", headers: { "x-csrf-token": TEST_CSRF }, body: "x".repeat(64 * 1024) })).status).toBe(200);
   });
 
+  it("an inbox upload streams through: the same bytes, its length and its name reach the API, past 64 KB", async () => {
+    const seen = fakeApi(() => Response.json({ name: "a.txt", size: 2, sha256: "x" }, { status: 201 }));
+    await sealCookie(jar);
+    const path = "/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/inbox/folders/act/files";
+    const bytes = "x".repeat(2 * 1024 * 1024);
+    const r = await at(path, { method: "POST", headers: { "x-csrf-token": TEST_CSRF, "content-type": "application/octet-stream", "content-length": String(bytes.length), "x-file-name": "Laporan%20ACT.txt" }, body: bytes });
+    expect(r.status).toBe(201);
+    const sent = seen[0]!;
+    expect([pathOf(sent), sent.headers.get("content-length"), sent.headers.get("x-file-name"), sent.headers.get("content-type"), sent.headers.get("authorization")])
+      .toEqual([path.replace("/api/", "/v1/"), String(bytes.length), "Laporan%20ACT.txt", "application/octet-stream", `Bearer ${TEST_TOKEN}`]);
+    expect((await sent.text()).length).toBe(bytes.length);
+  });
+
+  it("an inbox upload needs the CSRF token and its length; another path keeps the 64 KB limit", async () => {
+    const seen = fakeApi(ok);
+    await sealCookie(jar);
+    const path = "/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/inbox/folders/act/files";
+    const big = "x".repeat(2 * 1024 * 1024);
+    expect((await errorOf(await at(path, { method: "POST", headers: { "content-length": String(big.length), "x-file-name": "a.txt" }, body: big }))).code).toBe("csrf");
+    const noLength = await at(path, { method: "POST", headers: { "x-csrf-token": TEST_CSRF, "x-file-name": "a.txt" }, body: new Blob([big]).stream(), duplex: "half" } as RequestInit);
+    expect([noLength.status, (await errorOf(noLength)).code]).toEqual([400, "bad_request"]);
+    expect((await at("/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/inbox/folders", { method: "POST", headers: { "x-csrf-token": TEST_CSRF }, body: big })).status).toBe(400);
+    expect(seen).toEqual([]);
+  });
+
   it("a source version's spec may be up to 512 KB; above it is 400 and never reaches the API", async () => {
     const seen = fakeApi(ok);
     await sealCookie(jar);
