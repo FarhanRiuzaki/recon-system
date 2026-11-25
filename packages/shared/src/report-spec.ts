@@ -3,7 +3,8 @@
 import { ReportSpec, ReportSpecV1, type ReportColumn } from "./contracts/reports";
 
 const AMOUNT = /(^|:)amount_minor$|^recap:amount_/;
-const DATE = /^recon:businessDate$|^recap:date$|(^|:)(event_time|business_date)$/;
+// event_time is a moment, not a date: as is, so its time stays
+const DATE = /^recon:businessDate$|^recap:date$|(^|:)business_date$/;
 
 /** Whether a field holds a number (amounts in major units, counts, the match rate). */
 export const numericRef = (ref: string) => AMOUNT.test(ref) || /^recap:(results|matched|breaks|match_rate|count_a|count_b)$/.test(ref);
@@ -22,7 +23,7 @@ export function columnFor(id: string, ref: string, header: string): ReportColumn
 /** A new template's design: the recon's results, no column yet, every section on, CSV, masked, on request. */
 export function emptySpec(): ReportSpec {
   return {
-    v: 2, dataset: "results", rows: { filters: [] }, columns: [], groups: [],
+    v: 2, dataset: "results", rows: { filters: [] }, columns: [], groups: [], summaryOnly: false,
     totals: { on: true, perGroup: true, columns: {} },
     sections: { title: { on: true, text: "{template}" }, header: { on: true, lines: [] }, columnHeaders: true, footer: { on: true, stamp: true, pageNumbers: true, text: "" } },
     output: { format: "csv", fileName: "{recon}_{date}", masking: "masked", csv: { delimiter: ",", quote: "auto" }, lineEnding: "crlf", encoding: "utf8", groupLines: false },
@@ -35,7 +36,9 @@ const RECAP_V1 = [["recap:date", "Business date"], ["recap:results", "Results"],
 /** A v1 version as v2: same columns, rows, groups, totals and output (min/max totals have no v2 form and are dropped). */
 export function fromV1(s: ReportSpecV1): ReportSpec {
   const e = emptySpec();
-  const cols = s.kind === "daily_summary" ? RECAP_V1.map(([r, h], i) => columnFor(`c${i + 1}`, r, h)) : s.columns.map((c, i) => columnFor(`c${i + 1}`, c.key, c.header));
+  // amounts as plain numbers (150000.00): a v1 file's numbers had no thousands separator, so a CSV stays unquoted
+  const plain = (c: ReturnType<typeof columnFor>) => (c.format.kind === "number" ? { ...c, format: { ...c.format, thousands: "none" as const } } : c);
+  const cols = (s.kind === "daily_summary" ? RECAP_V1.map(([r, h], i) => columnFor(`c${i + 1}`, r, h)) : s.columns.map((c, i) => columnFor(`c${i + 1}`, c.key, c.header))).map(plain);
   const idOf = new Map(s.columns.map((c, i) => [c.key, `c${i + 1}`]));
   const totals: Record<string, "sum" | "count"> = {};
   for (const t of s.totals) if (t.column && (t.fn === "sum" || t.fn === "count") && idOf.has(t.column)) totals[idOf.get(t.column)!] = t.fn;
@@ -46,7 +49,8 @@ export function fromV1(s: ReportSpecV1): ReportSpec {
   return {
     ...e, dataset: s.kind === "daily_summary" ? "recap" : "results", rows: { filters }, columns: cols,
     groups: s.kind === "grouped" ? [...s.groups] : [],
-    totals: { on: s.totals.length > 0, perGroup: s.kind === "grouped", columns: totals },
+    // v1 wrote total lines only in a grouped report
+    totals: { on: s.kind === "grouped" && s.totals.length > 0, perGroup: s.kind === "grouped", columns: totals },
     sections: {
       title: { on: !!s.output.title, text: s.output.title ?? "" },
       header: { on: !!s.output.subtitle, lines: s.output.subtitle ? [{ label: "", value: { kind: "text", text: s.output.subtitle } }] : [] },

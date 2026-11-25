@@ -21,7 +21,7 @@ import { toast } from "@starterkit/ui/ui/toast";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText } from "@/lib/client/api";
 import { DataPane, type DragItem, type Special } from "./data-pane";
-import { placement } from "./drop-model";
+import { KEYBOARD_CODES, placement, pointerXOf } from "./drop-model";
 import { InspectorPane } from "./inspector-pane";
 import { type DropMark, ReportCanvas, type Selected } from "./report-canvas";
 import { EDIT_DRAFT_REASON, FORMAT_LABEL, sampleLine } from "./report-text";
@@ -128,7 +128,7 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
   }, []);
 
   // drag and drop: fields and "build your own" in, column headers to move
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor));
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }), useSensor(KeyboardSensor, { keyboardCodes: KEYBOARD_CODES }));
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [drop, setDrop] = useState<DropMark>(null);
   const markOf = (e: DragMoveEvent | DragEndEvent): DropMark => {
@@ -137,9 +137,7 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
     if (over.id === "end") return { end: true };
     const columnId = (over.data.current as { columnId?: string } | undefined)?.columnId;
     if (!columnId) return null;
-    const ev = e.activatorEvent as PointerEvent;
-    const x = typeof ev.clientX === "number" ? ev.clientX + e.delta.x : over.rect.left + over.rect.width / 2;
-    return { columnId, at: placement(x, over.rect, dragging.kind === "column" ? "column" : "field") };
+    return { columnId, at: placement(pointerXOf(e.activatorEvent, e.delta.x, over.rect), over.rect, dragging.kind === "column" ? "column" : "field") };
   };
   const onDragEnd = (e: DragEndEvent) => {
     const item = dragging;

@@ -7,3 +7,15 @@ export function placement(pointerX: number, rect: { left: number; width: number 
   if (dragged === "column") return x < 0.5 ? "before" : "after";
   return x < 0.3 ? "before" : x > 0.7 ? "after" : "replace";
 }
+
+/**
+ * The keyboard sensor's keys (final review I8): Space picks a header or a field up and Space or Enter drops it; Enter
+ * on a column header stays its press (it selects the column), which dnd-kit's default (Enter starts a drag) took.
+ */
+export const KEYBOARD_CODES = { start: ["Space"], cancel: ["Escape"], end: ["Space", "Enter"] };
+
+/** Where the pointer is at the drop; a keyboard drag has none: its drop goes after the column (insert, never replace). */
+export function pointerXOf(ev: Event | null, deltaX: number, rect: { left: number; width: number }): number {
+  const x = (ev as PointerEvent | null)?.clientX;
+  return typeof x === "number" ? x + deltaX : rect.left + rect.width - 1;
+}

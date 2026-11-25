@@ -9,7 +9,7 @@ export { REPORT_FILE_SORTS, REPORT_TEMPLATE_SORTS };
 
 const day = z.iso.date();
 /** A field of the data: `a:<field>` / `b:<field>` (a side's source record: core field or `attrs.<name>`), `recon:<field>`, `recap:<field>`. */
-export const REPORT_REF = /^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$/;
+export const REPORT_REF = /^(a|b|item):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$/;
 const ref = z.string().regex(REPORT_REF, "Pick a field of the data.");
 /** v1's column key (a v1 stored spec still carries it). */
 const columnKey = z.string().regex(/^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$/, "Pick a column of the recon's results.");
@@ -60,6 +60,8 @@ export const ReportSpec = z.strictObject({
   rows: z.strictObject({ filters: z.array(z.strictObject({ ref, op: z.enum(FILTER_OPS), value: z.array(short(120)).max(50) })).max(20) }),
   columns: z.array(ReportColumn).max(REPORT_COLUMNS_MAX, `A report has at most ${REPORT_COLUMNS_MAX} columns.`),
   groups: z.array(ref).max(REPORT_GROUPS_MAX, `Group by at most ${REPORT_GROUPS_MAX} fields.`),
+  /** One line per group (its fields, its totals), no detail rows: a summary by any field (owner 26 Nov). */
+  summaryOnly: z.boolean().default(false),
   totals: z.strictObject({ on: z.boolean(), perGroup: z.boolean(), columns: z.record(z.string(), z.enum(["sum", "count"])) }),
   sections: z.strictObject({
     title: z.strictObject({ on: z.boolean(), text: short(200) }),
@@ -77,6 +79,7 @@ export const ReportSpec = z.strictObject({
   official: z.boolean(),
 }).superRefine((s, c) => {
   if (s.output.masking === "full" && !s.official) c.addIssue({ code: "custom", message: "Only an official report shows customer data in full.", path: ["output", "masking"] });
+  if (s.summaryOnly && !s.groups.length) c.addIssue({ code: "custom", message: "Group by at least one field for a summary.", path: ["summaryOnly"] });
   if (!s.when.afterRun && !s.when.onRequest) c.addIssue({ code: "custom", message: "Make it after every run, on request, or both.", path: ["when"] });
   const ids = new Set<string>();
   s.columns.forEach((col, i) => { if (ids.has(col.id)) c.addIssue({ code: "custom", message: "Two columns have one id.", path: ["columns", i, "id"] }); ids.add(col.id); });

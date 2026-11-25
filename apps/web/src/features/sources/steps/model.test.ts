@@ -200,4 +200,10 @@ describe("mappingProblems", () => {
     expect(mappingProblems(s).map((p) => p.id)).toEqual(["src-mapping-account_ref", "src-mapping-ext_ref"]);
     expect(mappingProblem(s)?.id).toBe("src-mapping-account_ref");
   });
+
+  it("buildSpec drops the customer mark of an attribute whose column is gone", () => {
+    const d = db();
+    const s = { ...d.spec, fields: [], mapping: { ...d.spec.mapping, attrs: { nik: { field: "nik" } }, customer: ["nik"] } } as typeof d.spec;
+    expect(buildSpec({ ...d, spec: s }).mapping.customer).toEqual([]);
+  });
 });

@@ -5,11 +5,13 @@ import { fitWidth } from "@starterkit/shared/report-format";
 import { type Line, type Sheet, shown, toAscii } from "./lines";
 import { fileSink, type Written } from "./write-csv";
 
-const lineOf = (l: Line, sheet: Sheet) => l.cells.map((c, i) => fitWidth(c, sheet.layouts[i]!, sheet.numeric[i]! && !l.text[i])).join("");
+// ASCII per cell before fitting, so a dropped character never shortens a column
+const asc = (s: string, sheet: Sheet) => (sheet.ascii ? toAscii(s) : s);
+const lineOf = (l: Line, sheet: Sheet) => l.cells.map((c, i) => fitWidth(asc(c, sheet), sheet.layouts[i]!, sheet.numeric[i]! && !l.text[i])).join("");
 const first = (sheet: Sheet) => sheet.layouts[0] ?? { align: "l" as const, width: 10, pad: " " as const };
 const headLines = (sheet: Sheet) => [
-  ...(sheet.header ?? []).map((h) => fitWidth(h.label, { ...first(sheet), align: "l", pad: " " }, false) + h.value),
-  ...(sheet.columnHeaders ? [sheet.headers.map((h, i) => fitWidth(h, { ...sheet.layouts[i]!, pad: " " }, false)).join("")] : []),
+  ...(sheet.header ?? []).map((h) => fitWidth(asc(h.label, sheet), { ...first(sheet), align: "l", pad: " " }, false) + asc(h.value, sheet)),
+  ...(sheet.columnHeaders ? [sheet.headers.map((h, i) => fitWidth(asc(h, sheet), { ...sheet.layouts[i]!, pad: " " }, false)).join("")] : []),
 ];
 
 /** The file's lines (without line ends): what the preview's Text view shows. */

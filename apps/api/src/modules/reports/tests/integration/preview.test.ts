@@ -33,7 +33,7 @@ beforeEach(async () => {
   });
   const [sa, sb] = [await makeSource(A, plainSource()), await makeSource(A, plainSource())];
   CFG = (await recon(A, reconSpec(sa.sourceId, sb.sourceId, []))).configId;
-  const recs = await put(sa, [{ ref: "R1", amount: 15000n, acct: "ACCT00001234", sref: "NIK3201010101" }, { ref: "R2", amount: 2500n, acct: "ACCT00005678", sref: "NIK3201020202" }]);
+  const recs = await put(sa, [{ ref: "R1", amount: 15000n, acct: "ACCT00001234", sref: "NIK3201010101" }, { ref: "R2", amount: 2500n, acct: "ACCT00005678", sref: "NIK3201020202", attrs: { nik: "3201999999990001" } }]);
   SRC = sa.versionId;
   await db.insert(reconItems).values(recs.map((recordId) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: CFG, recordId, side: "a", status: "break", businessDate: D, breakReason: "No counterpart" })));
   T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Breaks" } }));
@@ -93,5 +93,11 @@ describe("preview", () => {
     await db.update(sourceVersions).set({ spec: { ...spec, mapping: { ...spec.mapping, customer: ["settlement_ref"] } } }).where(eq(sourceVersions.id, SRC));
     const p = await json<Preview>(draft({ ...V.spec, totals: { on: false, perGroup: false, columns: {} }, columns: [columnFor("c1", "a:attrs.settlement_ref", "NIK")] }));
     expect(p.lines.map((l) => l.cells[0])).toEqual(["·········0101", "·········0202"]);
+  });
+
+  it("a field the data's catalog no longer has (an attribute a newer source version dropped) is masked, not shown", async () => {
+    const p = await json<Preview>(draft({ ...V.spec, totals: { on: false, perGroup: false, columns: {} }, columns: [columnFor("c1", "a:attrs.nik", "NIK")] }));
+    expect(p.lines.map((l) => l.cells[0])).toContain("············0001");
+    expect(p.lines.map((l) => l.cells[0]).join()).not.toContain("3201999999990001");
   });
 });

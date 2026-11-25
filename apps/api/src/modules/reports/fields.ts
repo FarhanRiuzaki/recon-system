@@ -24,8 +24,11 @@ export async function fieldCatalog(tx: InTx, spaceId: string, configId: string, 
   const flagged = new Set(rc.columns.filter((c) => c.kind !== "recon" && c.customer).map((c) => `${c.kind}:${c.field}`));
   const recon: ReportFieldDto[] = [
     { ref: "recon:status", label: "Status", type: "status", customer: false },
-    ...(dataset === "items" ? [{ ref: "recon:side", label: "Side", type: "text", customer: false } as const, { ref: "recon:item_status", label: "Item status", type: "status", customer: false } as const] : []),
-    ...RECON_INFO_FIELDS.map((f): ReportFieldDto => ({ ref: `recon:${f}`, label: RECON_INFO_LABEL[f], type: f === "businessDate" || f === "resolvedAt" ? "date" : f === "pass" ? "number" : "text", customer: false })),
+    // an item row carries its side, its own status, its business date and its reason; the other info is a result's
+    ...(dataset === "items"
+      ? [{ ref: "recon:side", label: "Side", type: "text", customer: false } as const, { ref: "recon:item_status", label: "Item status", type: "status", customer: false } as const,
+        { ref: "recon:businessDate", label: RECON_INFO_LABEL.businessDate, type: "date", customer: false } as const, { ref: "recon:reason", label: RECON_INFO_LABEL.reason, type: "text", customer: false } as const]
+      : RECON_INFO_FIELDS.map((f): ReportFieldDto => ({ ref: `recon:${f}`, label: RECON_INFO_LABEL[f], type: f === "businessDate" || f === "resolvedAt" ? "date" : f === "pass" ? "number" : "text", customer: false }))),
   ];
   const groups: ReportFieldsDto["groups"] = [{ label: dataset === "items" ? "Item" : "Result", fields: recon }];
   const spec = rc.spec;
@@ -44,6 +47,16 @@ export async function fieldCatalog(tx: InTx, spaceId: string, configId: string, 
     }));
     groups.push({ label: `${side.label} · ${src.name}`, fields });
   });
+  // Items: the same fields side-neutral (item:…), read from whichever side the item is on
+  if (dataset === "items") {
+    const seen = new Map<string, ReportFieldDto>();
+    for (const g of groups.slice(1)) for (const f of g.fields) {
+      const ref = `item:${f.ref.slice(2)}`;
+      const was = seen.get(ref);
+      seen.set(ref, { ...f, ref, customer: f.customer || !!was?.customer });
+    }
+    groups.splice(1, 0, { label: "Item record (either side)", fields: [...seen.values()] });
+  }
   return { groups };
 }
 

@@ -49,4 +49,24 @@ describe("parseStoredSpec and the contract", () => {
     expect(ReportSpec.safeParse({ ...e, columns: [col, col] }).error?.issues[0]?.message).toBe("Two columns have one id.");
     expect(ReportSpec.safeParse({ ...e, rows: { filters: [{ ref: "recon:status", op: "near", value: [] }] } }).success).toBe(false);
   });
+
+describe("a v1 CSV converted keeps its content", () => {
+  it("no total line a v1 transactions file never wrote; event time keeps its time; amounts without thousands separators", async () => {
+    const { formatCell } = await import("./report-format");
+    const v2 = fromV1({ ...v1Base, kind: "transactions", totals: [{ fn: "min", column: "a:amount_minor" }],
+      columns: [{ key: "a:event_time", header: "At" }, { key: "a:amount_minor", header: "Amount" }], output: { format: "csv", fileName: "x", masking: "masked" } } as never);
+    expect(v2.totals.on).toBe(false);
+    expect(v2.columns[0]!.format.kind).toBe("auto");
+    expect(formatCell(150000, v2.columns[1]!.format)).toBe("150000.00");
+  });
+});
+
+describe("summary only", () => {
+  it("off by default; on, it needs a group", () => {
+    const e = emptySpec();
+    expect(e.summaryOnly).toBe(false);
+    expect(ReportSpec.safeParse({ ...e, summaryOnly: true }).error?.issues[0]?.message).toBe("Group by at least one field for a summary.");
+    expect(ReportSpec.safeParse({ ...e, summaryOnly: true, groups: ["recon:businessDate"] }).success).toBe(true);
+  });
+});
 });

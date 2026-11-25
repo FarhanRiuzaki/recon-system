@@ -119,3 +119,38 @@ describe("reportHtml", () => {
     expect(bare).toContain("R1");
   });
 });
+
+describe("review fixes", () => {
+  it("totals and header sums over customer data are blank in a masked file", () => {
+    const s = design({ sections: { ...design().sections, header: { on: true, lines: [{ label: "Sum", value: { kind: "sum", ref: "a:amount_minor" } }] } } });
+    const r = rendererOf(s, new Set(["a:amount_minor"]));
+    const lines = linesOf(s, rows.map((d, i) => ({ ...renderRow(s, d, i, r), data: d })), undefined, r.masked ? r.customer : new Set());
+    expect(lines.at(-1)!.cells).toEqual(["Total", "", ""]);
+    const sheet = sheetOf(s, { ...ctx, sums: { "a:amount_minor": 1475 } }, undefined, new Set(["a:amount_minor"]));
+    expect(sheet.header).toEqual([{ label: "Sum", value: "" }]);
+  });
+  it("a header sum is written in its column's format", () => {
+    const s = design({ sections: { ...design().sections, header: { on: true, lines: [{ label: "Sum", value: { kind: "sum", ref: "a:amount_minor" } }] } } });
+    expect(sheetOf(s, { ...ctx, sums: { "a:amount_minor": 150.1 + 20.2 } }).header).toEqual([{ label: "Sum", value: "170,30" }]);
+  });
+  it("ASCII Text keeps every line at its width (a dropped character doesn't shift the next columns)", async () => {
+    const out = path.join(dir, "c.txt");
+    const s = dataOnly(design({}, 0, "none"));
+    const spec2 = { ...s, columns: [{ ...s.columns[0]!, layout: { align: "l" as const, width: 20, pad: " " as const } }], output: { ...s.output, format: "txt" as const, lineEnding: "lf" as const, encoding: "ascii" as const } };
+    const r = rendererOf(spec2, new Set());
+    const d = { date: "2026-11-25", values: { "a:ext_ref": "Kopi ☕ Senja" } };
+    await writeTxt(once(linesOf(spec2, [{ ...renderRow(spec2, d, 0, r), data: d }])), sheetOf(spec2, ctx), out);
+    expect(readFileSync(out, "utf8")).toBe("Kopi  Senja         \n");
+  });
+});
+
+describe("summary only", () => {
+  it("one line per group: the group's value in its column, sums and counts in theirs, then the total", () => {
+    const s: ReportSpec = { ...design(), groups: ["recon:status"], summaryOnly: true,
+      columns: [columnFor("c1", "recon:status", "Status"), { ...columnFor("c2", "a:ext_ref", "Rows"), format: { kind: "auto" } }, amount(2, ".")],
+      totals: { on: true, perGroup: true, columns: { c2: "count", c3: "sum" } } };
+    const r = rendererOf(s, new Set());
+    const lines = linesOf(s, rows.map((d, i) => ({ ...renderRow(s, d, i, r), data: d })));
+    expect(lines.map((l) => [l.kind, ...l.cells])).toEqual([["row", "matched", "1", "1.500,00"], ["row", "unmatch", "1", "-25,00"], ["total", "Total", "2", "1.475,00"]]);
+  });
+});

@@ -311,7 +311,9 @@ export function storeAs(s: SourceSpec, field: string, name: string | null): Sour
   const next = old === null
     ? (name === null ? entries : [...entries, [name, { field }] as [string, ValueRef]])
     : entries.flatMap(([k, r]): [string, ValueRef][] => (k === old ? (name === null ? [] : [[name, r]]) : [[k, r]]));
-  return { ...s, mapping: { ...s.mapping, attrs: Object.fromEntries(next) } };
+  // a customer-data mark follows its attribute's new name and goes when the attribute does
+  const customer = s.mapping.customer?.flatMap((n) => (n === old ? (name === null ? [] : [name]) : [n]));
+  return { ...s, mapping: { ...s.mapping, attrs: Object.fromEntries(next), ...(customer ? { customer } : {}) } };
 }
 
 /**

@@ -5,11 +5,11 @@
 import { numericRef } from "@starterkit/shared/report-spec";
 import { celCompiler, runDerive } from "../ingest";
 
-export type FormulaVars = Record<"a" | "b" | "recon" | "recap", Record<string, unknown>>;
+export type FormulaVars = Record<"a" | "b" | "item" | "recon" | "recap", Record<string, unknown>>;
 export type Formula = { ok: true; run: (values: Record<string, string | number | null>) => { ok: true; value: unknown } | { ok: false; reason: string }; refs: string[] } | { ok: false; error: string };
 
-const compile = celCompiler([["a", "map"], ["b", "map"], ["recon", "map"], ["recap", "map"]]);
-const REF = /\b(a|b|recon|recap)\.((?:attrs\.)?[A-Za-z_][A-Za-z0-9_]*)/g;
+const compile = celCompiler([["a", "map"], ["b", "map"], ["item", "map"], ["recon", "map"], ["recap", "map"]]);
+const REF = /\b(a|b|item|recon|recap)\.((?:attrs\.)?[A-Za-z_][A-Za-z0-9_]*)/g;
 
 /** The fields `cel` names (`a:amount_minor`, `a:attrs.member` …): what masking propagates through. */
 export function refsOf(cel: string): string[] {
@@ -18,7 +18,7 @@ export function refsOf(cel: string): string[] {
 
 /** The row's values as the formula's variables: every field the formula names, empty numbers as 0, empty text as "". */
 function varsOf(refs: string[], values: Record<string, string | number | null>): FormulaVars {
-  const vars: FormulaVars = { a: { attrs: {} }, b: { attrs: {} }, recon: {}, recap: {} };
+  const vars: FormulaVars = { a: { attrs: {} }, b: { attrs: {} }, item: { attrs: {} }, recon: {}, recap: {} };
   for (const r of refs) {
     const [scope, field] = r.split(":") as [keyof FormulaVars, string];
     const v = values[r] ?? (numericRef(r) ? 0 : "");

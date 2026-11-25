@@ -26,12 +26,21 @@ export function fillTokens(text: string, c: Pick<SheetCtx, "recon" | "template" 
 }
 
 /** The file's frame: headers and layouts, and each section (null when off). */
-export function sheetOf(spec: ReportSpec, c: SheetCtx, mask: (ref: string, v: string) => string = (_, v) => v): Sheet {
+/**
+ * `hidden`: customer-data fields of a masked file: a header sum over one is left blank (a sum of accounts, or of amounts
+ * a recon marks as customer data, would give them away).
+ */
+export function sheetOf(spec: ReportSpec, c: SheetCtx, mask: (ref: string, v: string) => string = (_, v) => v, hidden: Set<string> = new Set()): Sheet {
   const s = spec.sections;
   const value = (v: ReportSpec["sections"]["header"]["lines"][number]["value"]): string => {
     if (v.kind === "text") return fillTokens(v.text, c);
     if (v.kind === "count") return String(c.count);
-    if (v.kind === "sum") return String(c.sums[v.ref] ?? 0);
+    if (v.kind === "sum") {
+      if (hidden.has(v.ref)) return "";
+      // in the format of a column showing that field, else two decimals
+      const col = spec.columns.find((x) => x.content.kind === "field" && x.content.ref === v.ref && x.format.kind === "number");
+      return formatCell(c.sums[v.ref] ?? 0, col?.format ?? { kind: "number", decimals: 2, thousands: "none", negative: "minus", prefix: "", suffix: "" });
+    }
     const raw = c.first?.values[v.ref];
     return raw === null || raw === undefined ? "" : mask(v.ref, String(raw));
   };
@@ -54,25 +63,26 @@ export const rowLine = (r: Rendered): Line => ({
 });
 
 /** Running totals of rows as they pass (a streamed file's total line), and the line they make. */
-export function totaller(spec: ReportSpec) {
+export function totaller(spec: ReportSpec, hidden: Set<string> = new Set()) {
   const sums = spec.columns.map(() => 0);
   let n = 0;
   return {
     add(r: Rendered) { n++; r.raw.forEach((v, i) => { if (typeof v === "number") sums[i]! += v; }); },
-    line: (kind: "subtotal" | "total" = "total", level = 0) => totalsLine(spec, sums, n, kind, level),
+    line: (kind: "subtotal" | "total" = "total", level = 0) => totalsLine(spec, sums, n, kind, level, hidden),
   };
 }
 
 /** The totals line of `rows` (`label` in the first column when it holds no total). */
-function totalLine(spec: ReportSpec, rows: RowIn[], kind: "subtotal" | "total", level: number): Line {
-  const t = totaller(spec);
+function totalLine(spec: ReportSpec, rows: RowIn[], kind: "subtotal" | "total", level: number, hidden: Set<string>): Line {
+  const t = totaller(spec, hidden);
   for (const r of rows) t.add(r);
   return t.line(kind, level);
 }
 
-function totalsLine(spec: ReportSpec, sums: number[], n: number, kind: "subtotal" | "total", level: number): Line {
+/** `hidden`: ids of customer-data columns of a masked file: their sums stay blank (a count is kept). */
+function totalsLine(spec: ReportSpec, sums: number[], n: number, kind: "subtotal" | "total", level: number, hidden: Set<string> = new Set()): Line {
   const values = spec.columns.map((col, i): string | number => {
-    const fn = spec.totals.columns[col.id];
+    const fn = hidden.has(col.id) && spec.totals.columns[col.id] === "sum" ? undefined : spec.totals.columns[col.id];
     return fn === "count" ? n : fn === "sum" ? sums[i]! : "";
   });
   const cells = spec.columns.map((col, i) => (typeof values[i] === "number" ? (spec.totals.columns[col.id] === "sum" ? formatCell(values[i] as number, col.format) : String(values[i])) : ""));
@@ -84,23 +94,35 @@ function totalsLine(spec: ReportSpec, sums: number[], n: number, kind: "subtotal
  * The lines of `rows`: grouped by `spec.groups` (sorted by the real value, labelled with `label`, e.g. masked) with a
  * group line and, when totals per group are on, a subtotal each; then the total line when totals are on.
  */
-export function linesOf(spec: ReportSpec, rows: RowIn[], label: (ref: string, v: string) => string = (_, v) => v): Line[] {
+export function linesOf(spec: ReportSpec, rows: RowIn[], label: (ref: string, v: string) => string = (_, v) => v, hidden: Set<string> = new Set()): Line[] {
   const out: Line[] = [];
   const blank = (text: string, level: number): Line => ({ kind: "group", level, cells: spec.columns.map((_, i) => (i === 0 ? `${"  ".repeat(level)}${text}` : "")), values: spec.columns.map((_, i) => (i === 0 ? `${"  ".repeat(level)}${text}` : "")), text: spec.columns.map(() => true), marks: spec.columns.map(() => "bold" as const) });
-  const walk = (part: RowIn[], level: number) => {
+  // summary only: a group's line holds its fields' values (masked as the file is) and its totals, no detail rows
+  const summary = (part: RowIn[], keys: string[]): Line => {
+    const t = totalsLine(spec, part.reduce((sums, r) => { r.raw.forEach((v, i) => { if (typeof v === "number") sums[i]! += v; }); return sums; }, spec.columns.map(() => 0)), part.length, "subtotal", 0, hidden);
+    const cells = spec.columns.map((c, i) => {
+      const g = c.content.kind === "field" ? spec.groups.indexOf(c.content.ref) : -1;
+      if (g < 0 || g >= keys.length) return spec.totals.columns[c.id] ? t.cells[i]! : "";
+      return keys[g] === "" ? "(empty)" : label(spec.groups[g]!, keys[g]!);
+    });
+    const values = cells.map((x, i) => (spec.totals.columns[spec.columns[i]!.id] && typeof t.values[i] === "number" && x === t.cells[i] ? t.values[i]! : x));
+    return { kind: "row", level: 0, cells, values, text: values.map((v) => typeof v !== "number"), marks: cells.map(() => null) };
+  };
+  const walk = (part: RowIn[], level: number, keys: string[] = []) => {
+    if (spec.summaryOnly && level === spec.groups.length) { out.push(summary(part, keys)); return; }
     if (level === spec.groups.length) { for (const r of part) out.push(rowLine(r)); return; }
     const ref = spec.groups[level]!;
     const key = (r: RowIn) => String(r.data.values[ref] ?? "");
     const by = Map.groupBy(part, key);
     for (const k of [...by.keys()].sort((a, b) => a.localeCompare(b))) {
       const g = by.get(k)!;
-      out.push(blank(k === "" ? "(empty)" : label(ref, k), level));
-      walk(g, level + 1);
-      if (spec.totals.on && spec.totals.perGroup) out.push(totalLine(spec, g, "subtotal", level));
+      if (!spec.summaryOnly) out.push(blank(k === "" ? "(empty)" : label(ref, k), level));
+      walk(g, level + 1, [...keys, k]);
+      if (!spec.summaryOnly && spec.totals.on && spec.totals.perGroup) out.push(totalLine(spec, g, "subtotal", level, hidden));
     }
   };
   walk(rows, 0);
-  if (spec.totals.on && spec.columns.length) out.push(totalLine(spec, rows, "total", 0));
+  if (spec.totals.on && spec.columns.length) out.push(totalLine(spec, rows, "total", 0, hidden));
   return out;
 }
 

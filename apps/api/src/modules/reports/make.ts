@@ -141,6 +141,10 @@ async function* renderedPages(on: Tx, spaceId: string, configId: string, spec: R
 /** Masks `v` of field `ref` when the file masks and `ref` is customer data (group labels, header lines). */
 const maskerOf = (customer: Set<string>, masked: boolean) => (ref: string, v: string) => (masked && customer.has(ref) ? maskValue(v) : v);
 
+/** A masked file's customer-data columns (their sums stay blank) and fields (a header sum over one stays blank). */
+const hiddenColumns = (spec: ReportSpec, customer: Set<string>) => (spec.output.masking === "masked" ? rendererOf(spec, customer).customer : new Set<string>());
+const hiddenRefs = (spec: ReportSpec, customer: Set<string>) => (spec.output.masking === "masked" ? customer : new Set<string>());
+
 /** The sheet's numbers for the header block: row count, and the sums of the fields its lines total. */
 function headerNumbers(spec: ReportSpec, rows: RowIn[]): Pick<SheetCtx, "count" | "sums" | "first"> {
   const sums: Record<string, number> = {};
@@ -165,11 +169,11 @@ async function write(on: Tx, f: FileRow, stored: ReportSpec, part: string, chrom
     // streamed: the rows as they come, the total line from running totals; the header's field lines read the first row
     let first: RowIn | null = null;
     let customer = new Set<string>();
-    const t = totaller(spec);
     const it = pages[Symbol.asyncIterator]();
     const head = await it.next();
     if (!head.done) { first = head.value.rows[0] ?? null; customer = head.value.customer; }
-    const sheet = sheetOf(spec, { ...base, count: 0, sums: {}, first: first?.data ?? null }, maskerOf(customer, spec.output.masking === "masked"));
+    const t = totaller(spec, hiddenColumns(spec, customer));
+    const sheet = sheetOf(spec, { ...base, count: 0, sums: {}, first: first?.data ?? null }, maskerOf(customer, spec.output.masking === "masked"), hiddenRefs(spec, customer));
     const lines = (async function* () {
       let p = head;
       while (!p.done) {
@@ -187,12 +191,12 @@ async function write(on: Tx, f: FileRow, stored: ReportSpec, part: string, chrom
   for await (const p of pages) {
     rows.push(...p.rows);
     customer = p.customer;
-    if (fmt === "pdf" && spec.dataset !== "recap" && rows.length > PDF_ROWS_MAX) throw new ApiError("bad_request", PDF_TOO_MANY);
+    if (fmt === "pdf" && spec.dataset !== "recap" && !spec.summaryOnly && rows.length > PDF_ROWS_MAX) throw new ApiError("bad_request", PDF_TOO_MANY);
     await pct(p.rows.at(-1)?.data.date);
   }
   const mask = maskerOf(customer, spec.output.masking === "masked");
-  const sheet = sheetOf(spec, { ...base, ...headerNumbers(spec, rows) }, mask);
-  const lines = linesOf(spec, rows, mask);
+  const sheet = sheetOf(spec, { ...base, ...headerNumbers(spec, rows) }, mask, hiddenRefs(spec, customer));
+  const lines = linesOf(spec, rows, mask, hiddenColumns(spec, customer));
   if (fmt === "pdf") return { ...(await writePdf(reportHtml(lines, sheet), part, chromium, sheet.footer?.pageNumbers ?? false)), rows: rows.length };
   if (fmt === "xlsx") return writeXlsx(asPages(lines), sheet, part);
   return fmt === "csv" ? writeCsvFile(asPages(lines), sheet, part) : writeTxt(asPages(lines), sheet, part);
@@ -301,8 +305,8 @@ export function previewReport(ctx: Ctx, templateId: string, versionId: string, b
     const n = await names(tx, spaceId, t.configId, t.id);
     const mask = maskerOf(customer, true);
     const masked: ReportSpec = { ...spec, output: { ...spec.output, masking: "masked" } };
-    const sheet = sheetOf(masked, { ...n, from: b.date, to: b.date, madeAt: new Date().toISOString(), final: false, masking: "masked", ...headerNumbers(spec, rows.slice(0, PREVIEW_ROWS)) }, mask);
-    const lines = linesOf(spec, rows.slice(0, PREVIEW_ROWS), mask);
+    const sheet = sheetOf(masked, { ...n, from: b.date, to: b.date, madeAt: new Date().toISOString(), final: false, masking: "masked", ...headerNumbers(spec, rows.slice(0, PREVIEW_ROWS)) }, mask, hiddenRefs(masked, customer));
+    const lines = linesOf(spec, rows.slice(0, PREVIEW_ROWS), mask, hiddenColumns(masked, customer));
     return {
       columns: spec.columns.map((c) => ({ id: c.id, header: c.header })), lines: lines.map((l) => ({ kind: l.kind, cells: l.cells, marks: l.marks })), sheet,
       text: spec.output.format === "txt" ? txtLines(lines, sheet) : null, problems: [...problems.values()], rows: Math.min(rows.length, PREVIEW_ROWS),

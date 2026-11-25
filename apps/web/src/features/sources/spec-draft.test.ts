@@ -194,3 +194,11 @@ describe("fieldMessage (a refused spec in words)", () => {
     expect(fieldMessage({ path: "mapping.amount_minor", reason: "The amount needs an integer." })).toBe("The amount needs an integer.");
   });
 });
+
+describe("customer-data marks follow their attribute", () => {
+  const base = { fields: [{ name: "nik", type: "string", nullable: true, trim: true }], mapping: { business_date: { cel: "file_date" }, attrs: { nik: { field: "nik" } }, customer: ["nik"] } } as unknown as SourceSpec;
+  it("a rename carries the mark; no longer stored drops it", () => {
+    expect(storeAs(base, "nik", "id_number").mapping.customer).toEqual(["id_number"]);
+    expect(storeAs(base, "nik", null).mapping.customer).toEqual([]);
+  });
+});

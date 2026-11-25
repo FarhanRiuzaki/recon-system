@@ -10,3 +10,13 @@ describe("placement", () => {
     expect([placement(140, rect, "column"), placement(150, rect, "column")]).toEqual(["before", "after"]);
   });
 });
+
+describe("keyboard", () => {
+  it("Enter presses a column header (select); Space picks it up to drag; a keyboard drop of a field inserts after, never replaces", async () => {
+    const { KEYBOARD_CODES, pointerXOf } = await import("./drop-model");
+    expect(KEYBOARD_CODES.start).toEqual(["Space"]);
+    const rect = { left: 100, width: 90 };
+    expect(placement(pointerXOf({ key: "Enter" } as unknown as Event, 0, rect), rect, "field")).toBe("after");
+    expect(pointerXOf({ clientX: 120 } as PointerEvent, 5, rect)).toBe(125);
+  });
+});

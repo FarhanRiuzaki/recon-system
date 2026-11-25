@@ -76,7 +76,7 @@ describe("datasetRows", () => {
   it("items: one row per item, its fields under its side, side and item status as recon fields", async () => {
     const r = await all(spec({ dataset: "items", columns: [columnFor("c1", "a:ext_ref", "Ref"), columnFor("c2", "recon:side", "Side")] }));
     expect(r.rows.length).toBe(N / 2);
-    expect(r.rows[0]!.values).toMatchObject({ "recon:side": "a", "a:ext_ref": expect.stringMatching(/^R\d+$/), "recon:item_status": expect.any(String) });
+    expect(r.rows[0]!.values).toMatchObject({ "recon:side": "a", "a:ext_ref": expect.stringMatching(/^R\d+$/), "item:ext_ref": expect.stringMatching(/^R\d+$/), "recon:item_status": expect.any(String) });
   });
 
   it("recap: one row per date and currency with results, breaks, match rate and side totals", async () => {

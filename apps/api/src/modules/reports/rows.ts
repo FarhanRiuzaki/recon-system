@@ -91,8 +91,13 @@ export async function* datasetRows(on: Tx, spaceId: string, configId: string, sp
   const statusFilter = spec.dataset === "recap" ? undefined : spec.rows.filters.find((f) => f.ref === "recon:status" && f.op === "any_of");
   const statuses = (statusFilter?.value ?? []) as ResultStatus[];
   // customer data: the engine's (accounts, the recon's marked columns) and the sources' marked attributes (the catalog's)
-  const marked = await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) =>
-    new Set((await fieldCatalog(tx, spaceId, configId, spec.dataset)).groups.flatMap((g) => g.fields.filter((f) => f.customer).map((f) => f.ref))), on);
+  // and every field the design reads that the catalog no longer has (an attribute a newer source version renamed or
+  // dropped): its customer mark is unknown, so it is masked (final review I2)
+  const marked = await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
+    const cat = (await fieldCatalog(tx, spaceId, configId, spec.dataset)).groups.flatMap((g) => g.fields);
+    const known = new Set(cat.map((f) => f.ref));
+    return new Set([...cat.filter((f) => f.customer).map((f) => f.ref), ...refsOfSpec(spec).filter((r) => /^(a|b|item):/.test(r) && !known.has(r))]);
+  }, on);
   const withMarked = (c: Set<string>) => new Set([...c, ...marked]);
   let after: { bd: string; rowId: string } | null = null;
   const seen = new Set<string>();
@@ -112,7 +117,8 @@ export async function* datasetRows(on: Tx, spaceId: string, configId: string, sp
       const statusOf = new Map(fresh.map((r) => [r.id, r.status]));
       const rows = page.details.filter((i) => keep.has(i.rowId)).map((i): DataRow => {
         const values: DataRow["values"] = { "recon:side": i.side, "recon:status": statusOf.get(i.rowId) ?? null, "recon:item_status": i.status, "recon:businessDate": i.businessDate, "recon:reason": i.reason };
-        for (const [f, v] of Object.entries(i.fields)) values[`${i.side}:${f}`] = major(f, v, i.fields.currency);
+        // under its side (a:… or b:…) and side-neutral (item:…), so one column reads both sides' items
+        for (const [f, v] of Object.entries(i.fields)) { const x = major(f, v, i.fields.currency); values[`${i.side}:${f}`] = x; values[`item:${f}`] = x; }
         return { date: i.businessDate, values };
       }).filter((d) => passes(spec, d));
       yield { rows, customer: withMarked(page.customer) };
