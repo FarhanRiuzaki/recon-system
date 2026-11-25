@@ -2,3 +2,4 @@
 export { reportsController } from "./controller";
 export { reportFiles, reportTemplates, reportVersions } from "./schema";
 export { activeVersion, afterRunTemplates } from "./service";
+export { purgeReports, queueAfterRun, reportsHandlers } from "./make";

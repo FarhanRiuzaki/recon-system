@@ -7,7 +7,7 @@ export type Written = { rows: number; size: number; sha256: string };
 export type Column = { key: string; header: string };
 
 /** Streams `pages` to `out`; answers how many rows, the size and the SHA-256 of what was written. */
-export async function writeCsv(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string): Promise<Written> {
+export async function writeCsvFile(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string): Promise<Written> {
   const file = Bun.file(out).writer();
   const hash = new Bun.CryptoHasher("sha256");
   let size = 0, rows = 0;

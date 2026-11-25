@@ -77,6 +77,8 @@ export const reportFiles = pgTable("report_files", {
   sha256: text("sha256"),
   askedBy: uuid("asked_by"),
   runId: uuid("run_id"),
+  /** A Test's sample (step 4): always masked, never listed, fetched by its maker only, swept after 24 hours. */
+  sample: boolean("sample").notNull().default(false),
   error: text("error"),
   readAt: timestamp("read_at", { withTimezone: true }),
   readyAt: timestamp("ready_at", { withTimezone: true }),

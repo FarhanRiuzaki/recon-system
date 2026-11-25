@@ -7,7 +7,7 @@ import { resetData } from "../../../../../test/helpers/app";
 import { db } from "../../../../kernel/db";
 import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { reconItems } from "../../../engine";
-import { D, D1, makeSource, plainSource, put, recon, spec as reconSpec } from "../../../engine/tests/fixtures";
+import { D, D1, makeSource, plainSource, put, recon, spec as reconSpec } from "../fixtures";
 import { records } from "../../../ingest";
 import { reconResultColumns } from "../../../recon";
 import { spaces } from "../../../spaces";

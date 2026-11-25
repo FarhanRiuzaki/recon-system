@@ -22,12 +22,15 @@ export const QUEUES = {
   breaksSla: "breaks.sla",
   reconStats: "recon.stats",
   integrationsAction: "integrations.action",
+  reportsMake: "reports.make",
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
 /** Jobs of one queue a worker process runs at once, so EOD runs and reruns don't starve the 2-minute ticks. */
 export const CONCURRENCY: Record<QueueName, number> = {
   "ingest.pull": 4, "ingest.file": 2, "ingest.snapshot": 2, "maintenance.partitions": 1, "recon.schedule": 1, "recon.tick": 4, "recon.daily": 2, "recon.heavy": 1, "breaks.sla": 1, "recon.stats": 2, "integrations.action": 4,
+  // one report at a time per worker: a PDF launches Chromium (DEC-060; tibsdev: at most 2 heavy jobs)
+  "reports.make": 1,
 };
 
 /**
@@ -53,6 +56,8 @@ export const QUEUE_OPTIONS: Record<QueueName, QueueOptions> = {
   "recon.stats": { heartbeatSeconds: 30, expireInSeconds: 3600 },
   // one bank call per job (an operation's limit is at most 60 s); never retried: a run is sent at most once (O4)
   "integrations.action": { heartbeatSeconds: 30, expireInSeconds: 300, retryLimit: 0 },
+  // a file of up to 92 days of results (DEC-060); retried twice, the file row keeps one result
+  "reports.make": { heartbeatSeconds: 30, expireInSeconds: 3600, retryLimit: 2 },
 };
 
 /** The cron time zone of every schedule. */

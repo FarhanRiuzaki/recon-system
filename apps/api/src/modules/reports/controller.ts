@@ -3,13 +3,15 @@
 // version someone else made (DEC-051).
 import { Elysia } from "elysia";
 import { ListQuery } from "@starterkit/shared/contracts/common";
-import { CreateReportTemplateBody, ReportDecisionBody, ReportTemplateListQuery, SaveReportVersionBody } from "@starterkit/shared/contracts/reports";
+import { CreateReportTemplateBody, GenerateReportBody, ReportDecisionBody, ReportFileListQuery, ReportTemplateListQuery, SaveReportVersionBody, TestReportBody } from "@starterkit/shared/contracts/reports";
 import { SPACE_ACTION } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
   approveReportVersion, createTemplate, discardDraft, listTemplates, listVersions, newDraft, rejectReportVersion, retireTemplate, saveDraft, submitVersion, templateDetail,
 } from "./service";
+import { requestFile, testFile } from "./make";
+import { filePage } from "./files";
 
 
 export const reportsController = () =>
@@ -44,4 +46,15 @@ export const reportsController = () =>
       const b = await body(c, ReportDecisionBody);
       return rejectReportVersion(c.ctx, idParam(c.params.templateId, "report template"), idParam(c.params.versionId, "report version"), b);
     }, { guard: { space: SPACE_ACTION.approveVersion } })
+    .post("/v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/test", async (c) => {
+      const b = await body(c, TestReportBody);
+      return testFile(c.ctx, idParam(c.params.templateId, "report template"), idParam(c.params.versionId, "report version"), b);
+    }, { guard: { space: SPACE_ACTION.editReports } })
+    /** The space's report files (never a Test's sample), newest first. */
+    .get("/v1/spaces/:spaceId/reports/files", ({ ctx, query }) => filePage(ctx, query), { query: ReportFileListQuery, guard: { space: SPACE_ACTION.viewReports } })
+    .post("/v1/spaces/:spaceId/reports/files", async (c) => {
+      const f = await requestFile(c.ctx, await body(c, GenerateReportBody));
+      c.set.status = 202;
+      return f;
+    }, { guard: { space: SPACE_ACTION.generateReports } })
     .post("/v1/spaces/:spaceId/reports/templates/:templateId/retire", ({ ctx, params }) => retireTemplate(ctx, idParam(params.templateId, "report template")), { guard: { space: SPACE_ACTION.editReports } });

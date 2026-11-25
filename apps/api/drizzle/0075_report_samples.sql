@@ -1,0 +1,1 @@
+ALTER TABLE "report_files" ADD COLUMN "sample" boolean DEFAULT false NOT NULL;

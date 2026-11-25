@@ -10,6 +10,7 @@ import { purgeAuth } from "../modules/auth";
 import { tendInbox } from "../modules/inbox";
 import { purgeCalls } from "../modules/integrations";
 import { purgeOAuth } from "../modules/oauth";
+import { purgeReports } from "../modules/reports";
 
 /**
  * One clean-up pass on one pool connection under the session lock LOCKS.janitor (`pg_try_advisory_lock`): null when
@@ -22,7 +23,7 @@ export async function runJanitor(): Promise<Record<string, number> | null> {
     const [lock] = await db.execute<{ ok: boolean }>(sql`select pg_try_advisory_lock(${LOCKS.janitor}) as ok`);
     if (!lock?.ok) return null;
     try {
-      const counts = { ...(await purgeAuth(db)), ...(await purgeOAuth(db)), ...(await purgeAudit(db)), ...(await purgeCalls(db)), ...(await tendInbox(db)) };
+      const counts = { ...(await purgeAuth(db)), ...(await purgeOAuth(db)), ...(await purgeAudit(db)), ...(await purgeCalls(db)), ...(await tendInbox(db)), ...(await purgeReports(db)) };
       log.info({ counts }, "janitor");
       return counts;
     } finally {

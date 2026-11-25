@@ -43,6 +43,7 @@ import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
 import { queueDay } from "./stats";
+import { queueAfterRun } from "../reports";
 import { acceptSql, clearProposalsSql, type Dated, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, ruleSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
@@ -391,6 +392,8 @@ export async function execRun(on: Tx, spaceId: string, runId: string, o: { finis
     await after("statistics of match_members", () => withSpace(scope, (tx) => one(tx, analyzeTableSql("match_members", members)), on));
     // its days and references counted once (left not finalized on a failure: the next GET queues finalizeRun)
     await after("finalize", () => finalizeRun(on, spaceId, runId));
+    // the report files made after every run (DEC-060): a real run's dates only, never a simulation's
+    if (!simRunId) await after("report files", () => queueAfterRun(on, spaceId, configId, runId, run.dateFrom, run.dateTo));
     const [done] = await withSpace(scope, (tx) => tx.select({ counters: reconRuns.counters }).from(reconRuns).where(mine), on);
     return { runId, counters: withoutProjection(done?.counters ?? counters) };
   } catch (e) {
