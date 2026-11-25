@@ -11,9 +11,10 @@ import { Input } from "@starterkit/ui/ui/input";
 import { PasswordInput } from "@starterkit/ui/ui/password-input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import type { DetectDto, SourceSpec } from "@starterkit/shared/contracts/sources";
+import { FileRead } from "./file-read";
 import {
-  CONNECT_TIMEOUT_MAX, DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, FILE_ENCODINGS, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
+  CONNECT_TIMEOUT_MAX, DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
 } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { CONNECT_TIMEOUT_LABEL, connectTimeoutText, lookbackText, scheduleText } from "../source-text";
@@ -38,7 +39,6 @@ const SqlEditor = dynamic(() => import("@starterkit/ui/ds/sql-editor").then((m) 
 
 const ENGINE_LABEL = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" } as const;
 const STORED = "Stored. Enter a new value to replace it.";
-const DELIMITERS = [["|", "Pipe |"], [",", "Comma ,"], [";", "Semicolon ;"], ["\t", "Tab"]] as const;
 
 type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
 
@@ -83,6 +83,8 @@ export type ConnectionStepProps = {
   testing: boolean;
   /** Runs the test; `next` = the draft as it is about to be (a pick that also sets it), else the current one. */
   onTest: (next?: Draft) => void;
+  /** The file reader (a file inbox source): what detection proposed, and how to run it again or on a picked file. */
+  read?: { result: DetectDto | null; busy: boolean; error: string | null; canChange: boolean; detect: (inbox: { path: string; pattern: string }) => void; pick: (f: File) => void };
   /**
    * A test passed over the connection on screen (its lists belong to it): the server's short version, else null.
    * `listed` = some test passed since the form opened (the Data stage shows, marked stale when the connection changed).
@@ -195,9 +197,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
   const [seen, setSeen] = useState(want);
   if (want && !seen) setSeen(true);
   if (i.kind !== "file_inbox") return null;
-  // the delimited settings (the file reader's other kinds come with "How the file is read")
   const fm = i.format;
-  if (fm.kind !== "delimited") return null;
   const check = () => p.onTest();
   const completion = i.completion.kind === "marker_file" ? "Complete when a .done file arrives" : `Complete after ${formatNumber(i.completion.seconds)} s without a change`;
   return (
@@ -210,6 +210,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
           setTyping(false);
           p.set(() => next);
           p.onTest(next);
+          p.read?.detect({ path, pattern: next.spec.input.kind === "file_inbox" ? next.spec.input.pattern.trim() || "*" : "*" });
         }} />
         {folders?.folders.length && !typing && !(i.path.trim() && !spaceFolder(i.path))
           ? <span><Button type="button" variant="link" size="sm" onClick={() => setTyping(true)}>Use another folder</Button></span>
@@ -229,22 +230,15 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
               <Input id={ctl("input.pattern")} value={i.pattern} className="font-mono" onChange={(e) => setInput({ pattern: e.target.value })} autoComplete="off" spellCheck={false}
                 onBlur={() => { if (i.path.trim() && i.pattern.trim() && !passed && !p.testing) check(); }} />
             </Field>
-            <Field id={ctl("input.format.delimiter")} label="Delimiter" error={err(ctl("input.format.delimiter"))}>
-              <Select className="w-full min-w-0" id={ctl("input.format.delimiter")} value={fm.delimiter} onChange={(e) => setInput({ format: { ...fm, delimiter: e.target.value } })}>
-                {DELIMITERS.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
-              </Select>
-            </Field>
           </div>
         )}
       </div>
       {seen && (
         <>
-          <span className="inline-flex items-center gap-2">
-            <Switch id={ctl("input.format.header")} checked={fm.header} onChange={(e) => setInput({ format: { ...fm, header: e.target.checked } })} aria-label="First row is a header" />
-            <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
-          </span>
+          {p.read && <FileRead result={p.read.result} busy={p.read.busy} error={p.read.error} format={fm} canChange={p.read.canChange}
+            onChange={(format) => setInput({ format })} onPickFile={p.read.pick} />}
           <ReadWhenField label="Check the folder" when={i.when} onChange={(when) => setInput({ when })} />
-          <Advanced summary={`${completion} · ${fm.encoding.toUpperCase()}`} open={!!err(ctl("input.completion.seconds"))}>
+          <Advanced summary={completion} open={!!err(ctl("input.completion.seconds"))}>
             <Field id={ctl("input.completion")} label="File is complete when"
               note="The same content sent again is rejected; new content under the same name is the next version.">
               <Select className="w-full min-w-0" id={ctl("input.completion")} value={i.completion.kind} onChange={(e) => setInput({ completion: e.target.value === "marker_file" ? { kind: "marker_file" } : { kind: "stable_seconds", seconds: 60 } })}>
@@ -258,11 +252,6 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
                   onChange={(e) => setInput({ completion: { kind: "stable_seconds", seconds: Math.max(1, Math.min(86_400, Number(e.target.value.replace(/\D/g, "")) || 1)) } })} />
               </Field>
             )}
-            <Field id={ctl("input.format.encoding")} label="Encoding">
-              <Select className="w-full min-w-0" id={ctl("input.format.encoding")} value={fm.encoding} onChange={(e) => setInput({ format: { ...fm, encoding: e.target.value as (typeof FILE_ENCODINGS)[number] } })}>
-                {FILE_ENCODINGS.map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)}
-              </Select>
-            </Field>
           </Advanced>
         </>
       )}

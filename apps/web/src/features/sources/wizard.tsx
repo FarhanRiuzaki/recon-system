@@ -13,7 +13,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { DeniedIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import { BRAND } from "@starterkit/shared/brand";
-import type { ConnectionTestDto, SourceCatalogDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceSpec, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { ConnectionTestDto, DetectDto, SourceCatalogDto, SourceColumnsDto, SourceDto, SourcePreviewDto, SourceSpec, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { LoadingShape } from "@/components/route-skeleton";
@@ -184,6 +184,9 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const [busy, setBusy] = useState<null | "test" | "columns" | "next" | "submit" | "close">(null);
   const [columns, setColumns] = useState<Column[] | null>(null);
   const [sample, setSample] = useState({ text: "", cut: false });
+  // the file reader (DEC-058): what detection proposed for the sample, and the sample the preview reads by its id
+  const [read, setRead] = useState<{ result: DetectDto | null; busy: boolean; error: string | null }>({ result: null, busy: false, error: null });
+  const [sampleId, setSampleId] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [businessDate, setBusinessDate] = useState("");
   const [preview, setPreview] = useState<Preview>({ result: null, error: null, pending: false });
@@ -495,6 +498,34 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     }
   }
 
+  /** Takes what detection proposed: the format as the spec's, its columns as the fields (new ones as text), the sample for the preview. */
+  function applyRead(r: DetectDto) {
+    setRead({ result: r, busy: false, error: null });
+    if (!r.supported) return;
+    setSampleId(r.sampleId);
+    set((x) => {
+      if (x.spec.input.kind !== "file_inbox") return x;
+      const fields = mergeFields(x.spec.fields, r.columns.map((name) => ({ name, type: "string" as const, nullable: true, trim: true })));
+      const fresh = fields.filter((f) => !x.spec.fields.some((k) => k.name === f.name)).map((f) => f.name);
+      detect.current = new Set(fresh);
+      return withCore({ ...x, spec: { ...x.spec, fields, input: { ...x.spec.input, format: r.format }, mapping: { ...x.spec.mapping, attrs: { ...x.spec.mapping.attrs, ...Object.fromEntries(fresh.map((n) => [attrNameOf(n), { field: n }])) } } } });
+    });
+  }
+  /** Detection over an Inbox files folder's newest file (a source admin's: how a file is read is theirs). */
+  async function detectInbox(inbox: { path: string; pattern: string }) {
+    if (!admin) return;
+    setRead((x) => ({ ...x, busy: true, error: null }));
+    try { applyRead(await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: JSON.stringify({ inbox }) })); }
+    catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
+  }
+  /** Detection over a file picked on the computer (kept by the API 24 h as the preview's sample). */
+  async function detectPicked(f: File) {
+    setRead((x) => ({ ...x, busy: true, error: null }));
+    try {
+      applyRead(await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: f, headers: { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(f.name) } }));
+    } catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
+  }
+
   /** Reads the sample's columns: new ones come in as text, then take the type the preview guesses for them. */
   function readSample() {
     const i = d.spec.input;
@@ -515,7 +546,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const gone = useMemo(() => (d.from === "table" && d.kind === "db_watermark" ? goneFields(d.spec, columns) : { gone: [], used: [] }), [d, columns]);
   const spec = useMemo(() => buildSpec(d, gone.gone.filter((n) => !gone.used.includes(n))), [d, gone]);
   const specKey = JSON.stringify(spec);
-  const previewable = !mappingProblem(spec) && (!file || !!sample.text.trim());
+  const previewable = !mappingProblem(spec) && (!file || !!sampleId || !!sample.text.trim());
   const seq = useRef(0);
   /** One preview of the spec on screen (a file's sample, or rows pulled from the source database); the latest wins. */
   /** `fresh`: pull the rows again (Preview again) instead of the sample the API read in the last 2 minutes. */
@@ -525,7 +556,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const n = ++seq.current;
     setPreview((p) => ({ ...p, pending: true }));
     try {
-      const body = file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}), ...(fresh ? { fresh } : {}) };
+      const body = file && sampleId && !sample.text.trim() ? { sampleId, spec } : file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}), ...(fresh ? { fresh } : {}) };
       const result = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify(body) });
       if (n !== seq.current) return;
       setFieldErr(null);
@@ -581,7 +612,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     return () => clearTimeout(t);
     // the spec is compared by its JSON (specKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId, businessDate]);
+  }, [step, ids, specKey, previewable, sample.text, fileName, file, spaceId, businessDate, sampleId]);
 
   useEffect(() => {
     // Review and submit opened directly (a reload there): its Preview check needs one preview
@@ -623,7 +654,6 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
       const k = source ? null : readNew(newKey);
       if (!k) return;
       // the browser's copy is only readable after mount (no localStorage in the server render): one restore, once
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraft((x) => ({ ...x, ...k, conn: { ...EMPTY_CONN, ...k.conn, password: "" }, restored: true }));
       return;
     }
@@ -745,7 +775,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
             <Notice live>What you entered before the page closed is back. Enter the password again: it is never kept in this browser.</Notice>
           )}
           {step === 0 && (
-            <ConnectionStep spaceId={spaceId} d={d} set={set} created={!!ids} wmKind={watermarkKind(d, columns)} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={(next) => void test(next)}
+            <ConnectionStep spaceId={spaceId} d={d} set={set} read={{ ...read, canChange: admin, detect: (inbox) => void detectInbox(inbox), pick: (f) => void detectPicked(f) }} created={!!ids} wmKind={watermarkKind(d, columns)} stored={stored && !connChanged(d.conn, base)} err={err} tested={tested} testing={busy === "test"} onTest={(next) => void test(next)}
               connected={!file && listed && !listsStale ? { version } : null} listed={!file && !!listed}
               nextVersion={source?.s.publishedVersion != null && ids ? ids.version : null}
               catalog={{
