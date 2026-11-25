@@ -8,6 +8,12 @@ import { parse } from "csv-parse";
 import type { DriftColumn } from "./rules";
 
 export type ParseFormat = { delimiter: string; header: boolean; encoding: string; /** the quote character; null = no quoting (default `"`) */ quote?: string | null };
+
+/** A file format as the delimited parser reads it; another kind is the file reader's (read.ts) and refused here. */
+export function delimitedOf(f: { kind: string } & Partial<ParseFormat>): ParseFormat {
+  if (f.kind !== "delimited") throw new Error(`parse: ${f.kind} isn't delimited`);
+  return f as ParseFormat;
+}
 /**
  * A line, or why it can't be read. `fatal` marks a fault of the whole file, not of one line: "file" = a quote never
  * closed or a line over MAX_LINE_BYTES (the rest of the file can't be trusted), "schema" = a header whose column count

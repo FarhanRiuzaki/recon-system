@@ -30,6 +30,9 @@ export const SOURCE_STATE_FILTERS = ["healthy", "attention", "paused", "draft"] 
 export type SourceStateFilter = (typeof SOURCE_STATE_FILTERS)[number];
 export type SourceHealthState = (typeof SOURCE_HEALTH)[number];
 export const FIELD_TYPES = ["string", "integer", "decimal", "date", "datetime", "boolean"] as const;
+/** How a file source's file is read (FileFormat's kinds). */
+export const FILE_KINDS = ["delimited", "fixed_width", "excel"] as const;
+export type FileKind = (typeof FILE_KINDS)[number];
 export const FILE_ENCODINGS = ["utf-8", "latin1", "windows-1252", "utf-16le"] as const;
 /** How a source writes its amount: whole currency units (1500.00) or minor units such as cents (150000). */
 export const AMOUNT_UNITS = ["major", "minor"] as const;

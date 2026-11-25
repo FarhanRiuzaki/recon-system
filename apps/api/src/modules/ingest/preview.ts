@@ -5,7 +5,7 @@
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { Row } from "./connectors";
 import { type CalendarData, makeCalendar, toRecord } from "./map";
-import { parseText } from "./parse";
+import { delimitedOf, parseText } from "./parse";
 import { profile } from "./profile";
 
 export const PREVIEW_LIST = 100;
@@ -40,7 +40,7 @@ function preview(spec: SourceSpec, lines: Line[], calendar: CalendarData, fileNa
 /** `spec` must be a file source (its `input.format` says how to read the text); `fileName` gives a business date taken from the name. */
 export async function previewSample(spec: SourceSpec, sample: string, calendar: CalendarData, fileName?: string): Promise<SourcePreviewDto> {
   if (spec.input.kind !== "file_inbox") throw new Error("preview reads a file sample");
-  return preview(spec, await parseText(sample, spec.input.format, spec.fields.map((f) => f.name)), calendar, fileName);
+  return preview(spec, await parseText(sample, delimitedOf(spec.input.format), spec.fields.map((f) => f.name)), calendar, fileName);
 }
 
 /** Rows a connector pulled (line = position in the sample, from 1). */

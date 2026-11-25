@@ -728,51 +728,433 @@
                       ]
                     },
                     "format": {
-                      "type": "object",
-                      "properties": {
-                        "kind": {
-                          "type": "string",
-                          "const": "delimited"
-                        },
-                        "delimiter": {
-                          "type": "string",
-                          "minLength": 1,
-                          "maxLength": 1
-                        },
-                        "quote": {
-                          "default": "\"",
-                          "anyOf": [
-                            {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "delimited"
+                            },
+                            "delimiter": {
                               "type": "string",
                               "minLength": 1,
                               "maxLength": 1
                             },
-                            {
-                              "type": "null"
+                            "quote": {
+                              "default": "\"",
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 1
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "header": {
+                              "type": "boolean"
+                            },
+                            "encoding": {
+                              "type": "string",
+                              "enum": [
+                                "utf-8",
+                                "latin1",
+                                "windows-1252",
+                                "utf-16le"
+                              ]
+                            },
+                            "skip_top": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "skip_bottom": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "records": {
+                              "type": "object",
+                              "properties": {
+                                "marker": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "prefix"
+                                        },
+                                        "length": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "length"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "column"
+                                        },
+                                        "index": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 499
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "index"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                "types": {
+                                  "minItems": 2,
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 20
+                                      },
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "header",
+                                          "detail",
+                                          "skip"
+                                        ]
+                                      },
+                                      "count": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 500
+                                      },
+                                      "columns": {
+                                        "minItems": 1,
+                                        "maxItems": 500,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "start": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 100000
+                                            },
+                                            "length": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 10000
+                                            }
+                                          },
+                                          "required": [
+                                            "start",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "role",
+                                      "count"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "marker",
+                                "types"
+                              ],
+                              "additionalProperties": false
                             }
-                          ]
+                          },
+                          "required": [
+                            "kind",
+                            "delimiter",
+                            "quote",
+                            "header",
+                            "encoding"
+                          ],
+                          "additionalProperties": false
                         },
-                        "header": {
-                          "type": "boolean"
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "fixed_width"
+                            },
+                            "encoding": {
+                              "type": "string",
+                              "enum": [
+                                "utf-8",
+                                "latin1",
+                                "windows-1252",
+                                "utf-16le"
+                              ]
+                            },
+                            "header": {
+                              "type": "boolean"
+                            },
+                            "skip_top": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "skip_bottom": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "columns": {
+                              "minItems": 1,
+                              "maxItems": 500,
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "start": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 100000
+                                  },
+                                  "length": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 10000
+                                  }
+                                },
+                                "required": [
+                                  "start",
+                                  "length"
+                                ],
+                                "additionalProperties": false
+                              }
+                            },
+                            "records": {
+                              "type": "object",
+                              "properties": {
+                                "marker": {
+                                  "oneOf": [
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "prefix"
+                                        },
+                                        "length": {
+                                          "type": "integer",
+                                          "minimum": 1,
+                                          "maximum": 10
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "length"
+                                      ],
+                                      "additionalProperties": false
+                                    },
+                                    {
+                                      "type": "object",
+                                      "properties": {
+                                        "kind": {
+                                          "type": "string",
+                                          "const": "column"
+                                        },
+                                        "index": {
+                                          "type": "integer",
+                                          "minimum": 0,
+                                          "maximum": 499
+                                        }
+                                      },
+                                      "required": [
+                                        "kind",
+                                        "index"
+                                      ],
+                                      "additionalProperties": false
+                                    }
+                                  ]
+                                },
+                                "types": {
+                                  "minItems": 2,
+                                  "maxItems": 10,
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "code": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 20
+                                      },
+                                      "role": {
+                                        "type": "string",
+                                        "enum": [
+                                          "header",
+                                          "detail",
+                                          "skip"
+                                        ]
+                                      },
+                                      "count": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 500
+                                      },
+                                      "columns": {
+                                        "minItems": 1,
+                                        "maxItems": 500,
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "properties": {
+                                            "start": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 100000
+                                            },
+                                            "length": {
+                                              "type": "integer",
+                                              "minimum": 1,
+                                              "maximum": 10000
+                                            }
+                                          },
+                                          "required": [
+                                            "start",
+                                            "length"
+                                          ],
+                                          "additionalProperties": false
+                                        }
+                                      }
+                                    },
+                                    "required": [
+                                      "code",
+                                      "role",
+                                      "count"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                }
+                              },
+                              "required": [
+                                "marker",
+                                "types"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "encoding",
+                            "header",
+                            "columns"
+                          ],
+                          "additionalProperties": false
                         },
-                        "encoding": {
-                          "type": "string",
-                          "enum": [
-                            "utf-8",
-                            "latin1",
-                            "windows-1252",
-                            "utf-16le"
-                          ]
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "const": "excel"
+                            },
+                            "sheet": {
+                              "oneOf": [
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "first"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "name"
+                                    },
+                                    "name": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 31
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "kind": {
+                                      "type": "string",
+                                      "const": "pattern"
+                                    },
+                                    "pattern": {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 64
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "pattern"
+                                  ],
+                                  "additionalProperties": false
+                                }
+                              ]
+                            },
+                            "header": {
+                              "type": "boolean"
+                            },
+                            "skip_top": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            },
+                            "skip_bottom": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 1000
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "sheet",
+                            "header"
+                          ],
+                          "additionalProperties": false
                         }
-                      },
-                      "required": [
-                        "kind",
-                        "delimiter",
-                        "quote",
-                        "header",
-                        "encoding"
-                      ],
-                      "additionalProperties": false
+                      ]
                     },
                     "when": {
                       "type": "object",

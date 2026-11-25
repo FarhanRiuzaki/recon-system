@@ -38,7 +38,7 @@ import { familyOf, isTimeType } from "./connectors/dialect";
 import { insertBatch, makePartitions, MissingPartition, rawHashOf, supersede } from "./copy";
 import { completeFiles, InboxError, inboxFile, sha256Of } from "./inbox";
 import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
-import { parseDelimited } from "./parse";
+import { delimitedOf, parseDelimited } from "./parse";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
 import { type Baseline, completedDates, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, healthDeadline, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
@@ -479,11 +479,11 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
       }
       const [prev] = await tx.select({ id: sourceFiles.id, version: sourceFiles.version }).from(sourceFiles)
         .where(and(mine, eq(sourceFiles.name, f.name), eq(sourceFiles.status, "ingested"))).orderBy(desc(sourceFiles.version)).limit(1);
-      const origin: Origin = { origin: "file", originId: row.id, snapshotId: null, fileName: f.name, text: (cells) => cells.join(input.format.delimiter), seen: new Map() };
+      const origin: Origin = { origin: "file", originId: row.id, snapshotId: null, fileName: f.name, text: (cells) => cells.join(input.format.kind === "delimited" ? input.format.delimiter : "|"), seen: new Map() };
       const counts = newCounts();
       const h = new Bun.CryptoHasher("sha256");
       let batch: Line[] = [];
-      for await (const line of parseDelimited(hashed(Bun.file(file).stream(), h), input.format, l.spec.fields.map((x) => x.name))) {
+      for await (const line of parseDelimited(hashed(Bun.file(file).stream(), h), delimitedOf(input.format), l.spec.fields.map((x) => x.name))) {
         if (!line.ok && line.fatal) throw new FileFailure(Object.values(line.reasons)[0] ?? "The file can't be read.", line.fatal === "schema", line.drift);
         batch.push(line);
         if (batch.length >= FILE_BATCH) { await writeLines(tx, s, l, origin, batch, counts); batch = []; }

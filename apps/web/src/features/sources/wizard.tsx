@@ -498,7 +498,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   /** Reads the sample's columns: new ones come in as text, then take the type the preview guesses for them. */
   function readSample() {
     const i = d.spec.input;
-    if (i.kind !== "file_inbox") return;
+    if (i.kind !== "file_inbox" || i.format.kind !== "delimited") return;
     const names = sampleColumns(sample.text, i.format.delimiter, i.format.quote ?? null, i.format.header);
     if (!names.length) { show([{ id: "src-sample", reason: "Paste at least one line of the file." }]); return; }
     setProblems({});

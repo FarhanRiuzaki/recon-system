@@ -195,6 +195,9 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
   const [seen, setSeen] = useState(want);
   if (want && !seen) setSeen(true);
   if (i.kind !== "file_inbox") return null;
+  // the delimited settings (the file reader's other kinds come with "How the file is read")
+  const fm = i.format;
+  if (fm.kind !== "delimited") return null;
   const check = () => p.onTest();
   const completion = i.completion.kind === "marker_file" ? "Complete when a .done file arrives" : `Complete after ${formatNumber(i.completion.seconds)} s without a change`;
   return (
@@ -227,7 +230,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
                 onBlur={() => { if (i.path.trim() && i.pattern.trim() && !passed && !p.testing) check(); }} />
             </Field>
             <Field id={ctl("input.format.delimiter")} label="Delimiter" error={err(ctl("input.format.delimiter"))}>
-              <Select className="w-full min-w-0" id={ctl("input.format.delimiter")} value={i.format.delimiter} onChange={(e) => setInput({ format: { ...i.format, delimiter: e.target.value } })}>
+              <Select className="w-full min-w-0" id={ctl("input.format.delimiter")} value={fm.delimiter} onChange={(e) => setInput({ format: { ...fm, delimiter: e.target.value } })}>
                 {DELIMITERS.map(([v, l]) => <option key={l} value={v}>{l}</option>)}
               </Select>
             </Field>
@@ -237,11 +240,11 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
       {seen && (
         <>
           <span className="inline-flex items-center gap-2">
-            <Switch id={ctl("input.format.header")} checked={i.format.header} onChange={(e) => setInput({ format: { ...i.format, header: e.target.checked } })} aria-label="First row is a header" />
+            <Switch id={ctl("input.format.header")} checked={fm.header} onChange={(e) => setInput({ format: { ...fm, header: e.target.checked } })} aria-label="First row is a header" />
             <label htmlFor={ctl("input.format.header")} className="text-body text-fg">First row is a header</label>
           </span>
           <ReadWhenField label="Check the folder" when={i.when} onChange={(when) => setInput({ when })} />
-          <Advanced summary={`${completion} · ${i.format.encoding.toUpperCase()}`} open={!!err(ctl("input.completion.seconds"))}>
+          <Advanced summary={`${completion} · ${fm.encoding.toUpperCase()}`} open={!!err(ctl("input.completion.seconds"))}>
             <Field id={ctl("input.completion")} label="File is complete when"
               note="The same content sent again is rejected; new content under the same name is the next version.">
               <Select className="w-full min-w-0" id={ctl("input.completion")} value={i.completion.kind} onChange={(e) => setInput({ completion: e.target.value === "marker_file" ? { kind: "marker_file" } : { kind: "stable_seconds", seconds: 60 } })}>
@@ -256,7 +259,7 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
               </Field>
             )}
             <Field id={ctl("input.format.encoding")} label="Encoding">
-              <Select className="w-full min-w-0" id={ctl("input.format.encoding")} value={i.format.encoding} onChange={(e) => setInput({ format: { ...i.format, encoding: e.target.value as (typeof FILE_ENCODINGS)[number] } })}>
+              <Select className="w-full min-w-0" id={ctl("input.format.encoding")} value={fm.encoding} onChange={(e) => setInput({ format: { ...fm, encoding: e.target.value as (typeof FILE_ENCODINGS)[number] } })}>
                 {FILE_ENCODINGS.map((x) => <option key={x} value={x}>{x.toUpperCase()}</option>)}
               </Select>
             </Field>

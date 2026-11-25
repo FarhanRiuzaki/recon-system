@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { fileDateOf, makeCalendar, signedAmount, toRecord } from "../../map";
-import { parseText } from "../../parse";
+import { delimitedOf, parseText } from "../../parse";
 import { idDefault, KSEI_FILE, ksei } from "./fixtures";
 
 const cal = makeCalendar(idDefault);
@@ -10,7 +10,7 @@ const ctx = { calendar: cal, fileName: "act20261102.txt" };
 describe("KSEI fixture through parse + toRecord", () => {
   it("12 lines: 10 records, 2 quarantined with per-column reasons", async () => {
     const spec = ksei();
-    const lines = await parseText(KSEI_FILE, spec.input.kind === "file_inbox" ? spec.input.format : (null as never), spec.fields.map((f) => f.name));
+    const lines = await parseText(KSEI_FILE, spec.input.kind === "file_inbox" ? delimitedOf(spec.input.format) : (null as never), spec.fields.map((f) => f.name));
     const records: unknown[] = [];
     const quarantine: Record<string, string>[] = [];
     for (const l of lines) {

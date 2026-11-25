@@ -192,7 +192,7 @@ export function inputRows(i: SourceSpec["input"], kind: WatermarkKind | null): I
     const f = i.format;
     return [
       { key: "path", label: "Folder", value: i.path }, { key: "pattern", label: "File name pattern", value: i.pattern },
-      { key: "format", label: "File format", value: `Delimited by ${f.delimiter === "\t" ? "tab" : f.delimiter}, ${f.header ? "first row is a header" : "no header"}, ${f.encoding}` },
+      { key: "format", label: "File format", value: f.kind === "delimited" ? `Delimited by ${f.delimiter === "\t" ? "tab" : f.delimiter}, ${f.header ? "first row is a header" : "no header"}, ${f.encoding}` : f.kind === "fixed_width" ? `Fixed length, ${f.columns.length} columns, ${f.header ? "first row is a header" : "no header"}, ${f.encoding}` : `Excel, ${f.header ? "first row is a header" : "no header"}` },
       { key: "completion", label: "File is complete when", value: i.completion.kind === "stable_seconds" ? `Size unchanged for ${i.completion.seconds} s` : "A .done file with the same name arrives" },
       when,
     ];

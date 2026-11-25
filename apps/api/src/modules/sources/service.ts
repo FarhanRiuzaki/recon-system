@@ -773,7 +773,7 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   if ("sample" in b) throw new ApiError("bad_request", "A database source previews rows pulled through its connection: send no sample.");
   if (!conn) throw noConnection();
   const columns = spec.fields.map((f) => f.name);
-  const day = b.businessDate ?? todayJakarta();
+  const day = ("businessDate" in b ? b.businessDate : undefined) ?? todayJakarta();
   // the same reading (connection, table or query, columns, day) answers from the sample of the last 2 minutes, so a
   // preview after each mapping change maps those rows again instead of querying the bank's database again
   // a watermark source's look back is checked against its watermark column's type there (lookbackOf), so the watermark
@@ -788,7 +788,7 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
     if (lb && "problem" in lb) throw new ApiError("bad_request", `Check input.${lb.field}: ${lb.problem}`);
     return c.sample(from, columns, PREVIEW_PULL_ROWS);
   }));
-  return previewRows(spec, rows, cal, input.kind === "db_snapshot" ? b.businessDate ?? todayJakarta() : undefined);
+  return previewRows(spec, rows, cal, input.kind === "db_snapshot" ? day : undefined);
 }
 
 /**

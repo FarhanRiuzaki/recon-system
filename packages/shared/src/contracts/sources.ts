@@ -100,6 +100,76 @@ const DbWatermarkInput = z.strictObject({
 });
 /** A whole position per business date: `query` takes the `:business_date` parameter; `schedule` is a cron (Asia/Jakarta). */
 const DbSnapshotInput = z.strictObject({ kind: z.literal("db_snapshot"), query, schedule: z.string().trim().min(1).max(100) });
+/** Rows dropped before the header or data, and at the end (totals, footers); absent = none (an old spec keeps its hash). */
+const skips = { skip_top: z.number().int().min(0).max(1000).optional(), skip_bottom: z.number().int().min(0).max(1000).optional() };
+/** A fixed-length column: its first character (1-based) and how many characters it takes. */
+const FixedColumn = z.strictObject({ start: z.number().int().min(1).max(100_000), length: z.number().int().min(1).max(10_000) });
+/**
+ * Several kinds of line in one file (a header line with the transactions under it, a trailer): told apart by a marker
+ * (the first `length` characters, or the cell at `index`). Each type has its cell count; a fixed-length type its own
+ * positions. Each detail line is one row, carrying the columns of the last header line above it.
+ */
+export const RecordTypes = z.strictObject({
+  marker: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("prefix"), length: z.number().int().min(1).max(10) }),
+    z.strictObject({ kind: z.literal("column"), index: z.number().int().min(0).max(499) }),
+  ]),
+  types: z.array(z.strictObject({
+    code: z.string().min(1).max(20),
+    role: z.enum(["header", "detail", "skip"]),
+    count: z.number().int().min(1).max(500),
+    columns: z.array(FixedColumn).min(1).max(500).optional(),
+  })).min(2).max(10),
+}).refine((r) => r.types.filter((x) => x.role === "detail").length === 1, { message: "Mark exactly one record type as the detail", path: ["types"] })
+  .refine((r) => r.types.filter((x) => x.role === "header").length <= 1, { message: "Mark at most one record type as the header", path: ["types"] })
+  .refine((r) => new Set(r.types.map((x) => x.code)).size === r.types.length, { message: "Each record type needs its own code", path: ["types"] });
+export type RecordTypes = z.infer<typeof RecordTypes>;
+
+const ExcelSheet = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("first") }),
+  z.strictObject({ kind: z.literal("name"), name: z.string().min(1).max(31) }),
+  z.strictObject({ kind: z.literal("pattern"), pattern: z.string().min(1).max(64) }),
+]);
+
+/**
+ * How a file is read (the file reader, DEC-058): delimited text, fixed-length text, or an Excel workbook; record types on
+ * the text kinds. The new keys are optional and nothing is defaulted into the spec, so a stored delimited spec hashes as before.
+ */
+export const FileFormat = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS), ...skips, records: RecordTypes.optional() }),
+  z.strictObject({ kind: z.literal("fixed_width"), encoding: z.enum(FILE_ENCODINGS), header: z.boolean(), ...skips, columns: z.array(FixedColumn).min(1).max(500), records: RecordTypes.optional() }),
+  z.strictObject({ kind: z.literal("excel"), sheet: ExcelSheet, header: z.boolean(), ...skips }),
+]).superRefine((f, ctx) => {
+  if (f.kind === "delimited" && f.quote === f.delimiter) ctx.addIssue({ code: "custom", message: "The quote character can't be the delimiter", path: ["quote"] });
+  if (f.kind === "excel" || !f.records) return;
+  for (const [i, t] of f.records.types.entries()) {
+    if (f.kind === "fixed_width" && !t.columns) ctx.addIssue({ code: "custom", message: "Set the positions of this record type's columns", path: ["records", "types", i, "columns"] });
+    if (f.kind === "delimited" && t.columns) ctx.addIssue({ code: "custom", message: "A delimited record type has no positions", path: ["records", "types", i, "columns"] });
+  }
+});
+export type FileFormat = z.infer<typeof FileFormat>;
+
+/** POST …/sources/detect (JSON): read the newest complete file of an Inbox files folder; a picked file is the raw body. */
+export const DetectBody = z.strictObject({ inbox: z.strictObject({ path: z.string().trim().min(1).max(1024), pattern: z.string().trim().min(1).max(255) }) });
+export type DetectBody = z.infer<typeof DetectBody>;
+
+/** What a row of the detected sample is under the proposed rule. */
+export const DETECT_ROW_ROLES = ["skipped", "header", "detail", "record_header", "trailer", "quarantined"] as const;
+/**
+ * POST …/sources/detect: how the sample is read (a proposed format with its column names, a preview of its first rows
+ * and the skipped end, `confidence` low when a call was close), or that the file type isn't supported. Nothing is stored
+ * but a picked file, kept for 24 h as `sampleId` for the preview.
+ */
+export const DetectDto = z.discriminatedUnion("supported", [
+  z.object({
+    supported: z.literal(true), sampleId: z.string(), fileName: z.string(), format: FileFormat, columns: z.array(z.string()),
+    confidence: z.enum(["high", "low"]), notes: z.array(z.string()),
+    rows: z.array(z.object({ line: z.number().int(), role: z.enum(DETECT_ROW_ROLES), cells: z.array(z.string()) })),
+  }),
+  z.object({ supported: z.literal(false), fileName: z.string(), type: z.string(), reason: z.string() }),
+]);
+export type DetectDto = z.infer<typeof DetectDto>;
+
 /** Files matching `pattern` in folder `path`, complete after `seconds` without change or once a marker file lands. */
 const inboxPath = z.string().trim().min(1).max(1024);
 const inboxPattern = z.string().trim().min(1).max(255);
@@ -111,8 +181,7 @@ const FileInboxInput = z.strictObject({
     z.strictObject({ kind: z.literal("stable_seconds"), seconds: z.number().int().min(1).max(86_400) }),
     z.strictObject({ kind: z.literal("marker_file") }),
   ]),
-  format: z.strictObject({ kind: z.literal("delimited"), delimiter: z.string().length(1), quote: z.string().length(1).nullable().default('"'), header: z.boolean(), encoding: z.enum(FILE_ENCODINGS) })
-    .refine((f) => f.quote !== f.delimiter, { message: "The quote character can't be the delimiter", path: ["quote"] }),
+  format: FileFormat,
   when: ReadWhenSchema.optional(),
 });
 
@@ -256,6 +325,8 @@ export const PreviewSourceBody = z.union([
   z.strictObject({ sample: z.string().min(1).max(64 * 1024), fileName: z.string().trim().min(1).max(255).optional(), spec: SourceSpec.optional() }),
   /** `fresh`: pull the rows again instead of the sample read in the last 2 minutes (Preview again). */
   z.strictObject({ businessDate: isoDate.optional(), spec: SourceSpec.optional(), fresh: z.boolean().optional() }),
+  /** A sample detection kept (`…/sources/detect`): a picked file's id, or `inbox:` + the Inbox files file it read. */
+  z.strictObject({ sampleId: z.string().min(1).max(2048), spec: SourceSpec.optional() }),
 ]);
 export type PreviewSourceBody = z.infer<typeof PreviewSourceBody>;
 
