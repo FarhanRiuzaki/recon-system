@@ -11,9 +11,9 @@ import {
   TableNode, type TableNodeType, type TableRow, useFitToCard, useNodesInitialized, useNodesState, useReactFlow,
 } from "@starterkit/ui/flow";
 import { readPath } from "@starterkit/shared/integrations";
-import type { mapGraph } from "./field-map";
+import { edgeStyle, type MapGraph } from "./graph";
 
-type Graph = ReturnType<typeof mapGraph>;
+type Graph = MapGraph;
 const NODE_TYPES = { table: TableNode };
 const EDGE_TYPES = { map: MapEdge };
 const ROW_H = 32, HEAD_H = 52, GAP = 28, COL = 320, LANE = 160;
@@ -40,8 +40,10 @@ function layout(g: Graph): Record<string, { x: number; y: number }> {
 const shown = (v: unknown) => (v === undefined || v === null ? undefined : v === "" ? "(empty)" : typeof v === "object" ? JSON.stringify(v) : String(v));
 const KIND: Record<string, string> = { money: "amount", number: "number", text: "text", date: "date", list: "list", account: "account" };
 
-function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove, examples }: {
+function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove, examples, label = "Field map: recon fields on the left, the request on the right" }: {
   graph: Graph; title: string; caption: string; selected: string | null;
+  /** The canvas's accessible name (which side is which). */
+  label?: string;
   /** A real break's values (context) and what would be sent (payload), once the preview has run. */
   examples: { context: Record<string, unknown>; payload: unknown } | null;
   onSelect: (path: string | null) => void; onConnect: (row: string, target: string) => void; onRemove: (target: string) => void;
@@ -60,13 +62,13 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
       id: "request", type: "table", position: moved.request ?? home.request!, deletable: false, width: COL,
       data: {
         title, caption, side: "target", onRowSelect: (id) => onSelect(id),
-        rows: graph.request.map((r): TableRow => ({
+        rows: graph.request.map((r): TableRow => r.folded !== undefined ? ({ id: r.path, label: r.name, header: true, connectable: false, selected: r.path === selected, note: String(r.folded) }) : ({
           id: r.path, label: r.name, depth: r.depth, header: !r.leaf, required: r.leaf && r.required, connectable: r.leaf && !r.filledBy, selected: r.path === selected,
-          state: !r.leaf ? null : r.filledBy ?? (r.mapped ? "mapped" : r.required ? "missing" : null),
+          state: !r.leaf ? null : r.broken ? "missing" : r.filledBy ?? (r.mapped ? "mapped" : r.required ? "missing" : null),
           // what would be sent when the preview has run, else what fills it
           example: examples && r.leaf ? shown(readPath(examples.payload, r.path)) : undefined,
-          note: examples && r.leaf && shown(readPath(examples.payload, r.path)) !== undefined ? undefined
-            : r.mapped === "const" ? "Fixed value" : r.mapped === "template" ? "Template" : r.mapped === "lookup" ? "Lookup" : undefined,
+          note: r.note ?? (examples && r.leaf && shown(readPath(examples.payload, r.path)) !== undefined ? undefined
+            : r.mapped === "const" ? "Fixed value" : r.mapped === "template" ? "Template" : r.mapped === "lookup" ? "Lookup" : undefined),
           type: r.leaf ? r.type : undefined, limit: r.maxLength ? `≤ ${r.maxLength}` : undefined,
         })),
       },
@@ -79,7 +81,7 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setNodes((prev) => build().map((n) => { const p = prev.find((x) => x.id === n.id); return p ? { ...p, ...n, measured: p.measured } : n; })), [graph, selected, moved, title, caption, examples]);
   const edges: MapEdgeType[] = graph.edges.map((e) => ({
-    id: e.id, type: "map", source: e.source, sourceHandle: e.row, target: "request", targetHandle: e.target, data: { label: e.label }, selected: e.target === selected,
+    id: e.id, type: "map", source: e.source, sourceHandle: e.row, target: "request", targetHandle: e.target, data: { label: e.label }, selected: e.target === selected, style: edgeStyle(e),
     zIndex: 1000, // above the tables (a line to the request may cross a table between)
   }));
   const wrap = useRef<HTMLDivElement>(null);
@@ -101,8 +103,8 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
         onEdgeClick={(_, e) => onSelect((e as MapEdgeType).targetHandle ?? null)}
         deleteKeyCode={null}
         onPaneClick={() => onSelect(null)}
-        isValidConnection={(c) => graph.request.some((r) => r.path === c.targetHandle && r.leaf && !r.filledBy)}
-        aria-label="Field map: recon fields on the left, the request on the right" proOptions={{ hideAttribution: true }}>
+        isValidConnection={(c) => graph.request.some((r) => r.path === c.targetHandle && r.leaf && !r.filledBy && r.folded === undefined)}
+        aria-label={label} proOptions={{ hideAttribution: true }}>
         <FlowBoard />
         <Controls showInteractive={false} position="bottom-left">
           <ResetLayout onReset={() => { setMoved({}); requestAnimationFrame(() => void fitView(FIT)); }} />
@@ -112,7 +114,7 @@ function Canvas({ graph, title, caption, selected, onSelect, onConnect, onRemove
   );
 }
 
-/** The field map of one variant (loaded with the editor). */
+/** A field map (the recon posting editor's, the source mapper's), loaded with its editor. */
 export function FieldMapCanvas(p: Parameters<typeof Canvas>[0]) {
   return <ReactFlowProvider><Canvas {...p} /></ReactFlowProvider>;
 }

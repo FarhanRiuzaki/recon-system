@@ -1,3 +1,4 @@
+import type { MapGraph } from "@/components/field-map/graph";
 import type { CatalogField } from "@starterkit/shared/conditions";
 import type { OpField } from "@starterkit/shared/integrations";
 import { type Source, templateParts } from "@starterkit/shared/mapping";
@@ -37,7 +38,7 @@ function requestRows(op: Op, fields: readonly OpField[], mapping: Readonly<Recor
 }
 
 /** The graph of one variant's mapping over its operation. */
-export function mapGraph(mapping: Readonly<Record<string, Source>>, catalog: readonly CatalogField[], op: Op, accounts: readonly Account[]) {
+export function mapGraph(mapping: Readonly<Record<string, Source>>, catalog: readonly CatalogField[], op: Op, accounts: readonly Account[]): MapGraph {
   const sources: SourceTable[] = ORDER.flatMap((id): SourceTable[] => {
     if (id === "accounts") return accounts.length ? [{ id, title: TITLE[id], caption: null, rows: accounts.map((a) => ({ key: `accounts.${a.key}`, label: a.label || a.key, kind: "account" })) }] : [];
     const fs = catalog.filter((f) => f.group === id);

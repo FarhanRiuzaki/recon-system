@@ -12,7 +12,7 @@ export function MapEdge(p: EdgeProps<MapEdgeType>) {
     <>
       {/* a halo in the card's colour under the line: it reads where it crosses a table (lines sit above tables) */}
       <path d={path} className="flow-map-halo" fill="none" />
-      <BaseEdge id={p.id} path={path} interactionWidth={18} className={cn("flow-map-edge", p.selected && "is-selected")} />
+      <BaseEdge id={p.id} path={path} interactionWidth={18} style={p.style} className={cn("flow-map-edge", p.selected && "is-selected")} />
       {p.data?.label && (
         <EdgeLabelRenderer>
           <span className={cn("flow-label nodrag nopan", p.selected && "is-selected")} style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}>{p.data.label}</span>

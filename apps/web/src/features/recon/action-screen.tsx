@@ -30,7 +30,7 @@ import { groupable, previewBody, unfinishedReason, ZERO_OR_NEGATIVE } from "./ac
 import { ChangeChips } from "./change-chips";
 import { ConditionEditor } from "./condition-editor";
 import { connect, keepMapping, mapGraph } from "./field-map";
-import { FieldMapCanvas } from "./field-map-canvas";
+import { FieldMapCanvas } from "@/components/field-map/canvas";
 import { Mapper } from "./mapper";
 
 type Account = { key: string; label: string; number: string; currency: string };
