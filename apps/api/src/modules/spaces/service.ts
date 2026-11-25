@@ -9,7 +9,9 @@ import { SPACE_ROLES, type SpaceRole } from "@starterkit/shared/spaces";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, eq, exists, ilike, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
 import { db, type InTx, type Tx } from "../../kernel/db";
-import { ApiError, isUniqueViolation, notFound } from "../../kernel/errors";
+import { ApiError, errorDetail, isUniqueViolation, notFound } from "../../kernel/errors";
+import { ensureSpaceRoot } from "../../kernel/inbox-root";
+import { log } from "../../kernel/log";
 import { xactLock } from "../../kernel/locks";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { isUuid } from "../../kernel/parse";
@@ -106,7 +108,7 @@ export async function viewerSpaces(ctx: Ctx): Promise<{ id: string; name: string
 
 /** New space without members; the code is unique ignoring letter case. */
 export async function createSpace(ctx: Ctx, b: CreateSpaceBody): Promise<SpaceDto> {
-  return db.transaction(async (tx) => {
+  const s = await db.transaction(async (tx) => {
     let row: Row;
     try {
       [row] = await tx.insert(spaces).values({ id: Bun.randomUUIDv7(), code: b.code, name: b.name }).returning() as [Row];
@@ -117,6 +119,9 @@ export async function createSpace(ctx: Ctx, b: CreateSpaceBody): Promise<SpaceDt
     await recordActivity(tx, ctx, { action: "space.create", target: { type: "space", id: s.id, label: s.name }, after: s });
     return s;
   });
+  // its inbox root (Inbox files, owner 25 Nov), after the commit; a failure is logged and the janitor makes it later
+  await ensureSpaceRoot(s.code).catch((err: unknown) => log.warn({ err: errorDetail(err), space: s.id }, "inbox root not made"));
+  return s;
 }
 
 /** Space `id`, row-locked when `forUpdate`; 404 when missing. */

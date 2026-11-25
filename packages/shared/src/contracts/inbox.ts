@@ -58,6 +58,10 @@ export type InboxFileListQuery = z.infer<typeof InboxFileListQuery>;
 export const InboxFileNameQuery = z.strictObject({ name: z.string().min(1).max(1024) });
 export type InboxFileNameQuery = z.infer<typeof InboxFileNameQuery>;
 
+/** POST …/files/bulk-delete: up to 100 file names of the folder; answers BulkResult (a skipped name carries its error code). */
+export const InboxBulkDeleteBody = z.strictObject({ names: z.array(z.string().min(1).max(1024)).min(1).max(100) });
+export type InboxBulkDeleteBody = z.infer<typeof InboxBulkDeleteBody>;
+
 /** POST …/files: the stored file. */
 export const InboxUploadDto = z.object({ name: z.string(), size: z.number().int(), sha256: z.string() });
 export type InboxUploadDto = z.infer<typeof InboxUploadDto>;

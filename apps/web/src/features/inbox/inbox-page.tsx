@@ -10,7 +10,9 @@ import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, FolderIcon, UploadIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
+import type { BulkResult } from "@starterkit/shared/contracts/common";
 import type { InboxFileDto } from "@starterkit/shared/contracts/inbox";
+import { cn } from "@starterkit/ui/lib/cn";
 import { mayDo } from "@starterkit/shared/spaces";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
@@ -18,7 +20,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { api, ApiError, errorText } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { INBOX_FILES } from "@/lib/shared/queries";
-import { FILE_COLUMNS, folderColumns, STATE_LEGEND } from "./inbox-columns";
+import { deletable, FILE_COLUMNS, fileColumns, folderColumns, STATE_LEGEND } from "./inbox-columns";
 import { folderHref, inboxFilesPath } from "./upload";
 import { INBOX_KEY, useInboxFolders, useInboxSpace } from "./use-inbox";
 
@@ -40,6 +42,7 @@ export function InboxPage({ spaceId }: { spaceId: string }) {
   const space = useInboxSpace(spaceId);
   const roles = space?.roles ?? [];
   const [dialog, setDialog] = useState<"folder" | "upload" | null>(null);
+  const [dropped, setDropped] = useState<readonly File[] | undefined>(undefined);
   const upload = mayDo(roles, "uploadInbox"), manage = mayDo(roles, "manageInbox");
   const name = space?.name ?? "";
   const trail = folder ? [{ label: "Inbox files", href: folderHref(spaceId, null) }] : [];
@@ -48,11 +51,13 @@ export function InboxPage({ spaceId }: { spaceId: string }) {
       <PageHeader title={folder ? `${folder}/` : "Inbox files"} trail={trail}
         description={folder ? `Files in ${name} / ${folder}/. A file source pointed at this folder reads them.` : `Folders of the ${name} space. Upload a file into a folder; a file source pointed at the folder reads it.`}
         actions={folder
-          ? <BlockedButton reason={upload ? null : UPLOAD_REASON} onClick={() => setDialog("upload")}><Icon icon={UploadIcon} />Upload files</BlockedButton>
+          ? <BlockedButton reason={upload ? null : UPLOAD_REASON} onClick={() => { setDropped(undefined); setDialog("upload"); }}><Icon icon={UploadIcon} />Upload files</BlockedButton>
           : (manage ? <Button variant="create" onClick={() => setDialog("folder")}><Icon icon={AddIcon} />Create folder</Button> : undefined)} />
-      {folder ? <FilesView spaceId={spaceId} folder={folder} name={name} manage={manage} /> : <FoldersView spaceId={spaceId} name={name} manage={manage} />}
+      {folder
+        ? <FilesView spaceId={spaceId} folder={folder} name={name} manage={manage} onDropFiles={upload ? (files) => { setDropped(files); setDialog("upload"); } : undefined} />
+        : <FoldersView spaceId={spaceId} name={name} manage={manage} />}
       {dialog === "folder" && <CreateFolderDialog spaceId={spaceId} onClose={() => setDialog(null)} />}
-      {dialog === "upload" && folder && <UploadDialog spaceId={spaceId} folder={folder} onClose={() => setDialog(null)} />}
+      {dialog === "upload" && folder && <UploadDialog spaceId={spaceId} folder={folder} initial={dropped} onClose={() => { setDialog(null); setDropped(undefined); }} />}
     </div>
   );
 }
@@ -100,12 +105,29 @@ function FoldersView({ spaceId, name, manage }: { spaceId: string; name: string;
   );
 }
 
-function FilesView({ spaceId, folder, name, manage }: { spaceId: string; folder: string; name: string; manage: boolean }) {
+function FilesView({ spaceId, folder, name, manage, onDropFiles }: { spaceId: string; folder: string; name: string; manage: boolean; onDropFiles?: (files: File[]) => void }) {
   const t = useTableQuery<InboxFileDto, { q: string }>(INBOX_FILES(spaceId, folder));
   const qc = useQueryClient();
   const [open, setOpen] = useState<InboxFileDto | null>(null);
   const [del, setDel] = useState<InboxFileDto | null>(null);
-  const read = (f: InboxFileDto) => f.sources.some((s) => s.state !== "waiting");
+  const [bulk, setBulk] = useState(false);
+  const [over, setOver] = useState(false);
+  const read = (f: InboxFileDto) => !deletable(f);
+  // the ticked files of this page (a source admin): cleared when the page shows other rows
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const shown = t.rows.map((f) => f.name).join("\n");
+  const [selectedOn, setSelectedOn] = useState(shown);
+  if (selectedOn !== shown) { setSelectedOn(shown); setSelected(new Set()); }
+  const pickable = t.rows.filter(deletable);
+  const allOn = pickable.length > 0 && pickable.every((f) => selected.has(f.name));
+  const toggle = (n: string) => setSelected((s) => { const x = new Set(s); if (x.has(n)) x.delete(n); else x.add(n); return x; });
+  const toggleAll = () => setSelected(allOn ? new Set() : new Set(pickable.map((f) => f.name)));
+  const columns = manage ? fileColumns({ has: (n) => selected.has(n), toggle, all: { checked: allOn, count: pickable.length, toggle: toggleAll } }) : FILE_COLUMNS;
+  const dropProps = onDropFiles ? {
+    onDragOver: (e: React.DragEvent) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); setOver(true); } },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(false); const files = [...e.dataTransfer.files]; if (files.length) onDropFiles(files); },
+  } : {};
   // a file download (Content-Disposition: attachment), not a page: a link clicked, so the browser saves it and stays here
   const download = (f: InboxFileDto) => {
     const a = document.createElement("a");
@@ -119,10 +141,24 @@ function FilesView({ spaceId, folder, name, manage }: { spaceId: string; folder:
       <FilterLayout busy={t.paging.busy} values={{ q: t.state.q }} defaults={{ q: "" }} fields={[{ key: "q", label: "Search" }]}
         onApply={(values, options) => t.set(values, options)} filters={(draft, patch) =>
           <FilterSearch label="Search files" value={draft.q} onChange={(q) => patch({ q })} placeholder="File name" />}>
-        {({ summary }) => <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={FILE_COLUMNS} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
-          flush icon={FolderIcon} title={<Crumbs spaceId={spaceId} name={name} folder={folder} />} count={t.count} legend={STATE_LEGEND}>
+        {({ summary }) => <div {...dropProps} className={cn("rounded-xl", over && "outline-2 outline-dashed outline-offset-2 outline-primary")}>
+          <Panel toolbar={<Toolbar end={<><SavedViewsMenu /><ColumnsMenu columns={columns} hidden={t.hidden} onChange={t.setHidden} /></>}>{null}</Toolbar>}
+          flush icon={FolderIcon} title={<Crumbs spaceId={spaceId} name={name} folder={folder} />} count={t.count} legend={STATE_LEGEND}
+          description={onDropFiles ? "Drop files on the table to upload them." : undefined}>
           {summary}
-          <DataTable label="Files" rowHeight="identity" columns={FILE_COLUMNS} hidden={t.hidden} rows={t.rows} rowKey={(f) => f.name} loading={t.loading}
+          {manage && pickable.length > 0 && (
+            <div role="region" aria-label="Bulk actions" className={cn("flex min-h-12 flex-wrap items-center gap-2 border-b border-line bg-card px-3 py-2", selected.size > 0 ? "max-md:sticky max-md:top-(--topbar-h) max-md:z-20" : "md:hidden")}>
+              <label className="flex items-center gap-2 text-body-sm text-fg-2">
+                <input type="checkbox" className="size-4 cursor-pointer accent-primary" checked={allOn} onChange={toggleAll} />
+                {selected.size > 0 ? `${selected.size} selected` : `Select all ${pickable.length} deletable on this page`}
+              </label>
+              {selected.size > 0 && <>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear selection</Button>
+                <Button size="sm" variant="destructive" onClick={() => setBulk(true)}>Delete {selected.size === 1 ? "1 file" : `${selected.size} files`}</Button>
+              </>}
+            </div>
+          )}
+          <DataTable label="Files" rowHeight="identity" columns={columns} hidden={t.hidden} isSelected={(f) => selected.has(f.name)} rows={t.rows} rowKey={(f) => f.name} loading={t.loading}
             sort={t.sort} onSortChange={t.onSortChange} paging={t.paging}
             error={t.loadError ? { title: "Couldn't load the files", cause: errorText(t.loadError), onRetry: () => void t.query.refetch() } : null}
             empty={t.state.q
@@ -135,8 +171,19 @@ function FilesView({ spaceId, folder, name, manage }: { spaceId: string; folder:
                 ...(manage ? [{ id: "delete", label: "Delete file", destructive: true, disabled: read(f), hint: read(f) ? "A source has already read this file." : undefined, onSelect: () => setDel(f) }] : []),
               ]} />
             )} />
-        </Panel>}
+          </Panel>
+        </div>}
       </FilterLayout>
+      {bulk && <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setBulk(false); }} destructive auditFields={false} reasons={[]}
+        title={`Delete ${selected.size === 1 ? "1 file" : `${selected.size} files`}`} description="Only files no source has read yet are deleted; any a source picked up meanwhile stay."
+        impact={[...selected].slice(0, 5).map((n) => `${n} is removed from ${folder}/.`).concat(selected.size > 5 ? [`And ${selected.size - 5} more.`] : [])} actionLabel="Delete files"
+        onConfirm={async () => {
+          const r = await api<BulkResult>(`/api/spaces/${encodeURIComponent(spaceId)}/inbox/folders/${encodeURIComponent(folder)}/files/bulk-delete`, { method: "POST", body: JSON.stringify({ names: [...selected] }) });
+          toast(r.skipped.length ? `Deleted ${r.done.length} of ${r.done.length + r.skipped.length} files. ${r.skipped.length === 1 ? "1 stays" : `${r.skipped.length} stay`}: a source has read it or it is gone.` : `Deleted ${r.done.length === 1 ? "1 file" : `${r.done.length} files`}.`);
+          setSelected(new Set());
+          await qc.invalidateQueries({ queryKey: INBOX_KEY });
+          setBulk(false);
+        }} />}
       {open && <FileDetailsDialog spaceId={spaceId} folder={folder} file={open} onClose={() => setOpen(null)} />}
       {del && <LazyConfirmActionDialog open onOpenChange={(o) => { if (!o) setDel(null); }} destructive auditFields={false} reasons={[]}
         title={`Delete ${del.name}`} description="No source has read this file yet, so nothing else changes."

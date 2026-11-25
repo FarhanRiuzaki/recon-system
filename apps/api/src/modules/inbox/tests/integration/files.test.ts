@@ -1,7 +1,7 @@
 // …/inbox/folders/:folder/files: list (with each reading source's state), upload (streamed, whole or nothing),
 // download and delete (only a file no source has read).
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Page } from "@starterkit/shared/contracts/common";
 import type { InboxFileDto, InboxFolderListDto, InboxUploadDto } from "@starterkit/shared/contracts/inbox";
@@ -100,15 +100,21 @@ describe("POST …/files (upload)", () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
-  it("a file over INBOX_UPLOAD_MAX_MB is 400 with the limit, and nothing is kept", async () => {
+  it("a body shorter than its declared length is refused and nothing is kept", async () => {
+    const r = await upload(t.op, "short.txt", new Blob(["abc"]).stream(), { length: 10 });
+    expect([r.status, (await errOf(r)).message]).toEqual([400, "The file arrived incomplete (3 of 10 bytes). Upload it again."]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("a file over INBOX_UPLOAD_MAX_MB is 413 too_large with the limit, and nothing is kept", async () => {
     const was = config().INBOX_UPLOAD_MAX_MB;
     config().INBOX_UPLOAD_MAX_MB = 1;
     try {
       const big = "x".repeat(1024 * 1024 + 1);
       let r = await upload(t.op, "big.txt", big);
-      expect([r.status, (await errOf(r)).message]).toEqual([400, "The file is over 1 MB."]);
+      expect([r.status, await errOf(r)]).toEqual([413, { code: "too_large", message: "The file is over 1 MB." }]);
       r = await upload(t.op, "big.txt", new Blob([big]).stream(), { length: 10 });
-      expect(r.status).toBe(400);
+      expect(r.status).toBe(413);
       expect(readdirSync(dir)).toEqual([]);
       expect(await db.select().from(inboxUploads)).toEqual([]);
     } finally { config().INBOX_UPLOAD_MAX_MB = was; }
@@ -161,6 +167,37 @@ describe("GET …/files", () => {
     expect(d.headers.get("content-disposition")).toBe(`attachment; filename*=UTF-8''${encodeURIComponent(name)}`);
     expect((await call("DELETE", `${files()}?name=${encodeURIComponent(name)}`, { token: t.src })).status).toBe(204);
     expect(readdirSync(dir)).toEqual([]);
+  });
+});
+
+describe("a folder that is a link", () => {
+  it("a folder under the space root that links elsewhere (another space's folder) is not a folder of this space: 404", async () => {
+    const other = path.join(ROOT, `g${B.slice(-10)}`, "act");
+    mkdirSync(other, { recursive: true });
+    writeFileSync(path.join(other, "secret.txt"), "b");
+    symlinkSync(other, path.join(ROOT, code, "peek"));
+    expect((await call("GET", files(A, "peek"), { token: t.vw })).status).toBe(404);
+    expect((await call("GET", `${files(A, "peek")}/download?name=secret.txt`, { token: t.vw })).status).toBe(404);
+    expect((await upload(t.op, "x.txt", "x", { folder: "peek" })).status).toBe(404);
+  });
+});
+
+describe("POST …/files/bulk-delete", () => {
+  it("deletes the files no source has read; skips the read ones and missing ones with their codes; one entry per deleted file", async () => {
+    await upload(t.op, "act1.txt", "a");
+    await upload(t.op, "act2.txt", "b");
+    const s = await readSource();
+    await ingested(s, "act1.txt");
+    await db.delete(activity);
+    const r = await call("POST", `${files()}/bulk-delete`, { token: t.src, body: { names: ["act1.txt", "act2.txt", "none.txt"] } });
+    expect([r.status, await r.json()]).toEqual([200, { done: ["act2.txt"], skipped: [{ id: "act1.txt", code: "invalid_state" }, { id: "none.txt", code: "not_found" }] }]);
+    expect(readdirSync(dir)).toEqual(["act1.txt"]);
+    expect((await db.select().from(activity)).map((a) => a.action)).toEqual(["inbox.file_delete"]);
+  });
+
+  it("an operator can't (403); more than 100 names is 400", async () => {
+    expect((await call("POST", `${files()}/bulk-delete`, { token: t.op, body: { names: ["a"] } })).status).toBe(403);
+    expect((await call("POST", `${files()}/bulk-delete`, { token: t.src, body: { names: Array.from({ length: 101 }, (_, i) => `f${i}`) } })).status).toBe(400);
   });
 });
 

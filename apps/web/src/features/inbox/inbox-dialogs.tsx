@@ -71,7 +71,7 @@ export function CreateFolderDialog({ spaceId, onClose }: { spaceId: string; onCl
 }
 
 /** Drop or pick files; each is sent on its own (POST …/files) with its own progress and error. */
-export function UploadDialog({ spaceId, folder, onClose }: { spaceId: string; folder: string; onClose: () => void }) {
+export function UploadDialog({ spaceId, folder, initial, onClose }: { spaceId: string; folder: string; initial?: readonly File[]; onClose: () => void }) {
   const qc = useQueryClient();
   const [opener] = useState(activeElement);
   const [sent, setSent] = useState(0);
@@ -87,10 +87,9 @@ export function UploadDialog({ spaceId, folder, onClose }: { spaceId: string; fo
           <DialogDescription>Each file lands in the folder once it is whole. A file with a name already in the folder is refused.</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <FileUpload label="Files" multiple
-            upload={async (file, { onProgress }) => {
-              await uploadFile(spaceId, folder, file);
-              onProgress(1);
+          <FileUpload label="Files" multiple initial={initial} errorText={errorText}
+            upload={async (file, { onProgress, signal }) => {
+              await uploadFile(spaceId, folder, file, { onProgress, signal });
               setSent((n) => n + 1);
             }} />
         </DialogBody>

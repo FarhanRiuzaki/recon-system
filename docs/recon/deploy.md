@@ -97,7 +97,9 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
 
 - `INBOX_ROOTS` dan mount folder inbox yang sama, di path yang sama. API memakainya untuk tes folder dan wizard source
   (folder di luar `INBOX_ROOTS` dijawab "outside"), worker untuk scan dan ingest file.
-- **Inbox files** (menu, DEC-057): upload manual ditulis API ke `<entri pertama INBOX_ROOTS>/<kode space>/<folder>/`,
+- **Inbox files** (menu, DEC-057): upload manual ditulis API ke `<entri pertama INBOX_ROOTS>/<kode space>/<folder>/`
+  (compose: `INBOX_ROOTS` default `/data/inbox`). Root tiap space dibuat saat space dibuat dan dipastikan janitor API tiap
+  5 menit untuk semua space aktif (sisa upload/hapus lebih dari 24 jam dibersihkan),
   jadi mount inbox di service `api` read-write (worker tetap `:ro`) dan folder host (`INBOX_DIR`) harus bisa ditulis
   user container `bun` (uid 1000): `chown 1000:1000 <INBOX_DIR> && chmod 2775 <INBOX_DIR>`. Folder yang dibuat aplikasi
   bermode 2775 (setgid), jadi akun FTP sistem lain nanti cukup masuk grup yang sama dan menulis ke folder space yang

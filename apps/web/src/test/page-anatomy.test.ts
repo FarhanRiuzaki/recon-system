@@ -95,6 +95,7 @@ const formActionsViolations = (fs: F[]) => fs.filter(({ r, src }) => r.startsWit
  */
 const DESTRUCTIVE_BUTTON_ALLOWED: Record<string, string> = {
   [`${WEB}features/users/users-page.tsx`]: "the bulk bar's Deactivate and Delete act on the selection and confirm with the count (ui-standard §4 Select all)",
+  [`${WEB}features/inbox/inbox-page.tsx`]: "the files bulk bar's Delete acts on the ticked files and confirms with the count, as the users bulk bar",
   [`${WEB}features/me/security-panel.tsx`]: "Turn off two-factor authentication: the off switch of the user's own setting, inside its panel; it confirms",
 };
 const DESTRUCTIVE_LABEL = />\s*(?:\{[^{}]*\}\s*)*(?:Delete|Deactivate|Revoke|Reset|Retire|Remove|End session|Turn off|Disconnect)\b[^<]*<\/(?:Button|BlockedButton)>/;

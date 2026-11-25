@@ -26,9 +26,13 @@ const nextId = () => `u${++seq}`;
  * failure and Remove; images show a thumbnail. Results are announced (role=status). `onChange` gets the files that
  * finished. The page owns the endpoint: `upload` posts to its /api route.
  */
-export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize, maxFiles, multiple = true, onChange, disabled, className }: AcceptRule & {
+export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize, maxFiles, multiple = true, onChange, disabled, className, initial, errorText }: AcceptRule & {
   label: string; upload: UploadFn; acceptLabel?: string; maxFiles?: number; multiple?: boolean;
   onChange?: (done: File[]) => void; disabled?: boolean; className?: string;
+  /** Files to add as soon as it shows (dropped somewhere else, e.g. on a table, that opened it). */
+  initial?: readonly File[];
+  /** A failed upload's row text from its error (the server's reason); "The file couldn't be uploaded. Try again." otherwise. */
+  errorText?: (error: unknown) => string;
 }) {
   const inputId = useId();
   const hintId = `${inputId}-hint`;
@@ -52,9 +56,9 @@ export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize,
     patch(it.id, { status: "uploading", progress: 0, error: undefined });
     upload(it.file, { signal: ctrl.signal, onProgress: (r) => patch(it.id, { progress: Math.max(0, Math.min(1, r)) }) })
       .then(() => { patch(it.id, { status: "done", progress: 1 }); setSaid(`${it.file.name} uploaded.`); })
-      .catch(() => {
+      .catch((e: unknown) => {
         if (ctrl.signal.aborted) return;
-        patch(it.id, { status: "error", error: "The file couldn't be uploaded. Try again." });
+        patch(it.id, { status: "error", error: errorText?.(e) || "The file couldn't be uploaded. Try again." });
         setSaid(`${it.file.name} couldn't be uploaded.`);
       })
       .finally(() => aborts.current.delete(it.id));
@@ -75,6 +79,14 @@ export function ManagedFileUpload({ label, upload, accept, acceptLabel, maxSize,
     setItems((xs) => (multiple ? [...xs, ...fresh] : fresh));
     for (const it of fresh) if (it.status === "uploading") send(it);
   }
+
+  // the files it opened with, once (a ref: a second effect run in development doesn't send them twice)
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || !initial?.length) return;
+    started.current = true;
+    add([...initial]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on mount
 
   const remove = (it: UploadItem) => {
     aborts.current.get(it.id)?.abort();

@@ -67,4 +67,18 @@ describe("FileUpload", () => {
     await act(async () => document.querySelector<HTMLButtonElement>('[aria-label="Remove doc.pdf"]')!.click());
     expect(rows()).toHaveLength(0);
   });
+
+  it("errorText words a failed upload's row with the server's reason", async () => {
+    const upload = vi.fn().mockRejectedValue(new Error("A file named doc.pdf is already in this folder. Delete it first."));
+    await mount(upload, { errorText: (e: unknown) => (e as Error).message });
+    await pick([file("doc.pdf", "application/pdf")]); await flush();
+    expect(rows()[0]).toContain("A file named doc.pdf is already in this folder. Delete it first.");
+  });
+
+  it("initial files (dropped elsewhere, e.g. on a table) start uploading as soon as it shows", async () => {
+    const upload = vi.fn().mockResolvedValue(undefined);
+    await mount(upload, { initial: [file("a.pdf", "application/pdf"), file("b.pdf", "application/pdf")] }); await flush();
+    expect(upload.mock.calls.map((c) => (c[0] as File).name)).toEqual(["a.pdf", "b.pdf"]);
+    expect(rows().every((r) => r!.includes("Uploaded"))).toBe(true);
+  });
 });

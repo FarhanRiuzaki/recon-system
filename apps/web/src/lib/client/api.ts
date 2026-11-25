@@ -26,6 +26,9 @@ export function setCsrf(token: string | null): void {
   csrfToken = token;
 }
 
+/** The session's CSRF token, for a mutation sent without api() (an upload over XMLHttpRequest, for its progress). */
+export const csrf = (): string | null => csrfToken;
+
 /** Sign-in steps explain their own 401 (wrong credentials, expired step): no automatic redirect. */
 const OWN_401 = /^\/api\/auth(\/|\?|$)/;
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);

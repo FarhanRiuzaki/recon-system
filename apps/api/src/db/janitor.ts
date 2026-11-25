@@ -7,6 +7,7 @@ import { LOCKS } from "../kernel/locks";
 import { log } from "../kernel/log";
 import { purgeAudit } from "../modules/audit";
 import { purgeAuth } from "../modules/auth";
+import { tendInbox } from "../modules/inbox";
 import { purgeCalls } from "../modules/integrations";
 import { purgeOAuth } from "../modules/oauth";
 
@@ -21,7 +22,7 @@ export async function runJanitor(): Promise<Record<string, number> | null> {
     const [lock] = await db.execute<{ ok: boolean }>(sql`select pg_try_advisory_lock(${LOCKS.janitor}) as ok`);
     if (!lock?.ok) return null;
     try {
-      const counts = { ...(await purgeAuth(db)), ...(await purgeOAuth(db)), ...(await purgeAudit(db)), ...(await purgeCalls(db)) };
+      const counts = { ...(await purgeAuth(db)), ...(await purgeOAuth(db)), ...(await purgeAudit(db)), ...(await purgeCalls(db)), ...(await tendInbox(db)) };
       log.info({ counts }, "janitor");
       return counts;
     } finally {

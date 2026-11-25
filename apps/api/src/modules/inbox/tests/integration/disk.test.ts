@@ -1,6 +1,6 @@
 // The inbox's disk layer on a temporary folder (no database): uploads land whole or not at all.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiError } from "../../../../kernel/errors";
@@ -55,7 +55,7 @@ describe("writeUpload", () => {
 
   it("a body over the limit is refused with the limit in MB and leaves nothing", async () => {
     const e = await writeUpload(dir, "d.txt", streamOf(["x".repeat(600_000), "x".repeat(600_000)]), 1 << 20).catch((x) => x);
-    expect((e as ApiError).code).toBe("bad_request");
+    expect((e as ApiError).code).toBe("too_large");
     expect((e as ApiError).message).toBe("The file is over 1 MB.");
     expect(readdirSync(dir)).toEqual([]);
   });
@@ -86,6 +86,16 @@ describe("folders", () => {
     expect(list[0]!.files.map((f) => [f.name, f.size])).toEqual([["a.txt", 3]]);
   });
 
+  it("removing a folder clears upload leftovers an hour old; a fresh one means an upload is under way", async () => {
+    const left = path.join(dir, `.${Bun.randomUUIDv7()}.uploading`);
+    writeFileSync(left, "x");
+    expect([await codeOf(removeFolder(root, "act")), (await removeFolder(root, "act").catch((e) => e)).message]).toEqual(["invalid_state", "An upload into this folder is under way. Try again in a few minutes."]);
+    const t = new Date(Date.now() - 2 * 3600_000);
+    utimesSync(left, t, t);
+    await removeFolder(root, "act");
+    expect(existsSync(dir)).toBe(false);
+  });
+
   it("refuses a folder that exists, and removing one that holds files", async () => {
     expect(await codeOf(makeFolder(root, "act"))).toBe("duplicate");
     writeFileSync(path.join(dir, "a.txt"), "x");
@@ -97,6 +107,14 @@ describe("folders", () => {
 });
 
 describe("hideFile", () => {
+  it("putting a hidden file back never overwrites a file of that name that arrived meanwhile", async () => {
+    writeFileSync(path.join(dir, "a.txt"), "old");
+    const hidden = await hideFile(dir, "a.txt");
+    writeFileSync(path.join(dir, "a.txt"), "new");
+    expect(await codeOf(unhideFile(hidden, dir, "a.txt"))).toBe("duplicate");
+    expect(readFileSync(path.join(dir, "a.txt"), "utf8")).toBe("new");
+  });
+
   it("renames a file out of sight and back", async () => {
     writeFileSync(path.join(dir, "a.txt"), "x");
     const hidden = await hideFile(dir, "a.txt");

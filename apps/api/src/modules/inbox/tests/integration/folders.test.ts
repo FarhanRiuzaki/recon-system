@@ -99,6 +99,10 @@ describe("DELETE …/inbox/folders/:folder", () => {
     await db.insert(sourceVersions).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId, version: 1, status: "published", spec: { input: { kind: "file_inbox", path: dir, pattern: "act*.txt" } }, specHash: "h", makerId: u!.id, publishedAt: new Date() });
     r = await call("DELETE", `${base()}/act`, { token: t.src });
     expect([r.status, (await errOf(r)).message]).toEqual([409, "KOFIS ACT reads this folder. Change that source first."]);
+    // a draft that points at it counts too
+    await db.update(sourceVersions).set({ status: "draft", publishedAt: null }).where(eq(sourceVersions.sourceId, sourceId));
+    r = await call("DELETE", `${base()}/act`, { token: t.src });
+    expect([r.status, (await errOf(r)).message]).toEqual([409, "KOFIS ACT reads this folder. Change that source first."]);
   });
 
   it("deletes an empty folder no source reads (204, activity); an operator can't (403); an unknown or badly named one is 404", async () => {

@@ -3,9 +3,8 @@
 import type { InboxState } from "@starterkit/shared/contracts/inbox";
 import path from "node:path";
 
-/** A space's inbox: its code under the first inbox root (INBOX_ROOTS); null when the install has no inbox root. */
-export const spaceRoot = (roots: readonly string[], spaceCode: string): string | null =>
-  roots[0] ? path.join(path.resolve(roots[0]), spaceCode) : null;
+/** A space's inbox root (kernel/inbox-root.ts, which the spaces module uses for a new space). */
+export { spaceRoot } from "../../kernel/inbox-root";
 
 const RANK: Record<InboxState, number> = { failed: 3, duplicate: 2, waiting: 1, ingested: 0 };
 

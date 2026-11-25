@@ -2,7 +2,7 @@
 // (<first INBOX_ROOTS>/<other code>/…) is refused when the spec is saved and when a folder is tested; the own space's
 // folders and folders outside every space root (set up by IT) stay allowed.
 import { beforeEach, describe, expect, it } from "bun:test";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import type { SourceDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -48,6 +48,17 @@ const saveWith = async (p: string) => {
 describe("saving a file inbox spec", () => {
   it("refuses a folder of another space, and that space's root itself", async () => {
     for (const p of [path.join(ROOT, codeB, "act"), path.join(ROOT, codeB), path.join(ROOT, codeA, "..", codeB, "act")]) {
+      const { r } = await saveWith(p);
+      expect([r.status, (await errOf(r)).message], p).toEqual([400, REFUSED]);
+    }
+  });
+
+  it("refuses a link under its own space (or outside every space root) that leads into another space's folder", async () => {
+    const viaOwn = path.join(ROOT, codeA, `peek${Date.now()}`);
+    const viaLegacy = path.join(ROOT, `legacy-peek${Date.now()}`);
+    symlinkSync(path.join(ROOT, codeB, "act"), viaOwn);
+    symlinkSync(path.join(ROOT, codeB, "act"), viaLegacy);
+    for (const p of [viaOwn, viaLegacy]) {
       const { r } = await saveWith(p);
       expect([r.status, (await errOf(r)).message], p).toEqual([400, REFUSED]);
     }

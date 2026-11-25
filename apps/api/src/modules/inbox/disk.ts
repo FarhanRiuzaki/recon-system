@@ -7,8 +7,7 @@ import { chmod, link, mkdir, open, readdir, rename, rmdir, stat, unlink } from "
 import path from "node:path";
 import { ApiError } from "../../kernel/errors";
 
-/** Folders the app makes: group-writable with the group kept, so a later FTP account of the same group writes there. */
-const DIR_MODE = 0o2775;
+import { ensureInboxDir, INBOX_DIR_MODE as DIR_MODE } from "../../kernel/inbox-root";
 const FILE_MODE = 0o664;
 
 export type DiskFile = { name: string; size: number; modifiedAt: number };
@@ -18,21 +17,41 @@ const plainName = (name: string) => { if (!isInboxFileName(name)) throw new ApiE
 const folderName = (name: string) => { if (!INBOX_FOLDER_NAME.test(name)) throw new ApiError("bad_request", "Use lower case letters, digits, _ and - for a folder name, starting with a letter or digit."); };
 const exists = (e: unknown) => (e as { code?: string }).code === "EEXIST";
 
-export async function ensureRoot(root: string): Promise<void> {
-  await mkdir(root, { recursive: true, mode: DIR_MODE });
-  await chmod(root, DIR_MODE);
-}
+export const ensureRoot = (root: string): Promise<void> => ensureInboxDir(root);
 
-/** The regular, non-dot files of `dir`, by name. */
+/** How many files are stat'ed at once (a folder FTP fills can hold thousands). */
+const STAT_BATCH = 64;
+
+/** The regular, non-dot files of `dir`, by name; a file gone between the listing and its stat is left out. */
 export async function listFiles(dir: string): Promise<DiskFile[]> {
+  const names = (await readdir(dir, { withFileTypes: true })).filter((e) => e.isFile() && !e.name.startsWith(".")).map((e) => e.name);
   const out: DiskFile[] = [];
-  for (const e of await readdir(dir, { withFileTypes: true })) {
-    if (!e.isFile() || e.name.startsWith(".")) continue;
-    const st = await stat(path.join(dir, e.name));
-    out.push({ name: e.name, size: st.size, modifiedAt: Math.floor(st.mtimeMs) });
+  for (let i = 0; i < names.length; i += STAT_BATCH) {
+    const got = await Promise.all(names.slice(i, i + STAT_BATCH).map(async (name) => {
+      const st = await stat(path.join(dir, name)).catch(() => null);
+      return st ? { name, size: st.size, modifiedAt: Math.floor(st.mtimeMs) } : null;
+    }));
+    for (const f of got) if (f) out.push(f);
   }
   return out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
+
+const LEFTOVER = /^\.[0-9a-f-]{36}\.(uploading|deleting)$/;
+
+/** Removes the upload and delete leftovers (dot files of this module) in `dir` older than `ms`; answers how many. */
+export async function sweepLeftovers(dir: string, ms: number, now = Date.now()): Promise<number> {
+  let n = 0;
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    if (!e.isFile() || !LEFTOVER.test(e.name)) continue;
+    const p = path.join(dir, e.name);
+    const st = await stat(p).catch(() => null);
+    if (st && now - st.mtimeMs >= ms) { await unlink(p).catch(() => undefined); n += 1; }
+  }
+  return n;
+}
+
+/** An upload left behind for this long is a crash's, not one under way. */
+const STALE_UPLOAD_MS = 3600_000;
 
 /** The folders of a space root (names that are folder names only), by name, each with its files. */
 export async function listFolders(root: string): Promise<DiskFolder[]> {
@@ -51,7 +70,10 @@ export async function makeFolder(root: string, name: string): Promise<void> {
 
 export async function removeFolder(root: string, name: string): Promise<void> {
   folderName(name);
-  try { await rmdir(path.join(root, name)); } catch (e) {
+  const dir = path.join(root, name);
+  await sweepLeftovers(dir, STALE_UPLOAD_MS);
+  if ((await readdir(dir).catch(() => [])).some((n) => LEFTOVER.test(n))) throw new ApiError("invalid_state", "An upload into this folder is under way. Try again in a few minutes.");
+  try { await rmdir(dir); } catch (e) {
     if (["ENOTEMPTY", "EEXIST"].includes((e as { code?: string }).code ?? "")) throw new ApiError("invalid_state", "Delete the files in this folder first.");
     throw e;
   }
@@ -59,10 +81,11 @@ export async function removeFolder(root: string, name: string): Promise<void> {
 
 /**
  * Writes `body` to `dir/name`: first to a dot file of its own (`.<random>.uploading`), hashing while it writes;
- * over `maxBytes` or a broken stream → the dot file is removed and nothing lands; then linked to `name` (refused when
+ * over `maxBytes` (413), shorter or longer than `expected`, or a broken stream → the dot file is removed and nothing
+ * lands; then linked to `name` (refused when
  * that name exists: 409 duplicate, never overwritten) and the dot file removed.
  */
-export async function writeUpload(dir: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number): Promise<{ size: number; sha256: string }> {
+export async function writeUpload(dir: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number, expected?: number): Promise<{ size: number; sha256: string }> {
   plainName(name);
   // the temporary name doesn't carry the file's: a 255-byte name would pass the file system's limit with it
   const temp = path.join(dir, `.${Bun.randomUUIDv7()}.uploading`);
@@ -73,11 +96,13 @@ export async function writeUpload(dir: string, name: string, body: ReadableStrea
     try {
       for await (const chunk of body) {
         size += chunk.byteLength;
-        if (size > maxBytes) throw new ApiError("bad_request", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
+        if (size > maxBytes) throw new ApiError("too_large", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
         h.update(chunk);
         await fh.write(chunk);
       }
     } finally { await fh.close(); }
+    // a stream that ended early but cleanly (a proxy cut it): never a short file under the real name
+    if (expected !== undefined && size !== expected) throw new ApiError("bad_request", `The file arrived incomplete (${size} of ${expected} bytes). Upload it again.`);
     await chmod(temp, FILE_MODE);
     try { await link(temp, path.join(dir, name)); } catch (e) {
       if (exists(e)) throw new ApiError("duplicate", `A file named ${name} is already in this folder. Delete it first.`);
@@ -97,9 +122,16 @@ export async function hideFile(dir: string, name: string): Promise<string> {
   return hidden;
 }
 
-/** Puts a hidden file back under its name (the delete was refused). */
+/**
+ * Puts a hidden file back under its name (the delete was refused); a file of that name that arrived meanwhile is kept
+ * (409 duplicate, the hidden copy stays a leftover the janitor sweeps).
+ */
 export async function unhideFile(hidden: string, dir: string, name: string): Promise<void> {
-  await rename(hidden, path.join(dir, name));
+  try { await link(hidden, path.join(dir, name)); } catch (e) {
+    if (exists(e)) throw new ApiError("duplicate", `A file named ${name} arrived while it was being deleted.`);
+    throw e;
+  }
+  await unlink(hidden);
 }
 
 /** Removes a hidden file for good. */

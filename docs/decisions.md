@@ -754,7 +754,11 @@ lain menulis ke folder yang sama. Penyimpanan di disk dulu; MinIO atau S3 open s
   pipeline tidak pernah membaca dot file. Hapus file hanya selama belum ada source yang membacanya (state apa pun
   selain waiting → 409), disembunyikan dulu (dot name) supaya scan tidak mulai membacanya.
 - Source `file_inbox` menolak folder di bawah root space lain ("Check input.path: Use a folder of this space.").
-- Dua penyimpangan dari spec: tanpa `INBOX_ROOTS` menu tetap tampil dan halamannya menjelaskan (web tidak membaca
-  config API); file terlalu besar 400 `bad_request` "The file is over N MB." (tidak ada kode 413 di `ERROR_STATUS`).
+- Penyimpangan dari spec: tanpa `INBOX_ROOTS` menu tetap tampil dan halamannya menjelaskan (web tidak membaca config
+  API); kini jarang terjadi karena compose memberi default `/data/inbox`.
+- Tambahan owner 25 Nov (sesudah review): root inbox tiap space dibuat otomatis (saat space dibuat, dan janitor API tiap
+  5 menit untuk semua space aktif, sekalian membersihkan sisa upload/hapus berumur lebih dari 24 jam); compose memberi
+  `INBOX_ROOTS` default `/data/inbox`; file terlalu besar kini `too_large` 413; progres upload per file (XHR), drop
+  file ke tabel, hapus banyak file (`…/files/bulk-delete`, BulkResult).
 - Spec `docs/superpowers/specs/2026-11-25-inbox-files-design.md`, plan `docs/superpowers/plans/2026-11-25-inbox-files.md`.
 

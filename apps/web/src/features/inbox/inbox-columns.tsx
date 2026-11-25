@@ -33,6 +33,9 @@ export const folderColumns = (spaceId: string): Column<InboxFolderDto>[] => [
   } },
 ];
 
+/** Whether a file can still be deleted: no source has read it (every state waiting). */
+export const deletable = (f: InboxFileDto) => f.sources.every((s) => s.state === "waiting");
+
 /** The files of one folder: name, size, modified, uploaded by, the state per reading source. */
 export const FILE_COLUMNS: Column<InboxFileDto>[] = [
   { key: "name", header: "Name", sortable: true, mobile: "title", className: "min-w-56", cell: (f) => (
@@ -44,3 +47,22 @@ export const FILE_COLUMNS: Column<InboxFileDto>[] = [
     ? <span className="flex flex-wrap gap-1.5">{f.sources.map((s) => <StatusChip key={s.sourceId} health={STATE[s.state].health} label={`${STATE[s.state].label} · ${s.sourceName}`} />)}</span>
     : <span className="text-fg-3">No source reads it</span>) },
 ];
+
+/**
+ * FILE_COLUMNS with a leading checkbox (a source admin: the files to delete together); only a file no source has read
+ * can be ticked. The header's checkbox ticks every such file of the page (tablet and desktop; a phone's bar holds it).
+ */
+export function fileColumns(select?: { has: (name: string) => boolean; toggle: (name: string) => void; all: { checked: boolean; count: number; toggle: () => void } }): Column<InboxFileDto>[] {
+  if (!select) return FILE_COLUMNS;
+  const all = (
+    <label className="inline-grid size-7 cursor-pointer place-items-center">
+      <input type="checkbox" aria-label={`Select all ${select.all.count} deletable files on this page`} checked={select.all.checked} onChange={select.all.toggle} className="size-4 cursor-pointer accent-primary" />
+    </label>
+  );
+  return [{ key: "select", header: "Select", headerCell: all, className: "w-8", mobile: "lead", hideable: false, cell: (f) => (
+    // The label is the touch hit area (base.css): a native checkbox can't carry one.
+    <label className="inline-grid size-7 cursor-pointer place-items-center">
+      <input type="checkbox" aria-label={`Select ${f.name}`} disabled={!deletable(f)} checked={select.has(f.name)} onChange={() => select.toggle(f.name)} className="size-4 cursor-pointer accent-primary disabled:cursor-not-allowed" />
+    </label>
+  ) }, ...FILE_COLUMNS];
+}

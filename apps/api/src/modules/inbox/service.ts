@@ -2,15 +2,15 @@
 // (disk.ts), who uploaded what (inbox_uploads), and what the space's published file sources did with each file
 // (ingest's source_files). The file system change runs inside the transaction that records its activity entry, so a
 // refused change leaves no entry and a failed entry leaves no change behind (an upload removes its file).
-import type { Page } from "@starterkit/shared/contracts/common";
+import type { BulkResult, Page } from "@starterkit/shared/contracts/common";
 import type { InboxFileDto, InboxFileListQuery, InboxFileSourceDto, InboxFolderDto, InboxFolderListDto, InboxState, InboxUploadDto } from "@starterkit/shared/contracts/inbox";
 import { INBOX_FOLDER_NAME, INBOX_FOLDERS_MAX, isInboxFileName } from "@starterkit/shared/inbox";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
-import { and, desc, eq, inArray } from "drizzle-orm";
-import { realpath, stat, unlink } from "node:fs/promises";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { lstat, realpath, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../../kernel/config";
-import type { InTx } from "../../kernel/db";
+import type { InTx, Tx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
 import { trySourceLock } from "../../kernel/locks";
 import { recordActivity } from "../audit";
@@ -19,7 +19,7 @@ import { sourceFiles } from "../ingest";
 import { sources, sourceVersions } from "../sources";
 import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { type DiskFile, dropHidden, ensureRoot, hideFile, listFiles, listFolders, makeFolder, removeFolder, unhideFile, writeUpload } from "./disk";
+import { type DiskFile, dropHidden, ensureRoot, hideFile, listFiles, listFolders, makeFolder, removeFolder, sweepLeftovers, unhideFile, writeUpload } from "./disk";
 import { inboxUploads } from "./schema";
 import { spaceRoot, worstState } from "./rules";
 
@@ -50,24 +50,28 @@ export async function rootOf(tx: InTx, spaceId: string): Promise<{ space: Space;
 export async function folderOf(root: string, name: string): Promise<string> {
   if (!INBOX_FOLDER_NAME.test(name)) throw notFound("folder");
   const dir = path.join(root, name);
-  const st = await stat(dir).catch(() => null);
-  if (!st?.isDirectory()) throw notFound("folder");
+  // a real folder of this root: a link (to another space's folder, or anywhere) is not one
+  const st = await lstat(dir).catch(() => null);
+  if (!st?.isDirectory() || (await real(dir)) !== path.join(await real(root), name)) throw notFound("folder");
   return dir;
 }
 
 const real = (p: string) => realpath(p).catch(() => path.resolve(p));
 
 export type Reader = { id: string; name: string; pattern: string };
-/** The space's published file inbox sources whose folder is `dir` (compared after symlinks are followed). */
-export async function readersOf(tx: InTx, spaceId: string, dir: string): Promise<Reader[]> {
+/**
+ * The space's file inbox sources whose folder is `dir` (compared after symlinks are followed), by their published
+ * version; with `drafts`, by any version that isn't retired (a folder can't be deleted under a draft either). One per source.
+ */
+export async function readersOf(tx: InTx, spaceId: string, dir: string, drafts = false): Promise<Reader[]> {
   const rows = await tx.select({ id: sources.id, name: sources.name, spec: sourceVersions.spec }).from(sourceVersions)
     .innerJoin(sources, and(eq(sources.spaceId, sourceVersions.spaceId), eq(sources.id, sourceVersions.sourceId)))
-    .where(and(eq(sourceVersions.spaceId, spaceId), eq(sourceVersions.status, "published"), eq(sources.kind, "file_inbox")));
+    .where(and(eq(sourceVersions.spaceId, spaceId), drafts ? ne(sourceVersions.status, "retired") : eq(sourceVersions.status, "published"), eq(sources.kind, "file_inbox")));
   const want = await real(dir);
   const out: Reader[] = [];
   for (const r of rows) {
     const input = (r.spec as SourceSpec | null)?.input;
-    if (input?.kind === "file_inbox" && (await real(input.path)) === want) out.push({ id: r.id, name: r.name, pattern: input.pattern });
+    if (input?.kind === "file_inbox" && !out.some((o) => o.id === r.id) && (await real(input.path)) === want) out.push({ id: r.id, name: r.name, pattern: input.pattern });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -125,7 +129,7 @@ export function deleteFolder(ctx: Ctx, name: string): Promise<void> {
   return inSpace(ctx, async (tx, spaceId) => {
     const { space, root } = await rootOf(tx, spaceId);
     const dir = await folderOf(root, name);
-    const [reader] = await readersOf(tx, spaceId, dir);
+    const [reader] = await readersOf(tx, spaceId, dir, true);
     if (reader) throw new ApiError("invalid_state", `${reader.name} reads this folder. Change that source first.`);
     await recordActivity(tx, ctx, { action: "inbox.folder_delete", target: spaceTarget(space), before: { folder: name } });
     await removeFolder(root, name);
@@ -184,8 +188,8 @@ export async function uploadFile(ctx: Ctx, folder: string, rawName: string | nul
   const name = decodeName(rawName);
   const max = config().INBOX_UPLOAD_MAX_MB * 1024 * 1024;
   if (!length || !/^\d+$/.test(length)) throw new ApiError("bad_request", "Send the file's size (Content-Length).");
-  if (Number(length) > max) throw new ApiError("bad_request", `The file is over ${config().INBOX_UPLOAD_MAX_MB} MB.`);
-  const got = await writeUpload(dir, name, body ?? new Blob([]).stream(), max);
+  if (Number(length) > max) throw new ApiError("too_large", `The file is over ${config().INBOX_UPLOAD_MAX_MB} MB.`);
+  const got = await writeUpload(dir, name, body ?? new Blob([]).stream(), max, Number(length));
   try {
     await inSpace(ctx, async (tx, spaceId) => {
       await tx.insert(inboxUploads).values({ id: Bun.randomUUIDv7(), spaceId, folder, name, size: got.size, sha256: got.sha256, uploadedBy: ctx.user.id })
@@ -238,7 +242,8 @@ export async function deleteFile(ctx: Ctx, folder: string, name: string): Promis
       await recordActivity(tx, ctx, { action: "inbox.file_delete", target: spaceTarget(space), before: { folder, name, size: f.size } });
       gone = hidden;
     } catch (e) {
-      await unhideFile(hidden, dir, name);
+      // a file of that name that arrived meanwhile wins; the hidden copy stays a leftover the janitor sweeps
+      await unhideFile(hidden, dir, name).catch((u: unknown) => { if (!(u instanceof ApiError)) throw u; });
       throw e;
     }
   }).catch(async (e: unknown) => {
@@ -247,4 +252,40 @@ export async function deleteFile(ctx: Ctx, folder: string, name: string): Promis
     throw e;
   });
   if (gone) await dropHidden(gone);
+}
+
+/** Deletes several files of a folder, each as deleteFile does: those refused are skipped with their error code. */
+export async function bulkDeleteFiles(ctx: Ctx, folder: string, names: readonly string[]): Promise<BulkResult> {
+  const out: BulkResult = { done: [], skipped: [] };
+  for (const name of [...new Set(names)]) {
+    try {
+      await deleteFile(ctx, folder, name);
+      out.done.push(name);
+    } catch (e) {
+      if (!(e instanceof ApiError)) throw e;
+      out.skipped.push({ id: name, code: e.code });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- every space's root
+
+/** How old an upload or delete leftover is before the janitor removes it. */
+const LEFTOVER_MS = 24 * 3600_000;
+
+/**
+ * The janitor's pass (db/janitor.ts): every active space has its inbox root, and upload or delete leftovers a day old
+ * are removed from its folders. Counts: roots checked, leftovers removed.
+ */
+export async function tendInbox(on: Tx): Promise<{ inbox_roots: number; inbox_leftovers: number }> {
+  const out = { inbox_roots: 0, inbox_leftovers: 0 };
+  if (!config().INBOX_ROOTS[0]) return out;
+  for (const s of await on.select({ code: spaces.code }).from(spaces).where(eq(spaces.status, "active"))) {
+    const root = spaceRoot(config().INBOX_ROOTS, s.code.toLowerCase())!;
+    await ensureRoot(root);
+    out.inbox_roots += 1;
+    for (const f of await listFolders(root)) out.inbox_leftovers += await sweepLeftovers(path.join(root, f.name), LEFTOVER_MS);
+  }
+  return out;
 }

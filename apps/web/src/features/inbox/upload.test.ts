@@ -4,19 +4,40 @@ import { folderHref, inboxFilesPath, stateSummary, uploadFile } from "./upload";
 
 afterEach(() => { vi.unstubAllGlobals(); setCsrf(null); });
 
+/** A fake XMLHttpRequest: records what was sent, then answers `status`/`body`, reporting upload progress first. */
+function fakeXhr(status: number, body: unknown) {
+  const sent: { method: string; url: string; headers: Record<string, string>; body: unknown }[] = [];
+  class X {
+    status = 0; responseText = ""; upload: { onprogress: ((e: { loaded: number; total: number; lengthComputable: boolean }) => void) | null } = { onprogress: null };
+    onload: (() => void) | null = null; onerror: (() => void) | null = null; onabort: (() => void) | null = null;
+    private h: Record<string, string> = {}; private m = ""; private u = "";
+    open(m: string, u: string) { this.m = m; this.u = u; }
+    setRequestHeader(k: string, v: string) { this.h[k.toLowerCase()] = v; }
+    abort() { this.onabort?.(); }
+    send(b: unknown) {
+      sent.push({ method: this.m, url: this.u, headers: this.h, body: b });
+      this.upload.onprogress?.({ loaded: 1, total: 4, lengthComputable: true });
+      this.upload.onprogress?.({ loaded: 4, total: 4, lengthComputable: true });
+      this.status = status; this.responseText = JSON.stringify(body); this.onload?.();
+    }
+  }
+  vi.stubGlobal("XMLHttpRequest", X);
+  return sent;
+}
+
 describe("uploadFile", () => {
-  it("POSTs the raw file to the folder's files with its name URL-encoded and the CSRF token", async () => {
-    const seen: { url: string; init: RequestInit }[] = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => { seen.push({ url, init }); return Response.json({ name: "Laporan ACT.txt", size: 3, sha256: "x" }, { status: 201 }); }));
+  it("POSTs the raw file with its name URL-encoded and the CSRF token, reporting progress", async () => {
+    const sent = fakeXhr(201, { name: "Laporan ACT.txt", size: 3, sha256: "x" });
     setCsrf("tok");
     const file = new File(["abc"], "Laporan ACT.txt");
-    expect(await uploadFile("s1", "act", file)).toEqual({ name: "Laporan ACT.txt", size: 3, sha256: "x" });
-    const h = new Headers(seen[0]!.init.headers);
-    expect([seen[0]!.url, seen[0]!.init.method, h.get("x-file-name"), h.get("x-csrf-token"), seen[0]!.init.body]).toEqual(["/api/spaces/s1/inbox/folders/act/files", "POST", "Laporan%20ACT.txt", "tok", file]);
+    const seen: number[] = [];
+    expect(await uploadFile("s1", "act", file, { onProgress: (r) => seen.push(r) })).toEqual({ name: "Laporan ACT.txt", size: 3, sha256: "x" });
+    expect([sent[0]!.method, sent[0]!.url, sent[0]!.headers["x-file-name"], sent[0]!.headers["x-csrf-token"], sent[0]!.body]).toEqual(["POST", "/api/spaces/s1/inbox/folders/act/files", "Laporan%20ACT.txt", "tok", file]);
+    expect(seen).toEqual([0.25, 1]);
   });
 
   it("throws the API's message on a refusal", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: { code: "duplicate", message: "A file named a.txt is already in this folder. Delete it first." } }, { status: 409 })));
+    fakeXhr(409, { error: { code: "duplicate", message: "A file named a.txt is already in this folder. Delete it first." } });
     await expect(uploadFile("s1", "act", new File(["a"], "a.txt"))).rejects.toThrow("A file named a.txt is already in this folder. Delete it first.");
   });
 });

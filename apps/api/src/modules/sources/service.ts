@@ -31,6 +31,7 @@ import {
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
+import { realpath } from "node:fs/promises";
 import { folderOfPath } from "../inbox";
 import { users } from "../users";
 import {
@@ -420,8 +421,14 @@ export function refusedSpec(e: unknown): never {
  */
 async function ownFolder(tx: InTx, spaceId: string, p: string): Promise<void> {
   const all = await tx.select({ id: spaces.id, code: spaces.code }).from(spaces);
-  const at = folderOfPath(config().INBOX_ROOTS, all.map((x) => x.code.toLowerCase()), p);
-  if (at && all.find((x) => x.code.toLowerCase() === at.code)?.id !== spaceId) throw new ApiError("bad_request", "Check input.path: Use a folder of this space.");
+  const codes = all.map((x) => x.code.toLowerCase());
+  const roots = config().INBOX_ROOTS;
+  // the path as written and where it leads after symlinks (a link may sit anywhere and point into another space)
+  const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => r)));
+  const led = await realpath(p).catch(() => null);
+  for (const at of [folderOfPath(roots, codes, p), led ? folderOfPath(realRoots, codes, led) : null]) {
+    if (at && all.find((x) => x.code.toLowerCase() === at.code)?.id !== spaceId) throw new ApiError("bad_request", "Check input.path: Use a folder of this space.");
+  }
 }
 
 async function checkSpec(tx: InTx, s: SourceRow, spec: SourceSpec): Promise<void> {

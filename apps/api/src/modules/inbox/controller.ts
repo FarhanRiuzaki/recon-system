@@ -1,11 +1,11 @@
 // /v1/spaces/:spaceId/inbox/*: a space's inbox folders and files (Inbox files). Query 400 → guard 401/403 (the space's
 // roles, SPACE_ACTION.viewInbox / uploadInbox / manageInbox) → body 400 → 404 → rules → change → activity (service.ts).
 import { Elysia } from "elysia";
-import { CreateInboxFolderBody, InboxFileListQuery, InboxFileNameQuery } from "@starterkit/shared/contracts/inbox";
+import { CreateInboxFolderBody, InboxBulkDeleteBody, InboxFileListQuery, InboxFileNameQuery } from "@starterkit/shared/contracts/inbox";
 import { SPACE_ACTION } from "@starterkit/shared/spaces";
 import { body } from "../../kernel/parse";
 import { guard } from "../auth";
-import { createFolder, deleteFile, deleteFolder, downloadFile, filePage, folderList, uploadFile } from "./service";
+import { bulkDeleteFiles, createFolder, deleteFile, deleteFolder, downloadFile, filePage, folderList, uploadFile } from "./service";
 
 export const inboxController = () =>
   new Elysia()
@@ -32,6 +32,8 @@ export const inboxController = () =>
       c.set.status = 201;
       return up;
     }, { guard: { space: SPACE_ACTION.uploadInbox } })
+    /** Several files no source has read yet (BulkResult: the others skipped with their code). */
+    .post("/v1/spaces/:spaceId/inbox/folders/:folder/files/bulk-delete", async (c) => bulkDeleteFiles(c.ctx, c.params.folder, (await body(c, InboxBulkDeleteBody)).names), { guard: { space: SPACE_ACTION.manageInbox } })
     /** A file no source has read yet. */
     .delete("/v1/spaces/:spaceId/inbox/folders/:folder/files", async ({ ctx, params, query, set }) => {
       await deleteFile(ctx, params.folder, query.name);
