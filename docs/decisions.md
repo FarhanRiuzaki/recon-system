@@ -739,3 +739,22 @@ sama), bagian dari spec dan matching hash: mengubahnya lewat draft, simulasi dan
   hanya kebetulan terjaga karena item tanpa reason 404, dan dua break dalam satu group bisa masing-masing diminta.
 - Tes: `break-requests.test.ts` "undo match of any live group …", `results.test.ts` "the item the row's actions go
   through", `apps/web/src/components/unmatch/break-model.test.ts` "workView …".
+
+## DEC-057 — Inbox files: upload manual ke folder per space di disk, satu jalur ingest
+
+**Keputusan (owner 25 Nov):** menu Inbox files menulis file upload ke `<entri pertama INBOX_ROOTS>/<kode space>/<folder>/`
+(satu tingkat folder). File itu file biasa: source `file_inbox` yang menunjuk folder membacanya lewat pipeline yang
+ada (cek selesai, tolak sha256 dobel, tanggal dari nama, karantina); tidak ada jalur ingest kedua. Nanti FTP sistem
+lain menulis ke folder yang sama. Penyimpanan di disk dulu; MinIO atau S3 open source lain menyusul dengan mengganti
+`inbox/disk.ts` saja. Arsip/pindah file setelah ingest belum.
+
+- Izin: upload `operator` + `source_admin`; buat/hapus folder dan hapus file `source_admin`; lihat dan download semua
+  role space (`SPACE_ACTION.viewInbox/uploadInbox/manageInbox`).
+- Upload ditulis ke dot file lalu di-`link` ke namanya saat utuh (nama yang sudah ada 409, tidak pernah ditimpa);
+  pipeline tidak pernah membaca dot file. Hapus file hanya selama belum ada source yang membacanya (state apa pun
+  selain waiting → 409), disembunyikan dulu (dot name) supaya scan tidak mulai membacanya.
+- Source `file_inbox` menolak folder di bawah root space lain ("Check input.path: Use a folder of this space.").
+- Dua penyimpangan dari spec: tanpa `INBOX_ROOTS` menu tetap tampil dan halamannya menjelaskan (web tidak membaca
+  config API); file terlalu besar 400 `bad_request` "The file is over N MB." (tidak ada kode 413 di `ERROR_STATUS`).
+- Spec `docs/superpowers/specs/2026-11-25-inbox-files-design.md`, plan `docs/superpowers/plans/2026-11-25-inbox-files.md`.
+
