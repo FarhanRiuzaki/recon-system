@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sql";
 import { date, integer, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { db, type Tx } from "../../src/kernel/db";
+import { budget } from "./perf";
 
 /**
  * Switches `tx`, until it ends, to `recon_app_probe` (NOLOGIN, no BYPASSRLS, DML on every table of the current schema and of pgboss,
@@ -59,5 +60,5 @@ export const partProbe = pgTable("part_probe", { spaceId: uuid("space_id").notNu
  */
 export async function appRoleDb() {
   await db.transaction((tx) => asAppRole(tx)); // the role and its grants, on the tables there now
-  return drizzle({ client: new SQL(process.env.DATABASE_URL!, { max: 4, connection: { role: "recon_app_probe", statement_timeout: 30_000, idle_in_transaction_session_timeout: 10_000 } }) });
+  return drizzle({ client: new SQL(process.env.DATABASE_URL!, { max: 4, connection: { role: "recon_app_probe", statement_timeout: budget(30_000), idle_in_transaction_session_timeout: 10_000 } }) });
 }
