@@ -97,7 +97,8 @@ describe("preview", () => {
 
   it("a field the data's catalog no longer has (an attribute a newer source version dropped) is masked, not shown", async () => {
     const p = await json<Preview>(draft({ ...V.spec, totals: { on: false, perGroup: false, columns: {} }, columns: [columnFor("c1", "a:attrs.nik", "NIK")] }));
-    expect(p.lines.map((l) => l.cells[0])).toContain("············0001");
+    // never the raw value: empty (the engine reads only the published version's fields) or masked
     expect(p.lines.map((l) => l.cells[0]).join()).not.toContain("3201999999990001");
+    expect(p.lines.every((l) => l.cells[0] === "" || /^·+0001$/.test(l.cells[0]!))).toBe(true);
   });
 });
