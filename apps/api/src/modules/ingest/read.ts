@@ -6,6 +6,7 @@
 // under it), and each row's cell count against the declared columns.
 import type { FileFormat, RecordTypes } from "@starterkit/shared/contracts/sources";
 import { decodeStream } from "./decode";
+import { workbookRecords } from "./excel";
 import { type CellRecord, delimitedCells, headerProblem, type ParsedLine, type ParseOptions, WHOLE_ROW } from "./parse";
 
 type Fixed = Extract<FileFormat, { kind: "fixed_width" }>;
@@ -78,8 +79,25 @@ function textRecords(chunks: AsyncIterable<string>, f: Exclude<FileFormat, { kin
 
 /** A byte stream to parsed lines under `format`: `columns` = the declared field names, in order. */
 export function readRows(source: AsyncIterable<Uint8Array>, format: FileFormat, columns: string[], opts: ParseOptions = {}): AsyncGenerator<ParsedLine> {
-  if (format.kind === "excel") throw new Error("read: Excel comes with excel.ts");
+  if (format.kind === "excel") return excelRows(source, format, columns, opts);
   return shape(textRecords(decodeStream(source, format.encoding), format), format, columns, opts.yieldEvery ?? 1000, format.kind === "fixed_width" ? format : null);
+}
+
+/** An Excel workbook: its bytes gathered (stopping past the limit), its sheet's rows, then the same shaping. */
+async function* excelRows(source: AsyncIterable<Uint8Array>, format: Extract<FileFormat, { kind: "excel" }>, columns: string[], opts: ParseOptions): AsyncGenerator<ParsedLine> {
+  const max = opts.excelMaxMb ?? 50;
+  const parts: Uint8Array[] = [];
+  let size = 0;
+  for await (const b of source) { size += b.length; if (size > max * 1024 * 1024) break; parts.push(b); }
+  const bytes = size > max * 1024 * 1024 ? new Uint8Array(size) : Buffer.concat(parts);
+  yield* shape((async function* () { yield* workbookRecords(bytes, format, max); })(), format, columns, opts.yieldEvery ?? 1000, null);
+}
+
+/** An Excel workbook already in memory (a sample) to all its lines. */
+export async function readWorkbook(bytes: Uint8Array, format: Extract<FileFormat, { kind: "excel" }>, columns: string[], maxMb = 50): Promise<ParsedLine[]> {
+  const out: ParsedLine[] = [];
+  for await (const l of shape((async function* () { yield* workbookRecords(bytes, format, maxMb); })(), format, columns, 1000, null)) out.push(l);
+  return out;
 }
 
 /** A small text held in memory (a pasted preview sample) to all its lines. */

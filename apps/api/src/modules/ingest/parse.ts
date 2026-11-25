@@ -26,7 +26,7 @@ export function delimitedOf(f: { kind: string } & Partial<ParseFormat>): ParseFo
 export type ParsedLine =
   | { line: number; ok: true; raw: Record<string, string> }
   | { line: number; ok: false; cells: string[]; reasons: Record<string, string>; fatal?: "file" | "schema"; drift?: DriftColumn[] };
-export type ParseOptions = { yieldEvery?: number };
+export type ParseOptions = { yieldEvery?: number; /** an Excel workbook's size limit (EXCEL_MAX_MB) */ excelMaxMb?: number };
 
 export const WHOLE_ROW = "_row";
 /** A line (quoted fields included) longer than this is quarantined: a stray quote can't buffer the rest of the file. */

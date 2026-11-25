@@ -483,7 +483,7 @@ export async function ingestFile(s: Scope, f: InboxFile, on: Tx): Promise<"inges
       const counts = newCounts();
       const h = new Bun.CryptoHasher("sha256");
       let batch: Line[] = [];
-      for await (const line of readRows(hashed(Bun.file(file).stream(), h), input.format, l.spec.fields.map((x) => x.name))) {
+      for await (const line of readRows(hashed(Bun.file(file).stream(), h), input.format, l.spec.fields.map((x) => x.name), { excelMaxMb: loadWorkerConfig(process.env).EXCEL_MAX_MB })) {
         if (!line.ok && line.fatal) throw new FileFailure(Object.values(line.reasons)[0] ?? "The file can't be read.", line.fatal === "schema", line.drift);
         batch.push(line);
         if (batch.length >= FILE_BATCH) { await writeLines(tx, s, l, origin, batch, counts); batch = []; }

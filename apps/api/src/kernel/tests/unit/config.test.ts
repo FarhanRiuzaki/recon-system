@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { CONFIG_KEYS, loadConfig, loadDbConfig, loadJobsConfig } from "../../config";
+import { CONFIG_KEYS, loadConfig, loadDbConfig, loadJobsConfig, loadWorkerConfig } from "../../config";
 
 const KEY = Buffer.alloc(32, 7).toString("base64");
 const base = {
@@ -36,6 +36,12 @@ describe("loadConfig", () => {
     expect(msg).toContain("INTERNAL_API_TOKEN");
     expect(msg).not.toContain("short-secret-value");
     expect(msg).not.toContain(KEY);
+  });
+
+  it("EXCEL_MAX_MB: the largest Excel workbook a file source reads, 50 by default, 1 to 128; the worker reads it too", () => {
+    expect(loadConfig(base).EXCEL_MAX_MB).toBe(50);
+    expect(failure({ ...base, EXCEL_MAX_MB: "129" })).toContain("EXCEL_MAX_MB");
+    expect(loadWorkerConfig({ DATABASE_URL: base.DATABASE_URL, DATA_ENCRYPTION_KEY: base.DATA_ENCRYPTION_KEY, EXCEL_MAX_MB: "7" }).EXCEL_MAX_MB).toBe(7);
   });
 
   it("INBOX_UPLOAD_MAX_MB: an inbox upload's limit in MB, 100 by default, 1 to 128 (Bun.serve's own body limit)", () => {
