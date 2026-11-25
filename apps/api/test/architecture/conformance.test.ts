@@ -247,6 +247,7 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/nav-counts": "three counts of the space for the sidebar, each capped at NAV_COUNT_CAP (capped flag)",
   "GET /v1/spaces/:spaceId/recons/:configId/days": "a recon's last TREND_DAYS business dates (14), fixed",
   "GET /v1/spaces/:spaceId/recons/:configId/live": "one recon's current business date and its two sources",
+  "GET /v1/spaces/:spaceId/inbox/folders": "the space's inbox folders from disk, at most INBOX_FOLDERS_MAX (200)",
   "GET /v1/spaces/:spaceId/sources/summary": "four counts of the space's sources, one per state",
   "GET /v1/spaces/:spaceId/recons/:configId/result-columns": "one recon's Operation result columns, at most RESULT_COLUMNS_MAX (20)",
   "GET /v1/spaces/:spaceId/recons/:configId/results/counts": "one count per overall status (RESULT_STATUSES, 15), each capped at COUNT_CAP",
