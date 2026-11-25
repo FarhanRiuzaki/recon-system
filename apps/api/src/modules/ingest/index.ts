@@ -10,12 +10,12 @@ export {
 export { ingestController } from "./controller";
 export { rawHashOf } from "./copy";
 export { type HealthSource, type SourceHealth, sourceHealth } from "./health";
-export { detect, type DetectOutcome, type Sample, sniffKind } from "./detect";
+export { detect, type DetectOutcome, type Sample, sampleOfFile, sniffKind } from "./detect";
 export { inboxFile, inboxFolder, inboxProbe } from "./inbox";
 export { type Calendar, type CalendarData, type CoreRecord, fileDateOf, makeCalendar, signedAmount, toRecord, specCelError } from "./map";
 export { type ParsedLine, parseDelimited, parseText } from "./parse";
 export { type ColumnProfile, profile } from "./profile";
-export { previewRows, previewSample } from "./preview";
+export { previewRows, previewSample, previewStream } from "./preview";
 export { quarantineRows, records, sourceCursors, sourceDeliveries, sourceFiles, sourceSnapshots } from "./schema";
 export { deadlineOn, type DeliveryTally, endOfDay, previousBusinessDay, todayIn } from "./rules";
 export { currentRecord, deliveryCounts, type DeliverySource, type HealthInputs, ingestHandlers, ingestHooks, lastPulls, listTrends, recountDays, scheduleSource, type SourceState, sourceDays, sourceStates } from "./service";

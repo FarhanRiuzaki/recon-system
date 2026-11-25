@@ -30,5 +30,9 @@ const INBOX_DOWNLOAD_PATH = /^\/v1\/spaces\/[0-9a-fA-F-]{36}\/inbox\/folders\/[a
  */
 export const inboxDeadlineMs = (method: string, path: string): number | null => {
   const p = path.split("?")[0]!;
-  return (method === "POST" && INBOX_UPLOAD_PATH.test(p)) || (method === "GET" && INBOX_DOWNLOAD_PATH.test(p)) ? 300_000 : null;
+  return (method === "POST" && (INBOX_UPLOAD_PATH.test(p) || SOURCE_DETECT_PATH.test(p))) || (method === "GET" && INBOX_DOWNLOAD_PATH.test(p)) ? 300_000 : null;
 };
+
+/** POST …/sources/detect: a picked sample file (raw, ≤ 20 MB, checked by the API) or a small JSON body; streamed. */
+const SOURCE_DETECT_PATH = /^\/v1\/spaces\/[0-9a-fA-F-]{36}\/sources\/detect$/;
+export const isSourceDetect = (path: string): boolean => SOURCE_DETECT_PATH.test(path.split("?")[0]!);

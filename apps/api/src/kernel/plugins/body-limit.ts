@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { ApiError } from "../errors";
-import { isInboxUpload } from "@starterkit/shared/body-limit";
+import { isInboxUpload, isSourceDetect } from "@starterkit/shared/body-limit";
 import { bodyMaxFor } from "../parse";
 
 /**
@@ -12,7 +12,7 @@ export const bodyLimit = new Elysia({ name: "kernel.body-limit" })
   .onRequest(({ request }) => {
     const p = new URL(request.url).pathname;
     // an inbox upload streams to disk; its own limit (INBOX_UPLOAD_MAX_MB) is checked by the inbox module
-    if (request.method === "POST" && isInboxUpload(p)) return;
+    if (request.method === "POST" && (isInboxUpload(p) || isSourceDetect(p))) return;
     if (Number(request.headers.get("content-length") ?? 0) > bodyMaxFor(p)) throw new ApiError("bad_request");
   })
   .onParse({ as: "global" }, () => null);

@@ -1,5 +1,5 @@
 import "server-only";
-import { BODY_MAX, bodyMaxFor, inboxDeadlineMs, isInboxUpload } from "@starterkit/shared/body-limit";
+import { BODY_MAX, bodyMaxFor, inboxDeadlineMs, isInboxUpload, isSourceDetect } from "@starterkit/shared/body-limit";
 import { apiError, csrfFailed } from "./api";
 import { backend, relay, v1Path } from "./backend";
 import { CSRF_HEADER, csrfOk } from "./csrf";
@@ -38,7 +38,7 @@ export async function forward(req: Request): Promise<Response> {
   const token = s.token && s.csrf ? s.token : null;
   const mutation = req.method !== "GET" && req.method !== "HEAD"; // Next answers HEAD with the GET handler
   if (mutation && token && !csrfOk(req.headers.get(CSRF_HEADER), s.csrf)) return csrfFailed();
-  if (req.method === "POST" && isInboxUpload(path)) return upload(req, path, token, s);
+  if (req.method === "POST" && (isInboxUpload(path) || isSourceDetect(path))) return upload(req, path, token, s);
   const body = mutation ? await bodyOf(req, bodyMaxFor(path)) : null;
   if (mutation && !body) return tooLarge();
   const sent = body?.size ? body : null;
@@ -59,7 +59,7 @@ async function upload(req: Request, path: string, token: string | null, s: Await
   const length = req.headers.get("content-length");
   if (!length || !/^\d+$/.test(length)) return tooLarge();
   const res = await backend(path, {
-    method: "POST", body: req.body, contentType: "application/octet-stream", token, req, timeoutMs: inboxDeadlineMs("POST", path) ?? undefined,
+    method: "POST", body: req.body, contentType: req.headers.get("content-type")?.startsWith("application/json") ? "application/json" : "application/octet-stream", token, req, timeoutMs: inboxDeadlineMs("POST", path) ?? undefined,
     file: { name: req.headers.get("x-file-name") ?? "", length },
   });
   if (res.status === 401 && token) s.destroy();

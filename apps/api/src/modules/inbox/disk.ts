@@ -156,3 +156,15 @@ export async function unhideFile(hidden: string, dir: string, name: string): Pro
 
 /** Removes a hidden file for good. */
 export const dropHidden = (hidden: string): Promise<void> => unlink(hidden);
+
+/** Regular files in `dir` older than `ms` removed; answers how many (a missing folder is none). */
+export async function sweepOld(dir: string, ms: number, now = Date.now()): Promise<number> {
+  let n = 0;
+  for (const e of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
+    if (!e.isFile()) continue;
+    const p = path.join(dir, e.name);
+    const st = await stat(p).catch(() => null);
+    if (st && now - st.mtimeMs >= ms) { await unlink(p).catch(() => undefined); n += 1; }
+  }
+  return n;
+}

@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { SQL } from "bun";
+import { utils as xlsxUtils, write as xlsxWrite } from "xlsx";
 import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { and, asc, count, eq, isNotNull, sql } from "drizzle-orm";
@@ -81,7 +82,7 @@ async function expectCounters(s: Src) {
 }
 
 /** Writes `name` in the inbox folder; `at` = its modification time (a resend is a new arrival). */
-async function put(name: string, text: string, at = new Date()) {
+async function put(name: string, text: string | Uint8Array, at = new Date()) {
   await writeFile(path.join(DIR, name), text);
   await utimes(path.join(DIR, name), at, at);
 }
@@ -170,6 +171,45 @@ describe("KSEI ACT, day D and D+1 (ksei-sample-data.md)", () => {
 });
 
 // ------------------------------------------------------------------------------------------------ Review Focus 1
+describe("the file reader's kinds, end to end (DEC-058)", () => {
+  const str = (name: string, nullable = true) => ({ name, type: "string" as const, nullable, trim: true });
+  const twoCols = (format: SourceSpec["input"] extends infer I ? I extends { kind: "file_inbox"; format: infer F } ? F : never : never): SourceSpec => ({
+    ...kseiSpec(), fields: [str("sre"), str("sid", false)], mapping: { business_date: { cel: "file_date" }, account_ref: { field: "sid" }, attrs: { sre: { field: "sre" } } }, key_fields: ["sid"],
+    input: { ...(kseiSpec().input as object), pattern: "*", format } as SourceSpec["input"],
+  });
+  const accounts = async (s: Src) => (await db.select({ a: records.accountRef, attrs: records.attrs }).from(records).where(eq(records.sourceId, s.sourceId)).orderBy(asc(records.accountRef)));
+
+  it("a fixed-length file", async () => {
+    const k = await source(A, twoCols({ kind: "fixed_width", encoding: "utf-8", header: false, columns: [{ start: 1, length: 6 }, { start: 7, length: 15 }] }));
+    await put("fx20261102.txt", "SRE001TSTSID000000001\nSRE002TSTSID000000002\n");
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect((await accounts(k)).map((r) => r.a)).toEqual(["TSTSID000000001", "TSTSID000000002"]);
+  });
+
+  it("an Excel workbook, its sheet by pattern, its header skipped", async () => {
+    const k = await source(A, twoCols({ kind: "excel", sheet: { kind: "pattern", pattern: "ACT*" }, header: true }));
+    const wb = xlsxUtils.book_new();
+    xlsxUtils.book_append_sheet(wb, xlsxUtils.aoa_to_sheet([["x"]]), "Summary");
+    xlsxUtils.book_append_sheet(wb, xlsxUtils.aoa_to_sheet([["sre", "sid"], ["SRE001", "TSTSID000000001"], ["SRE002", "TSTSID000000002"]]), "ACT 02");
+    await put("xl20261102.xlsx", new Uint8Array(xlsxWrite(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer));
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect((await accounts(k)).map((r) => r.a)).toEqual(["TSTSID000000001", "TSTSID000000002"]);
+  });
+
+  it("header and detail lines: each detail carries its header's merchant; the trailer is skipped", async () => {
+    const spec: SourceSpec = {
+      ...kseiSpec(), fields: [str("hdr_01"), str("merchant"), str("hdr_03"), str("col_01"), str("sid", false), str("amt")],
+      mapping: { business_date: { cel: "file_date" }, account_ref: { field: "sid" }, attrs: { merchant: { field: "merchant" } } }, key_fields: ["sid"],
+      input: { ...(kseiSpec().input as object), pattern: "*", format: { kind: "delimited", delimiter: "|", quote: '"', header: false, encoding: "utf-8",
+        records: { marker: { kind: "column", index: 0 }, types: [{ code: "H", role: "header", count: 3 }, { code: "D", role: "detail", count: 3 }, { code: "T", role: "skip", count: 2 }] } } } as SourceSpec["input"],
+    };
+    const k = await source(A, spec);
+    await put("hd20261102.txt", "H|M01|20261102\nD|TSTSID000000001|100\nD|TSTSID000000002|200\nH|M02|20261102\nD|TSTSID000000003|50\nT|3\n");
+    expect(await deliver(k)).toEqual(["ingested"]);
+    expect((await accounts(k)).map((r) => [r.a, (r.attrs as { merchant: string }).merchant])).toEqual([["TSTSID000000001", "M01"], ["TSTSID000000002", "M01"], ["TSTSID000000003", "M02"]]);
+  });
+});
+
 describe("Review Focus 1: a file sent again", () => {
   it("the same content is rejected and changes no count; the same name with new content is the next version", async () => {
     const k = await source(A, kseiSpec());

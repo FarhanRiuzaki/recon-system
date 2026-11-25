@@ -49,6 +49,7 @@ describe("proxy matcher", () => {
   const matches = (p: string) => config.matcher.some((m) => new RegExp(`^${m.source}$`).test(p));
   it("skips an inbox upload; runs for pages, other API calls, a folder's file list and a download", () => {
     expect(matches("/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/inbox/folders/act/files")).toBe(false);
+    expect(matches("/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/sources/detect")).toBe(false);
     for (const p of ["/", "/spaces/x/inbox", "/api/spaces/x/inbox/folders", "/api/spaces/x/inbox/folders/act/files/download", "/api/users"]) expect(matches(p), p).toBe(true);
     expect(matches("/_next/static/x.js")).toBe(false);
   });

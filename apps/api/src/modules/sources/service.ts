@@ -10,6 +10,7 @@ import type {
   ConnectionTestDto, CreateSourceBody, NewSourceTestBody, PreviewSourceBody, QueryColumnsBody, RejectSourceVersionBody, SetConnectionBody, SourceColumnsDto, SourceConnectionDto,
   SourceDto, SourceListQuery, SourceRowDto, SourceShareDto, SourceSummaryDto, SourcePreviewDto, SourceSpec, SourceVersionDetailDto, SourceVersionDto, SourceVersionListQuery,
   SourceCatalogBody, SourceCatalogDto, SourceVersionRowDto, TestConnectionBody, TypedConnection, UpdateSourceVersionBody,
+  DetectBody, DetectDto,
 } from "@starterkit/shared/contracts/sources";
 import { SourceSpec as SourceSpecSchema } from "@starterkit/shared/contracts/sources";
 import type { LiveSourceDto } from "@starterkit/shared/contracts/recon";
@@ -25,14 +26,12 @@ import { log } from "../../kernel/log";
 import { likeEscape, one, pageQuery, sortSql } from "../../kernel/pagination";
 import { recordActivity, targetActivityPage } from "../audit";
 import { type Ctx, RateLimiter, retryText } from "../auth";
-import {
-  CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, type From, inboxProbe, lookbackOf, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState,
-  lastPulls, listTrends, sourceStates, specCelError, todayIn, within,
-} from "../ingest";
+import { CATALOG_COUNT_CAP, type Column, type Connector, ConnectorError, connectorFor, DEFAULT_DATABASE, type From, inboxProbe, lookbackOf, previewRows, previewSample, type Row, scheduleSource, sourceDays, type Secret, type SourceState, lastPulls, listTrends, sourceStates, specCelError, todayIn, within, detect, inboxFile, inboxFolder, previewStream, sampleOfFile } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
-import { realpath } from "node:fs/promises";
-import { folderOfPath } from "../inbox";
+import { readdir, realpath, stat } from "node:fs/promises";
+import path from "node:path";
+import { folderOfPath, samplePath, saveSample } from "../inbox";
 import { users } from "../users";
 import {
   canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, specWarnings, type TestFound, testFailure, testSentence, usedBySentence,
@@ -767,9 +766,14 @@ export async function previewVersion(ctx: Ctx, id: string, versionId: string, b:
   });
   const input = spec.input;
   if (input.kind === "file_inbox") {
+    if ("sampleId" in b) {
+      const s = await sampleFile(ctx, b.sampleId);
+      return previewStream(spec, Bun.file(s.file).stream(), cal, s.name, config().EXCEL_MAX_MB);
+    }
     if (!("sample" in b)) throw new ApiError("bad_request", "Paste a sample of the file to preview it.");
     return previewSample(spec, b.sample, cal, b.fileName);
   }
+  if ("sampleId" in b) throw new ApiError("bad_request", "A database source previews rows pulled through its connection: send no sample.");
   if ("sample" in b) throw new ApiError("bad_request", "A database source previews rows pulled through its connection: send no sample.");
   if (!conn) throw noConnection();
   const columns = spec.fields.map((f) => f.name);
@@ -927,4 +931,62 @@ export function unshareSource(ctx: Ctx, id: string, toSpaceId: string): Promise<
  */
 export async function pauseSource(tx: InTx, spaceId: string, sourceId: string): Promise<void> {
   await tx.update(sources).set({ status: "paused", updatedAt: NOW }).where(and(eq(sources.spaceId, spaceId), eq(sources.id, sourceId)));
+}
+
+// ---------------------------------------------------------------- the file reader's samples (DEC-058)
+
+type InboxSample = { path: string; name: string; size: number; modifiedAt: number };
+const NOT_A_SAMPLE = () => new ApiError("bad_request", "This sample id isn't one this app made.");
+
+/** The file a sample id names: an Inbox files file (unchanged since it was detected) or a picked file kept 24 h. */
+async function sampleFile(ctx: Ctx, sampleId: string): Promise<{ file: string; name: string }> {
+  if (sampleId.startsWith("picked:")) {
+    const [, id = "", name = ""] = sampleId.split(":");
+    let decoded: string;
+    try { decoded = decodeURIComponent(name); } catch { throw NOT_A_SAMPLE(); }
+    return { file: await samplePath(ctx, id), name: decoded };
+  }
+  if (!sampleId.startsWith("inbox:")) throw NOT_A_SAMPLE();
+  let s: InboxSample;
+  try { s = JSON.parse(sampleId.slice(6)) as InboxSample; } catch { throw NOT_A_SAMPLE(); }
+  if (typeof s.path !== "string" || typeof s.name !== "string") throw NOT_A_SAMPLE();
+  const dir = await inboxDir(ctx, s.path);
+  const file = await inboxFile(config().INBOX_ROOTS, dir, s.name).catch(() => { throw NOT_A_SAMPLE(); });
+  const st = await stat(file).catch(() => null);
+  if (!st || st.size !== s.size || Math.floor(st.mtimeMs) !== s.modifiedAt) throw new ApiError("invalid_state", "The sample file changed. Detect again.");
+  return { file, name: s.name };
+}
+
+/** A typed folder inside INBOX_ROOTS and of this space (ownFolder), as its real path. */
+async function inboxDir(ctx: Ctx, p: string): Promise<string> {
+  await inSpace(ctx, (tx, spaceId) => ownFolder(tx, spaceId, p));
+  try { return await inboxFolder(config().INBOX_ROOTS, p); } catch (e) {
+    throw e instanceof ApiError ? new ApiError("bad_request", `Check input.path: ${e.message}`) : new ApiError("bad_request", "Check input.path: The folder can't be read. Check that it exists and that this server may read it.");
+  }
+}
+
+/** POST …/sources/detect with `{ inbox }`: the newest file of the folder its pattern matches, detected. */
+export async function detectInbox(ctx: Ctx, b: DetectBody): Promise<DetectDto> {
+  const dir = await inboxDir(ctx, b.inbox.path);
+  if (/[/\\]/.test(b.inbox.pattern)) throw new ApiError("bad_request", "Check input.pattern: The file pattern matches file names only: no folders in it.");
+  const glob = new Bun.Glob(b.inbox.pattern);
+  let newest: { name: string; size: number; at: number } | null = null;
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    if (!e.isFile() || e.name.startsWith(".") || !glob.match(e.name)) continue;
+    const st = await stat(path.join(dir, e.name)).catch(() => null);
+    if (st && (!newest || st.mtimeMs > newest.at)) newest = { name: e.name, size: st.size, at: Math.floor(st.mtimeMs) };
+  }
+  if (!newest) throw new ApiError("invalid_state", `No file in this folder matches ${b.inbox.pattern} yet. Upload one in Inbox files or pick a file.`);
+  const out = detect(await sampleOfFile(path.join(dir, newest.name), newest.name, config().EXCEL_MAX_MB));
+  return out.supported ? { ...out, sampleId: `inbox:${JSON.stringify({ path: b.inbox.path, name: newest.name, size: newest.size, modifiedAt: newest.at })}` } : out;
+}
+
+/** POST …/sources/detect with a picked file (raw body): kept 24 h as a sample, then detected. */
+export async function detectPicked(ctx: Ctx, rawName: string | null, length: string | null, body: ReadableStream<Uint8Array> | null): Promise<DetectDto> {
+  let name: string;
+  try { name = decodeURIComponent(rawName ?? ""); } catch { throw new ApiError("bad_request", "Send the file name URL-encoded in x-file-name."); }
+  if (!name.trim()) throw new ApiError("bad_request", "Send the file name URL-encoded in x-file-name.");
+  const kept = await saveSample(ctx, body, length);
+  const out = detect(await sampleOfFile(kept.file, name, config().EXCEL_MAX_MB));
+  return out.supported ? { ...out, sampleId: `picked:${kept.id}:${encodeURIComponent(name)}` } : out;
 }

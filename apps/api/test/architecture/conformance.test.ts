@@ -278,6 +278,7 @@ const NO_ACTIVITY: Record<string, string> = {
   "DELETE /v1/me/views/:id": "deletes the caller's own saved list view: a viewer preference, seen by no one else",
   "POST /v1/spaces/:spaceId/sources/:sourceId/versions/:versionId/preview": "a read sent as POST for its body (a text sample, or a pull from the source database); answers, stores nothing",
   "POST /v1/spaces/:spaceId/sources/:sourceId/connection/test": "connects to the source database (or reads the inbox folder) and answers whether it works; changes no record",
+  "POST /v1/spaces/:spaceId/sources/detect": "reads a sample file and proposes how it is read; a picked file is kept 24 h as a sample, changing no record",
   "POST /v1/spaces/:spaceId/sources/connection-test": "tries a new source's typed folder or connection before the source exists; stores nothing",
   "POST /v1/spaces/:spaceId/sources/:sourceId/connection/columns": "a read sent as POST for its body (a SELECT): the source database describes its result columns; stores nothing",
   "POST /v1/spaces/:spaceId/sources/catalog": "a read sent as POST for its body (a typed credential): what a new source's connection can list; stores nothing",

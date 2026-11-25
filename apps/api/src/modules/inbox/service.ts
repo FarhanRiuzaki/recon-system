@@ -19,7 +19,7 @@ import { sniffKind, sourceFiles } from "../ingest";
 import { sources, sourceVersions } from "../sources";
 import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { type DiskFile, dropHidden, ensureRoot, hideFile, listFiles, listFolders, makeFolder, removeFolder, sweepLeftovers, unhideFile, writeUpload } from "./disk";
+import { type DiskFile, dropHidden, ensureRoot, hideFile, listFiles, listFolders, makeFolder, removeFolder, sweepLeftovers, sweepOld, unhideFile, writeUpload } from "./disk";
 import { inboxUploads } from "./schema";
 import { spaceRoot, worstState } from "./rules";
 
@@ -294,6 +294,35 @@ export async function tendInbox(on: Tx): Promise<{ inbox_roots: number; inbox_le
     await ensureRoot(root);
     out.inbox_roots += 1;
     for (const f of await listFolders(root)) out.inbox_leftovers += await sweepLeftovers(path.join(root, f.name), LEFTOVER_MS);
+    out.inbox_leftovers += await sweepOld(path.join(root, SAMPLES), LEFTOVER_MS);
   }
   return out;
+}
+
+// ---------------------------------------------------------------- detection samples (the file reader, DEC-058)
+
+/** A space's picked samples: a dot folder of its inbox root, never listed and never read by a source; swept after 24 h. */
+const SAMPLES = ".samples";
+/** The largest file picked for detection. */
+export const SAMPLE_MAX_BYTES = 20 * 1024 * 1024;
+
+/** Keeps a picked file for detection and the preview (24 h); answers its id and where it is. */
+export async function saveSample(ctx: Ctx, body: ReadableStream<Uint8Array> | null, length: string | null): Promise<{ id: string; file: string }> {
+  if (!length || !/^\d+$/.test(length)) throw new ApiError("bad_request", "Send the file's size (Content-Length).");
+  if (Number(length) > SAMPLE_MAX_BYTES) throw new ApiError("too_large", "The sample is over 20 MB. Pick a smaller part of the file.");
+  const { root } = await inSpace(ctx, (tx, spaceId) => rootOf(tx, spaceId));
+  const dir = path.join(root, SAMPLES);
+  await ensureRoot(dir);
+  const id = Bun.randomUUIDv7();
+  await writeUpload(dir, `${id}.sample`, body ?? new Blob([]).stream(), SAMPLE_MAX_BYTES, Number(length));
+  return { id, file: path.join(dir, `${id}.sample`) };
+}
+
+/** Where a picked sample is; 409 once it was swept (or never was). */
+export async function samplePath(ctx: Ctx, id: string): Promise<string> {
+  if (!/^[0-9a-f-]{36}$/.test(id)) throw new ApiError("bad_request", "This sample id isn't one this app made.");
+  const { root } = await inSpace(ctx, (tx, spaceId) => rootOf(tx, spaceId));
+  const file = path.join(root, SAMPLES, `${id}.sample`);
+  if (!(await stat(file).catch(() => null))?.isFile()) throw new ApiError("invalid_state", "The sample is gone (kept 24 hours). Pick the file again.");
+  return file;
 }

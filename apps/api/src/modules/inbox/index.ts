@@ -3,4 +3,4 @@
 export { inboxController } from "./controller";
 export { folderOfPath } from "./rules";
 export { inboxUploads } from "./schema";
-export { tendInbox } from "./service";
+export { samplePath, saveSample, tendInbox } from "./service";

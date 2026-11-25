@@ -152,6 +152,18 @@ describe("forward (app/api/[...path])", () => {
     expect(seen).toEqual([]);
   });
 
+  it("a picked sample for detection streams like an upload; its JSON form goes as JSON", async () => {
+    const seen = fakeApi(() => Response.json({ supported: true }));
+    await sealCookie(jar);
+    const path = "/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/sources/detect";
+    const big = "x".repeat(3 * 1024 * 1024);
+    expect((await at(path, { method: "POST", headers: { "x-csrf-token": TEST_CSRF, "content-type": "application/octet-stream", "content-length": String(big.length), "x-file-name": "a.xlsx" }, body: big })).status).toBe(200);
+    expect([seen[0]!.headers.get("content-type"), seen[0]!.headers.get("x-file-name"), (await seen[0]!.text()).length]).toEqual(["application/octet-stream", "a.xlsx", big.length]);
+    const j = JSON.stringify({ inbox: { path: "/data/inbox/msi/act", pattern: "*" } });
+    expect((await at(path, { method: "POST", headers: { "x-csrf-token": TEST_CSRF, "content-type": "application/json", "content-length": String(j.length) }, body: j })).status).toBe(200);
+    expect([seen[1]!.headers.get("content-type"), await seen[1]!.text()]).toEqual(["application/json", j]);
+  });
+
   it("a source version's spec may be up to 512 KB; above it is 400 and never reaches the API", async () => {
     const seen = fakeApi(ok);
     await sealCookie(jar);

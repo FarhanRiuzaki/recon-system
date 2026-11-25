@@ -235,3 +235,22 @@ export function detect(s: Sample): DetectOutcome {
   if (typeof kind === "object") return { supported: false, fileName: s.name, type: kind.unsupported, reason: `${kind.unsupported} files aren't supported yet. Ask the sender for CSV, TXT or Excel.` };
   return kind === "text" ? detectText(s) : detectExcel(s);
 }
+
+const HEAD_BYTES = 4 * 1024 * 1024, HEAD_LINES = 2000, TAIL_BYTES = 512 * 1024;
+
+/** A file on disk as a detection sample: the first 2,000 lines (4 MB at most) and the last 512 KB; a workbook whole (up to `excelMaxMb`). */
+export async function sampleOfFile(file: string, name: string, excelMaxMb: number): Promise<Sample> {
+  const f = Bun.file(file);
+  const size = f.size;
+  const first = new Uint8Array(await f.slice(0, Math.min(size, 8)).arrayBuffer());
+  const kind = sniffKind(first);
+  if (kind === "xlsx" || kind === "xls") {
+    if (size > excelMaxMb * 1024 * 1024) return { head: first, tail: null, size, name };
+    return { head: new Uint8Array(await f.arrayBuffer()), tail: null, size, name };
+  }
+  let head = new Uint8Array(await f.slice(0, Math.min(size, HEAD_BYTES)).arrayBuffer());
+  let nl = 0;
+  for (let i = 0; i < head.length; i++) if (head[i] === 10 && ++nl === HEAD_LINES) { head = head.subarray(0, i + 1); break; }
+  const tail = size > head.length ? new Uint8Array(await f.slice(Math.max(head.length, size - TAIL_BYTES), size).arrayBuffer()) : null;
+  return { head, tail, size: head.length === size ? size : size, name };
+}

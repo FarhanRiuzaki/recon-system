@@ -5,7 +5,7 @@
 import type { SourcePreviewDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 import type { Row } from "./connectors";
 import { type CalendarData, makeCalendar, toRecord } from "./map";
-import { readText } from "./read";
+import { readRows, readText } from "./read";
 import { profile } from "./profile";
 
 export const PREVIEW_LIST = 100;
@@ -47,4 +47,18 @@ export async function previewSample(spec: SourceSpec, sample: string, calendar: 
 /** `arrivedDate`: a snapshot's business date (its rows are dated by it). */
 export function previewRows(spec: SourceSpec, rows: Row[], calendar: CalendarData, arrivedDate?: string): SourcePreviewDto {
   return preview(spec, rows.map((raw, i) => ({ line: i + 1, ok: true, raw })), calendar, undefined, arrivedDate);
+}
+
+/** Lines a stream preview reads at most (the preview lists PREVIEW_LIST of each kind; a big file isn't read to its end). */
+const PREVIEW_READ = 2000;
+
+/** The preview of a file sample read through the file reader (any kind), its first PREVIEW_READ lines. */
+export async function previewStream(spec: SourceSpec, source: AsyncIterable<Uint8Array>, calendar: CalendarData, fileName: string, excelMaxMb: number): Promise<SourcePreviewDto> {
+  if (spec.input.kind !== "file_inbox") throw new Error("preview reads a file sample");
+  const lines = [];
+  for await (const l of readRows(source, spec.input.format, spec.fields.map((f) => f.name), { excelMaxMb })) {
+    lines.push(l);
+    if (lines.length >= PREVIEW_READ) break;
+  }
+  return preview(spec, lines, calendar, fileName);
 }
