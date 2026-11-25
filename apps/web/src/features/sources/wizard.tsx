@@ -193,13 +193,13 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   const sampleRead = useRef(false);
   // an existing file source shows its saved folder's newest file as the sample, as picking the folder does for a new one
   useEffect(() => {
-    const inbox = storedSampleRead(d.spec.input, { created: !!ids, admin, already: sampleRead.current });
+    const inbox = storedSampleRead(d.spec.input, { created: !!ids, already: sampleRead.current });
     if (!inbox) return;
     sampleRead.current = true;
     void detectInbox(inbox, true);
     // once per visit: the folder the source was opened with
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ids?.sourceId, admin]);
+  }, [ids?.sourceId]);
   const [fileName, setFileName] = useState("");
   const [businessDate, setBusinessDate] = useState("");
   const [preview, setPreview] = useState<Preview>({ result: null, error: null, pending: false });
@@ -529,17 +529,19 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
    * saved source's own folder, read for its sample only, so the format and columns already saved stay as they are.
    */
   async function detectInbox(inbox: { path: string; pattern: string }, stored = false) {
-    if (!admin) return;
+    // a config maker reads the sample's rows; how the file is read (format, columns) is taken by a source admin only
+    const sampleOnly = stored || !admin;
     setRead((x) => ({ ...x, busy: true, error: null }));
     try { const r = await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: JSON.stringify({ inbox }) });
-      if (stored) { setRead({ result: r, busy: false, error: null }); if (r.supported) setSampleId(r.sampleId); } else applyRead(r);
+      if (sampleOnly) { setRead({ result: r, busy: false, error: null }); if (r.supported) setSampleId(r.sampleId); } else applyRead(r);
     } catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
   }
   /** Detection over a file picked on the computer (kept by the API 24 h as the preview's sample). */
   async function detectPicked(f: File) {
     setRead((x) => ({ ...x, busy: true, error: null }));
     try {
-      applyRead(await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: f, headers: { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(f.name) } }));
+      const r = await api<DetectDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/detect`, { method: "POST", body: f, headers: { "content-type": "application/octet-stream", "x-file-name": encodeURIComponent(f.name) } });
+      if (admin) applyRead(r); else { setRead({ result: r, busy: false, error: null }); if (r.supported) setSampleId(r.sampleId); }
     } catch (e) { setRead((x) => ({ ...x, busy: false, error: errorText(e) })); }
   }
 

@@ -46,4 +46,13 @@ describe("step 2 mapping", () => {
     expect(list.textContent).toContain("gone is no longer a column.");
     expect(list.textContent).toContain("Fix in mapper");
   });
+
+  it("pasting lines sits behind Paste lines instead, open only when no sample was read", async () => {
+    const paste = () => [...document.querySelectorAll("details")].find((x) => x.querySelector("summary")?.textContent === "Paste lines instead");
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    await act(async () => root!.render(h(FieldsStep, { ...props(() => undefined), mapperPreview: { spaceId: "sp", ids: null, sampleId: "inbox:x" } })));
+    expect(paste()?.open).toBe(false);
+    await act(async () => root!.render(h(FieldsStep, { ...props(() => undefined), mapperPreview: { spaceId: "sp", ids: null, sampleId: null } })));
+    expect(paste()?.open).toBe(true);
+  });
 });

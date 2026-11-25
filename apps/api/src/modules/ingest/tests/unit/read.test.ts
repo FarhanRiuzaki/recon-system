@@ -24,6 +24,13 @@ describe("skips", () => {
     expect(bad(ls)).toEqual([]);
   });
 
+  it("a title row with a quote it never closes is skipped as text, not read as a value that runs to the end", async () => {
+    const ls = await readText('"Report of 25 Nov\nA|B\n1|2\n3|"x"\n', { ...DELIM, header: true, skip_top: 1 }, ["A", "B"]);
+    expect(okRows(ls)).toEqual([{ A: "1", B: "2" }, { A: "3", B: "x" }]);
+    expect(bad(ls)).toEqual([]);
+    expect(ls.map((l) => l.line)).toEqual([3, 4]);
+  });
+
   it("rows at the end are counted as records: a quoted line break doesn't shift them", async () => {
     const ls = await readText('a|"x\ny"\nTOTAL|9\n', { ...DELIM, skip_bottom: 1 }, ["k", "v"]);
     expect(okRows(ls)).toEqual([{ k: "a", v: "x\ny" }]);

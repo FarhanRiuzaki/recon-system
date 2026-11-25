@@ -239,7 +239,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
             requestAnimationFrame(() => document.getElementById(`${deriveId(r.name)}-name`)?.focus());
           }}><Icon icon={AddIcon} />Add computed column</Button></span>
         )}
-        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={deriveErr} examples={exampleMap} idOf={deriveId} />
+        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setSpec(fn); }} err={deriveErr} examples={exampleMap} idOf={deriveId} />
       </div>
     </div>
   );

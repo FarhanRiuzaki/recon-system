@@ -40,10 +40,10 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 
 /**
- * The saved folder whose newest file an existing file source reads as its sample when it is opened (a source admin's,
- * since detection is theirs; once per visit): without it, editing showed no sample and step 2 had no examples.
+ * The saved folder whose newest file an existing file source reads as its sample when it is opened (whoever edits it:
+ * a config maker reads the sample's rows too; once per visit): without it, editing showed no sample and step 2 had no examples.
  */
-export function storedSampleRead(input: { kind: string; path?: string; pattern?: string }, o: { created: boolean; admin: boolean; already: boolean }): { path: string; pattern: string } | null {
-  if (input.kind !== "file_inbox" || !o.created || !o.admin || o.already || !input.path?.trim()) return null;
+export function storedSampleRead(input: { kind: string; path?: string; pattern?: string }, o: { created: boolean; already: boolean }): { path: string; pattern: string } | null {
+  if (input.kind !== "file_inbox" || !o.created || o.already || !input.path?.trim()) return null;
   return { path: input.path.trim(), pattern: input.pattern?.trim() || "*" };
 }

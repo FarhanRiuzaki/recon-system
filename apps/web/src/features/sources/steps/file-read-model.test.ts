@@ -33,15 +33,14 @@ describe("ROLE_LABEL", () => {
 
 describe("storedSampleRead", () => {
   const input = { kind: "file_inbox", path: "/inbox/ops/act", pattern: "ACT_*.txt" } as const;
-  it("an existing file source, opened by a source admin, reads its saved folder's newest file once", () => {
-    expect(storedSampleRead(input, { created: true, admin: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "ACT_*.txt" });
+  it("an existing file source, opened by whoever edits it (a source admin or a config maker), reads its saved folder's newest file once", () => {
+    expect(storedSampleRead(input, { created: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "ACT_*.txt" });
   });
-  it("not for a new source, a maker, a source already read, a database source or no folder", () => {
-    expect(storedSampleRead(input, { created: false, admin: true, already: false })).toBeNull();
-    expect(storedSampleRead(input, { created: true, admin: false, already: false })).toBeNull();
-    expect(storedSampleRead(input, { created: true, admin: true, already: true })).toBeNull();
-    expect(storedSampleRead({ kind: "db_watermark" }, { created: true, admin: true, already: false })).toBeNull();
-    expect(storedSampleRead({ ...input, path: " " }, { created: true, admin: true, already: false })).toBeNull();
-    expect(storedSampleRead({ ...input, pattern: "" }, { created: true, admin: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "*" });
+  it("not for a new source, a source already read, a database source or no folder", () => {
+    expect(storedSampleRead(input, { created: false, already: false })).toBeNull();
+    expect(storedSampleRead(input, { created: true, already: true })).toBeNull();
+    expect(storedSampleRead({ kind: "db_watermark" }, { created: true, already: false })).toBeNull();
+    expect(storedSampleRead({ ...input, path: " " }, { created: true, already: false })).toBeNull();
+    expect(storedSampleRead({ ...input, pattern: "" }, { created: true, already: false })).toEqual({ path: "/inbox/ops/act", pattern: "*" });
   });
 });

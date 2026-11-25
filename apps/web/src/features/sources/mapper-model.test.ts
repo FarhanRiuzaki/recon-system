@@ -172,3 +172,10 @@ describe("renaming a computed column", () => {
     expect(renameComputed({ ...s(), derive: { ...s().derive, other: "1" } }, "amt2", "other")).toEqual({ refused: "A column is already named other. Use a different name." });
   });
 });
+
+describe("an attribute kept again", () => {
+  it("goes back to its column's place, not to the end", () => {
+    const off = toggleAttr(spec(), "sre", false);
+    expect(Object.keys(toggleAttr(off, "sre", true).mapping.attrs)).toEqual(["sre", "amt"]);
+  });
+});

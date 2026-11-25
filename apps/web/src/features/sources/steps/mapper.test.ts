@@ -202,4 +202,15 @@ describe("SourceMapper", () => {
     expect(text()).toContain("unknown function");
     expect(document.querySelector('[aria-label="Preview and computed columns"]')).not.toBeNull();
   });
+
+  it("editing a computed card keeps the formula being typed in the inspector", async () => {
+    await mount({ ...spec(), derive: { net: "sid" } } as SourceSpec);
+    await click("row Account");
+    await pick("Account comes from", "cel");
+    const f = document.querySelector<HTMLInputElement>('input[aria-label="Formula"]')!;
+    const set = (el: HTMLInputElement, v: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, v); el.dispatchEvent(new Event("input", { bubbles: true })); });
+    await set(f, "sid + sre");
+    await set(document.getElementById("mapper-derive-net") as HTMLInputElement, "sre");
+    expect(document.querySelector<HTMLInputElement>('input[aria-label="Formula"]')?.value).toBe("sid + sre");
+  });
 });

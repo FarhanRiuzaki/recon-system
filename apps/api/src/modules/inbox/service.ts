@@ -7,11 +7,11 @@ import type { InboxFileDto, InboxFileListQuery, InboxFileSourceDto, InboxFolderD
 import { INBOX_FOLDER_NAME, INBOX_FOLDERS_MAX, isInboxFileName, uploadKindOf } from "@starterkit/shared/inbox";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
-import { lstat, realpath, stat, unlink } from "node:fs/promises";
+import { lstat, readdir, realpath, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import { config } from "../../kernel/config";
 import type { InTx, Tx } from "../../kernel/db";
-import { ApiError, notFound } from "../../kernel/errors";
+import { ApiError, notFound, tooManyAttempts } from "../../kernel/errors";
 import { trySourceLock } from "../../kernel/locks";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
@@ -315,9 +315,31 @@ export async function saveSample(ctx: Ctx, body: ReadableStream<Uint8Array> | nu
   const { root } = await inSpace(ctx, (tx, spaceId) => rootOf(tx, spaceId));
   const dir = path.join(root, SAMPLES);
   await ensureRoot(dir);
+  await sampleRoom(dir, Number(length));
   const id = Bun.randomUUIDv7();
   await writeUpload(dir, `${id}.sample`, body ?? new Blob([]).stream(), SAMPLE_MAX_BYTES, Number(length));
   return { id, file: path.join(dir, `${id}.sample`) };
+}
+
+/** Picked samples a space may hold at once (each kept 24 hours): a count and a total size. */
+export const SAMPLE_SPACE_FILES = 30;
+export const SAMPLE_SPACE_BYTES = 200 * 1024 * 1024;
+
+/** 429 when one more sample of `size` bytes would pass the space's samples; Retry-After = when the oldest goes. */
+async function sampleRoom(dir: string, size: number): Promise<void> {
+  const kept: { size: number; at: number }[] = [];
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    if (!e.isFile() || !e.name.endsWith(".sample")) continue;
+    const st = await stat(path.join(dir, e.name)).catch(() => null);
+    if (st) kept.push({ size: st.size, at: st.mtimeMs });
+  }
+  const bytes = kept.reduce((n, k) => n + k.size, 0);
+  if (kept.length < SAMPLE_SPACE_FILES && bytes + size <= SAMPLE_SPACE_BYTES) return;
+  const oldest = Math.min(...kept.map((k) => k.at));
+  const wait = Math.max(1, Math.ceil((oldest + LEFTOVER_MS - Date.now()) / 1000));
+  throw tooManyAttempts(wait, kept.length >= SAMPLE_SPACE_FILES
+    ? `This space already holds ${SAMPLE_SPACE_FILES} picked samples (kept 24 hours). Pick again later, or upload the file to Inbox files and detect it there.`
+    : "This space's picked samples already take 200 MB (kept 24 hours). Pick a smaller part of the file, or upload it to Inbox files and detect it there.");
 }
 
 /** Where a picked sample is; 409 once it was swept (or never was). */

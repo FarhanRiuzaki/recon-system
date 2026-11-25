@@ -1,7 +1,7 @@
 // POST …/sources/detect: how a sample file is read, from an Inbox files folder or a picked file; the preview reads the
 // same sample by its id.
 import { beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { DetectDto, SourceDto, SourcePreviewDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -62,8 +62,25 @@ describe("POST …/sources/detect", () => {
     expect((await pick(adm, "big.txt", new Uint8Array(21 * 1024 * 1024))).status).toBe(413);
   });
 
-  it("a config maker can't detect (403): how a file is read is a source admin's", async () => {
-    expect((await call("POST", `${base()}/detect`, { token: mk, body: { inbox: { path: dir, pattern: "*" } } })).status).toBe(403);
+  it("a config maker can detect too, to see the sample's rows (saving how the file is read stays a source admin's)", async () => {
+    writeFileSync(path.join(dir, "act20261125.txt"), KSEI);
+    const r = await call("POST", `${base()}/detect`, { token: mk, body: { inbox: { path: dir, pattern: "act*.txt" } } });
+    expect(r.status).toBe(200);
+    expect(((await r.json()) as DetectDto).supported).toBe(true);
+  });
+
+  it("a space keeps at most 30 picked samples or 200 MB: the next is 429 until the oldest goes", async () => {
+    const samples = path.join(ROOT, code, ".samples");
+    mkdirSync(samples, { recursive: true });
+    for (let i = 0; i < 30; i++) writeFileSync(path.join(samples, `0000000${String(i).padStart(2, "0")}-0000-7000-8000-000000000000.sample`), "x");
+    const r = await pick(adm, "a.txt", new TextEncoder().encode(KSEI));
+    expect(r.status).toBe(429);
+    expect(Number(r.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect(((await r.json()) as { error: { message: string } }).error.message).toBe("This space already holds 30 picked samples (kept 24 hours). Pick again later, or upload the file to Inbox files and detect it there.");
+    rmSync(samples, { recursive: true, force: true }); mkdirSync(samples);
+    const big = path.join(samples, "00000000-0000-7000-8000-000000000001.sample");
+    writeFileSync(big, ""); truncateSync(big, 200 * 1024 * 1024);
+    expect((await pick(adm, "a.txt", new TextEncoder().encode(KSEI))).status).toBe(429);
   });
 
   it("the janitor sweeps a sample a day old", async () => {

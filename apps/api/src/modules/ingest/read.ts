@@ -53,7 +53,8 @@ function typeOf(rt: RecordTypes, raw: string, cells: string[]) {
 async function* shape(records: AsyncIterable<CellRecord>, f: FileFormat, columns: string[], yieldEvery: number, fixed: Fixed | null): AsyncGenerator<ParsedLine> {
   const rt = f.kind === "excel" ? undefined : f.records;
   const headerCount = rt?.types.find((t) => t.role === "header")?.count ?? 0;
-  let skip = f.skip_top ?? 0, headed = !f.header, carried: string[] | null = null, n = 0;
+  // a delimited file's title rows were dropped as text before parsing (textRecords): only the others count them here
+  let skip = f.kind === "delimited" ? 0 : (f.skip_top ?? 0), headed = !f.header, carried: string[] | null = null, n = 0;
   for await (const r of dropLast(records, f.skip_bottom ?? 0, (x) => "bad" in x)) {
     if ("bad" in r) { yield r.bad; continue; }
     if (skip > 0) { skip -= 1; continue; }
@@ -83,7 +84,33 @@ async function* shape(records: AsyncIterable<CellRecord>, f: FileFormat, columns
 
 /** Decoded text to the records of a text kind. */
 function textRecords(chunks: AsyncIterable<string>, f: Exclude<FileFormat, { kind: "excel" }>): AsyncIterable<CellRecord> {
-  return f.kind === "fixed_width" ? textLines(chunks) : delimitedCells(chunks, { delimiter: f.delimiter, quote: f.quote, header: f.header, encoding: f.encoding });
+  if (f.kind === "fixed_width") return textLines(chunks);
+  const top = f.skip_top ?? 0;
+  const cells = delimitedCells(top ? dropLines(chunks, top) : chunks, { delimiter: f.delimiter, quote: f.quote, header: f.header, encoding: f.encoding });
+  return top ? renumber(cells, top) : cells;
+}
+
+/**
+ * The text after its first `n` lines: a delimited file's title rows are dropped as text, so a title with a quote it
+ * never closes ("Report of 25 Nov) isn't read as a value running to the end of the file.
+ */
+async function* dropLines(chunks: AsyncIterable<string>, n: number): AsyncGenerator<string> {
+  let left = n;
+  for await (const c of chunks) {
+    if (left === 0) { yield c; continue; }
+    let at = 0;
+    while (left > 0) {
+      const nl = c.indexOf("\n", at);
+      if (nl < 0) { at = c.length; break; }
+      at = nl + 1; left -= 1;
+    }
+    if (left === 0 && at < c.length) yield c.slice(at);
+  }
+}
+
+/** Records with their line numbers in the whole file again (after `n` dropped lines). */
+async function* renumber(records: AsyncIterable<CellRecord>, n: number): AsyncGenerator<CellRecord> {
+  for await (const r of records) yield "bad" in r ? { line: r.line + n, bad: { ...r.bad, line: r.bad.line + n } } : { ...r, line: r.line + n };
 }
 
 /** A byte stream to parsed lines under `format`: `columns` = the declared field names, in order. */

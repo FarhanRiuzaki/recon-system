@@ -97,7 +97,13 @@ export function toggleAttr(spec: SourceSpec, column: string, on: boolean, name =
   // a name another column already keeps takes the next free suffix (amount, amount_2), as step 2 does
   let free = name;
   for (let i = 2; Object.hasOwn(attrs, free); i++) free = `${name}_${i}`;
-  return withMapping(spec, { attrs: { ...attrs, [free]: { field: column } } });
+  // kept again, it goes back to its column's place among the kept columns (before the first one that comes after it)
+  const order = new Map(spec.fields.map((f, i) => [f.name, i]));
+  const mine = order.get(column) ?? Infinity;
+  const entries = Object.entries(attrs);
+  const at = entries.findIndex(([, r]) => "field" in r && (order.get(r.field) ?? -1) > mine);
+  const next: [string, ValueRef][] = at < 0 ? [...entries, [free, { field: column }]] : [...entries.slice(0, at), [free, { field: column }], ...entries.slice(at)];
+  return withMapping(spec, { attrs: Object.fromEntries(next) });
 }
 
 /** Step 2's summary: "2 core fields mapped · 2 extra attributes · 1 computed". */

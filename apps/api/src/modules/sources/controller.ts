@@ -34,12 +34,13 @@ export const sourcesController = () =>
       return s;
     }, { guard: { space: SPACE_ACTION.connectSource } })
     /** A new source's typed folder or connection, tried before the source exists; nothing is stored. */
-    /** How a sample file is read (the file reader): `{ inbox }` reads the folder's newest file; a raw body is a picked file (≤ 20 MB, kept 24 h). */
+    /** How a sample file is read (the file reader): `{ inbox }` reads the folder's newest file; a raw body is a picked file (≤ 20 MB, kept 24 h; a space holds at most 30 or 200 MB). */
     .post("/v1/spaces/:spaceId/sources/detect", async (c) => {
       const h = c.request.headers;
       if ((h.get("content-type") ?? "").startsWith("application/json")) return detectInbox(c.ctx, await body(c, DetectBody));
       return detectPicked(c.ctx, h.get("x-file-name"), h.get("content-length"), c.request.body);
-    }, { guard: { space: SPACE_ACTION.connectSource } })
+    // a config maker reads a sample too (its rows in step 2's preview); saving how the file is read stays a source admin's
+    }, { guard: { space: SPACE_ACTION.editSource } })
     .post("/v1/spaces/:spaceId/sources/connection-test", async (c) => testNewSource(c.ctx, await body(c, NewSourceTestBody)), { guard: { space: SPACE_ACTION.connectSource } })
     /** What a new source's typed connection can read (databases, tables, a table's columns); nothing is stored. */
     .post("/v1/spaces/:spaceId/sources/catalog", async (c) => sourceCatalog(c.ctx, null, await body(c, SourceCatalogBody)), { guard: { space: SPACE_ACTION.connectSource } })

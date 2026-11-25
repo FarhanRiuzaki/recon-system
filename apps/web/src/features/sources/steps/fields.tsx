@@ -226,6 +226,9 @@ export function FieldsStep(p: FieldsStepProps) {
   return (
     <div className="grid gap-section">
       {file ? (
+        // the sample read in step 1 (a folder's newest file, a picked file) is the preview's; pasting lines is the way
+        // without one, so it opens by itself only then (file reader spec: "Paste lines instead")
+        <Disclosure summary="Paste lines instead" defaultOpen={!p.mapperPreview.sampleId || !!p.sample.trim()} className="border-0 bg-transparent">
         <Panel title="Sample of the file" description="Read in the browser and sent only to preview; nothing is stored" bodyClassName="grid gap-4">
           <SampleInput {...p} />
           {p.headerHint && (
@@ -237,6 +240,7 @@ export function FieldsStep(p: FieldsStepProps) {
             </Notice>
           )}
         </Panel>
+        </Disclosure>
       ) : null}
 
       <Panel title="Mapping" description={summaryLine(s)}
