@@ -27,6 +27,7 @@ import { ARRIVED_DATE, attrNameOf, fieldError, fieldMessage, fieldsOfColumns, lo
 import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListState, type Suggestion, suggest, type TablesPage, tableValue } from "./steps/catalog";
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
+import { previewBody } from "./use-spec-preview";
 import {
   amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, fitLookback, mappingProblem, type Preview, pullProblems,
   saveAndClose, type Tested, watermarkKind, watermarkProblems,
@@ -556,7 +557,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     const n = ++seq.current;
     setPreview((p) => ({ ...p, pending: true }));
     try {
-      const body = file && sampleId && !sample.text.trim() ? { sampleId, spec } : file ? { sample: sample.text, ...(fileName.trim() ? { fileName: fileName.trim() } : {}), spec } : { spec, ...(businessDate ? { businessDate } : {}), ...(fresh ? { fresh } : {}) };
+      const body = { ...previewBody({ file, sampleId, sample: sample.text, fileName, businessDate, spec }), ...(!file && fresh ? { fresh } : {}) };
       const result = await api<SourcePreviewDto>(sourceApi(spaceId, ids.sourceId, `/versions/${encodeURIComponent(ids.versionId)}/preview`), { method: "POST", body: JSON.stringify(body) });
       if (n !== seq.current) return;
       setFieldErr(null);
