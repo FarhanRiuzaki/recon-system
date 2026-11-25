@@ -13,7 +13,7 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { PageHeader } from "@/components/shell/page-header";
 import { VersionLayout } from "@/components/version-layout";
 import { errorText } from "@/lib/client/api";
-import { SpecRows } from "./spec-rows";
+import { DesignView } from "./designer-page";
 import { reportsHref, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
 const STATUS = { draft: "Draft", waiting: "Waiting for approval", active: "Active", superseded: "Superseded" } as const;
@@ -53,6 +53,6 @@ export function VersionPage({ spaceId, templateId, versionId }: { spaceId: strin
             <Button variant="caution" disabled={!!busy} aria-busy={busy === "reject" || undefined} onClick={() => void decide("reject")}>Send back</Button>
           </div>
         </Panel>) : undefined}
-      settings={<Panel title="Settings"><SpecRows spec={v.spec} /></Panel>} />
+      settings={<DesignView spaceId={spaceId} templateId={templateId} version={v} />} />
   );
 }

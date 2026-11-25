@@ -7,7 +7,7 @@ import { ExportIcon } from "@starterkit/ui/ui/icons";
 import type { ReportFileDto, ReportTemplateDto } from "@starterkit/shared/contracts/reports";
 import type { ReportFileStatus } from "@starterkit/shared/reports";
 import { statusTone } from "@/lib/shared/categories";
-import { FORMAT_LABEL, finalText, KIND_LABEL, STATUS_LABEL, statusText, TEMPLATE_STATUS_LABEL } from "./report-text";
+import { DATASET_TEXT, FORMAT_LABEL, finalText, STATUS_LABEL, statusText, TEMPLATE_STATUS_LABEL } from "./report-text";
 import { downloadHref, reportsHref } from "./use-reports";
 
 const TONE: Record<ReportFileStatus, Parameters<typeof statusTone>[0]> = { queued: "queued", making: "in_progress", ready: "ready", failed: "failed", removed: "retired" };
@@ -48,7 +48,7 @@ export const fileColumns = (spaceId: string, retry: (id: string) => void, can: {
 export const templateColumns = (spaceId: string): Column<ReportTemplateDto>[] => [
   { key: "name", header: "Name", sortable: true, mobile: "title", className: "min-w-48", cell: (t) => <Link href={reportsHref(spaceId, `/templates/${encodeURIComponent(t.id)}`)} className="font-medium text-fg hover:underline">{t.name}</Link> },
   { key: "recon", header: "Recon", mobile: "meta", cell: (t) => t.recon.name },
-  { key: "kind", header: "Holds", mobile: "meta", cell: (t) => `${KIND_LABEL[t.kind]} · ${FORMAT_LABEL[t.format]}` },
+  { key: "kind", header: "Holds", mobile: "meta", cell: (t) => `${DATASET_TEXT[t.dataset]} · ${FORMAT_LABEL[t.format]}` },
   { key: "official", header: "Official", mobile: "hidden", cell: (t) => (t.official ? "Official report" : <span className="text-fg-3">Internal</span>) },
   { key: "status", header: "Status", mobile: "meta", cell: (t) => <StatusChip health={statusTone(t.status === "active" ? "active" : t.status === "retired" ? "retired" : t.status === "waiting" ? "waiting" : "draft")} label={`${TEMPLATE_STATUS_LABEL[t.status]}${t.activeVersion ? ` · v${t.activeVersion}` : ""}`} /> },
   { key: "updatedAt", header: "Last file", mobile: "hidden", className: "md:max-xl:hidden", cell: (t) => (t.lastFileAt ? <RelativeTime at={Date.parse(t.lastFileAt)} /> : <span className="text-fg-3">None yet</span>) },

@@ -97,6 +97,7 @@ const DESTRUCTIVE_BUTTON_ALLOWED: Record<string, string> = {
   [`${WEB}features/users/users-page.tsx`]: "the bulk bar's Deactivate and Delete act on the selection and confirm with the count (ui-standard §4 Select all)",
   [`${WEB}features/inbox/inbox-page.tsx`]: "the files bulk bar's Delete acts on the ticked files and confirms with the count, as the users bulk bar",
   [`${WEB}features/me/security-panel.tsx`]: "Turn off two-factor authentication: the off switch of the user's own setting, inside its panel; it confirms",
+  [`${WEB}features/reports/inspector-pane.tsx`]: "Remove column / Remove line: an edit of a report draft's design, saved as a draft and undone with Undo (toast and Ctrl+Z); no record is deleted",
 };
 const DESTRUCTIVE_LABEL = />\s*(?:\{[^{}]*\}\s*)*(?:Delete|Deactivate|Revoke|Reset|Retire|Remove|End session|Turn off|Disconnect)\b[^<]*<\/(?:Button|BlockedButton)>/;
 const destructiveButtons = (fs: F[]) => fs.filter(({ r, src }) => r.startsWith(`${WEB}features/`) && !r.startsWith(`${WEB}features/ds/`) && DESTRUCTIVE_LABEL.test(strip(src))).map(({ r }) => r);

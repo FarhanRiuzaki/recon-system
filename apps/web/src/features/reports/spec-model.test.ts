@@ -1,28 +1,81 @@
 import { describe, expect, it } from "vitest";
-import type { ReportSpec } from "@starterkit/shared/contracts/reports";
-import { REPORT_STEPS, stepProblem, toggleStatus, withFormat, withKind } from "./spec-model";
+import { emptySpec } from "@starterkit/shared/report-spec";
+import {
+  addColumn, addGroup, columnOfField, dataOnly, duplicateColumn, history, keyAction, moveColumn, patchColumn, removeColumn, removeGroup, replaceField, sendProblem, setFormat, specialColumn, toggleSection,
+} from "./spec-model";
 
-const spec = (o: Partial<ReportSpec> = {}): ReportSpec => ({
-  kind: "transactions", rows: { statuses: [], side: "both", reasons: [] }, columns: [], groups: [], totals: [],
-  output: { format: "csv", fileName: "{recon}_{from}_{to}", masking: "masked" }, when: { afterRun: false, onRequest: true }, official: false, ...o,
-} as ReportSpec);
+const ref = { ref: "a:ext_ref", label: "Reference", type: "text" as const, customer: false };
+const amt = { ref: "a:amount_minor", label: "Amount", type: "number" as const, customer: false };
+const two = () => addColumn(addColumn(emptySpec(), columnOfField(emptySpec(), ref)), columnOfField(addColumn(emptySpec(), columnOfField(emptySpec(), ref)), amt));
 
-describe("the draft's steps", () => {
-  it("are the recon setup's pattern, five of them", () => {
-    expect(REPORT_STEPS.map((s) => s.label)).toEqual(["Content", "Columns and groups", "Output", "Test", "Review and submit"]);
+describe("columns", () => {
+  it("a field's column: its label as header, a number format for numbers (2 decimals for amounts), new ids", () => {
+    const s = two();
+    expect(s.columns.map((c) => [c.id, c.header, c.format.kind, c.layout.align])).toEqual([["c1", "Reference", "auto", "l"], ["c2", "Amount", "number", "r"]]);
+    expect(s.columns[1]!.format).toMatchObject({ decimals: 2, thousands: "." });
   });
-  it("say what each step still needs", () => {
-    expect(stepProblem(spec(), 2)).toBe("Pick at least one column.");
-    expect(stepProblem(spec({ kind: "daily_summary" }), 2)).toBeNull();
-    expect(stepProblem(spec({ kind: "grouped", columns: [{ key: "a:ext_ref", header: "Ref" }] }), 2)).toBe("Pick a column to group the rows by.");
-    expect(stepProblem(spec({ output: { format: "csv", fileName: "", masking: "masked" } }), 3)).toBe("Name the file.");
-    expect(stepProblem(spec({ output: { format: "csv", fileName: "x", masking: "full" } }), 5)).toBe("Full customer data needs an official report: turn on Official report, or mask it.");
-    expect(stepProblem(spec({ when: { afterRun: false, onRequest: false } }), 5)).toBe("Make it after every run, on request, or both.");
+  it("insert at a place, move, replace a field (header follows), duplicate beside, remove (its total too)", () => {
+    let s = two();
+    s = addColumn(s, specialColumn(s, "rownum"), 0);
+    expect(s.columns.map((c) => c.header)).toEqual(["No", "Reference", "Amount"]);
+    s = moveColumn(s, "c3", 3);
+    expect(s.columns.map((c) => c.header)).toEqual(["Reference", "Amount", "No"]);
+    s = replaceField(s, "c1", { ...ref, ref: "b:ext_ref", label: "Core reference" });
+    expect(s.columns[0]).toMatchObject({ header: "Core reference", content: { kind: "field", ref: "b:ext_ref" } });
+    s = duplicateColumn(s, "c2");
+    expect(s.columns.map((c) => c.header)).toEqual(["Core reference", "Amount", "Amount (copy)", "No"]);
+    s = { ...s, totals: { ...s.totals, columns: { c2: "sum" } } };
+    s = removeColumn(s, "c2");
+    expect([s.columns.length, s.totals.columns]).toEqual([3, {}]);
+    expect(patchColumn(s, "c1", { header: "Ref" }).columns[0]!.header).toBe("Ref");
   });
-  it("a kind change drops groups a non-grouped report can't keep; a PDF of transactions warns of its limit", () => {
-    expect(withKind(spec({ kind: "grouped", groups: ["recon:reason"] }), "transactions").groups).toEqual([]);
-    expect(withFormat(spec(), "pdf").output.format).toBe("pdf");
-    expect(toggleStatus(spec(), "unmatch").rows.statuses).toEqual(["unmatch"]);
-    expect(toggleStatus(toggleStatus(spec(), "unmatch"), "unmatch").rows.statuses).toEqual([]);
+  it("formula and fixed-text columns start filled", () => {
+    expect(specialColumn(emptySpec(), "formula").content).toEqual({ kind: "formula", cel: "a.amount_minor - b.amount_minor" });
+    expect(specialColumn(emptySpec(), "text").content).toEqual({ kind: "text", text: "" });
+  });
+});
+
+describe("groups, sections, format", () => {
+  it("a field groups once, at most three; removed by place", () => {
+    let s = addGroup(addGroup(emptySpec(), "recon:status"), "recon:status");
+    expect(s.groups).toEqual(["recon:status"]);
+    s = addGroup(addGroup(addGroup(s, "a:attrs.x"), "a:attrs.y"), "a:attrs.z");
+    expect(s.groups.length).toBe(3);
+    expect(removeGroup(s, 0).groups).toEqual(["a:attrs.x", "a:attrs.y"]);
+  });
+  it("each section toggles; Data only turns every one off with the totals", () => {
+    const e = emptySpec();
+    expect(toggleSection(e, "title").sections.title.on).toBe(false);
+    expect(toggleSection(e, "columnHeaders").sections.columnHeaders).toBe(false);
+    expect(toggleSection(e, "totals").totals.on).toBe(false);
+    const d = dataOnly(e);
+    expect([d.sections.title.on, d.sections.header.on, d.sections.columnHeaders, d.sections.footer.on, d.totals.on]).toEqual([false, false, false, false, false]);
+  });
+  it("a format switch; full customer data needs official", () => {
+    expect(setFormat(two(), "txt").output.format).toBe("txt");
+  });
+  it("send needs a column", () => {
+    expect(sendProblem(emptySpec())).toBe("Add at least one column.");
+    expect(sendProblem(two())).toBeNull();
+  });
+});
+
+describe("history and keys", () => {
+  it("undo and redo walk the edits; a new edit drops what was undone", () => {
+    let h = history.start(emptySpec());
+    h = history.push(h, two());
+    h = history.undo(h);
+    expect(h.now.columns.length).toBe(0);
+    h = history.redo(h);
+    expect(h.now.columns.length).toBe(2);
+    h = history.push(history.undo(h), dataOnly(emptySpec()));
+    expect(h.future).toEqual([]);
+  });
+  it("keys: Ctrl/⌘+Z undo, +Shift redo, Delete removes the selected column, Alt+arrows move it; nothing while typing", () => {
+    const k = (o: Partial<Parameters<typeof keyAction>[0]>) => keyAction({ key: "", ctrl: false, shift: false, alt: false, typing: false, selected: true, ...o });
+    expect([k({ key: "z", ctrl: true }), k({ key: "Z", ctrl: true, shift: true }), k({ key: "Delete" }), k({ key: "ArrowLeft", alt: true }), k({ key: "ArrowRight", alt: true })])
+      .toEqual(["undo", "redo", "remove", "left", "right"]);
+    expect(k({ key: "Delete", typing: true })).toBeNull();
+    expect(k({ key: "Delete", selected: false })).toBeNull();
   });
 });

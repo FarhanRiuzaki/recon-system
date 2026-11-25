@@ -3,10 +3,11 @@
 // The reports feature's one data hook file (AGENTS.md §7): the caller's roles in the space, the active templates the
 // Generate dialog offers, and the actions (generate, retry, download links) with their result toasts.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import type { Page } from "@starterkit/shared/contracts/common";
-import type { ReportFileDto, ReportSpec, ReportTemplateDto, ReportVersionDto } from "@starterkit/shared/contracts/reports";
+import type { ReportFieldsDto, ReportFileDto, ReportSpec, ReportTemplateDto, ReportVersionDto } from "@starterkit/shared/contracts/reports";
+import type { ReportDataset } from "@starterkit/shared/reports";
 import { api, retryUnlessNotFound } from "@/lib/client/api";
 import { REPORTS_KEY, reportTemplate, reportVersions, spaceDetail } from "@/lib/shared/queries";
 
@@ -46,8 +47,12 @@ export function useTemplate(spaceId: string, id: string) {
   };
 }
 
-export type TestResult = { rows: { date: string; status: string; values: Record<string, string | null> }[]; summary: DaySummaryDto[] | null; sampleId: string };
-export type DaySummaryDto = { date: string; total: number; byStatus: Record<string, number>; matched: number; breaks: number; matchRate: number | null; breaksByReason: { reason: string; count: number }[] };
+/** The design on one date's first rows as the API renders them (preview = file): lines of cells, the sections, Text lines. */
+export type Preview = {
+  columns: { id: string; header: string }[]; lines: { kind: "row" | "group" | "subtotal" | "total"; cells: string[]; marks: ("red" | "bold" | null)[] }[];
+  sheet: { title: string | null; header: { label: string; value: string }[] | null; footer: { text: string; stamp: string | null; pageNumbers: boolean } | null; columnHeaders: boolean };
+  text: string[] | null; problems: { columnId: string; message: string }[]; rows: number;
+};
 
 /** The template's actions (each refreshes the reports queries). */
 export function useTemplateActions(spaceId: string, id: string) {
@@ -63,14 +68,14 @@ export function useTemplateActions(spaceId: string, id: string) {
     reject: (vid: string, note: string) => post<ReportVersionDto>(v(vid, "/reject"), { note }),
     newDraft: () => post<ReportVersionDto>(reportsApi(spaceId, `/templates/${encodeURIComponent(id)}/versions`)),
     retire: () => post<ReportTemplateDto>(reportsApi(spaceId, `/templates/${encodeURIComponent(id)}/retire`)),
-    test: (vid: string, b: { from: string; to: string }) => api<TestResult>(v(vid, "/test"), { method: "POST", body: JSON.stringify(b) }),
+    test: (vid: string, b: { from: string; to: string }) => api<{ sampleId: string }>(v(vid, "/test"), { method: "POST", body: JSON.stringify(b) }),
     refresh,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [spaceId, id]);
 }
 
 /** POST …/templates (New report template). */
-export const createTemplate = (spaceId: string, b: { configId: string; name: string; start: string }) =>
+export const createTemplate = (spaceId: string, b: { configId: string; name: string }) =>
   api<ReportTemplateDto>(reportsApi(spaceId, "/templates"), { method: "POST", body: JSON.stringify(b) });
 
 /** A Test's sample file as the worker makes it: asked every 2 s until ready or failed. */
@@ -80,4 +85,31 @@ export function useSampleState(spaceId: string, sampleId: string | undefined) {
     queryFn: () => api<{ status: string; error: string | null }>(reportsApi(spaceId, `/samples/${encodeURIComponent(sampleId!)}/state`)),
     refetchInterval: (q) => (q.state.data && ["ready", "failed", "removed"].includes(q.state.data.status) ? false : 2000),
   }).data;
+}
+
+/** The fields a design of the template can use, for one dataset (the Data pane). */
+export function useFields(spaceId: string, templateId: string, dataset: ReportDataset) {
+  const url = reportsApi(spaceId, `/templates/${encodeURIComponent(templateId)}/fields?dataset=${dataset}`);
+  return useQuery({ queryKey: [...REPORTS_KEY, "fields", spaceId, templateId, dataset], queryFn: () => api<ReportFieldsDto>(url), staleTime: 60_000 });
+}
+
+/**
+ * The live preview: the design (`draft`: unsaved, the maker's) on `date`, asked 400 ms after the last change; the last
+ * answer stays on screen while the next one loads, and an older answer never replaces a newer one.
+ */
+export function usePreview(spaceId: string, templateId: string, versionId: string, spec: ReportSpec | null, date: string, draft: boolean) {
+  const [state, setState] = useState<{ data: Preview | null; error: string | null; loading: boolean }>({ data: null, error: null, loading: false });
+  const body = spec && date ? JSON.stringify(draft ? { date, spec } : { date }) : null;
+  useEffect(() => {
+    if (!body || !versionId) return;
+    let live = true;
+    const t = setTimeout(() => {
+      setState((s) => ({ ...s, loading: true }));
+      const url = reportsApi(spaceId, `/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(versionId)}/${draft ? "preview-draft" : "preview"}`);
+      api<Preview>(url, { method: "POST", body }).then((data) => { if (live) setState({ data, error: null, loading: false }); },
+        (e: unknown) => { if (live) setState((s) => ({ ...s, error: e instanceof Error ? e.message : "The preview didn't load.", loading: false })); });
+    }, 400);
+    return () => { live = false; clearTimeout(t); };
+  }, [spaceId, templateId, versionId, body, draft]);
+  return state;
 }

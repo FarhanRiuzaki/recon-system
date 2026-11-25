@@ -20,8 +20,8 @@ export function generateProblem(from: string, to: string): string | null {
 export const openDatesNotice = (n: number) => (n <= 0 ? null : `${n} of these dates ${n === 1 ? "isn't" : "aren't"} signed off yet: the report is marked Not final.`);
 
 export const NEW_TEMPLATE_REASON = "Only a config maker of this space creates report templates.";
-export const KIND_LABEL = { transactions: "Transactions", grouped: "Grouped", daily_summary: "Daily summary" } as const;
-export const FORMAT_LABEL = { csv: "CSV", xlsx: "Excel", pdf: "PDF" } as const;
+export const DATASET_TEXT = { results: "Results", items: "Every item", recap: "Daily recap" } as const;
+export const FORMAT_LABEL = { csv: "CSV", xlsx: "Excel", txt: "Text (fixed width)", pdf: "PDF" } as const;
 export const TEMPLATE_STATUS_LABEL = { draft: "Draft", waiting: "Waiting approval", active: "Active", retired: "Retired" } as const;
 
 export const EDIT_DRAFT_REASON = "Only a config maker of this space edits a report template's draft.";

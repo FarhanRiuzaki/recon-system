@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { statusTone } from "@/lib/shared/categories";
 import { EDIT_DRAFT_REASON, TEMPLATE_STATUS_LABEL } from "./report-text";
-import { SpecRows } from "./spec-rows";
+import { DesignView } from "./designer-page";
 import { reportsHref, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
 const GenerateDialog = dynamic(() => import("./generate-dialog").then((m) => m.GenerateDialog), { ssr: false });
@@ -56,9 +56,7 @@ export function TemplatePage({ spaceId, templateId }: { spaceId: string; templat
           actionLabel: "Retire report template", onConfirm: async () => { await act.retire(); toast("Retired the report template."); },
         } }] : undefined} />
       <div className="grid gap-section xl:grid-cols-2">
-        <Panel title={active ? `Version ${active.version}` : "Draft"} description={active ? "The version files are made from." : "Not active yet: send the draft."}>
-          {shown ? <SpecRows spec={shown.spec} /> : null}
-        </Panel>
+        {shown ? <div className="xl:col-span-2"><DesignView spaceId={spaceId} templateId={templateId} version={shown} /></div> : null}
         <Panel title="Files and versions">
           <ul className="grid gap-2 text-body-sm">
             <li><Link className="text-primary hover:underline" href={reportsHref(spaceId, `?template=${encodeURIComponent(templateId)}`)}>See this report&apos;s files</Link></li>
