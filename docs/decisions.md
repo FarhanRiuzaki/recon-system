@@ -778,3 +778,19 @@ kosong), dicek nama dan isi.
 - Excel dibaca utuh (`EXCEL_MAX_MB`, default 50, maks 128); teks tetap di-stream per baris.
 - Spec `docs/superpowers/specs/2026-11-25-file-reader-design.md`, plan `docs/superpowers/plans/2026-11-25-file-reader.md`.
 
+
+## DEC-059 — Mapper source: kanvas field map yang sama dengan mapper posting
+
+**Keputusan (owner 25 Nov):** step 2 wizard source punya mapper layar penuh (`features/sources/steps/mapper.tsx`):
+kolom file (dan nilai computed) di kiri, record inti (business date, amount, currency, direction, event time, reference,
+account) di kanan, extra attributes dilipat jadi satu baris dengan jumlahnya. Satu garis = satu kolom mengisi satu field
+inti; JSON path (`data.code.rc`) digambar putus-putus dengan labelnya. Inspector mengatur preset tanggal, kolom, mata
+uang tetap; rail menandai kolom sebagai extra attribute dan mencari kolom di atas 30. Business date tidak bisa dilepas.
+Perubahan tinggal di mapper sampai Done; Cancel membuangnya. Dock menampilkan preview spec yang sedang digambar
+(`useSpecPreview`, body sama dengan step 2 lewat `previewBody`). Step 2 menampilkan ringkasan ("N core fields mapped ·
+M extra attributes · K computed") + Open mapper (tersembunyi di bawah 768 px); tabelnya di "View as list", tertutup di
+desktop, terbuka di ponsel dan saat ada error di dalamnya.
+
+**Kanvas bersama:** `components/field-map/{canvas,graph}.tsx` dipindah dari `features/recon` (fitur tak boleh impor fitur
+saudara); editor posting recon memakai kanvas yang sama tanpa perubahan perilaku. Model murni di
+`features/sources/mapper-model.ts` (graf + edit), diuji tanpa React Flow.
