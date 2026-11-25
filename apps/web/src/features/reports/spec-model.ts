@@ -95,7 +95,19 @@ export function dataOnly(spec: ReportSpec): ReportSpec {
 export const setFormat = (spec: ReportSpec, format: ReportFormat): ReportSpec => ({ ...spec, output: { ...spec.output, format } });
 
 /** Why the design can't be sent yet (the API says the same; formulas are checked there). */
-export const sendProblem = (spec: ReportSpec): string | null => (spec.columns.length ? null : "Add at least one column.");
+export const sendProblem = (spec: ReportSpec): string | null =>
+  !spec.columns.length ? "Add at least one column." : spec.summaryOnly && !spec.groups.length ? "Group by at least one field for a summary." : null;
+
+/** Summary only on or off; turned on, each number column that isn't a group's field gets a sum (unless it has a total). */
+export function toggleSummary(spec: ReportSpec): ReportSpec {
+  if (spec.summaryOnly) return { ...spec, summaryOnly: false };
+  const columns = { ...spec.totals.columns };
+  for (const c of spec.columns) {
+    const grouped = c.content.kind === "field" && spec.groups.includes(c.content.ref);
+    if (!grouped && c.format.kind === "number" && !columns[c.id]) columns[c.id] = "sum";
+  }
+  return { ...spec, summaryOnly: true, totals: { ...spec.totals, on: true, columns } };
+}
 
 /** Undo and redo over whole designs (at most 80 steps back). */
 export type History = { past: ReportSpec[]; now: ReportSpec; future: ReportSpec[] };

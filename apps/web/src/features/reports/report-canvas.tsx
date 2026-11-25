@@ -8,7 +8,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useState } from "react";
 import type { ReportColumn, ReportSpec } from "@starterkit/shared/contracts/reports";
 import { FILTER_OPS, type FilterOp } from "@starterkit/shared/reports";
-import { DropZone, type ListedField, Notice, ToggleChips, TypeBadge } from "@starterkit/ui/ds";
+import { Checkbox, DropZone, type ListedField, Notice, ToggleChips, TypeBadge } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -17,7 +17,7 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { DragItem } from "./data-pane";
 import type { Placement } from "./drop-model";
-import { addGroup, dataOnly, removeGroup, type SectionKey, sectionOn, toggleSection } from "./spec-model";
+import { addGroup, dataOnly, removeGroup, type SectionKey, sectionOn, toggleSection, toggleSummary } from "./spec-model";
 import type { Preview } from "./use-reports";
 
 export type Selected = { kind: "column"; id: string } | { kind: "section"; key: "title" | "header" | "footer" } | { kind: "report" };
@@ -87,6 +87,8 @@ function GroupZone({ spec, change, fields, readOnly, dragging }: Pick<Props, "sp
           {!readOnly && <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop grouping by ${fields.get(g)?.label ?? g}`} onClick={() => change((s) => removeGroup(s, i), `Stopped grouping by ${fields.get(g)?.label ?? g}`)}><Icon icon={CloseIcon} className="size-3.5" /></Button>}
         </span>
       )) : <span>drag a field here to group the rows and add subtotals</span>}
+      {spec.groups.length > 0 && <Checkbox className="ml-auto" checked={spec.summaryOnly} readOnly={readOnly} label="Summary only: one row per group, no detail rows"
+        onToggle={() => change(toggleSummary, spec.summaryOnly ? "Detail rows are back" : "Summary only: one row per group with its totals")} />}
       {!readOnly && !spec.groups.length && (
         <Select aria-label="Group by a field" value="" className="ml-auto h-8 w-44 text-body-sm" onChange={(e) => { const f = fields.get(e.target.value); if (f) change((s) => addGroup(s, f.ref), `Grouped by ${f.label}`); }}>
           <option value="">or pick a field</option>

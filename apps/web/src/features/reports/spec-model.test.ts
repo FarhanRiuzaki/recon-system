@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptySpec } from "@starterkit/shared/report-spec";
 import {
-  addColumn, addGroup, columnOfField, dataOnly, duplicateColumn, history, keyAction, moveColumn, patchColumn, removeColumn, removeGroup, replaceField, sendProblem, setFormat, specialColumn, toggleSection,
+  addColumn, addGroup, columnOfField, toggleSummary, dataOnly, duplicateColumn, history, keyAction, moveColumn, patchColumn, removeColumn, removeGroup, replaceField, sendProblem, setFormat, specialColumn, toggleSection,
 } from "./spec-model";
 
 const ref = { ref: "a:ext_ref", label: "Reference", type: "text" as const, customer: false };
@@ -78,4 +78,14 @@ describe("history and keys", () => {
     expect(k({ key: "Delete", typing: true })).toBeNull();
     expect(k({ key: "Delete", selected: false })).toBeNull();
   });
+
+describe("summary only", () => {
+  it("on: numbers not grouped by get a sum; off again leaves the totals; it needs a group to be sent", () => {
+    const s = addGroup(two(), "a:ext_ref");
+    const on = toggleSummary(s);
+    expect([on.summaryOnly, on.totals.on, on.totals.columns]).toEqual([true, true, { c2: "sum" }]);
+    expect(toggleSummary(on).summaryOnly).toBe(false);
+    expect(sendProblem({ ...two(), summaryOnly: true })).toBe("Group by at least one field for a summary.");
+  });
+});
 });
