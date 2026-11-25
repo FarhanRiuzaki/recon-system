@@ -21,7 +21,7 @@ const BADGE: Record<FieldType, { text: string; cls: string }> = {
 /** A field's type at a glance (designer Data pane, column headers): Abc, 123, Day, ● (a status), ƒx (a formula). */
 export function TypeBadge({ type, className }: { type: FieldType; className?: string }) {
   const b = BADGE[type];
-  return <span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded-sm font-mono text-[10px] font-semibold", b.cls, className)}>{b.text}</span>;
+  return <span aria-hidden="true" className={cn("grid size-5 shrink-0 place-items-center rounded-sm font-mono text-caption font-semibold leading-none", b.cls, className)}>{b.text}</span>;
 }
 
 /**
@@ -49,7 +49,7 @@ export function FieldList({ groups, query, onQuery, onAdd, wrap = (_, row) => ro
               <TypeBadge type={f.type} />
               <span className="min-w-0 flex-1 truncate text-body-sm">{f.label}{f.used && <span className="text-fg-4"> · In the report</span>}</span>
               {f.customer && <span className="rounded-full border border-line px-1.5 text-caption text-fg-3" title="Customer data: masked unless an official report shows it in full">masked</span>}
-              <Button type="button" variant="ghost" size="icon-sm" aria-label={`Add ${f.label} as a column`} className="opacity-60 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => onAdd(f.ref)}>
+              <Button type="button" variant="create" size="icon-sm" aria-label={`Add ${f.label} as a column`} className="opacity-60 group-hover:opacity-100 focus-visible:opacity-100" onClick={() => onAdd(f.ref)}>
                 <Icon icon={AddIcon} className="size-3.5" />
               </Button>
             </div>
