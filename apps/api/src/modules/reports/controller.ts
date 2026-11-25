@@ -11,7 +11,7 @@ import {
   approveReportVersion, createTemplate, discardDraft, listTemplates, listVersions, newDraft, rejectReportVersion, retireTemplate, saveDraft, submitVersion, templateDetail,
 } from "./service";
 import { requestFile, testFile } from "./make";
-import { filePage } from "./files";
+import { downloadReport, downloadSample, fileDetail, fileFacets, filePage, retryFile } from "./files";
 
 
 export const reportsController = () =>
@@ -52,6 +52,13 @@ export const reportsController = () =>
     }, { guard: { space: SPACE_ACTION.editReports } })
     /** The space's report files (never a Test's sample), newest first. */
     .get("/v1/spaces/:spaceId/reports/files", ({ ctx, query }) => filePage(ctx, query), { query: ReportFileListQuery, guard: { space: SPACE_ACTION.viewReports } })
+    .get("/v1/spaces/:spaceId/reports/files/facets", ({ ctx, query }) => fileFacets(ctx, query), { query: ReportFileListQuery, guard: { space: SPACE_ACTION.viewReports } })
+    .get("/v1/spaces/:spaceId/reports/files/:fileId", ({ ctx, params }) => fileDetail(ctx, idParam(params.fileId, "report file")), { guard: { space: SPACE_ACTION.viewReports } })
+    /** A masked file's bytes; one with full customer data goes through download-full and its narrower roles. */
+    .get("/v1/spaces/:spaceId/reports/files/:fileId/download", ({ ctx, params }) => downloadReport(ctx, idParam(params.fileId, "report file"), false), { guard: { space: SPACE_ACTION.viewReports } })
+    .get("/v1/spaces/:spaceId/reports/files/:fileId/download-full", ({ ctx, params }) => downloadReport(ctx, idParam(params.fileId, "report file"), true), { guard: { space: SPACE_ACTION.downloadFullReports } })
+    .post("/v1/spaces/:spaceId/reports/files/:fileId/retry", ({ ctx, params }) => retryFile(ctx, idParam(params.fileId, "report file")), { guard: { space: SPACE_ACTION.generateReports } })
+    .get("/v1/spaces/:spaceId/reports/samples/:fileId", ({ ctx, params }) => downloadSample(ctx, idParam(params.fileId, "sample")), { guard: { space: SPACE_ACTION.editReports } })
     .post("/v1/spaces/:spaceId/reports/files", async (c) => {
       const f = await requestFile(c.ctx, await body(c, GenerateReportBody));
       c.set.status = 202;
