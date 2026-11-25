@@ -34,7 +34,7 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
   const computed = Object.keys(spec.derive ?? {}).map((n) => ({ key: n, label: n, kind: "formula" }));
   const edges: MapGraph["edges"] = [];
   const request: MapTargetRow[] = CORE_ROWS.map((k) => {
-    const r = (spec.mapping as Record<string, Ref | undefined>)[k];
+    const r = (spec.mapping as unknown as Record<string, Ref | undefined>)[k];
     const row: MapTargetRow = { path: k, name: LABEL[k], depth: 0, leaf: true, required: k === "business_date", type: "", maxLength: null, filledBy: null, mapped: null };
     if (k === "currency" && !r && spec.currency) return { ...row, mapped: "const", note: `${spec.currency} for every row` };
     if (!r) return row;
