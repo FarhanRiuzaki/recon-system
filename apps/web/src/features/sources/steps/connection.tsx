@@ -81,7 +81,8 @@ export type ConnectionStepProps = {
   err: (id: string) => string | undefined;
   tested: Tested | null;
   testing: boolean;
-  onTest: () => void;
+  /** Runs the test; `next` = the draft as it is about to be (a pick that also sets it), else the current one. */
+  onTest: (next?: Draft) => void;
   /**
    * A test passed over the connection on screen (its lists belong to it): the server's short version, else null.
    * `listed` = some test passed since the form opened (the Data stage shows, marked stale when the connection changed).
@@ -176,14 +177,19 @@ const enterRuns = (run: () => void) => (e: KeyboardEvent<HTMLDivElement>) => {
 };
 
 /**
- * A file inbox's folder (Figma 02 v1.0.5, 06): Folder → Check folder (the stage's action, also on Enter) → its answer;
- * then the pattern and format, completion and encoding under a closed Advanced. A pattern typed after the check is
- * checked again when the field is left, so Next counts it.
+ * A file inbox's folder (Figma 02 v1.0.5, 06): the space's Inbox files folders are listed (owner 25 Nov: picked, not
+ * typed); a pick fills Folder, suggests the pattern from the folder's newest file (when the pattern is empty or was
+ * suggested before) and checks the folder at once. "Use another folder" types a path instead (a folder IT set up);
+ * with no space folder, Folder is typed as before. Then the pattern and format, completion and encoding under a closed
+ * Advanced. A pattern typed after the check is checked again when the field is left, so Next counts it.
  */
 function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["input"]>) => void }) {
   const { d, err, setInput } = p;
   const i = d.spec.input;
   const folders = useInboxFolderOptions(p.spaceId);
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const spaceFolder = (path: string) => !!folders?.folders.some((f) => `${folders.root.replace(/\/+$/, "")}/${f.name}` === path.trim().replace(/\/+$/, ""));
+  const [typing, setTyping] = useState(false);
   const passed = !!p.tested?.result.ok && p.tested.key === connKey(d);
   const want = p.created || !!p.tested?.result.ok;
   const [seen, setSeen] = useState(want);
@@ -194,10 +200,22 @@ function Folder(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec[
   return (
     <Panel title="Folder" bodyClassName="grid gap-4">
       <div className="grid gap-4" onKeyDown={enterRuns(check)}>
-        <SpaceFolders list={folders} path={i.path} onPick={(path) => setInput({ path })} />
-        <Field id={ctl("input.path")} label="Folder" required error={err(ctl("input.path"))}>
-          <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
-        </Field>
+        <SpaceFolders list={folders} path={i.path} onPick={(path, pattern) => {
+          const keep = i.pattern.trim() && i.pattern !== suggested;
+          const next: Draft = { ...d, spec: { ...d.spec, input: { ...i, path, pattern: keep || !pattern ? i.pattern : pattern } } };
+          if (!keep && pattern) setSuggested(pattern);
+          setTyping(false);
+          p.set(() => next);
+          p.onTest(next);
+        }} />
+        {folders?.folders.length && !typing && !(i.path.trim() && !spaceFolder(i.path))
+          ? <span><Button type="button" variant="link" size="sm" onClick={() => setTyping(true)}>Use another folder</Button></span>
+          : (
+            <Field id={ctl("input.path")} label={folders?.folders.length ? "Another folder" : "Folder"} required error={err(ctl("input.path"))}
+              note={folders?.folders.length ? "A folder IT set up on this server, outside Inbox files." : "Create a folder in Inbox files to pick it here, or type a folder IT set up on this server."}>
+              <Input id={ctl("input.path")} value={i.path} className="font-mono" onChange={(e) => setInput({ path: e.target.value })} autoComplete="off" spellCheck={false} />
+            </Field>
+          )}
         <div className="grid gap-2">
           <span><ActionButton testing={p.testing} onTest={check} label="Check folder" busy="Checking…" /></span>
           {passed && <p role="status" className="text-body text-fg">{p.tested!.result.message}</p>}
