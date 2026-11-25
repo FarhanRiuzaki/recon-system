@@ -1,27 +1,44 @@
-// A report as CSV (UTF-8 with BOM for Excel): the template's headers, then each row's cells in column order, written as
-// the pages arrive; cells that would start a formula are neutralized (AGENTS.md §3, `toCsv`).
-import { CSV_BOM, toCsv } from "@starterkit/ui/lib/csv";
-import type { ReportRow } from "./summary";
+// A report as CSV (spec 2026-11-26): the header block as label,value lines, the column headers, the rows (group and
+// subtotal lines only when asked), the total line, then the footer's text; each part only when on. Text cells that
+// would start a formula are neutralized (AGENTS.md §3); a number never is, so "-25,00" stays as written.
+import { type Line, type Sheet, shown, toAscii } from "./lines";
 
 export type Written = { rows: number; size: number; sha256: string };
-export type Column = { key: string; header: string };
 
-/** A cell that is only a number (`-1500`, `12.5`) goes as a number, so a negative one isn't prefixed like a formula. */
-const plainNumber = (v: string | null): string | number | null => (v !== null && /^-?\d{1,15}(\.\d{1,15})?$/.test(v) && Number.isFinite(Number(v)) && String(Number(v)) === v ? Number(v) : v);
-
-/** Streams `pages` to `out`; answers how many rows, the size and the SHA-256 of what was written. */
-export async function writeCsvFile(pages: AsyncIterable<ReportRow[]>, columns: Column[], out: string): Promise<Written> {
+/** Writes `chunks` through one hasher; answers the size and SHA-256. */
+export function fileSink(out: string) {
   const file = Bun.file(out).writer();
   const hash = new Bun.CryptoHasher("sha256");
-  let size = 0, rows = 0;
-  const put = (s: string) => { const b = Buffer.from(s, "utf8"); hash.update(b); size += b.length; file.write(b); };
-  put(CSV_BOM + toCsv([columns.map((c) => c.header)]));
+  let size = 0;
+  return {
+    put(s: string) { const b = Buffer.from(s, "utf8"); hash.update(b); size += b.length; file.write(b); },
+    flush: () => file.flush(),
+    async end() { await file.end(); return { size, sha256: hash.digest("hex") }; },
+  };
+}
+
+function cell(v: string, text: boolean, sheet: Sheet): string {
+  let s = sheet.ascii ? toAscii(v) : v;
+  if (text && (/^\s*[=+\-@]/.test(s) || /^[\t\r]/.test(s))) s = `'${s}`;
+  const special = s.includes(sheet.delimiter) || /["\n\r]/.test(s);
+  return sheet.quoteAll || special ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+export async function writeCsvFile(pages: AsyncIterable<Line[]>, sheet: Sheet, out: string): Promise<Written> {
+  const sink = fileSink(out);
+  const line = (cells: string[], text: boolean[]) => sink.put(cells.map((c, i) => cell(c, text[i] ?? true, sheet)).join(sheet.delimiter) + sheet.eol);
+  if (!sheet.ascii) sink.put("﻿");
+  for (const h of sheet.header ?? []) line([h.label, h.value], [true, true]);
+  if (sheet.columnHeaders) line(sheet.headers, sheet.headers.map(() => true));
+  let rows = 0;
   for await (const page of pages) {
-    if (!page.length) continue;
-    put(toCsv(page.map((r) => columns.map((c) => plainNumber(r.values[c.key] ?? null)))));
-    rows += page.length;
-    await file.flush();
+    for (const l of page) {
+      if (!shown(l, sheet, true)) continue;
+      line(l.cells, l.text);
+      if (l.kind === "row") rows++;
+    }
+    await sink.flush();
   }
-  await file.end();
-  return { rows, size, sha256: hash.digest("hex") };
+  if (sheet.footer?.text) line([sheet.footer.text], [true]);
+  return { rows, ...(await sink.end()) };
 }

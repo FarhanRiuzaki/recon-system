@@ -32,12 +32,12 @@
     "name": {
       "type": "string"
     },
-    "kind": {
+    "dataset": {
       "type": "string",
       "enum": [
-        "transactions",
-        "grouped",
-        "daily_summary"
+        "results",
+        "items",
+        "recap"
       ]
     },
     "format": {
@@ -45,6 +45,7 @@
       "enum": [
         "csv",
         "xlsx",
+        "txt",
         "pdf"
       ]
     },
@@ -102,7 +103,7 @@
     "configId",
     "recon",
     "name",
-    "kind",
+    "dataset",
     "format",
     "official",
     "status",

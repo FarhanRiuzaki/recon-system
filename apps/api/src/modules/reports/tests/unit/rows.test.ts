@@ -1,49 +1,38 @@
-// The pure parts of report rows: masking customer data, grouping with totals, and the daily summary.
 import { describe, expect, it } from "bun:test";
-import { maskValue } from "../../mask";
-import { dailySummary, groupRows, type ReportRow } from "../../summary";
+import { emptySpec } from "@starterkit/shared/report-spec";
+import type { ReportSpec } from "@starterkit/shared/contracts/reports";
+import { major, passes, refsOfSpec } from "../../rows";
 
-describe("maskValue", () => {
-  it("keeps the last four, dots for the rest; four or fewer are all dots", () => {
-    expect(maskValue("1234567890")).toBe("······7890");
-    expect(maskValue("1234")).toBe("····");
-    expect(maskValue("")).toBe("");
+const withFilters = (filters: ReportSpec["rows"]["filters"]): ReportSpec => ({ ...emptySpec(), rows: { filters } });
+const row = (values: Record<string, string | number | null>) => ({ date: "2026-11-25", values });
+
+describe("passes", () => {
+  it("each op; a result on both sides passes a side filter for either", () => {
+    expect(passes(withFilters([{ ref: "recon:reason", op: "is", value: ["Amount differs"] }]), row({ "recon:reason": "Amount differs" }))).toBe(true);
+    expect(passes(withFilters([{ ref: "recon:reason", op: "is_not", value: ["Amount differs"] }]), row({ "recon:reason": "Amount differs" }))).toBe(false);
+    expect(passes(withFilters([{ ref: "a:ext_ref", op: "contains", value: ["ks"] }]), row({ "a:ext_ref": "KS-1" }))).toBe(true);
+    expect(passes(withFilters([{ ref: "b:ext_ref", op: "empty", value: [] }]), row({ "b:ext_ref": null }))).toBe(true);
+    expect(passes(withFilters([{ ref: "b:ext_ref", op: "not_empty", value: [] }]), row({ "b:ext_ref": null }))).toBe(false);
+    expect(passes(withFilters([{ ref: "a:amount_minor", op: "gt", value: ["100"] }]), row({ "a:amount_minor": 150 }))).toBe(true);
+    expect(passes(withFilters([{ ref: "a:amount_minor", op: "lt", value: ["100"] }]), row({ "a:amount_minor": 150 }))).toBe(false);
+    expect(passes(withFilters([{ ref: "recon:side", op: "any_of", value: ["a"] }]), row({ "recon:side": "both" }))).toBe(true);
+    expect(passes(withFilters([{ ref: "recon:side", op: "any_of", value: ["a"] }]), row({ "recon:side": "b" }))).toBe(false);
   });
 });
 
-const row = (o: Partial<ReportRow>): ReportRow => ({ date: "2026-11-02", status: "matched", values: {}, amount: null, currency: null, reason: null, ...o });
-
-describe("groupRows", () => {
-  it("groups by one or two columns, each group with its totals, then a grand total", () => {
-    const rows = [row({ values: { "recon:reason": "No counterpart", "a:amount_minor": "10" } }), row({ values: { "recon:reason": "No counterpart", "a:amount_minor": "5" } }), row({ values: { "recon:reason": "Amount differs", "a:amount_minor": "2" } })];
-    const out = groupRows(rows, ["recon:reason"], [{ fn: "count" }, { fn: "sum", column: "a:amount_minor" }]);
-    expect(out.map((r) => [r.kind, r.label, r.totals])).toEqual([
-      ["group", "Amount differs", [1, 2]], ["row", null, null],
-      ["group", "No counterpart", [2, 15]], ["row", null, null], ["row", null, null],
-      ["total", "Total", [3, 17]],
-    ]);
+describe("major and refsOfSpec", () => {
+  it("minor units to major by the currency's exponent; other fields untouched", () => {
+    expect(major("amount_minor", "15000", "IDR")).toBe(150);
+    expect(major("amount_minor", "15000", "JPY")).toBe(15000);
+    expect(major("ext_ref", "15000", "IDR")).toBe("15000");
+    expect(major("amount_minor", null, "IDR")).toBeNull();
   });
-});
-
-describe("dailySummary", () => {
-  it("per date: rows per status, matched and breaks, match rate without not required, amounts per currency, breaks per reason", () => {
-    const s = dailySummary([
-      row({ status: "matched", amount: 100n, currency: "IDR" }), row({ status: "unmatch", amount: 40n, currency: "IDR", reason: "No counterpart" }),
-      row({ status: "unmatch", amount: 5n, currency: "USD", reason: "No counterpart" }), row({ status: "not_required" }),
-      row({ date: "2026-11-03", status: "matched", amount: 1n, currency: "IDR" }),
-    ]);
-    expect(s.map((d) => d.date)).toEqual(["2026-11-02", "2026-11-03"]);
-    expect(s[0]).toMatchObject({ total: 4, matched: 1, breaks: 2, matchRate: 1 / 3, byStatus: { matched: 1, unmatch: 2, not_required: 1 } });
-    expect(s[0]!.amounts).toEqual([{ currency: "IDR", matched: 100n, breaks: 40n }, { currency: "USD", matched: 0n, breaks: 5n }]);
-    expect(s[0]!.breaksByReason).toEqual([{ reason: "No counterpart", count: 2 }]);
-  });
-});
-
-describe("groupRows with masked values", () => {
-  it("groups by the real value and shows the masked one: two accounts ending alike stay two groups", () => {
-    const a = row({ values: { "a:account_ref": "····1234" }, raw: { "a:account_ref": "1111111234" } });
-    const b = row({ values: { "a:account_ref": "····1234" }, raw: { "a:account_ref": "2222221234" } });
-    const out = groupRows([a, b], ["a:account_ref"], [{ fn: "count" }]);
-    expect(out.filter((r) => r.kind === "group").map((r) => [r.label, r.totals])).toEqual([["····1234", [1]], ["····1234", [1]]]);
+  it("reads columns, fallbacks, formulas, filters, groups and header lines", () => {
+    const s: ReportSpec = { ...emptySpec(),
+      columns: [{ id: "c1", header: "A", content: { kind: "field", ref: "a:ext_ref", fallback: "b:ext_ref" }, format: { kind: "auto" }, layout: { align: "l", width: 10, pad: " " } },
+        { id: "c2", header: "D", content: { kind: "formula", cel: "a.amount_minor - b.amount_minor" }, format: { kind: "auto" }, layout: { align: "l", width: 10, pad: " " } }],
+      rows: { filters: [{ ref: "recon:status", op: "any_of", value: ["unmatch"] }] }, groups: ["a:attrs.member"],
+      sections: { ...emptySpec().sections, header: { on: true, lines: [{ label: "Total", value: { kind: "sum", ref: "a:amount_minor" } }] } } };
+    expect(refsOfSpec(s).sort()).toEqual(["a:amount_minor", "a:attrs.member", "a:ext_ref", "b:amount_minor", "b:ext_ref", "recon:status"]);
   });
 });

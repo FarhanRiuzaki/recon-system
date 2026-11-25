@@ -274,6 +274,8 @@ const IN_HANDLER_GATES: Record<string, string> = {
 };
 /** Non-GET routes that change no record of the activity log's kind (an auth step, a viewer's own list preference), so they record no entry. */
 const NO_ACTIVITY: Record<string, string> = {
+  "POST /v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/preview": "a read sent as POST for its body (a date): the stored design on one date's first rows, nothing changes",
+  "POST /v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/preview-draft": "a read sent as POST for its body (an unsaved design): the design on one date's first rows, nothing changes",
   "POST /v1/spaces/:spaceId/recons/:configId/versions/:versionId/approvals/preview": "a read sent as POST for its body (typed field values): who would approve a change of the version, nothing changes",
   "POST /v1/spaces/:spaceId/recons/:configId/versions/:versionId/actions/preview": "a read sent as POST for its body (a change, an action, a break): what would be sent, nothing changes",
   "POST /v1/me/reauth": "proves the user again on this session (stamps reauth_at); an auth step, and the sign-in log has no event for it",

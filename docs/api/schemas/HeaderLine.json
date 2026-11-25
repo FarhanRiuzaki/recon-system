@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HeaderLine",
+  "type": "object",
+  "properties": {
+    "label": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "value": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "field"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+            }
+          },
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "count"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "sum"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+            }
+          },
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "required": [
+    "label",
+    "value"
+  ],
+  "additionalProperties": false
+}

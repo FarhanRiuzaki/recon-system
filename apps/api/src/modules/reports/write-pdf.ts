@@ -4,7 +4,7 @@
 import { chromium } from "playwright-core";
 import type { Written } from "./write-csv";
 
-export async function writePdf(html: string, out: string, chromiumPath: string): Promise<Omit<Written, "rows">> {
+export async function writePdf(html: string, out: string, chromiumPath: string, pageNumbers = true): Promise<Omit<Written, "rows">> {
   const browser = await chromium.launch({ executablePath: chromiumPath, headless: true, args: ["--disable-gpu", "--no-first-run", "--disable-extensions"] });
   try {
     // the page is markup only: no script runs in it
@@ -13,7 +13,7 @@ export async function writePdf(html: string, out: string, chromiumPath: string):
     await page.setContent(html, { waitUntil: "load" });
     const bytes = await page.pdf({
       format: "A4", landscape: true, printBackground: true, margin: { top: "14mm", bottom: "16mm", left: "12mm", right: "12mm" },
-      displayHeaderFooter: true, headerTemplate: "<span></span>",
+      displayHeaderFooter: pageNumbers, headerTemplate: "<span></span>",
       footerTemplate: '<div style="font: 8px sans-serif; width: 100%; text-align: right; padding-right: 12mm; color: #636b7c">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>',
     });
     await Bun.write(out, bytes);

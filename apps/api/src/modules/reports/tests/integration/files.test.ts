@@ -1,5 +1,7 @@
 // The Files list and downloads: every download an activity entry (no row data); a file with full customer data only
 // through download-full (space admin, reviewer, config checker); removed and other spaces' files refused; facets.
+import { columnFor } from "@starterkit/shared/report-spec";
+import { breakDetail } from "../designs";
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { ReportFileDto, ReportTemplateDto, ReportVersionDto } from "@starterkit/shared/contracts/reports";
 import type { SpaceRole } from "@starterkit/shared/spaces";
@@ -42,12 +44,14 @@ beforeEach(async () => {
   CFG = (await recon(A, reconSpec(sa.sourceId, sb.sourceId, []))).configId;
   const recs = await put(sa, [{ ref: "R1", amount: 100n, acct: "ACCT00001234" }]);
   await db.insert(reconItems).values({ id: Bun.randomUUIDv7(), spaceId: A, configId: CFG, recordId: recs[0]!, side: "a", status: "break", businessDate: D });
-  T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Break detail", start: "break_detail" } }));
+  T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Break detail" } }));
+  const v0 = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${T.id}/versions`, { token: mk }))).items[0]!;
+  await call("PATCH", `${base()}/templates/${T.id}/versions/${v0.id}`, { token: mk, body: { spec: breakDetail() } });
 });
 
 async function file(official = false): Promise<ReportFileDto> {
   const v = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${T.id}/versions`, { token: mk }))).items[0]!;
-  await call("PATCH", `${base()}/templates/${T.id}/versions/${v.id}`, { token: mk, body: { spec: { ...v.spec, official, columns: [...v.spec.columns, { key: "a:account_ref", header: "Account" }], output: { ...v.spec.output, format: "csv", masking: official ? "full" : "masked" } } } });
+  await call("PATCH", `${base()}/templates/${T.id}/versions/${v.id}`, { token: mk, body: { spec: { ...v.spec, official, columns: [...v.spec.columns, columnFor("c9", "a:account_ref", "Account")], output: { ...v.spec.output, format: "csv", masking: official ? "full" : "masked" } } } });
   await call("POST", `${base()}/templates/${T.id}/versions/${v.id}/submit`, { token: mk });
   if (official) await call("POST", `${base()}/templates/${T.id}/versions/${v.id}/approve`, { token: ck, body: {} });
   const f = await json<ReportFileDto>(call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } }));

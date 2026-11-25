@@ -272,6 +272,9 @@ export async function resolvedRowMinutes(tx: InTx, spaceId: string, configId: st
   return [...a, ...b].map((r) => r.m);
 }
 
+/** An item of a report's page with its record's fields (`ext_ref`, `amount_minor`, `attrs.<name>` …) as text. */
+export type ReportItem = { id: string; rowId: string; side: "a" | "b"; status: ItemStatus; businessDate: string; reason: string | null; fields: Record<string, string | null> };
+
 type Item = {
   id: string; rowId: string; side: "a" | "b"; status: ItemStatus; bd: string; reason: string | null; assigneeId: string | null; stateAt: Date | null; breakState: string | null; resolution: Resolution | null; breakPass: number | null;
   ref: string | null; amount: bigint | null; ccy: string | null; dir: string | null; acct: string | null; eventTime: Date | null; recordBd: string | null; attrs: Record<string, unknown> | null;
@@ -342,7 +345,7 @@ export function resultPage(ctx: Ctx, configId: string, q: ResultListQuery, now =
 export async function reportResultRows(
   tx: InTx, spaceId: string, configId: string, [from, to]: [string, string], o: { statuses: readonly ResultStatus[]; columns: ResultColumn[] },
   after: { bd: string; rowId: string } | null, limit: number,
-): Promise<{ rows: ResultRowDto[]; items: Map<string, string[]>; last: { bd: string; rowId: string } | null; customer: Set<string> }> {
+): Promise<{ rows: ResultRowDto[]; items: Map<string, string[]>; details: ReportItem[]; last: { bd: string; rowId: string } | null; customer: Set<string> }> {
   const base = await resultColumnsOf(tx, spaceId, configId);
   const spaces = await recordSpaces(tx, spaceId);
   await roomToAggregate(tx);
@@ -361,7 +364,14 @@ export async function reportResultRows(
   const its = page.length ? await itemsOfRows(tx, spaceId, configId, spaces, page.filter((r) => r.kind === "group").map((r) => r.rowId), page.filter((r) => r.kind === "item").map((r) => r.rowId)) : [];
   const items = new Map<string, string[]>();
   for (const i of its) items.set(i.rowId, [...(items.get(i.rowId) ?? []), i.id]);
-  return { rows: filled, items, last: lastRow ? { bd: lastRow.bd, rowId: lastRow.rowId } : null, customer };
+  // each item with its record's fields, for the report's Items dataset (one row per item, side-prefixed fields)
+  const details = its.map((i): ReportItem => {
+    const fields: Record<string, string | null> = {};
+    for (const f of ["ext_ref", "account_ref", "amount_minor", "currency", "direction", "event_time", "business_date"]) fields[f] = fieldOf(i, f);
+    for (const k of Object.keys(i.attrs ?? {})) fields[`attrs.${k}`] = fieldOf(i, `attrs.${k}`);
+    return { id: i.id, rowId: i.rowId, side: i.side, status: i.status, businessDate: i.bd, reason: i.reason, fields };
+  });
+  return { rows: filled, items, details, last: lastRow ? { bd: lastRow.bd, rowId: lastRow.rowId } : null, customer };
 }
 
 type RowOf = { rowId: string; kind: "group" | "item"; bd: string; gk: string | null; gpass: number | null; runId: string | null; nA: number; nB: number;

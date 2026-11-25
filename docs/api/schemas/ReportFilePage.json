@@ -49,6 +49,7 @@
             "enum": [
               "csv",
               "xlsx",
+              "txt",
               "pdf"
             ]
           },

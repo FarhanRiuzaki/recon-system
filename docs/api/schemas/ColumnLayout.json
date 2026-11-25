@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ColumnLayout",
+  "type": "object",
+  "properties": {
+    "align": {
+      "type": "string",
+      "enum": [
+        "l",
+        "c",
+        "r"
+      ]
+    },
+    "width": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 200
+    },
+    "pad": {
+      "type": "string",
+      "enum": [
+        "0",
+        " "
+      ]
+    }
+  },
+  "required": [
+    "align",
+    "width",
+    "pad"
+  ],
+  "additionalProperties": false
+}

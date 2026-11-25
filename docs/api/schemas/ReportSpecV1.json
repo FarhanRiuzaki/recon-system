@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportSpecV1",
+  "type": "object",
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "transactions",
+        "grouped",
+        "daily_summary"
+      ]
+    },
+    "rows": {
+      "type": "object",
+      "properties": {
+        "statuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "posting_failed",
+              "posting_in_progress",
+              "posting_skipped",
+              "waiting_approval",
+              "posted",
+              "written_off",
+              "adjusted",
+              "closed",
+              "force_matched",
+              "matched_by_hand",
+              "matched_late",
+              "suggested",
+              "matched",
+              "unmatch",
+              "not_required",
+              "waiting_counterpart"
+            ]
+          }
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "a",
+            "b",
+            "both"
+          ]
+        },
+        "reasons": {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 80
+          }
+        }
+      },
+      "required": [
+        "statuses",
+        "side",
+        "reasons"
+      ],
+      "additionalProperties": false
+    },
+    "columns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+          },
+          "header": {
+            "type": "string",
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "key",
+          "header"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+      }
+    },
+    "totals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fn": {
+            "type": "string",
+            "enum": [
+              "count",
+              "sum",
+              "min",
+              "max"
+            ]
+          },
+          "column": {
+            "type": "string",
+            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+          }
+        },
+        "required": [
+          "fn"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "csv",
+            "xlsx",
+            "pdf"
+          ]
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "masking": {
+          "type": "string",
+          "enum": [
+            "masked",
+            "full"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "subtitle": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "fileName",
+        "masking"
+      ],
+      "additionalProperties": false
+    },
+    "when": {
+      "type": "object",
+      "properties": {
+        "afterRun": {
+          "type": "boolean"
+        },
+        "onRequest": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "afterRun",
+        "onRequest"
+      ],
+      "additionalProperties": false
+    },
+    "official": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "kind",
+    "rows",
+    "columns",
+    "groups",
+    "totals",
+    "output",
+    "when",
+    "official"
+  ],
+  "additionalProperties": false
+}

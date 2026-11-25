@@ -1,15 +1,10 @@
-// A report as the HTML page Chromium prints (owner's choice A, DEC-060): the design system's light tokens
+// A report's HTML printed to PDF by headless Chromium (owner's choice A, DEC-060): the design system's light tokens
 // (packages/ui/src/styles/tokens.css, read as text), Inter bundled as a data URL, nothing fetched from anywhere. The
-// API may not import the React components (AGENTS.md §1), so each content kind is laid out here in the same arrangement
-// as the screens: stat tiles and a breakdown for the daily summary, a table with its header repeated on every page for
-// rows. Every page carries the stamp (Final / Not final, masked or full customer data) in its fixed footer.
+// sections of the design (spec 2026-11-26), each only when on: title, header block, the table (its header row repeated
+// on every page), group lines, totals, and the footer with its text and stamp.
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
-import { RESULT_STATUS_LABEL } from "@starterkit/shared/results";
-import { formatMinor, formatNumber, formatPercent } from "@starterkit/ui/lib/format";
-import type { DaySummary, ReportRow, ShapedRow } from "./summary";
-import type { Column } from "./write-csv";
+import type { Line, Sheet } from "./lines";
 
 /** The light theme's custom properties (the `:root` block of tokens.css), read once. */
 let tokens: string | null = null;
@@ -25,62 +20,31 @@ let font: string | null = null;
 const inter = () => (font ??= readFileSync(path.join(import.meta.dir, "assets/inter-latin-wght-normal.woff2")).toString("base64"));
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-const money = (v: bigint, ccy: string) => `${ccy} ${formatMinor(v, CURRENCY_EXPONENT[ccy] ?? 2)}`;
+const ALIGN = { l: "left", c: "center", r: "right" } as const;
 
-export type PdfData =
-  | { kind: "transactions"; columns: Column[]; rows: ReportRow[] }
-  | { kind: "grouped"; columns: Column[]; shaped: ShapedRow[]; totals: string[] }
-  | { kind: "daily_summary"; days: DaySummary[] };
-export type PdfMeta = { title: string; subtitle?: string; recon: string; from: string; to: string; dates: { date: string; final: boolean }[]; masking: "masked" | "full" };
-
-function table(columns: Column[], body: string): string {
-  return `<table><thead><tr>${columns.map((c) => `<th>${esc(c.header)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
-}
-const cells = (columns: Column[], r: ReportRow) => `<tr>${columns.map((c) => `<td>${esc(r.values[c.key] ?? "")}</td>`).join("")}</tr>`;
-
-function daySection(d: DaySummary): string {
-  const tiles = [["Results", formatNumber(d.total)], ["Matched", formatNumber(d.matched)], ["Breaks", formatNumber(d.breaks)], ["Match rate", d.matchRate === null ? "—" : formatPercent(d.matchRate, 1)]];
-  const statuses = Object.entries(d.byStatus).sort((a, b) => b[1] - a[1]);
-  const max = Math.max(1, ...statuses.map(([, n]) => n));
-  return `<section class="day"><h2>${esc(d.date)}</h2>
-    <div class="tiles">${tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
-    <div class="card"><h3>Results by status</h3>${statuses.map(([s, n], i) => `<div class="bar"><span>${esc(RESULT_STATUS_LABEL[s as keyof typeof RESULT_STATUS_LABEL] ?? s)}</span><i style="width:${(n / max) * 100}%;background:var(--chart-${(i % 6) + 1})"></i><b>${formatNumber(n)}</b></div>`).join("")}</div>
-    ${d.amounts.length ? `<div class="card"><h3>Amounts</h3>${table([{ key: "c", header: "Currency" }, { key: "m", header: "Matched" }, { key: "b", header: "Breaks" }], d.amounts.map((a) => `<tr><td>${esc(a.currency)}</td><td>${esc(money(a.matched, a.currency))}</td><td>${esc(money(a.breaks, a.currency))}</td></tr>`).join(""))}</div>` : ""}
-    ${d.breaksByReason.length ? `<div class="card"><h3>Breaks by reason</h3>${table([{ key: "r", header: "Reason" }, { key: "n", header: "Breaks" }], d.breaksByReason.map((r) => `<tr><td>${esc(r.reason)}</td><td>${formatNumber(r.count)}</td></tr>`).join(""))}</div>` : ""}
-  </section>`;
-}
-
-/** The whole page: title, the stamp, then the content of its kind. */
-export function reportHtml(data: PdfData, meta: PdfMeta): string {
-  const final = meta.dates.length > 0 && meta.dates.every((d) => d.final);
-  const open = meta.dates.filter((d) => !d.final).length;
-  const stamp = `${final ? "Final" : `Not final (${open} of ${meta.dates.length} dates not signed off)`} · ${meta.masking === "masked" ? "Masked customer data" : "Full customer data"}`;
-  const range = meta.from === meta.to ? meta.from : `${meta.from} – ${meta.to}`;
-  const body = data.kind === "daily_summary" ? data.days.map(daySection).join("")
-    : data.kind === "transactions" ? table(data.columns, data.rows.map((r) => cells(data.columns, r)).join(""))
-    : table(data.columns, data.shaped.map((s) => s.kind === "row" ? cells(data.columns, s.row!)
-      : `<tr class="${s.kind}"><td colspan="${Math.max(1, data.columns.length - data.totals.length)}">${"&nbsp;".repeat(s.level * 4)}${esc(s.label ?? "")}</td>${(s.totals ?? []).map((t, i) => `<td title="${esc(data.totals[i] ?? "")}">${t === null ? "" : formatNumber(t)}</td>`).join("")}</tr>`).join(""));
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(meta.title)}</title><style>
+/** The whole page of `lines` in `sheet`'s frame. */
+export function reportHtml(lines: Line[], sheet: Sheet): string {
+  const td = (l: Line, i: number) => `<td style="text-align:${ALIGN[sheet.layouts[i]?.align ?? "l"]}"${l.marks[i] === "red" ? ' class="red"' : ""}>${esc(l.cells[i] ?? "")}</td>`;
+  const body = lines.map((l) => `<tr class="${l.kind}">${l.cells.map((_, i) => td(l, i)).join("")}</tr>`).join("");
+  const head = sheet.columnHeaders ? `<thead><tr>${sheet.headers.map((h, i) => `<th style="text-align:${ALIGN[sheet.layouts[i]?.align ?? "l"]}">${esc(h)}</th>`).join("")}</tr></thead>` : "";
+  const header = sheet.header ? `<div class="meta">${sheet.header.map((h) => `<div><span>${esc(h.label)}</span> ${esc(h.value)}</div>`).join("")}</div>` : "";
+  const foot = sheet.footer ? `<footer>${esc([sheet.footer.text, sheet.footer.stamp].filter(Boolean).join(" · "))}</footer>` : "";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${esc(sheet.title ?? "Report")}</title><style>
 @font-face { font-family: Inter; src: url(data:font/woff2;base64,${inter()}) format("woff2"); font-weight: 100 900; }
 ${lightTokens()}
 * { box-sizing: border-box; }
-body { margin: 0; font: 10pt/1.45 Inter, sans-serif; color: var(--fg); background: var(--card); }
-header { margin-bottom: 14pt; } h1 { font-size: 16pt; font-weight: 600; margin: 0; } h2 { font-size: 12pt; font-weight: 600; margin: 14pt 0 8pt; } h3 { font-size: 10pt; font-weight: 600; margin: 0 0 6pt; }
-.sub, .meta { color: var(--fg-2); } .meta { font-size: 9pt; }
-.stamp { display: inline-block; margin-top: 6pt; padding: 2pt 6pt; border: 1px solid var(--line-strong); border-radius: 4pt; font-size: 8.5pt; color: var(--fg-2); }
+body { margin: 0; font: 9.5pt/1.45 Inter, sans-serif; color: var(--fg); background: var(--card); }
+h1 { font-size: 16pt; font-weight: 600; margin: 0 0 8pt; }
+.meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2pt 14pt; margin-bottom: 12pt; color: var(--fg-2); } .meta span { color: var(--fg-3); }
 table { width: 100%; border-collapse: collapse; } thead { display: table-header-group; } tr { break-inside: avoid; }
-th { text-align: left; font-weight: 400; color: var(--fg-3); border-bottom: 1px solid var(--line-strong); padding: 4pt 6pt; }
-td { border-bottom: 1px solid var(--line); padding: 4pt 6pt; vertical-align: top; }
-tr.group td { background: var(--tray); font-weight: 600; } tr.total td { font-weight: 600; border-top: 1px solid var(--line-strong); }
-.tiles { display: flex; gap: 8pt; margin-bottom: 8pt; } .tile { flex: 1; border: 1px solid var(--line); border-radius: 8pt; padding: 8pt; background: var(--sheet); }
-.tile .k { color: var(--fg-3); font-size: 8.5pt; } .tile .v { font-size: 15pt; }
-.card { border: 1px solid var(--line); border-radius: 8pt; padding: 8pt; margin-bottom: 8pt; break-inside: avoid; }
-.bar { display: grid; grid-template-columns: 34% 1fr 50pt; align-items: center; gap: 6pt; margin: 3pt 0; } .bar i { display: block; height: 7pt; border-radius: 2pt; } .bar b { font-weight: 400; text-align: right; }
-.day { break-after: page; } .day:last-child { break-after: auto; }
+th { font-weight: 500; color: var(--fg-3); border-bottom: 1px solid var(--line-strong); padding: 4pt 6pt; }
+td { border-bottom: 1px solid var(--line); padding: 4pt 6pt; vertical-align: top; font-variant-numeric: tabular-nums; }
+tr.group td { background: var(--tray); font-weight: 600; } tr.subtotal td, tr.total td { font-weight: 600; border-top: 1px solid var(--line-strong); }
+td.red { color: var(--down-ink); font-weight: 600; }
 footer { position: fixed; bottom: 0; left: 0; right: 0; font-size: 8pt; color: var(--fg-3); }
 </style></head><body>
-<header><h1>${esc(meta.title)}</h1>${meta.subtitle ? `<div class="sub">${esc(meta.subtitle)}</div>` : ""}<div class="meta">${esc(meta.recon)} · ${esc(range)}</div><div class="stamp">${esc(stamp)}</div></header>
-${body}
-<footer>${esc(meta.recon)} · ${esc(range)} · ${esc(stamp)}</footer>
+${sheet.title ? `<h1>${esc(sheet.title)}</h1>` : ""}${header}
+<table>${head}<tbody>${body}</tbody></table>
+${foot}
 </body></html>`;
 }

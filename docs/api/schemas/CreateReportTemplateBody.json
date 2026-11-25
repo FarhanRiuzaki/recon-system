@@ -12,21 +12,11 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 120
-    },
-    "start": {
-      "type": "string",
-      "enum": [
-        "daily_summary",
-        "break_detail",
-        "matched_list",
-        "blank"
-      ]
     }
   },
   "required": [
     "configId",
-    "name",
-    "start"
+    "name"
   ],
   "additionalProperties": false
 }

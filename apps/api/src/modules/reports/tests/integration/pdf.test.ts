@@ -3,6 +3,9 @@ import { afterAll, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { columnFor, emptySpec } from "@starterkit/shared/report-spec";
+import { linesOf, sheetOf } from "../../lines";
+import { renderRow, rendererOf } from "../../cells";
 import { reportHtml } from "../../pdf-html";
 import { writePdf } from "../../write-pdf";
 
@@ -11,9 +14,11 @@ const dir = mkdtempSync(path.join(tmpdir(), "reports-pdf-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 describe.skipIf(!exe)("writePdf", () => {
-  it("prints the daily summary to a PDF", async () => {
-    const html = reportHtml({ kind: "daily_summary", days: [{ date: "2026-11-02", total: 3, byStatus: { matched: 2, unmatch: 1 }, matched: 2, breaks: 1, matchRate: 2 / 3, amounts: [{ currency: "IDR", matched: 10000n, breaks: 500n }], breaksByReason: [{ reason: "No counterpart", count: 1 }] }] },
-      { title: "Daily recap", recon: "KSEI vs Core", from: "2026-11-02", to: "2026-11-02", dates: [{ date: "2026-11-02", final: true }], masking: "masked" });
+  it("prints a design to a PDF", async () => {
+    const s = { ...emptySpec(), columns: [columnFor("c1", "a:ext_ref", "Reference"), columnFor("c2", "a:amount_minor", "Amount")] };
+    const rr = rendererOf(s, new Set());
+    const d = { date: "2026-11-02", values: { "a:ext_ref": "R1", "a:amount_minor": 100 } };
+    const html = reportHtml(linesOf(s, [{ ...renderRow(s, d, 0, rr), data: d }]), sheetOf(s, { recon: "KSEI", template: "Daily", from: "2026-11-02", to: "2026-11-02", madeAt: "2026-11-02T00:00:00Z", final: true, masking: "masked", first: d, count: 1, sums: {} }));
     const out = path.join(dir, "a.pdf");
     const r = await writePdf(html, out, exe!);
     expect(readFileSync(out).subarray(0, 4).toString()).toBe("%PDF");

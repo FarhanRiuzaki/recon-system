@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportColumn",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^c[0-9a-z]{1,12}$"
+    },
+    "header": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "content": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "field"
+            },
+            "ref": {
+              "type": "string",
+              "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+            },
+            "fallback": {
+              "type": "string",
+              "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+            }
+          },
+          "required": [
+            "kind",
+            "ref"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "formula"
+            },
+            "cel": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "required": [
+            "kind",
+            "cel"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "kind",
+            "text"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "rownum"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "format": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "number"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4
+            },
+            "thousands": {
+              "type": "string",
+              "enum": [
+                ".",
+                ",",
+                "none"
+              ]
+            },
+            "negative": {
+              "type": "string",
+              "enum": [
+                "minus",
+                "paren",
+                "trailing"
+              ]
+            },
+            "prefix": {
+              "type": "string",
+              "maxLength": 10
+            },
+            "suffix": {
+              "type": "string",
+              "maxLength": 10
+            }
+          },
+          "required": [
+            "kind",
+            "decimals",
+            "thousands",
+            "negative",
+            "prefix",
+            "suffix"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "date"
+            },
+            "pattern": {
+              "type": "string",
+              "enum": [
+                "dd/MM/yyyy",
+                "yyyy-MM-dd",
+                "yyyyMMdd",
+                "ddMMyyyy",
+                "dd MMM yyyy",
+                "dd-MM-yyyy",
+                "MM/dd/yyyy"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "pattern"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "text"
+            },
+            "case": {
+              "type": "string",
+              "enum": [
+                "as_is",
+                "upper",
+                "lower"
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "case"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "auto"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "align": {
+          "type": "string",
+          "enum": [
+            "l",
+            "c",
+            "r"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "pad": {
+          "type": "string",
+          "enum": [
+            "0",
+            " "
+          ]
+        }
+      },
+      "required": [
+        "align",
+        "width",
+        "pad"
+      ],
+      "additionalProperties": false
+    },
+    "highlight": {
+      "type": "object",
+      "properties": {
+        "when": {
+          "type": "string",
+          "enum": [
+            "not_zero",
+            "negative",
+            "empty",
+            "equals"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "style": {
+          "type": "string",
+          "enum": [
+            "red",
+            "bold"
+          ]
+        }
+      },
+      "required": [
+        "when",
+        "style"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "header",
+    "content",
+    "format",
+    "layout"
+  ],
+  "additionalProperties": false
+}

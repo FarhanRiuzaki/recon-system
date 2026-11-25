@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ColumnFormat",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "number"
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "thousands": {
+          "type": "string",
+          "enum": [
+            ".",
+            ",",
+            "none"
+          ]
+        },
+        "negative": {
+          "type": "string",
+          "enum": [
+            "minus",
+            "paren",
+            "trailing"
+          ]
+        },
+        "prefix": {
+          "type": "string",
+          "maxLength": 10
+        },
+        "suffix": {
+          "type": "string",
+          "maxLength": 10
+        }
+      },
+      "required": [
+        "kind",
+        "decimals",
+        "thousands",
+        "negative",
+        "prefix",
+        "suffix"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "date"
+        },
+        "pattern": {
+          "type": "string",
+          "enum": [
+            "dd/MM/yyyy",
+            "yyyy-MM-dd",
+            "yyyyMMdd",
+            "ddMMyyyy",
+            "dd MMM yyyy",
+            "dd-MM-yyyy",
+            "MM/dd/yyyy"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "pattern"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "text"
+        },
+        "case": {
+          "type": "string",
+          "enum": [
+            "as_is",
+            "upper",
+            "lower"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "case"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "auto"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false
+    }
+  ]
+}

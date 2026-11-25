@@ -6,7 +6,6 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type {
   CreateReportTemplateBody, ReportDecisionBody, ReportTemplateDto, ReportTemplateListQuery, ReportVersionDto, SaveReportVersionBody,
 } from "@starterkit/shared/contracts/reports";
-import { ReportSpec as ReportSpecSchema } from "@starterkit/shared/contracts/reports";
 import type { ReportSpec } from "@starterkit/shared/contracts/reports";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
@@ -18,7 +17,8 @@ import type { Ctx } from "../auth";
 import { reconConfigs } from "../recon";
 import { withSpace } from "../spaces";
 import { users } from "../users";
-import { sendProblem, startSpec } from "./rules";
+import { sendProblem } from "./rules";
+import { emptySpec, parseStoredSpec } from "@starterkit/shared/report-spec";
 import { reportFiles, reportTemplates, reportVersions } from "./schema";
 
 const NOW = sql`now()`;
@@ -52,7 +52,7 @@ async function namesOf(tx: InTx, ids: (string | null)[]): Promise<Map<string, st
 function versionDto(v: ReportVersionRow, names: Map<string, string>): ReportVersionDto {
   const who = (id: string | null) => (id ? { id, name: names.get(id) ?? "Unknown user" } : null);
   return {
-    id: v.id, templateId: v.templateId, version: v.version, status: v.status as ReportVersionDto["status"], spec: v.spec as ReportSpec,
+    id: v.id, templateId: v.templateId, version: v.version, status: v.status as ReportVersionDto["status"], spec: parseStoredSpec(v.spec),
     madeBy: who(v.makerId), approvedBy: v.status === "active" || v.status === "superseded" ? who(v.checkerId) : null,
     updatedAt: v.updatedAt.toISOString(), decidedAt: v.decidedAt?.toISOString() ?? null, note: v.note,
   };
@@ -72,10 +72,10 @@ async function templateDtos(tx: InTx, spaceId: string, rows: TemplateRow[]): Pro
     const mine = vs.filter((v) => v.templateId === t.id);
     const active = mine.find((v) => v.status === "active");
     const open = mine.find((v) => v.status === "draft" || v.status === "waiting");
-    const spec = (active ?? open)!.spec as ReportSpec;
+    const spec = parseStoredSpec((active ?? open)!.spec);
     const r = recons.find((x) => x.id === t.configId);
     return {
-      id: t.id, configId: t.configId, recon: { code: r?.code ?? "", name: r?.name ?? "" }, name: t.name, kind: spec.kind, format: spec.output.format, official: spec.official,
+      id: t.id, configId: t.configId, recon: { code: r?.code ?? "", name: r?.name ?? "" }, name: t.name, dataset: spec.dataset, format: spec.output.format, official: spec.official,
       status: t.retiredAt ? "retired" : active ? "active" : open?.status === "waiting" ? "waiting" : "draft",
       activeVersion: active?.version ?? null, draftVersionId: open?.status === "draft" ? open.id : null,
       lastFileAt: lastOf.get(t.id)?.toISOString() ?? null, retiredAt: t.retiredAt?.toISOString() ?? null,
@@ -102,16 +102,16 @@ export function listTemplates(ctx: Ctx, q: ReportTemplateListQuery): Promise<Pag
   });
 }
 
-/** POST …/reports/templates: a template of a recon of the space, with its draft v1 filled from the starting point. */
+/** POST …/reports/templates: a template of a recon of the space, its draft v1 an empty design (emptySpec). */
 export function createTemplate(ctx: Ctx, b: CreateReportTemplateBody): Promise<ReportTemplateDto> {
   return inSpace(ctx, async (tx, spaceId) => {
     const [r] = await tx.select({ id: reconConfigs.id }).from(reconConfigs).where(and(eq(reconConfigs.spaceId, spaceId), eq(reconConfigs.id, b.configId)));
     if (!r) throw notFound("recon");
     const id = Bun.randomUUIDv7();
-    const spec = startSpec(b.start);
+    const spec = emptySpec();
     const [t] = await tx.insert(reportTemplates).values({ id, spaceId, configId: b.configId, name: b.name, createdBy: ctx.user.id }).returning() as [TemplateRow];
     await tx.insert(reportVersions).values({ id: Bun.randomUUIDv7(), spaceId, templateId: id, version: 1, status: "draft", spec, makerId: ctx.user.id, contributorIds: [ctx.user.id] });
-    await recordActivity(tx, ctx, { action: "report.template.create", target: target(t), after: { name: b.name, configId: b.configId, kind: spec.kind } });
+    await recordActivity(tx, ctx, { action: "report.template.create", target: target(t), after: { name: b.name, configId: b.configId } });
     return (await templateDtos(tx, spaceId, [t]))[0]!;
   });
 }
@@ -182,7 +182,7 @@ export function submitVersion(ctx: Ctx, id: string, versionId: string): Promise<
     if (t.retiredAt) throw wrongState("This report template is retired.");
     const v = await versionOf(tx, t, versionId);
     if (v.status !== "draft") throw wrongState("Only a draft can be sent.");
-    const spec = ReportSpecSchema.parse(v.spec);
+    const spec = parseStoredSpec(v.spec);
     const why = sendProblem(spec);
     if (why) throw new ApiError("bad_request", why);
     await tx.update(reportVersions).set({ submittedBy: ctx.user.id, submittedAt: NOW, contributorIds: withMe(v.contributorIds, ctx.user.id), note: null, updatedAt: NOW }).where(eq(reportVersions.id, v.id));
@@ -264,6 +264,6 @@ export function afterRunTemplates(on: Tx, spaceId: string, configId: string): Pr
     const rows = await tx.select({ templateId: reportTemplates.id, versionId: reportVersions.id, spec: reportVersions.spec }).from(reportTemplates)
       .innerJoin(reportVersions, and(eq(reportVersions.spaceId, reportTemplates.spaceId), eq(reportVersions.templateId, reportTemplates.id), eq(reportVersions.status, "active")))
       .where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.configId, configId), isNull(reportTemplates.retiredAt)));
-    return rows.filter((r) => (r.spec as ReportSpec).when.afterRun).map(({ templateId, versionId }) => ({ templateId, versionId }));
+    return rows.filter((r) => parseStoredSpec(r.spec).when.afterRun).map(({ templateId, versionId }) => ({ templateId, versionId }));
   }, on);
 }

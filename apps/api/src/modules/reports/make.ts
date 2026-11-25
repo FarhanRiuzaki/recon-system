@@ -4,7 +4,8 @@
 // its dates' sign-off (Final) and size, and marks it ready or failed. A file row is made once per (template, run).
 import { readdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
-import type { GenerateReportBody, ReportFileDto, ReportSpec, TestReportBody } from "@starterkit/shared/contracts/reports";
+import type { GenerateReportBody, ReportFileDto, ReportPreviewBody, ReportSpec, TestReportBody } from "@starterkit/shared/contracts/reports";
+import { parseStoredSpec } from "@starterkit/shared/report-spec";
 import { fileNameOf, PDF_ROWS_MAX, REPORT_RANGE_MAX_DAYS } from "@starterkit/shared/reports";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { config, loadWorkerConfig } from "../../kernel/config";
@@ -19,21 +20,22 @@ import { reconDays, reconRuns } from "../engine";
 import { reconConfigs } from "../recon";
 import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
-import { pdfData } from "./pdf-data";
+import { type Problem, type Renderer, renderRow, rendererOf } from "./cells";
+import { type Line, linesOf, type RowIn, rowLine, type Sheet, type SheetCtx, sheetOf, totaller } from "./lines";
+import { maskValue } from "./mask";
 import { reportHtml } from "./pdf-html";
-import { reportRows } from "./rows";
+import { datasetRows } from "./rows";
 import { reportFiles, reportTemplates, reportVersions } from "./schema";
 import { activeVersion, afterRunTemplates, inSpace } from "./service";
-import { dailySummary, groupRows, type ReportRow } from "./summary";
-import { type Column, type Written, writeCsvFile } from "./write-csv";
+import { writeCsvFile, type Written } from "./write-csv";
 import { writePdf } from "./write-pdf";
+import { txtLines, writeTxt } from "./write-txt";
 import { writeXlsx } from "./write-xlsx";
 
 const DAY = 86400_000;
-/** The Test's bounds (it answers inside the request): a summary of at most 7 dates, rows from at most 10 pages of 500. */
-export const TEST_SUMMARY_DAYS = 7;
-const TEST_PAGES = 10;
-const EXT = { csv: "csv", xlsx: "xlsx", pdf: "pdf" } as const;
+/** The preview's rows (it answers inside the request, one date). */
+export const PREVIEW_ROWS = 50;
+const EXT = { csv: "csv", xlsx: "xlsx", txt: "txt", pdf: "pdf" } as const;
 type FileRow = typeof reportFiles.$inferSelect;
 const PDF_TOO_MANY = `A PDF holds at most ${PDF_ROWS_MAX.toLocaleString("en-US")} rows. Use CSV or Excel for more.`;
 const FAILED = "The report stopped on an internal error. Make it again; if it fails again, tell your admin.";
@@ -99,7 +101,7 @@ export function requestFile(ctx: Ctx, b: GenerateReportBody): Promise<ReportFile
     if (own.retiredAt) throw new ApiError("invalid_state", "This report template is retired, so it makes no more files.");
     const v = await activeVersion(tx, spaceId, b.templateId);
     if (!v) throw new ApiError("invalid_state", "This report has no active version yet. Send its draft first.");
-    const spec = v.spec as ReportSpec;
+    const spec = parseStoredSpec(v.spec);
     if (!spec.when.onRequest) throw new ApiError("invalid_state", "This report is made after runs only. Turn on On request in its template.");
     const [t] = await tx.select().from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, b.templateId)));
     const row = (await insertFile(tx, { spaceId, templateId: t!.id, versionId: v.id, configId: t!.configId, spec, from: b.from, to: b.to, askedBy: ctx.user.id, runId: null, sample: false }))!;
@@ -118,60 +120,81 @@ export async function queueAfterRun(on: Tx, spaceId: string, configId: string, r
   await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) => {
     for (const t of templates) {
       const [v] = await tx.select().from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.id, t.versionId)));
-      await insertFile(tx, { spaceId, templateId: t.templateId, versionId: t.versionId, configId, spec: v!.spec as ReportSpec, from, to, askedBy: null, runId, sample: false });
+      await insertFile(tx, { spaceId, templateId: t.templateId, versionId: t.versionId, configId, spec: parseStoredSpec(v!.spec), from, to, askedBy: null, runId, sample: false });
     }
   }, on);
 }
 
-/** A report's rows for the template's kind, as the writers take them (a grouped or summary report gathers them). */
-function shapeFor(spec: ReportSpec): { columns: Column[] } {
-  if (spec.kind !== "daily_summary") return { columns: spec.columns };
-  return { columns: [{ key: "date", header: "Business date" }, { key: "total", header: "Results" }, { key: "matched", header: "Matched" }, { key: "breaks", header: "Breaks" }, { key: "rate", header: "Match rate" }] };
-}
-async function gather(pages: AsyncIterable<ReportRow[]>, max: number | null, onPage: (rows: ReportRow[]) => Promise<void>): Promise<ReportRow[]> {
-  const all: ReportRow[] = [];
-  for await (const p of pages) {
-    all.push(...p);
-    if (max !== null && all.length > max) throw new ApiError("bad_request", PDF_TOO_MANY);
-    await onPage(p);
+/** The rows of `spec` over the dates, rendered (cells masked per `spec.output.masking`), page by page. */
+async function* renderedPages(on: Tx, spaceId: string, configId: string, spec: ReportSpec, from: string, to: string, pageSize?: number, forceMask = false): AsyncGenerator<{ rows: RowIn[]; customer: Set<string>; problems: Problem[] }> {
+  let i = 0;
+  let r: Renderer | null = null;
+  for await (const p of datasetRows(on, spaceId, configId, spec, from, to, pageSize)) {
+    r ??= rendererOf(spec, p.customer, forceMask);
+    const problems: Problem[] = [];
+    const rows = p.rows.map((d): RowIn => { const x = renderRow(spec, d, i++, r!); if (x.problems) problems.push(...x.problems); return { ...x, data: d }; });
+    yield { rows, customer: p.customer, problems };
   }
-  return all;
 }
-const asPages = async function* (rows: ReportRow[]) { yield rows; };
-const summaryRows = (rows: ReportRow[]): ReportRow[] => dailySummary(rows).map((d) => ({
-  date: d.date, status: "matched", amount: null, currency: null, reason: null,
-  values: { date: d.date, total: String(d.total), matched: String(d.matched), breaks: String(d.breaks), rate: d.matchRate === null ? null : `${(d.matchRate * 100).toFixed(1)}%` },
-}));
 
-/** Writes the file of row `f` (version `spec`) to `part`; answers what was written. */
-async function write(on: Tx, f: FileRow, spec: ReportSpec, part: string, chromium: string, progress: (p: number) => Promise<void>): Promise<Written> {
+/** Masks `v` of field `ref` when the file masks and `ref` is customer data (group labels, header lines). */
+const maskerOf = (customer: Set<string>, masked: boolean) => (ref: string, v: string) => (masked && customer.has(ref) ? maskValue(v) : v);
+
+/** The sheet's numbers for the header block: row count, and the sums of the fields its lines total. */
+function headerNumbers(spec: ReportSpec, rows: RowIn[]): Pick<SheetCtx, "count" | "sums" | "first"> {
+  const sums: Record<string, number> = {};
+  for (const l of spec.sections.header.lines) if (l.value.kind === "sum") { const ref = l.value.ref; sums[ref] = rows.reduce((a, r) => a + (typeof r.data.values[ref] === "number" ? (r.data.values[ref] as number) : 0), 0); }
+  return { count: rows.length, sums, first: rows[0]?.data ?? null };
+}
+
+async function* asPages(lines: Line[]) { yield lines; }
+
+/** Writes the file of row `f` (design `spec`) to `part`; answers what was written. */
+async function write(on: Tx, f: FileRow, stored: ReportSpec, part: string, chromium: string, progress: (p: number) => Promise<void>): Promise<Written> {
+  const spec: ReportSpec = { ...stored, output: { ...stored.output, masking: f.masking as "masked" | "full" } };
   const dates = datesOf(f.fromDate, f.toDate);
-  const pct = (rows: ReportRow[]) => progress(Math.min(95, Math.round(((dates.indexOf(rows.at(-1)?.date ?? f.fromDate) + 1) / dates.length) * 95)));
-  const pages = reportRows(on, f.spaceId, f.configId, { ...spec, output: { ...spec.output, masking: f.masking as "masked" | "full" } }, f.fromDate, f.toDate);
-  const { columns } = shapeFor(spec);
-  if (spec.output.format === "pdf") {
-    // the limit holds for every PDF but the daily summary (a page per date): a grouped one prints each row too
-    const rows = await gather(pages, spec.kind === "daily_summary" ? null : PDF_ROWS_MAX, pct);
-    const n = await withSpace({ spaceIds: [f.spaceId], userId: null }, (tx) => names(tx, f.spaceId, f.configId, f.templateId), on);
-    const html = reportHtml(pdfData(spec, rows), {
-      title: spec.output.title || n.template, subtitle: spec.output.subtitle, recon: n.recon, from: f.fromDate, to: f.toDate,
-      dates: await finalDates(on, f), masking: f.masking as "masked" | "full",
-    });
-    return { ...(await writePdf(html, part, chromium)), rows: rows.length };
+  const pct = (date: string | undefined) => progress(Math.min(95, Math.round(((dates.indexOf(date ?? f.fromDate) + 1) / dates.length) * 95)));
+  const n = await withSpace({ spaceIds: [f.spaceId], userId: null }, (tx) => names(tx, f.spaceId, f.configId, f.templateId), on);
+  const fd = await finalDates(on, f);
+  const base = { ...n, from: f.fromDate, to: f.toDate, madeAt: new Date().toISOString(), final: fd.length > 0 && fd.every((d) => d.final), masking: spec.output.masking };
+  const pages = renderedPages(on, f.spaceId, f.configId, spec, f.fromDate, f.toDate);
+  const fmt = spec.output.format;
+  const flat = !spec.groups.length && !spec.sections.header.lines.some((l) => l.value.kind !== "text" && l.value.kind !== "field");
+  if ((fmt === "csv" || fmt === "txt") && flat) {
+    // streamed: the rows as they come, the total line from running totals; the header's field lines read the first row
+    let first: RowIn | null = null;
+    let customer = new Set<string>();
+    const t = totaller(spec);
+    const it = pages[Symbol.asyncIterator]();
+    const head = await it.next();
+    if (!head.done) { first = head.value.rows[0] ?? null; customer = head.value.customer; }
+    const sheet = sheetOf(spec, { ...base, count: 0, sums: {}, first: first?.data ?? null }, maskerOf(customer, spec.output.masking === "masked"));
+    const lines = (async function* () {
+      let p = head;
+      while (!p.done) {
+        for (const r of p.value.rows) t.add(r);
+        yield p.value.rows.map(rowLine);
+        await pct(p.value.rows.at(-1)?.data.date);
+        p = await it.next();
+      }
+      if (spec.totals.on && spec.columns.length) yield [t.line()];
+    })();
+    return fmt === "csv" ? writeCsvFile(lines, sheet, part) : writeTxt(lines, sheet, part);
   }
-  if (spec.kind === "transactions" && spec.output.format === "csv") return writeCsvFile((async function* () { for await (const p of pages) { await pct(p); yield p; } })(), columns, part);
-  const rows = await gather(pages, null, pct);
-  if (spec.kind === "daily_summary") {
-    const out = summaryRows(rows);
-    const w = spec.output.format === "csv" ? await writeCsvFile(asPages(out), columns, part) : await writeXlsx(asPages(out), columns, part);
-    return { ...w, rows: rows.length };
+  const rows: RowIn[] = [];
+  let customer = new Set<string>();
+  for await (const p of pages) {
+    rows.push(...p.rows);
+    customer = p.customer;
+    if (fmt === "pdf" && spec.dataset !== "recap" && rows.length > PDF_ROWS_MAX) throw new ApiError("bad_request", PDF_TOO_MANY);
+    await pct(p.rows.at(-1)?.data.date);
   }
-  if (spec.output.format === "xlsx") return writeXlsx(asPages(rows), columns, part, { groups: spec.groups, totals: spec.totals });
-  // a grouped CSV: each group's line (name and totals), its rows, then the Total line
-  const shaped = groupRows(rows, spec.groups, spec.totals).map((s): ReportRow => s.kind === "row" ? s.row!
-    : { ...rows[0]!, values: { [columns[0]!.key]: `${"  ".repeat(s.level)}${s.label ?? ""}`, ...Object.fromEntries((s.totals ?? []).map((t, i) => [columns[i + 1]?.key ?? `t${i}`, t === null ? null : String(t)])) } });
-  const w = await writeCsvFile(asPages(shaped), columns, part);
-  return { ...w, rows: rows.length };
+  const mask = maskerOf(customer, spec.output.masking === "masked");
+  const sheet = sheetOf(spec, { ...base, ...headerNumbers(spec, rows) }, mask);
+  const lines = linesOf(spec, rows, mask);
+  if (fmt === "pdf") return { ...(await writePdf(reportHtml(lines, sheet), part, chromium, sheet.footer?.pageNumbers ?? false)), rows: rows.length };
+  if (fmt === "xlsx") return writeXlsx(asPages(lines), sheet, part);
+  return fmt === "csv" ? writeCsvFile(asPages(lines), sheet, part) : writeTxt(asPages(lines), sheet, part);
 }
 
 /** Each date of the file and whether its day was signed off (Final, owner 25 Nov) when read. */
@@ -199,7 +222,7 @@ export async function makeFile(on: Tx, spaceId: string, fileId: string, env = lo
     const [v] = await tx.select().from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.id, f.versionId)));
     const [s] = await tx.select({ code: spaces.code }).from(spaces).where(eq(spaces.id, spaceId));
     await tx.update(reportFiles).set({ status: "making", progress: 0, error: null, readAt: sql`now()`, updatedAt: sql`now()` }).where(eq(reportFiles.id, f.id));
-    return { f, spec: v!.spec as ReportSpec, code: s!.code };
+    return { f, spec: parseStoredSpec(v!.spec), code: s!.code };
   }, on);
   if (!got) return;
   const { f, spec, code } = got;
@@ -228,30 +251,55 @@ export const reportsHandlers = (on: Tx): Partial<Record<(typeof QUEUES)[keyof ty
   },
 });
 
-/**
- * POST …/versions/:vid/test: the first 50 rows (or each date's recap) of `from`..`to`, always masked, answered at once;
- * and a sample file of the same queued for the worker (Chromium never runs in the API), listed nowhere.
- */
-export function testFile(ctx: Ctx, templateId: string, versionId: string, b: TestReportBody): Promise<{ rows: ReportRow[]; summary: ReturnType<typeof dailySummary> | null; sampleId: string }> {
+async function versionOf(tx: InTx, spaceId: string, templateId: string, versionId: string) {
+  const [t] = await tx.select().from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, templateId)));
+  if (!t) throw notFound("report template");
+  const [v] = await tx.select().from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.templateId, t.id), eq(reportVersions.id, versionId)));
+  if (!v) throw notFound("report version");
+  return { t, v };
+}
+
+/** POST …/versions/:vid/test: a sample file of `from`..`to`, always masked, queued for the worker (Chromium never runs in the API). */
+export function testFile(ctx: Ctx, templateId: string, versionId: string, b: TestReportBody): Promise<{ sampleId: string }> {
   checkRange(b.from, b.to);
   return inSpace(ctx, async (tx, spaceId) => {
-    const [t] = await tx.select().from(reportTemplates).where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.id, templateId)));
-    if (!t) throw notFound("report template");
-    const [v] = await tx.select().from(reportVersions).where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.templateId, t.id), eq(reportVersions.id, versionId)));
-    if (!v) throw notFound("report version");
-    const spec = { ...(v.spec as ReportSpec), output: { ...(v.spec as ReportSpec).output, masking: "masked" as const } };
-    const rows: ReportRow[] = [];
-    // bounded, inside the request: a summary of the first TEST_SUMMARY_DAYS dates; rows from at most TEST_PAGES pages
-    const to = spec.kind === "daily_summary" ? datesOf(b.from, b.to).slice(0, TEST_SUMMARY_DAYS).at(-1)! : b.to;
-    let pages = 0;
-    for await (const p of reportRows(tx, spaceId, t.configId, spec, b.from, to, 500)) {
-      rows.push(...p);
-      if (++pages >= TEST_PAGES || (spec.kind !== "daily_summary" && rows.length >= 50)) break;
-    }
+    const { t, v } = await versionOf(tx, spaceId, templateId, versionId);
+    const spec = parseStoredSpec(v.spec);
     const sample = (await insertFile(tx, { spaceId, templateId: t.id, versionId: v.id, configId: t.configId, spec, from: b.from, to: b.to, askedBy: ctx.user.id, runId: null, sample: true }))!;
     await recordActivity(tx, ctx, { action: "report.make", target: { type: "report", id: t.id, label: t.name }, after: { fileId: sample.id, version: v.version, from: b.from, to: b.to, format: sample.format, masking: "masked", runId: null, sample: true } });
-    const plain = rows.map((r) => ({ ...r, amount: null }));
-    return { rows: spec.kind === "daily_summary" ? [] : plain.slice(0, 50), summary: spec.kind === "daily_summary" ? dailySummary(rows) : null, sampleId: sample.id };
+    return { sampleId: sample.id };
+  });
+}
+
+export type Preview = { columns: { id: string; header: string }[]; lines: { kind: Line["kind"]; cells: string[]; marks: Line["marks"] }[]; sheet: Sheet; text: string[] | null; problems: Problem[]; rows: number };
+
+/**
+ * POST …/versions/:vid/preview (the stored design) and …/preview-draft (a draft's unsaved `spec`, its maker's view) on the first PREVIEW_ROWS rows
+ * of one date, through the file's own renderer and lines (preview = file), always masked. Reads only.
+ */
+export function previewReport(ctx: Ctx, templateId: string, versionId: string, b: ReportPreviewBody & { spec?: ReportSpec }): Promise<Preview> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const { t, v } = await versionOf(tx, spaceId, templateId, versionId);
+    if (b.spec && v.status !== "draft") throw new ApiError("invalid_state", "Only a draft previews unsaved changes.");
+    const spec = b.spec ?? parseStoredSpec(v.spec);
+    const rows: RowIn[] = [];
+    const problems = new Map<string, Problem>();
+    let customer = new Set<string>();
+    for await (const p of renderedPages(tx, spaceId, t.configId, spec, b.date, b.date, PREVIEW_ROWS, true)) {
+      rows.push(...p.rows);
+      customer = p.customer;
+      for (const x of p.problems) problems.set(x.columnId, x);
+      if (rows.length >= PREVIEW_ROWS) break;
+    }
+    const n = await names(tx, spaceId, t.configId, t.id);
+    const mask = maskerOf(customer, true);
+    const masked: ReportSpec = { ...spec, output: { ...spec.output, masking: "masked" } };
+    const sheet = sheetOf(masked, { ...n, from: b.date, to: b.date, madeAt: new Date().toISOString(), final: false, masking: "masked", ...headerNumbers(spec, rows.slice(0, PREVIEW_ROWS)) }, mask);
+    const lines = linesOf(spec, rows.slice(0, PREVIEW_ROWS), mask);
+    return {
+      columns: spec.columns.map((c) => ({ id: c.id, header: c.header })), lines: lines.map((l) => ({ kind: l.kind, cells: l.cells, marks: l.marks })), sheet,
+      text: spec.output.format === "txt" ? txtLines(lines, sheet) : null, problems: [...problems.values()], rows: Math.min(rows.length, PREVIEW_ROWS),
+    };
   });
 }
 

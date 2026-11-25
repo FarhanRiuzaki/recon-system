@@ -3,14 +3,14 @@
 // version someone else made (DEC-051).
 import { Elysia } from "elysia";
 import { ListQuery } from "@starterkit/shared/contracts/common";
-import { CreateReportTemplateBody, GenerateReportBody, ReportDecisionBody, ReportFileListQuery, ReportTemplateListQuery, SaveReportVersionBody, TestReportBody } from "@starterkit/shared/contracts/reports";
+import { CreateReportTemplateBody, GenerateReportBody, ReportDecisionBody, ReportFileListQuery, ReportTemplateListQuery, SaveReportVersionBody, TestReportBody, ReportPreviewBody, ReportDraftPreviewBody } from "@starterkit/shared/contracts/reports";
 import { SPACE_ACTION } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
 import {
   approveReportVersion, createTemplate, discardDraft, listTemplates, listVersions, newDraft, rejectReportVersion, retireTemplate, saveDraft, submitVersion, templateDetail,
 } from "./service";
-import { requestFile, testFile } from "./make";
+import { previewReport, requestFile, testFile } from "./make";
 import { downloadReport, downloadSample, fileDetail, fileFacets, filePage, retryFile, sampleState } from "./files";
 
 
@@ -49,6 +49,16 @@ export const reportsController = () =>
     .post("/v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/test", async (c) => {
       const b = await body(c, TestReportBody);
       return testFile(c.ctx, idParam(c.params.templateId, "report template"), idParam(c.params.versionId, "report version"), b);
+    }, { guard: { space: SPACE_ACTION.editReports } })
+    /** The stored design on one date's first rows, masked (reads only). */
+    .post("/v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/preview", async (c) => {
+      const b = await body(c, ReportPreviewBody);
+      return previewReport(c.ctx, idParam(c.params.templateId, "report template"), idParam(c.params.versionId, "report version"), b);
+    }, { guard: { space: SPACE_ACTION.viewReports } })
+    /** A draft's unsaved design on one date's first rows, masked (reads only): the designer's live preview. */
+    .post("/v1/spaces/:spaceId/reports/templates/:templateId/versions/:versionId/preview-draft", async (c) => {
+      const b = await body(c, ReportDraftPreviewBody);
+      return previewReport(c.ctx, idParam(c.params.templateId, "report template"), idParam(c.params.versionId, "report version"), b);
     }, { guard: { space: SPACE_ACTION.editReports } })
     /** The space's report files (never a Test's sample), newest first. */
     .get("/v1/spaces/:spaceId/reports/files", ({ ctx, query }) => filePage(ctx, query), { query: ReportFileListQuery, guard: { space: SPACE_ACTION.viewReports } })

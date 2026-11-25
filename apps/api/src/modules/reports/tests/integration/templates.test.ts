@@ -2,6 +2,7 @@
 // official: waiting for a config checker, in the approvals inbox), approved or sent back, retired.
 import { beforeEach, describe, expect, it } from "bun:test";
 import type { ReportTemplateDto, ReportVersionDto } from "@starterkit/shared/contracts/reports";
+import { columnFor, emptySpec } from "@starterkit/shared/report-spec";
 import type { SpaceRole } from "@starterkit/shared/spaces";
 import { eq } from "drizzle-orm";
 import { call, resetData, signIn } from "../../../../../test/helpers/app";
@@ -27,26 +28,40 @@ beforeEach(async () => {
   mk = await signIn("admin"); ck = await signIn("viewer"); op = await signIn("google");
 });
 
-const create = (start = "daily_summary", token = mk) => call("POST", `${base()}/templates`, { token, body: { configId: cfg, name: "KSEI daily recap", start } });
+const errorOf = async (r: Promise<Response>) => ((await (await r).json()) as { error: { message: string } }).error.message;
+const create = (token = mk) => call("POST", `${base()}/templates`, { token, body: { configId: cfg, name: "KSEI daily recap" } });
+/** A template whose draft has one column (an empty design can't be sent). */
 async function made() {
   const t = await json<ReportTemplateDto>(create());
-  const v = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${t.id}/versions`, { token: mk }))).items[0]!;
+  const v0 = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${t.id}/versions`, { token: mk }))).items[0]!;
+  const v = await json<ReportVersionDto>(call("PATCH", `${base()}/templates/${t.id}/versions/${v0.id}`, { token: mk, body: { spec: { ...v0.spec, when: { afterRun: true, onRequest: true }, columns: [columnFor("c1", "recon:businessDate", "Business date")] } } }));
   return { t, v };
 }
 
 describe("report templates", () => {
-  it("a starting point gives a filled draft v1; an operator can't create (403)", async () => {
-    const { t, v } = await made();
-    expect([t.name, t.kind, t.format, t.status, t.recon.name]).toEqual(["KSEI daily recap", "daily_summary", "pdf", "draft", "KSEI vs Core"]);
-    expect([v.version, v.status, v.spec.output.masking, v.spec.official]).toEqual([1, "draft", "masked", false]);
-    expect(await status(create("blank", op))).toBe(403);
+  it("a new template opens an empty design as draft v1; an operator can't create (403)", async () => {
+    const t = await json<ReportTemplateDto>(create());
+    const v = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${t.id}/versions`, { token: mk }))).items[0]!;
+    expect([t.name, t.dataset, t.format, t.status, t.recon.name]).toEqual(["KSEI daily recap", "results", "csv", "draft", "KSEI vs Core"]);
+    expect([v.version, v.status, v.spec]).toEqual([1, "draft", emptySpec()]);
+    expect(await status(create(op))).toBe(403);
+  });
+
+  it("a design is sent only with a column, and only when its formulas work; a draft saves a broken formula", async () => {
+    const t = await json<ReportTemplateDto>(create());
+    const v = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${t.id}/versions`, { token: mk }))).items[0]!;
+    const send = () => call("POST", `${base()}/templates/${t.id}/versions/${v.id}/submit`, { token: mk });
+    expect(await errorOf(send())).toBe("Add at least one column.");
+    const broken = { ...v.spec, columns: [{ ...columnFor("c1", "a:amount_minor", "Diff"), content: { kind: "formula", cel: "a.amount_minor -" } }] };
+    expect(await status(call("PATCH", `${base()}/templates/${t.id}/versions/${v.id}`, { token: mk, body: { spec: broken } }))).toBe(200);
+    expect(await errorOf(send())).toStartWith("Diff: Can't parse it");
   });
 
   it("the draft saves; an operator is refused before the body is read; a version not in draft is 409", async () => {
     const { t, v } = await made();
-    const spec = { ...v.spec, output: { ...v.spec.output, format: "csv" } };
+    const spec = { ...v.spec, output: { ...v.spec.output, format: "txt" } };
     const saved = await json<ReportVersionDto>(call("PATCH", `${base()}/templates/${t.id}/versions/${v.id}`, { token: mk, body: { spec } }));
-    expect(saved.spec.output.format).toBe("csv");
+    expect(saved.spec.output.format).toBe("txt");
     expect(await status(call("PATCH", `${base()}/templates/${t.id}/versions/${v.id}`, { token: op, body: { nope: 1 } }))).toBe(403);
     await call("POST", `${base()}/templates/${t.id}/versions/${v.id}/submit`, { token: mk });
     expect(await status(call("PATCH", `${base()}/templates/${t.id}/versions/${v.id}`, { token: mk, body: { spec } }))).toBe(409);

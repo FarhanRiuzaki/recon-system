@@ -1,6 +1,8 @@
 // Making report files: after a run (one per template and run, whatever the retries), on request (≤ 92 days), the next
 // file version for the same dates, Final from the day's sign-off, the PDF row limit, a half-written file never served,
 // retention, and the Test's sample (always masked, never listed).
+import { columnFor } from "@starterkit/shared/report-spec";
+import { breakDetail } from "../designs";
 import { beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdirSync, readdirSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -52,8 +54,9 @@ beforeEach(async () => {
   ({ configId: CFG, versionId: VER } = await recon(A, reconSpec(sa.sourceId, sb.sourceId, [])));
   const recs = await put(sa, Array.from({ length: 12 }, (_, i) => ({ ref: `R${i}`, amount: 100n, date: i % 2 ? D1 : D })));
   await db.insert(reconItems).values(recs.map((recordId, i) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: CFG, recordId, side: "a", status: "break", businessDate: i % 2 ? D1 : D, breakReason: "No counterpart" })));
-  T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Break detail", start: "break_detail" } }));
+  T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Break detail" } }));
   V = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${T.id}/versions`, { token: mk }))).items[0]!;
+  V = await json<ReportVersionDto>(call("PATCH", `${base()}/templates/${T.id}/versions/${V.id}`, { token: mk, body: { spec: breakDetail() } }));
 });
 
 async function activate(spec: Partial<ReportSpec> = {}) {
@@ -131,9 +134,9 @@ describe("report files", () => {
     expect([gone!.status, existsSync(path.join(dir, `${f!.id}.csv`))]).toEqual(["removed", false]);
   }, 30_000);
 
-  it("the Test previews the first rows masked, and its sample file is never listed", async () => {
-    const t = await json<{ rows: { values: Record<string, string | null> }[]; sampleId: string }>(call("POST", `${base()}/templates/${T.id}/versions/${V.id}/test`, { token: mk, body: { from: D, to: D } }));
-    expect(t.rows.length).toBe(6);
+  it("the Test makes a masked sample file that is never listed", async () => {
+    const t = await json<{ sampleId: string }>(call("POST", `${base()}/templates/${T.id}/versions/${V.id}/test`, { token: mk, body: { from: D, to: D } }));
+    expect(t.sampleId).toBeString();
     await drain();
     const list = await json<{ items: unknown[] }>(call("GET", `${base()}/files`, { token: mk }));
     expect(list.items).toEqual([]);
@@ -155,7 +158,7 @@ describe("report files", () => {
   }, 30_000);
 
   it("a grouped PDF holds at most 5,000 rows too", async () => {
-    await activate({ kind: "grouped", groups: ["recon:reason"], totals: [{ fn: "count" }], output: { ...V.spec.output, format: "pdf" } });
+    await activate({ groups: ["recon:reason"], totals: { on: true, perGroup: true, columns: {} }, output: { ...V.spec.output, format: "pdf" } });
     const [sa] = [await makeSource(A, plainSource())];
     for (const part of [2500, 2501]) {
       const recs = await put(sa!, Array.from({ length: part }, (_, i) => ({ ref: `G${part}-${i}`, amount: 1n, date: D })));
@@ -167,7 +170,7 @@ describe("report files", () => {
   }, 60_000);
 
   it("an unexpected failure marks the file failed and is thrown, so the queue tries it again", async () => {
-    await activate({ kind: "daily_summary", columns: [], output: { ...V.spec.output, format: "pdf" } });
+    await activate({ dataset: "recap", rows: { filters: [] }, columns: [columnFor("c1", "recap:date", "Date")], output: { ...V.spec.output, format: "pdf" } });
     const f = await json<ReportFileDto>(call("POST", `${base()}/files`, { token: mk, body: { templateId: T.id, from: D, to: D } }));
     const e = await makeFile(db, A, f.id, { ...loadWorkerConfig(process.env), REPORT_CHROMIUM_PATH: "/nowhere/chromium" }).catch((x) => x);
     expect(e).toBeInstanceOf(Error);

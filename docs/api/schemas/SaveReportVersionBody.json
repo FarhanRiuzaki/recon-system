@@ -11,121 +11,537 @@
     "spec": {
       "type": "object",
       "properties": {
-        "kind": {
+        "v": {
+          "type": "number",
+          "const": 2
+        },
+        "dataset": {
           "type": "string",
           "enum": [
-            "transactions",
-            "grouped",
-            "daily_summary"
+            "results",
+            "items",
+            "recap"
           ]
         },
         "rows": {
           "type": "object",
           "properties": {
-            "statuses": {
+            "filters": {
+              "maxItems": 20,
               "type": "array",
               "items": {
-                "type": "string",
-                "enum": [
-                  "posting_failed",
-                  "posting_in_progress",
-                  "posting_skipped",
-                  "waiting_approval",
-                  "posted",
-                  "written_off",
-                  "adjusted",
-                  "closed",
-                  "force_matched",
-                  "matched_by_hand",
-                  "matched_late",
-                  "suggested",
-                  "matched",
-                  "unmatch",
-                  "not_required",
-                  "waiting_counterpart"
-                ]
-              }
-            },
-            "side": {
-              "type": "string",
-              "enum": [
-                "a",
-                "b",
-                "both"
-              ]
-            },
-            "reasons": {
-              "maxItems": 50,
-              "type": "array",
-              "items": {
-                "type": "string",
-                "maxLength": 80
+                "type": "object",
+                "properties": {
+                  "ref": {
+                    "type": "string",
+                    "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                  },
+                  "op": {
+                    "type": "string",
+                    "enum": [
+                      "is",
+                      "is_not",
+                      "any_of",
+                      "contains",
+                      "empty",
+                      "not_empty",
+                      "gt",
+                      "lt"
+                    ]
+                  },
+                  "value": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 120
+                    }
+                  }
+                },
+                "required": [
+                  "ref",
+                  "op",
+                  "value"
+                ],
+                "additionalProperties": false
               }
             }
           },
           "required": [
-            "statuses",
-            "side",
-            "reasons"
+            "filters"
           ],
           "additionalProperties": false
         },
         "columns": {
-          "maxItems": 40,
+          "maxItems": 60,
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "key": {
+              "id": {
                 "type": "string",
-                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+                "pattern": "^c[0-9a-z]{1,12}$"
               },
               "header": {
                 "type": "string",
-                "minLength": 1,
                 "maxLength": 80
+              },
+              "content": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "field"
+                      },
+                      "ref": {
+                        "type": "string",
+                        "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                      },
+                      "fallback": {
+                        "type": "string",
+                        "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "formula"
+                      },
+                      "cel": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 1000
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "cel"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "text"
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 200
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "text"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "rownum"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "format": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "number"
+                      },
+                      "decimals": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4
+                      },
+                      "thousands": {
+                        "type": "string",
+                        "enum": [
+                          ".",
+                          ",",
+                          "none"
+                        ]
+                      },
+                      "negative": {
+                        "type": "string",
+                        "enum": [
+                          "minus",
+                          "paren",
+                          "trailing"
+                        ]
+                      },
+                      "prefix": {
+                        "type": "string",
+                        "maxLength": 10
+                      },
+                      "suffix": {
+                        "type": "string",
+                        "maxLength": 10
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "decimals",
+                      "thousands",
+                      "negative",
+                      "prefix",
+                      "suffix"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "date"
+                      },
+                      "pattern": {
+                        "type": "string",
+                        "enum": [
+                          "dd/MM/yyyy",
+                          "yyyy-MM-dd",
+                          "yyyyMMdd",
+                          "ddMMyyyy",
+                          "dd MMM yyyy",
+                          "dd-MM-yyyy",
+                          "MM/dd/yyyy"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "pattern"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "text"
+                      },
+                      "case": {
+                        "type": "string",
+                        "enum": [
+                          "as_is",
+                          "upper",
+                          "lower"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "case"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "auto"
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "layout": {
+                "type": "object",
+                "properties": {
+                  "align": {
+                    "type": "string",
+                    "enum": [
+                      "l",
+                      "c",
+                      "r"
+                    ]
+                  },
+                  "width": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200
+                  },
+                  "pad": {
+                    "type": "string",
+                    "enum": [
+                      "0",
+                      " "
+                    ]
+                  }
+                },
+                "required": [
+                  "align",
+                  "width",
+                  "pad"
+                ],
+                "additionalProperties": false
+              },
+              "highlight": {
+                "type": "object",
+                "properties": {
+                  "when": {
+                    "type": "string",
+                    "enum": [
+                      "not_zero",
+                      "negative",
+                      "empty",
+                      "equals"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "maxLength": 80
+                  },
+                  "style": {
+                    "type": "string",
+                    "enum": [
+                      "red",
+                      "bold"
+                    ]
+                  }
+                },
+                "required": [
+                  "when",
+                  "style"
+                ],
+                "additionalProperties": false
               }
             },
             "required": [
-              "key",
-              "header"
+              "id",
+              "header",
+              "content",
+              "format",
+              "layout"
             ],
             "additionalProperties": false
           }
         },
         "groups": {
-          "maxItems": 2,
+          "maxItems": 3,
           "type": "array",
           "items": {
             "type": "string",
-            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
           }
         },
         "totals": {
-          "maxItems": 10,
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "fn": {
+          "type": "object",
+          "properties": {
+            "on": {
+              "type": "boolean"
+            },
+            "perGroup": {
+              "type": "boolean"
+            },
+            "columns": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
                 "type": "string",
                 "enum": [
-                  "count",
                   "sum",
-                  "min",
-                  "max"
+                  "count"
                 ]
-              },
-              "column": {
-                "type": "string",
-                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
               }
+            }
+          },
+          "required": [
+            "on",
+            "perGroup",
+            "columns"
+          ],
+          "additionalProperties": false
+        },
+        "sections": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "type": "boolean"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "on",
+                "text"
+              ],
+              "additionalProperties": false
             },
-            "required": [
-              "fn"
-            ],
-            "additionalProperties": false
-          }
+            "header": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "type": "boolean"
+                },
+                "lines": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "value": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "text"
+                              },
+                              "text": {
+                                "type": "string",
+                                "maxLength": 200
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "text"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "field"
+                              },
+                              "ref": {
+                                "type": "string",
+                                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "ref"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "count"
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "sum"
+                              },
+                              "ref": {
+                                "type": "string",
+                                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z_]+$|^recap:[a-z_]+$"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "ref"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "value"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "on",
+                "lines"
+              ],
+              "additionalProperties": false
+            },
+            "columnHeaders": {
+              "type": "boolean"
+            },
+            "footer": {
+              "type": "object",
+              "properties": {
+                "on": {
+                  "type": "boolean"
+                },
+                "stamp": {
+                  "type": "boolean"
+                },
+                "pageNumbers": {
+                  "type": "boolean"
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              },
+              "required": [
+                "on",
+                "stamp",
+                "pageNumbers",
+                "text"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "title",
+            "header",
+            "columnHeaders",
+            "footer"
+          ],
+          "additionalProperties": false
         },
         "output": {
           "type": "object",
@@ -135,6 +551,7 @@
               "enum": [
                 "csv",
                 "xlsx",
+                "txt",
                 "pdf"
               ]
             },
@@ -150,19 +567,58 @@
                 "full"
               ]
             },
-            "title": {
-              "type": "string",
-              "maxLength": 120
+            "csv": {
+              "type": "object",
+              "properties": {
+                "delimiter": {
+                  "type": "string",
+                  "enum": [
+                    ",",
+                    ";",
+                    "\t",
+                    "|"
+                  ]
+                },
+                "quote": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "all"
+                  ]
+                }
+              },
+              "required": [
+                "delimiter",
+                "quote"
+              ],
+              "additionalProperties": false
             },
-            "subtitle": {
+            "lineEnding": {
               "type": "string",
-              "maxLength": 200
+              "enum": [
+                "crlf",
+                "lf"
+              ]
+            },
+            "encoding": {
+              "type": "string",
+              "enum": [
+                "utf8",
+                "ascii"
+              ]
+            },
+            "groupLines": {
+              "type": "boolean"
             }
           },
           "required": [
             "format",
             "fileName",
-            "masking"
+            "masking",
+            "csv",
+            "lineEnding",
+            "encoding",
+            "groupLines"
           ],
           "additionalProperties": false
         },
@@ -187,11 +643,13 @@
         }
       },
       "required": [
-        "kind",
+        "v",
+        "dataset",
         "rows",
         "columns",
         "groups",
         "totals",
+        "sections",
         "output",
         "when",
         "official"
