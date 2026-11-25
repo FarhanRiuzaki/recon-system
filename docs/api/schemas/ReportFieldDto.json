@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportFieldDto",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "type": "string"
+    },
+    "label": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "number",
+        "date",
+        "status"
+      ]
+    },
+    "customer": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ref",
+    "label",
+    "type",
+    "customer"
+  ],
+  "additionalProperties": false
+}

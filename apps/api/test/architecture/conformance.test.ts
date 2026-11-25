@@ -250,6 +250,7 @@ const NON_LIST_GETS: Record<string, string> = {
   "GET /v1/spaces/:spaceId/inbox/folders": "the space's inbox folders from disk, at most INBOX_FOLDERS_MAX (200)",
   "GET /v1/spaces/:spaceId/inbox/folders/:folder/files": "one folder's files from disk (not a table), paged in memory with the standard page, pageSize, q and sort",
   "GET /v1/spaces/:spaceId/inbox/folders/:folder/files/download": "one file's bytes",
+  "GET /v1/spaces/:spaceId/reports/templates/:templateId/fields": "the field catalog of one template's recon",
   "GET /v1/spaces/:spaceId/reports/files/:fileId/download": "one report file's bytes",
   "GET /v1/spaces/:spaceId/reports/files/:fileId/download-full": "one report file's bytes (full customer data)",
   "GET /v1/spaces/:spaceId/reports/samples/:fileId/state": "one Test sample's status",

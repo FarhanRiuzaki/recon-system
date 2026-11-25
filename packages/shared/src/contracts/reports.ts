@@ -114,6 +114,13 @@ export const SaveReportVersionBody = z.strictObject({ name: z.string().trim().mi
 export type SaveReportVersionBody = z.infer<typeof SaveReportVersionBody>;
 export const GenerateReportBody = z.strictObject({ templateId: z.uuid(), from: day, to: day });
 export type GenerateReportBody = z.infer<typeof GenerateReportBody>;
+/** A field of the designer's Data pane (spec v2 "Designer UX"): its ref, label, type and whether it is customer data. */
+export const ReportFieldDto = z.object({ ref: z.string(), label: z.string(), type: z.enum(["text", "number", "date", "status"]), customer: z.boolean() });
+export type ReportFieldDto = z.infer<typeof ReportFieldDto>;
+export const ReportFieldsDto = z.object({ groups: z.array(z.object({ label: z.string(), fields: z.array(ReportFieldDto) })) });
+export type ReportFieldsDto = z.infer<typeof ReportFieldsDto>;
+export const ReportFieldsQuery = z.object({ dataset: z.enum(REPORT_DATASETS) });
+export type ReportFieldsQuery = z.infer<typeof ReportFieldsQuery>;
 export const ReportPreviewBody = z.strictObject({ date: day });
 export const ReportDraftPreviewBody = z.strictObject({ date: day, spec: ReportSpec });
 export type ReportDraftPreviewBody = z.infer<typeof ReportDraftPreviewBody>;

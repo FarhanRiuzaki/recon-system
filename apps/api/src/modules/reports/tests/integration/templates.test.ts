@@ -106,4 +106,5 @@ describe("report templates", () => {
     expect(await afterRunTemplates(db, A, cfg)).toEqual([]);
     expect(await status(call("GET", `${base(B)}/templates/${t.id}`, { token: mk }))).toBe(403);
   });
+
 });

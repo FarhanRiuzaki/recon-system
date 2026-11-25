@@ -18,6 +18,9 @@ import { reconConfigs } from "../recon";
 import { withSpace } from "../spaces";
 import { users } from "../users";
 import { sendProblem } from "./rules";
+import { fieldCatalog } from "./fields";
+import type { ReportFieldsDto } from "@starterkit/shared/contracts/reports";
+import type { ReportDataset } from "@starterkit/shared/reports";
 import { emptySpec, parseStoredSpec } from "@starterkit/shared/report-spec";
 import { reportFiles, reportTemplates, reportVersions } from "./schema";
 
@@ -266,4 +269,12 @@ export function afterRunTemplates(on: Tx, spaceId: string, configId: string): Pr
       .where(and(eq(reportTemplates.spaceId, spaceId), eq(reportTemplates.configId, configId), isNull(reportTemplates.retiredAt)));
     return rows.filter((r) => parseStoredSpec(r.spec).when.afterRun).map(({ templateId, versionId }) => ({ templateId, versionId }));
   }, on);
+}
+
+/** GET …/reports/templates/:id/fields?dataset=: the fields of the template's recon for that dataset. */
+export function templateFields(ctx: Ctx, id: string, dataset: ReportDataset): Promise<ReportFieldsDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const t = await ownTemplate(tx, spaceId, id);
+    return fieldCatalog(tx, spaceId, t.configId, dataset);
+  });
 }

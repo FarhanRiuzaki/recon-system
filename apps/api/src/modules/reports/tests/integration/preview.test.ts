@@ -64,4 +64,24 @@ describe("preview", () => {
     expect((await call("POST", `${base()}/templates/${T.id}/versions/${V.id}/preview`, { token: vw, body: { date: D } })).status).toBe(200);
     expect((await draft(V.spec, vw)).status).toBe(403);
   });
+
+  it("a column on a field the data doesn't have is empty and named as a problem", async () => {
+    const spec: ReportSpec = { ...V.spec, columns: [columnFor("c1", "a:attrs.gone", "Gone")] };
+    const p = await json<Preview>(draft(spec));
+    expect(p.lines[0]!.cells[0]).toBe("");
+    expect(p.problems).toEqual([{ columnId: "c1", message: "Gone: Field not in the data." }]);
+  });
+
+  it("the field catalog: result fields, each side's record fields with attributes, accounts as customer data; recap's own", async () => {
+        type Cat = { groups: { label: string; fields: { ref: string; label: string; type: string; customer: boolean }[] }[] };
+    const c = await json<Cat>(call("GET", `${base()}/templates/${T.id}/fields?dataset=results`, { token: mk }));
+    const all = c.groups.flatMap((g) => g.fields);
+    expect(c.groups.map((g) => g.label)[0]).toBe("Result");
+    expect(all.find((f) => f.ref === "a:account_ref")).toMatchObject({ customer: true, type: "text" });
+    expect(all.find((f) => f.ref === "a:amount_minor")).toMatchObject({ type: "number", customer: false });
+    expect(all.find((f) => f.ref === "b:attrs.settlement_ref")).toMatchObject({ label: "settlement_ref", type: "text" });
+    expect(all.find((f) => f.ref === "recon:status")).toMatchObject({ type: "status" });
+    const r = await json<Cat>(call("GET", `${base()}/templates/${T.id}/fields?dataset=recap`, { token: mk }));
+    expect(r.groups.flatMap((g) => g.fields).find((f) => f.ref === "recap:match_rate")).toMatchObject({ type: "number" });
+  });
 });

@@ -23,6 +23,7 @@ import { users } from "../users";
 import { type Problem, type Renderer, renderRow, rendererOf } from "./cells";
 import { type Line, linesOf, type RowIn, rowLine, type Sheet, type SheetCtx, sheetOf, totaller } from "./lines";
 import { maskValue } from "./mask";
+import { catalogRefs, fieldCatalog } from "./fields";
 import { reportHtml } from "./pdf-html";
 import { datasetRows } from "./rows";
 import { reportFiles, reportTemplates, reportVersions } from "./schema";
@@ -290,6 +291,12 @@ export function previewReport(ctx: Ctx, templateId: string, versionId: string, b
       customer = p.customer;
       for (const x of p.problems) problems.set(x.columnId, x);
       if (rows.length >= PREVIEW_ROWS) break;
+    }
+    // a column on a field this recon's data doesn't have (an attribute its source dropped) is empty: say so on it
+    const known = catalogRefs(await fieldCatalog(tx, spaceId, t.configId, spec.dataset));
+    for (const c of spec.columns) {
+      const refs = c.content.kind === "field" ? [c.content.ref, ...(c.content.fallback ? [c.content.fallback] : [])] : [];
+      if (refs.some((r) => !known.has(r)) && !problems.has(c.id)) problems.set(c.id, { columnId: c.id, message: `${c.header || "A column"}: Field not in the data.` });
     }
     const n = await names(tx, spaceId, t.configId, t.id);
     const mask = maskerOf(customer, true);
