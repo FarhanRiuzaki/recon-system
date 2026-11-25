@@ -34,6 +34,10 @@ builder check").
   or Excel.", "Unknown record type <code>", "Expected <n> columns for record type <code>, got <m>".
 - Text is streamed line by line in ingest; only Excel is read whole.
 - `xlsx` is imported only in `modules/ingest` (architecture: `apps/web` never).
+- Inbox upload (owner 25 Nov): only `.csv .txt .dat .tsv .xlsx .xls` (any case), plus an empty `<name>.done` marker;
+  the first bytes are sniffed too (`sniffKind`), so a PDF/ZIP/image/binary renamed `.csv` is refused: 400
+  `bad_request` "<Type> files can't be uploaded. Upload CSV, TXT or Excel." / "Upload CSV, TXT, DAT, TSV or Excel files
+  (.csv, .txt, .dat, .tsv, .xlsx, .xls)." FTP arrivals aren't filtered (detection says "not supported").
 
 ## Review Focus
 
@@ -105,7 +109,7 @@ builder check").
 
 **Files:** Create `apps/api/src/modules/ingest/detect.ts`. Test: `tests/unit/detect.test.ts` with text fixtures in `tests/unit/fixtures/files/*.txt|csv` (small, synthetic) and workbooks built in the test.
 
-**Interfaces — Produces:** `detect(sample: { head: Uint8Array; tail: Uint8Array | null; size: number; name: string }): DetectOutcome` where `DetectOutcome` = DetectDto without `sampleId` (the route adds it).
+**Interfaces — Produces:** `sniffKind(head: Uint8Array): "text" | "xlsx" | "xls" | { unsupported: string }` (exported from `ingest/index.ts`, used by the inbox upload) and `detect(sample: { head: Uint8Array; tail: Uint8Array | null; size: number; name: string }): DetectOutcome` where `DetectOutcome` = DetectDto without `sampleId` (the route adds it).
 
 - [ ] Step 1: failing tests (one per shape, asserting `format` and `confidence`):
   - KSEI ACT pipe, no header → delimited `|`, header false, high.
@@ -127,6 +131,7 @@ builder check").
 - `sampleId`: a uuid (picked) or `inbox:` + JSON of `{ path, name, size, modifiedAt }` (the same file; 409 `invalid_state` "The sample file changed. Detect again." when its size or time moved).
 - Preview with `{ sampleId, spec? }` reads the sample through `readRows` (first 100 records and the quarantined lines, as today's preview list).
 
+- [ ] Step 0 (owner 25 Nov, inbox upload limited to supported files): failing tests in `inbox/tests/integration/files.test.ts`: `report.pdf` → 400 with the extension sentence; `fake.csv` whose bytes start `%PDF-` → 400 "PDF files can't be uploaded. Upload CSV, TXT or Excel."; `act.TXT`, `book.xlsx` (real workbook bytes), `act.txt.done` (0 bytes) → 201; `x.done` with content → 400. Implement in `inbox/service.ts uploadFile` (extension before streaming; sniff the first chunk inside `writeUpload` via a `check(head)` callback that throws before anything is linked). Web: `UploadDialog` passes `accept={[".csv",".txt",".dat",".tsv",".xlsx",".xls",".done"]}` and `acceptLabel="CSV, TXT, DAT, TSV or Excel"`.
 - [ ] Step 1: failing tests: detect from an inbox folder of a KSEI file → delimited pipe, `sampleId` starting `inbox:`; picked `.xlsx` (raw body) → excel, `sampleId` uuid, file under `.samples/`; PDF → `supported: false`; 21 MB → 413 `too_large`; config_maker → 403; preview with that `sampleId` + spec → rows; a sample older than 24 h is swept by `tendInbox`; pipeline ingests a fixed_width file, an excel file and an H/D/T file into records (one assertion each on `records` count and one header-carried attr).
 - [ ] Step 2: run the two files → FAIL. Step 3: implement. Step 4: PASS + `bun test test/architecture` + `cd apps/web && bunx vitest run src/lib/server src/proxy.test.ts`. Step 5: commit `feat(sources): detect a file's reading from Inbox files or a picked file; preview and ingest every kind`.
 
