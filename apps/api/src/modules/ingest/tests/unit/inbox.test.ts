@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync 
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ApiError } from "../../../../kernel/errors";
-import { inboxProbe } from "../../inbox";
+import { completeFiles, inboxProbe } from "../../inbox";
 
 let dir: string, root: string, outside: string;
 beforeAll(() => {
@@ -51,5 +51,20 @@ describe("inboxProbe", () => {
   it("a missing folder inside a root is a failed check with its code, never the path", async () => {
     const r = await inboxProbe([root], path.join(root, "nope"), "*");
     expect(r).toEqual({ ok: false, message: "The folder can't be read (ENOENT). Check that it exists and that this server may read it." });
+  });
+});
+
+describe("dot files", () => {
+  it("an upload still being written (.name.uploading) is never complete, whatever the pattern", async () => {
+    const d = mkdtempSync(path.join(tmpdir(), "inbox-dot-"));
+    try {
+      writeFileSync(path.join(d, ".act1.txt.uploading"), "x");
+      writeFileSync(path.join(d, "act2.txt"), "x");
+      const old = new Date(Date.now() - 60_000);
+      for (const f of [".act1.txt.uploading", "act2.txt"]) utimesSync(path.join(d, f), old, old);
+      const files = await completeFiles([d], { kind: "file_inbox", path: d, pattern: "*", completion: { kind: "stable_seconds", seconds: 1 } } as never, Date.now());
+      expect(files.map((f) => f.name)).toEqual(["act2.txt"]);
+      expect((await inboxProbe([d], d, "*")).message).toContain("1 file");
+    } finally { rmSync(d, { recursive: true, force: true }); }
   });
 });

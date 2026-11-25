@@ -6,6 +6,7 @@
 // - inboxProbe: the connection test (route): is the folder readable, and how many files its pattern matches now.
 // - completeFiles: the files the pipeline may read now: complete once unchanged for `stable_seconds`, or once their
 //   marker `<name>.done` is there (spec §7 step 3a).
+// A dot file is never a file: an inbox upload is written as `.<name>.uploading` and renamed when whole (inbox module).
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
@@ -20,7 +21,7 @@ const codeOf = (e: unknown) => {
 const failed = (e: unknown) => ({ ok: false, message: `The folder can't be read${codeOf(e)}. Check that it exists and that this server may read it.` });
 
 /** The folder's real path, inside `roots` before and after symlinks (400 otherwise); an unreadable folder throws its fs error. */
-async function folder(roots: string[], dir: string): Promise<string> {
+export async function inboxFolder(roots: string[], dir: string): Promise<string> {
   if (!path.isAbsolute(dir) || !within(path.resolve(dir), roots.map((r) => path.resolve(r)))) throw outside();
   const real = await realpath(dir);
   const realRoots = await Promise.all(roots.map((r) => realpath(r).catch(() => path.resolve(r))));
@@ -33,11 +34,11 @@ export async function inboxProbe(roots: string[], dir: string, pattern: string):
   // named like a spec field (the wizard shows it on the Folder or Pattern field)
   if (/[/\\]/.test(pattern)) throw new ApiError("bad_request", "Check input.pattern: The file pattern matches file names only: no folders in it.");
   let real: string;
-  try { real = await folder(roots, dir); } catch (e) { if (e instanceof ApiError) throw new ApiError("bad_request", `Check input.path: ${e.message}`); return failed(e); }
+  try { real = await inboxFolder(roots, dir); } catch (e) { if (e instanceof ApiError) throw new ApiError("bad_request", `Check input.path: ${e.message}`); return failed(e); }
   let files: { name: string; at: number }[];
   try {
     const glob = new Bun.Glob(pattern);
-    const names = (await readdir(real, { withFileTypes: true })).filter((e) => e.isFile() && glob.match(e.name)).map((e) => e.name);
+    const names = (await readdir(real, { withFileTypes: true })).filter((e) => e.isFile() && !e.name.startsWith(".") && glob.match(e.name)).map((e) => e.name);
     // ponytail: one stat per matching file for "newest"; an inbox holds days of files, not millions
     files = await Promise.all(names.map(async (name) => ({ name, at: (await stat(path.join(real, name))).mtimeMs })));
   } catch (e) { return failed(e); }
@@ -58,12 +59,12 @@ export class InboxError extends Error {}
 export async function completeFiles(roots: string[], input: FileInput, now: number): Promise<InboxEntry[]> {
   let real: string;
   try {
-    real = await folder(roots, input.path);
+    real = await inboxFolder(roots, input.path);
     const glob = new Bun.Glob(input.pattern);
     const entries = (await readdir(real, { withFileTypes: true })).filter((e) => e.isFile());
     const markers = new Set(entries.map((e) => e.name));
     const out: InboxEntry[] = [];
-    for (const e of entries.filter((x) => glob.match(x.name)).sort((a, b) => (a.name < b.name ? -1 : 1))) {
+    for (const e of entries.filter((x) => !x.name.startsWith(".") && glob.match(x.name)).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       const p = path.join(real, e.name);
       const st = await stat(p);
       const modifiedAt = Math.floor(st.mtimeMs);
@@ -81,7 +82,7 @@ export async function completeFiles(roots: string[], input: FileInput, now: numb
 export async function inboxFile(roots: string[], dir: string, name: string): Promise<string> {
   if (/[/\\]/.test(name) || name === "." || name === "..") throw new InboxError("A file name has no folder in it.");
   try {
-    return path.join(await folder(roots, dir), name);
+    return path.join(await inboxFolder(roots, dir), name);
   } catch (e) {
     throw new InboxError(e instanceof ApiError ? e.message : `The folder can't be read${codeOf(e)}.`);
   }
