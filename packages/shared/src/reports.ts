@@ -1,13 +1,20 @@
 // The report generator's vocabulary and limits, zod-free (client code imports it as values, AGENTS.md §9).
 
-/** What a report holds: one row per item, rows grouped with totals, or one summary per recon per business date. */
+/** v1 report kinds: read only to convert a v1 stored spec (report-spec.ts fromV1). */
 export const REPORT_KINDS = ["transactions", "grouped", "daily_summary"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
-export const REPORT_FORMATS = ["csv", "xlsx", "pdf"] as const;
+export const REPORT_FORMATS = ["csv", "xlsx", "txt", "pdf"] as const;
 export type ReportFormat = (typeof REPORT_FORMATS)[number];
-/** The starting points "New report template" offers (filled drafts to change). */
-export const REPORT_STARTS = ["daily_summary", "break_detail", "matched_list", "blank"] as const;
-export type ReportStart = (typeof REPORT_STARTS)[number];
+/** What a template reads (spec v2 "Template, data and ownership"): the recon's results, its items, or one row per date and currency. */
+export const REPORT_DATASETS = ["results", "items", "recap"] as const;
+export type ReportDataset = (typeof REPORT_DATASETS)[number];
+/** The date patterns a column may use (spec v2, exactly these). */
+export const DATE_PATTERNS = ["dd/MM/yyyy", "yyyy-MM-dd", "yyyyMMdd", "ddMMyyyy", "dd MMM yyyy", "dd-MM-yyyy", "MM/dd/yyyy"] as const;
+export type DatePattern = (typeof DATE_PATTERNS)[number];
+export const FILTER_OPS = ["is", "is_not", "any_of", "contains", "empty", "not_empty", "gt", "lt"] as const;
+export type FilterOp = (typeof FILTER_OPS)[number];
+/** The recap dataset's fields (one row per business date and currency). */
+export const RECAP_FIELDS = ["date", "currency", "results", "matched", "breaks", "match_rate", "count_a", "amount_a", "count_b", "amount_b"] as const;
 export const REPORT_FILE_STATUSES = ["queued", "making", "ready", "failed", "removed"] as const;
 export type ReportFileStatus = (typeof REPORT_FILE_STATUSES)[number];
 export const REPORT_VERSION_STATUSES = ["draft", "waiting", "active", "superseded"] as const;
@@ -20,7 +27,9 @@ export const REPORT_RANGE_MAX_DAYS = 92;
 export const PDF_ROWS_MAX = 5000;
 /** Excel's own limit of rows per sheet. */
 export const XLSX_ROWS_MAX = 1048576;
-export const REPORT_COLUMNS_MAX = 40;
+export const REPORT_COLUMNS_MAX = 60;
+export const REPORT_HEADER_LINES_MAX = 20;
+export const REPORT_GROUPS_MAX = 3;
 export const REPORT_NAME_MAX = 120;
 
 /**
