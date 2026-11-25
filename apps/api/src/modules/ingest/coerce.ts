@@ -66,12 +66,13 @@ export function formatScaled(v: bigint, scale: number): string {
 const ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/;
 
 /**
- * A date or date-time cell by the field's pattern; without one, also the ISO text a database connector writes (a date
- * field takes a date, timestamp or Oracle DATE column, rules.ts FITS: its day as written, or with a zone its day in the
- * field's time zone).
+ * A date or date-time cell by the field's pattern, and the ISO text a database connector writes wherever that pattern
+ * doesn't match (a date field takes a date, timestamp or Oracle DATE column, rules.ts FITS, whose text is ISO whatever
+ * format the field names): a date keeps its day as written, or with a zone its day in the field's time zone.
  */
 function readDate(s: string, f: FieldSpec): string | null {
-  const m = f.format?.date ? null : ISO_DATETIME.exec(s);
+  const own = f.format?.date;
+  const m = own && patternOf(own).re.test(s) ? null : ISO_DATETIME.exec(s);
   let parts: Record<string, number>;
   let ms = 0;
   let offset: string | undefined;
@@ -80,7 +81,7 @@ function readDate(s: string, f: FieldSpec): string | null {
     ms = m[7] ? +`${m[7]}00`.slice(0, 3) : 0; // milliseconds from the digits
     offset = m[8];
   } else {
-    const { re, order } = patternOf(f.format?.date ?? (f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"));
+    const { re, order } = patternOf(own ?? (f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"));
     const r = re.exec(s);
     if (!r) return null;
     parts = { HH: 0, mm: 0, ss: 0 };

@@ -83,8 +83,13 @@ describe("other types", () => {
     expect(val("2026-11-24T20:00:00.000000Z", f("date"))).toBe("2026-11-25");
     expect(val("2026-11-24T20:00:00.000000Z", f("date", { format: { timezone: "UTC" } }))).toBe("2026-11-24");
     expect(why("2026-02-30T00:00:00", f("date"))).toBe('amount: not a date ("2026-02-30T00:00:00")');
-    // a pattern of its own reads only that pattern
-    expect(why("2026-11-24T00:00:00", f("date", { format: { date: "yyyy-MM-dd" } }))).toBe('amount: not a date ("2026-11-24T00:00:00")');
+    // a pattern of its own reads that pattern and, where it doesn't match, still the connector's ISO text (a DATE
+    // column's text is ISO whatever format the field names); anything else stays refused
+    expect(val("2026-11-24T00:00:00", f("date", { format: { date: "yyyy-MM-dd" } }))).toBe("2026-11-24");
+    expect(val("2026-11-24T00:00:00", f("date", { format: { date: "dd/MM/yyyy" } }))).toBe("2026-11-24");
+    expect(val("24/11/2026", f("date", { format: { date: "dd/MM/yyyy" } }))).toBe("2026-11-24");
+    expect(why("24-11-2026", f("date", { format: { date: "dd/MM/yyyy" } }))).toBe('amount: not a date ("24-11-2026")');
+    expect(val("2026-11-02T08:30:00+07:00", f("datetime", { format: { date: "dd/MM/yyyy HH:mm:ss" } }))).toBe("2026-11-02T01:30:00.000Z");
   });
   it("datetime: the instant in UTC, read in the field's timezone (default Asia/Jakarta)", () => {
     const fmt = { date: "yyyy-MM-dd HH:mm:ss" };
