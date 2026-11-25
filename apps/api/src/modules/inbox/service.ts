@@ -4,7 +4,7 @@
 // refused change leaves no entry and a failed entry leaves no change behind (an upload removes its file).
 import type { BulkResult, Page } from "@starterkit/shared/contracts/common";
 import type { InboxFileDto, InboxFileListQuery, InboxFileSourceDto, InboxFolderDto, InboxFolderListDto, InboxState, InboxUploadDto } from "@starterkit/shared/contracts/inbox";
-import { INBOX_FOLDER_NAME, INBOX_FOLDERS_MAX, isInboxFileName } from "@starterkit/shared/inbox";
+import { INBOX_FOLDER_NAME, INBOX_FOLDERS_MAX, isInboxFileName, uploadKindOf } from "@starterkit/shared/inbox";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { lstat, realpath, stat, unlink } from "node:fs/promises";
@@ -15,7 +15,7 @@ import { ApiError, notFound } from "../../kernel/errors";
 import { trySourceLock } from "../../kernel/locks";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
-import { sourceFiles } from "../ingest";
+import { sniffKind, sourceFiles } from "../ingest";
 import { sources, sourceVersions } from "../sources";
 import { spaces, withSpace } from "../spaces";
 import { users } from "../users";
@@ -186,10 +186,18 @@ export async function uploadFile(ctx: Ctx, folder: string, rawName: string | nul
     return { dir: await folderOf(r.root, folder), space: r.space };
   });
   const name = decodeName(rawName);
+  const kind = uploadKindOf(name);
+  if (!kind) throw new ApiError("bad_request", "Upload CSV, TXT, DAT, TSV or Excel files (.csv, .txt, .dat, .tsv, .xlsx, .xls).");
+  if (kind === "marker" && length !== "0") throw new ApiError("bad_request", "A .done marker is an empty file.");
   const max = config().INBOX_UPLOAD_MAX_MB * 1024 * 1024;
   if (!length || !/^\d+$/.test(length)) throw new ApiError("bad_request", "Send the file's size (Content-Length).");
   if (Number(length) > max) throw new ApiError("too_large", `The file is over ${config().INBOX_UPLOAD_MAX_MB} MB.`);
-  const got = await writeUpload(dir, name, body ?? new Blob([]).stream(), max, Number(length));
+  // a data file's first bytes say what it is: a PDF, ZIP, image or binary renamed .csv is refused (sniffKind)
+  const check = kind === "data" ? (head: Uint8Array) => {
+    const k = sniffKind(head);
+    if (typeof k === "object") throw new ApiError("bad_request", `${k.unsupported} files can't be uploaded. Upload CSV, TXT or Excel.`);
+  } : undefined;
+  const got = await writeUpload(dir, name, body ?? new Blob([]).stream(), max, Number(length), check);
   try {
     await inSpace(ctx, async (tx, spaceId) => {
       await tx.insert(inboxUploads).values({ id: Bun.randomUUIDv7(), spaceId, folder, name, size: got.size, sha256: got.sha256, uploadedBy: ctx.user.id })

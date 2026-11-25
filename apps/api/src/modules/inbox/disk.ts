@@ -85,7 +85,7 @@ export async function removeFolder(root: string, name: string): Promise<void> {
  * lands; then linked to `name` (refused when
  * that name exists: 409 duplicate, never overwritten) and the dot file removed.
  */
-export async function writeUpload(dir: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number, expected?: number): Promise<{ size: number; sha256: string }> {
+export async function writeUpload(dir: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number, expected?: number, check?: (head: Uint8Array) => void): Promise<{ size: number; sha256: string }> {
   plainName(name);
   // the temporary name doesn't carry the file's: a 255-byte name would pass the file system's limit with it
   const temp = path.join(dir, `.${Bun.randomUUIDv7()}.uploading`);
@@ -94,11 +94,31 @@ export async function writeUpload(dir: string, name: string, body: ReadableStrea
   const fh = await open(temp, "wx", FILE_MODE);
   try {
     try {
+      // the first bytes (up to 4 KB) go to `check` before any is written: a type it refuses leaves nothing behind
+      let head: Uint8Array | null = check ? new Uint8Array(0) : null;
       for await (const chunk of body) {
+        if (head) {
+          head = Buffer.concat([head, chunk]);
+          if (head.length < 4096) continue;
+          check!(head);
+          size += head.byteLength;
+          if (size > maxBytes) throw new ApiError("too_large", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
+          h.update(head);
+          await fh.write(head);
+          head = null;
+          continue;
+        }
         size += chunk.byteLength;
         if (size > maxBytes) throw new ApiError("too_large", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
         h.update(chunk);
         await fh.write(chunk);
+      }
+      if (head) {
+        if (head.length) check!(head);
+        size += head.byteLength;
+        if (size > maxBytes) throw new ApiError("too_large", `The file is over ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
+        h.update(head);
+        await fh.write(head);
       }
     } finally { await fh.close(); }
     // a stream that ended early but cleanly (a proxy cut it): never a short file under the real name

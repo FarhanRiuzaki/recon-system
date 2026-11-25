@@ -13,7 +13,7 @@ import { ExportIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { InboxFileDto, InboxFolderDto } from "@starterkit/shared/contracts/inbox";
-import { INBOX_FOLDER_NAME } from "@starterkit/shared/inbox";
+import { INBOX_FOLDER_NAME, INBOX_UPLOAD_EXTENSIONS } from "@starterkit/shared/inbox";
 import { api, errorText } from "@/lib/client/api";
 import { STATE } from "./inbox-columns";
 import { inboxFilesPath, uploadFile } from "./upload";
@@ -88,6 +88,7 @@ export function UploadDialog({ spaceId, folder, initial, onClose }: { spaceId: s
         </DialogHeader>
         <DialogBody>
           <FileUpload label="Files" multiple initial={initial} errorText={errorText}
+            accept={[...INBOX_UPLOAD_EXTENSIONS]} acceptLabel="CSV, TXT, DAT, TSV or Excel"
             upload={async (file, { onProgress, signal }) => {
               await uploadFile(spaceId, folder, file, { onProgress, signal });
               setSent((n) => n + 1);

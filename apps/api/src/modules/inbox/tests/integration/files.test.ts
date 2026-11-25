@@ -134,6 +134,31 @@ describe("POST …/files (upload)", () => {
   });
 });
 
+describe("only supported files upload (owner 25 Nov)", () => {
+  it("another extension is refused before anything is written", async () => {
+    const r = await upload(t.op, "report.pdf", "%PDF-1.7");
+    expect([r.status, (await errOf(r)).message]).toEqual([400, "Upload CSV, TXT, DAT, TSV or Excel files (.csv, .txt, .dat, .tsv, .xlsx, .xls)."]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("a PDF renamed .csv is refused by its content, and nothing is kept", async () => {
+    const r = await upload(t.op, "fake.csv", "%PDF-1.7 fake");
+    expect([r.status, (await errOf(r)).message]).toEqual([400, "PDF files can't be uploaded. Upload CSV, TXT or Excel."]);
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
+  it("text in any case, a real workbook and an empty .done marker upload; a .done with content doesn't", async () => {
+    const { utils, write } = await import("xlsx");
+    const wb = utils.book_new(); utils.book_append_sheet(wb, utils.aoa_to_sheet([["a", 1]]), "S");
+    const xlsx = Buffer.from(write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer).toString("latin1");
+    expect((await upload(t.op, "act.TXT", "a|b\n")).status).toBe(201);
+    expect((await request(app, files(), { method: "POST", headers: { "X-Internal-Token": process.env.INTERNAL_API_TOKEN!, Authorization: `Bearer ${t.op}`, "x-file-name": "book.xlsx", "content-length": String(xlsx.length) }, body: Buffer.from(xlsx, "latin1") })).status).toBe(201);
+    expect((await upload(t.op, "act.txt.done", "")).status).toBe(201);
+    const r = await upload(t.op, "x.done", "not empty");
+    expect([r.status, (await errOf(r)).message]).toEqual([400, "A .done marker is an empty file."]);
+  });
+});
+
 describe("GET …/files", () => {
   it("lists files by modification time, newest first, with who uploaded each; a file copied in shows no uploader", async () => {
     await upload(t.op, "act20261124.txt", "one");
