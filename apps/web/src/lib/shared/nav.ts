@@ -4,7 +4,7 @@ import { NAV_COUNT_CAP } from "@starterkit/shared/spaces";
 import { formatNumber } from "@starterkit/ui/lib/format";
 
 export type NavIcon = "dashboard" | "users" | "roles" | "permissions" | "activity" | "signin" | "ds" | "profile" | "projects" | "members"
-  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations" | "posting" | "results";
+  | "today" | "breaks" | "approvals" | "recons" | "sources" | "workflows" | "integrations" | "posting" | "results" | "inbox";
 export type NavGroup = "main" | "work" | "setup" | "space" | "access" | "audit" | "personal";
 /** Why a `soon` item is off, as the 64 px rail's tooltip (the group caption says it elsewhere; AGENTS.md §10). */
 export const SOON_REASON = "Arrives in a later release.";
@@ -32,7 +32,7 @@ export type NavItem = {
   space?: SpacePage;
 };
 /** The pages every space has (/spaces/<id>/<page>). */
-export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals", "breaks", "workflows", "posting", "results"] as const;
+export const SPACE_PAGES = ["members", "sources", "recons", "today", "approvals", "breaks", "workflows", "posting", "results", "inbox"] as const;
 export type SpacePage = (typeof SPACE_PAGES)[number];
 export type NavChild = { href: string; label: string; icon?: NavIcon };
 export type NavSection = { id: NavGroup; label: string; items: NavItem[] };
@@ -46,6 +46,7 @@ export const NAV: readonly NavItem[] = [
   { href: "/posting", label: "Posting", icon: "posting", shortcut: "G N", group: "work", perm: null, space: "posting" },
   { href: "/recons", label: "Recons", icon: "recons", shortcut: "G C", group: "setup", perm: null, space: "recons" },
   { href: "/sources", label: "Sources", icon: "sources", shortcut: "G O", group: "setup", perm: null, space: "sources" },
+  { href: "/inbox", label: "Inbox files", icon: "inbox", shortcut: "G B", group: "setup", perm: null, space: "inbox" },
   { href: "/projects", label: "Projects", icon: "projects", shortcut: "", group: "main", perm: "project.view", hidden: true },
   { href: "/spaces", label: "Members", icon: "members", shortcut: "G E", group: "space", perm: null, space: "members" },
   { href: "/workflows", label: "Workflows", icon: "workflows", shortcut: "G W", group: "space", perm: null, space: "workflows" },

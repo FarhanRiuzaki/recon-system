@@ -55,6 +55,7 @@ const NO_SCREEN: Record<string, string> = {
   "/workflows": "an entry: redirects to Workflows of the remembered space (or /spaces)",
   "/posting": "an entry: redirects to Posting of the remembered space (or /spaces)",
   "/results": "an entry: redirects to Operation result of the remembered space (or /spaces)",
+  "/inbox": "an entry: redirects to Inbox files of the remembered space (or /spaces)",
   "/sources": "an entry: redirects to the sources of the remembered space (or /spaces)",
   "/spaces": "an entry: redirects to a space's members; with no space at all, the shell's \"No space yet\" card (Figma Shell · No space yet)",
 };

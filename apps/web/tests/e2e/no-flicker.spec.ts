@@ -33,6 +33,7 @@ const PAGES = [
   { path: "/audit/activity", filled: "View entry" },
   { path: "/me", filled: 'id="me-username"' },
   { path: "/spaces/{treasury}/members", filled: "Viewer User" },
+  { path: "/spaces/{treasury}/inbox", filled: "No folders yet" },
   { path: "/spaces/{treasury}/sources", filled: 'href="/spaces/{treasury}/sources/{biSettlement}"' },
   { path: "/spaces/{treasury}/sources/{biSettlement}", filled: "bisettle" },
   { path: "/spaces/{treasury}/sources/{biSettlement}/versions/{biSettlementV1}", filled: "BI settlement file · version 1" },

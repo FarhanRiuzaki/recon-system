@@ -8,7 +8,7 @@ import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-rang
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
 import { appDate } from "@starterkit/ui/lib/format";
-import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS } from "@starterkit/shared/paging";
+import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS, INBOX_FILE_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { selectionState } from "@starterkit/shared/filter-selection";
@@ -102,6 +102,12 @@ export const spaceOptions = () => ({ key: [...SPACES_KEY, "options"] as const, u
 export const spaceDetail = (id: string) => ({ key: [...SPACES_KEY, "detail", id] as const, url: `/api/spaces/${encodeURIComponent(id)}` });
 /** One spec object for every space (useTableQuery memoizes on it); `q` matches the name or the username. */
 const SPACE_MEMBERS_SPEC: TableSpec<{ q: string }> = { sorts: SPACE_MEMBER_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200) } };
+/** The inbox module's reads (Inbox files): a space's folders, and one folder's files as a server table. */
+export const INBOX_KEY = ["inbox"] as const;
+export const inboxFolders = (spaceId: string) => ({ key: [...INBOX_KEY, "folders", spaceId] as const, url: `/api/spaces/${encodeURIComponent(spaceId)}/inbox/folders` as const });
+const INBOX_FILES_SPEC: TableSpec<{ q: string }> = { sorts: INBOX_FILE_SORTS, defaultSort: "-modifiedAt", search: ["q"], filters: { q: text(200) } };
+export const INBOX_FILES = (spaceId: string, folder: string): TableDef<{ q: string }> => ({ key: INBOX_KEY[0], path: `/api/spaces/${encodeURIComponent(spaceId)}/inbox/folders/${encodeURIComponent(folder)}/files`, spec: INBOX_FILES_SPEC, transient: ["folder"] });
+
 export const SPACE_MEMBERS = (id: string): TableDef<{ q: string }> => ({ key: SPACES_KEY[0], path: `/api/spaces/${encodeURIComponent(id)}/members`, spec: SPACE_MEMBERS_SPEC });
 /** The spaces a user is in, with their roles there (user detail's Spaces panel): one page of 100, name A–Z. */
 export const userSpaces = (userId: string) => ({
