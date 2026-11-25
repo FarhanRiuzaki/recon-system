@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InboxFileSourceDto",
+  "type": "object",
+  "properties": {
+    "sourceId": {
+      "type": "string"
+    },
+    "sourceName": {
+      "type": "string"
+    },
+    "state": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "ingested",
+        "duplicate",
+        "failed"
+      ]
+    },
+    "rowsIn": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rowsQuarantined": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "sourceId",
+    "sourceName",
+    "state",
+    "rowsIn",
+    "rowsQuarantined"
+  ],
+  "additionalProperties": false
+}

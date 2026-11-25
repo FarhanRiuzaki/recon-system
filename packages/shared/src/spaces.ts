@@ -29,6 +29,12 @@ export const SPACE_ACTION = {
   editSource: ["source_admin", "config_maker"],
   previewSource: ["source_admin", "config_maker", "config_checker"],
   shareSource: ["space_admin"],
+  /** See the space's inbox folders and files and download a file (Inbox files). */
+  viewInbox: ["space_admin", "source_admin", "config_maker", "config_checker", "operator", "reviewer", "viewer"],
+  /** Upload a file into a folder of the space's inbox (owner, 25 Nov). */
+  uploadInbox: ["operator", "source_admin"],
+  /** Create and delete the inbox's folders, delete a file no source has read yet. */
+  manageInbox: ["source_admin"],
   /** The space's name, its members and their roles (with `or: "space.manage"`). */
   manageMembers: ["space_admin"],
   /** The space's workflows (with `or: "workflow.manage"`). */

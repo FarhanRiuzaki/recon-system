@@ -15,11 +15,11 @@ describe("RoleMatrix: 7 roles × the actions the API guards (SPACE_ACTION)", () 
   it("the actions in three groups, a cell per role", () => {
     expect(ROLE_MATRIX.map((g) => [g.group, g.rows.map((r) => r.action)])).toEqual([
       ["Daily work", ["View recons, today, unmatch items and operation result", "View postings and posting groups", "View a source's files, pulls and records",
-        "View the dashboard of the spaces you are in", "See the sidebar counts", "Take an item and set its state", "Assign items to someone", "Run a recon now",
+        "View the dashboard of the spaces you are in", "See the sidebar counts", "See and download inbox files", "Upload a file to the inbox", "Take an item and set its state", "Assign items to someone", "Run a recon now",
         "Match", "Request posting", "Force match", "Write-off", "Close without a match", "Undo match", "Work an item from Explain in operation result",
         "Approve requests", "Sign off a day"]],
       ["Setup", ["Set up recons", "Run a simulation", "Preview a posting request", "Choose operation result columns", "Delete a recon",
-        "Set up sources", "Connect a source and pull it", "Set up workflows"]],
+        "Set up sources", "Connect a source and pull it", "Manage inbox folders and delete files", "Set up workflows"]],
       ["Space", ["Manage members", "Share a source with another space"]],
     ]);
     for (const r of rows) expect(r.cells, r.action).toHaveLength(SPACE_ROLES.length);

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InboxFolderListDto",
+  "type": "object",
+  "properties": {
+    "root": {
+      "type": "string"
+    },
+    "folders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "files": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "newest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "newestAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "ingested",
+                "duplicate",
+                "failed"
+              ]
+            },
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "required": [
+              "waiting",
+              "ingested",
+              "duplicate",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "files",
+          "newest",
+          "newestAt",
+          "summary"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "root",
+    "folders"
+  ],
+  "additionalProperties": false
+}

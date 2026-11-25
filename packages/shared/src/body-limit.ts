@@ -14,3 +14,9 @@ const CONNECTOR_PATH = /^\/v1\/integrations\/connectors\/[0-9a-f-]{36}\/draft$/i
 
 /** The body limit of the /v1 path `path` (its query left out). */
 export const bodyMaxFor = (path: string): number => { const p = path.split("?")[0]!; return SPEC_PATH.test(p) || CONNECTOR_PATH.test(p) ? SPEC_BODY_MAX : BODY_MAX; };
+
+/** POST …/inbox/folders/{folder}/files: an inbox upload, streamed (its limit is INBOX_UPLOAD_MAX_MB, checked by the API). */
+const INBOX_UPLOAD_PATH = /^\/v1\/spaces\/[0-9a-fA-F-]{36}\/inbox\/folders\/[a-z0-9][a-z0-9_-]{0,63}\/files$/;
+
+/** Whether the /v1 path `path` (its query left out) is an inbox upload. */
+export const isInboxUpload = (path: string): boolean => INBOX_UPLOAD_PATH.test(path.split("?")[0]!);

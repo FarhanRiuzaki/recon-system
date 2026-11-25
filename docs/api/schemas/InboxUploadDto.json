@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InboxUploadDto",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "size": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "sha256": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "size",
+    "sha256"
+  ],
+  "additionalProperties": false
+}

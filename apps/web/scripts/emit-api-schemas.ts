@@ -17,6 +17,7 @@ import * as auth from "@starterkit/shared/contracts/auth";
 import * as common from "@starterkit/shared/contracts/common";
 import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
+import * as inbox from "@starterkit/shared/contracts/inbox";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
 import * as approvals from "@starterkit/shared/contracts/approvals";
@@ -49,6 +50,7 @@ const COMPOSED = {
   PermissionPage: pageOf(rbac.PermissionDto),
   ActivityPage: pageOf(audit.ActivityDto),
   AuthLogPage: pageOf(audit.AuthLogDto),
+  InboxFilePage: pageOf(inbox.InboxFileDto),
   ProjectPage: pageOf(projects.ProjectDto),
   LibraryPage: pageOf(workflows.LibraryRowDto),
   UsedByPage: pageOf(workflows.UsedByRowDto),
@@ -83,7 +85,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, me, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, inbox, me, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -135,6 +137,10 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
   "source.discard": ["source", "`{ code, name, kind }`", "–"],
   "source.run": ["source", "–", "`{ businessDate }` (the snapshot date pulled again, or null for a pull or scan)"],
+  "inbox.upload": ["space", "–", "`{ folder, name, size, sha256 }`"],
+  "inbox.folder_create": ["space", "–", "`{ folder }`"],
+  "inbox.folder_delete": ["space", "`{ folder }`", "–"],
+  "inbox.file_delete": ["space", "`{ folder, name, size }`", "–"],
   "recon.create": ["recon", "–", "`{ code, name, version, specHash }` (the recon and its draft version 1)"],
   "recon.version_create": ["recon", "–", "`{ version, from }` (`from` = the published version copied)"],
   "recon.version_update": ["recon", "`{ version, specHash }`", "`{ version, specHash }`"],

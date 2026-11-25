@@ -328,6 +328,10 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `recon.run` | Recon run started | recon | – | `{ runId, version, from, to }` (the published version run over business dates from–to) |
 | `recon.simulate` | Recon simulation started | recon | – | `{ runId, version, specHash, from, to }` (the draft simulated over business dates from–to) |
 | `recon.result_columns` | Operation result columns changed | recon | `{ columns }` (null = the default columns) | `{ columns }` (null = back to the default columns) |
+| `inbox.upload` | Inbox file uploaded | space | – | `{ folder, name, size, sha256 }` |
+| `inbox.folder_create` | Inbox folder created | space | – | `{ folder }` |
+| `inbox.folder_delete` | Inbox folder deleted | space | `{ folder }` | – |
+| `inbox.file_delete` | Inbox file deleted | space | `{ folder, name, size }` | – |
 | `break.assign` | Unmatch item assigned | break (the item; label its reference) | `{ assignee, state }` | `{ assignee, state }` (assignee null = back to Unassigned) |
 | `break.take` | Unmatch item taken | break | `{ assignee, state }` | `{ assignee, state }` (the caller) |
 | `break.state` | Unmatch item state changed | break | `{ state }` | `{ state }` (investigating or pending_external) |
