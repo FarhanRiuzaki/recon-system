@@ -65,4 +65,13 @@ describe("SourceMapper", () => {
     await act(async () => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; set.call(box, "c30"); box.dispatchEvent(new Event("input", { bubbles: true })); });
     expect([...document.querySelectorAll('[aria-label="Columns"] li')].map((x) => x.textContent?.split(" ")[0])).toEqual(["c30"]);
   });
+
+  it("Escape after an edit asks instead of dropping the changes", async () => {
+    const { onCancel } = await mount(spec());
+    await click("row Account");
+    await pick("Account comes from", "field:sre");
+    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(text()).toContain("Use Cancel to drop your changes, or Done to keep them.");
+  });
 });

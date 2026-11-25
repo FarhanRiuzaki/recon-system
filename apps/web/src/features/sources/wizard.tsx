@@ -28,6 +28,7 @@ import { type CatalogTable, credKey, goneBlocked, goneFields, IDLE, type ListSta
 import { suggestCore, withUnit } from "./steps/core-suggest";
 import { ConnectionStep } from "./steps/connection";
 import { previewBody } from "./use-spec-preview";
+import { focusControl } from "./steps/reveal";
 import {
   amountProblems, buildSpec, closeConnection, type Column, connBody, connChanged, connectionProblems, connKey, controlOf, ctl, type Draft, EMPTY_CONN, emptySpec, FIELD_CONTROL, type FieldErr, fitLookback, mappingProblem, type Preview, pullProblems,
   saveAndClose, type Tested, watermarkKind, watermarkProblems,
@@ -258,7 +259,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
   /** Shows `list` on their controls and focuses the first; true when there were none. */
   const show = (list: { id: string; reason: string }[]) => {
     setProblems(Object.fromEntries(list.map((p) => [p.id, p.reason])));
-    if (list[0]) requestAnimationFrame(() => document.getElementById(list[0]!.id)?.focus());
+    if (list[0]) requestAnimationFrame(() => focusControl(list[0]!.id));
     return list.length === 0;
   };
   /** An API error on a field: shown on its control (focused when `focus`), else beside the buttons. */
@@ -267,7 +268,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     if (named) {
       const id = controlOf(named.path) ?? fallback;
       setFieldErr({ id, reason: named.reason });
-      if (focus) requestAnimationFrame(() => document.getElementById(id)?.focus());
+      if (focus) requestAnimationFrame(() => focusControl(id));
     } else setFormError(errorText(e));
   };
 
@@ -492,7 +493,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
     } catch (e) {
       const id = step === 0 ? (i.kind === "db_watermark" && d.from === "table" ? "src-input-table" : "src-input-query") : "src-columns";
       setFieldErr({ id, reason: errorText(e) });
-      requestAnimationFrame(() => document.getElementById(id)?.focus());
+      requestAnimationFrame(() => focusControl(id));
       return false;
     } finally {
       setBusy(null);

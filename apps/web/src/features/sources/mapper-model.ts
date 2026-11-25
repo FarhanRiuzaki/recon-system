@@ -37,20 +37,22 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
     const r = (spec.mapping as unknown as Record<string, Ref | undefined>)[k];
     const row: MapTargetRow = { path: k, name: LABEL[k], depth: 0, leaf: true, required: k === "business_date", type: "", maxLength: null, filledBy: null, mapped: null };
     if (k === "currency" && !r && spec.currency) return { ...row, mapped: "const", note: `${spec.currency} for every row` };
-    if (!r) return row;
+    // the wizard's "not picked yet" business date is { field: "" }
+    if (!r || ("field" in r && !r.field)) return row;
     if ("field" in r) {
       if (!names.has(r.field) && !Object.hasOwn(spec.derive ?? {}, r.field)) return { ...row, broken: true, note: `Column ${r.field} isn't in the file any more` };
       edges.push({ id: k, source: names.has(r.field) ? "columns" : "computed", row: r.field, target: k, label: null });
       return { ...row, mapped: "field" };
     }
     const json = jsonPathOf(r);
-    if (json && names.has(json.column)) { edges.push({ id: k, source: "columns", row: json.column, target: k, label: json.path, dashed: true }); return { ...row, mapped: "cel" }; }
+    if (json && !names.has(json.column)) return { ...row, broken: true, note: `Column ${json.column} isn't in the file any more` };
+    if (json) { edges.push({ id: k, source: "columns", row: json.column, target: k, label: json.path, dashed: true }); return { ...row, mapped: "cel" }; }
     return { ...row, mapped: "cel", note: formulaNote(r.cel) };
   });
   request.push({ path: "attrs", name: "Extra attributes", depth: 0, leaf: false, required: false, type: "", maxLength: null, filledBy: null, mapped: null, folded: Object.keys(spec.mapping.attrs ?? {}).length });
   return {
     sources: [{ id: "columns", title: "File columns", caption: null, rows: columns }, ...(computed.length ? [{ id: "computed", title: "Computed", caption: null, rows: computed }] : [])],
-    request, edges, missing: spec.mapping.business_date ? [] : ["business_date"],
+    request, edges, missing: request[0]!.mapped || request[0]!.broken ? [] : ["business_date"],
   };
 }
 
@@ -69,12 +71,13 @@ export function connect(spec: SourceSpec, column: string, target: CoreRow): Sour
 /** Core row `target` loses its mapping; the business date can't. */
 export function disconnect(spec: SourceSpec, target: CoreRow): SourceSpec | { refused: string } {
   if (target === "business_date") return { refused: REQUIRED };
+  if (target === "currency") return { ...withMapping(spec, { currency: undefined }), currency: undefined };
   return withMapping(spec, { [target]: undefined } as Partial<Mapping>);
 }
 
 /** Where core row `target` takes its value from, set in the inspector. */
 export function setSource(spec: SourceSpec, target: CoreRow, v: { field: string } | { cel: string } | { preset: "file_date" | "arrived_date" } | { currency: string }): SourceSpec {
-  if ("currency" in v) return { ...withMapping(spec, { currency: undefined }), currency: v.currency };
+  if ("currency" in v) return { ...withMapping(spec, { currency: undefined }), currency: v.currency.trim() || undefined };
   if ("field" in v) return connect(spec, v.field, target);
   const cel = "preset" in v ? v.preset : v.cel;
   if (target === "amount_minor") return withMapping(spec, { amount_minor: { cel, ...(spec.mapping.amount_minor?.unit ? { unit: spec.mapping.amount_minor.unit } : {}) } });
@@ -84,7 +87,11 @@ export function setSource(spec: SourceSpec, target: CoreRow, v: { field: string 
 /** Column `column` kept as an extra attribute (under `name`, its own by default) or not. */
 export function toggleAttr(spec: SourceSpec, column: string, on: boolean, name = attrNameOf(column)): SourceSpec {
   const attrs = Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([, r]) => !("field" in r && r.field === column)));
-  return withMapping(spec, { attrs: on ? { ...attrs, [name]: { field: column } } : attrs });
+  if (!on) return withMapping(spec, { attrs });
+  // a name another column already keeps takes the next free suffix (amount, amount_2), as step 2 does
+  let free = name;
+  for (let i = 2; Object.hasOwn(attrs, free); i++) free = `${name}_${i}`;
+  return withMapping(spec, { attrs: { ...attrs, [free]: { field: column } } });
 }
 
 /** Step 2's summary: "2 core fields mapped · 2 extra attributes · 1 computed". */

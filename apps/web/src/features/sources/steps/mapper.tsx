@@ -13,6 +13,7 @@ import { RemoveIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
+import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { FieldMapCanvas } from "@/components/field-map/canvas";
 import { CORE_ROWS, type CoreRow, connect, disconnect, setSource, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
 import { useSpecPreview } from "../use-spec-preview";
@@ -28,7 +29,7 @@ function sourceValue(spec: SourceSpec, k: CoreRow): string {
   const r = (spec.mapping as unknown as Record<string, { field: string } | { cel: string } | undefined>)[k];
   if (k === "currency" && !r && spec.currency) return "const";
   if (!r) return "";
-  if ("field" in r) return `field:${r.field}`;
+  if ("field" in r) return r.field ? `field:${r.field}` : "";
   return r.cel === "file_date" || r.cel === "arrived_date" ? `preset:${r.cel}` : "cel";
 }
 
@@ -40,6 +41,9 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
   const [selected, setSelected] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [refused, setRefused] = useState<string | null>(null);
+  // Escape, the close button or a click outside ask when something changed (the posting editor's rule)
+  const [held, setHeld] = useState(false);
+  const dirty = JSON.stringify(spec) !== JSON.stringify(given);
   const graph = useMemo(() => sourceGraph(spec, examples), [spec, examples]);
   const live = useSpecPreview({ ...preview, spec, enabled: open });
   const edit = (next: SourceSpec) => { setRefused(null); setSpec(next); };
@@ -89,7 +93,9 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
       </Field>
       {selected === "currency" && spec.currency && !spec.mapping.currency && (
         <Field id="mapper-currency" label="Currency for every row">
-          <Input id="mapper-currency" maxLength={3} value={spec.currency} onChange={(e) => edit(setSource(spec, "currency", { currency: e.target.value.toUpperCase() }))} />
+          <Select id="mapper-currency" value={spec.currency} onChange={(e) => edit(setSource(spec, "currency", { currency: e.target.value }))}>
+            {Object.keys(CURRENCY_EXPONENT).map((c) => <option key={c} value={c}>{c}</option>)}
+          </Select>
         </Field>
       )}
       {row.note && <p className="text-body-sm text-fg-2">{row.note}</p>}
@@ -108,8 +114,9 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
 
   return (
     <FullScreenEditor open={open} title={name.trim() || "New source"} description={summaryLine(spec)}
-      onOpenChange={(o) => { if (!o) onCancel(); }}
+      onOpenChange={(o) => { if (!o) { if (dirty) setHeld(true); else onCancel(); } }}
       actions={<>
+        {held && <span role="status" className="text-body-sm text-degraded-ink">Use Cancel to drop your changes, or Done to keep them.</span>}
         <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
         <Button type="button" onClick={() => onDone(spec)}>Done</Button>
       </>}

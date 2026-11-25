@@ -65,4 +65,30 @@ describe("edits", () => {
     expect(toggleAttr(spec(), "data", true, "payload").mapping.attrs.payload).toEqual({ field: "data" });
     expect(summaryLine(spec())).toBe("2 core fields mapped · 2 extra attributes · 1 computed");
   });
+
+  describe("review fixes", () => {
+    const g = (s: SourceSpec) => sourceGraph(s, {});
+    const row = (s: SourceSpec, k: string) => g(s).request.find((r) => r.path === k)!;
+    it("a JSON path whose column is gone is broken, not a formula", () => {
+      const s = { ...spec(), mapping: { ...spec().mapping, ext_ref: { cel: computeCel("gone", [{ type: "json", args: ["code.rc"] }]) } } } as SourceSpec;
+      expect(row(s, "ext_ref")).toMatchObject({ broken: true, note: "Column gone isn't in the file any more" });
+    });
+    it("the wizard's empty business date is unmapped and missing", () => {
+      const s = { ...spec(), mapping: { ...spec().mapping, business_date: { field: "" } } } as SourceSpec;
+      expect(row(s, "business_date").broken).toBeUndefined();
+      expect(row(s, "business_date").mapped).toBeNull();
+      expect(g(s).missing).toEqual(["business_date"]);
+    });
+    it("two columns with the same attribute name keep both", () => {
+      const s = { ...spec(), fields: [...spec().fields, { name: "Amount", type: "string", nullable: true, trim: true }, { name: "amount", type: "string", nullable: true, trim: true }], mapping: { ...spec().mapping, attrs: {} } } as SourceSpec;
+      const both = toggleAttr(toggleAttr(s, "Amount", true), "amount", true);
+      expect(Object.values(both.mapping.attrs).map((r) => ("field" in r ? r.field : ""))).toEqual(["Amount", "amount"]);
+    });
+    it("removing the currency clears the one for every row; an empty one is none", () => {
+      const s = setSource(spec(), "currency", { currency: "IDR" });
+      const off = disconnect(s, "currency");
+      expect("refused" in off ? null : off.currency).toBeUndefined();
+      expect(setSource(spec(), "currency", { currency: "" }).currency).toBeUndefined();
+    });
+  });
 });
