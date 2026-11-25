@@ -97,6 +97,7 @@ describe("SourceMapper", () => {
       await click("row Account");
       await pick("Account comes from", "cel");
       await type("Formula", "sid + sre");
+      await act(async () => { document.querySelector<HTMLInputElement>('input[aria-label="Formula"]')!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
       await click("Done");
       const m = onDone.mock.calls[0]![0].mapping;
       expect(m.ext_ref.cel).toContain("code.rc");
@@ -121,6 +122,39 @@ describe("SourceMapper", () => {
       await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Stop keeping sre"]')!.click());
       await click("Done");
       expect(onDone.mock.calls[0]![0].mapping.attrs).toEqual({});
+    });
+  });
+
+  describe("review of the inspector", () => {
+    const type = (label: string, value: string) => act(async () => { const el = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!; Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value); el.dispatchEvent(new Event("input", { bubbles: true })); });
+    const blur = (label: string) => act(async () => { document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!.dispatchEvent(new FocusEvent("focusout", { bubbles: true })); });
+    it("a formula is applied when the box is left, and an empty one removes the mapping", async () => {
+      const { onDone } = await mount(spec());
+      await click("row Account");
+      await pick("Account comes from", "cel");
+      await type("Formula", "sid + sre");
+      await blur("Formula");
+      await type("Formula", "");
+      await blur("Formula");
+      await click("Done");
+      expect(onDone.mock.calls[0]![0].mapping.account_ref).toBeUndefined();
+    });
+    it("a JSON path that isn't keys with dots is not applied, and says why", async () => {
+      const { onDone } = await mount(spec());
+      await click("row Reference");
+      await pick("Reference comes from", "json");
+      await type("JSON path", "code.");
+      expect(text()).toContain("Use keys joined by dots, like code.rc.");
+      await click("Done");
+      expect(onDone.mock.calls[0]![0].mapping.ext_ref).toBeUndefined();
+    });
+    it("choosing another row ends the formula being typed", async () => {
+      await mount(spec());
+      await click("row Account");
+      await pick("Account comes from", "cel");
+      await click("row Reference");
+      await click("row Account");
+      expect(document.querySelector<HTMLSelectElement>('select[aria-label="Account comes from"]')!.value).toBe("field:sid");
     });
   });
 });

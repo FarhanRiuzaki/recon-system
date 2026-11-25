@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { computeCel } from "@starterkit/shared/compute";
-import { columnInfo, connect, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
+import { columnInfo, connect, removeAttr, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
 
 const f = (name: string, type: "string" | "decimal" | "date" = "string") => ({ name, type, nullable: true, trim: true });
 const spec = (o: Partial<SourceSpec> = {}): SourceSpec => ({
@@ -96,7 +96,7 @@ describe("edits", () => {
 describe("the rest of the mapper", () => {
   it("a search keeps the columns that feed a line, and marks the kept attributes", () => {
     const g = sourceGraph(spec(), {}, { q: "amt" });
-    expect(g.sources[0]!.rows.map((r) => [r.key, r.kind])).toEqual([["sid", "string"], ["amt", "decimal · attr"]]);
+    expect(g.sources[0]!.rows.map((r) => [r.key, r.kind])).toEqual([["sid", "string"], ["amt", "decimal · extra attribute"]]);
   });
   it("the amount's unit, kept when the column changes", () => {
     const s = setUnit(connect(spec(), "amt", "amount_minor"), "minor");
@@ -121,5 +121,16 @@ describe("the rest of the mapper", () => {
     const r = renameAttr(spec(), "sre", "sre_code");
     expect("refused" in r ? null : Object.keys(r.mapping.attrs)).toEqual(["sre_code", "amt"]);
     expect(columnInfo(spec(), "sre")).toEqual({ type: "string", nullable: true, stored: "sre" });
+  });
+});
+
+describe("review of the inspector", () => {
+  it("an amount column that isn't a number is the amount row's problem", () => {
+    const s = setColumn(connect(spec(), "amt", "amount_minor"), "amt", { type: "string" });
+    expect(rowProblem(setUnit(s, "major"), "amount_minor")).toBe("The amount needs a whole number or a decimal column. Change the type of amt, or pick another column.");
+  });
+  it("renaming a column that isn't kept is refused; any kept attribute can be removed by name", () => {
+    expect(renameAttr(spec(), "sid", "x")).toEqual({ refused: "Keep sid as an extra attribute first." });
+    expect(removeAttr(spec(), "amt").mapping.attrs).toEqual({ sre: { field: "sre" } });
   });
 });

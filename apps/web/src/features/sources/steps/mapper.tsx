@@ -18,9 +18,11 @@ import { FieldMapCanvas } from "@/components/field-map/canvas";
 import { computeSteps } from "@starterkit/shared/compute";
 import { AMOUNT_UNITS, type AmountUnit, FIELD_TYPES } from "@starterkit/shared/sources";
 import { TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
-import { CORE_ROWS, type CoreRow, columnInfo, connect, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
+import { CORE_ROWS, type CoreRow, columnInfo, connect, disconnect, removeAttr, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
 import { useSpecPreview } from "../use-spec-preview";
 
+/** A JSON path the reader takes: keys joined by dots (code.rc). */
+const JSON_PATH = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
 /** Past this many columns the rail offers a search. */
 const SEARCH_FROM = 30;
 const isCore = (k: string | null): k is CoreRow => !!k && (CORE_ROWS as readonly string[]).includes(k);
@@ -61,7 +63,9 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
   const [storedTyped, setStoredTyped] = useState<{ col: string; name: string; why: string } | null>(null);
   const graph = useMemo(() => sourceGraph(spec, examples, { q }), [spec, examples, q]);
   const live = useSpecPreview({ ...preview, spec, enabled: open });
-  const edit = (next: SourceSpec) => { setRefused(null); setSpec(next); };
+  /** `typed`: the edit comes from the formula or JSON path being typed, which stays on screen. */
+  const edit = (next: SourceSpec, typed = false) => { setRefused(null); if (!typed) setTyping(null); setSpec(next); };
+  const choose = (p: string | null) => { setRefused(null); setTyping(null); setStoredTyped(null); setSelected(p); };
   const remove = (k: string) => {
     if (!isCore(k)) return;
     const r = disconnect(spec, k);
@@ -78,8 +82,8 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
         {columns.map((f) => (
           <li key={f.name} className="grid gap-1 rounded-md px-2 py-1.5 hover:bg-tray">
             <span className="flex items-baseline gap-2">
-              <button type="button" aria-label={`Edit column ${f.name}`} className="font-mono text-body-sm text-fg underline-offset-2 hover:underline" onClick={() => { setRefused(null); setSelected(`col:${f.name}`); }}>{f.name}</button>{" "}
-              <span className="text-caption text-fg-3">{f.type}{attrOf(f.name) ? " · attr" : ""}</span>
+              <button type="button" aria-label={`Edit column ${f.name}`} className="font-mono text-body-sm text-fg underline-offset-2 hover:underline" onClick={() => choose(`col:${f.name}`)}>{f.name}</button>{" "}
+              <span className="text-caption text-fg-3">{f.type}{attrOf(f.name) ? " · extra attribute" : ""}</span>
             </span>
             {examples[f.name] && <span className="truncate text-caption text-fg-3">{examples[f.name]}</span>}
             <Checkbox checked={!!attrOf(f.name)} label="Keep as extra attribute" onToggle={() => edit(toggleAttr(spec, f.name, !attrOf(f.name)))} />
@@ -98,7 +102,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
           const v = e.target.value;
           setTyping(null);
           if (v === "cel") { const r = (spec.mapping as unknown as Record<string, { cel?: string } | undefined>)[selected]; return setTyping({ row: selected, kind: "cel", cel: r?.cel ?? "" }); }
-          if (v === "json") return setTyping({ row: selected, kind: "json", col: spec.fields[0]?.name ?? "", path: "" });
+          if (v === "json") { const r = (spec.mapping as unknown as Record<string, { field?: string } | undefined>)[selected]; return setTyping({ row: selected, kind: "json", col: r?.field || (spec.fields[0]?.name ?? ""), path: "" }); }
           if (!v) return remove(selected);
           if (v.startsWith("field:")) edit(setSource(spec, selected, { field: v.slice(6) }));
           else if (v === "preset:file_date" || v === "preset:arrived_date") edit(setSource(spec, selected, { preset: v.slice(7) as "file_date" | "arrived_date" }));
@@ -119,20 +123,24 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
         if (!t) return null;
         if (t.kind === "cel") return (
           <Field id="mapper-cel" label="Formula" note="Columns by name, as in Computed columns">
-            <Input id="mapper-cel" aria-label="Formula" className="font-mono" value={t.cel} onChange={(e) => {
-              const cel = e.target.value; setTyping({ row: selected, kind: "cel", cel });
-              if (cel.trim()) edit(setSource(spec, selected, { cel: cel.trim() }));
-            }} />
+            {/* applied when the box is left, so a half-typed formula never reaches the spec; empty removes the mapping */}
+            <Input id="mapper-cel" aria-label="Formula" className="font-mono" value={t.cel} onChange={(e) => setTyping({ row: selected, kind: "cel", cel: e.target.value })}
+              onBlur={(e) => {
+                const cel = e.target.value.trim();
+                if (cel) edit(setSource(spec, selected, { cel }), true);
+                else { const r = disconnect(spec, selected); if ("refused" in r) setRefused(r.refused); else edit(r, true); }
+              }} />
           </Field>
         );
-        const apply = (col: string, path: string) => { setTyping({ row: selected, kind: "json", col, path }); if (col && path.trim()) edit(setJsonPath(spec, selected, col, path.trim())); };
+        const pathOk = JSON_PATH.test(t.path.trim());
+        const apply = (col: string, path: string) => { setTyping({ row: selected, kind: "json", col, path }); if (col && JSON_PATH.test(path.trim())) edit(setJsonPath(spec, selected, col, path.trim()), true); };
         return (<>
           <Field id="mapper-json-col" label="JSON column">
             <Select id="mapper-json-col" aria-label="JSON column" value={t.col} onChange={(e) => apply(e.target.value, t.path)}>
               {spec.fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
             </Select>
           </Field>
-          <Field id="mapper-json-path" label="JSON path" note="Keys with dots, like code.rc">
+          <Field id="mapper-json-path" label="JSON path" note="Keys with dots, like code.rc" error={t.path.trim() && !pathOk ? "Use keys joined by dots, like code.rc." : undefined}>
             <Input id="mapper-json-path" aria-label="JSON path" className="font-mono" value={t.path} onChange={(e) => apply(t.col, e.target.value)} />
           </Field>
         </>);
@@ -154,17 +162,17 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
       )}
       {row.note && <p className="text-body-sm text-fg-2">{row.note}</p>}
       <Button type="button" variant="remove" size="icon" aria-label={`Remove the mapping of ${row.name}`} title="Remove mapping" onClick={() => remove(selected)}><Icon icon={RemoveIcon} /></Button>
-      {(refused ?? rowProblem(spec, selected)) && <p role="alert" className="text-body-sm text-down-ink">{refused ?? rowProblem(spec, selected)}</p>}
+      {refused ? <p role="alert" className="text-body-sm text-down-ink">{refused}</p> : rowProblem(spec, selected) && <p className="text-body-sm text-down-ink">{rowProblem(spec, selected)}</p>}
     </div>
   ) : selected === "attrs" ? (
     <div className="grid gap-3 p-4">
       <h3 className="text-title-sm text-fg">Extra attributes</h3>
       {Object.keys(spec.mapping.attrs ?? {}).length ? (
-        <ul className="grid gap-1">
+        <ul aria-label="Extra attributes" className="grid gap-1">
           {Object.entries(spec.mapping.attrs ?? {}).map(([n, r]) => (
             <li key={n} className="flex items-center justify-between gap-2">
               <span className="min-w-0 truncate text-body-sm"><span className="font-mono text-fg">{n}</span>{"field" in r && r.field !== n && <span className="text-fg-3"> from {r.field}</span>}</span>
-              {"field" in r && <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop keeping ${r.field}`} onClick={() => edit(toggleAttr(spec, r.field, false))}><Icon icon={RemoveIcon} /></Button>}
+              <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop keeping ${"field" in r ? r.field : n}`} onClick={() => edit(removeAttr(spec, n))}><Icon icon={RemoveIcon} /></Button>
             </li>
           ))}
         </ul>
@@ -217,7 +225,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
       rail={rail} inspector={inspector} dock={dock}>
       <FieldMapCanvas graph={graph} title="Core record" caption="What every row becomes" selected={selected} examples={null}
         label="Source map: the file's columns on the left, the core record on the right"
-        onSelect={(p) => { setRefused(null); setSelected(p); }}
+        onSelect={choose}
         onConnect={(col, target) => { if (isCore(target)) edit(connect(spec, col, target)); }}
         onRemove={remove} />
     </FullScreenEditor>

@@ -55,7 +55,7 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
   const fed = new Set(edges.filter((e) => e.source === "columns").map((e) => e.row));
   const kept = new Set(Object.values(spec.mapping.attrs ?? {}).flatMap((r) => ("field" in r ? [r.field] : [])));
   const columns = spec.fields.filter((f) => !q || fed.has(f.name) || f.name.toLowerCase().includes(q))
-    .map((f) => ({ key: f.name, label: examples[f.name] ? `${f.name} · ${examples[f.name]}` : f.name, kind: kept.has(f.name) ? `${f.type} · attr` : f.type }));
+    .map((f) => ({ key: f.name, label: examples[f.name] ? `${f.name} · ${examples[f.name]}` : f.name, kind: kept.has(f.name) ? `${f.type} · extra attribute` : f.type }));
   return {
     sources: [{ id: "columns", title: "File columns", caption: null, rows: columns }, ...(computed.length ? [{ id: "computed", title: "Computed", caption: null, rows: computed }] : [])],
     request, edges, missing: request[0]!.mapped || request[0]!.broken ? [] : ["business_date"],
@@ -125,6 +125,11 @@ export function rowProblem(spec: SourceSpec, k: CoreRow): string | null {
   const ids = new Set([ctl(`mapping.${k}`), ...(k === "amount_minor" ? [ctl("mapping.amount_minor.unit")] : [])]);
   const m = mappingProblem(spec);
   if (m && ids.has(m.id)) return m.reason;
+  const a = spec.mapping.amount_minor;
+  if (k === "amount_minor" && a && "field" in a) {
+    const f = spec.fields.find((x) => x.name === a.field);
+    if (f && f.type !== "integer" && f.type !== "decimal") return `The amount needs a whole number or a decimal column. Change the type of ${f.name}, or pick another column.`;
+  }
   return amountProblems(spec).find((p) => ids.has(p.id))?.reason ?? null;
 }
 
@@ -139,6 +144,7 @@ export function setColumn(spec: SourceSpec, name: string, patch: { type?: FieldS
 
 /** Column `column`'s kept attribute renamed to `name` (its place kept), or why the name can't be used. */
 export function renameAttr(spec: SourceSpec, column: string, name: string): SourceSpec | { refused: string } {
+  if (storedName(spec, column) === null) return { refused: `Keep ${column} as an extra attribute first.` };
   const why = storedNameProblem(name, column, spec);
   return why ? { refused: why } : storeAs(spec, column, name);
 }
@@ -147,4 +153,9 @@ export function renameAttr(spec: SourceSpec, column: string, name: string): Sour
 export function columnInfo(spec: SourceSpec, name: string): { type: FieldSpec["type"]; nullable: boolean; stored: string | null } | null {
   const f = spec.fields.find((x) => x.name === name);
   return f ? { type: f.type, nullable: f.nullable, stored: storedName(spec, name) } : null;
+}
+
+/** Extra attribute `name` no longer kept (one from a column or from a formula). */
+export function removeAttr(spec: SourceSpec, name: string): SourceSpec {
+  return withMapping(spec, { attrs: Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([k]) => k !== name)) });
 }
