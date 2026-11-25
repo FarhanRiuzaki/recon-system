@@ -77,7 +77,7 @@ describe("runJanitor", () => {
     expect(await runJanitor()).toEqual({
       sessions: 2, auth_challenges: 1, user_tokens: 1, rate_limits: 1, login_backoff: 1, oauth_states: 1, activity: 1, auth_log: 1, connector_calls: 1, connector_calls_full: 1,
       // the inbox pass (tendInbox): every active space's root checked, no leftover to sweep
-      inbox_roots: expect.any(Number), inbox_leftovers: 0,
+      inbox_roots: expect.any(Number), report_files: expect.any(Number), inbox_leftovers: 0,
     });
     expect(await left()).toEqual({
       sessions: [live], challenges: ["00000000-0000-7000-8000-000000000001"], tokens: ["t-live"], limits: ["live"], backoff: ["live"],
@@ -85,7 +85,7 @@ describe("runJanitor", () => {
     });
     // Nothing left to clean: every count is 0.
     const { inbox_roots: _roots, ...rest } = (await runJanitor())!;
-    expect(Object.values(rest)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(Object.values(rest)).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   });
 
   it("the full-call purge has its partial index: started_at where the full call is still kept", async () => {
