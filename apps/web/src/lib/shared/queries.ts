@@ -287,3 +287,5 @@ const REPORT_TEMPLATES_SPEC: TableSpec<ReportTemplateFilters> = { sorts: REPORT_
 export const REPORT_TEMPLATES = (spaceId: string): TableDef<ReportTemplateFilters> => ({ key: REPORTS_KEY[0], path: `${reportsPath(spaceId)}/templates`, spec: REPORT_TEMPLATES_SPEC });
 export const reportTemplate = (spaceId: string, id: string) => ({ key: [...REPORTS_KEY, "template", spaceId, id] as const, url: `${reportsPath(spaceId)}/templates/${encodeURIComponent(id)}` });
 export const reportVersions = (spaceId: string, id: string) => ({ key: [...REPORTS_KEY, "versions", spaceId, id] as const, url: `${reportsPath(spaceId)}/templates/${encodeURIComponent(id)}/versions?pageSize=100` });
+/** The report files a run made (the run page's link to them); the first page is enough for its count. */
+export const reportFilesOfRun = (spaceId: string, runId: string) => ({ key: [...REPORTS_KEY, "run", spaceId, runId] as const, url: `${reportsPath(spaceId)}/files?run=${encodeURIComponent(runId)}` });

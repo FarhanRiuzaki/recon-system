@@ -103,6 +103,12 @@ describe("PUT result-columns", () => {
     expect((await acts()).at(-1)).toMatchObject({ before: { columns: MINE }, after: { columns: null } });
   });
 
+  it("a side column marked as customer data keeps the mark (reports mask it, DEC-060); a recon column can't carry it", async () => {
+    const cols = [{ ...MINE.find((c) => c.kind !== "recon")!, customer: true }];
+    expect((await json<ResultColumnsDto>(put(t.mk, cols))).columns).toEqual(cols);
+    expect((await put(t.mk, [{ kind: "recon", field: "reason", label: "Reason", customer: true }])).status).toBe(400);
+  });
+
   it("an operator is 403; 21 columns, a column twice or a blank heading 400 (before the 404)", async () => {
     expect((await put(t.op, MINE)).status).toBe(403);
     const many = Array.from({ length: 21 }, (_, i) => ({ kind: "a", field: `attrs.f${i}`, label: `F${i}` }));

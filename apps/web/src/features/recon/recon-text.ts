@@ -10,7 +10,7 @@ export const at = (iso: string) => `${formatDateTime(Date.parse(iso))} ${APP_TIM
  * runs (its day, runs, trend, pipeline, sources), Configuration = what it is (the builder over a draft, else the
  * published spec), Posting groups = what its grouped postings collect and send (stage 5), History = its versions and its activity.
  */
-export const RECON_TABS = ["overview", "configuration", "posting", "history"] as const;
+export const RECON_TABS = ["overview", "configuration", "posting", "reports", "history"] as const;
 export type ReconTab = (typeof RECON_TABS)[number];
 /** ?tab= as a tab; the tabs before the merge (live, versions, activity) open the tab that now holds them. */
 export function reconTabOf(v: string | null): ReconTab {

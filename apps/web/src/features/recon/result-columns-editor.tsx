@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { Combobox, Field } from "@starterkit/ui/ds";
+import { Checkbox, Combobox, Field } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, RemoveIcon, SpinnerIcon } from "@starterkit/ui/ui/icons";
@@ -86,6 +86,8 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
                 error={c.label.trim() ? null : "Give the column a heading."}>
                 <Input id={id} value={c.label} maxLength={RESULT_LABEL_MAX} onChange={(e) => setLabel(i, e.target.value)} />
               </Field>
+              {/* customer data (an account, a name) is masked in report files unless an official report shows it (DEC-060) */}
+              {c.kind !== "recon" && <span className="flex h-8 items-center"><Checkbox checked={!!c.customer} label="Customer data" onToggle={() => setCols((cs) => cs.map((x, j) => (j === i && x.kind !== "recon" ? { ...x, customer: !x.customer } : x)))} /></span>}
               <Button type="button" size="icon" variant="remove" aria-label={`Remove ${c.label || `column ${i + 1}`}`} onClick={() => setCols(cols.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
             </>
           );

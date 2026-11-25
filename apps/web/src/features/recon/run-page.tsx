@@ -1,6 +1,7 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CategoryChip, ColumnsMenu, type Column, CountBadge, DataTable, Failure, Notice, Panel, RouteTabs, ScrollFade, Segmented, Toolbar } from "@starterkit/ui/ds";
@@ -17,9 +18,10 @@ import { DetailNotFound } from "@/components/detail-not-found";
 import { LoadingShape } from "@/components/route-skeleton";
 import { SavedViewsMenu } from "@/components/saved-views-menu";
 import { PageHeader } from "@/components/shell/page-header";
-import { errorText, isNotFound } from "@/lib/client/api";
+import { api, errorText, isNotFound } from "@/lib/client/api";
 import { useTableQuery } from "@/lib/client/use-table-query";
 import { reconRunItems, type RunItemFilters } from "@/lib/shared/queries-recon";
+import { reportFilesOfRun } from "@/lib/shared/queries";
 import { amountText, breakCounts, breakLabel, breakPair, breaksOf, breaksText, dayPasses, differenceText, isLive, pairDifference, rangeText, readIn, reasonOptions, runCurrency, runDays, scopeCaption } from "./run-model";
 import { RunSummary } from "./run-summary";
 import { CARRIED, carriedDay, dayLabel, dayTilesOf, strayDatePatch, tileOption } from "./run-days";
@@ -159,6 +161,7 @@ export function ReconRunPage({ spaceId, id, runId }: { spaceId: string; id: stri
       <PageHeader title={title} trail={trail}
         description={`${recon.name} · ${run.mode === "simulation" ? `Draft v${run.version}` : `Version ${run.version}`} · ${rangeText(run.from, run.to)}${run.mode === "simulation" ? " · not stored" : ""}`} />
       <RunSummary run={run} spec={spec} labels={labels} stalled={rq.stalled} />
+      <RunReports spaceId={spaceId} runId={runId} />
       {t.staleError && <Notice tone="warn" live>Couldn&apos;t refresh the items; showing the rows loaded before. {errorText(t.staleError)}</Notice>}
       <Panel flush icon={NetworkIcon} title="Results per pass"
         description={run.mode === "simulation" ? "Not stored: after a real run these stay unmatched at day close." : undefined}
@@ -286,4 +289,16 @@ function useColumns(s: RunItemFilters, labels: readonly [string, string], ccy: s
     }
     return [ref, sideCol, date, ...amount];
   }, [pairs, s.status, labels, ccy, unit]);
+}
+
+/** The report files this run made (DEC-060): a line with their count and a link to them, nothing when none. */
+function RunReports({ spaceId, runId }: { spaceId: string; runId: string }) {
+  const q = reportFilesOfRun(spaceId, runId);
+  const n = useQuery({ queryKey: q.key, queryFn: () => api<{ total: number }>(q.url) }).data?.total ?? 0;
+  if (!n) return null;
+  return (
+    <p className="text-body-sm text-fg-2">
+      <Link className="text-primary hover:underline" href={`/spaces/${encodeURIComponent(spaceId)}/reports?run=${encodeURIComponent(runId)}`}>Reports made by this run ({n})</Link>
+    </p>
+  );
 }

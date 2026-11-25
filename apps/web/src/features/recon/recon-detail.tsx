@@ -34,7 +34,7 @@ const VersionsTable = dynamic(() => import("./recon-tables").then((m) => m.Versi
 const ActivityTable = dynamic(() => import("./recon-tables").then((m) => m.ActivityTable), { ssr: false });
 import { MAKER_REASON, reconEditHref, reconHref, reconsHref, reconVersionHref, useRecon, useReconVersion, useSpaceRoles, useStartVersion } from "./use-recons";
 
-const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", posting: "Posting groups", history: "History" };
+const TAB_LABEL: Record<ReconTab, string> = { overview: "Overview", configuration: "Configuration", posting: "Posting groups", reports: "Reports", history: "History" };
 
 export { discardable } from "./draft-actions";
 
@@ -100,6 +100,16 @@ export function ReconDetail({ spaceId, id, tab }: { spaceId: string; id: string;
       </RouteTabs>
       {tab === "overview" ? <ReconOverview spaceId={spaceId} id={id} r={r} runner={runner} configHref={tabHref("configuration")} />
         : tab === "posting" ? <PostingGroups spaceId={spaceId} id={id} />
+        : tab === "reports" ? (
+          // the report generator's (DEC-060): this recon's templates and files live in Reports; the tab leads there
+          <Panel title="Reports" description="Report files of this recon, made after its runs or on request, and the templates they are made from.">
+            <ul className="grid gap-2 text-body-sm">
+              <li><Link className="text-primary hover:underline" href={`/spaces/${encodeURIComponent(spaceId)}/reports?recon=${encodeURIComponent(id)}`}>See this recon&apos;s report files</Link></li>
+              <li><Link className="text-primary hover:underline" href={`/spaces/${encodeURIComponent(spaceId)}/reports/templates?recon=${encodeURIComponent(id)}`}>See its report templates</Link></li>
+              <li><Link className="text-primary hover:underline" href={`/spaces/${encodeURIComponent(spaceId)}/reports/templates/new?recon=${encodeURIComponent(id)}`}>New report template</Link></li>
+            </ul>
+          </Panel>
+        )
         : tab === "history" ? (
           // versions and activity in one place (owner, 22 Nov: few tabs); the header's date range filters the activity
           <><VersionsTable spaceId={spaceId} id={id} /><ActivityTable spaceId={spaceId} id={id} /></>
