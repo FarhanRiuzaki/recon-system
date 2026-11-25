@@ -31,6 +31,7 @@ import {
 } from "../ingest";
 import { reconHealthInputs, reconsUsingFields, reconsUsingSource, reconsUsingSources } from "../recon";
 import { spaceNames, spaces, withSpace } from "../spaces";
+import { folderOfPath } from "../inbox";
 import { users } from "../users";
 import {
   canStep, defaultRefused, fieldChanges, readsDifferently, shortVersion, specHash, specIssue, specWarnings, type TestFound, testFailure, testSentence, usedBySentence,
@@ -413,8 +414,19 @@ export function refusedSpec(e: unknown): never {
  * The checks a spec passes beyond its contract, for a save and an unsaved preview alike (400): its input is of the
  * source's kind, its calendar exists, every CEL expression compiles, a snapshot schedule is a cron.
  */
+/**
+ * A file inbox folder of another space (under `<first INBOX_ROOTS>/<its code>/`, its root included) is refused (Inbox
+ * files: a space's inbox is its own); the own space's folders and folders outside every space root stay allowed.
+ */
+async function ownFolder(tx: InTx, spaceId: string, p: string): Promise<void> {
+  const all = await tx.select({ id: spaces.id, code: spaces.code }).from(spaces);
+  const at = folderOfPath(config().INBOX_ROOTS, all.map((x) => x.code.toLowerCase()), p);
+  if (at && all.find((x) => x.code.toLowerCase() === at.code)?.id !== spaceId) throw new ApiError("bad_request", "Check input.path: Use a folder of this space.");
+}
+
 async function checkSpec(tx: InTx, s: SourceRow, spec: SourceSpec): Promise<void> {
   if (spec.input.kind !== s.kind) throw new ApiError("bad_request", `This source's kind is ${s.kind}; its spec's input must be of that kind.`);
+  if (spec.input.kind === "file_inbox") await ownFolder(tx, s.spaceId, spec.input.path);
   const [calendar] = await tx.select({ id: calendars.id }).from(calendars).where(eq(calendars.code, spec.calendar));
   if (!calendar) throw new ApiError("bad_request", `There is no calendar ${spec.calendar}. Pick one of the calendars set up for this install.`);
   const celError = specCelError(spec);
@@ -626,6 +638,7 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
     const s = await ownSource(tx, spaceId, id);
     if (s.kind !== "file_inbox" && b.path !== undefined) throw new ApiError("bad_request", "A database source tests a connection: send no folder.");
     if (s.kind === "file_inbox" && b.connection) throw new ApiError("bad_request", "A file inbox source reads files, so it has no database connection.");
+    if (s.kind === "file_inbox" && b.path !== undefined) await ownFolder(tx, spaceId, b.path);
     return s.kind === "file_inbox" ? { spec: b.path === undefined ? await workingSpec(tx, s) : null } : { conn: await storedConnection(tx, s) };
   });
   if ("spec" in got) {
@@ -643,8 +656,9 @@ export async function testConnection(ctx: Ctx, id: string, b: TestConnectionBody
  * source exists (nothing is stored); the same checks and deadline as the test of a stored one.
  */
 export async function testNewSource(ctx: Ctx, b: NewSourceTestBody): Promise<ConnectionTestDto> {
-  // the space guard (source_admin) is the whole authorization: nothing of the space is read
+  // the space guard (source_admin) is the whole authorization: nothing of the space is read (but which space a typed folder is of)
   await limited(connectionTests, ctx);
+  if (b.kind === "file_inbox") await inSpace(ctx, (tx, spaceId) => ownFolder(tx, spaceId, b.path));
   if (b.kind === "file_inbox") return { ...(await inboxProbe(config().INBOX_ROOTS, b.path, b.pattern)), code: null, field: null, version: null };
   return probe(ctx, typedTarget(b.connection, null));
 }
