@@ -8,6 +8,7 @@ import { countN, facetOf, likeEscape, one, pageQuery, sortSql } from "../../kern
 import type { Ctx } from "../auth";
 import { reconConfigs, reconConfigVersions } from "../recon";
 import { sources, sourceVersions } from "../sources";
+import { reportTemplates, reportVersions } from "../reports";
 import type { InTx } from "../../kernel/db";
 import { withSpace } from "../spaces";
 import { itemsOf } from "../engine";
@@ -33,7 +34,7 @@ async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pa
     const me = ctx.user.id;
     // mine: what approvalBlocked lets the caller decide, as SQL (not its maker, not among its contributors); nothing
     // for someone who isn't a config checker of the space
-    const mine = <T extends typeof sourceVersions | typeof reconConfigVersions>(v: T) =>
+    const mine = <T extends typeof sourceVersions | typeof reconConfigVersions | typeof reportVersions>(v: T) =>
       !q.mine || superadmin ? undefined : checker ? and(sql`${v.makerId} is distinct from ${me}`, sql`not (${me}::uuid = any(${v.contributorIds}))`) : sql`false`;
     const src = tx.select({
       kind: sql<ApprovalKind>`'source_version'`.as("kind"), id: sourceVersions.id, targetId: sql<string>`${sources.id}`.as("target_id"), code: sources.code, name: sources.name,
@@ -47,6 +48,14 @@ async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pa
       submittedBy: reconConfigVersions.submittedBy, submittedAt: reconConfigVersions.submittedAt,
     }).from(reconConfigVersions).innerJoin(reconConfigs, and(eq(reconConfigs.spaceId, reconConfigVersions.spaceId), eq(reconConfigs.id, reconConfigVersions.configId)))
       .where(and(eq(reconConfigVersions.spaceId, spaceId), eq(reconConfigVersions.status, "in_review"), mine(reconConfigVersions), like ? or(ilike(reconConfigs.name, like), ilike(reconConfigs.code, like)) : undefined));
+    // an official report template version (DEC-060): one config checker who had no hand in it, as a source version
+    const rep = tx.select({
+      kind: sql<ApprovalKind>`'report_version'`.as("kind"), id: reportVersions.id, targetId: sql<string>`${reportTemplates.id}`.as("target_id"),
+      code: sql<string>`${reportTemplates.name}`.as("code"), name: reportTemplates.name,
+      version: reportVersions.version, makerId: reportVersions.makerId, contributorIds: reportVersions.contributorIds,
+      submittedBy: reportVersions.submittedBy, submittedAt: reportVersions.submittedAt,
+    }).from(reportVersions).innerJoin(reportTemplates, and(eq(reportTemplates.spaceId, reportVersions.spaceId), eq(reportTemplates.id, reportVersions.templateId)))
+      .where(and(eq(reportVersions.spaceId, spaceId), eq(reportVersions.status, "waiting"), mine(reportVersions), like ? ilike(reportTemplates.name, like) : undefined));
     // a break's request (DEC-052): who may decide it follows its chain's current level, so "mine" is read request by
     // request in code, over the INBOX_REQUESTS_MAX oldest pending ones (`capped` when there are more).
     // ponytail: a space with more than that waiting needs the level check in SQL
@@ -69,8 +78,8 @@ async function inbox(tx: InTx, ctx: Ctx, q: Omit<ApprovalListQuery, "page" | "pa
     }).from(approvalRequests).innerJoin(reconConfigs, and(eq(reconConfigs.spaceId, approvalRequests.spaceId), eq(reconConfigs.id, approvalRequests.configId)))
       .where(and(eq(approvalRequests.spaceId, spaceId), eq(approvalRequests.status, "pending"), reqKinds.length ? inArray(approvalRequests.kind, reqKinds) : undefined, reqMine,
         like ? or(ilike(reconConfigs.name, like), ilike(approvalRequests.label, like)) : undefined));
-    const arms = [!kinds.length || kinds.includes("source_version") ? src : null, !kinds.length || kinds.includes("recon_version") ? rec : null, !kinds.length || reqKinds.length ? req : null]
-      // one row shape for all three (the union needs it; drizzle types each arm by its own table)
+    const arms = [!kinds.length || kinds.includes("source_version") ? src : null, !kinds.length || kinds.includes("recon_version") ? rec : null, !kinds.length || kinds.includes("report_version") ? rep : null, !kinds.length || reqKinds.length ? req : null]
+      // one row shape for all four (the union needs it; drizzle types each arm by its own table)
       .filter((a) => !!a) as unknown as (typeof src)[];
     const [first, second, ...rest] = arms;
     const u = (second ? unionAll(first!, second, ...rest) : first!).as("u");

@@ -38,6 +38,9 @@ export const ROLE_MATRIX: readonly { group: string; rows: ReturnType<typeof row>
     work("Work an item from Explain in operation result"),
     row({ action: "Approve requests", approves: "chain" }),
     row({ action: "Sign off a day", does: "signOff" }),
+    row({ action: "See and download reports", does: "viewReports" }),
+    row({ action: "Make a report for a date range", does: "generateReports" }),
+    row({ action: "Download a report with full customer data", does: "downloadFullReports" }),
   ] },
   { group: "Setup", rows: [
     row({ action: "Set up recons", does: "editRecon", approves: "approveVersion" }),
@@ -49,6 +52,7 @@ export const ROLE_MATRIX: readonly { group: string; rows: ReturnType<typeof row>
     row({ action: "Connect a source and pull it", does: "connectSource" }),
     row({ action: "Manage inbox folders and delete files", does: "manageInbox" }),
     row({ action: "Set up workflows", does: "editWorkflows" }),
+    row({ action: "Set up report templates", does: "editReports", approves: "approveVersion" }),
   ] },
   { group: "Space", rows: [row({ action: "Manage members", does: "manageMembers" }), row({ action: "Share a source with another space", does: "shareSource" })] },
 ];

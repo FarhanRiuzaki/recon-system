@@ -24,7 +24,6 @@
         "draft",
         "waiting",
         "active",
-        "rejected",
         "superseded"
       ]
     },

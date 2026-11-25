@@ -10,7 +10,7 @@ export const REPORT_STARTS = ["daily_summary", "break_detail", "matched_list", "
 export type ReportStart = (typeof REPORT_STARTS)[number];
 export const REPORT_FILE_STATUSES = ["queued", "making", "ready", "failed", "removed"] as const;
 export type ReportFileStatus = (typeof REPORT_FILE_STATUSES)[number];
-export const REPORT_VERSION_STATUSES = ["draft", "waiting", "active", "rejected", "superseded"] as const;
+export const REPORT_VERSION_STATUSES = ["draft", "waiting", "active", "superseded"] as const;
 export type ReportVersionStatus = (typeof REPORT_VERSION_STATUSES)[number];
 export const REPORT_TOTALS = ["count", "sum", "min", "max"] as const;
 

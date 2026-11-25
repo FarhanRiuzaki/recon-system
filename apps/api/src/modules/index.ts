@@ -13,6 +13,7 @@ import { projectsController } from "./projects";
 import { rbacController } from "./rbac";
 import { reconController } from "./recon";
 import { inboxController } from "./inbox";
+import { reportsController } from "./reports";
 import { sourcesController } from "./sources";
 import { spacesController } from "./spaces";
 import { usersController } from "./users";
@@ -39,6 +40,7 @@ export const modules = (deps: AppDeps = {}) =>
     .use(spacesController())
     .use(sourcesController())
     .use(inboxController())
+    .use(reportsController())
     .use(ingestController())
     .use(reconController())
     .use(engineController())
