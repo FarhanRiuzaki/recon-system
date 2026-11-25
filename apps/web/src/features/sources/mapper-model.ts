@@ -93,7 +93,7 @@ export function setSource(spec: SourceSpec, target: CoreRow, v: { field: string 
 /** Column `column` kept as an extra attribute (under `name`, its own by default) or not. */
 export function toggleAttr(spec: SourceSpec, column: string, on: boolean, name = attrNameOf(column)): SourceSpec {
   const attrs = Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([, r]) => !("field" in r && r.field === column)));
-  if (!on) return withMapping(spec, { attrs });
+  if (!on) return keepCustomer(withMapping(spec, { attrs }));
   // a name another column already keeps takes the next free suffix (amount, amount_2), as step 2 does
   let free = name;
   for (let i = 2; Object.hasOwn(attrs, free); i++) free = `${name}_${i}`;
@@ -150,20 +150,37 @@ export function setColumn(spec: SourceSpec, name: string, patch: { type?: FieldS
 
 /** Column `column`'s kept attribute renamed to `name` (its place kept), or why the name can't be used. */
 export function renameAttr(spec: SourceSpec, column: string, name: string): SourceSpec | { refused: string } {
-  if (storedName(spec, column) === null) return { refused: `Keep ${column} as an extra attribute first.` };
+  const was = storedName(spec, column);
+  if (was === null) return { refused: `Keep ${column} as an extra attribute first.` };
   const why = storedNameProblem(name, column, spec);
-  return why ? { refused: why } : storeAs(spec, column, name);
+  if (why) return { refused: why };
+  const out = storeAs(spec, column, name);
+  // a customer-data mark follows its attribute's new name
+  return spec.mapping.customer?.includes(was) ? withMapping(out, { customer: spec.mapping.customer.map((n) => (n === was ? name : n)) }) : out;
 }
 
+/** Marks (or unmarks) column `column`'s attribute as customer data: reports mask it (source version + approval as any spec change). */
+export function setCustomer(spec: SourceSpec, column: string, on: boolean): SourceSpec {
+  const name = storedName(spec, column);
+  if (name === null) return spec;
+  const rest = (spec.mapping.customer ?? []).filter((n) => n !== name);
+  return withMapping(spec, { customer: on ? [...rest, name] : rest });
+}
+
+/** The marks without attributes no longer kept. */
+const keepCustomer = (spec: SourceSpec): SourceSpec =>
+  spec.mapping.customer?.length ? withMapping(spec, { customer: spec.mapping.customer.filter((n) => n in (spec.mapping.attrs ?? {})) }) : spec;
+
 /** What the column inspector shows. */
-export function columnInfo(spec: SourceSpec, name: string): { type: FieldSpec["type"]; nullable: boolean; stored: string | null } | null {
+export function columnInfo(spec: SourceSpec, name: string): { type: FieldSpec["type"]; nullable: boolean; stored: string | null; customer: boolean } | null {
   const f = spec.fields.find((x) => x.name === name);
-  return f ? { type: f.type, nullable: f.nullable, stored: storedName(spec, name) } : null;
+  const stored = f ? storedName(spec, name) : null;
+  return f ? { type: f.type, nullable: f.nullable, stored, customer: stored !== null && !!spec.mapping.customer?.includes(stored) } : null;
 }
 
 /** Extra attribute `name` no longer kept (one from a column or from a formula). */
 export function removeAttr(spec: SourceSpec, name: string): SourceSpec {
-  return withMapping(spec, { attrs: Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([k]) => k !== name)) });
+  return keepCustomer(withMapping(spec, { attrs: Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([k]) => k !== name)) }));
 }
 
 /** A new computed column: the next free computed_N, starting from the first text column (a remark, a reference). */
@@ -205,6 +222,7 @@ export function renameComputed(spec: SourceSpec, from: string, to: string): Sour
   };
   const mapping = Object.fromEntries(Object.entries(spec.mapping).map(([k, r]) => {
     if (k === "attrs") return [k, Object.fromEntries(Object.entries(r as Record<string, ValueRef>).map(([n, v]) => [n, move(v)]))];
+    if (k === "customer") return [k, r];
     return [k, r && typeof r === "object" ? move(r as ValueRef) : r];
   })) as Mapping;
   return { ...spec, mapping, derive: Object.fromEntries(Object.entries(spec.derive).map(([k, v]) => [k === from ? name : k, v])) };

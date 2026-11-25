@@ -37,7 +37,7 @@ import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute"
 /** Every currency the amount unit knows, for the searchable "Currency for every row" field. */
 const CURRENCIES: ComboOption[] = Object.keys(CURRENCY_EXPONENT).map((c) => ({ value: c, label: c }));
 
-type Core = Exclude<keyof SourceSpec["mapping"], "attrs">;
+type Core = Exclude<keyof SourceSpec["mapping"], "attrs" | "customer">;
 /**
  * The core fields with what each means, behind an ⓘ (owner, 21 Nov: watermark, id column and the like are not
  * self-explaining). Plain words and one example; the note under a field stays for what to pick.

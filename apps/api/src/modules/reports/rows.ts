@@ -10,6 +10,7 @@ import type { Tx } from "../../kernel/db";
 import { reportResultRows } from "../engine";
 import { withSpace } from "../spaces";
 import type { DataRow } from "./cells";
+import { fieldCatalog } from "./fields";
 import { refsOf } from "./formula";
 
 export const MATCHED: readonly ResultStatus[] = ["matched", "matched_late", "matched_by_hand", "force_matched"];
@@ -89,6 +90,10 @@ export async function* datasetRows(on: Tx, spaceId: string, configId: string, sp
   const columns = refs.flatMap((r) => { const c = columnOf(r); return c ? [c] : []; });
   const statusFilter = spec.dataset === "recap" ? undefined : spec.rows.filters.find((f) => f.ref === "recon:status" && f.op === "any_of");
   const statuses = (statusFilter?.value ?? []) as ResultStatus[];
+  // customer data: the engine's (accounts, the recon's marked columns) and the sources' marked attributes (the catalog's)
+  const marked = await withSpace({ spaceIds: [spaceId], userId: null }, async (tx) =>
+    new Set((await fieldCatalog(tx, spaceId, configId, spec.dataset)).groups.flatMap((g) => g.fields.filter((f) => f.customer).map((f) => f.ref))), on);
+  const withMarked = (c: Set<string>) => new Set([...c, ...marked]);
   let after: { bd: string; rowId: string } | null = null;
   const seen = new Set<string>();
   const recap = new Map<string, Record<string, number | string>>();
@@ -101,7 +106,7 @@ export async function* datasetRows(on: Tx, spaceId: string, configId: string, sp
       for (const i of ids) seen.add(i);
       return true;
     });
-    if (spec.dataset === "results") yield { rows: fresh.map((r) => resultRow(r, refs)).filter((d) => passes(spec, d)), customer: page.customer };
+    if (spec.dataset === "results") yield { rows: fresh.map((r) => resultRow(r, refs)).filter((d) => passes(spec, d)), customer: withMarked(page.customer) };
     else if (spec.dataset === "items") {
       const keep = new Set(fresh.map((r) => r.id));
       const statusOf = new Map(fresh.map((r) => [r.id, r.status]));
@@ -110,7 +115,7 @@ export async function* datasetRows(on: Tx, spaceId: string, configId: string, sp
         for (const [f, v] of Object.entries(i.fields)) values[`${i.side}:${f}`] = major(f, v, i.fields.currency);
         return { date: i.businessDate, values };
       }).filter((d) => passes(spec, d));
-      yield { rows, customer: page.customer };
+      yield { rows, customer: withMarked(page.customer) };
     } else {
       for (const r of fresh) {
         const d = resultRow(r, refs);

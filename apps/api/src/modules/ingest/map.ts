@@ -136,7 +136,7 @@ type Prepared = { fields: FieldSpec[]; derive: [string, Compiled][]; cel: Map<st
 const prepared = new WeakMap<SourceSpec, Prepared>();
 
 const celExprs = (spec: SourceSpec): [string, string][] => {
-  const { attrs, ...core } = spec.mapping;
+  const { attrs, customer: _customer, ...core } = spec.mapping;
   const refs: [string, ValueRef | undefined][] = [...Object.entries(core), ...Object.entries(attrs).map(([k, r]): [string, ValueRef] => [`attrs.${k}`, r])];
   return [
     ...Object.entries(spec.derive).map(([k, e]): [string, string] => [`derive.${k}`, e]),

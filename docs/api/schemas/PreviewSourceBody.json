@@ -381,6 +381,14 @@
                       }
                     ]
                   }
+                },
+                "customer": {
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
+                  }
                 }
               },
               "required": [
@@ -1594,6 +1602,14 @@
                         "additionalProperties": false
                       }
                     ]
+                  }
+                },
+                "customer": {
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
                   }
                 }
               },
@@ -2809,6 +2825,14 @@
                         "additionalProperties": false
                       }
                     ]
+                  }
+                },
+                "customer": {
+                  "maxItems": 200,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,62}$"
                   }
                 }
               },

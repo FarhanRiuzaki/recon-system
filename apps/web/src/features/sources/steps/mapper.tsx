@@ -18,7 +18,7 @@ import { FieldMapCanvas } from "@/components/field-map/canvas";
 import { computeSteps } from "@starterkit/shared/compute";
 import { AMOUNT_UNITS, type AmountUnit, FIELD_TYPES } from "@starterkit/shared/sources";
 import { TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
-import { addComputed, CORE_ROWS, type CoreRow, columnInfo, connect, setFormat, disconnect, removeAttr, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
+import { addComputed, CORE_ROWS, type CoreRow, columnInfo, connect, setFormat, disconnect, removeAttr, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr, setCustomer } from "../mapper-model";
 import { useSpecPreview } from "../use-spec-preview";
 import { ComputedColumns } from "./computed";
 import { FormatCell } from "./format-cell";
@@ -199,6 +199,7 @@ export function SourceMapper({ open, name, spec: given, examples, preview, initi
         </Field>
         <Checkbox checked={info.nullable} label="Can be empty" onToggle={() => edit(setColumn(spec, col, { nullable: !info.nullable }))} />
         <Checkbox checked={!!info.stored} label="Keep as extra attribute" onToggle={() => { setStoredTyped(null); edit(toggleAttr(spec, col, !info.stored)); }} />
+        {info.stored && <Checkbox checked={info.customer} label="Customer data (reports mask it)" onToggle={() => edit(setCustomer(spec, col, !info.customer))} />}
         {info.stored && (
           <Field id="mapper-stored" label="Stored as" error={typed?.why}>
             <Input id="mapper-stored" aria-label="Stored as" className="font-mono" value={typed?.name ?? info.stored} onChange={(e) => {

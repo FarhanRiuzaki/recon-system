@@ -32,7 +32,7 @@ function refText(r: ValueRef): string {
 /** The recon fields each column (or computed column) fills, by its name. */
 function usesOf(s: SourceSpec): Map<string, string[]> {
   const out = new Map<string, string[]>();
-  const { attrs: _attrs, ...core } = s.mapping;
+  const { attrs: _attrs, customer: _customer, ...core } = s.mapping;
   for (const [k, r] of Object.entries(core)) {
     if (!r || typeof r !== "object") continue;
     const ref = r as ValueRef;

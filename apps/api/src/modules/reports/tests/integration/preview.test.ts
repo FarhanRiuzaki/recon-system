@@ -11,10 +11,11 @@ import { ensureMonthPartitions } from "../../../../kernel/partitions";
 import { reconItems } from "../../../engine";
 import { records } from "../../../ingest";
 import { spaceMembers, spaces } from "../../../spaces";
+import { sourceVersions } from "../../../sources";
 import { users } from "../../../users";
 import { D, makeSource, plainSource, put, recon, spec as reconSpec } from "../fixtures";
 
-let A: string, CFG: string, T: ReportTemplateDto, V: ReportVersionDto, mk: string, vw: string;
+let A: string, CFG: string, SRC: string, T: ReportTemplateDto, V: ReportVersionDto, mk: string, vw: string;
 const base = () => `/v1/spaces/${A}/reports`;
 const json = async <X>(r: Response | Promise<Response>) => (await (await r).json()) as X;
 
@@ -32,7 +33,8 @@ beforeEach(async () => {
   });
   const [sa, sb] = [await makeSource(A, plainSource()), await makeSource(A, plainSource())];
   CFG = (await recon(A, reconSpec(sa.sourceId, sb.sourceId, []))).configId;
-  const recs = await put(sa, [{ ref: "R1", amount: 15000n, acct: "ACCT00001234" }, { ref: "R2", amount: 2500n, acct: "ACCT00005678" }]);
+  const recs = await put(sa, [{ ref: "R1", amount: 15000n, acct: "ACCT00001234", sref: "NIK3201010101" }, { ref: "R2", amount: 2500n, acct: "ACCT00005678", sref: "NIK3201020202" }]);
+  SRC = sa.versionId;
   await db.insert(reconItems).values(recs.map((recordId) => ({ id: Bun.randomUUIDv7(), spaceId: A, configId: CFG, recordId, side: "a", status: "break", businessDate: D, breakReason: "No counterpart" })));
   T = await json<ReportTemplateDto>(call("POST", `${base()}/templates`, { token: mk, body: { configId: CFG, name: "Breaks" } }));
   V = (await json<{ items: ReportVersionDto[] }>(call("GET", `${base()}/templates/${T.id}/versions`, { token: mk }))).items[0]!;
@@ -83,5 +85,13 @@ describe("preview", () => {
     expect(all.find((f) => f.ref === "recon:status")).toMatchObject({ type: "status" });
     const r = await json<Cat>(call("GET", `${base()}/templates/${T.id}/fields?dataset=recap`, { token: mk }));
     expect(r.groups.flatMap((g) => g.fields).find((f) => f.ref === "recap:match_rate")).toMatchObject({ type: "number" });
+  });
+
+  it("a source attribute marked as customer data is masked (the source's mapping decides)", async () => {
+    const [v] = await db.select().from(sourceVersions).where(eq(sourceVersions.id, SRC));
+    const spec = v!.spec as { mapping: Record<string, unknown> };
+    await db.update(sourceVersions).set({ spec: { ...spec, mapping: { ...spec.mapping, customer: ["settlement_ref"] } } }).where(eq(sourceVersions.id, SRC));
+    const p = await json<Preview>(draft({ ...V.spec, totals: { on: false, perGroup: false, columns: {} }, columns: [columnFor("c1", "a:attrs.settlement_ref", "NIK")] }));
+    expect(p.lines.map((l) => l.cells[0])).toEqual(["·········0101", "·········0202"]);
   });
 });

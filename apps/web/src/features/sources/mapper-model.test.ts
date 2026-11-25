@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { computeCel } from "@starterkit/shared/compute";
-import { addComputed, renameComputed, columnInfo, connect, problemTarget, removeAttr, setFormat, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
+import { addComputed, renameComputed, columnInfo, connect, problemTarget, removeAttr, setFormat, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr, setCustomer } from "./mapper-model";
 
 const f = (name: string, type: "string" | "decimal" | "date" = "string") => ({ name, type, nullable: true, trim: true });
 const spec = (o: Partial<SourceSpec> = {}): SourceSpec => ({
@@ -120,7 +120,7 @@ describe("the rest of the mapper", () => {
     expect(renameAttr(spec(), "sre", "amt")).toEqual({ refused: "Another column is stored as amt. Use a different name." });
     const r = renameAttr(spec(), "sre", "sre_code");
     expect("refused" in r ? null : Object.keys(r.mapping.attrs)).toEqual(["sre_code", "amt"]);
-    expect(columnInfo(spec(), "sre")).toEqual({ type: "string", nullable: true, stored: "sre" });
+    expect(columnInfo(spec(), "sre")).toEqual({ type: "string", nullable: true, stored: "sre", customer: false });
   });
 });
 
@@ -177,5 +177,18 @@ describe("an attribute kept again", () => {
   it("goes back to its column's place, not to the end", () => {
     const off = toggleAttr(spec(), "sre", false);
     expect(Object.keys(toggleAttr(off, "sre", true).mapping.attrs)).toEqual(["sre", "amt"]);
+  });
+});
+
+describe("customer data on an attribute", () => {
+  it("is marked and unmarked; follows a rename; goes when the attribute does", () => {
+    const on = setCustomer(spec(), "sre", true);
+    expect(on.mapping.customer).toEqual(["sre"]);
+    expect(columnInfo(on, "sre")?.customer).toBe(true);
+    expect(setCustomer(on, "sre", false).mapping.customer).toEqual([]);
+    const renamed = renameAttr(on, "sre", "settlement_ref");
+    expect("refused" in renamed ? null : renamed.mapping.customer).toEqual(["settlement_ref"]);
+    expect(toggleAttr(on, "sre", false).mapping.customer).toEqual([]);
+    expect(removeAttr(on, "sre").mapping.customer).toEqual([]);
   });
 });

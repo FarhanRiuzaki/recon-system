@@ -61,6 +61,10 @@ const Mapping = z.strictObject({
   account_ref: ValueRef.optional(),
   /** Stored names: `a-z`, `0-9` and `_`, starting with a letter (ATTR_NAME); each column or derived value under one name. */
   attrs: z.record(z.string().regex(ATTR_NAME, "Use a-z, 0-9 and _, starting with a letter, up to 63 characters"), ValueRef).default({}),
+  /** Attributes holding customer data (a name, an ID number): reports mask them unless an official one shows them in full. */
+  customer: z.array(z.string().regex(ATTR_NAME)).max(200).optional(),
+}).superRefine((m, c) => {
+  for (const n of m.customer ?? []) if (!(n in m.attrs)) c.addIssue({ code: "custom", message: "Mark only an extra attribute of this source as customer data.", path: ["customer"] });
 });
 
 /** When a pulled or folder source is read (ReadWhen in ../sources): every N minutes, only between whole hours. */
@@ -247,7 +251,7 @@ export const SourceSpec = z.strictObject({
   }
   if (s.mapping.currency && s.currency !== undefined) issue("This source has a currency column; leave the currency of every row empty", ["currency"]);
   const known = (n: string) => fields.has(n) || Object.hasOwn(s.derive, n);
-  const { attrs, ...core } = s.mapping;
+  const { attrs, customer: _customer, ...core } = s.mapping;
   const refs: [PropertyKey[], ValueRef | undefined][] = [
     ...Object.entries(core).map(([k, r]): [PropertyKey[], ValueRef | undefined] => [["mapping", k], r]),
     ...Object.entries(attrs).map(([k, r]): [PropertyKey[], ValueRef] => [["mapping", "attrs", k], r]),
