@@ -40,3 +40,20 @@ describe("the watermark of a pulled source (id columns, look back)", () => {
       .toContain("A date or time watermark looks back in seconds, not ids");
   });
 });
+
+describe("a date field's format", () => {
+  const withFormat = (type: string, date: string) => SourceSpec.safeParse({
+    ...spec({ watermark: { column: "d", id_columns: ["id"] }, lookback_seconds: 86_400 }),
+    fields: [{ name: "d", type: "date", nullable: false, trim: true }, { name: "on", type, nullable: true, trim: true, format: { date } }],
+  });
+  it("is written with yyyy, MM and dd; Oracle's YYYY-MM-DD is refused on that field, saying how to write it", () => {
+    for (const ok of ["yyyy-MM-dd", "yyyyMMdd", "dd/MM/yyyy", "yyyy-MM-dd HH:mm:ss"]) expect(withFormat("date", ok).success).toBe(true);
+    for (const bad of ["YYYY-MM-DD", "DD/MM/YYYY", "yyyy-mm-dd"]) {
+      const issue = withFormat("date", bad).error?.issues.find((i) => i.path.join(".") === "fields.1.format.date");
+      expect(issue?.message).toContain(`Date format "${bad}" can't be read`);
+    }
+    expect(withFormat("datetime", "YYYY-MM-DD HH:mm:ss").success).toBe(false);
+    // a format left on a text field reads nothing and refuses nothing
+    expect(withFormat("string", "YYYY-MM-DD").success).toBe(true);
+  });
+});

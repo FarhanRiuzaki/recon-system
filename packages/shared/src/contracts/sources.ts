@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { SOURCE_SORTS, SOURCE_VERSION_SORTS } from "../paging";
 import {
-  AMOUNT_UNITS, ATTR_NAME, CONNECT_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_MAX, LOOKBACK_IDS_MAX, READ_EVERY, CONNECTION_FIELDS, currencyCode, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
+  AMOUNT_UNITS, ATTR_NAME, CONNECT_TIMEOUT_DEFAULT, CONNECT_TIMEOUT_MAX, LOOKBACK_IDS_MAX, READ_EVERY, CONNECTION_FIELDS, currencyCode, dateFormatProblem, DB_ENGINES, DB_TABLE_NAME, FIELD_TYPES, FILE_ENCODINGS, HEALTH_DEADLINE, REVIEW_COMMENT_MAX, SNAPSHOT_STATUSES, SOURCE_CODE, SOURCE_FILE_STATUSES, SOURCE_HEALTH,
   SOURCE_KINDS, SOURCE_NAME_MAX, SOURCE_STATE_FILTERS, SOURCE_STATUSES, VERSION_STATUSES, WATERMARK_ID_COLUMNS_MAX,
 } from "../sources";
 import { ListQuery, sortParam } from "./common";
@@ -235,6 +235,10 @@ export const SourceSpec = z.strictObject({
   const issue = (message: string, path: PropertyKey[]) => ctx.addIssue({ code: "custom", message, path });
   const fields = new Set<string>();
   s.fields.forEach((f, i) => (fields.has(f.name) ? issue(`Field "${f.name}" is declared twice`, ["fields", i, "name"]) : fields.add(f.name)));
+  s.fields.forEach((f, i) => {
+    const why = (f.type === "date" || f.type === "datetime") && f.format?.date !== undefined ? dateFormatProblem(f.format.date) : null;
+    if (why) issue(why, ["fields", i, "format", "date"]);
+  });
   for (const d of Object.keys(s.derive)) if (fields.has(d)) issue(`Computed column "${d}" has a source column's name`, ["derive", d]);
   const amount = s.mapping.amount_minor;
   if (amount && "field" in amount) {

@@ -537,7 +537,8 @@ function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setForm
     return (
       <span className={f.type === "datetime" ? "grid min-w-52 gap-1" : "grid min-w-36 gap-1"}>
         <Input id={at("date")} aria-label={`Date format of ${f.name}`} placeholder={f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"} className="font-mono" value={f.format?.date ?? ""}
-          onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
+          aria-invalid={!!err(at("date")) || undefined} onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
+        {err(at("date")) && <span role="alert" className="max-w-48 whitespace-normal text-caption text-down-ink">{err(at("date"))}</span>}
         {f.type === "datetime" && (
           <Input id={at("timezone")} aria-label={`Time zone of ${f.name}`} placeholder="Asia/Jakarta" value={f.format?.timezone ?? ""} aria-invalid={!!err(at("timezone")) || undefined}
             onChange={(e) => setFormat(i, { timezone: e.target.value || undefined })} />

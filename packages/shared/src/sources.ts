@@ -109,6 +109,14 @@ export const HEALTH_DEADLINE = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const DEFAULT_CALENDAR = "id-default";
 /** A source table as `table` or `schema.table`: identifier characters only (also checked against the source's catalog). */
 export const DB_TABLE_NAME = /^[A-Za-z_][A-Za-z0-9_$#]{0,127}(\.[A-Za-z_][A-Za-z0-9_$#]{0,127})?$/;
+/**
+ * Why a date or date-time field's format can't be read, or null. Its parts are yyyy, MM, dd, HH, mm and ss with their
+ * case (ingest/coerce.ts patternOf), so a date needs yyyy, MM and dd: the YYYY-MM-DD of Oracle's TO_CHAR reads nothing.
+ */
+export function dateFormatProblem(format: string): string | null {
+  return ["yyyy", "MM", "dd"].every((part) => format.includes(part)) ? null
+    : `Date format "${format}" can't be read: write its parts as yyyy, MM and dd (HH, mm and ss for a time), as in yyyy-MM-dd or dd/MM/yyyy HH:mm:ss. Case counts: YYYY and DD are not read.`;
+}
 /** A stored attribute's name (`attrs.<name>` of a record): a-z, 0-9 and _, starting with a letter, at most 63 characters. */
 export const ATTR_NAME = /^[a-z][a-z0-9_]{0,62}$/;
 
