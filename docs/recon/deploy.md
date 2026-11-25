@@ -105,6 +105,9 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   bermode 2775 (setgid), jadi akun FTP sistem lain nanti cukup masuk grup yang sama dan menulis ke folder space yang
   sama. Batas ukuran per file `INBOX_UPLOAD_MAX_MB` (default 100, 1–128: batas body Bun.serve). Penyimpanan objek (MinIO/S3) belum: semua
   operasi file modul `inbox` lewat `apps/api/src/modules/inbox/disk.ts`.
+- **Pembaca file** (DEC-058): `EXCEL_MAX_MB` (default 50, 1–128) di API dan worker; contoh deteksi yang dipilih
+  user disimpan di `<root space>/.samples/` (folder titik, tidak dibaca source) dan dihapus janitor setelah 24 jam.
+  Build image memerlukan akses ke `cdn.sheetjs.com` (dependensi `xlsx`) lewat proxy build.
 - `DATA_ENCRYPTION_KEY` yang sama: API mengenkripsi koneksi source yang disimpan, worker mendekripsinya untuk pull.
 - `APP_DB_ROLE` terisi saat `db:migrate` (§2, §3): tanpa itu role aplikasi tidak mendapat hak pada pg-boss dan
   `recon_ensure_month_partitions` / `recon_analyze_month_partitions`.

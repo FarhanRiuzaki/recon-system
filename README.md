@@ -35,6 +35,8 @@ those platform parts are listed under **Platform** below.
 - Read from a database (new rows by watermark: a date, timestamp or integer column, one to four id columns, look back),
   a whole position per business date (snapshot query), or files dropped in a folder (CSV, completion by quiet time or
   marker file). PostgreSQL, MySQL, SQL Server and Oracle connectors.
+- Files of any shape: delimited, fixed-length, Excel (.xlsx, .xls) and header/detail files, with title and total rows
+  skipped; how a file is read is detected from a sample and shown as a preview to correct.
 - Inbox files: each space's inbox folders (`<inbox root>/<space code>/<folder>/`), files uploaded by hand (operators,
   source admins), downloaded, and the state of each file per source that reads the folder.
 - Field mapping and types, business-day calendars, quarantine, version history with maker-checker, source health

@@ -762,3 +762,19 @@ lain menulis ke folder yang sama. Penyimpanan di disk dulu; MinIO atau S3 open s
   file ke tabel, hapus banyak file (`…/files/bulk-delete`, BulkResult).
 - Spec `docs/superpowers/specs/2026-11-25-inbox-files-design.md`, plan `docs/superpowers/plans/2026-11-25-inbox-files.md`.
 
+## DEC-058 — Pembaca file: satu parser untuk preview dan ingest, cara baca dideteksi dari contoh
+
+**Keputusan (owner 25 Nov):** source file membaca teks berpembatas (delimiter, quote, encoding, baris judul `skip_top`,
+footer `skip_bottom`, header), teks lebar-tetap (`fixed_width`, kolom per posisi), Excel (`.xlsx`/`.xls` lewat SheetJS,
+sheet pertama / nama / pola) dan file header–detail (`records`: penanda awalan atau kolom; tiap detail membawa kolom
+header di atasnya; trailer dilewati, total tidak divalidasi). Satu pembaca (`modules/ingest/read.ts`) dipakai preview
+dan ingest. `POST …/sources/detect` (source admin) membaca contoh (file terbaru folder Inbox files, atau file dipilih
+≤ 20 MB disimpan 24 jam di `<root space>/.samples/`) dan mengusulkan format + kolom + preview peran baris; preview
+step 2 membaca contoh yang sama lewat `sampleId`. Tidak yakin → setting terbuka; tidak terbaca → form manual; PDF,
+ZIP, gambar, XML, JSON → "not supported yet". Upload Inbox files hanya `.csv .txt .dat .tsv .xlsx .xls` (+ `.done`
+kosong), dicek nama dan isi.
+
+- Kunci baru opsional tanpa default tertulis: spec `delimited` lama hash-nya tetap.
+- Excel dibaca utuh (`EXCEL_MAX_MB`, default 50, maks 128); teks tetap di-stream per baris.
+- Spec `docs/superpowers/specs/2026-11-25-file-reader-design.md`, plan `docs/superpowers/plans/2026-11-25-file-reader.md`.
+
