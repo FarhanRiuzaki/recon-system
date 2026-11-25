@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 const call = (path: string, headers: Record<string, string> = {}) => proxy(new NextRequest(`http://c:3000${path}`, { headers }));
 const forwarded = (r: Response, name: string) => r.headers.get(`x-middleware-request-${name}`);
@@ -40,5 +40,16 @@ describe("proxy", () => {
     const r = call("/users", { "x-pathname": "//evil.com", "x-nonce": "mine" });
     expect(forwarded(r, "x-pathname")).toBe("/users");
     expect(forwarded(r, "x-nonce")).not.toBe("mine");
+  });
+});
+
+describe("proxy matcher", () => {
+  // Next runs the proxy with a clone of the request body, held whole and cut at 10 MB (proxyClientMaxBodySize):
+  // an inbox upload must never pass through it (review 25 Nov), every other route still does.
+  const matches = (p: string) => config.matcher.some((m) => new RegExp(`^${m.source}$`).test(p));
+  it("skips an inbox upload; runs for pages, other API calls, a folder's file list and a download", () => {
+    expect(matches("/api/spaces/0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f/inbox/folders/act/files")).toBe(false);
+    for (const p of ["/", "/spaces/x/inbox", "/api/spaces/x/inbox/folders", "/api/spaces/x/inbox/folders/act/files/download", "/api/users"]) expect(matches(p), p).toBe(true);
+    expect(matches("/_next/static/x.js")).toBe(false);
   });
 });

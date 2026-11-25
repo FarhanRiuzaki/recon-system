@@ -20,3 +20,15 @@ const INBOX_UPLOAD_PATH = /^\/v1\/spaces\/[0-9a-fA-F-]{36}\/inbox\/folders\/[a-z
 
 /** Whether the /v1 path `path` (its query left out) is an inbox upload. */
 export const isInboxUpload = (path: string): boolean => INBOX_UPLOAD_PATH.test(path.split("?")[0]!);
+
+/** GET …/inbox/folders/{folder}/files/download: a file's bytes, as long as the file is. */
+const INBOX_DOWNLOAD_PATH = /^\/v1\/spaces\/[0-9a-fA-F-]{36}\/inbox\/folders\/[a-z0-9][a-z0-9_-]{0,63}\/files\/download$/;
+
+/**
+ * The BFF's deadline for a call that moves a whole file (an inbox upload or download): 5 minutes, where every other call
+ * keeps its 10 s (null); the deadline also covers streaming the answer's body.
+ */
+export const inboxDeadlineMs = (method: string, path: string): number | null => {
+  const p = path.split("?")[0]!;
+  return (method === "POST" && INBOX_UPLOAD_PATH.test(p)) || (method === "GET" && INBOX_DOWNLOAD_PATH.test(p)) ? 300_000 : null;
+};

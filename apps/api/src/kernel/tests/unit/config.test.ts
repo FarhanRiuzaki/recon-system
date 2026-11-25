@@ -38,11 +38,12 @@ describe("loadConfig", () => {
     expect(msg).not.toContain(KEY);
   });
 
-  it("INBOX_UPLOAD_MAX_MB: an inbox upload's limit in MB, 100 by default, 1 to 2048", () => {
+  it("INBOX_UPLOAD_MAX_MB: an inbox upload's limit in MB, 100 by default, 1 to 128 (Bun.serve's own body limit)", () => {
     expect(loadConfig(base).INBOX_UPLOAD_MAX_MB).toBe(100);
     expect(loadConfig({ ...base, INBOX_UPLOAD_MAX_MB: "5" }).INBOX_UPLOAD_MAX_MB).toBe(5);
     expect(failure({ ...base, INBOX_UPLOAD_MAX_MB: "0" })).toContain("INBOX_UPLOAD_MAX_MB");
-    expect(failure({ ...base, INBOX_UPLOAD_MAX_MB: "4096" })).toContain("INBOX_UPLOAD_MAX_MB");
+    expect(loadConfig({ ...base, INBOX_UPLOAD_MAX_MB: "128" }).INBOX_UPLOAD_MAX_MB).toBe(128);
+    expect(failure({ ...base, INBOX_UPLOAD_MAX_MB: "129" })).toContain("INBOX_UPLOAD_MAX_MB");
   });
 
   it("INBOX_ROOTS: absolute paths, comma-separated; a relative one is rejected by key, without its value", () => {

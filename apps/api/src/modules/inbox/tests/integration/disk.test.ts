@@ -60,6 +60,15 @@ describe("writeUpload", () => {
     expect(readdirSync(dir)).toEqual([]);
   });
 
+  it("a name of the longest length (255 bytes) uploads and hides: the temporary names don't grow with it", async () => {
+    const long = `${"a".repeat(251)}.txt`;
+    await writeUpload(dir, long, streamOf(["x"]), 1024);
+    expect(readdirSync(dir)).toEqual([long]);
+    const hidden = await hideFile(dir, long);
+    await unhideFile(hidden, dir, long);
+    expect(readdirSync(dir)).toEqual([long]);
+  });
+
   it("a name with a folder or a leading dot is refused before anything is written", async () => {
     expect(await codeOf(writeUpload(dir, "../x.txt", streamOf(["x"]), 1024))).toBe("bad_request");
     expect(await codeOf(writeUpload(dir, ".x", streamOf(["x"]), 1024))).toBe("bad_request");

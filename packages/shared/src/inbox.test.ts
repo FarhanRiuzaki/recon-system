@@ -39,3 +39,14 @@ describe("inbox space actions (owner, 25 Nov)", () => {
     expect(mayDo(["reviewer"], "viewInbox")).toBe(true);
   });
 });
+
+describe("inboxDeadlineMs", () => {
+  const space = "0193f2a4-1c2b-7d3e-8f40-1a2b3c4d5e6f";
+  it("gives an upload and a download 5 minutes through the BFF; anything else keeps the default (null)", async () => {
+    const { inboxDeadlineMs } = await import("./body-limit");
+    expect(inboxDeadlineMs("POST", `/v1/spaces/${space}/inbox/folders/act/files`)).toBe(300_000);
+    expect(inboxDeadlineMs("GET", `/v1/spaces/${space}/inbox/folders/act/files/download?name=a.txt`)).toBe(300_000);
+    expect(inboxDeadlineMs("GET", `/v1/spaces/${space}/inbox/folders/act/files`)).toBeNull();
+    expect(inboxDeadlineMs("DELETE", `/v1/spaces/${space}/inbox/folders/act/files/download`)).toBeNull();
+  });
+});

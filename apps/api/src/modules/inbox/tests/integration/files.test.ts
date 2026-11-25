@@ -16,6 +16,8 @@ import { sources, sourceVersions } from "../../../sources";
 import { spaceMembers, spaces } from "../../../spaces";
 import { users } from "../../../users";
 import { inboxUploads } from "../../schema";
+import { holdTx } from "../../../../../test/helpers/db";
+import { sourceLock } from "../../../../kernel/locks";
 
 const ROOT = process.env.INBOX_ROOTS!.split(",")[0]!;
 let app: ReturnType<typeof api>;
@@ -189,6 +191,18 @@ describe("DELETE …/files?name=", () => {
     expect(readdirSync(dir)).toEqual(["act20261124.txt"]);
     expect((await db.select().from(activity)).map((a) => [a.action, a.before])).toEqual([["inbox.file_delete", { folder: "act", name: "act20261125.txt", size: 3 }]]);
     expect((await call("DELETE", `${files()}?name=act20261125.txt`, { token: t.src })).status).toBe(404);
+  });
+
+  it("a file a source is reading right now (its ingest holds the source's lock) stays: 409, and it is still listed", async () => {
+    await upload(t.op, "act1.txt", "a");
+    const s = await readSource();
+    const ingest = await holdTx((tx) => sourceLock(tx, s));
+    try {
+      const r = await call("DELETE", `${files()}?name=act1.txt`, { token: t.src });
+      expect([r.status, (await errOf(r)).message]).toEqual([409, "A source is reading this file. Try again in a minute."]);
+      expect(readdirSync(dir)).toEqual(["act1.txt"]);
+    } finally { await ingest.rollback(); }
+    expect((await call("DELETE", `${files()}?name=act1.txt`, { token: t.src })).status).toBe(204);
   });
 
   it("a file refused as a duplicate or failed also stays: only a waiting file is deleted", async () => {

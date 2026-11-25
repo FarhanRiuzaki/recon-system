@@ -40,8 +40,8 @@ const Fields = z.object({
   /** Folders a file inbox source may read from (and below): absolute paths, comma-separated; none = no file inbox. */
   INBOX_ROOTS: z.string().default("").transform((v) => v.split(",").map((x) => x.trim()).filter(Boolean))
     .refine((roots) => roots.every((r) => isAbsolute(r)), { message: "must be absolute paths, comma-separated" }),
-  /** The largest file one inbox upload may be, in MB (inbox module; a bigger one is refused and nothing is kept). */
-  INBOX_UPLOAD_MAX_MB: int(1, 2048, 100),
+  /** The largest file one inbox upload may be, in MB (inbox module; a bigger one is refused and nothing is kept); at most 128, Bun.serve's default body limit. */
+  INBOX_UPLOAD_MAX_MB: int(1, 128, 100),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   OAUTH_MOCK: flag,
   LDAP_MOCK: flag,

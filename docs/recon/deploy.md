@@ -101,7 +101,7 @@ API dan worker membaca source yang sama, jadi keduanya butuh nilai yang sama (`d
   jadi mount inbox di service `api` read-write (worker tetap `:ro`) dan folder host (`INBOX_DIR`) harus bisa ditulis
   user container `bun` (uid 1000): `chown 1000:1000 <INBOX_DIR> && chmod 2775 <INBOX_DIR>`. Folder yang dibuat aplikasi
   bermode 2775 (setgid), jadi akun FTP sistem lain nanti cukup masuk grup yang sama dan menulis ke folder space yang
-  sama. Batas ukuran per file `INBOX_UPLOAD_MAX_MB` (default 100, 1–2048). Penyimpanan objek (MinIO/S3) belum: semua
+  sama. Batas ukuran per file `INBOX_UPLOAD_MAX_MB` (default 100, 1–128: batas body Bun.serve). Penyimpanan objek (MinIO/S3) belum: semua
   operasi file modul `inbox` lewat `apps/api/src/modules/inbox/disk.ts`.
 - `DATA_ENCRYPTION_KEY` yang sama: API mengenkripsi koneksi source yang disimpan, worker mendekripsinya untuk pull.
 - `APP_DB_ROLE` terisi saat `db:migrate` (§2, §3): tanpa itu role aplikasi tidak mendapat hak pada pg-boss dan

@@ -58,13 +58,14 @@ export async function removeFolder(root: string, name: string): Promise<void> {
 }
 
 /**
- * Writes `body` to `dir/name`: first to a dot file of its own (`.<name>.<random>.uploading`), hashing while it writes;
+ * Writes `body` to `dir/name`: first to a dot file of its own (`.<random>.uploading`), hashing while it writes;
  * over `maxBytes` or a broken stream → the dot file is removed and nothing lands; then linked to `name` (refused when
  * that name exists: 409 duplicate, never overwritten) and the dot file removed.
  */
 export async function writeUpload(dir: string, name: string, body: ReadableStream<Uint8Array>, maxBytes: number): Promise<{ size: number; sha256: string }> {
   plainName(name);
-  const temp = path.join(dir, `.${name}.${Bun.randomUUIDv7()}.uploading`);
+  // the temporary name doesn't carry the file's: a 255-byte name would pass the file system's limit with it
+  const temp = path.join(dir, `.${Bun.randomUUIDv7()}.uploading`);
   const h = new Bun.CryptoHasher("sha256");
   let size = 0;
   const fh = await open(temp, "wx", FILE_MODE);
@@ -91,7 +92,7 @@ export async function writeUpload(dir: string, name: string, body: ReadableStrea
 /** Moves `dir/name` out of sight (a dot name the pipeline skips) before a delete; answers the hidden path. */
 export async function hideFile(dir: string, name: string): Promise<string> {
   plainName(name);
-  const hidden = path.join(dir, `.${name}.${Bun.randomUUIDv7()}.deleting`);
+  const hidden = path.join(dir, `.${Bun.randomUUIDv7()}.deleting`);
   await rename(path.join(dir, name), hidden);
   return hidden;
 }

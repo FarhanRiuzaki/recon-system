@@ -1,5 +1,5 @@
 import "server-only";
-import { BODY_MAX, bodyMaxFor, isInboxUpload } from "@starterkit/shared/body-limit";
+import { BODY_MAX, bodyMaxFor, inboxDeadlineMs, isInboxUpload } from "@starterkit/shared/body-limit";
 import { apiError, csrfFailed } from "./api";
 import { backend, relay, v1Path } from "./backend";
 import { CSRF_HEADER, csrfOk } from "./csrf";
@@ -44,13 +44,12 @@ export async function forward(req: Request): Promise<Response> {
   const sent = body?.size ? body : null;
   const res = await backend(path, {
     method: req.method, body: sent, contentType: sent ? (req.headers.get("content-type") ?? "application/json") : undefined, token, req,
+    timeoutMs: inboxDeadlineMs(req.method, path) ?? undefined,
   });
   if (res.status === 401 && token) s.destroy();
   return relay(res);
 }
 
-/** An inbox upload has no fixed body limit here (the API's INBOX_UPLOAD_MAX_MB), so it streams instead of `bodyOf`. */
-const UPLOAD_TIMEOUT_MS = 300_000;
 
 /**
  * An inbox upload (isInboxUpload), after the CSRF check: its body streamed to the API as it arrives, never held whole,
@@ -60,7 +59,7 @@ async function upload(req: Request, path: string, token: string | null, s: Await
   const length = req.headers.get("content-length");
   if (!length || !/^\d+$/.test(length)) return tooLarge();
   const res = await backend(path, {
-    method: "POST", body: req.body, contentType: "application/octet-stream", token, req, timeoutMs: UPLOAD_TIMEOUT_MS,
+    method: "POST", body: req.body, contentType: "application/octet-stream", token, req, timeoutMs: inboxDeadlineMs("POST", path) ?? undefined,
     file: { name: req.headers.get("x-file-name") ?? "", length },
   });
   if (res.status === 401 && token) s.destroy();

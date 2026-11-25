@@ -12,6 +12,7 @@ import path from "node:path";
 import { config } from "../../kernel/config";
 import type { InTx } from "../../kernel/db";
 import { ApiError, notFound } from "../../kernel/errors";
+import { trySourceLock } from "../../kernel/locks";
 import { recordActivity } from "../audit";
 import type { Ctx } from "../auth";
 import { sourceFiles } from "../ingest";
@@ -214,27 +215,36 @@ export async function downloadFile(ctx: Ctx, folder: string, name: string): Prom
 }
 
 /**
- * Deletes a file no source has read: hidden first (a dot name the pipeline skips, so a scan can't start on it), then
- * checked under the transaction; a source that has read it (any state but waiting) → back under its name, 409.
+ * Deletes a file no source has read. Under each reading source's ingest lock (taken without waiting: a source reading
+ * it now → 409), the file is hidden (a dot name the pipeline skips), checked (a source that has read it, any state but
+ * waiting → back under its name, 409), the entry recorded, and the hidden file removed once the transaction committed.
  */
 export async function deleteFile(ctx: Ctx, folder: string, name: string): Promise<void> {
-  const { dir, space } = await inSpace(ctx, async (tx, spaceId) => {
-    const r = await rootOf(tx, spaceId);
-    return { dir: await folderOf(r.root, folder), space: r.space };
-  });
-  if (!isInboxFileName(name)) throw notFound("file");
-  const hidden = await hideFile(dir, name).catch((e) => { throw (e as { code?: string }).code === "ENOENT" ? notFound("file") : e; });
-  try {
-    await inSpace(ctx, async (tx, spaceId) => {
+  let gone: string | null = null;
+  await inSpace(ctx, async (tx, spaceId) => {
+    const { space, root } = await rootOf(tx, spaceId);
+    const dir = await folderOf(root, folder);
+    if (!isInboxFileName(name)) throw notFound("file");
+    const readers = await readersOf(tx, spaceId, dir);
+    for (const r of [...readers].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+      if (!(await trySourceLock(tx, r.id))) throw new ApiError("invalid_state", "A source is reading this file. Try again in a minute.");
+    }
+    const hidden = await hideFile(dir, name).catch((e) => { throw (e as { code?: string }).code === "ENOENT" ? notFound("file") : e; });
+    try {
       const st = await stat(hidden);
       const f = { name, size: st.size, modifiedAt: Math.floor(st.mtimeMs) };
-      const states = (await statesOf(tx, spaceId, await readersOf(tx, spaceId, dir), [f])).get(name) ?? [];
+      const states = (await statesOf(tx, spaceId, readers, [f])).get(name) ?? [];
       if (states.some((s) => s.state !== "waiting")) throw new ApiError("invalid_state", "A source has already read this file.");
       await recordActivity(tx, ctx, { action: "inbox.file_delete", target: spaceTarget(space), before: { folder, name, size: f.size } });
-      await dropHidden(hidden);
-    });
-  } catch (e) {
-    if (await stat(hidden).catch(() => null)) await unhideFile(hidden, dir, name);
+      gone = hidden;
+    } catch (e) {
+      await unhideFile(hidden, dir, name);
+      throw e;
+    }
+  }).catch(async (e: unknown) => {
+    // the commit itself failed after the check: the file goes back
+    if (gone) await unhideFile(gone, path.dirname(gone), name).catch(() => undefined);
     throw e;
-  }
+  });
+  if (gone) await dropHidden(gone);
 }

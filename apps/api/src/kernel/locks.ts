@@ -53,6 +53,15 @@ export async function sourceLock(tx: Tx, sourceId: string): Promise<void> {
 }
 
 /**
+ * sourceLock without waiting: true when taken (held until `tx` ends), false while a step of the source holds it (an
+ * inbox file delete answers 409 then, instead of waiting past the 5 s statement timeout behind a long ingest).
+ */
+export async function trySourceLock(tx: Tx, sourceId: string): Promise<boolean> {
+  const [r] = await tx.execute<{ ok: boolean }>(sql`select pg_try_advisory_xact_lock(${LOCK_KINDS.source}::int, hashtext(${sourceId})) as ok`);
+  return !!r?.ok;
+}
+
+/**
  * Takes the lock of the fields published recons read from source `sourceId` (Plan 3 A4) until `tx` ends: publishing a
  * recon on the source and checking a source version against those fields run one after the other, never both on a stale
  * view. A kind of its own, so it never waits behind the source's ingest steps (sourceLock).

@@ -96,7 +96,7 @@ services:
       # The file inbox folders, as the worker has them: the API tests a folder and lists its files for the source wizard
       # (a folder outside INBOX_ROOTS answers "outside") and writes Inbox files uploads. Same value and mounts as the worker.
       INBOX_ROOTS: ${INBOX_ROOTS:-}
-      # Inbox files: the largest upload in MB (1 to 2048, default 100).
+      # Inbox files: the largest upload in MB (1 to 128, default 100).
       INBOX_UPLOAD_MAX_MB: ${INBOX_UPLOAD_MAX_MB:-}
     # Read-write here (Inbox files uploads land in <first INBOX_ROOTS entry>/<space code>/<folder>/); the worker keeps :ro.
     volumes:

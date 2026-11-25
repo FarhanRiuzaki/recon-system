@@ -23,6 +23,8 @@ export function proxy(request: NextRequest) {
   return res;
 }
 
+// An inbox upload is left out: Next hands the proxy a clone of the request body, held whole in memory and cut at
+// 10 MB (proxyClientMaxBodySize), so the upload would never stream (DEC-057). Its answer is JSON, not a page.
 export const config = {
-  matcher: [{ source: "/((?!_next/static|_next/image|favicon.ico).*)" }],
+  matcher: [{ source: "/((?!_next/static|_next/image|favicon.ico|api/spaces/[^/]+/inbox/folders/[^/]+/files$).*)" }],
 };
