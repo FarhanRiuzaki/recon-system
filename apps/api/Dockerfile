@@ -26,10 +26,15 @@ COPY --from=deps /app/apps/api/node_modules apps/api/node_modules
 # The workspace sources the API imports: @starterkit/shared and @starterkit/ui/lib/*.
 COPY packages/shared/src packages/shared/src
 COPY packages/ui/src/lib packages/ui/src/lib
+# the report PDFs are styled with the design system's light tokens (modules/reports/pdf-html.ts)
+COPY packages/ui/src/styles/tokens.css packages/ui/src/styles/tokens.css
 COPY apps/api/package.json apps/api/
 COPY apps/api/drizzle apps/api/drizzle
 COPY apps/api/src apps/api/src
 WORKDIR /app/apps/api
+# Chromium prints the report PDFs in the worker (DEC-060; REPORT_CHROMIUM_PATH); Debian's package, through the build
+# proxy like the rest (HTTP_PROXY build args). The API process never launches it.
+RUN apt-get update && apt-get install -y --no-install-recommends chromium fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 USER bun
 EXPOSE 4000
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \

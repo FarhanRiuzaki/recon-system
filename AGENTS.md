@@ -134,7 +134,8 @@ API cases live in `apps/api/src/modules/<m>/tests/integration/` and `apps/api/te
 
 - Pin exact versions (no `^`, no `~`); match the versions in the plan header. (`package.json` files, `bunfig.toml` `exact = true`, `bun.lock`)
 - Do not add a dependency for what a few lines can do; any new dependency is pinned exact too.
-- `xlsx` (SheetJS 0.20.3, from its CDN tarball) is imported only in `apps/api/src/modules/ingest` (`excel.ts`, `detect.ts`), by name. (`apps/api/package.json`, DEC-058)
+- `xlsx` (SheetJS 0.20.3, from its CDN tarball) is imported only in `apps/api/src/modules/ingest` (`excel.ts`, `detect.ts`) and `apps/api/src/modules/reports` (`write-xlsx.ts`), by name. (`apps/api/package.json`, DEC-058, DEC-060)
+- `playwright-core` (1.63.0, the web's Playwright version) is imported only in `apps/api/src/modules/reports/write-pdf.ts`; it drives the Debian `chromium` of the API image (`REPORT_CHROMIUM_PATH`) to print report PDFs in the worker. (`apps/api/Dockerfile`, DEC-060)
 
 ## 6. Tokens and color
 

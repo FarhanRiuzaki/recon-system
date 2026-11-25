@@ -822,3 +822,17 @@ pass aturan di akhir hanya me-match sisa yang tidak dapat pasangan; Add pass →
   filter sisi ("Pass 4, rule condition 1: …"), dan field-nya ikut `usedFields` sisinya.
 - Evidence grup: `chosen: "rule met, no counterpart"`, `side`, `rule` (kondisi), `predicates: []`; Explain menampilkan
   kondisinya dan "No counterpart needed" di sisi lain.
+
+## DEC-060 — Report generator: template per recon, file di latar belakang, PDF lewat Chromium
+
+**Keputusan (owner 25 Nov):** module `reports` (API + web) memegang template report per recon (Transactions /
+Grouped / Daily summary → CSV / Excel / PDF), versinya (draft → active; resmi: disetujui `config_checker`, DEC-051),
+dan file yang dibuat worker di antrean `reports.make` (setelah run yang berhasil, atau atas permintaan), disimpan di
+`<inbox root>/.reports/`, di-download dengan entri activity. Final = hari sudah sign-off; data nasabah utuh hanya di
+versi resmi dan hanya di-download `space_admin`/`reviewer`/`config_checker`; file disimpan `REPORT_RETENTION_DAYS`
+(400). Baris report = baris Operation result (`reportResultRows` di engine), jadi isinya sama dengan halaman Results.
+
+**PDF:** HTML dengan token terang DS (tokens.css dibaca sebagai teks, Inter ditanam) dicetak Chromium headless
+(`playwright-core` 1.63.0 + paket Debian `chromium` di image API, hanya dipakai worker; semua request selain halaman
+ditolak). Excel lewat SheetJS (kini juga di `modules/reports`); edisi komunitasnya tidak menulis gaya sel, jadi baris
+grup ditandai posisi dan namanya. Spec: `docs/superpowers/specs/2026-11-25-report-generator-design.md`.

@@ -30,6 +30,7 @@
         "oracledb": "26.0.0",
         "pg-boss": "12.38.2",
         "pino": "10.3.1",
+        "playwright-core": "1.63.0",
         "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
         "zod": "4.6.7",
       },

@@ -44,6 +44,9 @@ const Fields = z.object({
   INBOX_UPLOAD_MAX_MB: int(1, 128, 100),
   /** The largest Excel workbook a file source reads, in MB (read whole; the file reader, DEC-058). */
   EXCEL_MAX_MB: int(1, 128, 50),
+  /** The report generator (DEC-060): how long a made file is kept, and the Chromium that prints PDFs (the worker image's). */
+  REPORT_RETENTION_DAYS: int(1, 3650, 400),
+  REPORT_CHROMIUM_PATH: z.string().min(1).default("/usr/bin/chromium"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   OAUTH_MOCK: flag,
   LDAP_MOCK: flag,
@@ -93,7 +96,7 @@ const JobsFields = Fields.pick({ DATABASE_URL: true, JOBS_POOL_MAX: true });
 /** What the worker process reads (src/worker.ts, kernel/worker-db.ts); it needs none of the API's secrets. */
 const WorkerFields = Fields.pick({
   DATABASE_URL: true, JOBS_POOL_MAX: true, API_HOST: true, WORKER_DB_POOL_MAX: true, JOB_STATEMENT_TIMEOUT_MS: true, WORKER_HEALTH_PORT: true,
-  DATA_ENCRYPTION_KEY: true, INBOX_ROOTS: true, EXCEL_MAX_MB: true,
+  DATA_ENCRYPTION_KEY: true, INBOX_ROOTS: true, EXCEL_MAX_MB: true, REPORT_RETENTION_DAYS: true, REPORT_CHROMIUM_PATH: true,
 });
 /** The key of encryptSecret/decryptSecret (kernel/crypto.ts), read alone so the worker decrypts without the API's secrets. */
 const KeyFields = Fields.pick({ DATA_ENCRYPTION_KEY: true });
