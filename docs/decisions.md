@@ -836,3 +836,18 @@ versi resmi dan hanya di-download `space_admin`/`reviewer`/`config_checker`; fil
 (`playwright-core` 1.63.0 + paket Debian `chromium` di image API, hanya dipakai worker; semua request selain halaman
 ditolak). Excel lewat SheetJS (kini juga di `modules/reports`); edisi komunitasnya tidak menulis gaya sel, jadi baris
 grup ditandai posisi dan namanya. Spec: `docs/superpowers/specs/2026-11-25-report-generator-design.md`.
+
+## DEC-061 — Report designer menggantikan wizard report (spec v2)
+
+**Keputusan (owner 26 Nov):** "harusnya reportnya sebebas user … drag and drop columnya, headernya, mau apa aja isinya
+… hingga in detail micro", "semua section optional", "dari data recon baru di join ke source", "solusi enterprise",
+"pakai DS kita". Template report kini dirancang di designer tiga panel (Data · report di atas baris asli · pengaturan),
+tanpa kartu Start from dan tanpa wizard. Spec v2 (`v: 2`, `packages/shared/src/contracts/reports.ts`): dataset recon
+(`results`, `items`, `recap`) dengan field record source tiap sisi (inti dan atribut), kolom bebas (field + fallback,
+formula CEL dengan allowlist ingest, teks tetap, nomor baris), format per kolom, highlight, total, grup, bagian file
+opsional (judul, header block, header kolom, total, footer; "Data only"), dan output CSV/Excel/Text fixed-width/PDF dari
+satu desain. Preview dirender API dengan kode file yang sama (`…/preview`, `…/preview-draft`), selalu termasking.
+Formula yang membaca field data nasabah ikut dimasking; atribut source bisa ditandai data nasabah di mapping source
+(`mapping.customer`, lewat versi source dan approval-nya). Versi v1 yang tersimpan dikonversi saat dibaca
+(`parseStoredSpec`/`fromV1`), tanpa migrasi data. Antrean, file, approval, unduhan, retensi tetap DEC-060.
+Spec: `docs/superpowers/specs/2026-11-26-report-designer-design.md`.
