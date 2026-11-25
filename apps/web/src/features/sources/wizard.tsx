@@ -791,7 +791,7 @@ function SourceWizard({ spaceId, spaceName, initial, start, admin, source }: {
               onSample={(text, name) => { setSample(sampleHead(text)); if (name) setFileName(name); setEdited(true); }} onFileName={setFileName} onReadSample={readSample}
               businessDate={businessDate} onBusinessDate={setBusinessDate} preview={previewable || !file ? preview : { result: null, error: null, pending: false }}
               onPreview={file ? null : () => void runPreview(true)} columns={columns} canChangeReading={admin} headerHint={headerHint} typedNames={typedNames} onTypedName={typeName}
-              gone={gone} suggested={suggested} coreHint={d.hint ?? {}}
+              gone={gone} suggested={suggested} coreHint={d.hint ?? {}} mapperPreview={{ spaceId, ids, sampleId }}
               onUseHeader={() => { set((x) => (x.spec.input.kind === "file_inbox" ? { ...x, spec: { ...x.spec, fields: [], mapping: { ...x.spec.mapping, attrs: {} }, input: { ...x.spec.input, format: { ...x.spec.input.format, header: true } } } } : x)); setHeaderHint(false); }} />
           )}
           {step === 2 && ids && <ReviewStep d={{ ...d, spec }} version={ids.version} spaceName={spaceName} preview={previewable ? preview.result : null} canConnect={admin} wmKind={watermarkKind(d, columns)} onEdit={setStep}

@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ChangeEvent, Fragment, type ReactElement, useRef, useState } from "react";
-import { Checkbox, Combobox, type ComboOption, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
+import { type ChangeEvent, Fragment, type ReactElement, useEffect, useRef, useState } from "react";
+import { Checkbox, Combobox, type ComboOption, Disclosure, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -18,6 +18,7 @@ import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-su
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
 import { type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
 import { toast } from "@starterkit/ui/ui/toast";
+import { summaryLine } from "../mapper-model";
 
 /**
  * Computed columns and Rows to load sit under the field table, out of the first screen: they load after the page, preloaded as soon
@@ -26,6 +27,8 @@ import { toast } from "@starterkit/ui/ui/toast";
 export const preloadFieldParts = () => Promise.all([import("./computed"), import("./conditions")]);
 const ComputedColumns = dynamic(() => import("./computed").then((m) => m.ComputedColumns), { ssr: false, loading: () => <div aria-hidden="true" className="h-12" /> });
 // "Rows to load" sits under the fields too: the same (bundle budget, DEC-040)
+// the full-screen mapper carries React Flow: it loads when opened
+const SourceMapper = dynamic(() => import("./mapper").then((m) => m.SourceMapper), { ssr: false });
 const RowsToLoad = dynamic(() => import("./conditions").then((m) => m.RowsToLoad), { ssr: false, loading: () => <div aria-hidden="true" className="h-24" /> });
 import { computeCel, computeSteps, jsonPaths } from "@starterkit/shared/compute";
 
@@ -94,6 +97,8 @@ export type FieldsStepProps = {
   suggested: Suggestion | null;
   /** Core fields filled from the column names; the note shows while the value is still it. */
   coreHint: Partial<Record<SuggestedCore, string>>;
+  /** Where the mapper's own preview reads from (the wizard's source and the detected sample). */
+  mapperPreview: { spaceId: string; ids: { sourceId: string; versionId: string } | null; sampleId: string | null };
 };
 
 /**
@@ -122,6 +127,10 @@ export function FieldsStep(p: FieldsStepProps) {
     return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
   });
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
+  const [mapperOpen, setMapperOpen] = useState(false);
+  // "View as list": closed on a desktop (the mapper is the way in), open on a phone (no mapper there)
+  const [listOpen, setListOpen] = useState(false);
+  useEffect(() => { const t = setTimeout(() => { if (window.matchMedia("(max-width: 767px)").matches) setListOpen(true); }); return () => clearTimeout(t); }, []);
 
   // Columns, a page at a time for a wide table: those the search finds, plus any with an error (Next can focus it)
   const [colQuery, setColQuery] = useState("");
@@ -132,6 +141,8 @@ export function FieldsStep(p: FieldsStepProps) {
   const curPage = Math.min(colPage, Math.max(1, Math.ceil(matched.length / COL_PAGE)));
   const page = matched.length > COL_PAGE ? matched.slice((curPage - 1) * COL_PAGE, curPage * COL_PAGE) : matched;
   const failing = s.fields.flatMap((f, i) => (err(ctl(`fields.${i}`)) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`)) ?? err(`src-attr-${i}`) ? [i] : []));
+  // an error inside the tables opens "View as list", so Next can focus it
+  const inList = failing.length > 0 || ["src-columns", ctl("key_fields"), ctl("currency"), ctl("mapping.amount_minor.unit"), ...CORE.map((c) => ctl(`mapping.${c.key}`))].some((id) => !!err(id));
   const shownCols = [...new Set([...page, ...failing])].sort((a, b) => a - b);
 
   // a match key that repeats in the preview replaces rows that are other transactions (ids reset monthly, shared ids)
@@ -223,6 +234,16 @@ export function FieldsStep(p: FieldsStepProps) {
         </Panel>
       ) : null}
 
+      <Panel title="Mapping" description={summaryLine(s)}
+        actions={s.fields.length > 0 && <Button type="button" variant="secondary" className="hidden md:inline-flex" onClick={() => setMapperOpen(true)}>Open mapper</Button>}>
+        <p className="text-body-sm text-fg-3">Open the mapper to draw the columns onto the core record, or set them in the list below.</p>
+      </Panel>
+      {mapperOpen && (
+        <SourceMapper open name={d.name} spec={s} examples={Object.fromEntries([...examples].map(([k, v]) => [k, v[0] ?? ""]))}
+          preview={{ ...p.mapperPreview, file, sample: p.sample, fileName: p.fileName, businessDate: p.businessDate }}
+          onDone={(next) => { setSpec(() => next); setMapperOpen(false); }} onCancel={() => setMapperOpen(false)} />
+      )}
+      <Disclosure summary="View as list" defaultOpen={listOpen || inList} onToggle={setListOpen} className="border-0 bg-transparent">
       {/* the examples come from the preview, which runs by itself; Show examples reads them again after a failure */}
       <Panel flush title="Columns" description={`${s.fields.length} columns${!file ? ` from ${s.input.kind === "db_watermark" && s.input.table?.trim() ? s.input.table.trim() : "the query"}` : ""} · check each type and what the recons use it as`}
         actions={(s.fields.length > 0 || (!file && p.canRead && hasSource)) && (
@@ -332,6 +353,7 @@ export function FieldsStep(p: FieldsStepProps) {
         <ComputedColumns spec={s} setSpec={setSpec} err={err} examples={examples} renderUseAs={(name, i) => fieldPicker(name, `derive-${i}`)} />
         <ReconFields d={d} p={p} err={err} refLabel={refLabel} setSpec={setSpec} setCore={setCore} setUnit={setUnit} />
       </Panel>
+      </Disclosure>
 
 
 
