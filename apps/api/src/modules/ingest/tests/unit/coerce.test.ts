@@ -74,6 +74,18 @@ describe("other types", () => {
     expect(why("2026-02-30", f("date"))).toBe('amount: not a date ("2026-02-30")');
     expect(why("2026/11/02", f("date"))).toBe('amount: not a date ("2026/11/02")');
   });
+  it("date without a pattern also reads a database's date-time text (an Oracle DATE, a timestamp column): its day", () => {
+    // the families a date field accepts (rules.ts FITS: date, ts, tstz) come from the connector in these forms
+    expect(val("2026-11-24T00:00:00", f("date"))).toBe("2026-11-24"); // Oracle DATE
+    expect(val("2026-11-24T14:30:00.123456", f("date"))).toBe("2026-11-24"); // a timestamp: the day as written
+    expect(val("2026-11-24 00:00:00", f("date"))).toBe("2026-11-24");
+    // a time-zone-aware value is the day in the field's time zone (default Asia/Jakarta), not in UTC
+    expect(val("2026-11-24T20:00:00.000000Z", f("date"))).toBe("2026-11-25");
+    expect(val("2026-11-24T20:00:00.000000Z", f("date", { format: { timezone: "UTC" } }))).toBe("2026-11-24");
+    expect(why("2026-02-30T00:00:00", f("date"))).toBe('amount: not a date ("2026-02-30T00:00:00")');
+    // a pattern of its own reads only that pattern
+    expect(why("2026-11-24T00:00:00", f("date", { format: { date: "yyyy-MM-dd" } }))).toBe('amount: not a date ("2026-11-24T00:00:00")');
+  });
   it("datetime: the instant in UTC, read in the field's timezone (default Asia/Jakarta)", () => {
     const fmt = { date: "yyyy-MM-dd HH:mm:ss" };
     expect(val("2026-11-02 08:30:00", f("datetime", { format: fmt }))).toBe("2026-11-02T01:30:00.000Z");

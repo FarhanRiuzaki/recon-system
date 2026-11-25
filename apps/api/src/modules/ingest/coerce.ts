@@ -65,8 +65,13 @@ export function formatScaled(v: bigint, scale: number): string {
 
 const ISO_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:?\d{2})?$/;
 
+/**
+ * A date or date-time cell by the field's pattern; without one, also the ISO text a database connector writes (a date
+ * field takes a date, timestamp or Oracle DATE column, rules.ts FITS: its day as written, or with a zone its day in the
+ * field's time zone).
+ */
 function readDate(s: string, f: FieldSpec): string | null {
-  const m = f.type === "date" || f.format?.date ? null : ISO_DATETIME.exec(s);
+  const m = f.format?.date ? null : ISO_DATETIME.exec(s);
   let parts: Record<string, number>;
   let ms = 0;
   let offset: string | undefined;
@@ -84,7 +89,7 @@ function readDate(s: string, f: FieldSpec): string | null {
   }
   const { yyyy: y, MM: mo, dd: d, HH: h, mm: mi, ss: sec } = parts as Record<string, number>;
   if (!realDate(y!, mo!, d!) || h! > 23 || mi! > 59 || sec! > 59) return null;
-  if (f.type === "date") return `${pad(y!, 4)}-${pad(mo!)}-${pad(d!)}`;
+  if (f.type === "date" && !offset) return `${pad(y!, 4)}-${pad(mo!)}-${pad(d!)}`;
   const wall = Date.UTC(y!, mo! - 1, d!, h, mi, sec);
   let utc: number;
   if (offset) {
@@ -93,7 +98,8 @@ function readDate(s: string, f: FieldSpec): string | null {
     const tz = f.format?.timezone ?? DEFAULT_TIMEZONE;
     utc = wall - offsetMs(wall - offsetMs(wall, tz), tz); // twice, so a cell near a DST change lands right
   }
-  return new Date(utc + ms).toISOString();
+  const iso = new Date(utc + ms).toISOString();
+  return f.type === "date" ? localDate(iso, f.format?.timezone ?? DEFAULT_TIMEZONE) : iso;
 }
 
 /** `int` (no sign) with its thousand separators checked and removed: plain digits, or groups of three after 1–3 leading digits. */
