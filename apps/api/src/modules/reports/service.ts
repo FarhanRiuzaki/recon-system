@@ -6,7 +6,6 @@ import type { Page } from "@starterkit/shared/contracts/common";
 import type {
   CreateReportTemplateBody, ReportDecisionBody, ReportTemplateDto, ReportTemplateListQuery, ReportVersionDto, SaveReportVersionBody,
 } from "@starterkit/shared/contracts/reports";
-import type { ReportSpec } from "@starterkit/shared/contracts/reports";
 import { isSuperadmin } from "@starterkit/shared/permissions";
 import { and, desc, eq, inArray, isNull, max, sql } from "drizzle-orm";
 import type { InTx, Tx } from "../../kernel/db";
