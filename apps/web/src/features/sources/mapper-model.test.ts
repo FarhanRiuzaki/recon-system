@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { computeCel } from "@starterkit/shared/compute";
-import { connect, disconnect, setSource, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
+import { columnInfo, connect, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
 
 const f = (name: string, type: "string" | "decimal" | "date" = "string") => ({ name, type, nullable: true, trim: true });
 const spec = (o: Partial<SourceSpec> = {}): SourceSpec => ({
@@ -90,5 +90,36 @@ describe("edits", () => {
       expect("refused" in off ? null : off.currency).toBeUndefined();
       expect(setSource(spec(), "currency", { currency: "" }).currency).toBeUndefined();
     });
+  });
+});
+
+describe("the rest of the mapper", () => {
+  it("a search keeps the columns that feed a line, and marks the kept attributes", () => {
+    const g = sourceGraph(spec(), {}, { q: "amt" });
+    expect(g.sources[0]!.rows.map((r) => [r.key, r.kind])).toEqual([["sid", "string"], ["amt", "decimal · attr"]]);
+  });
+  it("the amount's unit, kept when the column changes", () => {
+    const s = setUnit(connect(spec(), "amt", "amount_minor"), "minor");
+    expect(s.mapping.amount_minor).toEqual({ field: "amt", unit: "minor" });
+    expect(rowProblem(connect(spec(), "amt", "amount_minor"), "amount_minor")).toBe("Choose whether the amount is in currency units or minor units.");
+    expect(rowProblem(s, "amount_minor")).toBeNull();
+  });
+  it("a JSON path from a column draws a dashed line", () => {
+    const s = setJsonPath(spec(), "ext_ref", "data", "code.rc");
+    expect(sourceGraph(s, {}).edges.find((e) => e.id === "ext_ref")).toMatchObject({ row: "data", label: "code.rc", dashed: true });
+  });
+  it("a row's problem is the one step 2 shows on it", () => {
+    const s = { ...spec(), mapping: { ...spec().mapping, account_ref: { field: "gone" } } } as SourceSpec;
+    expect(rowProblem(s, "account_ref")).toBe("gone is no longer a column. Pick another column in Use as, or stop using this field.");
+    expect(rowProblem(s, "ext_ref")).toBeNull();
+  });
+  it("a column's type starts with its format; its stored name is checked", () => {
+    const s = setColumn(spec(), "sid", { type: "date" });
+    expect(s.fields[0]).toMatchObject({ type: "date", format: { date: "yyyy-MM-dd" } });
+    expect(setColumn(spec(), "sid", { nullable: false }).fields[0]!.nullable).toBe(false);
+    expect(renameAttr(spec(), "sre", "amt")).toEqual({ refused: "Another column is stored as amt. Use a different name." });
+    const r = renameAttr(spec(), "sre", "sre_code");
+    expect("refused" in r ? null : Object.keys(r.mapping.attrs)).toEqual(["sre_code", "amt"]);
+    expect(columnInfo(spec(), "sre")).toEqual({ type: "string", nullable: true, stored: "sre" });
   });
 });

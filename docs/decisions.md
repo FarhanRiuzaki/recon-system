@@ -794,3 +794,9 @@ desktop, terbuka di ponsel dan saat ada error di dalamnya.
 **Kanvas bersama:** `components/field-map/{canvas,graph}.tsx` dipindah dari `features/recon` (fitur tak boleh impor fitur
 saudara); editor posting recon memakai kanvas yang sama tanpa perubahan perilaku. Model murni di
 `features/sources/mapper-model.ts` (graf + edit), diuji tanpa React Flow.
+
+**Lanjutan (owner 25 Nov, "beresin yang tadi"):** inspector juga mengatur unit amount, formula bebas, dan JSON path
+dari kolom (garis putus-putus); masalah yang step 2 tunjukkan di field itu tampil di inspector. Klik nama kolom membuka
+inspector kolom (tipe, boleh kosong, simpan sebagai extra attribute dan namanya, nama dicek seperti di step 2); format
+tanggal/angka tetap di View as list. Baris Extra attributes membuka daftarnya, masing-masing bisa dilepas. Pencarian
+menyaring tabel kolom di kanvas juga, tapi kolom yang menjadi awal garis tetap tampil.

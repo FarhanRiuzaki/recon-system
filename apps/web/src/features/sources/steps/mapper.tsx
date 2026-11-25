@@ -15,7 +15,10 @@ import { Select } from "@starterkit/ui/ui/select";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { FieldMapCanvas } from "@/components/field-map/canvas";
-import { CORE_ROWS, type CoreRow, connect, disconnect, setSource, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
+import { computeSteps } from "@starterkit/shared/compute";
+import { AMOUNT_UNITS, type AmountUnit, FIELD_TYPES } from "@starterkit/shared/sources";
+import { TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
+import { CORE_ROWS, type CoreRow, columnInfo, connect, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
 import { useSpecPreview } from "../use-spec-preview";
 
 /** Past this many columns the rail offers a search. */
@@ -30,8 +33,18 @@ function sourceValue(spec: SourceSpec, k: CoreRow): string {
   if (k === "currency" && !r && spec.currency) return "const";
   if (!r) return "";
   if ("field" in r) return r.field ? `field:${r.field}` : "";
-  return r.cel === "file_date" || r.cel === "arrived_date" ? `preset:${r.cel}` : "cel";
+  if (r.cel === "file_date" || r.cel === "arrived_date") return `preset:${r.cel}`;
+  return jsonOf(r.cel) ? "json" : "cel";
 }
+
+/** A formula that reads one JSON path of a column, as its column and path. */
+function jsonOf(cel: string): { col: string; path: string } | null {
+  const b = computeSteps(cel);
+  return b?.steps.length === 1 && b.steps[0]!.type === "json" ? { col: b.source, path: String(b.steps[0]!.args[0] ?? "") } : null;
+}
+
+/** A formula or JSON path being typed in the inspector (applied once it has text). */
+type Typing = { row: CoreRow; kind: "cel"; cel: string } | { row: CoreRow; kind: "json"; col: string; path: string };
 
 export function SourceMapper({ open, name, spec: given, examples, preview, onDone, onCancel }: {
   open: boolean; name: string; spec: SourceSpec; examples: Readonly<Record<string, string>>; preview: PreviewOf;
@@ -44,7 +57,9 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
   // Escape, the close button or a click outside ask when something changed (the posting editor's rule)
   const [held, setHeld] = useState(false);
   const dirty = JSON.stringify(spec) !== JSON.stringify(given);
-  const graph = useMemo(() => sourceGraph(spec, examples), [spec, examples]);
+  const [typing, setTyping] = useState<Typing | null>(null);
+  const [storedTyped, setStoredTyped] = useState<{ col: string; name: string; why: string } | null>(null);
+  const graph = useMemo(() => sourceGraph(spec, examples, { q }), [spec, examples, q]);
   const live = useSpecPreview({ ...preview, spec, enabled: open });
   const edit = (next: SourceSpec) => { setRefused(null); setSpec(next); };
   const remove = (k: string) => {
@@ -62,7 +77,10 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
       <ul aria-label="Columns" className="grid gap-1">
         {columns.map((f) => (
           <li key={f.name} className="grid gap-1 rounded-md px-2 py-1.5 hover:bg-tray">
-            <span className="flex items-baseline gap-2"><span className="font-mono text-body-sm text-fg">{f.name}</span> <span className="text-caption text-fg-3">{f.type}</span></span>
+            <span className="flex items-baseline gap-2">
+              <button type="button" aria-label={`Edit column ${f.name}`} className="font-mono text-body-sm text-fg underline-offset-2 hover:underline" onClick={() => { setRefused(null); setSelected(`col:${f.name}`); }}>{f.name}</button>{" "}
+              <span className="text-caption text-fg-3">{f.type}{attrOf(f.name) ? " · attr" : ""}</span>
+            </span>
             {examples[f.name] && <span className="truncate text-caption text-fg-3">{examples[f.name]}</span>}
             <Checkbox checked={!!attrOf(f.name)} label="Keep as extra attribute" onToggle={() => edit(toggleAttr(spec, f.name, !attrOf(f.name)))} />
           </li>
@@ -76,8 +94,11 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
     <div className="grid gap-4 p-4">
       <h3 className="text-title-sm text-fg">{row.name}</h3>
       <Field id="mapper-source" label={`${row.name} comes from`}>
-        <Select id="mapper-source" aria-label={`${row.name} comes from`} value={sourceValue(spec, selected)} onChange={(e) => {
+        <Select id="mapper-source" aria-label={`${row.name} comes from`} value={typing?.row === selected ? typing.kind : sourceValue(spec, selected)} onChange={(e) => {
           const v = e.target.value;
+          setTyping(null);
+          if (v === "cel") { const r = (spec.mapping as unknown as Record<string, { cel?: string } | undefined>)[selected]; return setTyping({ row: selected, kind: "cel", cel: r?.cel ?? "" }); }
+          if (v === "json") return setTyping({ row: selected, kind: "json", col: spec.fields[0]?.name ?? "", path: "" });
           if (!v) return remove(selected);
           if (v.startsWith("field:")) edit(setSource(spec, selected, { field: v.slice(6) }));
           else if (v === "preset:file_date" || v === "preset:arrived_date") edit(setSource(spec, selected, { preset: v.slice(7) as "file_date" | "arrived_date" }));
@@ -88,9 +109,42 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
           {Object.keys(spec.derive ?? {}).map((n) => <option key={n} value={`field:${n}`}>Computed {n}</option>)}
           {selected === "business_date" && <><option value="preset:file_date">File name&apos;s date</option><option value="preset:arrived_date">Day it arrives</option></>}
           {selected === "currency" && <option value="const">One currency for every row</option>}
-          {sourceValue(spec, selected) === "cel" && <option value="cel">Formula</option>}
+          <option value="json">JSON path in a column</option>
+          <option value="cel">Formula</option>
         </Select>
       </Field>
+      {(() => {
+        const cur = (spec.mapping as unknown as Record<string, { cel?: string } | undefined>)[selected]?.cel;
+        const t = typing?.row === selected ? typing : sourceValue(spec, selected) === "json" && cur ? { row: selected, kind: "json" as const, ...jsonOf(cur)! } : sourceValue(spec, selected) === "cel" && cur ? { row: selected, kind: "cel" as const, cel: cur } : null;
+        if (!t) return null;
+        if (t.kind === "cel") return (
+          <Field id="mapper-cel" label="Formula" note="Columns by name, as in Computed columns">
+            <Input id="mapper-cel" aria-label="Formula" className="font-mono" value={t.cel} onChange={(e) => {
+              const cel = e.target.value; setTyping({ row: selected, kind: "cel", cel });
+              if (cel.trim()) edit(setSource(spec, selected, { cel: cel.trim() }));
+            }} />
+          </Field>
+        );
+        const apply = (col: string, path: string) => { setTyping({ row: selected, kind: "json", col, path }); if (col && path.trim()) edit(setJsonPath(spec, selected, col, path.trim())); };
+        return (<>
+          <Field id="mapper-json-col" label="JSON column">
+            <Select id="mapper-json-col" aria-label="JSON column" value={t.col} onChange={(e) => apply(e.target.value, t.path)}>
+              {spec.fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+            </Select>
+          </Field>
+          <Field id="mapper-json-path" label="JSON path" note="Keys with dots, like code.rc">
+            <Input id="mapper-json-path" aria-label="JSON path" className="font-mono" value={t.path} onChange={(e) => apply(t.col, e.target.value)} />
+          </Field>
+        </>);
+      })()}
+      {selected === "amount_minor" && spec.mapping.amount_minor && (
+        <Field id="mapper-unit" label="Amount unit">
+          <Select id="mapper-unit" aria-label="Amount unit" value={spec.mapping.amount_minor.unit ?? ""} onChange={(e) => { if (e.target.value) edit(setUnit(spec, e.target.value as AmountUnit)); }}>
+            <option value="" disabled>Choose a unit</option>
+            {AMOUNT_UNITS.map((u) => <option key={u} value={u}>{UNIT_LABEL[u]}</option>)}
+          </Select>
+        </Field>
+      )}
       {selected === "currency" && spec.currency && !spec.mapping.currency && (
         <Field id="mapper-currency" label="Currency for every row">
           <Select id="mapper-currency" value={spec.currency} onChange={(e) => edit(setSource(spec, "currency", { currency: e.target.value }))}>
@@ -100,9 +154,49 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
       )}
       {row.note && <p className="text-body-sm text-fg-2">{row.note}</p>}
       <Button type="button" variant="remove" size="icon" aria-label={`Remove the mapping of ${row.name}`} title="Remove mapping" onClick={() => remove(selected)}><Icon icon={RemoveIcon} /></Button>
-      {refused && <p role="alert" className="text-body-sm text-down-ink">{refused}</p>}
+      {(refused ?? rowProblem(spec, selected)) && <p role="alert" className="text-body-sm text-down-ink">{refused ?? rowProblem(spec, selected)}</p>}
     </div>
-  ) : (
+  ) : selected === "attrs" ? (
+    <div className="grid gap-3 p-4">
+      <h3 className="text-title-sm text-fg">Extra attributes</h3>
+      {Object.keys(spec.mapping.attrs ?? {}).length ? (
+        <ul className="grid gap-1">
+          {Object.entries(spec.mapping.attrs ?? {}).map(([n, r]) => (
+            <li key={n} className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-body-sm"><span className="font-mono text-fg">{n}</span>{"field" in r && r.field !== n && <span className="text-fg-3"> from {r.field}</span>}</span>
+              {"field" in r && <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop keeping ${r.field}`} onClick={() => edit(toggleAttr(spec, r.field, false))}><Icon icon={RemoveIcon} /></Button>}
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-body-sm text-fg-3">No column is kept yet. Tick Keep as extra attribute on a column in the list.</p>}
+    </div>
+  ) : selected?.startsWith("col:") && columnInfo(spec, selected.slice(4)) ? (() => {
+    const col = selected.slice(4);
+    const info = columnInfo(spec, col)!;
+    const typed = storedTyped?.col === col ? storedTyped : null;
+    return (
+      <div className="grid gap-4 p-4">
+        <h3 className="font-mono text-title-sm text-fg">{col}</h3>
+        <Field id="mapper-col-type" label={`Type of ${col}`}>
+          <Select id="mapper-col-type" aria-label={`Type of ${col}`} value={info.type} onChange={(e) => edit(setColumn(spec, col, { type: e.target.value as typeof info.type }))}>
+            {FIELD_TYPES.map((x) => <option key={x} value={x}>{TYPE_LABEL[x]}</option>)}
+          </Select>
+        </Field>
+        <Checkbox checked={info.nullable} label="Can be empty" onToggle={() => edit(setColumn(spec, col, { nullable: !info.nullable }))} />
+        <Checkbox checked={!!info.stored} label="Keep as extra attribute" onToggle={() => { setStoredTyped(null); edit(toggleAttr(spec, col, !info.stored)); }} />
+        {info.stored && (
+          <Field id="mapper-stored" label="Stored as" error={typed?.why}>
+            <Input id="mapper-stored" aria-label="Stored as" className="font-mono" value={typed?.name ?? info.stored} onChange={(e) => {
+              const r = renameAttr(spec, col, e.target.value);
+              if ("refused" in r) setStoredTyped({ col, name: e.target.value, why: r.refused });
+              else { setStoredTyped(null); edit(r); }
+            }} />
+          </Field>
+        )}
+        <p className="text-caption text-fg-3">Date and number formats are set in View as list.</p>
+      </div>
+    );
+  })() : (
     <p className="p-4 text-body-sm text-fg-3">Select a core field to set where its value comes from, or drag a column onto it.</p>
   );
 

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ChangeEvent, Fragment, type ReactElement, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, Fragment, type ReactElement, useEffect, useMemo, useRef, useState } from "react";
 import { Checkbox, Combobox, type ComboOption, Disclosure, Field, focusNew, InfoTip, Notice, Pagination, Panel, Segmented, Switch, useFirstUse } from "@starterkit/ui/ds";
 import { formatMinor, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
@@ -128,6 +128,8 @@ export function FieldsStep(p: FieldsStepProps) {
   });
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
   const [mapperOpen, setMapperOpen] = useState(false);
+  // one object per preview, so the open mapper's canvas isn't rebuilt on every render of this step
+  const firstExamples = useMemo(() => Object.fromEntries((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples[0] ?? ""])), [p.preview.result]);
   // "View as list": closed on a desktop (the mapper is the way in), open on a phone (no mapper there)
   const [listOpen, setListOpen] = useState(false);
   useEffect(() => { const t = setTimeout(() => { if (window.matchMedia("(max-width: 767px)").matches) setListOpen(true); }); return () => clearTimeout(t); }, []);
@@ -142,7 +144,7 @@ export function FieldsStep(p: FieldsStepProps) {
   const page = matched.length > COL_PAGE ? matched.slice((curPage - 1) * COL_PAGE, curPage * COL_PAGE) : matched;
   const failing = s.fields.flatMap((f, i) => (err(ctl(`fields.${i}`)) ?? err(ctl(`fields.${i}.format`)) ?? err(ctl(`fields.${i}.name`)) ?? err(`src-attr-${i}`) ? [i] : []));
   // an error inside the tables opens "View as list", so Next can focus it
-  const inList = failing.length > 0 || ["src-columns", ctl("key_fields"), ctl("currency"), ctl("mapping.amount_minor.unit"), ...CORE.map((c) => ctl(`mapping.${c.key}`))].some((id) => !!err(id));
+  const inList = failing.length > 0 || ["src-columns", ctl("currency"), ctl("mapping.amount_minor.unit"), ...CORE.map((c) => ctl(`mapping.${c.key}`))].some((id) => !!err(id));
   const shownCols = [...new Set([...page, ...failing])].sort((a, b) => a - b);
 
   // a match key that repeats in the preview replaces rows that are other transactions (ids reset monthly, shared ids)
@@ -239,7 +241,7 @@ export function FieldsStep(p: FieldsStepProps) {
         <p className="text-body-sm text-fg-3">Open the mapper to draw the columns onto the core record, or set them in the list below.</p>
       </Panel>
       {mapperOpen && (
-        <SourceMapper open name={d.name} spec={s} examples={Object.fromEntries([...examples].map(([k, v]) => [k, v[0] ?? ""]))}
+        <SourceMapper open name={d.name} spec={s} examples={firstExamples}
           preview={{ ...p.mapperPreview, file, sample: p.sample, fileName: p.fileName, businessDate: p.businessDate }}
           onDone={(next) => { setSpec(() => next); setMapperOpen(false); }} onCancel={() => setMapperOpen(false)} />
       )}

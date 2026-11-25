@@ -2,9 +2,11 @@
 // the left, the core record and its folded extra attributes on the right, a line per column mapping), and the edits
 // the mapper makes to the draft. The wizard applies the spec these answer.
 import type { MapGraph, MapTargetRow } from "@/components/field-map/graph";
-import { computeSteps } from "@starterkit/shared/compute";
-import type { SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
-import { attrNameOf } from "./spec-draft";
+import { computeCel, computeSteps } from "@starterkit/shared/compute";
+import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
+import type { AmountUnit } from "@starterkit/shared/sources";
+import { attrNameOf, storeAs, storedName, storedNameProblem } from "./spec-draft";
+import { amountProblems, ctl, mappingProblem } from "./steps/model";
 
 export const CORE_ROWS = ["business_date", "amount_minor", "currency", "direction", "event_time", "ext_ref", "account_ref"] as const;
 export type CoreRow = (typeof CORE_ROWS)[number];
@@ -30,7 +32,6 @@ const formulaNote = (cel: string) => (cel === "file_date" ? "File name's date" :
 export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, string>>, opts: { q?: string } = {}): MapGraph {
   const q = opts.q?.trim().toLowerCase();
   const names = new Set(spec.fields.map((f) => f.name));
-  const columns = spec.fields.filter((f) => !q || f.name.toLowerCase().includes(q)).map((f) => ({ key: f.name, label: examples[f.name] ? `${f.name} · ${examples[f.name]}` : f.name, kind: f.type }));
   const computed = Object.keys(spec.derive ?? {}).map((n) => ({ key: n, label: n, kind: "formula" }));
   const edges: MapGraph["edges"] = [];
   const request: MapTargetRow[] = CORE_ROWS.map((k) => {
@@ -50,6 +51,11 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
     return { ...row, mapped: "cel", note: formulaNote(r.cel) };
   });
   request.push({ path: "attrs", name: "Extra attributes", depth: 0, leaf: false, required: false, type: "", maxLength: null, filledBy: null, mapped: null, folded: Object.keys(spec.mapping.attrs ?? {}).length });
+  // a search narrows the columns but keeps every one a line starts from, so no line ends in nothing
+  const fed = new Set(edges.filter((e) => e.source === "columns").map((e) => e.row));
+  const kept = new Set(Object.values(spec.mapping.attrs ?? {}).flatMap((r) => ("field" in r ? [r.field] : [])));
+  const columns = spec.fields.filter((f) => !q || fed.has(f.name) || f.name.toLowerCase().includes(q))
+    .map((f) => ({ key: f.name, label: examples[f.name] ? `${f.name} · ${examples[f.name]}` : f.name, kind: kept.has(f.name) ? `${f.type} · attr` : f.type }));
   return {
     sources: [{ id: "columns", title: "File columns", caption: null, rows: columns }, ...(computed.length ? [{ id: "computed", title: "Computed", caption: null, rows: computed }] : [])],
     request, edges, missing: request[0]!.mapped || request[0]!.broken ? [] : ["business_date"],
@@ -101,4 +107,44 @@ export function summaryLine(spec: SourceSpec): string {
   const computed = Object.keys(spec.derive ?? {}).length;
   const n = (x: number, one: string, many: string) => `${x} ${x === 1 ? one : many}`;
   return [n(core, "core field mapped", "core fields mapped"), n(attrs, "extra attribute", "extra attributes"), ...(computed ? [`${computed} computed`] : [])].join(" · ");
+}
+
+/** The amount's unit (currency units or minor units). */
+export function setUnit(spec: SourceSpec, unit: AmountUnit): SourceSpec {
+  const a = spec.mapping.amount_minor;
+  return a ? withMapping(spec, { amount_minor: { ...a, unit } }) : spec;
+}
+
+/** Core row `target` reads `path` inside column `column`'s JSON (a dashed line on the canvas). */
+export function setJsonPath(spec: SourceSpec, target: CoreRow, column: string, path: string): SourceSpec {
+  return setSource(spec, target, { cel: computeCel(column, [{ type: "json", args: [path] }]) });
+}
+
+/** The problem step 2 would show on core row `k` (its mapping, its amount unit), or null. */
+export function rowProblem(spec: SourceSpec, k: CoreRow): string | null {
+  const ids = new Set([ctl(`mapping.${k}`), ...(k === "amount_minor" ? [ctl("mapping.amount_minor.unit")] : [])]);
+  const m = mappingProblem(spec);
+  if (m && ids.has(m.id)) return m.reason;
+  return amountProblems(spec).find((p) => ids.has(p.id))?.reason ?? null;
+}
+
+/** Column `name`'s type (with the format it starts with, as step 2 sets it) or whether it can be empty. */
+export function setColumn(spec: SourceSpec, name: string, patch: { type?: FieldSpec["type"]; nullable?: boolean }): SourceSpec {
+  return { ...spec, fields: spec.fields.map((f) => {
+    if (f.name !== name) return f;
+    if (patch.type && patch.type !== f.type) return { ...f, ...patch, format: patch.type === "decimal" ? { scale: 2 } : patch.type === "date" ? { date: "yyyy-MM-dd" } : undefined };
+    return { ...f, ...patch };
+  }) };
+}
+
+/** Column `column`'s kept attribute renamed to `name` (its place kept), or why the name can't be used. */
+export function renameAttr(spec: SourceSpec, column: string, name: string): SourceSpec | { refused: string } {
+  const why = storedNameProblem(name, column, spec);
+  return why ? { refused: why } : storeAs(spec, column, name);
+}
+
+/** What the column inspector shows. */
+export function columnInfo(spec: SourceSpec, name: string): { type: FieldSpec["type"]; nullable: boolean; stored: string | null } | null {
+  const f = spec.fields.find((x) => x.name === name);
+  return f ? { type: f.type, nullable: f.nullable, stored: storedName(spec, name) } : null;
 }
