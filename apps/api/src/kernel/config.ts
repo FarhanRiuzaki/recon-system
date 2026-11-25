@@ -65,8 +65,13 @@ const Fields = z.object({
   LDAP_GATEWAY_CLIENT_ID: z.string().optional(),
   /** Keycloak client secret, also the HMAC-SHA512 key of X-SIGNATURE. */
   LDAP_GATEWAY_CLIENT_SECRET: z.string().optional(),
-  /** AES-256-CBC key of the password in the verify path. */
+  /** Key of the password in the verify path: AES-256-CBC, or AES-GCM with LDAP_GATEWAY_ENCRYPT_VERSION (16, 24 or 32 bytes). */
   LDAP_GATEWAY_SECRET_KEY: z.string().optional(),
+  /**
+   * v0.2 = the gateway's LDAP API V2.0: the password AES/GCM/NoPadding (random 12-byte IV, 16-byte tag) with header
+   * X-ENCRYPT-VERSION, and the token request the form alone. Unset = as the Laravel app did (AES-256-CBC, zero IV).
+   */
+  LDAP_GATEWAY_ENCRYPT_VERSION: z.enum(["v0.2"]).optional(),
   LDAP_GATEWAY_PARTNER_ID: z.string().optional(),
   LDAP_GATEWAY_CHANNEL_ID: z.string().optional(),
   /** true skips the gateway's certificate check (the Laravel app did); prefer a trusted certificate. */
@@ -121,6 +126,10 @@ function crossKeyProblems(e: Record<string, string>): string[] {
     out.push(...LDAP_GATEWAY_KEYS.filter((k) => !e[k]).map((k) => `${k} (required when LDAP_GATEWAY_URL is set)`));
     // One directory: a sign-in must not depend on which of the two the code happens to try first.
     if (e.LDAP_URL) out.push("LDAP_GATEWAY_URL (set LDAP_URL or LDAP_GATEWAY_URL, not both)");
+    const keyBytes = Buffer.byteLength(e.LDAP_GATEWAY_SECRET_KEY ?? "", "utf8");
+    if (e.LDAP_GATEWAY_ENCRYPT_VERSION === "v0.2" && e.LDAP_GATEWAY_SECRET_KEY && ![16, 24, 32].includes(keyBytes)) {
+      out.push("LDAP_GATEWAY_SECRET_KEY (must be 16, 24 or 32 bytes with LDAP_GATEWAY_ENCRYPT_VERSION=v0.2)");
+    }
   }
   // A provider's keys come all together or not at all: half a provider would show a button that can't work.
   for (const keys of [GOOGLE_KEYS, APPLE_KEYS]) {

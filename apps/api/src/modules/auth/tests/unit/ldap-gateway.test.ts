@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { createHmac } from "node:crypto";
+import { createDecipheriv, createHmac } from "node:crypto";
 import { loadConfig } from "../../../../kernel/config";
 import { log } from "../../../../kernel/log";
 import { directory } from "../../ldap";
-import { encryptPassword, externalId, gatewaySignature, gatewayTimestamp, resetGatewayTokens, verifyPath } from "../../ldap-gateway";
+import { encryptPassword, encryptPasswordGcm, externalId, gatewaySignature, gatewayTimestamp, resetGatewayTokens, verifyPath } from "../../ldap-gateway";
 
 const base = {
   DATABASE_URL: "postgresql://app:pw@localhost:5432/app",
@@ -64,6 +64,37 @@ describe("ldap gateway: config", () => {
   });
 });
 
+/** The gateway's side of v0.2: Base64(IV 12 bytes + ciphertext + tag 16 bytes), AES-GCM under the key's UTF-8 bytes. */
+function decryptGcm(b64: string, key: string): string {
+  const raw = Buffer.from(b64, "base64");
+  const k = Buffer.from(key, "utf8");
+  const d = createDecipheriv(`aes-${k.length * 8}-gcm` as "aes-256-gcm", k, raw.subarray(0, 12), { authTagLength: 16 });
+  d.setAuthTag(raw.subarray(raw.length - 16));
+  return Buffer.concat([d.update(raw.subarray(12, raw.length - 16)), d.final()]).toString("utf8");
+}
+
+describe("ldap gateway v0.2 (Technical Specification LDAP API V2.0): AES/GCM/NoPadding", () => {
+  const key32 = "k".repeat(31) + "#"; // 32 UTF-8 bytes: AES-256
+  it("is Base64 of a random 12-byte IV, the ciphertext and a 16-byte tag, and decrypts with the key to the password", () => {
+    const a = encryptPasswordGcm("Rahasia#2026", key32);
+    const b = encryptPasswordGcm("Rahasia#2026", key32);
+    expect(a).not.toBe(b); // a fresh IV each time
+    expect(Buffer.from(a, "base64").length).toBe(12 + Buffer.byteLength("Rahasia#2026") + 16);
+    expect(decryptGcm(a, key32)).toBe("Rahasia#2026");
+    expect(decryptGcm(encryptPasswordGcm("p@ss wörd/+=", "0123456789abcdef"), "0123456789abcdef")).toBe("p@ss wörd/+="); // 16 bytes: AES-128
+  });
+
+  it("config: v0.2 is the only version; its key must be 16, 24 or 32 bytes, named without its value", () => {
+    const at = (extra: Record<string, string>) => ({ ...base, ...gw, LDAP_GATEWAY_URL: "https://gw.example", ...extra });
+    expect(loadConfig(at({ LDAP_GATEWAY_ENCRYPT_VERSION: "v0.2", LDAP_GATEWAY_SECRET_KEY: key32 })).LDAP_GATEWAY_ENCRYPT_VERSION).toBe("v0.2");
+    expect(loadConfig(at({})).LDAP_GATEWAY_ENCRYPT_VERSION).toBeUndefined();
+    expect(failure(at({ LDAP_GATEWAY_ENCRYPT_VERSION: "v9" }))).toContain("LDAP_GATEWAY_ENCRYPT_VERSION");
+    const msg = failure(at({ LDAP_GATEWAY_ENCRYPT_VERSION: "v0.2", LDAP_GATEWAY_SECRET_KEY: "twenty-byte-key-1234" }));
+    expect(msg).toContain("LDAP_GATEWAY_SECRET_KEY (must be 16, 24 or 32 bytes with LDAP_GATEWAY_ENCRYPT_VERSION=v0.2)");
+    expect(msg).not.toContain("twenty-byte-key-1234");
+  });
+});
+
 type Seen = { method: string; path: string; headers: Headers; body: string };
 
 describe("ldap gateway: sign-in against a fake gateway", () => {
@@ -82,7 +113,7 @@ describe("ldap gateway: sign-in against a fake gateway", () => {
         const body = await req.text();
         seen.push({ method: req.method, path: url.pathname, headers: req.headers, body });
         if (hang) await Bun.sleep(2000);
-        if (url.pathname === "/realms/quarkus/protocol/openid-connect/token") {
+        if (/^\/realms\/[\w.-]+\/protocol\/openid-connect\/token$/.test(url.pathname)) {
           tokenCount += 1;
           return Response.json({ access_token: ` tok-${tokenCount} `, expires_in: 300 });
         }
@@ -131,6 +162,24 @@ describe("ldap gateway: sign-in against a fake gateway", () => {
     const expected = createHmac("sha512", gw.LDAP_GATEWAY_CLIENT_SECRET)
       .update(`GET:${path}:tok-1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a:${ts}`).digest("base64");
     expect(h.get("x-signature")).toBe(expected);
+  });
+
+  it("v0.2: the token request is the form alone (no Basic header), the password is AES-GCM and X-ENCRYPT-VERSION is sent", async () => {
+    const key = "g".repeat(32);
+    expect(await dir({ LDAP_GATEWAY_ENCRYPT_VERSION: "v0.2", LDAP_GATEWAY_SECRET_KEY: key, LDAP_GATEWAY_REALM: "quarkus-prod" }).verify("12345", "User#Pass1")).toBe(true);
+    const [tok, ver] = seen;
+    expect(tok!.path).toBe("/realms/quarkus-prod/protocol/openid-connect/token");
+    expect(tok!.headers.get("authorization")).toBeNull();
+    expect(new URLSearchParams(tok!.body).get("grant_type")).toBe("password");
+    expect(ver!.headers.get("x-encrypt-version")).toBe("v0.2");
+    const prefix = "/openapi/v1.0/ldap/verifypassword/userid/12345/password/";
+    expect(ver!.path.startsWith(prefix)).toBe(true);
+    expect(decryptGcm(ver!.path.slice(prefix.length), key)).toBe("User#Pass1");
+    // the signature covers the path as sent
+    const ts = ver!.headers.get("x-timestamp")!;
+    const expected = createHmac("sha512", gw.LDAP_GATEWAY_CLIENT_SECRET)
+      .update(`GET:${ver!.path}:tok-1:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a:${ts}`).digest("base64");
+    expect(ver!.headers.get("x-signature")).toBe(expected);
   });
 
   it("keeps the token between sign-ins, and fetches a new one once when the gateway answers 401", async () => {

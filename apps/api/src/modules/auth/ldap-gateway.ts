@@ -6,9 +6,12 @@
 //      encrypted with LDAP_GATEWAY_SECRET_KEY and a zero IV, signed like every Open API call: X-SIGNATURE =
 //      Base64(HMAC-SHA512(client secret, GET:path:token:hex(sha256("{}")):timestamp)), with X-TIMESTAMP, X-PARTNER-ID,
 //      X-EXTERNAL-ID and CHANNEL-ID; responseCode "00" = the password is right.
+// LDAP_GATEWAY_ENCRYPT_VERSION=v0.2 is the gateway's LDAP API V2.0 instead: the password AES/GCM/NoPadding under the
+// key's UTF-8 bytes, Base64(random 12-byte IV + ciphertext + 16-byte tag), with header X-ENCRYPT-VERSION: v0.2, and the
+// token request the form alone, as that specification has it (a Basic header would be read as the client's credentials).
 // Not the integrations connector (profile bank_mega_openapi_2_1): another realm and grant, no X-CREDENTIAL-KEY or body
 // encryption, a plain JSON answer, and its path holds the (encrypted) password, so it is never written to a call log.
-import { createCipheriv, createHash, createHmac, randomInt } from "node:crypto";
+import { createCipheriv, createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import type { Config } from "../../kernel/config";
 import { log } from "../../kernel/log";
 
@@ -25,6 +28,8 @@ export type GatewaySettings = {
   partnerId: string;
   channelId: string;
   insecureTls: boolean;
+  /** "v0.2": AES-GCM and X-ENCRYPT-VERSION (LDAP API V2.0); undefined: as the Laravel app (AES-256-CBC). */
+  encryptVersion?: "v0.2";
 };
 
 export function gatewaySettings(c: Config): GatewaySettings | null {
@@ -41,6 +46,7 @@ export function gatewaySettings(c: Config): GatewaySettings | null {
     partnerId: c.LDAP_GATEWAY_PARTNER_ID!,
     channelId: c.LDAP_GATEWAY_CHANNEL_ID!,
     insecureTls: c.LDAP_GATEWAY_INSECURE_TLS,
+    encryptVersion: c.LDAP_GATEWAY_ENCRYPT_VERSION,
   };
 }
 
@@ -53,6 +59,18 @@ export function encryptPassword(password: string, secretKey: string): string {
   Buffer.from(secretKey, "utf8").copy(key, 0, 0, 32);
   const c = createCipheriv("aes-256-cbc", key, Buffer.alloc(16));
   return Buffer.concat([c.update(password, "utf8"), c.final()]).toString("base64");
+}
+
+/**
+ * The password as LDAP API V2.0 expects it: AES/GCM/NoPadding under the key's UTF-8 bytes (16, 24 or 32: AES-128, -192
+ * or -256, checked at boot), Base64(random 12-byte IV + ciphertext + 16-byte tag).
+ */
+export function encryptPasswordGcm(password: string, secretKey: string): string {
+  const key = Buffer.from(secretKey, "utf8");
+  const iv = randomBytes(12);
+  const c = createCipheriv(`aes-${key.length * 8}-gcm` as "aes-256-gcm", key, iv, { authTagLength: 16 });
+  const body = Buffer.concat([c.update(password, "utf8"), c.final()]);
+  return Buffer.concat([iv, body, c.getAuthTag()]).toString("base64");
 }
 
 /** X-TIMESTAMP: UTC to the second, with +00:00 (the Laravel app set the timezone to UTC before formatting). */
@@ -96,7 +114,7 @@ async function token(s: GatewaySettings, signal: AbortSignal, fresh: boolean): P
     method: "POST", body: body.toString(), signal, ...tlsOf(s),
     headers: withHost(s, {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${Buffer.from(`${s.username}:${s.password}`).toString("base64")}`,
+      ...(s.encryptVersion ? {} : { Authorization: `Basic ${Buffer.from(`${s.username}:${s.password}`).toString("base64")}` }),
     }),
   });
   const json = (await res.json().catch(() => null)) as { access_token?: unknown; expires_in?: unknown } | null;
@@ -109,7 +127,7 @@ async function token(s: GatewaySettings, signal: AbortSignal, fresh: boolean): P
 
 /** One verify call; the answer's responseCode, or a GatewayError for an HTTP 401 (`unauthorized`) or no JSON. */
 async function verifyOnce(s: GatewaySettings, signal: AbortSignal, accessToken: string, login: string, password: string): Promise<string> {
-  const path = verifyPath(login, encryptPassword(password, s.secretKey));
+  const path = verifyPath(login, s.encryptVersion ? encryptPasswordGcm(password, s.secretKey) : encryptPassword(password, s.secretKey));
   const now = new Date();
   const ts = gatewayTimestamp(now);
   const res = await fetch(`${s.url}${path}`, {
@@ -122,6 +140,7 @@ async function verifyOnce(s: GatewaySettings, signal: AbortSignal, accessToken: 
       "X-PARTNER-ID": s.partnerId,
       "X-EXTERNAL-ID": externalId(now),
       "CHANNEL-ID": s.channelId,
+      ...(s.encryptVersion ? { "X-ENCRYPT-VERSION": s.encryptVersion } : {}),
     }),
   });
   if (res.status === 401) throw new GatewayError("unauthorized");

@@ -374,7 +374,8 @@ or invalid value stops the process with an error that names the key, never the v
 | `LDAP_STARTTLS` | with `ldap://` | `false` | Upgrade an `ldap://` connection with StartTLS first. |
 | `LDAP_GATEWAY_URL` | no | – | `http(s)://`; turns directory sign-in on through the Bank Mega Open API gateway instead of `LDAP_URL` (not both). |
 | `LDAP_GATEWAY_USERNAME` / `_PASSWORD` / `_CLIENT_ID` / `_CLIENT_SECRET` | with `LDAP_GATEWAY_URL` | – | The gateway's service account and Keycloak client (password grant); the client secret also signs (`X-SIGNATURE`). |
-| `LDAP_GATEWAY_SECRET_KEY` / `_PARTNER_ID` / `_CHANNEL_ID` | with `LDAP_GATEWAY_URL` | – | AES-256-CBC key of the password in the verify path; `X-PARTNER-ID` and `CHANNEL-ID`. |
+| `LDAP_GATEWAY_SECRET_KEY` / `_PARTNER_ID` / `_CHANNEL_ID` | with `LDAP_GATEWAY_URL` | – | Key of the password in the verify path (AES-256-CBC, or AES-GCM with `LDAP_GATEWAY_ENCRYPT_VERSION`: 16, 24 or 32 bytes); `X-PARTNER-ID` and `CHANNEL-ID`. |
+| `LDAP_GATEWAY_ENCRYPT_VERSION` | no | – | `v0.2` = the gateway's LDAP API V2.0: the password AES/GCM/NoPadding with `X-ENCRYPT-VERSION: v0.2`, the token request without a Basic header. Unset = AES-256-CBC as the Laravel app. |
 | `LDAP_GATEWAY_HOST` | no | – | `Host` header sent to the gateway when the URL is an address. |
 | `LDAP_GATEWAY_REALM` | no | `quarkus` | Keycloak realm of the token. |
 | `LDAP_GATEWAY_INSECURE_TLS` | no | `false` | `true` skips the gateway's certificate check. |
@@ -542,7 +543,9 @@ with `X-SIGNATURE` (Base64 HMAC-SHA512 of `GET:<path>:<token>:<sha256 hex of {}>
 `X-TIMESTAMP`, `X-PARTNER-ID`, `X-EXTERNAL-ID` and `CHANNEL-ID`. `responseCode` `00` signs in; any other code (99 user
 not found, 96 wrong password, 94 password change required, 90 no permission) or an error is a failed sign-in, logged with
 the code only. The same 5 s cover both calls. The call never reaches the connector call log: its path holds the
-encrypted password.
+encrypted password. With `LDAP_GATEWAY_ENCRYPT_VERSION=v0.2` (LDAP API V2.0) the password is instead
+`Base64(IV 12 bytes + AES/GCM/NoPadding ciphertext + tag 16 bytes)` under the key's UTF-8 bytes, a fresh random IV per
+call, the verify call adds `X-ENCRYPT-VERSION: v0.2`, and the token request is the form alone.
 
 Every LDAP sign-in queries the directory, also for a login that isn't an LDAP user of the app, so the answer takes the
 same time either way and doesn't reveal which accounts exist. The cost: a directory account that isn't an app user can
