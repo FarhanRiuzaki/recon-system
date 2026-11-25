@@ -27,12 +27,22 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "open",
-                  "matched",
-                  "suggested",
-                  "break",
+                  "posting_failed",
+                  "posting_in_progress",
+                  "posting_skipped",
+                  "waiting_approval",
+                  "posted",
+                  "written_off",
+                  "adjusted",
                   "closed",
-                  "not_required"
+                  "force_matched",
+                  "matched_by_hand",
+                  "matched_late",
+                  "suggested",
+                  "matched",
+                  "unmatch",
+                  "not_required",
+                  "waiting_counterpart"
                 ]
               }
             },

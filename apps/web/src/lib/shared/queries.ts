@@ -8,7 +8,7 @@ import { isTimeExpression, resolveTimeRange } from "@starterkit/ui/lib/time-rang
 import { ACTIVITY_ID_PATTERN } from "@starterkit/shared/audit-investigation";
 import { ACTION_OPTIONS, ACTIVITY_SORTS, AUDIT_RANGES, AUTH_LOG_SORTS, presetRange, rangeProblem } from "@starterkit/shared/audit";
 import { appDate } from "@starterkit/ui/lib/format";
-import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS, INBOX_FILE_SORTS } from "@starterkit/shared/paging";
+import { ACTION_RUN_SORTS, CALL_SORTS, CONNECTOR_SORTS, PERMISSION_SORTS, POSTING_GROUP_SORTS, PROJECT_SORTS, ROLE_SORTS, SOURCE_SORTS, SOURCE_VERSION_SORTS, SPACE_MEMBER_SORTS, SESSION_SORTS, USER_SORTS, INBOX_FILE_SORTS, REPORT_FILE_SORTS, REPORT_TEMPLATE_SORTS } from "@starterkit/shared/paging";
 import { SOURCE_STATE_FILTERS, type SourceStateFilter } from "@starterkit/shared/sources";
 import { MODULES } from "@starterkit/shared/permissions";
 import { selectionState } from "@starterkit/shared/filter-selection";
@@ -268,3 +268,22 @@ export const CONNECTOR_CALLS: TableDef<CallFilters> = {
   spec: { sorts: CALL_SORTS, defaultSort: "-startedAt", search: ["q"], filters: { q: text(200), connector: uuidOnly, environment: multiChoice(), outcome: multiChoice(), origin: multiChoice(), start: timeExpression, end: timeExpression, from: isoDate, to: isoDate } },
   params: ({ start, end, from, to, ...rest }) => ({ ...rest, ...(resolveTimeRange({ start, end }, Date.now()) ? { start, end } : customRange({ from, to }) ?? { from: appDate(Date.now()), to: appDate(Date.now()) }) }),
 };
+
+/**
+ * The reports module's reads (the report generator, DEC-060): a space's report files (newest first, Final / Not
+ * final, status and maker filters with counts; `recon`, `template` and `run` narrow it from a recon or a run) and its
+ * templates.
+ */
+export const REPORTS_KEY = ["reports"] as const;
+const reportsPath = (spaceId: string) => `/api/spaces/${encodeURIComponent(spaceId)}/reports` as const;
+export type ReportFileFilters = { final: string; status: string; madeBy: string; recon: string; template: string; run: string };
+const REPORT_FILES_SPEC: TableSpec<ReportFileFilters> = {
+  sorts: REPORT_FILE_SORTS, defaultSort: "-madeAt",
+  filters: { final: multiChoice(), status: multiChoice(), madeBy: multiChoice(), recon: text(36), template: text(36), run: text(36) },
+};
+export const REPORT_FILES = (spaceId: string): TableDef<ReportFileFilters> => ({ key: REPORTS_KEY[0], path: `${reportsPath(spaceId)}/files`, spec: REPORT_FILES_SPEC, facets: true });
+export type ReportTemplateFilters = { q: string; recon: string };
+const REPORT_TEMPLATES_SPEC: TableSpec<ReportTemplateFilters> = { sorts: REPORT_TEMPLATE_SORTS, defaultSort: "name", search: ["q"], filters: { q: text(200), recon: text(36) } };
+export const REPORT_TEMPLATES = (spaceId: string): TableDef<ReportTemplateFilters> => ({ key: REPORTS_KEY[0], path: `${reportsPath(spaceId)}/templates`, spec: REPORT_TEMPLATES_SPEC });
+export const reportTemplate = (spaceId: string, id: string) => ({ key: [...REPORTS_KEY, "template", spaceId, id] as const, url: `${reportsPath(spaceId)}/templates/${encodeURIComponent(id)}` });
+export const reportVersions = (spaceId: string, id: string) => ({ key: [...REPORTS_KEY, "versions", spaceId, id] as const, url: `${reportsPath(spaceId)}/templates/${encodeURIComponent(id)}/versions?pageSize=100` });
