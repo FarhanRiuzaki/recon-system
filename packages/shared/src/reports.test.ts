@@ -5,7 +5,7 @@ import { mayDo } from "./spaces";
 
 const t = { recon: "KSEI vs Core", template: "Daily recap", from: "2026-11-01", to: "2026-11-24" };
 const spec = (o: Record<string, unknown> = {}) => ({
-  kind: "transactions", rows: { statuses: ["break"], side: "both", reasons: [] }, columns: [{ key: "a:ext_ref", header: "Reference" }],
+  kind: "transactions", rows: { statuses: ["unmatch"], side: "both", reasons: [] }, columns: [{ key: "a:ext_ref", header: "Reference" }],
   groups: [], totals: [], output: { format: "csv", fileName: "{recon}_{from}_{to}", masking: "masked" }, when: { afterRun: true, onRequest: true }, official: false, ...o,
 });
 const why = (o: Record<string, unknown>) => ReportSpec.safeParse(spec(o)).error?.issues.map((i) => i.message);

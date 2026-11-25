@@ -15,7 +15,7 @@ export function startSpec(start: ReportStart): ReportSpec {
       return { ...base("daily_summary", "pdf"), when: { afterRun: true, onRequest: true }, output: { format: "pdf", fileName: "{recon}_{date}", masking: "masked", title: "Daily recap" } };
     case "break_detail":
       return {
-        ...base("transactions", "xlsx"), rows: { statuses: ["break"], side: "both", reasons: [] },
+        ...base("transactions", "xlsx"), rows: { statuses: ["unmatch", "waiting_counterpart"], side: "both", reasons: [] },
         columns: [
           { key: "recon:businessDate", header: "Business date" }, { key: "a:ext_ref", header: "Reference" }, { key: "a:amount_minor", header: "Amount" },
           { key: "recon:reason", header: "Reason" }, { key: "recon:assignee", header: "Assignee" },
@@ -23,7 +23,7 @@ export function startSpec(start: ReportStart): ReportSpec {
       };
     case "matched_list":
       return {
-        ...base("transactions", "csv"), rows: { statuses: ["matched"], side: "both", reasons: [] },
+        ...base("transactions", "csv"), rows: { statuses: ["matched", "matched_late", "matched_by_hand", "force_matched"], side: "both", reasons: [] },
         columns: [{ key: "recon:businessDate", header: "Business date" }, { key: "a:ext_ref", header: "Reference A" }, { key: "b:ext_ref", header: "Reference B" }, { key: "a:amount_minor", header: "Amount" }],
       };
     case "blank":

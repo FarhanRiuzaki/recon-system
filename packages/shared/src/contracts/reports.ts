@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ITEM_STATUSES } from "../recon";
+import { RESULT_STATUSES } from "../results";
 import { REPORT_COLUMNS_MAX, REPORT_FILE_STATUSES, REPORT_FORMATS, REPORT_KINDS, REPORT_NAME_MAX, REPORT_STARTS, REPORT_TOTALS, REPORT_VERSION_STATUSES } from "../reports";
 import { REPORT_FILE_SORTS, REPORT_TEMPLATE_SORTS } from "../paging";
 import { ListQuery, sortParam } from "./common";
@@ -14,7 +14,8 @@ const columnKey = z.string().regex(/^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$/,
 /** A report template version's settings (spec "Draft: Wizard, five steps"). */
 export const ReportSpec = z.strictObject({
   kind: z.enum(REPORT_KINDS),
-  rows: z.strictObject({ statuses: z.array(z.enum(ITEM_STATUSES)), side: z.enum(["a", "b", "both"]), reasons: z.array(z.string().max(80)).max(50) }),
+  // rows by the Operation result's overall status (what the Results page shows); `side`: rows holding that side's items
+  rows: z.strictObject({ statuses: z.array(z.enum(RESULT_STATUSES)), side: z.enum(["a", "b", "both"]), reasons: z.array(z.string().max(80)).max(50) }),
   columns: z.array(z.strictObject({ key: columnKey, header: z.string().trim().min(1, "Give the column a heading.").max(80) })).max(REPORT_COLUMNS_MAX),
   groups: z.array(columnKey).max(2, "Group by at most two columns."),
   totals: z.array(z.strictObject({ fn: z.enum(REPORT_TOTALS), column: columnKey.optional() })).max(10),

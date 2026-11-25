@@ -334,6 +334,30 @@ export function resultPage(ctx: Ctx, configId: string, q: ResultListQuery, now =
   });
 }
 
+/**
+ * The report generator's read (DEC-060): result rows of `from`..`to` in (business date, row id) order after `after`
+ * (keyset, so a row changed between two pages is read once), at most `limit`, with cells for `columns` (the report's,
+ * not the recon's Results columns) and the recon's columns marked as customer data. Live rows only, like resultPage.
+ */
+export async function reportResultRows(
+  tx: InTx, spaceId: string, configId: string, [from, to]: [string, string], o: { statuses: readonly ResultStatus[]; columns: ResultColumn[] },
+  after: { bd: string; rowId: string } | null, limit: number,
+): Promise<{ rows: ResultRowDto[]; last: { bd: string; rowId: string } | null; customer: Set<string> }> {
+  const base = await resultColumnsOf(tx, spaceId, configId);
+  const spaces = await recordSpaces(tx, spaceId);
+  await roomToAggregate(tx);
+  const rows = resultRows(tx, spaceId, configId, spaces, [from, to], {});
+  const where = and(
+    o.statuses.length ? inArray(rows.status, [...o.statuses]) : undefined,
+    after ? sql`(${rows.bd}::date, ${rows.rowId}::uuid) > (${after.bd}::date, ${after.rowId}::uuid)` : undefined,
+  );
+  const page = await tx.select().from(rows).where(where).orderBy(asc(rows.bd), asc(rows.rowId)).limit(limit);
+  const filled = await fill(tx, spaceId, configId, spaces, { ...base, columns: o.columns }, page);
+  const lastRow = page.at(-1);
+  const customer = new Set(base.columns.filter((c) => c.kind !== "recon" && c.customer).map((c) => `${c.kind}:${c.field}`));
+  return { rows: filled, last: lastRow ? { bd: lastRow.bd, rowId: lastRow.rowId } : null, customer };
+}
+
 type RowOf = { rowId: string; kind: "group" | "item"; bd: string; gk: string | null; gpass: number | null; runId: string | null; nA: number; nB: number;
   res: Resolution | null; ist: ItemStatus | null; proposed: boolean; openable: boolean; pending: boolean; posting: PostingStatus | null; bank: string | null; sa: SideState; sb: SideState };
 

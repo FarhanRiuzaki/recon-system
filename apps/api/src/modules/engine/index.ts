@@ -17,3 +17,4 @@ export { runAndRefresh } from "./jobs";
 export { assignBreaks } from "./break-queue";
 export { requestChange } from "./break-requests";
 export { reconDashboard } from "./dashboard";
+export { reportResultRows } from "./results";
