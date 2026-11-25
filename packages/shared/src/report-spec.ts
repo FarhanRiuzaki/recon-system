@@ -5,9 +5,12 @@ import { ReportSpec, ReportSpecV1, type ReportColumn } from "./contracts/reports
 const AMOUNT = /(^|:)amount_minor$|^recap:amount_/;
 const DATE = /^recon:businessDate$|^recap:date$|(^|:)(event_time|business_date)$/;
 
+/** Whether a field holds a number (amounts in major units, counts, the match rate). */
+export const numericRef = (ref: string) => AMOUNT.test(ref) || /^recap:(results|matched|breaks|match_rate|count_a|count_b)$/.test(ref);
+
 /** A column on `ref` with the format its field suggests (amounts as numbers, dates as yyyy-MM-dd as v1 wrote them). */
 export function columnFor(id: string, ref: string, header: string): ReportColumn {
-  const numeric = AMOUNT.test(ref) || /^recap:(results|matched|breaks|match_rate|count_a|count_b)$/.test(ref);
+  const numeric = numericRef(ref);
   return {
     id, header, content: { kind: "field", ref },
     format: numeric ? { kind: "number", decimals: AMOUNT.test(ref) ? 2 : 0, thousands: ".", negative: "minus", prefix: "", suffix: "" }

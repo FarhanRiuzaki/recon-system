@@ -2,7 +2,7 @@
 // preview of a sample, the source database connectors and the file inbox check; the pipeline's job handlers and a
 // source's schedule; the signed amount the engine reads (signedAmount); its routes; the one source health rule and the
 // read model the sources screens show (sourceStates); the sources' deliveries on time or late (deliveryCounts, the dashboard); and the seams later plans fill (ingestHooks).
-export { compileDerive, runDerive } from "./cel";
+export { celCompiler, compileDerive, runDerive } from "./cel";
 export {
   CATALOG_COUNT_CAP, CATALOG_DATABASES_MAX, CATALOG_TABLES_PAGE, type CatalogTable, type Column, type Connector, ConnectorError, type ConnectorErrorKind, connectorFor, DEFAULT_DATABASE, type From, lookbackOf,
   HOSTNAME_MISMATCH_CODES, NO_TLS_CODES, type Row, type Secret, within,

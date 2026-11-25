@@ -26,17 +26,17 @@ export const SAFE_PATTERNS: Record<string, RegExp> = {
 export type DeriveVars = { row: Record<string, string>; file_name: string; file_date: string; arrived_date: string };
 export type Compiled = { readonly run: ParseResult };
 
-const base = new Environment({ limits: LIMITS })
-  .registerVariable("row", "map")
-  .registerVariable("file_name", "string")
-  .registerVariable("file_date", "string")
-  .registerVariable("arrived_date", "string")
-  .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v));
-// computed columns' steps, from the one table the wizard previews with; a CEL int arrives as a bigint
-const env = Object.entries(COMPUTE_FUNCTIONS).reduce((e, [fn, f]) => e.registerFunction(
-  `${fn}(${["string", ...f.args.map((k) => (k === "int" ? "int" : "string"))].join(", ")}): string`,
-  (s: string, ...a: unknown[]) => f.run(s, ...(a.map((v) => (typeof v === "bigint" ? Number(v) : v)) as never[])),
-), base);
+/** An environment with these variables, the allowlisted helpers and the computed columns' steps (ingest derive, report formulas). */
+function environment(vars: readonly (readonly [string, string])[]): Environment {
+  const base = vars.reduce((e, [n, t]) => e.registerVariable(n, t), new Environment({ limits: LIMITS }))
+    .registerFunction("re_match(string, string): bool", (v: string, id: string) => SAFE_PATTERNS[id]!.test(v));
+  // computed columns' steps, from the one table the wizard previews with; a CEL int arrives as a bigint
+  return Object.entries(COMPUTE_FUNCTIONS).reduce((e, [fn, f]) => e.registerFunction(
+    `${fn}(${["string", ...f.args.map((k) => (k === "int" ? "int" : "string"))].join(", ")}): string`,
+    (s: string, ...a: unknown[]) => f.run(s, ...(a.map((v) => (typeof v === "bigint" ? Number(v) : v)) as never[])),
+  ), base);
+}
+const env = environment([["row", "map"], ["file_name", "string"], ["file_date", "string"], ["arrived_date", "string"]]);
 
 type Node = { op?: string; args?: unknown };
 /** Every call node of the tree: [function name, argument nodes]. */
@@ -55,6 +55,16 @@ const first = (m: string) => m.split("\n")[0]!;
 
 /** The compiled expression, or why it is refused (a sentence for the person who wrote it). */
 export function compileDerive(expr: string): Compiled | { error: string } {
+  return compileIn(env, expr);
+}
+
+/** A compiler for expressions over these variables, with derive's rules (length, allowlist, safe patterns, type check). */
+export function celCompiler(vars: readonly (readonly [string, string])[]): (expr: string) => Compiled | { error: string } {
+  const e = environment(vars);
+  return (expr) => compileIn(e, expr);
+}
+
+function compileIn(env: Environment, expr: string): Compiled | { error: string } {
   if (expr.length > MAX_EXPR_LENGTH) return { error: `The expression is longer than ${MAX_EXPR_LENGTH} characters` };
   let run: ParseResult;
   try { run = env.parse(expr); } catch (e) { return { error: `Can't parse it: ${first((e as Error).message)}` }; }
