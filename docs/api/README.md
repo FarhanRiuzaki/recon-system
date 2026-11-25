@@ -333,6 +333,14 @@ only: the stored snapshots, JSON DTO, CSV column order, filters and formula-safe
 | `inbox.folder_create` | Inbox folder created | space | – | `{ folder }` |
 | `inbox.folder_delete` | Inbox folder deleted | space | `{ folder }` | – |
 | `inbox.file_delete` | Inbox file deleted | space | `{ folder, name, size }` | – |
+| `report.template.create` | Report template created | report | – | `{ name, configId, kind }` (the template and its draft version 1) |
+| `report.version.save` | Report draft saved | report | `{ version, spec }` | `{ version, spec }` |
+| `report.version.submit` | Report version sent | report | – | `{ version, official, status }` (`active` at once, or `waiting` for a checker) |
+| `report.version.approve` | Report version approved | report | – | `{ version, note }` |
+| `report.version.reject` | Report version rejected | report | – | `{ version, note }` |
+| `report.template.retire` | Report template retired | report | – | `{ name }` |
+| `report.make` | Report file asked for | report | – | `{ fileId, version, from, to, format, masking, runId }` |
+| `report.download` | Report file downloaded | report | – | `{ fileId, version, from, to, format, masking, sha256 }` |
 | `break.assign` | Unmatch item assigned | break (the item; label its reference) | `{ assignee, state }` | `{ assignee, state }` (assignee null = back to Unassigned) |
 | `break.take` | Unmatch item taken | break | `{ assignee, state }` | `{ assignee, state }` (the caller) |
 | `break.state` | Unmatch item state changed | break | `{ state }` | `{ state }` (investigating or pending_external) |

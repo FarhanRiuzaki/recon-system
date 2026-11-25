@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportVersionDto",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "templateId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "waiting",
+        "active",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "spec": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "transactions",
+            "grouped",
+            "daily_summary"
+          ]
+        },
+        "rows": {
+          "type": "object",
+          "properties": {
+            "statuses": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "matched",
+                  "suggested",
+                  "break",
+                  "closed",
+                  "not_required"
+                ]
+              }
+            },
+            "side": {
+              "type": "string",
+              "enum": [
+                "a",
+                "b",
+                "both"
+              ]
+            },
+            "reasons": {
+              "maxItems": 50,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 80
+              }
+            }
+          },
+          "required": [
+            "statuses",
+            "side",
+            "reasons"
+          ],
+          "additionalProperties": false
+        },
+        "columns": {
+          "maxItems": 40,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+              },
+              "header": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "key",
+              "header"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "groups": {
+          "maxItems": 2,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+          }
+        },
+        "totals": {
+          "maxItems": 10,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "fn": {
+                "type": "string",
+                "enum": [
+                  "count",
+                  "sum",
+                  "min",
+                  "max"
+                ]
+              },
+              "column": {
+                "type": "string",
+                "pattern": "^(a|b):[a-z][a-z0-9_.]*$|^recon:[A-Za-z]+$"
+              }
+            },
+            "required": [
+              "fn"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "xlsx",
+                "pdf"
+              ]
+            },
+            "fileName": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 150
+            },
+            "masking": {
+              "type": "string",
+              "enum": [
+                "masked",
+                "full"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "subtitle": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "format",
+            "fileName",
+            "masking"
+          ],
+          "additionalProperties": false
+        },
+        "when": {
+          "type": "object",
+          "properties": {
+            "afterRun": {
+              "type": "boolean"
+            },
+            "onRequest": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "afterRun",
+            "onRequest"
+          ],
+          "additionalProperties": false
+        },
+        "official": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "rows",
+        "columns",
+        "groups",
+        "totals",
+        "output",
+        "when",
+        "official"
+      ],
+      "additionalProperties": false
+    },
+    "madeBy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "approvedBy": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "updatedAt": {
+      "type": "string"
+    },
+    "decidedAt": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "templateId",
+    "version",
+    "status",
+    "spec",
+    "madeBy",
+    "approvedBy",
+    "updatedAt",
+    "decidedAt",
+    "note"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CreateReportTemplateBody",
+  "type": "object",
+  "properties": {
+    "configId": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "start": {
+      "type": "string",
+      "enum": [
+        "daily_summary",
+        "break_detail",
+        "matched_list",
+        "blank"
+      ]
+    }
+  },
+  "required": [
+    "configId",
+    "name",
+    "start"
+  ],
+  "additionalProperties": false
+}

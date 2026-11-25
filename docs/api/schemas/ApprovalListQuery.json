@@ -43,6 +43,7 @@
           "enum": [
             "source_version",
             "recon_version",
+            "report_version",
             "posting",
             "force_match",
             "unmatch",
@@ -57,6 +58,7 @@
             "enum": [
               "source_version",
               "recon_version",
+              "report_version",
               "posting",
               "force_match",
               "unmatch",

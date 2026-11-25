@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReportFileListQuery",
+  "type": "object",
+  "properties": {
+    "page": {
+      "default": 1,
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000
+    },
+    "pageSize": {
+      "default": 15,
+      "enum": [
+        15,
+        25,
+        50,
+        100
+      ],
+      "type": "number"
+    },
+    "q": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "sort": {
+      "type": "string",
+      "enum": [
+        "madeAt",
+        "-madeAt",
+        "from",
+        "-from"
+      ]
+    },
+    "recon": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "template": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "run": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+    },
+    "final": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "final",
+            "not_final"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "final",
+              "not_final"
+            ]
+          }
+        }
+      ]
+    },
+    "status": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "queued",
+            "making",
+            "ready",
+            "failed",
+            "removed"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "making",
+              "ready",
+              "failed",
+              "removed"
+            ]
+          }
+        }
+      ]
+    },
+    "madeBy": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": ""
+        },
+        {
+          "type": "string",
+          "enum": [
+            "run",
+            "user"
+          ]
+        },
+        {
+          "maxItems": 50,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "run",
+              "user"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
