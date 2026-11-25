@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "@starterkit/ui/ui/toast";
-import type { RunSourceDto, SourceDto, SourceSummaryDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
+import type { RollbackPullDto, RunSourceDto, SourceDto, SourceSummaryDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
 import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
@@ -64,6 +64,20 @@ export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
       toast(r.queued ? `${what[0]!.toUpperCase()}${what.slice(1)} queued. The source updates when it finishes.` : `A ${what} was already waiting; it takes this one in.`);
     },
     onError: (e) => toast.error(errorText(e)),
+    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
+  });
+}
+
+/**
+ * POST …/pulls/{pullId}/rollback: that pull and every later one are rolled back by the source's next pull, queued now,
+ * which then reads those rows again. Throws the API's reason (the confirmation shows it); Pull history and the source
+ * refresh after.
+ */
+export function useRollbackPull(spaceId: string, id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (pullId: string) => api<RollbackPullDto>(sourceApi(spaceId, id, `/pulls/${encodeURIComponent(pullId)}/rollback`), { method: "POST", body: "{}" }),
+    onSuccess: (r) => toast(`Rollback of ${r.pulls} ${r.pulls === 1 ? "pull" : "pulls"} queued. The next pull removes their rows, then reads them again.`),
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
   });
 }

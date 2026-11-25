@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { familyOf } from "../../connectors/dialect";
 import { makeCalendar } from "../../map";
-import { healthDeadline, completedDates, completeThroughOf, cursorIds, deadlineOn, deliveryDue, type DeliveryFacts, type DueRule, deliveryOf, deliveryTally, driftOf, dueRule, endOfDay, idText, nextBusinessDay, nextRunOf, previousBusinessDay, todayIn } from "../../rules";
+import { healthDeadline, completedDates, completeThroughOf, cursorIds, deadlineOn, deliveryDue, type DeliveryFacts, type DueRule, deliveryOf, deliveryTally, driftOf, dueRule, endOfDay, idText, nextBusinessDay, nextRunOf, previousBusinessDay, pullRollback, startedFromOf, todayIn } from "../../rules";
 
 const cal = makeCalendar({ weekend: [6, 7], holidays: ["2026-11-02"] });
 
@@ -171,5 +171,34 @@ describe("healthDeadline: a per-date source's daily deadline falls on the busine
     // Sat 2026-11-28 waits for Fri 27 → deadline Mon 30
     expect(healthDeadline(cal, "2026-11-28", "09:00").toISOString()).toBe("2026-11-30T02:00:00.000Z");
     expect(healthDeadline(cal, "2026-11-29", "09:00").toISOString()).toBe("2026-11-30T02:00:00.000Z");
+  });
+});
+
+describe("rolling back a watermark pull (owner, 25 Nov)", () => {
+  const at = (m: number) => new Date(Date.UTC(2026, 10, 25, 10, m));
+  const pull = (o: Partial<Parameters<typeof pullRollback>[0]> = {}) => ({ id: "01a2", startedAt: at(5), added: 3, quarantined: 0, startedFrom: {}, rolledBackAt: null, ...o });
+
+  it("where a pull started: the cursor before it, or the beginning with no cursor yet", () => {
+    expect(startedFromOf(undefined)).toEqual({ watermark: null, watermarkId: null, completeThrough: null });
+    expect(startedFromOf({ watermark: "2026-11-24T23:29:57Z", watermarkId: '{"columns":["uuid"],"ids":["e1"]}', completeThrough: at(0) }))
+      .toEqual({ watermark: "2026-11-24T23:29:57Z", watermarkId: '{"columns":["uuid"],"ids":["e1"]}', completeThrough: at(0).toISOString() });
+  });
+
+  it("offers it on a pull that stored rows; nothing on one that stored none (its look back read again) or was rolled back; not known before 0072", () => {
+    expect(pullRollback(pull(), null)).toBe("available");
+    expect(pullRollback(pull({ added: 0, quarantined: 2 }), null)).toBe("available");
+    expect(pullRollback(pull({ added: 0 }), null)).toBeNull();
+    expect(pullRollback(pull({ rolledBackAt: at(9) }), null)).toBeNull();
+    expect(pullRollback(pull({ startedFrom: null }), null)).toBe("unknown_start");
+  });
+
+  it("a rollback asked for covers the pull it names and every later one, never an earlier one", () => {
+    const waiting = { id: "01a2", startedAt: at(5) };
+    expect(pullRollback(pull(), waiting)).toBe("pending");
+    expect(pullRollback(pull({ startedAt: at(6), id: "01a1" }), waiting)).toBe("pending");
+    expect(pullRollback(pull({ id: "01a3" }), waiting)).toBe("pending"); // the same start: by id, as the rollback orders them
+    expect(pullRollback(pull({ id: "01a1" }), waiting)).toBe("available");
+    expect(pullRollback(pull({ startedAt: at(4) }), waiting)).toBe("available");
+    expect(pullRollback(pull({ startedAt: at(6), added: 0 }), waiting)).toBeNull(); // stored nothing: nothing to say
   });
 });

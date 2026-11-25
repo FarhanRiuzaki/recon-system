@@ -641,7 +641,12 @@ export type IngestListQuery = z.infer<typeof IngestListQuery>;
  */
 export const RecordListQuery = ListQuery.omit({ sort: true }).extend({ businessDate: isoDate.optional() });
 export type RecordListQuery = z.infer<typeof RecordListQuery>;
-/** One watermark pull (GET …/pulls, newest first): how it ended and what it brought. */
+/**
+ * One watermark pull (GET …/pulls, newest first): how it ended and what it brought; `rolledBackAt` when a rollback
+ * removed what it wrote; `rollback` what Pull history offers on it: `available`, `pending` (a rollback asked for covers
+ * it and hasn't run yet), `unknown_start` (a pull before rollback existed: where it started isn't known), null when
+ * there is nothing to roll back.
+ */
 export const SourcePullDto = z.object({
   id: z.string(),
   startedAt: z.string(),
@@ -653,6 +658,8 @@ export const SourcePullDto = z.object({
   leftOut: z.number().int(),
   watermark: z.string().nullable(),
   error: z.string().nullable(),
+  rolledBackAt: z.string().nullable(),
+  rollback: z.enum(["available", "pending", "unknown_start"]).nullable(),
 });
 export type SourcePullDto = z.infer<typeof SourcePullDto>;
 /** A stored record: its recon fields, its stored columns and where it came from (a file by name, a pull, a snapshot). */
@@ -731,3 +738,9 @@ export type RunSourceBody = z.infer<typeof RunSourceBody>;
 /** `queued` false: a run of the same source (and date) was already waiting, and this one joined it. */
 export const RunSourceDto = z.object({ queued: z.boolean() });
 export type RunSourceDto = z.infer<typeof RunSourceDto>;
+/**
+ * POST …/sources/{sourceId}/pulls/{pullId}/rollback (no body): the rollback waits for the source's next pull, queued
+ * with it; `pulls` = how many pulls that stored rows it covers (the pull named and those after it).
+ */
+export const RollbackPullDto = z.object({ pulls: z.number().int() });
+export type RollbackPullDto = z.infer<typeof RollbackPullDto>;

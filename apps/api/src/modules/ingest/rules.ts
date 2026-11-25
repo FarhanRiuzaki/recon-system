@@ -75,6 +75,31 @@ export function cursorIds(text: string, columns: string[]): string[] | null {
   return list && list.length === columns.length ? list : null;
 }
 
+/**
+ * Where a watermark pull started (source_pulls.started_from): the cursor before it, which a rollback of it puts back.
+ * `{}` = from the beginning (no cursor yet); a key left out reads as null.
+ */
+export type StartedFrom = { watermark?: string | null; watermarkId?: string | null; completeThrough?: string | null };
+export const startedFromOf = (c: { watermark: string | null; watermarkId: string | null; completeThrough: Date | null } | undefined): StartedFrom =>
+  ({ watermark: c?.watermark ?? null, watermarkId: c?.watermarkId ?? null, completeThrough: c?.completeThrough?.toISOString() ?? null });
+
+/**
+ * What Pull history offers on a pull: null when there is nothing to roll back (it stored no new record or quarantined
+ * line: a pull of nothing new reads its look back again, and stores nothing; or a rollback removed what it wrote); `pending` when a rollback asked for (from `waiting`, the pull named) covers it and hasn't run yet;
+ * `unknown_start` when where it started isn't known (a pull before rollback existed, drizzle/0072); else `available`.
+ */
+export type PullRollback = "available" | "pending" | "unknown_start" | null;
+/** Whether a pull stored something a rollback removes: a new record or a quarantined line. */
+export const storedRows = (p: { added: number; quarantined: number }) => p.added > 0 || p.quarantined > 0;
+export function pullRollback(
+  p: { id: string; startedAt: Date; added: number; quarantined: number; startedFrom: unknown; rolledBackAt: Date | null },
+  waiting: { id: string; startedAt: Date } | null,
+): PullRollback {
+  if (p.rolledBackAt || !storedRows(p)) return null;
+  if (waiting && (p.startedAt > waiting.startedAt || (p.startedAt.getTime() === waiting.startedAt.getTime() && p.id >= waiting.id))) return "pending";
+  return p.startedFrom == null ? "unknown_start" : "available";
+}
+
 export type Baseline = { name: string; type: string }[];
 
 /** The native families (connectors/dialect.ts `familyOf`) a column may have for each declared logical type. */

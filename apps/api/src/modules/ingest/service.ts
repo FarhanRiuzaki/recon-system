@@ -17,7 +17,7 @@
 // A source of an archived space is not run at all (load answers null).
 import type { Page } from "@starterkit/shared/contracts/common";
 import type {
-  IngestListQuery, QuarantineRowDto, RecordListQuery, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
+  IngestListQuery, QuarantineRowDto, RecordListQuery, RollbackPullDto, RunSourceBody, RunSourceDto, SourceDto, SourceFileDto, SourcePullDto, SourceRecordDto, SourceSnapshotDto, SourceSpec,
 } from "@starterkit/shared/contracts/sources";
 import { type DbEngine, readCron, type SourceKind, type SourceStatus } from "@starterkit/shared/sources";
 import { type AnyColumn, and, count, desc, eq, exists, gt, gte, inArray, isNull, lte, max, or, sql } from "drizzle-orm";
@@ -41,7 +41,7 @@ import { type Calendar, fileDateOf, makeCalendar, toRecord } from "./map";
 import { readRows } from "./read";
 import { DEFAULT_TIMEZONE } from "./coerce";
 import { sourceHealth } from "./health";
-import { type Baseline, completedDates, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, healthDeadline, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
+import { type Baseline, completedDates, pullRollback, type StartedFrom, startedFromOf, storedRows, deliveryDue, type DeliveryTally, deliveryTally, completeThroughOf, type DueRule, dueRule, stricter, cursorIds, healthDeadline, type Drift, type DriftColumn, driftOf, endOfDay, idText, nextRunOf, previousBusinessDay, todayIn } from "./rules";
 import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "./schema";
 
 /** A job's source: the space it belongs to and its id. */
@@ -274,18 +274,31 @@ async function checkColumns(s: Scope, on: Tx, l: Loaded, c: Connector, from: Fro
 
 /**
  * One watermark pull of a db_watermark source (spec §8, S7): from the stored (watermark, id) less the lookback, keyset
- * pages of `chunk` rows; each page's rows and the watermark after it commit together. Answers "skipped" for a source
- * that isn't active, has no published version or connection, or isn't of this space.
+ * pages of `chunk` rows; each page's rows and the watermark after it commit together. A rollback asked for runs first
+ * (rollBackPulls), so the pull reads again from where it put the cursor; one refused ends the pull as failed with why.
+ * Answers "skipped" for a source that isn't active, has no published version or connection, or isn't of this space.
  */
 export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" | "failed" | "skipped"> {
-  const l = await inScope(s, on, (tx) => load(tx, s));
+  let l = await inScope(s, on, (tx) => load(tx, s));
   if (!l || l.status !== "active" || l.spec.input.kind !== "db_watermark" || !l.conn) return "skipped";
+  // the pull's history row (source_pulls), written however it ends, a connection that can't even open included; its id
+  // is the origin of every row it writes, so a rollback finds them
+  const id = Bun.randomUUIDv7();
+  const started = new Date();
+  const counts = newCounts();
+  if (l.cursor?.rollbackFrom) {
+    const refused = await rollBackPulls(s, on, l.spec.mutable);
+    if (refused) {
+      await recordPull(s, on, { id, started, from: startedFromOf(l.cursor), counts, reached: l.cursor.watermark, status: "failed", error: refused }).catch(() => {});
+      return "failed";
+    }
+    l = await inScope(s, on, (tx) => load(tx, s));
+    if (!l || l.status !== "active" || l.spec.input.kind !== "db_watermark" || !l.conn) return "skipped";
+  }
   const input = l.spec.input;
   const from: From = input.table !== undefined ? { table: input.table } : { query: input.query! };
   const wm = input.watermark;
-  // the pull's history row (source_pulls), written however it ends, a connection that can't even open included
-  const started = new Date();
-  const counts = newCounts();
+  const startedFrom = startedFromOf(l.cursor);
   let reached: string | null = l.cursor?.watermark ?? null;
   let outcome: { status: "new" | "nothing_new" | "failed" | "paused"; error: string | null } = { status: "failed", error: "The pull stopped on an unexpected error." };
   let c: Connector | null = null;
@@ -303,7 +316,7 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
     const lb = lookbackOf(l.conn.engine as DbEngine, cols.find((x) => x.name === wm.column)!, { seconds: input.lookback_seconds, ids: input.lookback_ids });
     const lookbackSeconds = "by" in lb && lb.by === "seconds" ? lb.n : 0;
     const after = l.cursor?.watermark != null && l.cursor.watermarkId != null ? { wm: l.cursor.watermark, ids: cursorIds(l.cursor.watermarkId, wm.id_columns) } : null;
-    const origin: Origin = { origin: "pull", originId: Bun.randomUUIDv7(), snapshotId: null, text: (cells) => JSON.stringify(cells) };
+    const origin: Origin = { origin: "pull", originId: id, snapshotId: null, text: (cells) => JSON.stringify(cells) };
     // a source's first pull (no complete_through before this run) is its baseline: no page of it completes a date
     const baseline = !l.cursor?.completeThrough;
     let n = 0;
@@ -330,21 +343,88 @@ export async function pullSource(s: Scope, on: Tx): Promise<"pulled" | "paused" 
     return r;
   } finally {
     await c?.close();
-    await recordPull(s, on, { started, counts, reached, ...outcome }).catch(() => {}); // the history never fails the pull
+    await recordPull(s, on, { id, started, from: startedFrom, counts, reached, ...outcome }).catch(() => {}); // the history never fails the pull
   }
 }
 
 /** How long a source's pull history is kept (source_pulls). */
 export const PULL_DAYS = 30;
 /** Writes one pull's history row and drops this source's rows older than PULL_DAYS (a few per pull at most). */
-async function recordPull(s: Scope, on: Tx, p: { started: Date; counts: Counts; reached: string | null; status: string; error: string | null }): Promise<void> {
+async function recordPull(s: Scope, on: Tx, p: { id: string; started: Date; from: StartedFrom; counts: Counts; reached: string | null; status: string; error: string | null }): Promise<void> {
   await inScope(s, on, async (tx) => {
     await tx.insert(sourcePulls).values({
-      id: Bun.randomUUIDv7(), ...s, startedAt: p.started, finishedAt: new Date(), status: p.status, rows: p.counts.total, added: p.counts.added,
+      id: p.id, ...s, startedAt: p.started, finishedAt: new Date(), status: p.status, rows: p.counts.total, added: p.counts.added,
       quarantined: p.counts.quarantined, leftOut: Math.max(0, p.counts.total - p.counts.ok - p.counts.quarantined), watermark: p.reached, error: p.error,
+      startedFrom: p.from,
     });
     await tx.delete(sourcePulls).where(and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.sourceId),
       sql`${sourcePulls.startedAt} < now() - make_interval(days => ${PULL_DAYS})`));
+  });
+}
+
+/** Pulls of `s` from pull `p` on (its start, then its id): the pull and every one after it. */
+const fromPull = (s: Scope, p: { id: string; startedAt: Date }) => and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.sourceId), isNull(sourcePulls.rolledBackAt),
+  or(gt(sourcePulls.startedAt, p.startedAt), and(eq(sourcePulls.startedAt, p.startedAt), gte(sourcePulls.id, p.id))));
+
+/**
+ * Does the rollback asked for on `s` (source_cursors.rollback_from), at the start of its next pull (one job per source
+ * at a time, so never beside a pull): the pull named and every later one lose what they wrote (records, raw rows,
+ * quarantined lines; on a `mutable` source the records they replaced count again), are marked rolled back, and the
+ * cursor goes back to where that pull started, so the pull that follows reads those rows again under the published
+ * version. One transaction under the source's lock, the day counters kept with it. Answers why it was refused (nothing
+ * removed, the request dropped): a business date it touches is closed (a rerun, Plan 5), or where the pull started isn't
+ * known. The completion times of dates (source_deliveries) stay: a date delivered on time was, whatever came after.
+ * ponytail: the source's records are found by origin_id without an index of their own (rollbacks are rare, and run
+ * on the worker's statement timeout); an index on (space_id, source_id, origin_id) when a source of millions needs it.
+ */
+async function rollBackPulls(s: Scope, on: Tx, mutable: boolean): Promise<string | null> {
+  return inScope(s, on, async (tx) => {
+    await sourceLock(tx, s.sourceId);
+    const cursor = and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.sourceId));
+    const [c] = await tx.select({ from: sourceCursors.rollbackFrom }).from(sourceCursors).where(cursor);
+    if (!c?.from) return null;
+    const [p] = await tx.select().from(sourcePulls).where(and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.sourceId), eq(sourcePulls.id, c.from)));
+    const drop = () => tx.update(sourceCursors).set({ rollbackFrom: null, updatedAt: NOW }).where(cursor);
+    const refuse = async (why: string) => {
+      await drop();
+      return `Rollback not done: ${why}`;
+    };
+    if (!p || p.rolledBackAt) { // gone with the history (30 days) or done already: nothing left to do
+      await drop();
+      return null;
+    }
+    if (p.startedFrom == null) return refuse("where that pull started isn't known (it ran before rollback was available). Nothing was removed.");
+    // the pulls that wrote something (read a row); the others are only marked
+    const wrote = tx.select({ id: sourcePulls.id }).from(sourcePulls).where(and(fromPull(s, p), gt(sourcePulls.rows, 0)));
+    const theirs = and(eq(records.spaceId, s.spaceId), eq(records.sourceId, s.sourceId), inArray(records.originId, wrote));
+    const lines = and(eq(quarantineRows.spaceId, s.spaceId), eq(quarantineRows.sourceId, s.sourceId), eq(quarantineRows.origin, "pull"), inArray(quarantineRows.originId, wrote));
+    // a closed day is never changed outside a rerun; a pulled line has no business date of its own
+    const dates = (await tx.selectDistinct({ d: records.businessDate }).from(records).where(theirs)).map((r) => r.d).sort();
+    for (const d of dates) if (await ingestHooks.dayClosed(tx, s, d)) return refuse(`business date ${d} is closed. Pulling it again needs a rerun request (later release). Nothing was removed.`);
+    const counted = byDate([]);
+    if (mutable) {
+      // records an earlier pull wrote that one of these replaced count again: their replacement goes
+      const back = await tx.update(records).set({ supersededBy: null }).where(and(eq(records.spaceId, s.spaceId), eq(records.sourceId, s.sourceId),
+        inArray(records.supersededBy, tx.select({ id: records.id }).from(records).where(theirs)))).returning({ businessDate: records.businessDate });
+      byDate(back.map((r) => r.businessDate), 1, counted);
+    }
+    for (const r of await tx.select({ d: records.businessDate, n: count() }).from(records).where(and(theirs, isNull(records.supersededBy))).groupBy(records.businessDate)) {
+      counted.set(r.d, (counted.get(r.d) ?? 0) - r.n);
+    }
+    const lineDate = sql<string>`coalesce(${quarantineRows.businessDate}, (${quarantineRows.createdAt} at time zone ${DEFAULT_TIMEZONE})::date)::text`;
+    const quarantined = new Map((await tx.select({ d: lineDate, n: count() }).from(quarantineRows).where(lines).groupBy(sql`1`)).map((r) => [r.d, -r.n] as const));
+    await tx.delete(records).where(theirs);
+    await tx.delete(rawRows).where(and(eq(rawRows.spaceId, s.spaceId), eq(rawRows.sourceId, s.sourceId), eq(rawRows.origin, "pull"), inArray(rawRows.originId, wrote)));
+    await tx.delete(quarantineRows).where(lines);
+    await tally(tx, s, "records", counted);
+    await tally(tx, s, "quarantined", quarantined);
+    await tx.update(sourcePulls).set({ rolledBackAt: NOW }).where(fromPull(s, p));
+    const was = p.startedFrom as StartedFrom;
+    await tx.update(sourceCursors).set({
+      rollbackFrom: null, watermark: was.watermark ?? null, watermarkId: was.watermarkId ?? null,
+      completeThrough: was.completeThrough ? new Date(was.completeThrough) : null, lastError: null, drift: null, updatedAt: NOW,
+    }).where(cursor);
+    return null;
   });
 }
 
@@ -823,19 +903,60 @@ export async function lastPulls(tx: InTx, ids: string[]): Promise<Map<string, ty
   return new Map(rows.map((r) => [r.sourceId, r]));
 }
 
-/** GET …/pulls (the Pull history card): a watermark source's pulls of the last PULL_DAYS days, newest first; its own space only. */
+/**
+ * GET …/pulls (the Pull history card): a watermark source's pulls of the last PULL_DAYS days, newest first, each with
+ * when a rollback removed what it wrote and what it offers now (rules.ts pullRollback); its own space only.
+ */
 export function pullPage(ctx: Ctx, id: string, q: IngestListQuery): Promise<Page<SourcePullDto>> {
   return inSpace(ctx, async (tx, spaceId) => {
     const s = await readable(tx, spaceId, id, true);
     const where = and(eq(sourcePulls.spaceId, s.spaceId), eq(sourcePulls.sourceId, s.id));
+    const [w] = await tx.select({ id: sourcePulls.id, startedAt: sourcePulls.startedAt }).from(sourceCursors)
+      .innerJoin(sourcePulls, and(eq(sourcePulls.spaceId, sourceCursors.spaceId), eq(sourcePulls.id, sourceCursors.rollbackFrom)))
+      .where(and(eq(sourceCursors.spaceId, s.spaceId), eq(sourceCursors.sourceId, s.id)));
     return pageQuery({
       rows: tx.select().from(sourcePulls).where(where).$dynamic(), count: tx.select(one).from(sourcePulls).where(where).$dynamic(),
       orderBy: [desc(sourcePulls.startedAt), desc(sourcePulls.id)], query: q, on: tx,
       map: (p) => ({
         id: p.id, startedAt: p.startedAt.toISOString(), finishedAt: p.finishedAt.toISOString(), status: p.status as SourcePullDto["status"],
         rows: p.rows, added: p.added, quarantined: p.quarantined, leftOut: p.leftOut, watermark: p.watermark, error: p.error,
+        rolledBackAt: iso(p.rolledBackAt), rollback: pullRollback(p, w ?? null),
       }),
     });
+  });
+}
+
+/**
+ * POST …/pulls/:pullId/rollback (owner, 25 Nov: a changed mapping stored rows pulled again a second time): asks for
+ * that pull and every later one to be rolled back, and queues a pull, which does it first (rollBackPulls) and then reads
+ * those rows again under the published version. 400 for a pull that stored nothing new; 409 `invalid_state` while paused, for
+ * a pull rolled back already, one whose start isn't known, or while another rollback waits. A closed day is checked when
+ * the rollback runs: refused then, the pull it ran in says why in Pull history.
+ */
+export function rollbackPull(ctx: Ctx, id: string, pullId: string): Promise<RollbackPullDto> {
+  return inSpace(ctx, async (tx, spaceId) => {
+    const s = await readable(tx, spaceId, id, true);
+    const scope = { spaceId, sourceId: s.id };
+    const [p] = await tx.select().from(sourcePulls).where(and(eq(sourcePulls.spaceId, spaceId), eq(sourcePulls.sourceId, s.id), eq(sourcePulls.id, pullId)));
+    if (!p) throw notFound("pull");
+    const l = await load(tx, scope);
+    if (!l) throw new ApiError("bad_request", "This source has no published version yet. Approve one first.");
+    if (s.status === "paused") {
+      throw new ApiError("invalid_state", `This source is paused${l.cursor?.lastError ? `: ${l.cursor.lastError}` : ""}. Approve a new version to start it again, then roll back.`);
+    }
+    if (p.rolledBackAt) throw new ApiError("invalid_state", "This pull was rolled back already.");
+    if (!storedRows(p)) throw new ApiError("bad_request", "This pull stored nothing new, so there's nothing to roll back. Pick a pull that stored rows.");
+    if (p.startedFrom == null) {
+      throw new ApiError("invalid_state", "Where this pull started isn't known: it ran before rollback was available. Roll back an earlier pull that offers it.");
+    }
+    if (l.cursor?.rollbackFrom) throw new ApiError("invalid_state", "A rollback of this source is already waiting. It runs before the next pull.");
+    const [{ n }] = (await tx.select({ n: count() }).from(sourcePulls)
+      .where(and(fromPull(scope, p), or(gt(sourcePulls.added, 0), gt(sourcePulls.quarantined, 0))))) as [{ n: number }];
+    await setCursor(tx, scope, { rollbackFrom: p.id });
+    // in this transaction: a pull that starts before it commits would not see the request
+    await enqueue(QUEUES.ingestPull, scope, { key: s.id, tx });
+    await recordActivity(tx, ctx, { action: "source.rollback", target: { type: "source", id: s.id, label: s.name }, after: { pullId: p.id, startedAt: p.startedAt.toISOString(), pulls: n } });
+    return { pulls: n };
   });
 }
 

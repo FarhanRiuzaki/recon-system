@@ -20,7 +20,7 @@ import { db } from "../../../../kernel/db";
 import { calendars, sourceConnections, sources, sourceVersions } from "../../../sources";
 import { spaces, withSpace } from "../../../spaces";
 import { type Connector, ConnectorError, type Row, type Secret } from "../../connectors";
-import { quarantineRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
+import { quarantineRows, rawRows, records, sourceCursors, sourceDayCounts, sourceDeliveries, sourceFiles, sourcePulls, sourceSnapshots } from "../../schema";
 import { currentRecord, ensureIngestPartitions, ingestFile, ingestHooks, type InboxFile, pullSource, scanSource, snapshotSource } from "../../service";
 import { todayIn } from "../../rules";
 import { KSEI_FILE, ksei } from "../unit/fixtures";
@@ -665,6 +665,135 @@ describe("a mutable source", () => {
     expect(changed).toEqual([[old!.id]]);
     expect(await current(s)).toBe(2);
     expect(await expectCounters(s)).toEqual(["records 2026-11-19 2"]); // R1's replaced record no longer counts
+  });
+});
+
+// ------------------------------------------------------------------------------------------------ rollback
+describe("rolling back pulls (owner, 25 Nov: a changed mapping stored the rows pulled again a second time)", () => {
+  // business_date from a fixed CEL: a new version moving it is the KAI case (v1 25 Nov, v3 24 Nov)
+  const rbSpec = (date: string, mutable = false): SourceSpec => ({
+    fields: [{ name: "ref", type: "string", nullable: false, trim: true }, { name: "status", type: "string", nullable: false, trim: true }],
+    mapping: { business_date: { cel: `'${date}'` }, ext_ref: { field: "ref" }, attrs: { status: { field: "status" } } },
+    derive: {}, key_fields: ["ref"], mutable, calendar: "id-default",
+    input: { kind: "db_watermark", table: "public.mut", watermark: { column: "updated_at", id_columns: ["id"] }, lookback_seconds: 60, chunk: 2 },
+  });
+  /** Publishes `spec` as the source's next version, retiring the one before. */
+  async function publish(s: Src, spec: SourceSpec, version: number) {
+    await db.update(sourceVersions).set({ status: "retired" }).where(and(eq(sourceVersions.sourceId, s.sourceId), eq(sourceVersions.status, "published")));
+    await db.insert(sourceVersions).values({ id: Bun.randomUUIDv7(), spaceId: s.spaceId, sourceId: s.sourceId, version, status: "published", spec, specHash: `h${version}`, makerId: A, publishedAt: new Date() });
+  }
+  const pullsOf = (s: Src) => db.select().from(sourcePulls).where(eq(sourcePulls.sourceId, s.sourceId)).orderBy(asc(sourcePulls.startedAt), asc(sourcePulls.id));
+  const ask = (s: Src, pullId: string) => db.update(sourceCursors).set({ rollbackFrom: pullId }).where(eq(sourceCursors.sourceId, s.sourceId));
+  const byDay = async (s: Src) => (await db.transaction((tx) => tx.select({ ref: records.extRef, d: records.businessDate }).from(records)
+    .where(and(eq(records.sourceId, s.sourceId), currentRecord(tx))))).map((r) => `${r.ref} ${r.d}`).sort();
+  const rawCount = async (s: Src) => (await db.select({ n: count() }).from(rawRows).where(eq(rawRows.sourceId, s.sourceId)))[0]!.n;
+
+  it("the rows a new version pulled again under another date are stored twice; rolled back from the first pull, the next pull reads them once", async () => {
+    await src`insert into mut values (1, '2026-11-24T23:00:00Z', 'R1', 'ok'), (2, '2026-11-24T23:00:00Z', 'R2', 'ok'), (3, '2026-11-24T23:00:30Z', 'R3', 'ok')`;
+    const s = await source(A, rbSpec("2026-11-25"));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    await publish(s, rbSpec("2026-11-24"), 2);
+    await src`insert into mut values (4, '2026-11-24T23:00:40Z', 'R4', 'ok')`;
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    // the bug: the look back read R1–R3 again, and under their new date they are new to the dedup
+    expect(await byDay(s)).toEqual(["R1 2026-11-24", "R1 2026-11-25", "R2 2026-11-24", "R2 2026-11-25", "R3 2026-11-24", "R3 2026-11-25", "R4 2026-11-24"]);
+    const [first, second] = await pullsOf(s);
+    expect(first!.startedFrom).toEqual({ watermark: null, watermarkId: null, completeThrough: null });
+    expect(second!.startedFrom).toMatchObject({ watermark: first!.watermark });
+    await ask(s, first!.id);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await byDay(s)).toEqual(["R1 2026-11-24", "R2 2026-11-24", "R3 2026-11-24", "R4 2026-11-24"]);
+    expect(await allRecords(s)).toBe(4);
+    expect(await rawCount(s)).toBe(4);
+    await expectCounters(s);
+    const pulls = await pullsOf(s);
+    expect(pulls.map((p) => [p.status, p.added, p.rolledBackAt !== null])).toEqual([["new", 3, true], ["new", 4, true], ["new", 4, false]]);
+    expect(pulls[2]!.startedFrom).toEqual({ watermark: null, watermarkId: null, completeThrough: null }); // read from the beginning
+    expect(await cursorOf(s)).toMatchObject({ rollbackFrom: null, lastError: null, watermark: "2026-11-24T23:00:40.000000Z" });
+    // every record and raw row is of a pull listed: its origin is the pull's id
+    const origins = await db.selectDistinct({ o: records.originId }).from(records).where(eq(records.sourceId, s.sourceId));
+    expect(origins.map((o) => o.o)).toEqual([pulls[2]!.id]);
+  });
+
+  it("a later pull rolled back alone: the earlier one keeps its rows, the cursor goes back to where it ended, and the rows come back once", async () => {
+    await src`insert into mut values (1, '2026-11-24T23:00:00Z', 'R1', 'ok'), (2, '2026-11-24T23:10:00Z', 'R2', 'ok')`;
+    const s = await source(A, { ...rbSpec("2026-11-24"), input: { ...(rbSpec("2026-11-24").input as object), lookback_seconds: 0 } as SourceSpec["input"] });
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    const ended = await cursorOf(s);
+    await src`insert into mut values (3, '2026-11-24T23:20:00Z', 'R3', 'ok'), (4, '2026-11-24T23:30:00Z', 'R4', 'ok'), (5, '2026-11-24T23:40:00Z', 'R5', 'ok')`;
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    const [first, second] = await pullsOf(s);
+    expect(second!.startedFrom).toEqual({ watermark: ended!.watermark, watermarkId: ended!.watermarkId, completeThrough: ended!.completeThrough!.toISOString() });
+    await ask(s, second!.id);
+    // the rollback, then a pull that can't connect: what the rollback left is what we see
+    ingestHooks.connect = () => { throw new ConnectorError("host", null, "Can't reach the source database."); };
+    expect(await pullSource(scope(s), probe)).toBe("failed");
+    expect(await byDay(s)).toEqual(["R1 2026-11-24", "R2 2026-11-24"]);
+    expect(await cursorOf(s)).toMatchObject({ rollbackFrom: null, watermark: ended!.watermark, watermarkId: ended!.watermarkId, completeThrough: ended!.completeThrough });
+    await expectCounters(s);
+    expect((await pullsOf(s)).map((p) => p.id === first!.id ? p.rolledBackAt : "x")).toContain(null);
+    Object.assign(ingestHooks, defaultHooks);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await byDay(s)).toEqual(["R1 2026-11-24", "R2 2026-11-24", "R3 2026-11-24", "R4 2026-11-24", "R5 2026-11-24"]);
+    expect(await allRecords(s)).toBe(5);
+    await expectCounters(s);
+  });
+
+  it("a closed business date refuses it: nothing removed, the request dropped, and the pull it ran in says why", async () => {
+    await src`insert into mut values (1, '2026-11-24T23:00:00Z', 'R1', 'ok')`;
+    const s = await source(A, rbSpec("2026-11-24"));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    const [first] = await pullsOf(s);
+    await ask(s, first!.id);
+    ingestHooks.dayClosed = async (_tx, _s, d) => d === "2026-11-24";
+    expect(await pullSource(scope(s), probe)).toBe("failed");
+    expect(await byDay(s)).toEqual(["R1 2026-11-24"]);
+    const pulls = await pullsOf(s);
+    expect(pulls.map((p) => [p.status, p.rolledBackAt])).toEqual([["new", null], ["failed", null]]);
+    expect(pulls[1]!.error).toBe("Rollback not done: business date 2026-11-24 is closed. Pulling it again needs a rerun request (later release). Nothing was removed.");
+    expect((await cursorOf(s))!.rollbackFrom).toBeNull();
+  });
+
+  it("a pull whose start isn't known (before 0072) is refused; one rolled back already is a no-op", async () => {
+    await src`insert into mut values (1, '2026-11-24T23:00:00Z', 'R1', 'ok')`;
+    const s = await source(A, rbSpec("2026-11-24"));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    const [first] = await pullsOf(s);
+    await db.update(sourcePulls).set({ startedFrom: null }).where(eq(sourcePulls.id, first!.id));
+    await ask(s, first!.id);
+    expect(await pullSource(scope(s), probe)).toBe("failed");
+    expect((await pullsOf(s))[1]!.error).toMatch(/^Rollback not done: where that pull started isn't known/);
+    expect(await allRecords(s)).toBe(1);
+    await db.update(sourcePulls).set({ rolledBackAt: new Date() }).where(eq(sourcePulls.id, first!.id));
+    await ask(s, first!.id);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await allRecords(s)).toBe(1);
+    expect((await cursorOf(s))!.rollbackFrom).toBeNull();
+  });
+
+  it("a mutable source: the records a rolled back pull replaced count again; quarantined lines of the pull go too", async () => {
+    await src`insert into mut values (1, '2026-11-24T23:00:00Z', 'R1', 'pending'), (2, '2026-11-24T23:00:00Z', 'R2', 'pending')`;
+    const s = await source(A, rbSpec("2026-11-24", true));
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    await src`update mut set status = 'success', updated_at = '2026-11-24T23:05:00Z' where id = 1`;
+    await src`insert into mut values (3, '2026-11-24T23:06:00Z', ' ', 'bad')`; // an empty key field: quarantined
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await quarantined(s)).toHaveLength(1);
+    const status = async () => (await db.transaction((tx) => tx.select({ ref: records.extRef, attrs: records.attrs }).from(records)
+      .where(and(eq(records.sourceId, s.sourceId), currentRecord(tx))))).map((r) => `${r.ref} ${(r.attrs as { status: string }).status}`).sort();
+    expect(await status()).toEqual(["R1 success", "R2 pending"]);
+    await ask(s, (await pullsOf(s))[1]!.id);
+    ingestHooks.connect = () => { throw new ConnectorError("host", null, "Can't reach the source database."); };
+    expect(await pullSource(scope(s), probe)).toBe("failed");
+    expect(await status()).toEqual(["R1 pending", "R2 pending"]);
+    expect(await quarantined(s)).toHaveLength(0);
+    expect(await allRecords(s)).toBe(2);
+    await expectCounters(s);
+    Object.assign(ingestHooks, defaultHooks);
+    expect(await pullSource(scope(s), probe)).toBe("pulled");
+    expect(await status()).toEqual(["R1 success", "R2 pending"]);
+    expect(await quarantined(s)).toHaveLength(1);
+    await expectCounters(s);
   });
 });
 

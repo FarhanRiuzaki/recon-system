@@ -63,6 +63,11 @@ export const sourceCursors = pgTable("source_cursors", {
   columnsVersionId: uuid("columns_version_id"),
   /** Why a paused source stopped, per column (rules.ts DriftColumn[]); cleared with last_error. */
   drift: jsonb("drift"),
+  /**
+   * A rollback asked for (POST …/pulls/:pullId/rollback) and not done yet: that pull's id. The next pull of the source
+   * does it first (service.ts rollBackPulls), under the same job key as every pull, so it never runs beside one.
+   */
+  rollbackFrom: uuid("rollback_from"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   primaryKey({ name: "source_cursors_pkey", columns: [t.spaceId, t.sourceId] }),
@@ -74,6 +79,10 @@ export const sourceCursors = pgTable("source_cursors", {
  * `new` (records added), `nothing_new`, `failed` (a connection or read error, in `error`), `paused` (the table no longer
  * fits the version). `rows` read, `added` new records, `quarantined` lines, `left_out` by the conditions; `watermark`
  * the position it reached. Each source keeps PULL_DAYS days (pullSource drops older rows of its own source).
+ * `id` is the origin_id of the raw rows, records and quarantined lines it wrote (pulls before drizzle/0072 were paired
+ * with theirs there). `started_from` = the cursor when it started (rules.ts StartedFrom: `{}` from the beginning; null
+ * not known, a pull before 0072), where a rollback of it puts the cursor back; `rolled_back_at` = when a rollback
+ * removed what it wrote (service.ts rollBackPulls).
  */
 export const sourcePulls = pgTable("source_pulls", {
   id: uuid("id").primaryKey(),
@@ -88,6 +97,8 @@ export const sourcePulls = pgTable("source_pulls", {
   leftOut: integer("left_out").notNull().default(0),
   watermark: text("watermark"),
   error: text("error"),
+  startedFrom: jsonb("started_from"),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
 }, (t) => [
   index("source_pulls_source_started").on(t.spaceId, t.sourceId, t.startedAt.desc()),
   foreignKey({ name: "source_pulls_source_fkey", columns: [t.spaceId, t.sourceId], foreignColumns: [sources.spaceId, sources.id] }).onDelete("cascade"),

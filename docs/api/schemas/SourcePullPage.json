@@ -57,6 +57,27 @@
               "string",
               "null"
             ]
+          },
+          "rolledBackAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rollback": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "pending",
+                  "unknown_start"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -69,7 +90,9 @@
           "quarantined",
           "leftOut",
           "watermark",
-          "error"
+          "error",
+          "rolledBackAt",
+          "rollback"
         ],
         "additionalProperties": false
       }

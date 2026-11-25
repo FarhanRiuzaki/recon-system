@@ -57,7 +57,7 @@ export const ACTION_LABEL = {
   "source.create": "Source created", "source.connection_set": "Source connection set", "source.version_create": "Source version drafted",
   "source.version_update": "Source version edited", "source.version_submit": "Source version submitted", "source.version_approve": "Source version approved",
   "source.version_reject": "Source version rejected", "source.share": "Source shared", "source.unshare": "Source share removed", "source.discard": "Draft source deleted",
-  "source.run": "Source pull started",
+  "source.run": "Source pull started", "source.rollback": "Source pulls rolled back",
   "recon.create": "Recon created", "recon.version_create": "Recon version drafted", "recon.version_update": "Recon version edited",
   "recon.version_submit": "Recon version submitted", "recon.version_approve": "Recon version approved", "recon.version_reject": "Recon version rejected",
   "recon.discard": "Draft recon deleted", "recon.version_discard": "Recon draft discarded", "recon.run": "Recon run started", "recon.simulate": "Recon simulation started",

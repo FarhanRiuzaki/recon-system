@@ -226,7 +226,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min: degraded past half, down past it` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
               ]} />
             </Panel>
-            {own && <PullHistory spaceId={spaceId} id={id} />}
+            {own && <PullHistory spaceId={spaceId} id={id} rollback={mayDo(roles, "connectSource") ? { blocked: s.status === "paused" ? PAUSED_REASON : null } : null} />}
             </div>
           )}
           {s.connection && !s.connection.options.tls && (

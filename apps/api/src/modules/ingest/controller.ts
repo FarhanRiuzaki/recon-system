@@ -1,13 +1,13 @@
-// /v1/spaces/:spaceId/sources/:sourceId/{files,snapshots,pulls,records,quarantine,run}: what a source's ingest did, and a run now.
-// Any role reads (files and snapshots also of a source shared to the space; the quarantine of its own sources only);
-// source_admin runs one of the space's own sources. Query 400 → guard 401/403 → body 400 → 404 → rules → change →
+// /v1/spaces/:spaceId/sources/:sourceId/{files,snapshots,pulls,records,quarantine,run}: what a source's ingest did, a run
+// now and the rollback of a pull. Any role reads (files and snapshots also of a source shared to the space; the
+// quarantine of its own sources only); source_admin runs one of the space's own sources and rolls back its pulls. Query 400 → guard 401/403 → body 400 → 404 → rules → change →
 // activity (the last four in service.ts).
 import { Elysia } from "elysia";
 import { IngestListQuery, RecordListQuery, RunSourceBody } from "@starterkit/shared/contracts/sources";
 import { SPACE_ACTION, SPACE_ROLES } from "@starterkit/shared/spaces";
 import { body, idParam } from "../../kernel/parse";
 import { guard } from "../auth";
-import { filePage, pullPage, quarantinePage, recordPage, runSourceNow, snapshotPage } from "./service";
+import { filePage, pullPage, quarantinePage, recordPage, rollbackPull, runSourceNow, snapshotPage } from "./service";
 
 export const ingestController = () =>
   new Elysia()
@@ -30,4 +30,7 @@ export const ingestController = () =>
     .post("/v1/spaces/:spaceId/sources/:sourceId/run", async (c) => {
       const b = await body(c, RunSourceBody);
       return runSourceNow(c.ctx, idParam(c.params.sourceId, "source"), b);
-    }, { guard: { space: SPACE_ACTION.connectSource } });
+    }, { guard: { space: SPACE_ACTION.connectSource } })
+    /** Rolls back a watermark pull and every later one; the next pull, queued now, does it and reads those rows again. */
+    .post("/v1/spaces/:spaceId/sources/:sourceId/pulls/:pullId/rollback", ({ ctx, params }) =>
+      rollbackPull(ctx, idParam(params.sourceId, "source"), idParam(params.pullId, "pull")), { guard: { space: SPACE_ACTION.connectSource } });

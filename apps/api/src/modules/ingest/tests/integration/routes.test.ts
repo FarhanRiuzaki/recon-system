@@ -195,6 +195,66 @@ describe("POST run", () => {
   });
 });
 
+describe("POST pulls/:pullId/rollback", () => {
+  let WM: string;
+  const at = (m: number) => new Date(Date.UTC(2026, 10, 25, 10, m));
+  const pull = (startedAt: Date, rows: number, startedFrom: object | null) => ({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: WM, startedAt, finishedAt: startedAt,
+    status: rows ? "new" : "nothing_new", rows, added: rows, startedFrom });
+  const rollback = (token: string, pullId: string, src = WM, s = A) => call("POST", path(s, src, `pulls/${pullId}/rollback`), { token, body: {} });
+  let legacy: ReturnType<typeof pull>, first: ReturnType<typeof pull>, idle: ReturnType<typeof pull>, last: ReturnType<typeof pull>;
+
+  beforeEach(async () => {
+    WM = Bun.randomUUIDv7();
+    await db.insert(sources).values({ id: WM, spaceId: A, code: `s-${WM.slice(-12)}`, name: "Source wm", kind: "db_watermark" });
+    const spec = { ...ksei(), input: { kind: "db_watermark", table: "public.t", watermark: { column: "updated_at", id_columns: ["id"] }, chunk: 100 } };
+    await db.insert(sourceVersions).values({ id: Bun.randomUUIDv7(), spaceId: A, sourceId: WM, version: 1, status: "published", spec, specHash: "h" });
+    // before 0072 (start not known), the first pull from the beginning, one that read its look back again and stored
+    // nothing, the newest
+    [legacy, first, idle, last] = [pull(at(1), 5, null), pull(at(2), 3, {}), { ...pull(at(3), 2, { watermark: "w2" }), added: 0 }, pull(at(4), 2, { watermark: "w2" })];
+    await db.insert(sourcePulls).values([legacy, first, idle, last]);
+    await db.insert(sourceCursors).values({ spaceId: A, sourceId: WM, watermark: "w4" });
+  });
+
+  it("source_admin asks for it once: the cursor names the pull, a pull is queued, the entry counts the pulls that stored rows; others are 403", async () => {
+    expect((await rollback(t.op, first.id)).status).toBe(403);
+    expect(await json(rollback(t.adm, first.id))).toEqual({ pulls: 2 });
+    expect((await db.select({ r: sourceCursors.rollbackFrom }).from(sourceCursors).where(eq(sourceCursors.sourceId, WM)))[0]!.r).toBe(first.id);
+    const acts = await db.select({ action: activity.action, targetId: activity.targetId, after: activity.after }).from(activity);
+    expect(acts).toEqual([{ action: "source.rollback", targetId: WM, after: { pullId: first.id, startedAt: at(2).toISOString(), pulls: 2 } }]);
+    // a second one while it waits is refused
+    const again = await rollback(t.adm, last.id);
+    expect([again.status, await code(again)]).toEqual([409, "invalid_state"]);
+    // Pull history: the pulls it covers wait for it; one that stored nothing offers nothing; one before 0072 says why
+    const page = await json<Page<SourcePullDto>>(call("GET", `${path(A, WM, "pulls")}?pageSize=15`, { token: t.op }));
+    expect(page.items.map((p) => [p.id, p.rollback, p.rolledBackAt])).toEqual([[last.id, "pending", null], [idle.id, null, null], [first.id, "pending", null], [legacy.id, "unknown_start", null]]);
+  });
+
+  it("refused: a pull that stored nothing (400), one before 0072 or rolled back already (409), a paused source (409)", async () => {
+    const idleR = await rollback(t.adm, idle.id);
+    expect([idleR.status, await code(idleR)]).toEqual([400, "bad_request"]);
+    const old = await rollback(t.adm, legacy.id);
+    expect([old.status, ((await old.json()) as { error: { message: string } }).error.message]).toEqual([409,
+      "Where this pull started isn't known: it ran before rollback was available. Roll back an earlier pull that offers it."]);
+    await db.update(sourcePulls).set({ rolledBackAt: at(9) }).where(eq(sourcePulls.id, last.id));
+    const done = await rollback(t.adm, last.id);
+    expect([done.status, await code(done)]).toEqual([409, "invalid_state"]);
+    await db.update(sources).set({ status: "paused" }).where(eq(sources.id, WM));
+    const paused = await rollback(t.adm, first.id);
+    expect([paused.status, await code(paused)]).toEqual([409, "invalid_state"]);
+    expect(await db.select().from(activity)).toEqual([]);
+  });
+
+  it("a pull of another source, an unknown or non-UUID pull is 404; a member of another space is 403; an archived space 409", async () => {
+    expect((await rollback(t.adm, first.id, FILE_SRC)).status).toBe(404);
+    expect((await rollback(t.adm, Bun.randomUUIDv7())).status).toBe(404);
+    expect((await rollback(t.adm, "nope")).status).toBe(404);
+    expect((await rollback(t.other, first.id, WM, B)).status).toBe(403);
+    await db.update(spaces).set({ status: "archived" }).where(eq(spaces.id, A));
+    const r = await rollback(t.adm, first.id);
+    expect([r.status, await code(r)]).toEqual([409, "space_archived"]);
+  });
+});
+
 // ------------------------------------------------------------------------------------------------ read model
 // GET /v1/spaces/:spaceId/sources and /:sourceId carry what the screens show (ingest sourceStates): health, the
 // business date's records and quarantine, the owner of a shared source, the next run and a paused source's drift.

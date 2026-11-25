@@ -137,6 +137,7 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "source.unshare": ["source", "`{ space: { id, code, name } }`", "–"],
   "source.discard": ["source", "`{ code, name, kind }`", "–"],
   "source.run": ["source", "–", "`{ businessDate }` (the snapshot date pulled again, or null for a pull or scan)"],
+  "source.rollback": ["source", "–", "`{ pullId, startedAt, pulls }` (the pull rolled back from, when it started, and how many pulls that stored rows it covers)"],
   "inbox.upload": ["space", "–", "`{ folder, name, size, sha256 }`"],
   "inbox.folder_create": ["space", "–", "`{ folder }`"],
   "inbox.folder_delete": ["space", "`{ folder }`", "–"],
