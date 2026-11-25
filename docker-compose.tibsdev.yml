@@ -1,0 +1,30 @@
+# tibsdev: database eksternal (tibsdbdev), bukan container postgres; build lewat proxy kantor (container tak bisa
+# keluar langsung).
+#   docker compose -f docker-compose.yml -f docker-compose.tibsdev.yml --env-file .env.compose up -d --build
+x-proxy-build: &proxy-build
+  HTTP_PROXY: ${BUILD_HTTP_PROXY:-}
+  HTTPS_PROXY: ${BUILD_HTTP_PROXY:-}
+  NO_PROXY: localhost,127.0.0.1,10.0.0.0/8,.bankmegadev.net,.bankmegadev.local
+
+services:
+  postgres:
+    profiles: ["local-db"]
+  migrate:
+    build: { context: ., dockerfile: apps/api/Dockerfile, args: *proxy-build }
+    environment:
+      APP_DB_ROLE: ${APP_DB_ROLE:-starterkit_app}
+    depends_on: !reset {}
+  api:
+    build: { context: ., dockerfile: apps/api/Dockerfile, args: *proxy-build }
+  worker:
+    build: { context: ., dockerfile: apps/api/Dockerfile, args: *proxy-build }
+  web:
+    build: { context: ., dockerfile: apps/web/Dockerfile, args: *proxy-build }
+
+# Subnet tetap: default docker (172.25.0.0/16) bentrok dengan subnet klien kantor 172.25.x → balasan ke klien
+# nyasar ke bridge ini dan semua port host (mis. Console :3000) timeout bagi mereka (insiden 25 Nov).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.105.0/24
