@@ -6,11 +6,11 @@
  */
 export const REQUEST_KINDS = ["posting", "force_match", "unmatch", "write_off"] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
-export const APPROVAL_KINDS = ["source_version", "recon_version", ...REQUEST_KINDS] as const;
+export const APPROVAL_KINDS = ["source_version", "recon_version", "report_version", ...REQUEST_KINDS] as const;
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 /** Each kind as the inbox names it. */
 export const APPROVAL_KIND_LABEL: Record<ApprovalKind, string> = {
-  source_version: "Source version", recon_version: "Recon version", posting: "Posting", force_match: "Force match", unmatch: "Undo match", write_off: "Write-off",
+  source_version: "Source version", recon_version: "Recon version", report_version: "Report version", posting: "Posting", force_match: "Force match", unmatch: "Undo match", write_off: "Write-off",
 };
 export const isRequestKind = (k: string): k is RequestKind => (REQUEST_KINDS as readonly string[]).includes(k);
 
@@ -29,9 +29,9 @@ export function requestBlocked(requestedBy: string | null, me: string, lead: boo
  * Why the caller can't decide a version sent for approval, or null (spec §11: a config checker of the space who had no
  * hand in it, compared by user id; a Superadmin decides anything, owner rule 22 Nov). The same words as the version's own page.
  */
-export function approvalBlocked(kind: "source_version" | "recon_version", v: { makerId: string | null; contributorIds: readonly string[] }, me: string, checker: boolean, superadmin = false): string | null {
+export function approvalBlocked(kind: "source_version" | "recon_version" | "report_version", v: { makerId: string | null; contributorIds: readonly string[] }, me: string, checker: boolean, superadmin = false): string | null {
   if (superadmin) return null;
   if (v.makerId === me || v.contributorIds.includes(me)) return "You worked on this version. A config checker who didn't work on it approves it.";
-  if (!checker) return `Only a config checker of this space approves ${kind === "source_version" ? "source" : "recon"} versions.`;
+  if (!checker) return `Only a config checker of this space approves ${kind === "source_version" ? "source" : kind === "report_version" ? "report" : "recon"} versions.`;
   return null;
 }

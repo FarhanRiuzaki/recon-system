@@ -50,3 +50,5 @@ export const RECON_RUN_SORTS = ["startedAt"] as const;
 export const RECON_RUN_ITEM_SORTS = ["businessDate"] as const;
 /** GET /api/spaces/{spaceId}/recons/{configId}/results (by business date, then id, by default). */
 export const RESULT_SORTS = ["businessDate", "status", "amountA", "ref"] as const;
+export const REPORT_TEMPLATE_SORTS = ["name", "updatedAt"] as const;
+export const REPORT_FILE_SORTS = ["madeAt", "from"] as const;

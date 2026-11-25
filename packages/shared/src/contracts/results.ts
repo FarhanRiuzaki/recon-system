@@ -14,7 +14,8 @@ const label = z.string().trim().min(1, "Give the column a heading.").max(RESULT_
  * `attrs.<name>`: the fields a recon names) or recon info; `label` = its heading.
  */
 export const ResultColumn = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.enum(["a", "b"]), field: z.string().regex(FIELD_REF, "Pick a field of the source."), label }),
+  // `customer`: the field holds customer data (an account, a name); reports mask it unless an official one shows it in full
+  z.strictObject({ kind: z.enum(["a", "b"]), field: z.string().regex(FIELD_REF, "Pick a field of the source."), label, customer: z.boolean().optional() }),
   z.strictObject({ kind: z.literal("recon"), field: z.enum(RECON_INFO_FIELDS), label }),
 ]);
 export type ResultColumn = z.infer<typeof ResultColumn>;

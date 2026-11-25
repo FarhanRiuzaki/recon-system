@@ -1,5 +1,5 @@
 /** Category query keys whose repeated values are a selection set; all other query keys remain scalar. */
-export const MULTI_FILTER_KEYS = ["role", "status", "module", "action", "event", "method", "kind", "state", "reason", "age", "assignee", "recon", "checked", "result", "sideA", "sideB", "outcome", "environment", "origin"] as const;
+export const MULTI_FILTER_KEYS = ["role", "status", "module", "action", "event", "method", "kind", "state", "reason", "age", "assignee", "recon", "checked", "result", "sideA", "sideB", "outcome", "environment", "origin", "final", "madeBy"] as const;
 import { canonicalSelection } from "@starterkit/ui/lib/filter-selection";
 export { canonicalSelection, FILTER_SELECTION_MAX, FILTER_SEARCH_DEBOUNCE, selectionState, selectionValues } from "@starterkit/ui/lib/filter-selection";
 

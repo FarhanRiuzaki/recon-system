@@ -18,6 +18,7 @@ import * as common from "@starterkit/shared/contracts/common";
 import * as dashboard from "@starterkit/shared/contracts/dashboard";
 import * as me from "@starterkit/shared/contracts/me";
 import * as inbox from "@starterkit/shared/contracts/inbox";
+import * as reports from "@starterkit/shared/contracts/reports";
 import * as projects from "@starterkit/shared/contracts/projects";
 import * as rbac from "@starterkit/shared/contracts/rbac";
 import * as approvals from "@starterkit/shared/contracts/approvals";
@@ -51,6 +52,9 @@ const COMPOSED = {
   ActivityPage: pageOf(audit.ActivityDto),
   AuthLogPage: pageOf(audit.AuthLogDto),
   InboxFilePage: pageOf(inbox.InboxFileDto),
+  ReportTemplatePage: pageOf(reports.ReportTemplateDto),
+  ReportVersionPage: pageOf(reports.ReportVersionDto),
+  ReportFilePage: pageOf(reports.ReportFileDto),
   ProjectPage: pageOf(projects.ProjectDto),
   LibraryPage: pageOf(workflows.LibraryRowDto),
   UsedByPage: pageOf(workflows.UsedByRowDto),
@@ -85,7 +89,7 @@ const COMPOSED = {
 
 /** File name → file text, for every zod schema the contract modules export plus the composed ones. */
 export function apiSchemas(): Record<string, string> {
-  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, inbox, me, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
+  const named = [approvals, audit, auth, breaks, workflows, integrations, common, dashboard, inbox, me, reports, projects, rbac, recon, results, sources, spaces, users, COMPOSED].flatMap((m) => Object.entries(m));
   const out: Record<string, string> = {};
   for (const [name, schema] of named) {
     if (!(schema instanceof z.ZodType)) continue;
@@ -142,6 +146,14 @@ export const ACTION_SHAPES: Record<string, [target: string, before: string, afte
   "inbox.folder_create": ["space", "–", "`{ folder }`"],
   "inbox.folder_delete": ["space", "`{ folder }`", "–"],
   "inbox.file_delete": ["space", "`{ folder, name, size }`", "–"],
+  "report.template.create": ["report", "–", "`{ name, configId, kind }` (the template and its draft version 1)"],
+  "report.version.save": ["report", "`{ version, spec }`", "`{ version, spec }`"],
+  "report.version.submit": ["report", "–", "`{ version, official, status }` (`active` at once, or `waiting` for a checker)"],
+  "report.version.approve": ["report", "–", "`{ version, note }`"],
+  "report.version.reject": ["report", "–", "`{ version, note }`"],
+  "report.template.retire": ["report", "–", "`{ name }`"],
+  "report.make": ["report", "–", "`{ fileId, version, from, to, format, masking, runId }`"],
+  "report.download": ["report", "–", "`{ fileId, version, from, to, format, masking, sha256 }`"],
   "recon.create": ["recon", "–", "`{ code, name, version, specHash }` (the recon and its draft version 1)"],
   "recon.version_create": ["recon", "–", "`{ version, from }` (`from` = the published version copied)"],
   "recon.version_update": ["recon", "`{ version, specHash }`", "`{ version, specHash }`"],

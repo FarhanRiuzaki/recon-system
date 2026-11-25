@@ -39,6 +39,14 @@ export const SPACE_ACTION = {
   manageMembers: ["space_admin"],
   /** The space's workflows (with `or: "workflow.manage"`). */
   editWorkflows: ["space_admin"],
+  /** See report templates and files, download a masked file (the report generator). */
+  viewReports: ["space_admin", "source_admin", "config_maker", "config_checker", "operator", "reviewer", "viewer"],
+  /** Create report templates, edit, test and send their drafts, retire a template. */
+  editReports: ["config_maker"],
+  /** Ask for a report file over a date range. */
+  generateReports: ["space_admin", "config_maker", "operator", "reviewer"],
+  /** Download a file that holds full customer data (owner, 25 Nov). */
+  downloadFullReports: ["space_admin", "reviewer", "config_checker"],
 } as const satisfies Record<string, readonly SpaceRole[]>;
 export type SpaceAction = keyof typeof SPACE_ACTION;
 /**

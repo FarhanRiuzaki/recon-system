@@ -61,7 +61,7 @@ export const CATEGORIES = {
     Duplicate: "pink", Ambiguous: "brown", "Currency differs": "teal", "Unconfirmed suggestion": "slate",
   } satisfies Record<BreakReason, CategorySlot>,
   // a version sent for approval is not a change of data: neutral
-  changeKind: { posting: "indigo", force_match: "violet", write_off: "pink", unmatch: "brown", source_version: "neutral", recon_version: "neutral" } satisfies Record<ApprovalKind, CategorySlot>,
+  changeKind: { posting: "indigo", force_match: "violet", write_off: "pink", unmatch: "brown", source_version: "neutral", recon_version: "neutral", report_version: "neutral" } satisfies Record<ApprovalKind, CategorySlot>,
   // what an approved change ran: a posting as the posting change kind; a notification only tells
   actionKind: { posting: "indigo", notify: "neutral" } satisfies Record<ActionRunRowDto["kind"], CategorySlot>,
   environment: { dev: "neutral", prod: "violet" } satisfies Record<Environment, CategorySlot>,
