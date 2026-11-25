@@ -79,3 +79,8 @@ export { PageZone } from "./page-zone";
 export { EditorRow, EditToggle } from "./editor-row";
 export { CompareCard, type CompareRow } from "./compare-card";
 export { ActionCard } from "./action-card";
+export { FieldList, TypeBadge, type FieldType, type ListedField } from "./field-list";
+export { DropZone } from "./drop-zone";
+export { ToggleChips } from "./toggle-chips";
+export { FormatExample } from "./format-example";
+export { Inspector, InspectorSection } from "./inspector";

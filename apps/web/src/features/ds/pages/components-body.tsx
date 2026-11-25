@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ActionCard, ActionMenu, Avatar, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
+  ActionCard, ActionMenu, Avatar, DropZone, FieldList, FormatExample, Inspector, InspectorSection, ToggleChips, AvatarStack, BlockedButton, Breadcrumb, CategoryChip, Checkbox, ConfirmActionDialog, CountBadge, EmptyState, ErrorState, Field, PasswordChecks,
   EditorRow, Kbd, LiveCountBadge, Meter, NavigationPreview, PageZone, Panel, RouteTabs, SecretOnceDialog, Spec, StatusChip, StepItem, Stepper, TickMeter, type IndicatorStep,
 } from "@starterkit/ui/ds";
 import { HEALTH, type Health, toStatusTone } from "@starterkit/ui/lib/status";
@@ -103,6 +103,7 @@ export function ComponentsSections() {
           </div>
         </Panel>
         <RevealDemo />
+        <DesignerBlocksSample />
         <Panel title="Empty and error" className="col-span-12 md:col-span-6" bodyClassName="grid gap-2 sm:grid-cols-2">
           <EmptyState icon={UsersIcon} title="No users yet" description="Users appear here after you create the first one." />
           <ErrorState title="Couldn't load metrics" cause="The metrics source isn't responding. Try again in a minute." lastGood={Date.UTC(2026, 9, 16, 7, 2)} onRetry={() => undefined} />
@@ -224,5 +225,23 @@ function LiveCountSample() {
       </div>
       <Button variant="secondary" size="sm" className="justify-self-start" onClick={() => setN((x) => x + 1)}>Change counts</Button>
     </div>
+  );
+}
+
+/** The report designer's building blocks: the Data pane's field list, a drop zone, section chips, an inspector with a format example. */
+function DesignerBlocksSample() {
+  const [q, setQ] = useState("");
+  const [on, setOn] = useState({ title: true, header: true, footer: false });
+  const groups = [{ label: "Side A · KSEI file", fields: [{ ref: "a:ext_ref", label: "Reference", type: "text" as const, customer: false, used: true }, { ref: "a:account_ref", label: "Account", type: "text" as const, customer: true }, { ref: "a:amount_minor", label: "Amount", type: "number" as const, customer: false }] }];
+  return (
+    <Panel title="Report designer blocks" className="col-span-12 md:col-span-6" bodyClassName="grid gap-3 sm:grid-cols-2">
+      <FieldList groups={groups} query={q} onQuery={setQ} onAdd={() => undefined} />
+      <div className="grid content-start gap-3">
+        <ToggleChips label="In the file" items={[{ key: "title", label: "Title", on: on.title }, { key: "header", label: "Header block", on: on.header }, { key: "footer", label: "Footer", on: on.footer }]}
+          onToggle={(k) => setOn((x) => ({ ...x, [k]: !x[k] }))} />
+        <DropZone active={false} label="Group by"><span>drag a field here</span></DropZone>
+        <Inspector title="Column" meta="3 of 6"><InspectorSection title="Format"><FormatExample items={["(1.500)", "98.000.000"]} /></InspectorSection></Inspector>
+      </div>
+    </Panel>
   );
 }
