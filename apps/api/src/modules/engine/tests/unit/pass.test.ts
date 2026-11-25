@@ -8,8 +8,8 @@ import { type SQL, sql } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { signedAmount } from "../../../ingest";
 import { breakReason, NEAR_MISS, tieBreakSql } from "../../sql/breaks";
-import { closeReplacedSql, filterSql, intakeSql } from "../../sql/intake";
-import { acceptSql, fieldSql, fifoSql, groupAcceptSql, minorTolerance, poolSql, predicateSql, type SideRef, type StepCtx, tieSuggestSql } from "../../sql/pass";
+import { closeReplacedSql, intakeSql } from "../../sql/intake";
+import { acceptSql, fieldSql, fifoSql, filterSql, groupAcceptSql, minorTolerance, poolSql, predicateSql, ruleSql, type SideRef, type StepCtx, tieSuggestSql } from "../../sql/pass";
 
 const dialect = new PgDialect();
 const q = (x: SQL | undefined) => (x ? dialect.sqlToQuery(x) : undefined);
@@ -109,6 +109,21 @@ describe("side filters (values bound, cast to the field's kind)", () => {
     expect(f({ field: "ext_ref", op: "not_in", values: ["X"] })!.sql).toBe('("records"."ext_ref" is null or "records"."ext_ref" not in ($1))');
     expect(f({ field: "ext_ref", op: "is_null" })!.sql).toBe('"records"."ext_ref" is null');
     expect(f({ field: "ext_ref", op: "not_null" })!.sql).toBe('"records"."ext_ref" is not null');
+  });
+});
+
+describe("a rule (1:0)", () => {
+  it("reads its own side's pool and records, every condition a side filter with its value bound; one member per group", () => {
+    const rule = pass({ cardinality: "1:0", side: "b", predicates: [], accept: "auto", on_ambiguous: "break",
+      when: [{ field: "amount_minor", op: "eq", value: "0" }, { field: "attrs.sid", op: "in", values: ["X'; drop table records; --", "Y"] }] });
+    const { sql: t, params: ps } = q(ruleSql(ctx, rule))!;
+    expect(t).toContain("i.side = $");
+    expect(ps).toContain("b");
+    expect(ps).not.toContain("a");
+    expect(t).not.toContain("drop table");
+    expect(ps).toContain("X'; drop table records; --");
+    expect(t).toContain("insert into \"match_members\"");
+    expect(text(ruleSql(ctx, rule))).toContain("for update skip locked");
   });
 });
 

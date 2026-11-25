@@ -53,12 +53,16 @@ export function specGraph(spec: ReconSpec, keys: readonly string[], counters?: C
   const outs = new Map<string, string>();
   spec.passes.forEach((p, i) => {
     const id = keys[i]!;
-    nodes.push({ id, lane: 2, title: `${i + 1}. ${p.name || "Untitled pass"}`, line: `${p.cardinality} · ${p.predicates.length} ${p.predicates.length === 1 ? "condition" : "conditions"}`,
+    const conds = p.cardinality === "1:0" ? (p.when ?? []).length : p.predicates.length;
+    const shape = p.cardinality === "1:0" ? `Rule on side ${p.side === "b" ? "B" : "A"}` : p.cardinality;
+    nodes.push({ id, lane: 2, title: `${i + 1}. ${p.name || "Untitled pass"}`, line: `${shape} · ${conds} ${conds === 1 ? "condition" : "conditions"}`,
       select: { k: "pass", key: id }, badge: p.accept === "auto" ? "Auto" : "Suggest" });
     if (i === 0) edges.push({ id: `e-a-${id}`, source: "side-a", target: id, label: null }, { id: `e-b-${id}`, source: "side-b", target: id, label: null });
     else edges.push({ id: `e-${keys[i - 1]}-${id}`, source: keys[i - 1]!, target: id, label: null, inLane: true });
     // where a pass's items go: matched, suggested or its break; with counters, how many
-    const tags = counters ? passOutcome(counters, spec, p) : [{ tag: p.accept === "auto" ? "Matched" : "Suggested", count: null }, { tag: breakLabel(p), count: null }];
+    // a rule matches or leaves an item, it never breaks one
+    const tags = counters ? passOutcome(counters, spec, p)
+      : [{ tag: p.accept === "auto" ? "Matched" : "Suggested", count: null }, ...(p.cardinality === "1:0" ? [] : [{ tag: breakLabel(p), count: null }])];
     for (const o of tags) {
       const out = o.tag === "Matched" || o.tag === "Suggested" ? o.tag : breakLabel(p);
       outs.set(out, `out-${out}`);

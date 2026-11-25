@@ -111,7 +111,7 @@ export const reads = {
   reconVersion: (spaceId: string, id: string, versionId: string): Read => ({ key: reconVersion(spaceId, id, versionId).key, path: reconVersion(spaceId, id, versionId).url }),
   draftSimulations: (spaceId: string, id: string, versionId: string): Read => ({ key: draftSimulations(spaceId, id, versionId).key, path: draftSimulations(spaceId, id, versionId).url }),
   reconRun: (spaceId: string, id: string, runId: string): Read => ({ key: reconRun(spaceId, id, runId).key, path: reconRun(spaceId, id, runId).url }),
-  reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string }[]) =>
+  reconRunItems: (spaceId: string, id: string, runId: string, sp: URLSearchParams, passes: readonly { accept: string; cardinality: string; side?: string }[]) =>
     table(reconRunItems(spaceId, id, runId, passes), sp, ReconRunItemQuery),
   spaceToday: (spaceId: string): Read => ({ key: spaceToday(spaceId).key, path: spaceToday(spaceId).url }),
   myApprovals: (spaceId: string): Read => ({ key: myApprovals(spaceId).key, path: myApprovals(spaceId).url }),
@@ -160,7 +160,7 @@ export async function reconRunReads(spaceId: string, configId: string, runId: st
   if (!run) return [reads.reconRun(spaceId, configId, runId)];
   const vPath = v1Path(reconVersion(spaceId, configId, run.versionId).url);
   const { data: v } = vPath
-    ? await backendJson<{ spec?: { passes?: { accept: string; cardinality: string }[]; sides?: { source_id: string }[] } }>(vPath, { token: s.token, req }) : { data: null };
+    ? await backendJson<{ spec?: { passes?: { accept: string; cardinality: string; side?: string }[]; sides?: { source_id: string }[] } }>(vPath, { token: s.token, req }) : { data: null };
   return [
     reads.reconRun(spaceId, configId, runId), reads.reconVersion(spaceId, configId, run.versionId),
     reads.reconRunItems(spaceId, configId, runId, sp, v?.spec?.passes ?? []), ...sourceReads(spaceId, v?.spec?.sides),

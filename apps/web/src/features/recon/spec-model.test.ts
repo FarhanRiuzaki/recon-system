@@ -417,3 +417,34 @@ describe("what a version changes against the live one (the checker sees every se
     expect([...c.passes]).toEqual([]);
   });
 });
+
+import { isGroup, isRule, rulePass, ruleText, suggestedName as nameOf, withRuleSide } from "./spec-model";
+describe("a rule pass (1:0, owner 25 Nov: \"side A amount = 0 is a match\")", () => {
+  const ids = (x: ReconSpec): ReconSpec => ({ ...x, sides: [{ ...x.sides[0], source_id: "0b9e3a52-6f1d-4c5e-9a1b-2c3d4e5f6a7b" }, { ...x.sides[1], source_id: "1c0f4b63-7a2e-4d6f-8b2c-3d4e5f6a7b8c" }] });
+  const withRule = (): ReconSpec => ids(addTemplatePass(base(), fields, "rule"));
+  it("Add pass offers it: side A, amount equals 0, matched automatically; the contract takes it", () => {
+    const r = withRule().passes.at(-1)!;
+    expect(r).toMatchObject({ no: 4, name: "Zero amount", cardinality: "1:0", side: "a", when: [{ field: "amount_minor", op: "eq", value: "0" }], blocking: [], predicates: [], accept: "auto" });
+    expect(isRule(r)).toBe(true);
+    expect(isGroup(r)).toBe(false);
+    const parsed = ReconSpec.safeParse(withRule());
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(templateReason("rule", fields)).toBeNull();
+    expect(templateReason("rule", [null, null])).toBe("Pick the sides' sources first.");
+    // only side B loaded: the rule reads side B
+    expect(rulePass(1, [null, fields[1]])).toMatchObject({ side: "b", when: [{ field: "amount_minor", op: "eq", value: "0" }] });
+  });
+  it("moving it to the other side keeps the conditions that side has a field for, else starts one", () => {
+    const r = rulePass(4, fields);
+    expect(withRuleSide(r, 1, fields)).toMatchObject({ side: "b", when: [{ field: "amount_minor", op: "eq", value: "0" }] });
+    const onChannel = { ...r, when: [{ field: "attrs.channel", op: "eq" as const, value: "BIFAST" }] };
+    expect(withRuleSide(onChannel, 1, fields).when).toEqual([{ field: "ext_ref", op: "eq", value: "" }]);
+  });
+  it("its words: a condition as a reader says it, a name from its first condition, an API sentence at its condition", () => {
+    expect(ruleText({ field: "amount_minor", op: "eq", value: "0" })).toBe("Amount equals 0");
+    expect(ruleText({ field: "attrs.channel", op: "in", values: ["FEE", "ADJ"] })).toBe("channel is one of FEE, ADJ");
+    expect(nameOf({ ...rulePass(4, fields), name: "Pass 4" })).toBe("Amount equals 0");
+    expect(placeOf('Pass 4, rule condition 2: "zero" is not a number.')).toEqual({ pass: 4, rule: 1, text: '"zero" is not a number.' });
+    expect(placeOf("Pass 2, condition 1: x")).toEqual({ pass: 2, condition: 0, text: "x" });
+  });
+});

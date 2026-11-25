@@ -5,7 +5,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { RemoveIcon, WarningIcon } from "@starterkit/ui/ui/icons";
 import type { PassSpec } from "@starterkit/shared/contracts/recon";
-import { conditionParts, type Fields, keysText } from "./spec-model";
+import { conditionParts, type Fields, isRule, keysText, ruleParts, ruleSide } from "./spec-model";
 
 export const DASH = "—";
 
@@ -33,6 +33,8 @@ export type PassRowProps = {
   example?: ReactNode;
   /** false: the pass alone, no outcome column or connector (the setup's Matching step; results are the Test step's). */
   results?: boolean;
+  /** The sides' labels (a rule pass names the side it reads). */
+  sides?: readonly [string, string];
 };
 /**
  * A labelled part of a pass card: a sentence-case label beside its content, as the Configuration's rows read (S8: no
@@ -48,15 +50,46 @@ const Part = ({ label, children }: { label: string; children: ReactNode }) => (
 /**
  * A pass as a card reads it (owner, 22 Nov: clear sections): its number and name, then Pairs when (each condition as
  * field | rule), Then (what happens to a pair, its shape, a tie) and Compares (every open item, or only the same …),
- * in the editor's order and words.
+ * in the editor's order and words. A rule pass (1:0): Matches when (its conditions), Then (alone, no counterpart) and
+ * Reads (its side).
  */
-export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
+export function PassBody({ pass, fields, sides }: { pass: PassSpec; fields: Fields; sides?: readonly [string, string] }) {
+  const head = (
+    <span className="flex items-center gap-2">
+      <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-label text-primary-foreground tabular">{pass.no}</span>
+      <span className="min-w-0 truncate text-body font-medium text-fg">{pass.name || "Untitled pass"}</span>
+    </span>
+  );
+  if (isRule(pass)) {
+    const s = ruleSide(pass);
+    return (
+      <>
+        {head}
+        <Part label="Matches when">
+          <ul className="grid gap-0.5">
+            {(pass.when ?? []).map((f, j) => {
+              const c = ruleParts(f, fields[s]);
+              return (
+                <li key={j} title={c.columns} className="grid gap-x-3 text-body-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+                  <span className="truncate text-fg">{c.field}</span>
+                  <span className="text-fg-2">{c.rule}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Part>
+        <Part label="Then">
+          <span className="text-body-sm text-fg-2"><span className="text-fg">Matches it</span> · alone, no counterpart</span>
+        </Part>
+        <Part label="Reads">
+          <span className="text-body-sm text-fg-2">Open items of {sides?.[s] ?? `side ${s ? "B" : "A"}`}</span>
+        </Part>
+      </>
+    );
+  }
   return (
     <>
-      <span className="flex items-center gap-2">
-        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-label text-primary-foreground tabular">{pass.no}</span>
-        <span className="min-w-0 truncate text-body font-medium text-fg">{pass.name || "Untitled pass"}</span>
-      </span>
+      {head}
       <Part label="Pairs when">
         <ul className="grid gap-0.5">
           {pass.predicates.map((q, j) => {
@@ -83,14 +116,14 @@ export function PassBody({ pass, fields }: { pass: PassSpec; fields: Fields }) {
     </>
   );
 }
-const CARD_SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
+const CARD_SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B", "1:0": "1 on one side, no counterpart" };
 
 /**
  * A pass of the run order: drag handle, the pass (select it; Alt+↑/↓ moves it), its outcome, its warnings, and the
  * connector under it. Every row has the same parts, so rows measure alike and a drop lands where the pointer is.
  * `handle` is SortableList's grip (the builder's editable list); `dragging` while it is lifted.
  */
-export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, results = true, handle, dragging = false }: PassRowProps & { handle?: ReactNode; dragging?: boolean }) {
+export function PassRow({ id, pass, fields, selected, editable, notes = [], sim, onSelect, onKey, onRemove, needs = [], example, results = true, sides, handle, dragging = false }: PassRowProps & { handle?: ReactNode; dragging?: boolean }) {
   return (
     <>
       <div className={cn("grid gap-3", results ? "md:grid-cols-[minmax(0,1fr)_12rem]" : "mb-3")}>
@@ -98,7 +131,7 @@ export function PassRow({ id, pass, fields, selected, editable, notes = [], sim,
           {editable && handle && <span className="mt-0.5 flex shrink-0">{handle}</span>}
           <button id={`pass-${id}`} type="button" aria-pressed={selected} onClick={onSelect} onKeyDown={onKey}
             className="grid min-w-0 flex-1 gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-            <PassBody pass={pass} fields={fields} />
+            <PassBody pass={pass} fields={fields} sides={sides} />
             {needs.length > 0 && (
               <span className="flex items-start gap-1.5 text-body-sm text-degraded-ink">
                 <Icon icon={WarningIcon} className="mt-0.5 size-3.5 shrink-0" />Needs: {needs.join(" · ")}

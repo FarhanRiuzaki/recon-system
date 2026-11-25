@@ -18,7 +18,8 @@
       "enum": [
         "1:1",
         "1:N",
-        "N:1"
+        "N:1",
+        "1:0"
       ]
     },
     "blocking": {
@@ -53,7 +54,6 @@
       }
     },
     "predicates": {
-      "minItems": 1,
       "maxItems": 20,
       "type": "array",
       "items": {
@@ -461,6 +461,99 @@
               "op",
               "field",
               "tolerance"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "a",
+        "b"
+      ]
+    },
+    "when": {
+      "maxItems": 20,
+      "type": "array",
+      "items": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "eq",
+                  "ne"
+                ]
+              },
+              "value": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "value"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "in",
+                  "not_in"
+                ]
+              },
+              "values": {
+                "minItems": 1,
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 200
+                }
+              }
+            },
+            "required": [
+              "field",
+              "op",
+              "values"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "field": {
+                "type": "string",
+                "pattern": "^(ext_ref|account_ref|amount_minor|currency|direction|event_time|business_date|attrs\\.[a-z][a-z0-9_]{0,62})$"
+              },
+              "op": {
+                "type": "string",
+                "enum": [
+                  "is_null",
+                  "not_null"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "op"
             ],
             "additionalProperties": false
           }

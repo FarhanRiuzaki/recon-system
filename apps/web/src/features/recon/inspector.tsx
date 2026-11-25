@@ -10,11 +10,11 @@ import { AddIcon, ChevronDownIcon, CloseIcon, FailedIcon } from "@starterkit/ui/
 import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import { Skeleton } from "@starterkit/ui/ui/skeleton";
-import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
-import { type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
+import type { Filter, PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
+import { type Cardinality, type FieldPair, type Operator, sideRef } from "@starterkit/shared/recon";
 import {
-  addCurrency, clockOf, clockProblem, clockWhileTyping, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, kindOf, moveReason, OPS,
-  type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreTolerance, splitValues, startField, withCardinality, withFilterOp, withSide,
+  addCurrency, clockOf, clockProblem, clockWhileTyping, CURRENCIES, keysText, placeholderName, suggestedConditions, suggestedKey, suggestedName, toleranceProblem, currencyDecimals, FILTER_OPS, type FilterOp, fieldFor, fieldName, fieldReason, fieldRefs, type Fields, isGroup, isRule, kindOf, moveReason, OPS,
+  type Place, predicateOf, removeCurrency, renameCurrency, restoreCondition, restoreFilter, restoreKey, restoreRuleCondition, restoreTolerance, ruleSide, type SideFields, splitValues, startField, withCardinality, withFilterOp, withRuleSide, withSide,
 } from "./spec-model";
 
 // The inspector (BUILDER-SPEC "Inspector"): the selected pass, a side or the settings. Every control writes the whole
@@ -157,6 +157,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
   onChange: (p: PassSpec) => void; onMove: (dir: -1 | 1) => void; onRemove: () => void; onRemoved: OnRemoved<[number]>;
 }) {
   const p = spec.passes[i]!;
+  if (isRule(p)) return <RuleEditor spec={spec} i={i} fields={fields} place={place} onChange={onChange} onMove={onMove} onRemove={onRemove} onRemoved={onRemoved} />;
   const n = spec.passes.length;
   const [la, lb] = pairLabels(spec);
   const group = isGroup(p);
@@ -212,7 +213,7 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
       </Step>
 
       <Step n={4} label="Each pair has" required>
-        <Segmented label="Each pair has" value={p.cardinality} onChange={(c) => onChange(withCardinality(p, c, fields))}
+        <Segmented label="Each pair has" value={p.cardinality as Cardinality} onChange={(c) => onChange(withCardinality(p, c, fields))}
           options={[{ value: "1:1", label: "1 on each side" }, { value: "1:N", label: "1 on A, several on B" }, { value: "N:1", label: "Several on A, 1 on B" }]} />
       </Step>
 
@@ -253,16 +254,103 @@ export function PassEditor({ spec, i, fields, place, onChange, onMove, onRemove,
       </details>
       {key && <Suggest onUse={() => onChange({ ...p, blocking: [key] })}>Compare only items with the same {keysText([key])}</Suggest>}
 
-      <div className="flex flex-wrap gap-2">
-        <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, -1)} onClick={() => onMove(-1)}>Move earlier</BlockedButton>
-        <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, 1)} onClick={() => onMove(1)}>Move later</BlockedButton>
-        {/* The pass's ⋯ menu: the same moves as the buttons and Alt+↑/↓ (off with the reason at the ends), then Remove pass. */}
-        <span className="ml-auto"><ActionMenu label={`Actions for pass ${i + 1}`} actions={[
-          { id: "earlier", label: "Move earlier", disabled: !!moveReason(i, n, -1), hint: moveReason(i, n, -1) ?? undefined, onSelect: () => onMove(-1) },
-          { id: "later", label: "Move later", disabled: !!moveReason(i, n, 1), hint: moveReason(i, n, 1) ?? undefined, onSelect: () => onMove(1) },
-          { id: "remove", label: "Remove pass", destructive: true, onSelect: onRemove },
-        ]} /></span>
+      <PassMoves i={i} n={n} onMove={onMove} onRemove={onRemove} />
+    </div>
+  );
+}
+
+/** A pass's place in the run order: Move earlier / later, and its ⋯ menu with the same moves and Remove pass. */
+function PassMoves({ i, n, onMove, onRemove }: { i: number; n: number; onMove: (dir: -1 | 1) => void; onRemove: () => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, -1)} onClick={() => onMove(-1)}>Move earlier</BlockedButton>
+      <BlockedButton type="button" variant="secondary" reason={moveReason(i, n, 1)} onClick={() => onMove(1)}>Move later</BlockedButton>
+      {/* The pass's ⋯ menu: the same moves as the buttons and Alt+↑/↓ (off with the reason at the ends), then Remove pass. */}
+      <span className="ml-auto"><ActionMenu label={`Actions for pass ${i + 1}`} actions={[
+        { id: "earlier", label: "Move earlier", disabled: !!moveReason(i, n, -1), hint: moveReason(i, n, -1) ?? undefined, onSelect: () => onMove(-1) },
+        { id: "later", label: "Move later", disabled: !!moveReason(i, n, 1), hint: moveReason(i, n, 1) ?? undefined, onSelect: () => onMove(1) },
+        { id: "remove", label: "Remove pass", destructive: true, onSelect: onRemove },
+      ]} /></span>
+    </div>
+  );
+}
+
+/**
+ * One condition on one side's field (a side filter, a rule's condition): the field, the operator and its value or values,
+ * × at its end. `name` labels it for assistive technology ("Filter 1 field", "Condition 2 operator").
+ */
+function FilterRow({ name, j, f, own, error, removeReason, onChange, onRemove }: {
+  name: string; j: number; f: Filter; own: SideFields; error: string | null; removeReason: string | null; onChange: (f: Filter) => void; onRemove: () => void;
+}) {
+  const refs = fieldRefs(own);
+  return (
+    <PairRow error={error} removeLabel={`Remove ${name.toLowerCase()} ${j + 1}`} removeReason={removeReason} onRemove={onRemove}>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Select aria-label={`${name} ${j + 1} field`} value={f.field} className="w-full font-mono" onChange={(e) => onChange({ ...f, field: e.target.value })}>
+          {(refs.includes(f.field) ? refs : [f.field, ...refs]).map((r) => <option key={r} value={r}>{fieldName(r, own)}</option>)}
+        </Select>
+        <Select aria-label={`${name} ${j + 1} operator`} value={f.op} className="w-full" onChange={(e) => onChange(withFilterOp(f, e.target.value as FilterOp))}>
+          {FILTER_OPS.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
+        </Select>
       </div>
+      {"value" in f && <Input aria-label={`${name} ${j + 1} value`} value={f.value} maxLength={200} onChange={(e) => onChange({ ...f, value: e.target.value })} />}
+      {/* typed freely; the list is read on leaving the field, so a trailing comma can be typed */}
+      {"values" in f && <Input key={f.values.join(",")} aria-label={`${name} ${j + 1} values, separated by commas`} defaultValue={f.values.join(", ")}
+        onBlur={(e) => onChange({ ...f, values: splitValues(e.target.value) })} />}
+    </PairRow>
+  );
+}
+
+/**
+ * A rule pass (1:0, owner 25 Nov: "side A amount = 0 is a match"): its name, the side whose items it reads, the
+ * conditions each must meet (the side filters' operators), what it does, and its place in the run order.
+ */
+function RuleEditor({ spec, i, fields, place, onChange, onMove, onRemove, onRemoved }: {
+  spec: ReconSpec; i: number; fields: Fields; place: Place | null;
+  onChange: (p: PassSpec) => void; onMove: (dir: -1 | 1) => void; onRemove: () => void; onRemoved: OnRemoved<[number]>;
+}) {
+  const p = spec.passes[i]!;
+  const s = ruleSide(p);
+  const own = fields[s];
+  const refs = fieldRefs(own);
+  const when = p.when ?? [];
+  const [la, lb] = pairLabels(spec);
+  const id = (x: string) => `rp-${i}-${x}`;
+  const suggestName = placeholderName(p.name) ? suggestedName(p) : null;
+  const set = (j: number, f: Filter) => onChange({ ...p, when: when.map((x, k) => (k === j ? f : x)) });
+  return (
+    <div className="grid gap-6">
+      {place && place.rule === undefined && <PlaceError text={place.text} />}
+      <Step n={1} label="Name" required htmlFor={id("name")}>
+        <Input id={id("name")} value={p.name} maxLength={64} aria-required onChange={(e) => onChange({ ...p, name: e.target.value })} autoComplete="off" />
+        {suggestName && suggestName !== p.name && <Suggest onUse={() => onChange({ ...p, name: suggestName })}>Use “{suggestName}”</Suggest>}
+      </Step>
+
+      <Step n={2} label="Match an item of" required>
+        <Segmented label="Match an item of" value={p.side ?? "a"} onChange={(v) => onChange(withRuleSide(p, v === "b" ? 1 : 0, fields))}
+          options={[{ value: "a", label: la }, { value: "b", label: lb }]} />
+      </Step>
+
+      <Step n={3} label="When" required aside="every condition holds">
+        <div className="grid gap-3">
+          {when.map((f, j) => (
+            <FilterRow key={j} name="Condition" j={j} f={f} own={own} error={place?.rule === j ? place.text : null}
+              removeReason={when.length === 1 ? "A rule needs at least one condition." : null} onChange={(x) => set(j, x)}
+              onRemove={() => { onChange({ ...p, when: when.filter((_, k) => k !== j) }); onRemoved(`Removed condition ${j + 1}.`, (cur, at) => restoreRuleCondition(cur, at, f, j)); }} />
+          ))}
+          <span><BlockedButton type="button" variant="create" size="sm" reason={!refs.length ? "This side's source is still loading." : when.length >= 20 ? "A rule has at most 20 conditions." : null}
+            onClick={() => onChange({ ...p, when: [...when, { field: refs[0]!, op: "eq", value: "" }] })}><Icon icon={AddIcon} />Add condition</BlockedButton></span>
+        </div>
+      </Step>
+
+      <Step n={4} label="Then">
+        <p className="text-body-sm text-fg-2">
+          Each item of {s ? lb : la} that meets every condition is matched alone, with no counterpart. The passes before this one pair their items first,
+          so place it last to match only what they leave.
+        </p>
+      </Step>
+
+      <PassMoves i={i} n={spec.passes.length} onMove={onMove} onRemove={onRemove} />
     </div>
   );
 }
@@ -304,21 +392,8 @@ export function SideEditor({ spec, i, fields, sourceName, picker, glance, place,
       <fieldset className="grid gap-3">
         <legend className="mb-2 text-label text-fg">Only read records where <span className="text-fg-3">(optional)</span></legend>
         {s.filter.map((f, j) => (
-          <PairRow key={j} error={place?.filter === j ? place.text : null} removeLabel={`Remove filter ${j + 1}`} removeReason={null}
-            onRemove={() => { onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }); onRemoved(`Removed filter ${j + 1}.`, (cur) => restoreFilter(cur, i, f, j)); }}>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Select aria-label={`Filter ${j + 1} field`} value={f.field} className="w-full font-mono" onChange={(e) => setFilter(j, { ...f, field: e.target.value })}>
-                {(refs.includes(f.field) ? refs : [f.field, ...refs]).map((r) => <option key={r} value={r}>{fieldName(r, own)}</option>)}
-              </Select>
-              <Select aria-label={`Filter ${j + 1} operator`} value={f.op} className="w-full" onChange={(e) => setFilter(j, withFilterOp(f, e.target.value as FilterOp))}>
-                {FILTER_OPS.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
-              </Select>
-            </div>
-            {"value" in f && <Input aria-label={`Filter ${j + 1} value`} value={f.value} maxLength={200} onChange={(e) => setFilter(j, { ...f, value: e.target.value })} />}
-            {/* typed freely; the list is read on leaving the field, so a trailing comma can be typed */}
-            {"values" in f && <Input key={f.values.join(",")} aria-label={`Filter ${j + 1} values, separated by commas`} defaultValue={f.values.join(", ")}
-              onBlur={(e) => setFilter(j, { ...f, values: splitValues(e.target.value) })} />}
-          </PairRow>
+          <FilterRow key={j} name="Filter" j={j} f={f} own={own} error={place?.filter === j ? place.text : null} removeReason={null} onChange={(x) => setFilter(j, x)}
+            onRemove={() => { onChange({ ...s, filter: s.filter.filter((_, k) => k !== j) }); onRemoved(`Removed filter ${j + 1}.`, (cur) => restoreFilter(cur, i, f, j)); }} />
         ))}
         <span><BlockedButton type="button" variant="create" size="sm" reason={!s.source_id ? "Pick this side's source first." : !refs.length ? "This side's source is still loading." : s.filter.length >= 20 ? "A side has at most 20 filters." : null}
           onClick={() => onChange({ ...s, filter: [...s.filter, { field: refs[0]!, op: "eq", value: "" }] })}><Icon icon={AddIcon} />Add filter</BlockedButton></span>

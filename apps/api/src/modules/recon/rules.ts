@@ -4,7 +4,7 @@
 import { APPROVAL_FIELDS, type CatalogField, type Condition, conditionFields, fieldName, groupFields, isKeyField, OP_TEXT, OPS_BY_KIND } from "@starterkit/shared/conditions";
 import { fieldPaths, type OpField } from "@starterkit/shared/integrations";
 import { arrayPaths, type Source, templateParts } from "@starterkit/shared/mapping";
-import type { ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
+import type { Filter, ReconApprovalSpec, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { TRIGGER_LABEL, TRIGGERS } from "@starterkit/shared/workflows";
 import { type FieldKind, fieldLabel, type FieldPair, type Operator, recordFields, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { specIssue } from "../../kernel/versions";
@@ -25,7 +25,8 @@ export type ReconCheck = { errors: string[]; gates: string[]; warnings: string[]
 const SPOT: Record<string, string> = { measure: "Measure", grace_minutes: "Grace", carry_over_days: "Carry over", close_at: "Close time", schedule: "Schedule" };
 /**
  * A spot of the spec in the builder's words: `passes.1.predicates.0…` → "Pass 2, condition 1", `passes.1.blocking.0` →
- * "Pass 2, matching key 1", `sides.1…` → "Side B, filter 1"; a tolerance names its currency.
+ * "Pass 2, matching key 1", `passes.1.when.0` → "Pass 2, rule condition 1", `sides.1…` → "Side B, filter 1"; a
+ * tolerance names its currency.
  */
 export function placeOf(path: readonly PropertyKey[]): string {
   const [top, i, part, j, , ccy] = path;
@@ -34,6 +35,7 @@ export function placeOf(path: readonly PropertyKey[]): string {
     const pass = `Pass ${n(i)}`;
     if (part === "predicates" && j !== undefined) return `${pass}, condition ${n(j)}${path[4] === "tolerance" && ccy !== undefined ? `, ${String(ccy)} tolerance` : ""}`;
     if (part === "blocking" && j !== undefined) return `${pass}, matching key ${n(j)}`;
+    if (part === "when" && j !== undefined) return `${pass}, rule condition ${n(j)}`;
     return pass;
   }
   if (top === "sides" && i !== undefined) return `Side ${Number(i) === 0 ? "A" : "B"}${part === "filter" && j !== undefined ? `, filter ${n(j)}` : ""}`;
@@ -58,7 +60,8 @@ const days = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
 /**
  * The checks of a recon spec against its sides' sources (Plan 3 Task 1): every field it names exists on the side (the
- * FieldRef whitelist, recordFields) and is of the kind its operator takes; passes are numbered 1, 2, 3 …; a group sum
+ * FieldRef whitelist, recordFields) and is of the kind its operator takes; passes are numbered 1, 2, 3 …; a rule's
+ * conditions (1:0) name fields of its side, with values of their kind; a group sum
  * only in a 1:N / N:1 pass, which groups by a matching key (A3); an amount compared on sides that can hold more than
  * one currency needs a currency condition (A2); a daily recon's carry over covers every date window (Captain's guardrail).
  */
@@ -73,17 +76,19 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
   const fields = sources.map((s) => (s.spec ? recordFields(s.spec) : null));
   const label = (i: number) => spec.sides[i]!.label;
 
+  /** A filter's field on side `i` (a side filter, a rule's condition): there, and each value of its kind. */
+  const checkFilter = (i: number, f: Filter, place: string) => {
+    const r = fields[i]!.get(f.field);
+    if (!r) return at(place, `${label(i)} has no field ${fieldLabel(f.field)}.`);
+    const [ok, not] = f.field === "direction" ? DIRECTION_VALUE : VALUE[r.kind];
+    const bad = ("value" in f ? [f.value] : "values" in f ? f.values : []).find((v) => !ok.test(v));
+    if (bad !== undefined) at(place, `${JSON.stringify(bad)} ${not}.`);
+  };
   spec.sides.forEach((side, i) => {
     const place = placeOf(["sides", i]);
     if (!fields[i]) return at(place, `${sources[i]!.name ?? side.label} has no published version yet.`);
     if (side.amount_sign === "negate" && !fields[i]!.has("amount_minor")) at(place, `${side.label} has no amount to negate. Map an amount in its source or read the sign as it is.`);
-    side.filter.forEach((f, j) => {
-      const r = fields[i]!.get(f.field);
-      if (!r) return at(placeOf(["sides", i, "filter", j]), `${side.label} has no field ${fieldLabel(f.field)}.`);
-      const [ok, not] = f.field === "direction" ? DIRECTION_VALUE : VALUE[r.kind];
-      const bad = ("value" in f ? [f.value] : "values" in f ? f.values : []).find((v) => !ok.test(v));
-      if (bad !== undefined) at(placeOf(["sides", i, "filter", j]), `${JSON.stringify(bad)} ${not}.`);
-    });
+    side.filter.forEach((f, j) => checkFilter(i, f, placeOf(["sides", i, "filter", j])));
   });
 
   /** The field's kind on each side (null: no source, or no such field, reported); `need` = what the operator takes. */
@@ -108,6 +113,12 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
   if (spec.passes.some((p, i) => p.no !== i + 1)) add(errors, "Number the passes 1, 2, 3 … in order, with no gaps.", "matching");
   spec.passes.forEach((p, i) => {
     const pass = placeOf(["passes", i]);
+    // a rule (1:0): its conditions are one side's filters; nothing else of a pair pass applies
+    if (p.cardinality === "1:0") {
+      const s = p.side === "b" ? 1 : 0;
+      if (fields[s]) (p.when ?? []).forEach((f, j) => checkFilter(s, f, placeOf(["passes", i, "when", j])));
+      return;
+    }
     p.blocking.forEach((f, j) => {
       const place = placeOf(["passes", i, "blocking", j]);
       const [ka, kb] = onBoth(place, f);
@@ -149,11 +160,13 @@ export function checkReconSpec(spec: ReconSpec, sources: readonly [SideSource, S
 
 /**
  * The fields each side's records must keep while the recon is published (Plan 3 A4), per side, sorted: the side's own
- * filters, its field of every matching key and condition, the measure, direction when the side's source maps it
+ * filters, its field of every matching key and condition, a rule's conditions on it, the measure, direction when the side's source maps it
  * (the amount's sign comes from it), and the amount when the side negates it.
  */
 export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, boolean] = [false, false]): [string[], string[]] {
   const pairs = spec.passes.flatMap((p) => [...p.blocking, ...p.predicates.map((q) => q.field)]);
+  // a rule pass's conditions read its own side's fields
+  const ruleOf = (i: 0 | 1) => spec.passes.filter((p) => p.cardinality === "1:0" && p.side === (i ? "b" : "a")).flatMap((p) => (p.when ?? []).map((f) => f.field));
   // an approval rule's side fields (side_a.attrs.channel) bind the source too (DEC-052 rev 2 §4.3)
   const ruled = Object.values(spec.approvals?.changes ?? {}).flatMap((c) => [
     ...(c?.workflow.rules.flatMap((r) => conditionFields(r.when as Condition)) ?? []),
@@ -163,7 +176,7 @@ export function usedFields(spec: ReconSpec, directionMapped: readonly [boolean, 
   ]);
   const sideOf = (i: 0 | 1) => ruled.filter((k) => k.startsWith(`side_${i ? "b" : "a"}.`)).map((k) => k.slice(7));
   const of = (i: 0 | 1) => [...new Set([...sideOf(i),
-    ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)),
+    ...spec.sides[i].filter.map((f) => f.field), ...pairs.map((f) => sideRef(f, i)), ...ruleOf(i),
     ...(spec.measure ? [spec.measure.field] : []), ...(directionMapped[i] ? ["direction"] : []),
     ...(spec.sides[i].amount_sign === "negate" ? ["amount_minor"] : []),
   ])].sort();

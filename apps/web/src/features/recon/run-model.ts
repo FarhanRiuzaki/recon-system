@@ -370,7 +370,7 @@ export function connectorText(c: Counters, spec: ReconSpec, after: number): stri
 export function passOutcome(c: ReconRunDto["counters"], spec: ReconSpec, p: PassSpec): { tag: string; tone: "neutral" | "warn"; count: string; note: string }[] {
   const x = c.passes[String(p.no)];
   if (!x) return [];
-  const unit = p.cardinality === "1:1" ? "pairs" : "groups";
+  const unit = p.cardinality === "1:1" ? "pairs" : p.cardinality === "1:0" ? "items" : "groups";
   const out: ReturnType<typeof passOutcome> = [];
   if (p.accept === "auto" || x.matched) {
     const inA = c.intake.a - c.replaced.a, a = matchedA(p, x);

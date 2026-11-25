@@ -5,24 +5,7 @@ import type { Filter } from "@starterkit/shared/contracts/recon";
 import { type SQL, sql } from "drizzle-orm";
 import { records } from "../../ingest";
 import { matchGroups, matchMembers, reconItems } from "../schema";
-import { datesOf, fieldSql, type SideRef, type StepCtx } from "./pass";
-
-const CAST = { text: sql``, decimal: sql`::numeric`, date: sql`::date`, boolean: sql`::boolean` } as const;
-
-/** A side filter as SQL over `records` (closed operators, values bound and cast to the field's kind). */
-export function filterSql(s: SideRef, f: Filter): SQL {
-  const x = fieldSql(s, f.field);
-  const cast = CAST[s.fields.get(f.field)!.kind];
-  const list = (vs: string[]) => sql.join(vs.map((v) => sql`${v}${cast}`), sql`, `);
-  switch (f.op) {
-    case "eq": return sql`${x} = ${f.value}${cast}`;
-    case "ne": return sql`${x} is distinct from ${f.value}${cast}`;
-    case "in": return sql`${x} in (${list(f.values)})`;
-    case "not_in": return sql`(${x} is null or ${x} not in (${list(f.values)}))`;
-    case "is_null": return sql`${x} is null`;
-    case "not_null": return sql`${x} is not null`;
-  }
-}
+import { datesOf, filterSql, type StepCtx } from "./pass";
 
 /**
  * One chunk of side `s`'s intake of business date `date`: its records with seq past `after` (records.seq), at most

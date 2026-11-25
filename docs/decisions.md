@@ -806,3 +806,19 @@ menyaring tabel kolom di kanvas juga, tapi kolom yang menjadi awal garis tetap t
 Step 2 menampilkan ringkasan + "Still to map" (masalah yang menahan Next, masing-masing "Fix in mapper" yang membuka
 mapper di field atau kolomnya). "View as list" tetap sebagai cadangan di desktop (owner) dan satu-satunya jalan di
 ponsel. Teks mapper sama untuk file dan database: "Source columns", "isn't in the source any more".
+
+## DEC-060 — Pass aturan (1:0): item satu sisi yang memenuhi kondisi di-match tanpa pasangan
+
+**Keputusan (owner 25 Nov):** "ada kondisi match bisa base on misal side A amount = 0 itu match". Pass punya jenis baru
+`cardinality: "1:0"` (`PASS_CARDINALITIES`, `isRulePass`): `side` (a atau b) dan `when` (1–20 kondisi dengan operator
+filter sisi: eq, ne, in, not_in, is_null, not_null), tanpa matching key dan predicate, selalu `accept: auto`. Engine
+(`sql/pass.ts` `ruleSql`) mengambil item pool sisinya yang record-nya memenuhi semua kondisi, lalu membuat satu grup
+`auto` dengan satu member per item (A1: hanya item yang dikunci statement itu). Pass berjalan sesuai urutannya, jadi
+pass aturan di akhir hanya me-match sisa yang tidak dapat pasangan; Add pass → "Match by rule" menaruhnya di akhir.
+
+- Pilihan owner: dihitung **Matched** (match rate, Operation result `matched` dengan sisi lain `none`), bukan
+  `not_required` dan bukan filter sisi (filter membuang item dari recon, tidak tercatat).
+- Kondisi memakai `filterSql` yang sama dengan filter sisi (dipindah ke `sql/pass.ts`), dicek `checkReconSpec` seperti
+  filter sisi ("Pass 4, rule condition 1: …"), dan field-nya ikut `usedFields` sisinya.
+- Evidence grup: `chosen: "rule met, no counterpart"`, `side`, `rule` (kondisi), `predicates: []`; Explain menampilkan
+  kondisinya dan "No counterpart needed" di sisi lain.

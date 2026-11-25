@@ -11,7 +11,7 @@ import type { SourceDto } from "@starterkit/shared/contracts/sources";
 import { recordFields } from "@starterkit/shared/recon";
 import { buildCatalog } from "@starterkit/shared/conditions";
 import { SOURCE_KIND_WORD, sourceKindIcon } from "./live-hooks";
-import { conditionParts, directionText, type Fields, filterText, keysText, settingsFacts, specChanges } from "./spec-model";
+import { conditionParts, directionText, type Fields, filterText, isRule, keysText, ruleParts, ruleSide, settingsFacts, specChanges } from "./spec-model";
 import { CHANGED } from "./approval-model";
 import { useSideSource } from "./use-recons";
 import { EditIcon } from "@starterkit/ui/ui/icons";
@@ -21,7 +21,7 @@ const ApprovalSummary = dynamic(() => import("./approval-summary").then((m) => m
 
 
 /** A small word chip in a pass's head. */
-const SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B" };
+const SHAPE: Record<PassSpec["cardinality"], string> = { "1:1": "1 on each side", "1:N": "1 on A, several on B", "N:1": "several on A, 1 on B", "1:0": "1 on one side, no counterpart" };
 
 /** One row of a pass: the question on the left (the same width in every pass), the answer on the right. */
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -33,8 +33,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-/** A pass as a step a reader follows (owner, 22 Nov: clear, tidy): what it does, where it looks, when it pairs, a tie. */
-function PassStep({ pass, step, last, fields, changed }: { pass: PassSpec; step: number; last: boolean; fields: Fields; changed?: boolean }) {
+/**
+ * A pass as a step a reader follows (owner, 22 Nov: clear, tidy): what it does, where it looks, when it pairs, a tie;
+ * a rule pass (1:0): when it matches, alone, and the side it reads.
+ */
+function PassStep({ pass, step, last, fields, changed, sides }: { pass: PassSpec; step: number; last: boolean; fields: Fields; changed?: boolean; sides: readonly [string, string] }) {
+  const s = ruleSide(pass);
   return (
     <li className="grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3">
       {/* the run order as a rail: the step's number, a line down to the next */}
@@ -48,6 +52,25 @@ function PassStep({ pass, step, last, fields, changed }: { pass: PassSpec; step:
           <CategoryChip slot="neutral" label={pass.accept === "auto" ? "Matches" : "Suggests"} />
           {changed && <StatusChip {...CHANGED} />}
         </div>
+        {isRule(pass) ? (
+          <dl className="grid gap-3">
+            <Row label="Matches when">
+              <ul className="grid gap-1.5">
+                {(pass.when ?? []).map((f, j) => {
+                  const c = ruleParts(f, fields[s]);
+                  return (
+                    <li key={j} className="grid gap-x-3 sm:grid-cols-[9rem_minmax(0,1fr)]">
+                      <span className="text-body-sm text-fg">{c.field}</span>
+                      <span className="min-w-0 text-body-sm text-fg-2">{c.rule}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </Row>
+            <Row label="Then"><span className="text-body-sm text-fg-2"><span className="text-fg">Matches it</span> · alone, no counterpart</span></Row>
+            <Row label="Reads"><span className="text-body-sm text-fg-2">Open items of {sides[s]}</span></Row>
+          </dl>
+        ) : (
         <dl className="grid gap-3">
           <Row label="Pairs when">
             <ul className="grid gap-1.5">
@@ -73,6 +96,7 @@ function PassStep({ pass, step, last, fields, changed }: { pass: PassSpec; step:
             <span className="text-body-sm text-fg-2">{pass.blocking.length ? `Only items with the same ${keysText(pass.blocking)}` : "Every open item"}</span>
           </Row>
         </dl>
+        )}
       </div>
     </li>
   );
@@ -155,13 +179,13 @@ export function SpecView({ spaceId, spec, onEdit, live }: {
 
       <Panel title={titled("Passes in run order", diff && (diff.passesChanged || "measure" in diff.settings))} description="Each pass takes the items the ones before it left; what none pairs waits for a counterpart" actions={edit(2)}>
         <ol aria-label="Passes in run order" className="grid">
-          {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} changed={diff?.passes.has(p.no)} />)}
+          {spec.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === spec.passes.length - 1} fields={fields} changed={diff?.passes.has(p.no)} sides={[spec.sides[0].label, spec.sides[1].label]} />)}
         </ol>
         {diff?.passesChanged && live && (
           <details className="mt-3 rounded-lg border border-line p-3">
             <summary className="cursor-pointer text-body-sm text-fg">The live version&apos;s passes ({live.passes.length})</summary>
             <ol aria-label="The live version's passes" className="mt-3 grid">
-              {live.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === live.passes.length - 1} fields={fields} />)}
+              {live.passes.map((p, i) => <PassStep key={p.no} pass={p} step={i + 1} last={i === live.passes.length - 1} fields={fields} sides={[live.sides[0].label, live.sides[1].label]} />)}
             </ol>
           </details>
         )}

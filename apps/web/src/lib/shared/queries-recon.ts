@@ -182,7 +182,7 @@ const RUN_ITEMS_SPEC: TableSpec<RunItemFilters> = {
     side: oneOf(["", "a", "b"], ""), date: isoDate, reason: oneOf(["", ...BREAK_REASONS], ""), carried: oneOf(["", "1"], ""),
   },
 };
-type PassLike = { accept: string; cardinality: string };
+type PassLike = { accept: string; cardinality: string; side?: string };
 /**
  * A run's items as its results tabs ask for them: a pass tab (`pass`, the first when no tab is chosen) shows its pairs,
  * one row per group from the group's single side (`status` matched or suggested, the pass's own by default), or the
@@ -200,7 +200,8 @@ export const reconRunItems = (spaceId: string, id: string, runId: string, passes
     if (f.status === "break" && !f.pass) return g;
     const pass = f.pass || "1", p = passes[Number(pass) - 1];
     const status = f.status || (p?.accept === "suggest" ? "suggested" : "matched");
-    return { ...g, pass, status, reason: "", side: status === "break" ? f.side : p?.cardinality === "N:1" ? "b" : "a" };
+    // the side a pass's items are listed by: N:1's single side B, a rule's own side, else A
+    return { ...g, pass, status, reason: "", side: status === "break" ? f.side : p?.cardinality === "N:1" || (p?.cardinality === "1:0" && p.side === "b") ? "b" : "a" };
   },
 });
 /** The sources a side may read (this space's and those shared to it), at most 100: the new recon's side pickers. */

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RECON_RUN_ITEM_SORTS, RECON_RUN_SORTS, RECON_SORTS, RECON_VERSION_SORTS, SIGNOFF_SORTS } from "../paging";
 import {
-  AMOUNT_SIGNS, BREAK_REASONS, RECON_DIRECTIONS, CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
+  AMOUNT_SIGNS, BREAK_REASONS, RECON_DIRECTIONS, PASS_CARDINALITIES, CLOCK_TIME, FIELD_REF, GROUP_KINDS, ITEM_STATUSES, ON_AMBIGUOUS, PASS_ACCEPT, PASSES_MAX, RECON_CODE, RECON_NAME_MAX, RECON_STATUSES,
   RUN_MODES, RUN_STATUSES, SIM_CHANGES,
 } from "../recon";
 import { CURRENCY_EXPONENT, currencyCode, REVIEW_COMMENT_MAX, SOURCE_KINDS, toMinor, VERSION_STATUSES } from "../sources";
@@ -80,7 +80,9 @@ export type SideSpec = z.infer<typeof SideSpec>;
 
 /**
  * A pass (spec §10): candidates found through `blocking` (side A's field equal to side B's), judged by every
- * predicate. A group pass compares the sum of its many side with its one side (`eq_sum`) per blocking key: N:1 = many
+ * predicate. A rule pass (`1:0`, owner 25 Nov) pairs nothing: each open item of its `side` whose record meets every
+ * condition of `when` (side filter operators) is matched alone, in a group of its own; it has no matching keys or
+ * predicates and matches automatically only. A group pass compares the sum of its many side with its one side (`eq_sum`) per blocking key: N:1 = many
  * records of side A to one of side B, 1:N = one of side A to many of side B. A group pass without a date predicate
  * spans every open date within carry over (a settlement on D+1 meets its transactions of D); in this release it only
  * matches automatically or raises breaks (checkReconSpec). A 1:1 pass accepts, as `accept` says, a mutual unique best
@@ -90,11 +92,25 @@ export type SideSpec = z.infer<typeof SideSpec>;
 export const PassSpec = z.strictObject({
   no: z.number().int().min(1).max(PASSES_MAX),
   name: z.string().trim().min(1).max(64),
-  cardinality: z.enum(CARDINALITIES),
+  cardinality: z.enum(PASS_CARDINALITIES),
   blocking: z.array(FieldPair).max(5).default([]),
-  predicates: z.array(Predicate).min(1).max(20),
+  predicates: z.array(Predicate).max(20),
+  /** A rule pass's side and conditions; a pair pass has neither. */
+  side: z.enum(["a", "b"]).optional(),
+  when: z.array(Filter).max(20).optional(),
   accept: z.enum(PASS_ACCEPT),
   on_ambiguous: z.enum(ON_AMBIGUOUS),
+}).superRefine((p, ctx) => {
+  const issue = (message: string, path: (string | number)[]) => ctx.addIssue({ code: "custom", message, path });
+  if (p.cardinality === "1:0") {
+    if (!p.side) issue("Pick the side whose items this rule matches.", ["side"]);
+    if (!p.when?.length) issue("A rule matches an item by at least one condition. Add one, such as amount equals 0.", ["when"]);
+    if (p.blocking.length || p.predicates.length) issue("A rule reads one side only: it has no matching keys or conditions across the sides.", ["predicates"]);
+    if (p.accept !== "auto") issue("A rule matches automatically.", ["accept"]);
+  } else {
+    if (!p.predicates.length) issue("A pass needs at least one condition.", ["predicates"]);
+    if (p.side !== undefined || p.when !== undefined) issue("Only a rule (1:0) names a side and conditions on it.", ["when"]);
+  }
 });
 export type PassSpec = z.infer<typeof PassSpec>;
 

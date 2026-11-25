@@ -6,7 +6,7 @@ import { cn } from "@starterkit/ui/lib/cn";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@starterkit/ui/ui/dialog";
 import type { ReconRunItemDto, ReconSpec } from "@starterkit/shared/contracts/recon";
 import { amountText, carryOverText, differenceText, evidenceOf, lonePairText, pairDifference, rangeText } from "./run-model";
-import { conditionText, type Fields, pairText } from "./spec-model";
+import { conditionText, type Fields, filterText, isRule, pairText, ruleSide } from "./spec-model";
 import { statusTone } from "@/lib/shared/categories";
 
 const KIND: Record<string, string> = { auto: "Matched", suggested: "Suggested", manual: "Matched by hand", force: "Forced" };
@@ -16,6 +16,7 @@ const CHOSEN: Record<string, string> = {
   "duplicates paired in order: business date, event time, record id": "repeated references paired in order of date and time",
   "tie broken by business date, event time, record id": "equal candidates, the earliest taken",
   "group sum, one counterpart": "the group's sum equals its counterpart",
+  "rule met, no counterpart": "matched by its rule, with no counterpart",
 };
 
 /**
@@ -116,12 +117,23 @@ export default function RunExplain({ item, spec, fields, labels, onShown, return
                     <span className={side === "b" && diff.date ? "text-degraded-ink" : "text-fg-2"}>{rangeText(m.businessDate, m.businessDate)}</span>
                   </div>
                 ))}
+                {pass && isRule(pass) && side !== (ruleSide(pass) ? "b" : "a") && <p className="text-fg-2">No counterpart needed: the rule matches the item alone.</p>}
                 {side === "b" && g.memberCount > g.members.length && <p className="text-caption text-fg-3">{g.memberCount - g.members.length} more items not listed</p>}
                 {side === "b" && diff.text && <p className="text-caption text-degraded-ink">{diff.text}</p>}
               </section>
             ))}
           </div>
-          {pass && (
+          {pass && isRule(pass) && (
+            <section aria-label="Conditions" className="grid gap-2">
+              {(pass.when ?? []).map((f, j) => (
+                <p key={j} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <StatusChip health={statusTone("success")} label="Pass" />
+                  <span className="font-mono text-mono text-fg wrap-anywhere">{filterText(f, fields[ruleSide(pass)])}</span>
+                </p>
+              ))}
+            </section>
+          )}
+          {pass && !isRule(pass) && (
             <section aria-label="Conditions" className="grid gap-2">
               {pass.blocking.length > 0 && <p className="text-fg-2">Candidates by {pass.blocking.map((f) => pairText(f, fields)).join(", ")}</p>}
               {pass.predicates.map((q, j) => {

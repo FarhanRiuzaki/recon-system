@@ -25,7 +25,7 @@
 // Amounts: each side's signed amount (signedAmount's rule: a debit code negates), negated again for a side with
 // amount_sign = negate, so the amounts compared (eq, tolerances, eq_sum) are on one sign convention and a match means
 // side A's sum equals side B's. match_members.signed_amount keeps the record's own signed amount (`own`).
-import type { PassSpec, Predicate } from "@starterkit/shared/contracts/recon";
+import type { Filter, PassSpec, Predicate } from "@starterkit/shared/contracts/recon";
 import { ATTR_NAME, CURRENCY_EXPONENT, DEBIT_CODES, toMinor } from "@starterkit/shared/sources";
 import { type FieldKind, type RecordField, sideRef } from "@starterkit/shared/recon";
 import { type SQL, sql } from "drizzle-orm";
@@ -79,6 +79,21 @@ export function fieldSql(s: SideRef, ref: string): SQL {
   const name = ref.slice("attrs.".length);
   if (!ref.startsWith("attrs.") || !ATTR_NAME.test(name)) throw new Error(`engine: not a field: ${ref}`);
   return sql`(${records.attrs} ->> ${name})${CAST[f.kind]}`;
+}
+
+/** A side filter, or a rule's condition, as SQL over `records` (closed operators, values bound and cast to the field's kind). */
+export function filterSql(s: SideRef, f: Filter): SQL {
+  const x = fieldSql(s, f.field);
+  const cast = CAST[s.fields.get(f.field)!.kind];
+  const list = (vs: string[]) => sql.join(vs.map((v) => sql`${v}${cast}`), sql`, `);
+  switch (f.op) {
+    case "eq": return sql`${x} = ${f.value}${cast}`;
+    case "ne": return sql`${x} is distinct from ${f.value}${cast}`;
+    case "in": return sql`${x} in (${list(f.values)})`;
+    case "not_in": return sql`(${x} is null or ${x} not in (${list(f.values)}))`;
+    case "is_null": return sql`${x} is null`;
+    case "not_null": return sql`${x} is not null`;
+  }
 }
 
 /** Equal after trim, upper case and dropping all but letters and digits (eq_normalized); empty never matches. */
@@ -214,7 +229,7 @@ export function candidatesSql(c: StepCtx, p: PassSpec): SQL {
 /** How a group was chosen, as its evidence says. */
 export const CHOSEN = {
   unique: "mutual unique best", fifo: "duplicates paired in order: business date, event time, record id",
-  tie: "tie broken by business date, event time, record id", group: "group sum, one counterpart",
+  tie: "tie broken by business date, event time, record id", group: "group sum, one counterpart", rule: "rule met, no counterpart",
 } as const;
 /** The deterministic order of a side's items among equals: the record's business date, event time, id. */
 const order = (x: "a" | "b") => sql.raw(`${x}_bd, ${x}_et, ${x}_rid`);
@@ -382,4 +397,32 @@ export function groupAcceptSql(c: StepCtx, p: PassSpec): SQL {
   m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)
       select gid, ${c.spaceId}::uuid, o_id, ${one}::text, o_own from acc union all select gid, ${c.spaceId}::uuid, m_id, ${many}::text, m_own from ms)
   select (select count(*) from acc)::int as groups, (select count(*) from up)::int as items, (select count(*) from acc)::int + (select count(*) from ms)::int as members, ${datesOf("up")}`;
+}
+
+/**
+ * A rule pass (1:0, owner 25 Nov: "side A amount = 0 is a match"): every pool item of its side (open, and with carry
+ * over the late "No counterpart" breaks and not required items, as every pass's pool) whose current record meets each
+ * condition (filterSql, the side filters' operators) is matched alone: claimed (A1: locked by this statement, at the
+ * status and version read), a group of its own dated at its date, one member. The evidence names the rule and each
+ * condition. Answers { groups, items } with items = groups, else the caller rolls the step back.
+ */
+export function ruleSql(c: StepCtx, p: PassSpec): SQL {
+  const s = p.side === "b" ? 1 : 0;
+  const side = c.sides[s];
+  const conds = (p.when ?? []).map((f) => filterSql(side, f));
+  const shown = (p.when ?? []).map((f) => sql`jsonb_build_object('op', ${f.op}::text, 'field', ${f.field}::text, 'value', ${"value" in f ? f.value : "values" in f ? f.values.join(", ") : null}::text, 'passed', true)`);
+  const evidence = sql`jsonb_build_object('pass', ${p.no}::int, 'name', ${p.name}::text, 'configVersionId', ${c.versionId}::text, 'runId', ${c.runId}::text,
+    'chosen', ${CHOSEN.rule}::text, 'side', ${side.key}::text, 'predicates', jsonb_build_array(), 'rule', jsonb_build_array(${sql.join(shown, sql`, `)}))`;
+  return sql`with l as materialized (select i.id, i.version as v, i.status as st, i.business_date as bd, i.record_id as rec from ${reconItems} i
+      where ${openItems(c, s)} for update skip locked),
+  acc as materialized (select uuidv7() as gid, l.id, l.v, l.st, l.bd, ${signedSql()} as own from l
+    join ${records} on ${records.spaceId} = ${side.sourceSpaceId} and ${records.sourceId} = ${side.sourceId}
+      and ${records.id} = l.rec and ${records.businessDate} = l.bd and ${c.current}
+    where ${sql.join(conds, sql` and `)}),
+  up as (${claim(c, "matched", sql`select id, v, st, bd from acc`)}),
+  g as (insert into ${matchGroups} ${GROUP_COLS}
+      select r.gid, ${ids(c)}, ${p.no}::smallint, 'auto'::text, r.bd, ${evidence} from acc r),
+  m as (insert into ${matchMembers} (group_id, space_id, item_id, side, signed_amount)
+      select gid, ${c.spaceId}::uuid, id, ${side.key}::text, own from acc)
+  select (select count(*) from acc)::int as groups, (select count(*) from up)::int as items, ${datesOf("up")}`;
 }

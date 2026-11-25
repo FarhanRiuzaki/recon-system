@@ -43,7 +43,7 @@ import { closeReplacedSql, intakeSql, reverseReplacedSql } from "./sql/intake";
 import { graceSql } from "./sql/days";
 import { analyzeSql, analyzeTableSql, runHasRecordsSql } from "./sql/runs";
 import { queueDay } from "./stats";
-import { acceptSql, clearProposalsSql, type Dated, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
+import { acceptSql, clearProposalsSql, type Dated, equalitiesOnly, fifoSql, groupAcceptSql, proposeSql, ruleSql, type SideRef, type StepCtx, tieSuggestSql } from "./sql/pass";
 
 export type { RunMode };
 /** What a pass did over the run: groups it accepted, groups it suggested, items it broke as ambiguous. */
@@ -143,11 +143,14 @@ export async function load(tx: InTx, spaceId: string, spec: ReconSpec): Promise<
 /** Runs `q` (a compiled statement answering one row) on `tx`. */
 const one = async <T>(tx: InTx, q: SQL) => ((await tx.execute(q)) as unknown as T[])[0]!;
 
-/** One pass over the step's window: its choice repeated while it pairs, then its ties per on_ambiguous. */
+/**
+ * One pass over the step's window: its choice repeated while it pairs, then its ties per on_ambiguous. A rule (1:0)
+ * matches its side's items that meet it in one statement: one item per group, no ties.
+ */
 async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out: PassCounters, touch: (r: Dated) => void): Promise<void> {
   const add = (x: PerSide, a: number, b: number) => { x.a += a; x.b += b; };
-  // the side of single items of a group pass (pass.ts groupsSql): N:1 B, 1:N A; a 1:1 group has one of each
-  const oneSide = p.cardinality === "N:1" ? "b" : "a";
+  // the side of single items of a group pass (pass.ts groupsSql): N:1 B, 1:N A; a 1:1 group has one of each; a rule's own side
+  const oneSide = p.cardinality === "N:1" ? "b" : p.cardinality === "1:0" ? (p.side ?? "a") : "a";
   const write = async (q: SQL, kind: "auto" | "suggested", members: (g: number) => number = (g) => 2 * g) => {
     const r = await one<{ groups: number; items: number; members?: number } & Dated>(tx, q);
     touch(r);
@@ -161,6 +164,10 @@ async function runPass(tx: InTx, c: StepCtx, p: ReconSpec["passes"][number], out
   // ponytail: refs are counted per step, so a key broken again on a later date of the same run counts twice
   const broke = (r: { items: number; refs: number; a: number } & Dated) => { touch(r); out.broken += r.items; out.brokenRefs += r.refs; add(out.brokenItems, r.a, r.items - r.a); };
   const accepted = p.accept === "auto" ? "auto" : "suggested";
+  if (p.cardinality === "1:0") {
+    await write(ruleSql(c, p), "auto", (g) => g);
+    return;
+  }
   if (p.cardinality !== "1:1") {
     await write(groupAcceptSql(c, p), accepted);
     if (p.on_ambiguous === "break") broke(await one<{ items: number; refs: number; a: number } & Dated>(tx, groupBreakSql(c, p)));

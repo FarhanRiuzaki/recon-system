@@ -225,6 +225,27 @@ describe("checkReconSpec", () => {
     expect(check(g, [{ spec: withDirection, currencies: [] }, src(2)]).errors).toEqual([]);
   });
 
+  it("a rule (1:0, owner 25 Nov): one side, at least one condition on it, nothing across the sides, automatic only", () => {
+    const g = gate(A, B);
+    const rule = { no: 4, name: "Zero amount", cardinality: "1:0", side: "a", when: [{ field: "amount_minor", op: "eq", value: "0" }], blocking: [], predicates: [], accept: "auto", on_ambiguous: "break" };
+    const withRule = (r: object) => ({ spec: { ...g, passes: [...g.passes, { ...rule, ...r }] } });
+    expect(issueOf(withRule({}))).toBeNull();
+    expect(check(withRule({}).spec).errors).toEqual([]);
+    expect(issueOf(withRule({ side: undefined }))).toBe("Pass 4: Pick the side whose items this rule matches.");
+    expect(issueOf(withRule({ when: [] }))).toBe("Pass 4: A rule matches an item by at least one condition. Add one, such as amount equals 0.");
+    expect(issueOf(withRule({ blocking: ["ext_ref"] }))).toBe("Pass 4: A rule reads one side only: it has no matching keys or conditions across the sides.");
+    expect(issueOf(withRule({ accept: "suggest" }))).toBe("Pass 4: A rule matches automatically.");
+    // a pair pass still needs a condition, and names no side
+    expect(issueOf({ spec: { ...g, passes: [{ ...g.passes[0], predicates: [] }] } })).toBe("Pass 1: A pass needs at least one condition.");
+    expect(issueOf({ spec: { ...g, passes: [{ ...g.passes[0], side: "a" }] } })).toBe("Pass 1: Only a rule (1:0) names a side and conditions on it.");
+    // its conditions are side filters of its own side: the field there, the value of its kind
+    const wrong = check(withRule({ side: "b", when: [{ field: "attrs.rrn", op: "eq", value: "x" }, { field: "amount_minor", op: "eq", value: "zero" }] }).spec);
+    expect(wrong.errors).toEqual(["Pass 4, rule condition 1: Source 2 has no field rrn.", 'Pass 4, rule condition 2: "zero" is not a number.']);
+    expect(wrong.where.get(wrong.errors[0]!)).toEqual({ step: "matching", pass: 4 });
+    const [a, b] = usedFields(parse(withRule({ side: "b", when: [{ field: "account_ref", op: "not_null" }] }).spec));
+    expect([a.includes("account_ref"), b.includes("account_ref")]).toEqual([false, true]);
+  });
+
   it("every sentence names fields and steps as the builder does: no spec path, code field or operator name", () => {
     const bad = gate(A, B);
     bad.carry_over_days = 0;

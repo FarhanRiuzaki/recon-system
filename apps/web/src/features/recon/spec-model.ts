@@ -2,7 +2,7 @@
 // fields, conditions and settings, and where an API sentence belongs. Pure: no React, no fetch. The API's
 // checkReconSpec (apps/api/src/modules/recon/rules.ts) stays the judge; the few checks here only explain a control
 // before a save (a field of the wrong kind, a missing currency condition, why submit is off).
-import type { PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
+import type { Filter, PassSpec, Predicate, ReconSpec, SideSpec } from "@starterkit/shared/contracts/recon";
 import { CARRY_ALWAYS_MIN_DAYS, type Cardinality, type FieldKind, FIELD_LABEL, isOneWay, type ReconDirection, fieldLabel, type FieldPair, type Operator, type RecordField, sideRef, type SourceSpecLike } from "@starterkit/shared/recon";
 import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import { APP_TIME_ZONE_LABEL } from "@starterkit/ui/lib/format";
@@ -289,7 +289,11 @@ export function withCardinality(pass: PassSpec, c: Cardinality, fields: Fields):
     predicates: sums ? pass.predicates : [...pass.predicates, predicateOf("eq_sum", AMOUNT)],
   };
 }
-export const isGroup = (p: Pick<PassSpec, "cardinality">) => p.cardinality !== "1:1";
+export const isGroup = (p: Pick<PassSpec, "cardinality">) => p.cardinality === "1:N" || p.cardinality === "N:1";
+/** A rule pass (1:0): one side's items matched alone by their own fields. */
+export const isRule = (p: Pick<PassSpec, "cardinality">) => p.cardinality === "1:0";
+/** The side a rule pass reads (0 = A, 1 = B). */
+export const ruleSide = (p: Pick<PassSpec, "side">): 0 | 1 => (p.side === "b" ? 1 : 0);
 
 /** Whether a side's records can hold more than one currency (a currency column, or two fixed currencies that differ). */
 export function manyCurrencies(sources: readonly [SourceSpecLike | null, SourceSpecLike | null]): boolean {
@@ -346,13 +350,18 @@ export function carryOverFix(warning: string): number | null {
 
 /**
  * Where an API sentence belongs in the builder (rules.ts placeOf: "Pass 2, condition 1, Side A: …", "Pass 2, matching
- * key 1: …", "Side B, filter 1: …", "Carry over: …", or "Pass 3 compares amounts …"): the pass (1-based), the
- * condition or key (0-based), the side, the filter or the setting; `text` is the sentence after the place.
+ * key 1: …", "Pass 4, rule condition 1: …", "Side B, filter 1: …", "Carry over: …", or "Pass 3 compares amounts …"):
+ * the pass (1-based), the condition, key or rule condition (0-based), the side, the filter or the setting; `text` is the
+ * sentence after the place.
  */
-export type Place = { pass?: number; condition?: number; key?: number; side?: 0 | 1; filter?: number; setting?: string; text: string };
+export type Place = { pass?: number; condition?: number; key?: number; rule?: number; side?: 0 | 1; filter?: number; setting?: string; text: string };
 export function placeOf(message: string): Place {
-  const pass = /^Pass (\d+)(?:, (condition|matching key) (\d+))?(?:, [^:]+)?: (.+)$/s.exec(message);
-  if (pass) return { pass: Number(pass[1]), ...(pass[2] === "condition" ? { condition: Number(pass[3]) - 1 } : pass[2] ? { key: Number(pass[3]) - 1 } : {}), text: pass[4]! };
+  const pass = /^Pass (\d+)(?:, (rule condition|condition|matching key) (\d+))?(?:, [^:]+)?: (.+)$/s.exec(message);
+  if (pass) {
+    const at = Number(pass[3]) - 1;
+    const where = pass[2] === "condition" ? { condition: at } : pass[2] === "rule condition" ? { rule: at } : pass[2] ? { key: at } : {};
+    return { pass: Number(pass[1]), ...where, text: pass[4]! };
+  }
   const side = /^Side ([AB])(?:, filter (\d+))?: (.+)$/s.exec(message);
   if (side) return { side: side[1] === "A" ? 0 : 1, ...(side[2] ? { filter: Number(side[2]) - 1 } : {}), text: side[3]! };
   const setting = /^(Measure|Grace|Carry over|Close time|Schedule): (.+)$/s.exec(message);
@@ -437,6 +446,38 @@ export function filterText(f: SideSpec["filter"][number], fields: SideFields): s
   return `${fieldName(f.field, fields)} ${label}${value}`;
 }
 
+/**
+ * A rule pass (1:0, owner 25 Nov: "side A amount = 0 is a match") to start from: side A (or B when only B's source is
+ * loaded), amount equals 0 when that side has an amount, else its first field equals a value to fill in.
+ */
+export function rulePass(no: number, fields: Fields): PassSpec {
+  const side = fields[0]?.size ? 0 : 1;
+  const own = fields[side];
+  const when: Filter[] = own?.has(AMOUNT) ? [{ field: AMOUNT, op: "eq", value: "0" }] : [{ field: fieldRefs(own)[0] ?? "ext_ref", op: "eq", value: "" }];
+  return { no, name: own?.has(AMOUNT) ? "Zero amount" : "Match by rule", cardinality: "1:0", side: side ? "b" : "a", when, blocking: [], predicates: [], accept: "auto", on_ambiguous: "break" };
+}
+/** A rule's side moved to `i`: its conditions kept where that side has their fields, else one on its first field. */
+export function withRuleSide(p: PassSpec, i: 0 | 1, fields: Fields): PassSpec {
+  const own = fields[i];
+  const kept = (p.when ?? []).filter((f) => !own || own.has(f.field));
+  return { ...p, side: i ? "b" : "a", when: kept.length ? kept : [{ field: fieldRefs(own)[0] ?? "ext_ref", op: "eq", value: "" }] };
+}
+/** Puts a removed rule condition back at `at` (Undo). */
+export const restoreRuleCondition = (spec: ReconSpec, i: number, f: Filter, at: number) => withPass(spec, i, (p) => ({ ...p, when: insertAt(p.when ?? [], at, f) }));
+/** A rule's condition as a reader says it: "Amount equals 0", "settlement_ref is one of FEE, ADJ". */
+export function ruleText(f: Filter): string {
+  const label = FILTER_OPS.find((o) => o.op === f.op)!.label;
+  const value = "value" in f ? ` ${f.value}` : "values" in f ? ` ${f.values.join(", ")}` : "";
+  return `${readerLabel(f.field)} ${label}${value}`;
+}
+/** A rule's condition as a card lists it: the field, then what it must be; the source column on hover. */
+export function ruleParts(f: Filter, fields: SideFields): { field: string; rule: string; columns: string } {
+  const label = FILTER_OPS.find((o) => o.op === f.op)!.label;
+  const value = "value" in f ? ` ${f.value}` : "values" in f ? ` ${f.values.join(", ")}` : "";
+  return { field: readerLabel(f.field), rule: `${label}${value}`, columns: fieldName(f.field, fields) };
+}
+const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** A field as a reader names it in a pass card: a core field's label ("Reference"), an attribute by its stored name. */
 const readerLabel = (ref: string) => (ref.startsWith("attrs.") ? ref.slice(6) : (FIELD_LABEL[ref as keyof typeof FIELD_LABEL] ?? ref));
 
@@ -472,13 +513,15 @@ export function keysText(keys: readonly FieldPair[]): string {
 }
 
 /** A pass's cardinality in people's words (the Configuration, the builder's cards and inspector). */
-export const CARDINALITY_WORDS: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one" };
+export const CARDINALITY_WORDS: Record<PassSpec["cardinality"], string> = { "1:1": "One to one", "1:N": "One to many", "N:1": "Many to one", "1:0": "By rule, one side" };
 
 /** The ready passes Add pass offers (owner, 22 Nov: easier to start), each with what it does in a line. */
 export const PASS_TEMPLATES = [
   { id: "exact", label: "Exact match", hint: "Same reference, amount and business date" },
   { id: "fee", label: "Amount within a fee", hint: "Same reference and date; the amounts may differ by a fee" },
   { id: "day", label: "Settled on another day", hint: "Same reference and amount; the dates within 1 day" },
+  // owner, 25 Nov: "side A amount = 0 is a match"
+  { id: "rule", label: "Match by rule", hint: "An item of one side that meets a condition, such as amount 0, is matched with no counterpart" },
   { id: "blank", label: "Blank pass", hint: "Choose the fields yourself" },
 ] as const;
 export type PassTemplate = (typeof PASS_TEMPLATES)[number]["id"];
@@ -486,6 +529,7 @@ export type PassTemplate = (typeof PASS_TEMPLATES)[number]["id"];
 /** Why template `t` can't be added (a field it needs missing on a side), or null. */
 export function templateReason(t: PassTemplate, fields: Fields): string | null {
   if (t === "blank") return null;
+  if (t === "rule") return fields[0]?.size || fields[1]?.size ? null : "Pick the sides' sources first.";
   const need = ["ext_ref", AMOUNT, "business_date"] as const;
   const missing = need.filter((f) => !fields[0]?.has(f) || !fields[1]?.has(f));
   return missing.length ? `Both sides need ${missing.map((f) => fieldLabel(f)).join(", ")} for this pass.` : null;
@@ -494,6 +538,7 @@ export function templateReason(t: PassTemplate, fields: Fields): string | null {
 /** `spec` with a pass of template `t` at the end (Blank = addPass); a currency condition when both sides have one. */
 export function addTemplatePass(spec: ReconSpec, fields: Fields, t: PassTemplate): ReconSpec {
   if (t === "blank") return addPass(spec, fields);
+  if (t === "rule") return { ...spec, passes: [...spec.passes, rulePass(spec.passes.length + 1, fields)] };
   const n = spec.passes.length + 1;
   const ccy = fields[0]?.has(CURRENCY) && fields[1]?.has(CURRENCY) ? [predicateOf("eq", CURRENCY)] : [];
   const pass: PassSpec = t === "exact"
@@ -547,6 +592,7 @@ export function suggestedKey(p: PassSpec, fields: Fields): string | null {
  * amount").
  */
 export function suggestedName(p: PassSpec): string | null {
+  if (isRule(p)) return p.when?.[0] ? sentenceCase(ruleText(p.when[0])) : null;
   const loose = p.predicates.find((q) => q.op !== "eq" && q.op !== "eq_normalized");
   if (loose) {
     const what = fieldWord(sideRef(loose.field, 0));

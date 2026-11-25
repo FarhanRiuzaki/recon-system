@@ -3,8 +3,17 @@
 
 export const RECON_STATUSES = ["active", "paused"] as const;
 export type ReconStatus = (typeof RECON_STATUSES)[number];
+/** How a pair pass pairs: one item of each side, or a group of many items of one side with one of the other. */
 export const CARDINALITIES = ["1:1", "1:N", "N:1"] as const;
 export type Cardinality = (typeof CARDINALITIES)[number];
+/**
+ * A pass's kind: a pair pass (CARDINALITIES), or `1:0`, a rule (owner, 25 Nov: "side A amount = 0 is a match"): an
+ * item of one side that meets the rule's conditions is matched alone, with no counterpart, in a group of its own.
+ */
+export const PASS_CARDINALITIES = [...CARDINALITIES, "1:0"] as const;
+export type PassCardinality = (typeof PASS_CARDINALITIES)[number];
+/** A rule pass (1:0): it matches one side's items by their own fields. */
+export const isRulePass = (p: { cardinality: PassCardinality }) => p.cardinality === "1:0";
 export const PASS_ACCEPT = ["auto", "suggest"] as const;
 export const ON_AMBIGUOUS = ["break", "suggest"] as const;
 /** How a side's signed amount is read when amounts are compared: as it is, or negated (spec §8 measure). */
