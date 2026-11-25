@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { ChoiceCard, Field, InfoTip, Panel, Segmented, type SqlSuggest, Switch } from "@starterkit/ui/ds";
+import { ChoiceCard, Disclosure, Field, InfoTip, Panel, Segmented, type SqlSuggest, Switch } from "@starterkit/ui/ds";
 import { APP_TIME_ZONE_LABEL, formatNumber } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -14,13 +14,14 @@ import { Skeleton } from "@starterkit/ui/ui/skeleton";
 import type { DetectDto, SourceSpec } from "@starterkit/shared/contracts/sources";
 import { FileRead } from "./file-read";
 import {
-  CONNECT_TIMEOUT_MAX, DATE_LOOKBACK_MIN_SECONDS, DB_ENGINES, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
+  CONNECT_TIMEOUT_MAX, DATE_LOOKBACK_MIN_SECONDS, type DbEngine, DB_ENGINES, isLocalHost, LOOKBACK_IDS_DEFAULT, LOOKBACK_IDS_MAX, READ_EVERY, type ReadWhen, readWhenText, type SourceKind,
 } from "@starterkit/shared/sources";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { CONNECT_TIMEOUT_LABEL, connectTimeoutText, lookbackText, scheduleText } from "../source-text";
 import { errorText } from "@/lib/client/api";
 import { DATABASE_NOTE, type ListState, type TablesPage } from "./catalog";
 import { emptySpec, type Conn, connKey, ctl, type Draft, FIELD_CONTROL, lookbackNote, type Tested, type WatermarkKind, withEngine, withName } from "./model";
+import { noteParts, queryExample } from "./query-examples";
 import { SpaceFolders } from "./space-folders";
 import { useInboxFolderOptions } from "../use-sources";
 
@@ -45,7 +46,7 @@ type WatermarkInput = Extract<SourceSpec["input"], { kind: "db_watermark" }>;
 /** The pickers' lists and actions (REC-F2a), kept by the wizard. */
 export type CatalogProps = {
   /** "Check query": the columns a SELECT gives over the connection on screen (POST …/catalog list query). */
-  onCheckQuery: (query: string) => Promise<{ columns: { name: string }[] }>;
+  onCheckQuery: (query: string) => Promise<{ columns: { name: string; type: string }[] }>;
   /** Tables and columns for the SELECT's suggestions, read over the connection on screen. */
   onSuggest: SqlSuggest;
   /** Databases (Oracle: schemas) the login can open, read after a passing test. */
@@ -470,6 +471,7 @@ function Data(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
         <div className="grid gap-1">
           <QueryField note="Only SELECT is allowed." error={err(ctl("input.query"))} value={i.query ?? ""} rows={6} check={cat.onCheckQuery} suggest={cat.onSuggest}
             onChange={(query) => setInput({ query } as Partial<WatermarkInput>)} />
+          <QueryExamples engine={d.conn.engine} kind="db_watermark" />
           <span><Button type="button" variant="link" size="sm" onClick={() => set((x) => ({ ...x, from: "table" }))}>Choose a table instead</Button></span>
         </div>
       ))}
@@ -495,6 +497,7 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
       <>
         <QueryField error={err(ctl("input.query"))} value={i.query} rows={8} check={p.catalog.onCheckQuery} suggest={p.catalog.onSuggest} params={BUSINESS_DATE} onChange={(query) => setInput({ query })}
           note="Only SELECT is allowed. :business_date is filled in for each run. A new snapshot becomes active only when the pull finishes; if it fails halfway, the active one stays." />
+        <QueryExamples engine={d.conn.engine} kind="db_snapshot" />
         <Field id={ctl("input.schedule")} label="Runs" error={err(ctl("input.schedule"))}
           note={`A cron expression in ${APP_TIME_ZONE_LABEL}: minute hour day month weekday. ${i.schedule.trim() ? `Now: ${scheduleText(i.schedule)}.` : ""}`}>
           <Input id={ctl("input.schedule")} value={i.schedule} className="font-mono" onChange={(e) => setInput({ schedule: e.target.value })} autoComplete="off" spellCheck={false} />
@@ -555,6 +558,27 @@ function Pull(p: ConnectionStepProps & { setInput: (patch: Partial<SourceSpec["i
  */
 const BUSINESS_DATE = [":business_date"] as const;
 
+/**
+ * How a SELECT of one's own is written on this engine (owner, 25 Nov): an example and the rules the connector reads it
+ * by (`:business_date`'s type, the day before, names, what a text column can feed), closed until asked for.
+ */
+function QueryExamples({ engine, kind }: { engine: DbEngine; kind: "db_snapshot" | "db_watermark" }) {
+  const ex = queryExample(engine, kind);
+  return (
+    <Disclosure summary={`Query examples for ${ENGINE_LABEL[engine]}`}>
+      <div className="grid gap-3">
+        <pre className="scroll-quiet overflow-x-auto rounded-md border border-line bg-tray p-3 font-mono text-caption text-fg" tabIndex={0}
+          aria-label={`Example query for ${ENGINE_LABEL[engine]}`}>{ex.sql}</pre>
+        <ul className="grid list-disc gap-1.5 pl-5">
+          {ex.notes.map((n) => (
+            <li key={n}>{noteParts(n).map((part, j) => (j % 2 ? <code key={j} className="font-mono text-fg">{part}</code> : part))}</li>
+          ))}
+        </ul>
+      </div>
+    </Disclosure>
+  );
+}
+
 function QueryField({ value, rows, note, error, onChange, check, suggest, params }: {
   value: string; rows: number; note: string; error?: string | null; onChange: (query: string) => void; check: CatalogProps["onCheckQuery"];
   suggest: SqlSuggest; params?: readonly string[];
@@ -566,7 +590,7 @@ function QueryField({ value, rows, note, error, onChange, check, suggest, params
     setRun({ query, busy: true });
     try {
       const r = await check(query);
-      setRun({ query, busy: false, ok: `${r.columns.length} ${r.columns.length === 1 ? "column" : "columns"}: ${r.columns.map((c) => c.name).join(", ")}.` });
+      setRun({ query, busy: false, ok: `${r.columns.length} ${r.columns.length === 1 ? "column" : "columns"}: ${r.columns.map((c) => `${c.name} (${c.type})`).join(", ")}.` });
     } catch (e) {
       setRun({ query, busy: false, failed: errorText(e) });
     }
