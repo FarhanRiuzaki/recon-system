@@ -37,4 +37,13 @@ describe("step 2 mapping", () => {
     await mount((id) => (id === ctl("mapping.business_date") ? "Pick the business date" : undefined));
     expect(list().open).toBe(true);
   });
+
+  it("lists what still stops Next, each with Fix in mapper", async () => {
+    const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+    const broken = { ...d, spec: { ...d.spec, mapping: { ...d.spec.mapping, account_ref: { field: "gone" } } } } as Draft;
+    await act(async () => root!.render(h(FieldsStep, { ...props(() => undefined), d: broken })));
+    const list = document.querySelector('[aria-label="Still to map"]')!;
+    expect(list.textContent).toContain("gone is no longer a column.");
+    expect(list.textContent).toContain("Fix in mapper");
+  });
 });

@@ -157,4 +157,31 @@ describe("SourceMapper", () => {
       expect(document.querySelector<HTMLSelectElement>('select[aria-label="Account comes from"]')!.value).toBe("field:sid");
     });
   });
+
+  describe("one place to map", () => {
+    it("opens at the field a problem names", async () => {
+      const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+      await act(async () => root!.render(h(SourceMapper, { open: true, name: "x", spec: spec(), examples: {}, initial: "col:sre", preview: { spaceId: "sp", ids: null, file: true, sampleId: null, sample: "", fileName: "", businessDate: "" }, onDone: vi.fn(), onCancel: vi.fn() })));
+      expect(document.querySelector('select[aria-label="Type of sre"]')).not.toBeNull();
+    });
+    it("a date column's format is set in its inspector", async () => {
+      const { onDone } = await mount(spec());
+      await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Edit column sre"]')!.click());
+      await pick("Type of sre", "date");
+      const el = document.querySelector<HTMLInputElement>('input[aria-label="Date format of sre"]')!;
+      await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, "ddMMyyyy"); el.dispatchEvent(new Event("input", { bubbles: true })); });
+      await click("Done");
+      expect(onDone.mock.calls[0]![0].fields[1].format).toEqual({ date: "ddMMyyyy" });
+    });
+    it("adds a computed column from the mapper", async () => {
+      const { onDone } = await mount(spec());
+      await click("Add computed column");
+      await click("Done");
+      expect(Object.keys(onDone.mock.calls[0]![0].derive)).toEqual(["computed_1"]);
+    });
+    it("names the source's columns for a file or a database alike", async () => {
+      await mount(spec());
+      expect(text()).not.toContain("Date and number formats are set in View as list.");
+    });
+  });
 });

@@ -800,3 +800,9 @@ dari kolom (garis putus-putus); masalah yang step 2 tunjukkan di field itu tampi
 inspector kolom (tipe, boleh kosong, simpan sebagai extra attribute dan namanya, nama dicek seperti di step 2); format
 tanggal/angka tetap di View as list. Baris Extra attributes membuka daftarnya, masing-masing bisa dilepas. Pencarian
 menyaring tabel kolom di kanvas juga, tapi kolom yang menjadi awal garis tetap tampil.
+
+**Satu tempat mapping (owner 25 Nov):** mapper jadi tempat utama: computed column dibuat dan diubah di dock mapper
+(editor yang sama dengan step 2), format tanggal/angka di inspector kolom (`steps/format-cell.tsx`, dipakai bersama).
+Step 2 menampilkan ringkasan + "Still to map" (masalah yang menahan Next, masing-masing "Fix in mapper" yang membuka
+mapper di field atau kolomnya). "View as list" tetap sebagai cadangan di desktop (owner) dan satu-satunya jalan di
+ponsel. Teks mapper sama untuk file dan database: "Source columns", "isn't in the source any more".

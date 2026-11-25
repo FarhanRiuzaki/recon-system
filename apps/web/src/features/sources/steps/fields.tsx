@@ -14,11 +14,12 @@ import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { FieldSpec, SourceSpec, ValueRef } from "@starterkit/shared/contracts/sources";
 import { AMOUNT_UNITS, type AmountUnit, CURRENCY_EXPONENT, type DbEngine, FIELD_TYPES, WATERMARK_ID_COLUMNS_MAX } from "@starterkit/shared/sources";
 import { ARRIVED_DATE, attrNameOf, FILE_DATE, fieldTypeOf, storeAs, storedName, storedNameProblem, TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
+import { FormatCell } from "./format-cell";
 import { type SuggestedCore, UNIT_HINT, unitExamples, withUnit } from "./core-suggest";
 import { goneRowNote, idNote, type Suggestion, watermarkNote } from "./catalog";
-import { type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
+import { amountProblems, type Column, ctl, type Draft, fitLookback, mappingProblem, NULLABLE_REASON, type Preview, repeatedRows, snapshotOf, tiedNotice, type WatermarkInput, watermarkKind } from "./model";
 import { toast } from "@starterkit/ui/ui/toast";
-import { summaryLine } from "../mapper-model";
+import { addComputed as newComputed, problemTarget, summaryLine } from "../mapper-model";
 
 /**
  * Computed columns and Rows to load sit under the field table, out of the first screen: they load after the page, preloaded as soon
@@ -127,7 +128,11 @@ export function FieldsStep(p: FieldsStepProps) {
     return a ? { ...x, unitHint: undefined, spec: { ...x.spec, mapping: { ...x.spec.mapping, amount_minor: { ...a, unit } } } } : x;
   });
   const examples = new Map((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples]));
-  const [mapperOpen, setMapperOpen] = useState(false);
+  /** The mapper, open at a place (a field, a column) or at none; false when closed. */
+  const [mapperAt, setMapperAt] = useState<string | null | false>(false);
+  const mapperOpen = mapperAt !== false;
+  // what still stops Next, each opening the mapper where it is (the list below stays as the way without a canvas)
+  const mapProblems = [mappingProblem(s), ...amountProblems(s)].filter((x): x is { id: string; reason: string } => !!x && x.id !== "src-columns");
   // one object per preview, so the open mapper's canvas isn't rebuilt on every render of this step
   const firstExamples = useMemo(() => Object.fromEntries((p.preview.result?.columns ?? []).map((c) => [c.name, c.examples[0] ?? ""])), [p.preview.result]);
   // "View as list": closed on a desktop (the mapper is the way in), open on a phone (no mapper there)
@@ -154,13 +159,9 @@ export function FieldsStep(p: FieldsStepProps) {
   const [computedNew, computedUsed] = useFirstUse("source.computed-column");
   const addComputed = () => {
     computedUsed();
-    const taken = new Set([...s.fields.map((f) => f.name), ...Object.keys(s.derive)]);
-    let n = 1;
-    while (taken.has(`computed_${n}`)) n++;
-    const name = `computed_${n}`;
     // it starts from the first text column (a remark, a reference), the usual source of a computed key
-    const from = (s.fields.find((f) => f.type === "string") ?? s.fields[0]!).name;
-    setSpec((x) => ({ ...x, derive: { ...x.derive, [name]: computeCel(from, []) } }));
+    const { name } = newComputed(s);
+    setSpec((x) => newComputed(x).spec);
     focusNew(`${ctl(`derive.${name}`)}-name`);
   };
 
@@ -237,13 +238,23 @@ export function FieldsStep(p: FieldsStepProps) {
       ) : null}
 
       <Panel title="Mapping" description={summaryLine(s)}
-        actions={s.fields.length > 0 && <Button type="button" variant="secondary" className="hidden md:inline-flex" onClick={() => setMapperOpen(true)}>Open mapper</Button>}>
-        <p className="text-body-sm text-fg-3">Open the mapper to draw the columns onto the core record, or set them in the list below.</p>
+        actions={s.fields.length > 0 && <Button type="button" variant="secondary" className="hidden md:inline-flex" onClick={() => setMapperAt(null)}>Open mapper</Button>}>
+        <p className="text-body-sm text-fg-3">Open the mapper to draw the columns onto the core record, make computed columns and set formats. The list below does the same without the canvas.</p>
+        {mapProblems.length > 0 && (
+          <ul aria-label="Still to map" className="mt-3 grid gap-1">
+            {mapProblems.map((x) => (
+              <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-body-sm text-down-ink">
+                <span>{x.reason}</span>
+                <Button type="button" variant="link" size="sm" className="hidden md:inline-flex" onClick={() => setMapperAt(problemTarget(s, x.id))}>Fix in mapper</Button>
+              </li>
+            ))}
+          </ul>
+        )}
       </Panel>
       {mapperOpen && (
-        <SourceMapper open name={d.name} spec={s} examples={firstExamples}
+        <SourceMapper open name={d.name} initial={mapperAt || null} spec={s} examples={firstExamples}
           preview={{ ...p.mapperPreview, file, sample: p.sample, fileName: p.fileName, businessDate: p.businessDate }}
-          onDone={(next) => { setSpec(() => next); setMapperOpen(false); }} onCancel={() => setMapperOpen(false)} />
+          onDone={(next) => { setSpec(() => next); setMapperAt(false); }} onCancel={() => setMapperAt(false)} />
       )}
       <Disclosure summary="View as list" defaultOpen={listOpen || inList} onToggle={setListOpen} className="border-0 bg-transparent">
       {/* the examples come from the preview, which runs by itself; Show examples reads them again after a failure */}
@@ -532,38 +543,6 @@ function WatermarkPanel({ d, set, err, columns, canChangeReading, suggested, pre
   );
 }
 
-/** The format a type is read with: a date's pattern, a datetime's pattern and zone, a decimal's places and separators. */
-function FormatCell({ f, i, setFormat, err }: { f: FieldSpec; i: number; setFormat: (i: number, p: NonNullable<FieldSpec["format"]>) => void; err: (id: string) => string | undefined }) {
-  const at = (k: string) => ctl(`fields.${i}.format.${k}`);
-  if (f.type === "date" || f.type === "datetime") {
-    return (
-      <span className={f.type === "datetime" ? "grid min-w-52 gap-1" : "grid min-w-36 gap-1"}>
-        <Input id={at("date")} aria-label={`Date format of ${f.name}`} placeholder={f.type === "date" ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss"} className="font-mono" value={f.format?.date ?? ""}
-          aria-invalid={!!err(at("date")) || undefined} onChange={(e) => setFormat(i, { date: e.target.value || undefined })} />
-        {err(at("date")) && <span role="alert" className="max-w-48 whitespace-normal text-caption text-down-ink">{err(at("date"))}</span>}
-        {f.type === "datetime" && (
-          <Input id={at("timezone")} aria-label={`Time zone of ${f.name}`} placeholder="Asia/Jakarta" value={f.format?.timezone ?? ""} aria-invalid={!!err(at("timezone")) || undefined}
-            onChange={(e) => setFormat(i, { timezone: e.target.value || undefined })} />
-        )}
-        {err(at("timezone")) && <span role="alert" className="max-w-48 whitespace-normal text-caption text-down-ink">{err(at("timezone"))}</span>}
-      </span>
-    );
-  }
-  if (f.type === "decimal") {
-    return (
-      <span className="grid min-w-36 gap-1">
-        <Select id={at("scale")} className="w-full" aria-label={`Places of ${f.name}`} value={String(f.format?.scale ?? 2)} onChange={(e) => setFormat(i, { scale: Number(e.target.value) })}>
-          {[0, 1, 2, 3, 4, 5, 6, 8].map((n) => <option key={n} value={n}>{n} places</option>)}
-        </Select>
-        <Select id={at("decimalSeparator")} className="w-full" aria-label={`Decimal separator of ${f.name}`} value={f.format?.decimalSeparator ?? "."}
-          onChange={(e) => setFormat(i, { decimalSeparator: e.target.value as "." | "," })}>
-          <option value=".">1,234.50</option><option value=",">1.234,50</option>
-        </Select>
-      </span>
-    );
-  }
-  return <span className="text-fg-3">—</span>;
-}
 
 /** The sample: pasted or chosen from a file (its first 32 KB), and the file name its business date comes from. */
 function SampleInput(p: FieldsStepProps) {

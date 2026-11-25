@@ -41,12 +41,12 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
     // the wizard's "not picked yet" business date is { field: "" }
     if (!r || ("field" in r && !r.field)) return row;
     if ("field" in r) {
-      if (!names.has(r.field) && !Object.hasOwn(spec.derive ?? {}, r.field)) return { ...row, broken: true, note: `Column ${r.field} isn't in the file any more` };
+      if (!names.has(r.field) && !Object.hasOwn(spec.derive ?? {}, r.field)) return { ...row, broken: true, note: `Column ${r.field} isn't in the source any more` };
       edges.push({ id: k, source: names.has(r.field) ? "columns" : "computed", row: r.field, target: k, label: null });
       return { ...row, mapped: "field" };
     }
     const json = jsonPathOf(r);
-    if (json && !names.has(json.column)) return { ...row, broken: true, note: `Column ${json.column} isn't in the file any more` };
+    if (json && !names.has(json.column)) return { ...row, broken: true, note: `Column ${json.column} isn't in the source any more` };
     if (json) { edges.push({ id: k, source: "columns", row: json.column, target: k, label: json.path, dashed: true }); return { ...row, mapped: "cel" }; }
     return { ...row, mapped: "cel", note: formulaNote(r.cel) };
   });
@@ -57,7 +57,7 @@ export function sourceGraph(spec: SourceSpec, examples: Readonly<Record<string, 
   const columns = spec.fields.filter((f) => !q || fed.has(f.name) || f.name.toLowerCase().includes(q))
     .map((f) => ({ key: f.name, label: examples[f.name] ? `${f.name} · ${examples[f.name]}` : f.name, kind: kept.has(f.name) ? `${f.type} · extra attribute` : f.type }));
   return {
-    sources: [{ id: "columns", title: "File columns", caption: null, rows: columns }, ...(computed.length ? [{ id: "computed", title: "Computed", caption: null, rows: computed }] : [])],
+    sources: [{ id: "columns", title: "Source columns", caption: null, rows: columns }, ...(computed.length ? [{ id: "computed", title: "Computed", caption: null, rows: computed }] : [])],
     request, edges, missing: request[0]!.mapped || request[0]!.broken ? [] : ["business_date"],
   };
 }
@@ -158,4 +158,30 @@ export function columnInfo(spec: SourceSpec, name: string): { type: FieldSpec["t
 /** Extra attribute `name` no longer kept (one from a column or from a formula). */
 export function removeAttr(spec: SourceSpec, name: string): SourceSpec {
   return withMapping(spec, { attrs: Object.fromEntries(Object.entries(spec.mapping.attrs ?? {}).filter(([k]) => k !== name)) });
+}
+
+/** A new computed column: the next free computed_N, starting from the first text column (a remark, a reference). */
+export function addComputed(spec: SourceSpec): { spec: SourceSpec; name: string } {
+  const taken = new Set([...spec.fields.map((f) => f.name), ...Object.keys(spec.derive ?? {})]);
+  let n = 1;
+  while (taken.has(`computed_${n}`)) n++;
+  const name = `computed_${n}`;
+  const from = (spec.fields.find((f) => f.type === "string") ?? spec.fields[0])?.name ?? "";
+  return { name, spec: { ...spec, derive: { ...spec.derive, [name]: computeCel(from, []) } } };
+}
+
+/** Column `name`'s format with `patch` merged in; an empty value is removed. */
+export function setFormat(spec: SourceSpec, name: string, patch: NonNullable<FieldSpec["format"]>): SourceSpec {
+  return { ...spec, fields: spec.fields.map((f) => (f.name !== name ? f : {
+    ...f, format: Object.fromEntries(Object.entries({ ...f.format, ...patch }).filter(([, v]) => v !== undefined && v !== "")),
+  })) };
+}
+
+/** Where the mapper opens for a step 2 problem's control id: a core field, a column, or null (not the mapper's). */
+export function problemTarget(spec: SourceSpec, id: string): string | null {
+  const core = CORE_ROWS.find((k) => id === ctl(`mapping.${k}`) || id.startsWith(`${ctl(`mapping.${k}`)}-`));
+  if (core) return core;
+  const col = /^src-fields-(\d+)(?:-|$)/.exec(id);
+  const f = col ? spec.fields[Number(col[1])] : undefined;
+  return f ? `col:${f.name}` : null;
 }

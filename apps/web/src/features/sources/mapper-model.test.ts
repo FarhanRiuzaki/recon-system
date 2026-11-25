@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSpec } from "@starterkit/shared/contracts/sources";
 import { computeCel } from "@starterkit/shared/compute";
-import { columnInfo, connect, removeAttr, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
+import { addComputed, columnInfo, connect, problemTarget, removeAttr, setFormat, disconnect, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "./mapper-model";
 
 const f = (name: string, type: "string" | "decimal" | "date" = "string") => ({ name, type, nullable: true, trim: true });
 const spec = (o: Partial<SourceSpec> = {}): SourceSpec => ({
@@ -29,7 +29,7 @@ describe("sourceGraph", () => {
 
   it("a mapping to a column the file no longer has is broken, with no line", () => {
     const g = sourceGraph(spec({ fields: [f("sre")] } as Partial<SourceSpec>), {});
-    expect(g.request.find((r) => r.path === "account_ref")).toMatchObject({ broken: true, note: "Column sid isn't in the file any more" });
+    expect(g.request.find((r) => r.path === "account_ref")).toMatchObject({ broken: true, note: "Column sid isn't in the source any more" });
     expect(g.edges).toEqual([]);
   });
 
@@ -71,7 +71,7 @@ describe("edits", () => {
     const row = (s: SourceSpec, k: string) => g(s).request.find((r) => r.path === k)!;
     it("a JSON path whose column is gone is broken, not a formula", () => {
       const s = { ...spec(), mapping: { ...spec().mapping, ext_ref: { cel: computeCel("gone", [{ type: "json", args: ["code.rc"] }]) } } } as SourceSpec;
-      expect(row(s, "ext_ref")).toMatchObject({ broken: true, note: "Column gone isn't in the file any more" });
+      expect(row(s, "ext_ref")).toMatchObject({ broken: true, note: "Column gone isn't in the source any more" });
     });
     it("the wizard's empty business date is unmapped and missing", () => {
       const s = { ...spec(), mapping: { ...spec().mapping, business_date: { field: "" } } } as SourceSpec;
@@ -132,5 +132,26 @@ describe("review of the inspector", () => {
   it("renaming a column that isn't kept is refused; any kept attribute can be removed by name", () => {
     expect(renameAttr(spec(), "sid", "x")).toEqual({ refused: "Keep sid as an extra attribute first." });
     expect(removeAttr(spec(), "amt").mapping.attrs).toEqual({ sre: { field: "sre" } });
+  });
+});
+
+describe("one place to map", () => {
+  it("a new computed column takes the next free name and starts from the first text column", () => {
+    const r = addComputed(spec({ derive: { computed_1: "x" } }));
+    expect(r.name).toBe("computed_2");
+    expect(Object.keys(r.spec.derive)).toEqual(["computed_1", "computed_2"]);
+    expect(r.spec.derive.computed_2).toContain("sid");
+  });
+  it("a column's format: set, and an empty value removed", () => {
+    const s = setFormat(spec(), "amt", { scale: 4 });
+    expect(s.fields[2]!.format).toEqual({ scale: 4 });
+    expect(setFormat(s, "amt", { scale: undefined }).fields[2]!.format).toEqual({});
+  });
+  it("a step 2 problem opens the mapper where it is", () => {
+    expect(problemTarget(spec(), "src-mapping-account_ref")).toBe("account_ref");
+    expect(problemTarget(spec(), "src-mapping-amount_minor-unit")).toBe("amount_minor");
+    expect(problemTarget(spec(), "src-fields-2-format-scale")).toBe("col:amt");
+    expect(problemTarget(spec(), "src-fields-1")).toBe("col:sre");
+    expect(problemTarget(spec(), "src-key_fields")).toBeNull();
   });
 });

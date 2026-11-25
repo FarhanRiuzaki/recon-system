@@ -18,8 +18,11 @@ import { FieldMapCanvas } from "@/components/field-map/canvas";
 import { computeSteps } from "@starterkit/shared/compute";
 import { AMOUNT_UNITS, type AmountUnit, FIELD_TYPES } from "@starterkit/shared/sources";
 import { TYPE_LABEL, UNIT_LABEL } from "../spec-draft";
-import { CORE_ROWS, type CoreRow, columnInfo, connect, disconnect, removeAttr, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
+import { addComputed, CORE_ROWS, type CoreRow, columnInfo, connect, setFormat, disconnect, removeAttr, renameAttr, rowProblem, setColumn, setJsonPath, setSource, setUnit, sourceGraph, summaryLine, toggleAttr } from "../mapper-model";
 import { useSpecPreview } from "../use-spec-preview";
+import { ComputedColumns } from "./computed";
+import { FormatCell } from "./format-cell";
+import { AddIcon } from "@starterkit/ui/ui/icons";
 
 /** A JSON path the reader takes: keys joined by dots (code.rc). */
 const JSON_PATH = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/;
@@ -48,12 +51,14 @@ function jsonOf(cel: string): { col: string; path: string } | null {
 /** A formula or JSON path being typed in the inspector (applied once it has text). */
 type Typing = { row: CoreRow; kind: "cel"; cel: string } | { row: CoreRow; kind: "json"; col: string; path: string };
 
-export function SourceMapper({ open, name, spec: given, examples, preview, onDone, onCancel }: {
+export function SourceMapper({ open, name, spec: given, examples, preview, initial = null, onDone, onCancel }: {
   open: boolean; name: string; spec: SourceSpec; examples: Readonly<Record<string, string>>; preview: PreviewOf;
+  /** Where it opens: a core field, `col:<column>` or `attrs` (a step 2 problem's place). */
+  initial?: string | null;
   onDone: (spec: SourceSpec) => void; onCancel: () => void;
 }) {
   const [spec, setSpec] = useState(given);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(initial);
   const [q, setQ] = useState("");
   const [refused, setRefused] = useState<string | null>(null);
   // Escape, the close button or a click outside ask when something changed (the posting editor's rule)
@@ -201,17 +206,33 @@ export function SourceMapper({ open, name, spec: given, examples, preview, onDon
             }} />
           </Field>
         )}
-        <p className="text-caption text-fg-3">Date and number formats are set in View as list.</p>
+        {(info.type === "date" || info.type === "datetime" || info.type === "decimal") && (
+          <div className="grid gap-1">
+            <span className="text-body-sm text-fg-2">Format</span>
+            <FormatCell f={spec.fields.find((x) => x.name === col)!} i={spec.fields.findIndex((x) => x.name === col)} err={() => undefined}
+              idOf={(k) => `mapper-format-${k}`} setFormat={(_, patch) => edit(setFormat(spec, col, patch))} />
+          </div>
+        )}
       </div>
     );
   })() : (
     <p className="p-4 text-body-sm text-fg-3">Select a core field to set where its value comes from, or drag a column onto it.</p>
   );
 
+  const exampleMap = useMemo(() => new Map(Object.entries(examples).map(([k, v]) => [k, v ? [v] : []])), [examples]);
   const dock = (
-    <p role="status" className="px-4 py-2 text-body-sm text-fg-2">
-      {live.pending ? "Previewing…" : live.error ? `The preview stopped: ${live.error}` : live.result ? `${live.result.ok} of ${live.result.lines} rows read · ${live.result.quarantined} quarantined` : "The preview shows here once the sample is read."}
-    </p>
+    <div className="grid gap-3 px-4 py-2">
+      <p role="status" className="text-body-sm text-fg-2">
+        {live.pending ? "Previewing…" : live.error ? `The preview stopped: ${live.error}` : live.result ? `${live.result.ok} of ${live.result.lines} rows read · ${live.result.quarantined} quarantined` : "The preview shows here once the sample is read."}
+      </p>
+      {/* computed columns are made here too (the list's own editor), and join the canvas's Computed table to be drawn */}
+      <div className="grid gap-3">
+        {spec.fields.length > 0 && (
+          <span><Button type="button" variant="create" size="sm" onClick={() => { const r = addComputed(spec); edit(r.spec); }}><Icon icon={AddIcon} />Add computed column</Button></span>
+        )}
+        <ComputedColumns spec={spec} setSpec={(fn) => { setRefused(null); setTyping(null); setSpec(fn); }} err={() => undefined} examples={exampleMap} renderUseAs={() => null} />
+      </div>
+    </div>
   );
 
   return (
