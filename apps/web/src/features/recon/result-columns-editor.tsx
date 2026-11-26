@@ -12,6 +12,8 @@ import type { ReconSpec } from "@starterkit/shared/contracts/recon";
 import type { ResultColumn, ResultColumnsDto } from "@starterkit/shared/contracts/results";
 import { recordFields } from "@starterkit/shared/recon";
 import { RESULT_COLUMNS_MAX, RESULT_LABEL_MAX } from "@starterkit/shared/results";
+import type { ColumnFormat } from "@starterkit/shared/contracts/reports";
+import { ColumnFormatFields, NUMBER_FORMAT } from "@/components/column-format-fields";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { SortableList } from "@/components/sortable-list";
 import { api, errorText } from "@/lib/client/api";
@@ -21,8 +23,13 @@ import { resultColumns } from "@/lib/shared/queries-recon";
 import { addColumn, columnChoices, type ColumnSide, columnValue, fieldText } from "./result-columns-model";
 import { useSideSource } from "./use-recons";
 
+/** A number format a column starts from: an amount with 2 decimals, anything else whole. */
+const numberFor = (c: ResultColumn): Extract<ColumnFormat, { kind: "number" }> =>
+  (c.kind !== "recon" && /amount/.test(c.field) ? { ...NUMBER_FORMAT, decimals: 2 } : NUMBER_FORMAT);
+
 /**
- * The columns' editor in place (loaded on Edit): each column's heading, its order (drag, or the grip's keyboard) and removal, a field to add (each side's
+ * The columns' editor in place (loaded on Edit): each column's heading, its format (as is, a number, a date, text: the
+ * report designer's, owner 26 Nov), its order (drag, or the grip's keyboard) and removal, a field to add (each side's
  * fields under its name, then recon info), Save, Cancel and Back to default. A save applies at once (no approval).
  */
 export default function ResultColumnsEditor({ spaceId, configId, spec, value, onDone }: {
@@ -72,6 +79,12 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
     setAddError(null);
   }
   const setLabel = (i: number, label: string) => setCols((cs) => cs.map((c, j) => (j === i ? { ...c, label } : c)));
+  // as is = no format kept: the screen's own reading (an amount in its currency, a date in words)
+  const setFormat = (i: number, f: ColumnFormat) => setCols((cs) => cs.map((c, j) => {
+    if (j !== i) return c;
+    const { format: _, ...rest } = c;
+    return f.kind === "auto" ? rest as ResultColumn : { ...c, format: f };
+  }));
 
   return (
     <div className="grid gap-4">
@@ -89,6 +102,9 @@ export default function ResultColumnsEditor({ spaceId, configId, spec, value, on
               {/* customer data (an account, a name) is masked in report files unless an official report shows it (DEC-060) */}
               {c.kind !== "recon" && <span className="flex h-8 items-center"><Checkbox checked={!!c.customer} label="Customer data" onToggle={() => setCols((cs) => cs.map((x, j) => (j === i && x.kind !== "recon" ? { ...x, customer: !x.customer } : x)))} /></span>}
               <Button type="button" size="icon" variant="remove" aria-label={`Remove ${c.label || `column ${i + 1}`}`} onClick={() => setCols(cols.filter((_, j) => j !== i))}><Icon icon={RemoveIcon} /></Button>
+              <div className="col-span-full md:pl-8">
+                <ColumnFormatFields id={`${id}-fmt`} value={c.format ?? { kind: "auto" }} number={numberFor(c)} onChange={(f) => setFormat(i, f)} />
+              </div>
             </>
           );
         }} />

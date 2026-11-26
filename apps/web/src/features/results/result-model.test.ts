@@ -68,6 +68,24 @@ describe("cells", () => {
     expect(cellText({ value: "not_sent", many: null }, { kind: "recon", field: "postingStatus", label: "Posting" })).toBe("Not sent");
     expect(cellText({ value: "2026-11-24", many: null }, { kind: "recon", field: "businessDate", label: "Business date" })).toMatch(/^24 Nov/);
   });
+  it("a column's format (owner 26 Nov): an amount in major units by its decimals and separators, a date by its pattern, text by its case", () => {
+    const num = { kind: "number", decimals: 2, thousands: ".", negative: "paren", prefix: "Rp ", suffix: "" } as const;
+    const amount = { kind: "a", field: "amount_minor", label: "Amount", format: num } as const;
+    expect(cellText({ value: "189300000", many: null, currency: "IDR" }, amount)).toBe("Rp 1.893.000,00");
+    expect(cellText({ value: "-150000", many: null, currency: "IDR" }, amount)).toBe("(Rp 1.500,00)");
+    expect(cellText({ value: "1500", many: null, currency: "JPY" }, amount)).toBe("Rp 1.500,00"); // JPY has no minor unit
+    expect(cellText({ value: "Mixed", many: null, currency: null }, amount)).toBe("Mixed");
+    // a decimal attribute as the source wrote it
+    expect(cellText({ value: "1893000.00", many: null }, { kind: "b", field: "attrs.amount", label: "Amount", format: { ...num, prefix: "", decimals: 0, thousands: "," } })).toBe("1,893,000");
+    const ymd = { kind: "date", pattern: "dd/MM/yyyy" } as const;
+    expect(cellText({ value: "2026-11-24", many: null }, { kind: "recon", field: "businessDate", label: "Business date", format: ymd })).toBe("24/11/2026");
+    expect(cellText({ value: "2026-11-24", many: null }, { kind: "a", field: "business_date", label: "Date", format: { kind: "date", pattern: "yyyyMMdd" } })).toBe("20261124");
+    // a time takes a date format on its WIB date: 23 Nov 18:30 UTC is 24 Nov 01:30 WIB
+    expect(cellText({ value: "2026-11-23T18:30:00.000Z", many: null }, { kind: "a", field: "event_time", label: "Time", format: ymd })).toBe("24/11/2026");
+    expect(cellText({ value: "Success", many: null }, { kind: "a", field: "attrs.status", label: "Status", format: { kind: "text", case: "upper" } })).toBe("SUCCESS");
+    // as is: the screen's own reading
+    expect(cellText({ value: "100000", many: null, currency: "IDR" }, { ...amount, format: { kind: "auto" } })).toBe("1,000.00 IDR");
+  });
   it("a column's table key is the same for the same field and fits the saved column choice", () => {
     expect(columnKey({ kind: "a", field: "attrs.merchant_id" })).toBe("a-attrs_merchant_id");
     expect(columnKey({ kind: "recon", field: "businessDate" })).toMatch(/^[a-zA-Z][a-zA-Z0-9_-]{0,39}$/);

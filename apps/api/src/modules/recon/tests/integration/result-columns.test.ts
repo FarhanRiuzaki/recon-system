@@ -109,6 +109,18 @@ describe("PUT result-columns", () => {
     expect((await put(t.mk, [{ kind: "recon", field: "reason", label: "Reason", customer: true }])).status).toBe(400);
   });
 
+  it("a column keeps its format (owner 26 Nov: number, date, text); a format out of range is 400", async () => {
+    const side = MINE.find((c) => c.kind !== "recon")!;
+    const cols: ResultColumn[] = [
+      { ...side, format: { kind: "number", decimals: 2, thousands: ".", negative: "paren", prefix: "Rp ", suffix: "" } },
+      { kind: "recon", field: "businessDate", label: "Business date", format: { kind: "date", pattern: "dd/MM/yyyy" } },
+    ];
+    expect((await json<ResultColumnsDto>(put(t.mk, cols))).columns).toEqual(cols);
+    expect((await json<ResultColumnsDto>(get(t.mk))).columns).toEqual(cols);
+    expect((await put(t.mk, [{ ...side, format: { kind: "number", decimals: 9, thousands: ".", negative: "minus", prefix: "", suffix: "" } }])).status).toBe(400);
+    expect((await put(t.mk, [{ ...side, format: { kind: "date", pattern: "dd.MM.yy" } }])).status).toBe(400);
+  });
+
   it("an operator is 403; 21 columns, a column twice or a blank heading 400 (before the 404)", async () => {
     expect((await put(t.op, MINE)).status).toBe(403);
     const many = Array.from({ length: 21 }, (_, i) => ({ kind: "a", field: `attrs.f${i}`, label: `F${i}` }));

@@ -8,7 +8,7 @@ import { Icon } from "@starterkit/ui/ui/icon";
 import { ArrowRightIcon, InfoIcon } from "@starterkit/ui/ui/icons";
 import { CELL_TRUNCATE } from "@starterkit/ui/ui/table";
 import type { ResultColumn, ResultRowDto } from "@starterkit/shared/contracts/results";
-import { cellKey, cellText, columnKey, MISSING_TEXT, resultIcon, SIDE_HEADER, sideHelp, sideIcon } from "./result-model";
+import { cellKey, cellText, columnKey, MISSING_TEXT, numericColumn, resultIcon, SIDE_HEADER, sideHelp, sideIcon } from "./result-model";
 
 /** The columns the API sorts by: a configured column of that field takes the sort's key. */
 const SORT_KEY: Record<string, string> = { "a:amount_minor": "amountA", "a:ext_ref": "ref", "recon:businessDate": "businessDate" };
@@ -28,7 +28,8 @@ function Side({ s }: { s: ResultRowDto["a"] }) {
  */
 export function resultColumns(spaceId: string, columns: readonly ResultColumn[], sides: readonly [string, string], onExplain: (r: ResultRowDto) => void): Column<ResultRowDto>[] {
   const configured = columns.map((c): Column<ResultRowDto> => {
-    const amount = c.kind !== "recon" && c.field === "amount_minor";
+    // a number (the amount, or a column formatted as a number) is right-aligned and never truncated
+    const amount = numericColumn(c);
     const sortKey = SORT_KEY[cellKey(c)];
     return {
       key: sortKey ?? columnKey(c), header: c.label, sortable: !!sortKey, mobile: "meta", align: amount ? "right" : undefined,

@@ -1,6 +1,8 @@
 // Operation result as people read it (spec docs/superpowers/specs/2026-11-24-operation-result-design.md): each overall
 // status and side state as an icon with its chip (tone by meaning, categories.ts), a cell's words. Pure.
-import { appDayStart, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
+import { appDate, appDayStart, formatDate, formatDateTime } from "@starterkit/ui/lib/format";
+import { formatCell } from "@starterkit/shared/report-format";
+import { CURRENCY_EXPONENT } from "@starterkit/shared/sources";
 import type { IconData } from "@starterkit/ui/ui/icon";
 import {
   AlertsIcon, ArrowRightIcon, CalendarIcon, CheckIcon, CloseIcon, EditIcon, NoneIcon, FailedIcon, ForceMatchIcon, SpinnerIcon, SuccessIcon, SuggestedIcon, TakeIcon, TimeIcon,
@@ -81,12 +83,40 @@ export function pageState(recons: { loaded: boolean; failed: boolean; published:
 export const cellKey = (c: Pick<ResultColumn, "kind" | "field">) => `${c.kind}:${c.field}`;
 
 export const MISSING_TEXT = "Field not in the source";
-/** A cell as text: a lost field, "3 values" when the side's records differ, an amount in its currency, recon info in words. */
+
+/** Whether column `c` holds a time of day (a record's event time, when an item was resolved): a date format reads its WIB date. */
+const isTime = (c: ResultColumn) => (c.kind === "recon" ? c.field === "resolvedAt" : c.field === "event_time");
+/** Whether column `c` is a record's amount (minor units, as the API sends it). */
+const isAmount = (c: ResultColumn) => c.kind !== "recon" && c.field === "amount_minor";
+/** Whether column `c` reads as a number (its format says so, or it is the amount): the table right-aligns it. */
+export const numericColumn = (c: ResultColumn) => c.format?.kind === "number" || (isAmount(c) && (!c.format || c.format.kind === "auto"));
+
+/**
+ * Value `v` in column `c`'s format (report-format.ts formatCell), or null for the screen's own reading (no format, as
+ * is). An amount is formatted in major units of its currency (minor ÷ 10^exponent; none: as written); a time takes a
+ * date format on its WIB date.
+ */
+function formatted(v: string, c: ResultColumn, currency: string | null): string | null {
+  const f = c.format;
+  if (!f || f.kind === "auto") return null;
+  if (f.kind === "number" && isAmount(c) && /^-?\d+$/.test(v)) return formatCell(Number(v) / 10 ** (currency ? CURRENCY_EXPONENT[currency] ?? 2 : 0), f);
+  if (f.kind === "date" && isTime(c) && !Number.isNaN(Date.parse(v))) return formatCell(appDate(Date.parse(v)), f);
+  return formatCell(v, f);
+}
+
+/**
+ * A cell as text: a lost field, "3 values" when the side's records differ, then the column's format when it has one,
+ * else an amount in its currency, a date in words, recon info in words.
+ */
 export function cellText(cell: ResultCell | undefined, c: ResultColumn): string {
   if (cell?.missing) return MISSING_TEXT;
   if (cell?.many) return `${cell.many} values`;
   const v = cell?.value ?? null;
   if (v === null) return "–";
+  if (v !== "Mixed") {
+    const out = formatted(v, c, cell?.currency ?? null);
+    if (out !== null) return out;
+  }
   if (c.kind !== "recon") {
     if (c.field === "amount_minor") return v === "Mixed" || !/^-?\d+$/.test(v) ? v : `${amountText(v, cell?.currency ?? null)}${cell?.currency ? ` ${cell.currency}` : ""}`;
     if (c.field === "business_date" && /^\d{4}-\d{2}-\d{2}$/.test(v)) return formatDate(appDayStart(v));

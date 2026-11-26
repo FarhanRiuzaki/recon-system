@@ -5,18 +5,21 @@ import { FIELD_REF, GROUP_KINDS, ITEM_STATUSES, RESOLUTIONS } from "../recon";
 import { RECON_INFO_FIELDS, RESULT_COLUMNS_MAX, RESULT_LABEL_MAX, RESULT_RANGE_MAX_DAYS, RESULT_STATUSES, SIDE_STATES } from "../results";
 import { ListQuery, sortParam } from "./common";
 import { filterSelection } from "./filter-selection";
+import { ColumnFormat } from "./reports";
 
 export { RESULT_SORTS };
 
 const label = z.string().trim().min(1, "Give the column a heading.").max(RESULT_LABEL_MAX);
 /**
  * A column of a recon's Operation result table: a field of side A's or side B's records (`ext_ref`, `amount_minor`,
- * `attrs.<name>`: the fields a recon names) or recon info; `label` = its heading.
+ * `attrs.<name>`: the fields a recon names) or recon info; `label` = its heading; `format` = how its cells read (the
+ * report designer's formats, report-format.ts: a number's decimals, separators, sign and affixes, a date's pattern, a
+ * text's case; absent or auto = the screen's own reading: an amount in its currency, a date in words).
  */
 export const ResultColumn = z.discriminatedUnion("kind", [
   // `customer`: the field holds customer data (an account, a name); reports mask it unless an official one shows it in full
-  z.strictObject({ kind: z.enum(["a", "b"]), field: z.string().regex(FIELD_REF, "Pick a field of the source."), label, customer: z.boolean().optional() }),
-  z.strictObject({ kind: z.literal("recon"), field: z.enum(RECON_INFO_FIELDS), label }),
+  z.strictObject({ kind: z.enum(["a", "b"]), field: z.string().regex(FIELD_REF, "Pick a field of the source."), label, customer: z.boolean().optional(), format: ColumnFormat.optional() }),
+  z.strictObject({ kind: z.literal("recon"), field: z.enum(RECON_INFO_FIELDS), label, format: ColumnFormat.optional() }),
 ]);
 export type ResultColumn = z.infer<typeof ResultColumn>;
 

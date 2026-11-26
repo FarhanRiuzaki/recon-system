@@ -4,10 +4,8 @@
 // what it holds (a field with a fallback, a formula, fixed text, the row number), its format with a live example, a
 // highlight, its total and its layout. A section: the title's text, the header block's lines, the footer. Nothing
 // selected: the whole report (name, official, when, masking, the file).
-import type { ColumnFormat, HeaderLine, ReportColumn, ReportSpec } from "@starterkit/shared/contracts/reports";
-import { formatCell } from "@starterkit/shared/report-format";
-import { DATE_PATTERNS } from "@starterkit/shared/reports";
-import { Field, FormatExample, Inspector, InspectorSection, type ListedField, Notice, Segmented, SwitchRow } from "@starterkit/ui/ds";
+import type { HeaderLine, ReportColumn, ReportSpec } from "@starterkit/shared/contracts/reports";
+import { Field, Inspector, InspectorSection, type ListedField, Notice, Segmented, SwitchRow } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
 import { AddIcon, CopyIcon, RemoveIcon } from "@starterkit/ui/ui/icons";
@@ -16,6 +14,7 @@ import { Select } from "@starterkit/ui/ui/select";
 import { Textarea } from "@starterkit/ui/ui/textarea";
 import type { Selected } from "./report-canvas";
 import { useState } from "react";
+import { ColumnFormatFields } from "@/components/column-format-fields";
 import { refLabel } from "./report-text";
 import { duplicateColumn, patchColumn, removeColumn, widthOf } from "./spec-model";
 
@@ -27,7 +26,6 @@ function WidthInput({ id, value, onWidth }: { id: string; value: number; onWidth
   return <Input id={id} type="number" min={1} max={200} value={draft ?? String(value)} onBlur={() => setDraft(null)}
     onChange={(e) => { setDraft(e.target.value); const w = widthOf(e.target.value); if (w !== null) onWidth(w); }} />;
 }
-const NUMBER: Extract<ColumnFormat, { kind: "number" }> = { kind: "number", decimals: 0, thousands: ".", negative: "minus", prefix: "", suffix: "" };
 const TOKENS = "{recon}, {template}, {date}, {from}, {to}, {made_at}";
 
 function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, select }: {
@@ -77,22 +75,7 @@ function ColumnInspector({ spec, c, change, fields, sample, problem, readOnly, s
           {f?.customer && <Notice tone="info">Customer data: shown masked (last 4 kept). Only an official report approved as full shows it whole.</Notice>}
         </InspectorSection>
         <InspectorSection title="Format">
-          <Segmented label="Format" value={format.kind} options={[{ value: "auto", label: "As is" }, { value: "number", label: "Number" }, { value: "date", label: "Date" }, { value: "text", label: "Text" }]}
-            onChange={(k) => set({ format: k === "number" ? NUMBER : k === "date" ? { kind: "date", pattern: "dd/MM/yyyy" } : k === "text" ? { kind: "text", case: "as_is" } : { kind: "auto" } })} />
-          {format.kind === "number" && <>
-            <div className="grid grid-cols-2 gap-list">
-              <Field id="fmt-dec" label="Decimals"><Select className="w-full" id="fmt-dec" value={String(format.decimals)} onChange={(e) => set({ format: { ...format, decimals: Number(e.target.value) } })}>{[0, 1, 2, 3, 4].map((d) => <option key={d}>{d}</option>)}</Select></Field>
-              <Field id="fmt-thou" label="Thousands"><Select className="w-full" id="fmt-thou" value={format.thousands} onChange={(e) => set({ format: { ...format, thousands: e.target.value as "." } })}><option value=".">1.000.000</option><option value=",">1,000,000</option><option value="none">1000000</option></Select></Field>
-              <Field id="fmt-neg" label="Negative"><Select className="w-full" id="fmt-neg" value={format.negative} onChange={(e) => set({ format: { ...format, negative: e.target.value as "minus" } })}><option value="minus">-1.500</option><option value="paren">(1.500)</option><option value="trailing">1.500-</option></Select></Field>
-              <Field id="fmt-pre" label="Before" optional><Input id="fmt-pre" value={format.prefix} maxLength={10} placeholder="Rp " onChange={(e) => set({ format: { ...format, prefix: e.target.value } }, undefined, `${c.id}:prefix`)} /></Field>
-            </div>
-            <FormatExample items={[formatCell(-1234567.891, format), formatCell(98000000, format)]} />
-          </>}
-          {format.kind === "date" && <>
-            <Field id="fmt-date" label="Date as"><Select className="w-full" id="fmt-date" value={format.pattern} onChange={(e) => set({ format: { kind: "date", pattern: e.target.value as "dd/MM/yyyy" } })}>{DATE_PATTERNS.map((p) => <option key={p}>{p}</option>)}</Select></Field>
-            <FormatExample items={[formatCell("2026-11-05", format)]} />
-          </>}
-          {format.kind === "text" && <Field id="fmt-case" label="Letters"><Select className="w-full" id="fmt-case" value={format.case} onChange={(e) => set({ format: { kind: "text", case: e.target.value as "as_is" } })}><option value="as_is">As they are</option><option value="upper">UPPER CASE</option><option value="lower">lower case</option></Select></Field>}
+          <ColumnFormatFields id="fmt" value={format} onChange={(f, key) => set({ format: f }, undefined, key ? `${c.id}:${key}` : undefined)} />
           <Field id="col-hl" label="Highlight">
             <Select className="w-full" id="col-hl" value={c.highlight ? `${c.highlight.when}:${c.highlight.style}` : ""} onChange={(e) => {
               const [when, style] = e.target.value.split(":") as ["not_zero", "red"];
