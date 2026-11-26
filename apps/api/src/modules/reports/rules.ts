@@ -12,6 +12,12 @@ export function formulaProblems(s: ReportSpec): { path: (string | number)[]; mes
   });
 }
 
+/** A side's fields' heading: "<side label> · <source name>", said once when the two read the same. */
+export function sideGroupLabel(side: string, source: string): string {
+  const [a, b] = [side.trim(), source.trim()];
+  return !a || a.toLowerCase() === b.toLowerCase() ? a || b : `${a} · ${b}`;
+}
+
 /** Why a version can't be sent yet, or null: it needs a column, and every formula must work. */
 export function sendProblem(s: ReportSpec): string | null {
   if (!s.columns.length) return "Add at least one column.";

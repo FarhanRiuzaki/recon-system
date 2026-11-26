@@ -153,4 +153,13 @@ describe("summary only", () => {
     const lines = linesOf(s, rows.map((d, i) => ({ ...renderRow(s, d, i, r), data: d })));
     expect(lines.map((l) => [l.kind, ...l.cells])).toEqual([["row", "matched", "1", "1.500,00"], ["row", "unmatch", "1", "-25,00"], ["total", "Total", "2", "1.475,00"]]);
   });
+  it("a group's value is in its column's format (a date as dd/MM/yyyy), in the summary line and the group line", () => {
+    const d: DataRow[] = [{ date: "2026-11-25", values: { "recon:businessDate": "2026-11-25", "a:amount_minor": 10 } }];
+    const cols = [{ ...columnFor("c1", "recon:businessDate", "Business date"), format: { kind: "date" as const, pattern: "dd/MM/yyyy" as const } }, amount(2, ".")];
+    const sum: ReportSpec = { ...design(), groups: ["recon:businessDate"], summaryOnly: true, columns: cols, totals: { on: false, perGroup: false, columns: { c3: "sum" } } };
+    const r = rendererOf(sum, new Set());
+    expect(linesOf(sum, d.map((x, i) => ({ ...renderRow(sum, x, i, r), data: x })))[0]!.cells[0]).toBe("25/11/2026");
+    const grouped: ReportSpec = { ...sum, summaryOnly: false };
+    expect(linesOf(grouped, d.map((x, i) => ({ ...renderRow(grouped, x, i, r), data: x })))[0]).toMatchObject({ kind: "group", cells: ["25/11/2026", ""] });
+  });
 });

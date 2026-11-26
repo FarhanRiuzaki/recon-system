@@ -4,12 +4,14 @@
 // Customer data: every account, the recon's result columns marked so (the recon's rule), and source attributes
 // marked so in their source's mapping.
 import type { ReportFieldDto, ReportFieldsDto } from "@starterkit/shared/contracts/reports";
-import { CORE_FIELDS, FIELD_LABEL, recordFields } from "@starterkit/shared/recon";
+import { fieldName } from "@starterkit/shared/conditions";
+import { CORE_FIELDS, recordFields } from "@starterkit/shared/recon";
 import type { ReportDataset } from "@starterkit/shared/reports";
 import { RECON_INFO_FIELDS, RECON_INFO_LABEL } from "@starterkit/shared/results";
 import type { InTx } from "../../kernel/db";
 import { resultColumnsOf } from "../recon";
 import { readableSources } from "../sources";
+import { sideGroupLabel } from "./rules";
 
 const RECAP: [string, string, ReportFieldDto["type"]][] = [
   ["date", "Business date", "date"], ["currency", "Currency", "text"], ["results", "Results", "number"], ["matched", "Matched", "number"], ["breaks", "Breaks", "number"],
@@ -41,11 +43,12 @@ export async function fieldCatalog(tx: InTx, spaceId: string, configId: string, 
     const customerAttrs = new Set(((src.spec.mapping as { customer?: string[] }).customer ?? []).map((n) => `attrs.${n}`));
     const fields = [...recordFields(src.spec).entries()].map(([f, rf]): ReportFieldDto => ({
       ref: `${k}:${f}`,
-      label: f.startsWith("attrs.") ? f.slice(6) : FIELD_LABEL[f as keyof typeof CORE_FIELDS] ?? f,
+      // an attribute has no label of its own: its name said in words ("receiver_bank" → "Receiver bank")
+      label: fieldName(f),
       type: f in CORE_FIELDS ? (CORE_FIELDS[f as keyof typeof CORE_FIELDS] === "decimal" ? "number" : CORE_FIELDS[f as keyof typeof CORE_FIELDS] === "date" ? "date" : "text") : KIND_TYPE[rf.kind] ?? "text",
       customer: f === "account_ref" || flagged.has(`${k}:${f}`) || customerAttrs.has(f),
     }));
-    groups.push({ label: `${side.label} · ${src.name}`, fields });
+    groups.push({ label: sideGroupLabel(side.label, src.name), fields });
   });
   // Items: the same fields side-neutral (item:…), read from whichever side the item is on
   if (dataset === "items") {

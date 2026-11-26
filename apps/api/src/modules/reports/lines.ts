@@ -96,6 +96,11 @@ function totalsLine(spec: ReportSpec, sums: number[], n: number, kind: "subtotal
  */
 export function linesOf(spec: ReportSpec, rows: RowIn[], label: (ref: string, v: string) => string = (_, v) => v, hidden: Set<string> = new Set()): Line[] {
   const out: Line[] = [];
+  // a group's value as its column shows it (a date column's pattern), then labelled (masked) like the file's cells
+  const shownKey = (ref: string, k: string) => {
+    const col = spec.columns.find((c) => c.content.kind === "field" && c.content.ref === ref);
+    return k === "" ? "(empty)" : label(ref, col ? formatCell(k, col.format) : k);
+  };
   const blank = (text: string, level: number): Line => ({ kind: "group", level, cells: spec.columns.map((_, i) => (i === 0 ? `${"  ".repeat(level)}${text}` : "")), values: spec.columns.map((_, i) => (i === 0 ? `${"  ".repeat(level)}${text}` : "")), text: spec.columns.map(() => true), marks: spec.columns.map(() => "bold" as const) });
   // summary only: a group's line holds its fields' values (masked as the file is) and its totals, no detail rows
   const summary = (part: RowIn[], keys: string[]): Line => {
@@ -103,7 +108,7 @@ export function linesOf(spec: ReportSpec, rows: RowIn[], label: (ref: string, v:
     const cells = spec.columns.map((c, i) => {
       const g = c.content.kind === "field" ? spec.groups.indexOf(c.content.ref) : -1;
       if (g < 0 || g >= keys.length) return spec.totals.columns[c.id] ? t.cells[i]! : "";
-      return keys[g] === "" ? "(empty)" : label(spec.groups[g]!, keys[g]!);
+      return shownKey(spec.groups[g]!, keys[g]!);
     });
     const values = cells.map((x, i) => (spec.totals.columns[spec.columns[i]!.id] && typeof t.values[i] === "number" && x === t.cells[i] ? t.values[i]! : x));
     return { kind: "row", level: 0, cells, values, text: values.map((v) => typeof v !== "number"), marks: cells.map(() => null) };
@@ -116,7 +121,7 @@ export function linesOf(spec: ReportSpec, rows: RowIn[], label: (ref: string, v:
     const by = Map.groupBy(part, key);
     for (const k of [...by.keys()].sort((a, b) => a.localeCompare(b))) {
       const g = by.get(k)!;
-      if (!spec.summaryOnly) out.push(blank(k === "" ? "(empty)" : label(ref, k), level));
+      if (!spec.summaryOnly) out.push(blank(shownKey(ref, k), level));
       walk(g, level + 1, [...keys, k]);
       if (!spec.summaryOnly && spec.totals.on && spec.totals.perGroup) out.push(totalLine(spec, g, "subtotal", level, hidden));
     }

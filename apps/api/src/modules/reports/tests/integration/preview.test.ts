@@ -81,7 +81,7 @@ describe("preview", () => {
     expect(c.groups.map((g) => g.label)[0]).toBe("Result");
     expect(all.find((f) => f.ref === "a:account_ref")).toMatchObject({ customer: true, type: "text" });
     expect(all.find((f) => f.ref === "a:amount_minor")).toMatchObject({ type: "number", customer: false });
-    expect(all.find((f) => f.ref === "b:attrs.settlement_ref")).toMatchObject({ label: "settlement_ref", type: "text" });
+    expect(all.find((f) => f.ref === "b:attrs.settlement_ref")).toMatchObject({ label: "Settlement ref", type: "text" });
     expect(all.find((f) => f.ref === "recon:status")).toMatchObject({ type: "status" });
     const r = await json<Cat>(call("GET", `${base()}/templates/${T.id}/fields?dataset=recap`, { token: mk }));
     expect(r.groups.flatMap((g) => g.fields).find((f) => f.ref === "recap:match_rate")).toMatchObject({ type: "number" });
