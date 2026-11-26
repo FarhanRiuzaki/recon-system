@@ -418,7 +418,9 @@ describe("day close, review round 1", () => {
     await complete(sb, at("2026-12-01T00:00:00"));
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, at("2026-12-01T00:00:00"))).toBe("closed");
-    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status, i.reason, i.breakPass])).toEqual([
+    // the two side-B T1 rows are alike: which one the tie keeps follows their ids, so compare them in a fixed order
+    const key = (x: unknown[]) => x.map(String).join("|");
+    expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status, i.reason, i.breakPass]).sort((x, y) => key(x).localeCompare(key(y)))).toEqual([
       ["T1", "a", "break", "Duplicate", 1], ["T1", "b", "break", "Duplicate", 1], ["T1", "b", "break", "No counterpart", null],
       ["U1", "a", "break", "Unconfirmed suggestion", null], ["U1", "b", "break", "Unconfirmed suggestion", null],
     ]);
