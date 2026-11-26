@@ -16,19 +16,28 @@ export const breakReason = (p: PassSpec): string =>
   p.blocking.length || p.predicates.some((q) => q.op === "eq" || q.op === "eq_normalized") ? "Duplicate" : "Ambiguous";
 
 /**
- * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`); answers the items, those of side A, and their
+ * Breaks the items of CTE `t` (id, v, bd) as pass `p`'s (`break_pass`; a one-way recon's side-B items become not required
+ * instead, DEC-062); answers the items broken, those of side A, and their
  * distinct references (the records' ext_ref: a Duplicate counts keys, "10 references, 30 items"). Every item it breaks
  * was open or not required, a new break: on a closed date (a carried-over one) it adds to that date's stored open
  * counter, as a sweep's breaks do (REC-FUT-17); no sweep sees it later, it is a break already.
  */
-const breakItems = (c: StepCtx, p: PassSpec): SQL => sql`up as (update ${reconItems} i set status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}, version = i.version + 1
-    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side)${c.simRunId === null ? sql`,
+const breakItems = (c: StepCtx, p: PassSpec): SQL => {
+  // a one-way recon's side B never breaks (DEC-062): its items of the conflict are not required, still candidates
+  const set = c.oneWay
+    ? sql`status = case when i.side = 'b' then 'not_required' else 'break' end, break_reason = case when i.side = 'b' then null else ${breakReason(p)} end,
+      break_pass = case when i.side = 'b' then i.break_pass else ${p.no} end`
+    : sql`status = 'break', break_reason = ${breakReason(p)}, break_pass = ${p.no}`;
+  return sql`all_up as (update ${reconItems} i set ${set}, version = i.version + 1
+    from t x where i.space_id = ${c.spaceId} and i.id = x.id and i.business_date = x.bd and i.status in ('open', 'not_required') and i.version = x.v returning i.record_id, i.business_date, i.side, i.status),
+  up as (select * from all_up where status = 'break')${c.simRunId === null ? sql`,
   dc as (update ${reconDays} d set counters = jsonb_build_object('open', coalesce((d.counters ->> 'open')::int, 0) + n.n,
       'suggested', coalesce((d.counters ->> 'suggested')::int, 0))
     from (select business_date, count(*)::int as n from up group by business_date) n
     where d.space_id = ${c.spaceId} and d.config_id = ${c.configId} and d.business_date = n.business_date and d.status = 'closed')` : sql``}
   select count(*)::int as items, count(*) filter (where up.side = 'a')::int as a, (select count(distinct r.ext_ref)::int from up join ${records} r on r.space_id in (${c.sides[0].sourceSpaceId}, ${c.sides[1].sourceSpaceId})
-    and r.id = up.record_id and r.business_date = up.business_date) as refs, string_agg(distinct up.business_date::text, ',') as dates from up`;
+    and r.id = up.record_id and r.business_date = up.business_date) as refs, (select string_agg(distinct business_date::text, ',') from all_up) as dates from up`;
+};
 
 /**
  * 1:1, once no pair is taken: every item still with a candidate is in a tie; all of them break, but for the items two
@@ -61,8 +70,9 @@ export function groupBreakSql(c: StepCtx, p: PassSpec): SQL {
 /** Why an item without a pair is a break (day close; the plan's "Alasan break saat tutup hari"). */
 export const NEAR_MISS = { currency: "Currency differs", amount: "Amount differs", date: "Date differs", none: "No counterpart" } as const;
 /**
- * A one-way recon's side-B item with no near pair (DEC-055): no break, the item becomes `not_required`. Not a break
- * reason (BREAK_REASONS): the classifier answers it in place of "No counterpart", for side B of a one-way recon only.
+ * A one-way recon's side-B item without a pair (DEC-055, DEC-062): no break, the item becomes `not_required`, whatever
+ * the near miss (side A's item keeps its reason and the pair). Not a break reason (BREAK_REASONS): the classifier
+ * answers it for every side-B item of a one-way recon.
  */
 export const NOT_REQUIRED = "Not required";
 export type NearMissReason = (typeof NEAR_MISS)[keyof typeof NEAR_MISS] | typeof NOT_REQUIRED;
@@ -98,9 +108,9 @@ const sideItems = (c: ClassifyCtx, s: 0 | 1, statuses: SQL, from: SQL, to: strin
  * date, then record order. Its reason is the first field that differs: currency, amount (compared amounts, each side's
  * sign convention), business date. No item with that reference on the other side, or one that differs in none of the
  * three (it failed another predicate, or an operator holds it) = "No counterpart" without a pair. One hash join on the
- * reference, no scan per item. A one-way recon's (`oneWay`) side-B item that way is NOT_REQUIRED instead, but only when no
- * side-A item of its reference is in the window in any status but closed (one matched, suggested or broken with another
- * side-B item makes this one a double settlement: it stays "No counterpart"). Rows: item_id, side, business_date, reason, pair_item_id.
+ * reference, no scan per item. A one-way recon's (`oneWay`) side-B item is NOT_REQUIRED without a pair, whatever its
+ * near miss (DEC-062: side B never breaks; side A's item keeps its reason and pair). Rows: item_id, side,
+ * business_date, reason, pair_item_id.
  */
 export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL): SQL {
   const open = sql`'open'`, unpaired = sql`'open', 'break', 'not_required'`;
@@ -114,10 +124,8 @@ export function nearMissSql(c: ClassifyCtx, from: string, to: string, only?: SQL
       when o.bd <> m.bd then ${NEAR_MISS.date} end as reason,
       row_number() over (partition by m.id order by (o.ccy is distinct from m.ccy), abs(o.amt - m.amt) nulls last, abs(o.bd - m.bd), o.bd, o.et, o.rid) as rn
     from m left join o on o.ref = m.ref and o.side <> m.side and o.bd between m.bd - ${c.carry}::int and m.bd),
-  k as (select * from p where rn = 1)${c.oneWay ? sql`,
-  ax as materialized (select ref, bd from (${sideItems(c, 0, sql`'open', 'matched', 'suggested', 'break', 'not_required'`, lo, to)}) s)` : sql``}
-  select id as item_id, side, bd::text as business_date, coalesce(reason, ${c.oneWay
-    ? sql`case when side = 'b' and not exists (select 1 from ax where ax.ref = k.ref and ax.bd >= k.bd - ${c.carry}::int) then ${NOT_REQUIRED} end`
-    : sql`null`}, ${NEAR_MISS.none}) as reason, case when reason is null then null else pid end as pair_item_id
+  k as (select *${c.oneWay ? sql`, side = 'b' as nr` : sql`, false as nr`} from p where rn = 1)
+  select id as item_id, side, bd::text as business_date, case when nr then ${NOT_REQUIRED} else coalesce(reason, ${NEAR_MISS.none}) end as reason,
+    case when reason is null or nr then null else pid end as pair_item_id
   from k order by bd, side, id`;
 }

@@ -146,7 +146,7 @@ describe("statements", () => {
     const late = acceptSql({ ...ctx, late: true }, p2);
     expect(text(late)).toContain("and (i.status = 'open' or (((i.status = 'break' and i.late_match and i.break_reason = $");
     // and a one-way recon's not-required side-B items (DEC-055), under the same signed-off rule
-    expect(text(late)).toContain("is distinct from 'pending_approval') or i.status = 'not_required')");
+    expect(text(late)).toContain("is distinct from 'pending_approval') or (i.status = 'not_required' and not exists (select 1 from match_members sm");
     // only "No counterpart" breaks rejoin across days (DEC-047, Captain): the bound reason is the classifier's
     expect(dialect.sqlToQuery(late).params).toContain(NEAR_MISS.none);
   });
@@ -178,6 +178,8 @@ describe("statements", () => {
     expect(b).toContain("held as (select a_id as id from c where not a_lk union select b_id from c where not b_lk)");
     expect(b).toContain("from c where a_id not in (select id from near)");
     expect(b).toContain("set status = 'break', break_reason = $");
+    // a one-way recon's side B never breaks (DEC-062): its items of the conflict are not required
+    expect(text(tieBreakSql({ ...ctx, oneWay: true }, p2))).toContain("set status = case when i.side = 'b' then 'not_required' else 'break' end");
     expect(breakReason(p2)).toBe("Duplicate");
     expect(breakReason(pass({ predicates: [{ op: "date_window", field: "business_date", days: 1 }] }))).toBe("Ambiguous");
   });

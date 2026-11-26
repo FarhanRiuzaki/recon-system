@@ -61,13 +61,15 @@ export function graceSql(c: StepCtx, graceMinutes: number, carry: number): SQL {
  * closed dates again, for what a close skipped), every open item breaks with its near-miss reason (late_match only for "No counterpart": a late counterpart may still close it when carry
  * over > 0), and every item of an unconfirmed suggestion dated there breaks with its pass's reason, its suggested group
  * kept as the pair to accept in one click (not late_match: a person decides it); a tie suggestion breaks as Duplicate
- * with its pass in break_pass, like a pass's own ambiguity breaks. Answers per business date of the items broken
+ * with its pass in break_pass, like a pass's own ambiguity breaks. A one-way recon's side-B item of such a suggestion is
+ * not required instead (DEC-062: side B never breaks; the group stays side A's pair). Answers per business date of the items broken
  * { d, open, suggested } (REC-FUT-17: each date's counters count its own items), and `nr`: items made not required (no break).
  */
 export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   const has = (ops: string[]) => sql`exists (select 1 from jsonb_array_elements(g.evidence -> 'predicates') e
       where e ->> 'op' in (${sql.join(ops.map((o) => sql`${o}`), sql`, `)}) and coalesce((e ->> 'delta')::numeric, 0) <> 0)`;
-  return sql`with sg as materialized (select m.item_id as id, case
+  return sql`with sg as materialized (select m.item_id as id, case${c.oneWay ? sql`
+        when m.side = 'b' then ${NOT_REQUIRED}` : sql``}
         when g.evidence ->> 'chosen' = ${CHOSEN.tie} then ${SUGGESTED_REASON.tie}
         when ${has(["amount_abs_tol", "amount_pct_tol", "eq_sum"])} then ${SUGGESTED_REASON.amount}
         when ${has(["date_window", "bday_window"])} then ${SUGGESTED_REASON.date}
@@ -81,7 +83,7 @@ export function closeDaySql(c: ClassifyCtx, lo: string, hi: string): SQL {
   k as (${nearMissSql(c, lo, hi, sql`i.id in (select id from lk)`)}),
   ${breakLocked(c, sql`lk left join k on k.item_id = lk.id left join sg on sg.id = lk.id`, sql`case when lk.st = 'open' then k.reason else sg.reason end`, sql`lk.st = 'open' and k.reason = ${NEAR_MISS.none}`,
     sql`case when lk.st = 'suggested' and sg.reason = ${SUGGESTED_REASON.tie} then sg.pass_no else i.break_pass end`)}
-  select bd::text as d, count(*) filter (where st = 'open' and ns = 'break')::int as open, count(*) filter (where st = 'suggested')::int as suggested,
+  select bd::text as d, count(*) filter (where st = 'open' and ns = 'break')::int as open, count(*) filter (where st = 'suggested' and ns = 'break')::int as suggested,
     count(*) filter (where ns = 'not_required')::int as nr from up group by bd order by bd`;
 }
 

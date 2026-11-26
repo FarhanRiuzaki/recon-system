@@ -1,6 +1,7 @@
 // One-way recons (direction a_to_b, docs/superpowers/specs/2026-11-24-one-way-recon-design.md): side A behaves as in a
-// two-way recon; a side-B item with no counterpart is `not_required` at grace and day close, never an unmatch. It stays
-// a candidate for a later side-A item within carry over; a near miss with a side-B item stays an unmatch. Not-required
+// two-way recon; a side-B item without a pair is `not_required` at grace and day close, never an unmatch (DEC-062: also a
+// near miss, a Duplicate, a double settlement or an unconfirmed suggestion; side A's item carries the unmatch). It stays
+// a candidate for a later side-A item within carry over. Not-required
 // items are left out of the Unmatch list and its counts, the nav count, the day's counters and sign-off, the dashboard;
 // Operation result shows them as "Not required". A draft's simulation projects them under that reason.
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
@@ -77,16 +78,16 @@ afterAll(async () => {
 });
 
 describe("one-way recon (a_to_b)", () => {
-  it("day close: side A without a counterpart is an unmatch; side B is not required; a near miss or a Duplicate with side B stays an unmatch", async () => {
+  it("day close: side A without a counterpart is an unmatch; side B is not required, also in a near miss or a Duplicate (side A's item keeps it)", async () => {
     const { r } = await dayD("a_to_b");
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.side, i.status, i.reason])).toEqual([
       ["A1", "a", "matched", null], ["A1", "b", "matched", null], ["A2", "a", "break", "No counterpart"],
-      ["AD", "a", "break", "Amount differs"], ["AD", "b", "break", "Amount differs"],
+      ["AD", "a", "break", "Amount differs"], ["AD", "b", "not_required", null],
       ["B9", "b", "not_required", null],
-      ["DU", "a", "break", "Duplicate"], ["DU", "a", "break", "Duplicate"], ["DU", "b", "break", "Duplicate"],
+      ["DU", "a", "break", "Duplicate"], ["DU", "a", "break", "Duplicate"], ["DU", "b", "not_required", null],
     ]);
-    // the day's counters count the unmatch its close made: A2 and the AD pair, never B9
-    expect((await db.select({ c: reconDays.counters }).from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!.c).toEqual({ open: 3, suggested: 0 });
+    // the day's counters count the unmatch its close made: A2 and AD's side A, never side B
+    expect((await db.select({ c: reconDays.counters }).from(reconDays).where(eq(reconDays.configId, r.configId)))[0]!.c).toEqual({ open: 2, suggested: 0 });
   }, 60_000);
 
   it("a run's day counts its not-required items, so items add up to matched, waiting, unmatch and not required", async () => {
@@ -95,7 +96,7 @@ describe("one-way recon (a_to_b)", () => {
     await finalizeRun(probe, A, run!.id);
     const [row] = await db.select({ days: reconRuns.days }).from(reconRuns).where(eq(reconRuns.id, run!.id));
     const day = (row!.days as RunDay[]).find((d) => d.date === D)!;
-    expect([day.items, day.notRequired]).toEqual([{ a: 5, b: 4 }, { a: 0, b: 1 }]);
+    expect([day.items, day.notRequired]).toEqual([{ a: 5, b: 4 }, { a: 0, b: 3 }]);
   }, 60_000);
 
   it("two-way is unchanged: the same side-B item breaks as No counterpart", async () => {
@@ -106,27 +107,28 @@ describe("one-way recon (a_to_b)", () => {
   it("Unmatch list, its summary, the nav count, sign-off and the dashboard leave not-required items out; Operation result shows them", async () => {
     const { r } = await dayD("a_to_b");
     const breaks = await json<Page<BreakRowDto>>(call("GET", `/v1/spaces/${A}/breaks?pageSize=100`, { token }));
-    expect(breaks.total).toBe(6);
+    expect(breaks.total).toBe(4);
     expect(breaks.items.map((b) => b.ref)).not.toContain("B9");
-    expect((await json<{ open: number }>(call("GET", `/v1/spaces/${A}/breaks/summary`, { token }))).open).toBe(6);
-    expect((await json<NavCountsDto>(call("GET", `/v1/spaces/${A}/nav-counts`, { token }))).unmatch).toBe(6);
+    expect((await json<{ open: number }>(call("GET", `/v1/spaces/${A}/breaks/summary`, { token }))).open).toBe(4);
+    expect((await json<NavCountsDto>(call("GET", `/v1/spaces/${A}/nav-counts`, { token }))).unmatch).toBe(4);
 
     const counts = await json<ResultCountsDto>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/results/counts?dateFrom=${D}&dateTo=${D}`, { token }));
-    expect(counts.counts).toEqual({ matched: 1, unmatch: 6, not_required: 1 });
-    expect(counts.sideB.not_required).toBe(1);
+    // unmatch: A2, AD and DU's side-A items (side A only); not required: B9, AD's and DU's side-B items
+    expect(counts.counts).toEqual({ matched: 1, unmatch: 4, not_required: 3 });
+    expect(counts.sideB.not_required).toBe(3);
     const rows = await json<Page<ResultRowDto>>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/results?dateFrom=${D}&dateTo=${D}&result=not_required`, { token }));
-    expect(rows.items.map((x) => [x.status, x.a.state, x.b.state, x.openItemId])).toEqual([["not_required", "none", "not_required", null]]);
+    expect(rows.items.map((x) => [x.status, x.a.state, x.b.state, x.openItemId])).toEqual(Array(3).fill(["not_required", "none", "not_required", null]));
 
     const [day] = (await json<Page<SignoffRowDto>>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/signoffs`, { token }))).items;
-    expect(day).toMatchObject({ openBreaks: 3, blocked: null });
+    expect(day).toMatchObject({ openBreaks: 2, blocked: null });
     expect((await call("POST", `/v1/spaces/${A}/recons/${r.configId}/signoffs/prepare`, { token, body: { date: D } })).status).toBe(200);
 
     await withSpace({ spaceIds: [A], userId: null }, (tx) => recomputeDayStats(tx, A, r.configId, D));
     const dash = await json<ReconDashboardDto>(call("GET", `/v1/dashboard/recon?space=${A}&from=${D}&to=${D}`, { token }));
-    expect(dash.open.count).toBe(6);
-    expect(dash.open.broke).toBe(6);
-    // the auto-match rate's records: side A's 5 and the 4 side-B records of a pair or an unmatch, not B9
-    expect(dash.autoRate).toMatchObject({ matched: 2, records: 8 });
+    expect(dash.open.count).toBe(4);
+    expect(dash.open.broke).toBe(4);
+    // the auto-match rate's records: side A's 5 and the one side-B record of a pair, not the 3 not required
+    expect(dash.autoRate).toMatchObject({ matched: 2, records: 6 });
   }, 60_000);
 
   it("a side-A item of a later date within carry over pairs a not-required side-B item", async () => {
@@ -138,15 +140,16 @@ describe("one-way recon (a_to_b)", () => {
     ]);
   }, 60_000);
 
-  it("a pass's Duplicate that breaks a not-required item of a closed date counts on that date's open counter", async () => {
+  it("a pass's Duplicate with a not-required item of a closed date breaks side A only", async () => {
     const { r, sa } = await dayD("a_to_b");
     await put(sa, [{ ref: "B9", amount: 50n, date: D1 }, { ref: "B9", amount: 50n, date: D1 }]);
     await runRecon(probe, { ...r, mode: "daily", from: D1 });
     expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => [i.side, i.status, i.reason])).toEqual([
-      ["a", "break", "Duplicate"], ["a", "break", "Duplicate"], ["b", "break", "Duplicate"],
+      ["a", "break", "Duplicate"], ["a", "break", "Duplicate"], ["b", "not_required", null],
     ]);
+    // the side-B item stays not required: D's counter keeps its close's 2
     const [day] = await db.select({ c: reconDays.counters }).from(reconDays).where(and(eq(reconDays.configId, r.configId), eq(reconDays.businessDate, D)));
-    expect(day!.c).toEqual({ open: 4, suggested: 0 });
+    expect(day!.c).toEqual({ open: 2, suggested: 0 });
   }, 60_000);
 
   it("carry over 0: a not-required item never meets a later date", async () => {
@@ -190,17 +193,17 @@ describe("one-way recon (a_to_b)", () => {
     expect((await itemsOf(r.configId)).map((i) => [i.ref, i.status, i.reason])).toEqual([["G1", "break", "No counterpart"], ["G2", "not_required", null]]);
   }, 60_000);
 
-  it("a tie a suggesting pass settles with one side-B item: the other side-B item of that reference stays an unmatch", async () => {
+  it("a tie a suggesting pass settles with one side-B item: at day close side A is the unmatch, both side-B items not required", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, oneWay(sa.sourceId, sb.sourceId, [{ ...exact, on_ambiguous: "suggest" }]));
     await put(sa, [{ ref: "T1", amount: 10n }]);
     await put(sb, [{ ref: "T1", amount: 10n }, { ref: "T1", amount: 10n }]);
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, after)).toBe("closed");
-    expect((await itemsOf(r.configId)).filter((i) => i.side === "b").map((i) => i.status)).toEqual(["break", "break"]);
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status])).toEqual([["a", "break"], ["b", "not_required"], ["b", "not_required"]]);
   }, 60_000);
 
-  it("a second side-B item of a reference side A already matched is an unmatch (a double settlement), not not required", async () => {
+  it("a second side-B item of a reference side A already matched (a double settlement) is not required too", async () => {
     const [sa, sb] = await sides();
     const r = await recon(A, oneWay(sa.sourceId, sb.sourceId));
     await put(sa, [{ ref: "W1", amount: 10n }]);
@@ -209,7 +212,7 @@ describe("one-way recon (a_to_b)", () => {
     await put(sb, [{ ref: "W1", amount: 10n }]);
     await runRecon(probe, { ...r, mode: "daily", from: D });
     expect(await closeDay(probe, r, D, after)).toBe("closed");
-    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status]).sort()).toEqual([["a", "matched"], ["b", "break"], ["b", "matched"]]);
+    expect((await itemsOf(r.configId)).map((i) => [i.side, i.status]).sort()).toEqual([["a", "matched"], ["b", "matched"], ["b", "not_required"]]);
   }, 60_000);
 
   it("publishing a two-way version makes not-required items of a closed date unmatch at once (no sweep needed), others open", async () => {
@@ -222,7 +225,8 @@ describe("one-way recon (a_to_b)", () => {
     const [day] = await db.select({ counters: reconDays.counters }).from(reconDays).where(and(eq(reconDays.configId, r.configId), eq(reconDays.businessDate, D)));
     expect((day!.counters as { open: number }).open).toBeGreaterThanOrEqual(1);
     const acts = await json<Page<{ action: string; after: { reopened?: number } | null }>>(call("GET", `/v1/spaces/${A}/recons/${r.configId}/activity`, { token }));
-    expect(acts.items.find((e) => e.action === "recon.version_approve")?.after?.reopened).toBe(1);
+    // B9, and AD's and DU's side-B items
+    expect(acts.items.find((e) => e.action === "recon.version_approve")?.after?.reopened).toBe(3);
     await sweepClosed(probe, r, D, D);
     expect((await itemsOf(r.configId)).filter((i) => i.ref === "B9").map((i) => [i.status, i.reason])).toEqual([["break", "No counterpart"]]);
   }, 60_000);

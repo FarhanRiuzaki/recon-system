@@ -20,8 +20,9 @@ export const ON_AMBIGUOUS = ["break", "suggest"] as const;
 export const AMOUNT_SIGNS = ["as_is", "negate"] as const;
 /**
  * Which sides must find their counterpart (owner, 24 Nov): `two_way` both; `a_to_b` side A must settle in side B, so a
- * side-B item without one is `not_required` at grace and day close, never an unmatch (DEC-055). A spec without the key
- * (every spec stored before it) is two-way.
+ * side-B item without a pair is `not_required` at grace and day close, never an unmatch (DEC-055), whatever the near
+ * miss, duplicate or suggestion (DEC-062: side A's item carries it). A spec without the key (every spec stored before
+ * it) is two-way.
  */
 export const RECON_DIRECTIONS = ["two_way", "a_to_b"] as const;
 export type ReconDirection = (typeof RECON_DIRECTIONS)[number];

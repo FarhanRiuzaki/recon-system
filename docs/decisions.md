@@ -694,7 +694,7 @@ watermark (`>=`).
 - Spec tersimpan dengan watermark date-only dan `lookback_seconds` di bawah 1 hari (86.400 s) akan pause pada pull
   berikutnya dengan alasannya (`lookbackOf`): perlu versi baru dengan look back minimal 1 hari.
 
-## DEC-055 — Recon satu arah (A ke B): sisi B tanpa pasangan "Not required", bukan unmatch
+## DEC-055 — Recon satu arah (A ke B): sisi B tanpa pasangan "Not required", bukan unmatch (aturan sisi B diperluas DEC-062)
 
 24 November 2026 — pemilik: "recon itu bisa oneway, bisa two way … sisi A sebagai pintu, cek ke sisi B sebagai settle …
 ada juga yg 2 arah". Versi recon punya `direction` (`two_way` | `a_to_b`; tanpa kunci = two-way, jadi spec lama tetap
@@ -851,3 +851,23 @@ Formula yang membaca field data nasabah ikut dimasking; atribut source bisa dita
 (`mapping.customer`, lewat versi source dan approval-nya). Versi v1 yang tersimpan dikonversi saat dibaca
 (`parseStoredSpec`/`fromV1`), tanpa migrasi data. Antrean, file, approval, unduhan, retensi tetap DEC-060.
 Spec: `docs/superpowers/specs/2026-11-26-report-designer-design.md`.
+
+## DEC-062 — Recon satu arah: sisi B tidak pernah unmatch
+
+26 November 2026 — pemilik: "klo di config recon gue set one way, yg terjadi di side B akan pasti not required, ga akan
+jadi unmatch side B, kecuali two way. makanya ada 2 tipe." Mengganti aturan "hanya No counterpart polos" di DEC-055.
+Kasus pemicunya Kofis New: ref = SRE (rekening efek), satu SRE banyak efek, jadi item sisi B dengan efek yang tidak ada
+di KSEI selalu menemukan item A ber-ref sama dan tetap "No counterpart" (835 item di 25 Nov).
+
+- Di recon `a_to_b`, item sisi B tanpa pasangan selalu `not_required`: near miss (currency, amount, date differs),
+  double settlement, Duplicate/Ambiguous dari pass, dan item sisi B dari suggestion yang belum dikonfirmasi saat tutup
+  hari. Unmatch-nya dipikul item sisi A dengan alasannya sendiri (sql/breaks.ts `nearMissSql`, `breakItems`;
+  sql/days.ts `closeDaySql`).
+- Suggestion yang belum dikonfirmasi tetap jadi pasangan item A (group-nya tidak dibalik); item B-nya `not_required`
+  tapi keluar dari pool selama masih di suggested group yang hidup, supaya tidak dipasangkan dua kali (sql/pass.ts
+  `poolStatus`).
+- Data lama: migration 0076 mengubah break sisi B recon one-way yang belum disentuh (tanpa break_state, assignee,
+  resolution, posting group, hari belum signed) jadi `not_required` dan mengurangi counter open hari yang closed.
+- Kembali ke two-way tetap lewat `reopenNotRequired` (DEC-055): di hari closed semua jadi "No counterpart", termasuk
+  bekas near miss (sweep tidak kembali ke hari closed).
+- Tes: `engine/tests/integration/one-way.test.ts`, `engine/tests/unit/pass.test.ts`.
