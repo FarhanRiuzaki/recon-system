@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { toast } from "@starterkit/ui/ui/toast";
 import type { RollbackPullDto, RunSourceDto, SourceDto, SourceSummaryDto, SourceVersionDetailDto, SourceVersionDto } from "@starterkit/shared/contracts/sources";
 import type { SourceKind } from "@starterkit/shared/sources";
@@ -7,6 +8,7 @@ import type { SpaceRowDto } from "@starterkit/shared/contracts/spaces";
 import { api, errorText, retryUnlessNotFound } from "@/lib/client/api";
 import { inboxFolders, INGEST_KEY, sourceDetail, SOURCES_KEY, sourceSummary, sourceVersion, spaceDetail } from "@/lib/shared/queries";
 import type { InboxFolderListDto } from "@starterkit/shared/contracts/inbox";
+import { READ_POLL_MS, READ_WATCH_MAX_MS, readMark, readOutcome } from "./read-watch";
 
 export const sourcesHref = (spaceId: string) => `/spaces/${encodeURIComponent(spaceId)}/sources`;
 export const sourceHref = (spaceId: string, id: string) => `${sourcesHref(spaceId)}/${encodeURIComponent(id)}`;
@@ -26,9 +28,41 @@ export const EDIT_REASON = "Only a source admin or a config maker of this space 
 export const RUN_REASON = "Only a source admin of this space starts a pull.";
 
 /** The source as `spaceId` sees it (through a share: the published version only). A 404 is final (no retry). */
-export function useSource(spaceId: string, id: string) {
+export function useSource(spaceId: string, id: string, poll: number | false = false) {
   const { key, url } = sourceDetail(spaceId, id);
-  return useQuery({ queryKey: key, queryFn: () => api<SourceDto>(url), retry: retryUnlessNotFound });
+  return useQuery({ queryKey: key, queryFn: () => api<SourceDto>(url), retry: retryUnlessNotFound, refetchInterval: poll });
+}
+
+/**
+ * The source page's source, watched to the end of a read the viewer asked for (`watch`: Pull now, a folder check, a
+ * rollback that waits for the next pull; read-watch.ts): read again every READ_POLL_MS until what its last read left
+ * changes, then every read of it (records, pulls, files, snapshots, the list) once more and the read's outcome a toast.
+ * Past READ_WATCH_MAX_MS it stops watching; the history's own refresh shows a read that takes longer.
+ */
+export function useWatchedSource(spaceId: string, id: string) {
+  const qc = useQueryClient();
+  const [watching, setWatching] = useState<{ mark: string } | null>(null);
+  const [ended, setEnded] = useState<SourceDto | null>(null);
+  const q = useSource(spaceId, id, watching ? READ_POLL_MS : false);
+  const s = q.data;
+  // the read ended: adjusted while rendering (React's "storing information from previous renders"), not in an effect
+  if (watching && s && readMark(s) !== watching.mark) {
+    setWatching(null);
+    setEnded(s);
+  }
+  useEffect(() => {
+    if (!watching) return;
+    const t = setTimeout(() => setWatching(null), READ_WATCH_MAX_MS);
+    return () => clearTimeout(t);
+  }, [watching]);
+  useEffect(() => {
+    if (!ended) return;
+    const o = readOutcome(ended);
+    if (o.ok) toast(o.text);
+    else toast.error(o.text);
+    void Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]);
+  }, [ended, qc]);
+  return { q, watching: !!watching, watch: () => { if (s) setWatching({ mark: readMark(s) }); } };
 }
 
 /** How many of the space's sources are in each summary state (prefetched by the page). */
@@ -53,7 +87,7 @@ export function useSpaceRoles(spaceId: string) {
  * POST …/run: queues a pull (a snapshot source: of `businessDate`). Pending on the trigger, a result toast, the
  * API's reason on failure (409 day_closed, invalid_state); the source and its ingest tables refresh after.
  */
-export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
+export function useRunSource(spaceId: string, id: string, kind?: SourceKind, onQueued?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (businessDate?: string) => api<RunSourceDto>(`/api/spaces/${encodeURIComponent(spaceId)}/sources/${encodeURIComponent(id)}/run`, {
@@ -61,7 +95,8 @@ export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
     }),
     onSuccess: (r) => {
       const what = kind === "file_inbox" ? "folder check" : "pull";
-      toast(r.queued ? `${what[0]!.toUpperCase()}${what.slice(1)} queued. The source updates when it finishes.` : `A ${what} was already waiting; it takes this one in.`);
+      toast(r.queued ? `${what[0]!.toUpperCase()}${what.slice(1)} queued. This page updates when it finishes.` : `A ${what} was already waiting; it takes this one in.`);
+      onQueued?.();
     },
     onError: (e) => toast.error(errorText(e)),
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
@@ -73,11 +108,14 @@ export function useRunSource(spaceId: string, id: string, kind?: SourceKind) {
  * which then reads those rows again. Throws the API's reason (the confirmation shows it); Pull history and the source
  * refresh after.
  */
-export function useRollbackPull(spaceId: string, id: string) {
+export function useRollbackPull(spaceId: string, id: string, onQueued?: () => void) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (pullId: string) => api<RollbackPullDto>(sourceApi(spaceId, id, `/pulls/${encodeURIComponent(pullId)}/rollback`), { method: "POST", body: "{}" }),
-    onSuccess: (r) => toast(`Rollback of ${r.pulls} ${r.pulls === 1 ? "pull" : "pulls"} queued. The next pull removes their rows, then reads them again.`),
+    onSuccess: (r) => {
+      toast(`Rollback of ${r.pulls} ${r.pulls === 1 ? "pull" : "pulls"} queued. The next pull removes their rows, then reads them again; this page updates when it finishes.`);
+      onQueued?.();
+    },
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: SOURCES_KEY }), qc.invalidateQueries({ queryKey: INGEST_KEY })]),
   });
 }

@@ -49,8 +49,8 @@ export function rollbackImpact(p: SourcePullDto, pulls: SourcePullDto[]): { pull
  * each pull that stored rows offers Roll back (owner, 25 Nov: a changed mapping stored rows pulled again twice), with
  * `blocked` the reason it can't now (a paused source).
  */
-export function PullHistory({ spaceId, id, rollback }: { spaceId: string; id: string; rollback: { blocked: string | null } | null }) {
-  const undo = useRollbackPull(spaceId, id);
+export function PullHistory({ spaceId, id, rollback, onQueued }: { spaceId: string; id: string; rollback: { blocked: string | null } | null; onQueued?: () => void }) {
+  const undo = useRollbackPull(spaceId, id, onQueued);
   const [asking, setAsking] = useState<SourcePullDto | null>(null);
   // the first page is the server's prefetch (no request after hydration); older pages load as the list scrolls
   const firstQ = sourcePullsFirst(spaceId, id);

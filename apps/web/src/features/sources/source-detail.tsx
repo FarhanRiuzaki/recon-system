@@ -29,7 +29,7 @@ import { SourceStatusChip } from "./source-status-chip";
 import { SOURCE_DETAIL_SHAPE } from "./shapes";
 import { SOURCE_TABS, type SourceTab } from "./source-text";
 import { at, CONNECT_TIMEOUT_LABEL, connectTimeoutText, day, errorSentence, KIND_LABEL, lagText, missingText, scheduleText } from "./source-text";
-import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSource, useSpaceRoles, useStartVersion, versionHref } from "./use-sources";
+import { EDIT_REASON, newVersionHref, RUN_REASON, sourceApi, sourceHref, sourcesHref, useRunSource, useSpaceRoles, useStartVersion, useWatchedSource, versionHref } from "./use-sources";
 
 export const ENGINE: Record<DbEngine, string> = { postgres: "PostgreSQL", mysql: "MySQL", mssql: "SQL Server", oracle: "Oracle" };
 const TAB_LABEL: Record<SourceTab, string> = { overview: "Overview", records: "Records", configuration: "Configuration", history: "History" };
@@ -142,9 +142,11 @@ function Volume({ s }: { s: SourceDto }) {
 }
 
 export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string; tab: SourceTab }) {
-  const q = useSource(spaceId, id);
+  // a read asked for here (Pull now, a rollback) is watched to its end: the page updates without a reload
+  const { q, watching, watch } = useWatchedSource(spaceId, id);
   const roles = useSpaceRoles(spaceId);
-  const run = useRunSource(spaceId, id, q.data?.kind);
+  const run = useRunSource(spaceId, id, q.data?.kind, watch);
+  const reading = run.isPending || watching;
   const start = useStartVersion(spaceId, id);
   const router = useRouter();
   const qc = useQueryClient();
@@ -162,7 +164,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
   const date = s.kind === "db_snapshot" ? h?.businessDate : undefined;
   // Never published: nothing can be pulled (the API answers 400), so the page offers no Pull now at all.
   const pull = own && !!s.publishedVersion && (
-    <BlockedButton variant="secondary" reason={blocked} disabled={run.isPending} aria-busy={run.isPending || undefined} onClick={() => run.mutate(date)}>
+    <BlockedButton variant="secondary" reason={blocked} disabled={reading} aria-busy={reading || undefined} onClick={() => run.mutate(date)}>
       {date ? `Pull ${day(date)} now` : s.kind === "file_inbox" ? "Check the folder now" : "Pull now"}
     </BlockedButton>
   );
@@ -210,7 +212,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
           {s.days.length > 0 && <Volume s={s} />}
           {s.kind === "file_inbox" && <FilesTable spaceId={spaceId} id={id} />}
           {s.kind === "db_snapshot" && (
-            <SnapshotsTable spaceId={spaceId} id={id} run={own ? { blocked, pending: run.isPending, onPull: (d) => run.mutate(d) } : null} />
+            <SnapshotsTable spaceId={spaceId} id={id} run={own ? { blocked, pending: reading, onPull: (d) => run.mutate(d) } : null} />
           )}
           {s.kind === "db_watermark" && h && (
             // the Pull card and its history side by side, the history as tall as the card (owner, 21 Nov)
@@ -226,7 +228,7 @@ export function SourceDetail({ spaceId, id, tab }: { spaceId: string; id: string
                 { label: "Grace", value: h.graceMinutes ? `${h.graceMinutes} min: degraded past half, down past it` : "Not set: the lag isn't judged. A recon that reads this source, or the source's own health settings, sets one." },
               ]} />
             </Panel>
-            {own && <PullHistory spaceId={spaceId} id={id} rollback={mayDo(roles, "connectSource") ? { blocked: s.status === "paused" ? PAUSED_REASON : null } : null} />}
+            {own && <PullHistory spaceId={spaceId} id={id} onQueued={watch} rollback={mayDo(roles, "connectSource") ? { blocked: s.status === "paused" ? PAUSED_REASON : null } : null} />}
             </div>
           )}
           {s.connection && !s.connection.options.tls && (
