@@ -43,14 +43,14 @@ export function GenerateDialog({ spaceId, recon, template, onClose }: { spaceId:
           </DialogHeader>
           <DialogBody>
             <fieldset disabled={busy} className="grid min-w-0 gap-4">
-              <Field id="report-template" label="Report">
+              <Field id="report-template" label="Report" required>
                 <Select id="report-template" value={chosen} onChange={(e) => setPick(e.target.value)}>
                   {templates.map((t) => <option key={t.id} value={t.id}>{t.name} · {t.recon.name} · {FORMAT_LABEL[t.format]}</option>)}
                 </Select>
               </Field>
               <div className="grid gap-4 md:grid-cols-2">
-                <Field id="report-from" label="From"><Input id="report-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-                <Field id="report-to" label="To"><Input id="report-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+                <Field id="report-from" label="From" required><Input id="report-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+                <Field id="report-to" label="To" required><Input id="report-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
               </div>
               <Notice>Dates not signed off when the report is read are marked Not final on every page.</Notice>
               {error && <p role="alert" className="text-body-sm text-down-ink">{error}</p>}

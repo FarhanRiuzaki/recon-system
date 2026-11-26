@@ -114,6 +114,7 @@ export function draftProblem(spec: ReportSpec): string | null {
   const f = spec.columns.find((c) => c.content.kind === "formula" && !c.content.cel.trim());
   if (f) return `${f.header || "A column"}: write the formula.`;
   if (!spec.when.afterRun && !spec.when.onRequest) return "Make it after every run, on request, or both.";
+  if (!spec.output.fileName.trim()) return "Name the file.";
   return null;
 }
 

@@ -8,7 +8,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useState } from "react";
 import type { ReportColumn, ReportSpec } from "@starterkit/shared/contracts/reports";
 import { FILTER_OPS, type FilterOp } from "@starterkit/shared/reports";
-import { Checkbox, DropZone, type ListedField, Notice, ToggleChips, TypeBadge } from "@starterkit/ui/ds";
+import { DropZone, type ListedField, Notice, ScrollFade, SwitchRow, ToggleChips, TypeBadge } from "@starterkit/ui/ds";
 import { cn } from "@starterkit/ui/lib/cn";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -17,6 +17,7 @@ import { Input } from "@starterkit/ui/ui/input";
 import { Select } from "@starterkit/ui/ui/select";
 import type { DragItem } from "./data-pane";
 import type { Placement } from "./drop-model";
+import { dayText, refLabel } from "./report-text";
 import { addGroup, dataOnly, removeGroup, type SectionKey, sectionOn, toggleSection, toggleSummary } from "./spec-model";
 import type { Preview } from "./use-reports";
 
@@ -40,7 +41,9 @@ function HeaderCell({ c, i, spec, selected, select, drop, problem, fields, readO
   const over = useDroppable({ id: `col:${c.id}`, data: { columnId: c.id } });
   const mark = drop && "columnId" in drop && drop.columnId === c.id ? drop.at : null;
   const type = c.content.kind === "field" ? fields.get(c.content.ref)?.type ?? "text" : c.content.kind === "formula" ? "formula" : c.content.kind === "rownum" ? "number" : "text";
-  const source = c.content.kind === "field" ? fields.get(c.content.ref)?.label ?? c.content.ref : c.content.kind === "formula" ? `ƒx ${c.content.cel}` : c.content.kind === "rownum" ? "Row number" : "Fixed text";
+  const source = c.content.kind === "field" ? refLabel(c.content.ref, fields) : c.content.kind === "formula" ? "Formula" : c.content.kind === "rownum" ? "Row number" : "Fixed text";
+  // the second line says what fills the column; when it reads as the header, the badge alone says the type
+  const sameAsHeader = source.trim().toLowerCase() === c.header.trim().toLowerCase();
   return (
     <th ref={(n) => { drag.setNodeRef(n); over.setNodeRef(n); }} scope="col" aria-sort="none"
       className={cn("relative border-b border-line bg-inset p-0 text-left align-bottom font-medium whitespace-nowrap", drag.isDragging && "opacity-40")}>
@@ -51,8 +54,11 @@ function HeaderCell({ c, i, spec, selected, select, drop, problem, fields, readO
         className={cn("grid w-full min-w-24 gap-0.5 rounded-t-sm px-2.5 py-2 text-left outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-edit-ink",
           c.layout.align === "r" && "justify-items-end text-right", selected && "bg-edit-soft ring-2 ring-edit-ink ring-inset", mark === "replace" && "bg-edit-soft",
           !readOnly && "cursor-grab active:cursor-grabbing")}>
-        <span className={cn("text-body-sm text-fg", !spec.sections.columnHeaders && "text-fg-3 line-through")}>{c.header || "—"}</span>
-        <span className="flex max-w-56 items-center gap-1 truncate text-caption font-normal text-fg-3"><TypeBadge type={type} className="size-4" />{source}</span>
+        <span className="flex max-w-56 items-center gap-2">
+          <TypeBadge type={type} />
+          <span className={cn("min-w-0 truncate text-body-sm text-fg", !spec.sections.columnHeaders && "text-fg-3 line-through")}>{c.header || "No heading"}</span>
+        </span>
+        {!sameAsHeader && <span className="max-w-56 truncate text-caption font-normal text-fg-3">{source}</span>}
         {problem && <span className="text-caption font-normal whitespace-normal text-down-ink">{problem}</span>}
       </button>
     </th>
@@ -83,14 +89,14 @@ function GroupZone({ spec, change, fields, readOnly, dragging }: Pick<Props, "sp
     <DropZone ref={setNodeRef} active={isOver && dragging?.kind === "field"} label="Group by">
       {spec.groups.length ? spec.groups.map((g, i) => (
         <span key={g} className="inline-flex items-center gap-1 rounded-full border border-line bg-inset py-0.5 pr-0.5 pl-2.5 text-body-sm text-fg">
-          {i ? "then " : ""}{fields.get(g)?.label ?? g}
-          {!readOnly && <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop grouping by ${fields.get(g)?.label ?? g}`} onClick={() => change((s) => removeGroup(s, i), `Stopped grouping by ${fields.get(g)?.label ?? g}`)}><Icon icon={CloseIcon} className="size-3.5" /></Button>}
+          {i ? "then " : ""}{refLabel(g, fields)}
+          {!readOnly && <Button type="button" variant="remove" size="icon-sm" aria-label={`Stop grouping by ${refLabel(g, fields)}`} onClick={() => change((s) => removeGroup(s, i), `Stopped grouping by ${refLabel(g, fields)}`)}><Icon icon={CloseIcon} className="size-3.5" /></Button>}
         </span>
       )) : <span>drag a field here to group the rows and add subtotals</span>}
-      {spec.groups.length > 0 && <Checkbox className="ml-auto" checked={spec.summaryOnly} readOnly={readOnly} label="Summary only: one row per group, no detail rows"
-        onToggle={() => change(toggleSummary, spec.summaryOnly ? "Detail rows are back" : "Summary only: one row per group with its totals")} />}
+      {spec.groups.length > 0 && <div className="ml-auto"><SwitchRow checked={spec.summaryOnly} disabled={readOnly} label="Summary only" description="One row per group with its totals"
+        onChange={() => change(toggleSummary, spec.summaryOnly ? "Detail rows are back" : "Summary only: one row per group with its totals")} /></div>}
       {!readOnly && !spec.groups.length && (
-        <Select aria-label="Group by a field" value="" className="ml-auto h-8 w-44 text-body-sm" onChange={(e) => { const f = fields.get(e.target.value); if (f) change((s) => addGroup(s, f.ref), `Grouped by ${f.label}`); }}>
+        <Select aria-label="Group by a field" value="" className="h-8 w-full text-body-sm sm:ml-auto sm:w-44" onChange={(e) => { const f = fields.get(e.target.value); if (f) change((s) => addGroup(s, f.ref), `Grouped by ${f.label}`); }}>
           <option value="">or pick a field</option>
           {[...fields.values()].map((f) => <option key={f.ref} value={f.ref}>{f.label}</option>)}
         </Select>
@@ -109,12 +115,12 @@ function RowsBar({ spec, change, fields, readOnly, count, date }: Pick<Props, "s
         {!spec.rows.filters.length && <span className="text-body-sm text-fg-2">every row</span>}
         {spec.rows.filters.map((f, i) => (
           <span key={i} className="inline-flex items-center gap-1 rounded-full border border-line-strong bg-card py-0.5 pr-0.5 pl-2.5 text-body-sm">
-            <b className="font-medium">{fields.get(f.ref)?.label ?? f.ref}</b> {OP_LABEL[f.op]} {!valueless(f.op) && <b className="font-medium">{f.value.join(", ")}</b>}
+            <b className="font-medium">{refLabel(f.ref, fields)}</b> {OP_LABEL[f.op]} {!valueless(f.op) && <b className="font-medium">{f.value.join(", ")}</b>}
             {!readOnly && <Button type="button" variant="remove" size="icon-sm" aria-label="Remove this filter" onClick={() => change((s) => ({ ...s, rows: { filters: s.rows.filters.filter((_, k) => k !== i) } }), "Filter removed")}><Icon icon={CloseIcon} className="size-3.5" /></Button>}
           </span>
         ))}
         {!readOnly && !adding && <Button type="button" variant="create" size="sm" onClick={() => setAdding({ ref: [...fields.keys()][0] ?? "", op: "any_of", value: "" })}><Icon icon={AddIcon} />Add filter</Button>}
-        <span className="ml-auto text-body-sm text-fg-3 tabular-nums">{count === null ? "Loading rows…" : `${count} ${count === 1 ? "row" : "rows"} on ${date} in the preview`}</span>
+        <span className="ml-auto text-body-sm text-fg-3 tabular-nums">{count === null ? "Loading rows…" : `${count} ${count === 1 ? "row" : "rows"} on ${dayText(date)} in the preview`}</span>
       </div>
       {adding && (
         <form className="flex flex-wrap items-end gap-2 rounded-ctl border border-line bg-inset p-2" onSubmit={(e) => {
@@ -124,13 +130,13 @@ function RowsBar({ spec, change, fields, readOnly, count, date }: Pick<Props, "s
           change((s) => ({ ...s, rows: { filters: [...s.rows.filters, { ref: adding.ref, op: adding.op, value }] } }), "Filter added");
           setAdding(null);
         }}>
-          <Select aria-label="Field" className="w-44" value={adding.ref} onChange={(e) => setAdding({ ...adding, ref: e.target.value })}>
+          <Select aria-label="Field" className="w-full sm:w-44" value={adding.ref} onChange={(e) => setAdding({ ...adding, ref: e.target.value })}>
             {[...fields.values()].map((f) => <option key={f.ref} value={f.ref}>{f.label}</option>)}
           </Select>
-          <Select aria-label="Condition" className="w-36" value={adding.op} onChange={(e) => setAdding({ ...adding, op: e.target.value as FilterOp })}>
+          <Select aria-label="Condition" className="w-full sm:w-36" value={adding.op} onChange={(e) => setAdding({ ...adding, op: e.target.value as FilterOp })}>
             {FILTER_OPS.map((o) => <option key={o} value={o}>{OP_LABEL[o]}</option>)}
           </Select>
-          {!valueless(adding.op) && <Input aria-label="Value" className="w-48" value={adding.value} placeholder={adding.op === "any_of" ? "unmatch, matched_late" : "Value"} onChange={(e) => setAdding({ ...adding, value: e.target.value })} />}
+          {!valueless(adding.op) && <Input aria-label="Value" className="w-full sm:w-48" value={adding.value} placeholder={adding.op === "any_of" ? "unmatch, matched_late" : "Value"} onChange={(e) => setAdding({ ...adding, value: e.target.value })} />}
           <Button type="submit" variant="create" size="sm"><Icon icon={AddIcon} />Add</Button>
           <Button type="button" variant="ghost" size="sm" onClick={() => setAdding(null)}>Cancel</Button>
         </form>
@@ -158,7 +164,7 @@ export function ReportCanvas(p: Props) {
     </button>
   );
   const table = (
-    <div className="scroll-quiet overflow-x-auto rounded-ctl border border-line">
+    <ScrollFade focusable aria-label="The report's columns and rows" className="rounded-ctl border border-line">
       <table className="w-full border-separate border-spacing-0 text-body-sm">
         <thead><tr>
           {spec.columns.map((c, i) => <HeaderCell key={c.id} c={c} i={i} spec={spec} selected={selected.kind === "column" && selected.id === c.id} select={() => select({ kind: "column", id: c.id })}
@@ -179,16 +185,16 @@ export function ReportCanvas(p: Props) {
               <td className="border-b border-line" />
             </tr>
           ))}
-          {data && !data.lines.length && <tr><td colSpan={spec.columns.length + 1} className="px-3 py-6 text-center text-fg-3">No rows on {p.date} match. Pick another preview date, or change the filters.</td></tr>}
+          {data && !data.lines.length && <tr><td colSpan={spec.columns.length + 1} className="px-3 py-6 text-center text-fg-3">No rows on {dayText(p.date)} match. Pick another preview date, or change the filters.</td></tr>}
         </tbody>
       </table>
-    </div>
+    </ScrollFade>
   );
   const ruler = (n: number) => Array.from({ length: n }, (_, i) => ((i + 1) % 10 === 0 ? String(((i + 1) / 10) % 10) : (i + 1) % 5 === 0 ? "+" : "·")).join("");
   const width = spec.columns.reduce((a, c) => a + c.layout.width, 0);
   const sheet = data?.sheet;
   const body = (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 grid-cols-1 gap-list">
       {!flat && spec.sections.title.on && band("title", "Title", <span className="text-heading-sm font-semibold text-fg">{sheet?.title ?? spec.sections.title.text}</span>)}
       {spec.sections.header.on && band("header", flat ? "Header block (the file's first lines)" : "Header block",
         sheet?.header?.length ? <span className="grid grid-cols-[repeat(auto-fit,minmax(10rem,1fr))] gap-x-4 gap-y-1 text-body-sm">{sheet.header.map((h, i) => <span key={i}><span className="text-fg-3">{h.label}</span> {h.value}</span>)}</span>
@@ -199,7 +205,7 @@ export function ReportCanvas(p: Props) {
       {fmt === "txt" && data?.text && (
         <div className="grid gap-1">
           <span className="text-caption font-semibold tracking-wide text-fg-3 uppercase">The file, line by line · {width} characters per line</span>
-          <pre className="scroll-quiet overflow-x-auto rounded-ctl border border-line bg-inset px-3 py-2 font-mono text-mono leading-relaxed"><span className="text-fg-4">{ruler(width)}</span>{"\n"}{data.text.join("\n")}</pre>
+          <ScrollFade focusable aria-label="The file, line by line" className="rounded-ctl border border-line bg-inset"><pre className="w-max px-3 py-2 font-mono text-mono leading-relaxed"><span className="text-fg-4">{ruler(width)}</span>{"\n"}{data.text.join("\n")}</pre></ScrollFade>
         </div>
       )}
       {spec.sections.footer.on && band("footer", flat ? "Footer (the file's last line)" : "Footer",
@@ -208,14 +214,14 @@ export function ReportCanvas(p: Props) {
     </div>
   );
   return (
-    <div className="grid gap-3">
+    <div className="grid min-w-0 grid-cols-1 gap-list">
       <ToggleChips label="In the file" items={keys.map((k) => ({ key: k, label: SECTION_LABEL[k], on: sectionOn(spec, k) }))} onToggle={(k) => !readOnly && change((s) => toggleSection(s, k))}
         extra={!readOnly && <Button type="button" variant="ghost" size="sm" onClick={() => change(dataOnly, "Data only: just the rows, nothing above or below")}>Data only</Button>} />
       {flat && <Notice tone="info">{fmt === "csv" ? "CSV holds the rows: the header block's lines come first, the footer's text last." : "Every line is the columns side by side at their widths; set a column's width and padding on the right."}</Notice>}
       <RowsBar spec={spec} change={change} fields={fields} readOnly={readOnly} count={data ? data.rows : null} date={p.date} />
       {preview.error && <Notice tone="warn">The preview didn&apos;t load: {preview.error}</Notice>}
       {(data?.problems ?? []).filter((x) => !x.columnId).map((x) => <Notice key={x.message} tone="warn">{x.message}</Notice>)}
-      {fmt === "pdf" ? <div className="rounded-sm border border-line bg-card p-6 shadow-overlay">{body}</div> : body}
+      {fmt === "pdf" ? <div className="min-w-0 rounded-sm border border-line-strong bg-card p-card shadow-xs md:p-6">{body}</div> : body}
     </div>
   );
 }

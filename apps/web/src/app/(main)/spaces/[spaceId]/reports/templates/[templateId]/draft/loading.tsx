@@ -1,6 +1,6 @@
 import { RouteSkeleton } from "@/components/route-skeleton";
-import { REPORT_TEMPLATE_SHAPE } from "@/features/reports/shapes";
+import { REPORT_DESIGNER_SHAPE } from "@/features/reports/shapes";
 
 export default function Loading() {
-  return <RouteSkeleton sections={REPORT_TEMPLATE_SHAPE} />;
+  return <RouteSkeleton sections={REPORT_DESIGNER_SHAPE} />;
 }

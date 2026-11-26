@@ -11,7 +11,12 @@ import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import type { ReportSpec, ReportVersionDto } from "@starterkit/shared/contracts/reports";
 import { type ReportFormat } from "@starterkit/shared/reports";
 import { mayDo } from "@starterkit/shared/spaces";
-import { BlockedButton, type ListedField, Notice, Panel, Segmented, TypeBadge } from "@starterkit/ui/ds";
+import { BRAND } from "@starterkit/shared/brand";
+import { BlockedButton, Failure, type ListedField, Notice, Panel, Segmented, TypeBadge } from "@starterkit/ui/ds";
+import { useDelayedFlag } from "@starterkit/ui/motion";
+import { DetailNotFound } from "@/components/detail-not-found";
+import { LoadingShape } from "@/components/route-skeleton";
+import { REPORT_DESIGNER_SHAPE } from "./shapes";
 import { appDate } from "@starterkit/ui/lib/format";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
@@ -19,7 +24,7 @@ import { SpinnerIcon } from "@starterkit/ui/ui/icons";
 import { Input } from "@starterkit/ui/ui/input";
 import { toast } from "@starterkit/ui/ui/toast";
 import { PageHeader } from "@/components/shell/page-header";
-import { errorText } from "@/lib/client/api";
+import { errorText, isNotFound } from "@/lib/client/api";
 import { useLeaveGuard } from "@/lib/client/use-leave-guard";
 import { LazyConfirmActionDialog } from "@/components/lazy-confirm";
 import { DataPane, type DragItem, type Special } from "./data-pane";
@@ -69,13 +74,18 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
   const readOnly = !v || v.status !== "draft" || !canEdit;
 
   // the design and its history (null until the version loads), the name, what is selected, the preview date
+  const skeleton = useDelayedFlag(!template.data || !versions.data);
   const [hist, setHist] = useState<History | null>(null);
   const [loadedFor, setLoadedFor] = useState("");
   if (v && loadedFor !== v.id) { setLoadedFor(v.id); setHist(history.start(v.spec)); }
   const spec = hist?.now ?? null;
   const [name, setName] = useState<string | null>(null);
   const shownName = name ?? template.data?.name ?? "";
-  const [selected, select] = useState<Selected>({ kind: "report" });
+  const [selected, setSelected] = useState<Selected>({ kind: "report" });
+  // below desktop the side panes fold; pressing a column or a section opens its settings
+  const [dataOpen, setDataOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const select = (s: Selected) => { setSelected(s); if (s.kind !== "report") setSettingsOpen(true); };
   const [date, setDate] = useState(yesterday);
   const fields = useFieldMap(spaceId, templateId, spec);
   const preview = usePreview(spaceId, templateId, versionId, spec, date, !readOnly);
@@ -180,7 +190,16 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
     } catch (e) { toast.error(errorText(e)); setBusy(false); }
   };
 
-  if (!spec || !v || !template.data) return <PageHeader title="Report design" trail={[{ label: "Reports", href: reportsHref(spaceId, "/templates") }]} />;
+  // the five states: not found, failed (with retry), loading in the designer's shape, a version asked that isn't there
+  const listHref = reportsHref(spaceId, "/templates");
+  if (template.error && isNotFound(template.error)) return <DetailNotFound title="Report template not found" noun="report template" list={{ href: listHref, label: "Report templates" }} />;
+  const failed = (!template.data && template.error) || (!versions.data && versions.error);
+  if (failed) return (
+    <div className="grid gap-section"><PageHeader title="Report design" trail={[{ label: "Reports", href: listHref }]} />
+      <Panel><Failure title="Couldn't load the report design" error={failed} source={BRAND.name} onRetry={() => { void template.refetch(); void versions.refetch(); }} /></Panel></div>
+  );
+  if (versions.data && !v) return <DetailNotFound title="No draft open" noun="report draft" list={{ href: reportsHref(spaceId, `/templates/${encodeURIComponent(templateId)}`), label: template.data?.name ?? "Report template" }} />;
+  if (!spec || !v || !template.data) return <LoadingShape sections={REPORT_DESIGNER_SHAPE} shown={skeleton} />;
   const blocked = sendProblem(spec) ?? (preview.data?.problems[0]?.message ?? null);
   const waiting = !readOnly ? draftProblem(spec) : null;
   const saveLine = waiting ? <span className="text-degraded-ink">Not saved yet: {waiting}</span> : save === "saving" ? "Saving…" : save === "failed" ? <span className="text-down-ink">Not saved · <button type="button" className="underline" onClick={() => setSavedJson("")}>Retry</button></span> : "Saved";
@@ -204,15 +223,17 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
       </Notice>}
       <DndContext sensors={sensors} onDragStart={(e: DragStartEvent) => setDragging((e.active.data.current as DragItem | undefined) ?? null)}
         onDragMove={(e) => setDrop(markOf(e))} onDragOver={(e) => setDrop(markOf(e))} onDragEnd={onDragEnd} onDragCancel={() => { setDragging(null); setDrop(null); }}>
-        <div className="grid items-start gap-3 lg:grid-cols-[16rem_minmax(0,1fr)] 2xl:grid-cols-[16rem_minmax(0,1fr)_20rem]">
-          <div className="lg:sticky lg:top-3">
-            <DataPane dataset={spec.dataset} readOnly={readOnly} fields={fields.data} used={new Set(spec.columns.flatMap((c) => (c.content.kind === "field" ? [c.content.ref] : [])))}
+        {/* desktop: Data · the report · Settings side by side; tablet and phone: stacked with the report in the middle,
+            Data and Settings each folded behind Show/Hide (Panel collapsible, CSS only) */}
+        <div className="grid items-start gap-section xl:grid-cols-[16rem_minmax(0,1fr)_18rem]">
+          <div className="min-w-0 xl:sticky xl:top-3">
+            <DataPane open={dataOpen} onOpenChange={setDataOpen} dataset={spec.dataset} readOnly={readOnly} fields={fields.data} used={new Set(spec.columns.flatMap((c) => (c.content.kind === "field" ? [c.content.ref] : [])))}
               onDataset={(d) => change((s) => ({ ...s, dataset: d }), `Rows from ${d === "results" ? "results" : d === "items" ? "every item" : "the daily recap"}. Columns on fields that data lacks show empty.`)}
               onAdd={(f) => addField(f)} onAddSpecial={(k) => addSpecial(k)} />
           </div>
-          <Panel title="Report" description="The file as it will be, on real rows (customer data masked)."
-            actions={<div className="flex flex-wrap items-center gap-2">
-              <Segmented label="File format" value={spec.output.format} options={(Object.keys(FORMAT_LABEL) as ReportFormat[]).map((f) => ({ value: f, label: FORMAT_LABEL[f] }))}
+          <Panel title="Report" description="The file as it will be, on real rows (customer data masked)." className="min-w-0"
+            actions={<div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Segmented label="File format" value={spec.output.format} options={(Object.keys(FORMAT_LABEL) as ReportFormat[]).map((f) => ({ value: f, label: f === "txt" ? "Text" : FORMAT_LABEL[f] }))}
                 onChange={(f) => change((s) => setFormat(s, f))} />
               <Input type="date" aria-label="Preview date" className="h-8 w-40" value={date} onChange={(e) => setDate(e.target.value)} />
               {preview.loading && <Icon icon={SpinnerIcon} className="size-4 text-fg-3 motion-safe:animate-spin" aria-label="Loading the preview" />}
@@ -220,8 +241,8 @@ export function DesignerPage({ spaceId, templateId, versionId: asked }: { spaceI
             <ReportCanvas spec={spec} change={change} readOnly={readOnly} preview={preview} date={date} fields={fields.map} selected={selected} select={select}
               drop={drop} dragging={dragging} onAddField={(f) => addField(f)} />
           </Panel>
-          <div className="lg:col-span-2 2xl:sticky 2xl:top-3 2xl:col-span-1">
-            <Panel title="Settings" bodyClassName="grid gap-3">
+          <div className="min-w-0 xl:sticky xl:top-3">
+            <Panel title="Settings" bodyClassName="grid min-w-0 grid-cols-1 gap-list" collapsible={{ open: settingsOpen, onOpenChange: setSettingsOpen, what: "settings" }}>
               <InspectorPane spec={spec} selected={selected} select={select} change={change} fields={fields.map} readOnly={readOnly} name={shownName} onName={setName}
                 preview={{
                   cell: (id) => { const i = idx.get(id); return i === undefined || !firstRow ? null : firstRow.cells[i] ?? ""; },

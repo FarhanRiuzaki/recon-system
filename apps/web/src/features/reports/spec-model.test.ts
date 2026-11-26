@@ -105,6 +105,8 @@ describe("minors", () => {
     expect(draftProblem(emptySpec())).toBeNull();
     expect(draftProblem({ ...two(), columns: [{ ...two().columns[0]!, header: "Diff", content: { kind: "formula", cel: " " } }] })).toBe("Diff: write the formula.");
     expect(draftProblem({ ...emptySpec(), when: { afterRun: false, onRequest: false } })).toBe("Make it after every run, on request, or both.");
+    // the API refuses an empty file name (min 1): the save waits and says why instead of failing
+    expect(draftProblem({ ...emptySpec(), output: { ...emptySpec().output, fileName: "  " } })).toBe("Name the file.");
   });
   it("the width input: digits clamp to 1–200, empty or text is no width yet", () => {
     expect([widthOf("12"), widthOf("0"), widthOf("999"), widthOf(""), widthOf("x")]).toEqual([12, 1, 200, null, null]);

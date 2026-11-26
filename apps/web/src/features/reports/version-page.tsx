@@ -14,9 +14,9 @@ import { PageHeader } from "@/components/shell/page-header";
 import { VersionLayout } from "@/components/version-layout";
 import { errorText } from "@/lib/client/api";
 import { DesignView } from "./designer-page";
+import { VERSION_STATUS_LABEL } from "./report-text";
 import { reportsHref, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
-const STATUS = { draft: "Draft", waiting: "Waiting for approval", active: "Active", superseded: "Superseded" } as const;
 
 export function VersionPage({ spaceId, templateId, versionId }: { spaceId: string; templateId: string; versionId: string }) {
   const router = useRouter();
@@ -41,7 +41,7 @@ export function VersionPage({ spaceId, templateId, versionId }: { spaceId: strin
   };
   return (
     <VersionLayout
-      header={<PageHeader title={`${t.name} · version ${v.version}`} crumb={`Version ${v.version}`} trail={trail} description={`${STATUS[v.status]}${v.madeBy ? ` · made by ${v.madeBy.name}` : ""}${v.approvedBy ? ` · approved by ${v.approvedBy.name}` : ""}`} />}
+      header={<PageHeader title={`${t.name} · version ${v.version}`} crumb={`Version ${v.version}`} trail={trail} description={`${VERSION_STATUS_LABEL[v.status]}${v.madeBy ? ` · made by ${v.madeBy.name}` : ""}${v.approvedBy ? ` · approved by ${v.approvedBy.name}` : ""}`} />}
       notice={v.note ? <Notice tone={v.status === "draft" ? "warn" : "info"}>{v.status === "draft" ? "Sent back" : "Checker's note"}: {v.note}</Notice> : undefined}
       decision={v.status === "waiting" && checker ? (
         <Panel title="Decision" description="An official report's version is active once a config checker who didn't work on it approves it." bodyClassName="grid gap-3">

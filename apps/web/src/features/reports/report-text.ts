@@ -1,5 +1,21 @@
 // The report generator's words (copy guide: sentence case, what happened and what to do).
 import { REPORT_RANGE_MAX_DAYS, type ReportFileStatus } from "@starterkit/shared/reports";
+import { appDayStart, formatDate } from "@starterkit/ui/lib/format";
+
+/** A calendar date ("2026-11-25") in the app's format with its year: "25 Nov 2026". */
+export const dayText = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${formatDate(appDayStart(d))} ${d.slice(0, 4)}` : "–");
+/** A file's dates: one day, or "1 Nov 2026 – 25 Nov 2026". */
+export const datesText = (from: string, to: string) => (from === to ? dayText(from) : `${dayText(from)} – ${dayText(to)}`);
+
+/** "creditor_bank" / "businessDate" → "Creditor bank" / "Business date". */
+const words = (name: string) => { const s = name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/[_.]+/g, " ").trim().toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+/** What a field ref is called on screen: its label in the data, else its name in words (a field the data lacks). */
+export function refLabel(ref: string, fields: ReadonlyMap<string, { label: string }>): string {
+  const known = fields.get(ref)?.label;
+  if (known) return known;
+  const name = ref.replace(/^[a-z]+:/, "").replace(/^attrs\./, "");
+  return name ? words(name) : "A field";
+}
 
 export const STATUS_LABEL: Record<ReportFileStatus, string> = { queued: "Queued", making: "Making", ready: "Ready", failed: "Failed", removed: "Removed" };
 
@@ -23,6 +39,9 @@ export const NEW_TEMPLATE_REASON = "Only a config maker of this space creates re
 export const DATASET_TEXT = { results: "Results", items: "Every item", recap: "Daily recap" } as const;
 export const FORMAT_LABEL = { csv: "CSV", xlsx: "Excel", txt: "Text (fixed width)", pdf: "PDF" } as const;
 export const TEMPLATE_STATUS_LABEL = { draft: "Draft", waiting: "Waiting approval", active: "Active", retired: "Retired" } as const;
+
+/** A template version's state, the same words on the template page and the version page. */
+export const VERSION_STATUS_LABEL = { draft: "Draft", waiting: "Waiting for approval", active: "Active", superseded: "Superseded" } as const;
 
 export const EDIT_DRAFT_REASON = "Only a config maker of this space edits a report template's draft.";
 

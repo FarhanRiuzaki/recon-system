@@ -9,14 +9,14 @@ import { mayDo } from "@starterkit/shared/spaces";
 import { BlockedButton, Panel, StatusChip } from "@starterkit/ui/ds";
 import { Button } from "@starterkit/ui/ui/button";
 import { Icon } from "@starterkit/ui/ui/icon";
-import { EditIcon } from "@starterkit/ui/ui/icons";
+import { AddIcon, EditIcon } from "@starterkit/ui/ui/icons";
 import { toast } from "@starterkit/ui/ui/toast";
 import dynamic from "next/dynamic";
 import { DetailNotFound } from "@/components/detail-not-found";
 import { PageHeader } from "@/components/shell/page-header";
 import { errorText, isNotFound } from "@/lib/client/api";
 import { statusTone } from "@/lib/shared/categories";
-import { EDIT_DRAFT_REASON, TEMPLATE_STATUS_LABEL } from "./report-text";
+import { EDIT_DRAFT_REASON, TEMPLATE_STATUS_LABEL, VERSION_STATUS_LABEL } from "./report-text";
 import { DesignView } from "./designer-page";
 import { reportsHref, useSpaceRoles, useTemplate, useTemplateActions } from "./use-reports";
 
@@ -48,7 +48,7 @@ export function TemplatePage({ spaceId, templateId }: { spaceId: string; templat
         status={<StatusChip health={statusTone(t.status === "active" ? "active" : t.status === "retired" ? "retired" : t.status === "waiting" ? "waiting" : "draft")} label={`${TEMPLATE_STATUS_LABEL[t.status]}${t.activeVersion ? ` · v${t.activeVersion}` : ""}`} />}
         description={`${t.recon.name}${open ? ` · draft v${vs.find((v) => v.id === open.id)?.version} ${open.status === "waiting" ? "waiting for approval" : "open"}` : ""}`}
         actions={<>
-          {mayDo(roles, "generateReports") && t.status === "active" && <Button variant="secondary" onClick={() => setGenerate(true)}>Generate report</Button>}
+          {mayDo(roles, "generateReports") && t.status === "active" && <Button variant="create" onClick={() => setGenerate(true)}><Icon icon={AddIcon} />Generate report</Button>}
           {t.status === "retired" ? null : editor ? <Button variant="edit" onClick={() => void edit()}><Icon icon={EditIcon} />{open?.status === "waiting" ? "View draft" : "Edit draft"}</Button> : <BlockedButton variant="edit" reason={EDIT_DRAFT_REASON}><Icon icon={EditIcon} />Edit draft</BlockedButton>}
         </>}
         more={editor && t.status !== "retired" ? [{ label: "Retire report template", destructive: true, confirm: {
@@ -58,12 +58,13 @@ export function TemplatePage({ spaceId, templateId }: { spaceId: string; templat
       <div className="grid gap-section xl:grid-cols-2">
         {shown ? <div className="xl:col-span-2"><DesignView spaceId={spaceId} templateId={templateId} version={shown} /></div> : null}
         <Panel title="Files and versions">
-          <ul className="grid gap-2 text-body-sm">
+          <ul className="grid gap-list text-body-sm">
             <li><Link className="text-primary hover:underline" href={reportsHref(spaceId, `?template=${encodeURIComponent(templateId)}`)}>See this report&apos;s files</Link></li>
             {vs.map((v) => (
-              <li key={v.id} className="flex items-center gap-2">
-                <Link className="text-fg hover:underline" href={reportsHref(spaceId, `/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(v.id)}`)}>Version {v.version}</Link>
-                <span className="text-fg-3">{v.status === "waiting" ? "Waiting approval" : v.status[0]!.toUpperCase() + v.status.slice(1)}{v.madeBy ? ` · ${v.madeBy.name}` : ""}</span>
+              <li key={v.id} className="flex min-w-0 flex-wrap items-center gap-2">
+                <Link className="font-medium text-fg hover:underline" href={reportsHref(spaceId, `/templates/${encodeURIComponent(templateId)}/versions/${encodeURIComponent(v.id)}`)}>Version {v.version}</Link>
+                <StatusChip health={statusTone(v.status)} label={VERSION_STATUS_LABEL[v.status]} />
+                {v.madeBy && <span className="min-w-0 truncate text-fg-3">{v.madeBy.name}</span>}
               </li>
             ))}
           </ul>

@@ -1,7 +1,24 @@
 import { EDIT_DRAFT_REASON, sampleLine } from "./report-text";
 import { FILE_LEGEND } from "./report-columns";
 import { describe, expect, it } from "vitest";
-import { finalText, generateProblem, openDatesNotice, statusText } from "./report-text";
+import { datesText, dayText, finalText, generateProblem, openDatesNotice, refLabel, statusText } from "./report-text";
+
+describe("labels and dates on screen (owner 26 Nov: no raw field names, the app's date format)", () => {
+  const fields = new Map([["a:ext_ref", { label: "Reference" }]]);
+  it("a field ref as its label, else its name in words; never the ref itself", () => {
+    expect(refLabel("a:ext_ref", fields)).toBe("Reference");
+    expect(refLabel("b:attrs.creditor_bank", fields)).toBe("Creditor bank");
+    expect(refLabel("recon:businessDate", fields)).toBe("Business date");
+    expect(refLabel("item:response_code", fields)).toBe("Response code");
+    expect(refLabel("", fields)).toBe("A field");
+  });
+  it("a calendar date and a range in the app's format", () => {
+    expect(dayText("2026-11-25")).toBe("25 Nov 2026");
+    expect(datesText("2026-11-25", "2026-11-25")).toBe("25 Nov 2026");
+    expect(datesText("2026-11-01", "2026-11-25")).toBe("1 Nov 2026 – 25 Nov 2026");
+    expect(dayText("")).toBe("–");
+  });
+});
 
 describe("report text", () => {
   it("names a file's state and whether it is final", () => {

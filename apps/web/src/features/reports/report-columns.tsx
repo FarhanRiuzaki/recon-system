@@ -7,7 +7,7 @@ import { ExportIcon } from "@starterkit/ui/ui/icons";
 import type { ReportFileDto, ReportTemplateDto } from "@starterkit/shared/contracts/reports";
 import type { ReportFileStatus } from "@starterkit/shared/reports";
 import { statusTone } from "@/lib/shared/categories";
-import { DATASET_TEXT, FORMAT_LABEL, finalText, STATUS_LABEL, statusText, TEMPLATE_STATUS_LABEL } from "./report-text";
+import { DATASET_TEXT, datesText, FORMAT_LABEL, finalText, STATUS_LABEL, statusText, TEMPLATE_STATUS_LABEL } from "./report-text";
 import { downloadHref, reportsHref } from "./use-reports";
 
 const TONE: Record<ReportFileStatus, Parameters<typeof statusTone>[0]> = { queued: "queued", making: "in_progress", ready: "ready", failed: "failed", removed: "retired" };
@@ -16,7 +16,6 @@ export const FILE_LEGEND = (Object.keys(STATUS_LABEL) as ReportFileStatus[]).map
   health: statusTone(TONE[s]), label: STATUS_LABEL[s],
   description: { queued: "Waiting for the worker.", making: "Being made; the bar shows how far it is.", ready: "Ready to download. Every download is logged.", failed: "The report stopped; its row says why. Make it again.", removed: "Removed after its retention; its record stays." }[s],
 }));
-const dates = (f: { from: string; to: string }) => (f.from === f.to ? f.from : `${f.from} – ${f.to}`);
 
 /** A space's report files: report (template, version, format), recon, dates, status, Final, made by, size, download. */
 export const FULL_REASON = "Only a space admin, a reviewer or a config checker downloads full customer data.";
@@ -29,7 +28,7 @@ export const fileColumns = (spaceId: string, retry: (id: string) => void, can: {
       <span className="text-caption text-fg-3">v{f.version} · {FORMAT_LABEL[f.format]}{f.fileVersion > 1 ? ` · file ${f.fileVersion}` : ""}</span>
     </span>) },
   { key: "recon", header: "Recon", mobile: "meta", cell: (f) => f.recon },
-  { key: "from", header: "Dates", sortable: true, mobile: "meta", cell: (f) => <span className="tabular-nums">{dates(f)}</span> },
+  { key: "from", header: "Dates", sortable: true, mobile: "meta", cell: (f) => <span className="tabular-nums">{datesText(f.from, f.to)}</span> },
   { key: "status", header: "Status", mobile: "meta", cell: (f) => <StatusChip health={statusTone(TONE[f.status])} label={statusText(f)} /> },
   { key: "final", header: "Final", mobile: "hidden", cell: (f) => <span className={f.final ? "text-fg" : "text-degraded-ink"}>{finalText(f.final)}</span> },
   { key: "madeAt", header: "Made", sortable: true, mobile: "hidden", className: "md:max-xl:hidden", cell: (f) => (

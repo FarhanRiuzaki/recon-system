@@ -27,15 +27,15 @@ function Draggable({ id, item, children, disabled }: { id: string; item: DragIte
   return <div ref={setNodeRef} {...attributes} {...listeners} aria-roledescription="draggable field" className={isDragging ? "opacity-40" : "cursor-grab active:cursor-grabbing"}>{children}</div>;
 }
 
-export function DataPane({ dataset, onDataset, fields, used, onAdd, onAddSpecial, readOnly }: {
-  dataset: ReportDataset; onDataset: (d: ReportDataset) => void; fields: ReportFieldsDto | undefined; used: Set<string>;
+export function DataPane({ dataset, onDataset, fields, used, onAdd, onAddSpecial, readOnly, open, onOpenChange }: {
+  open: boolean; onOpenChange: (open: boolean) => void; dataset: ReportDataset; onDataset: (d: ReportDataset) => void; fields: ReportFieldsDto | undefined; used: Set<string>;
   onAdd: (f: ListedField) => void; onAddSpecial: (k: Special) => void; readOnly: boolean;
 }) {
   const [q, setQ] = useState("");
   const groups = (fields?.groups ?? []).map((g) => ({ label: g.label, fields: g.fields.map((f): ListedField => ({ ...f, used: used.has(f.ref) })) }));
   const byRef = new Map(groups.flatMap((g) => g.fields.map((f) => [f.ref, f] as const)));
   return (
-    <Panel title="Data" description="Drag into the report, or press +." bodyClassName="grid gap-3">
+    <Panel title="Data" description="Drag into the report, or press +." bodyClassName="grid min-w-0 grid-cols-1 gap-list" collapsible={{ open, onOpenChange, what: "fields" }}>
       <Field id="designer-dataset" label="Rows from">
         <Select id="designer-dataset" value={dataset} disabled={readOnly} onChange={(e) => onDataset(e.target.value as ReportDataset)}>
           {(Object.keys(DATASET_LABEL) as ReportDataset[]).map((d) => <option key={d} value={d}>{DATASET_LABEL[d]}</option>)}
@@ -46,7 +46,7 @@ export function DataPane({ dataset, onDataset, fields, used, onAdd, onAddSpecial
           wrap={(f, row) => <Draggable id={`field:${f.ref}`} item={{ kind: "field", field: f }} disabled={readOnly}>{row}</Draggable>} />
       ) : <div className="grid gap-2"><Skeleton className="h-8" /><Skeleton className="h-8" /><Skeleton className="h-8" /></div>}
       {dataset !== "recap" && (
-        <section className="grid gap-0.5">
+        <section className="grid min-w-0 grid-cols-1 gap-0.5">
           <h3 className="mt-2 px-1 text-caption font-semibold tracking-wide text-fg-3 uppercase">Build your own</h3>
           {SPECIALS.map((s) => (
             <Draggable key={s.kind} id={`special:${s.kind}`} item={{ kind: "special", special: s.kind, label: s.label }} disabled={readOnly}>

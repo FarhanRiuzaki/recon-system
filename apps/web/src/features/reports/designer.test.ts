@@ -1,4 +1,5 @@
 import { DndContext } from "@dnd-kit/core";
+import { createElement as h } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { columnFor, emptySpec } from "@starterkit/shared/report-spec";
@@ -13,16 +14,18 @@ const preview: Preview = {
   sheet: { title: "Breaks", header: null, footer: null, columnHeaders: true }, text: null, problems: [{ columnId: "c2", message: "Gone: Field not in the data." }], rows: 1,
 };
 const fields = new Map([["a:ext_ref", { ref: "a:ext_ref", label: "Reference", type: "text" as const, customer: false }]]);
-const html = (s = spec) => renderToStaticMarkup(
-  <TooltipProvider><DndContext><ReportCanvas spec={s} change={() => undefined} readOnly={false} preview={{ data: preview, error: null, loading: false }} date="2026-11-25" fields={fields}
-    selected={{ kind: "column", id: "c1" }} select={() => undefined} drop={null} dragging={null} onAddField={() => undefined} /></DndContext></TooltipProvider>);
+// a .ts test (vitest includes src/**/*.test.ts): JSX as createElement
+const html = (s = spec) => renderToStaticMarkup(h(TooltipProvider, null, h(DndContext, null, h(ReportCanvas, {
+  spec: s, change: () => undefined, readOnly: false, preview: { data: preview, error: null, loading: false }, date: "2026-11-25", fields,
+  selected: { kind: "column", id: "c1" }, select: () => undefined, drop: null, dragging: null, onAddField: () => undefined,
+}))));
 
 describe("the designer's canvas", () => {
   it("the file's sections as pressed chips; Data only offered; the rows of the preview date", () => {
     const out = html();
     expect(out).toMatch(/aria-pressed="true"[^>]*>.*Column headers/);
     expect(out).toContain("Data only");
-    expect(out).toContain("1 row on 2026-11-25 in the preview");
+    expect(out).toContain("1 row on 25 Nov 2026 in the preview");
     expect(out).toContain("KS-1");
   });
   it("data only: every chip off, the header row struck through and said so", () => {
@@ -34,6 +37,16 @@ describe("the designer's canvas", () => {
     const out = html();
     expect(out).toContain("Field not in the data.");
     expect(out).toContain("+ Add a column");
-    expect(out).toContain('aria-pressed="true" aria-label="Column 1: Reference.');
+    expect(out).toMatch(/aria-pressed="true"[^>]*aria-label="Column 1: Reference\./);
+  });
+  it("a header names its field once (no second line repeating it), its type badge apart; the table scrolls with a fade", () => {
+    const out = html();
+    expect(out).not.toMatch(/Abc<\/span>Reference/);
+    expect(out).toContain('data-slot="scroll-fade"');
+  });
+  it("grouped: Summary only is a labelled switch, not a bare checkbox", () => {
+    const out = html({ ...spec, groups: ["a:ext_ref"] });
+    expect(out).toMatch(/>Summary only<.*role="switch" aria-checked="false" aria-label="Summary only"/);
+    expect(out).not.toContain('role="checkbox"');
   });
 });
